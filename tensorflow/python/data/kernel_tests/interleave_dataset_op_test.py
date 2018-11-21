@@ -196,7 +196,7 @@ class InterleaveDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       for expected_element in _interleave(
           _repeat(input_values, count), cycle_length, block_length):
-        self.assertEqual(expected_element, sess.run(get_next))
+        self.assertEqual(expected_element, self.evaluate(get_next))
 
       for _ in range(2):
         with self.assertRaises(errors.OutOfRangeError):
@@ -231,7 +231,7 @@ class InterleaveDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           with self.assertRaises(errors.InvalidArgumentError):
             sess.run(get_next)
         else:
-          self.assertEqual(value, sess.run(get_next))
+          self.assertEqual(value, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -254,7 +254,7 @@ class InterleaveDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       for i in range(10):
         for j in range(2):
           expected = [i, 0] if j % 2 == 0 else [0, -i]
-          self.assertAllEqual(expected, sess.run(get_next))
+          self.assertAllEqual(expected, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -308,7 +308,7 @@ class InterleaveDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       for element in elements:
         coordination_events[element].set()
-        self.assertEqual(element * element, sess.run(get_next))
+        self.assertEqual(element * element, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

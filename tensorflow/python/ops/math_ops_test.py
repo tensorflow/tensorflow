@@ -107,7 +107,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         y_tf = math_ops.reduce_logsumexp(x_np, reduction_indices=[0])
         y_np = log(np.sum(exp(x_np), axis=0))
         self.assertShapeEqual(y_np, y_tf)
-        y_tf_np = y_tf.eval()
+        y_tf_np = self.evaluate(y_tf)
         self.assertAllClose(y_tf_np, y_np)
 
   def testReductionIndices2(self):
@@ -117,7 +117,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         y_tf = math_ops.reduce_logsumexp(x_np, reduction_indices=0)
         y_np = log(np.sum(exp(x_np), axis=0))
         self.assertShapeEqual(y_np, y_tf)
-        y_tf_np = y_tf.eval()
+        y_tf_np = self.evaluate(y_tf)
         self.assertAllClose(y_tf_np, y_np)
 
   def testKeepDims(self):
@@ -195,7 +195,7 @@ class ModTest(test_util.TensorFlowTestCase):
         with self.cached_session(use_gpu=True):
           x_tf = constant_op.constant(x_np, shape=x_np.shape)
           y_tf = math_ops.mod(x_tf, denom)
-          y_tf_np = y_tf.eval()
+          y_tf_np = self.evaluate(y_tf)
           y_np = np.fmod(x_np, denom)
         self.assertAllClose(y_tf_np, y_np, atol=1e-2)
 
@@ -208,7 +208,7 @@ class ModTest(test_util.TensorFlowTestCase):
         with self.cached_session(use_gpu=True):
           x_tf = constant_op.constant(x_np, shape=x_np.shape)
           y_tf = math_ops.mod(x_tf, denom)
-          y_tf_np = y_tf.eval()
+          y_tf_np = self.evaluate(y_tf)
           y_np = np.mod(x_np, denom)
         self.assertAllClose(y_tf_np, y_np)
 
@@ -373,7 +373,7 @@ class AddNTest(test_util.TensorFlowTestCase):
             for i in range(0, num_inputs)
         ]
         addn = math_ops.add_n(input_vars)
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         add_n_grad = gradients.gradients(addn, input_vars)
         self.assertAllEqual(np.repeat(1.0, num_inputs), # d/dx (x + y + ...) = 1
                             [g.eval() for g in add_n_grad])
@@ -461,14 +461,15 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       a = variables.Variable(2.)
       b = variables.Variable(4.)
       with self.cached_session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         c_grad = gradients.gradients(math_ops.divide(a, b), [a, b])
         self.assertAllEqual([x.eval() for x in c_grad], [.25, -.125])
         c_grad = gradients.gradients(math_ops.div(a, b), [a, b])
         self.assertAllEqual([x.eval() for x in c_grad], [.25, -.125])
         c_grad = gradients.gradients(math_ops.floordiv(a, b), [a, b])
-        self.assertAllEqual([None if x is None else x.eval()
-                             for x in c_grad], [None, None])
+        self.assertAllEqual(
+            [None if x is None else self.evaluate(x) for x in c_grad],
+            [None, None])
 
   def testConsistent(self):
     nums, divs = self.intTestData()

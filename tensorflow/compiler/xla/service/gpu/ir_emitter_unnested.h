@@ -117,8 +117,8 @@ class IrEmitterUnnested : public IrEmitter {
         BlockPrologueGenerator block_prologue_generator = {},
         BlockEpilogueGenerator block_epilogue_generator = {})
         : tile_element_generator_(std::move(tile_element_generator)),
-          block_epilogue_generator_(std::move(block_epilogue_generator)),
-          block_prologue_generator_(std::move(block_prologue_generator)) {}
+          block_prologue_generator_(std::move(block_prologue_generator)),
+          block_epilogue_generator_(std::move(block_epilogue_generator)) {}
 
     const TileElementGenerator& GetTileElementGenerator() const {
       return tile_element_generator_;

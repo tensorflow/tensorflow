@@ -124,7 +124,6 @@ py_library(
         ":session_ops",
         ":sets",
         ":sparse_ops",
-        ":spectral_ops",
         ":spectral_ops_test_util",
         ":standard_ops",
         ":state_ops",
@@ -132,6 +131,7 @@ py_library(
         ":subscribe",
         ":summary",
         ":tensor_array_ops",
+        ":tensor_forest_ops",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":tf_cluster",
         ":tf_item",
@@ -854,7 +854,6 @@ py_library(
     deps = [
         ":c_api_util",
         ":control_flow_util",
-        ":cpp_shape_inference_proto_py",
         ":device",
         ":dtypes",
         ":error_interpolation",
@@ -880,6 +879,8 @@ py_library(
     deps = [
         ":auto_control_deps",
         ":framework_ops",
+        ":sparse_tensor",
+        ":tensor_array_ops",
         "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:graph_only_ops",
@@ -894,6 +895,8 @@ py_library(
     deps = [
         ":control_flow_ops",
         ":framework_ops",
+        ":sparse_tensor",
+        ":tensor_array_ops",
         ":util",
     ],
 )
@@ -994,6 +997,7 @@ py_library(
         ":common_shapes",
         ":dtypes",
         ":tensor_shape",
+        ":util",
         "//third_party/py/numpy",
     ],
 )
@@ -1052,6 +1056,7 @@ py_library(
         ":random_seed",
         ":resource_variable_ops",
         ":session",
+        ":tensor_array_ops",
         ":training",
         ":util",
         ":variables",
@@ -1619,6 +1624,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "tensor_forest_ops_gen",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:tensor_forest_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "summary_ops_gen",
     visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow/core:summary_ops_op_lib"],
@@ -1837,6 +1850,7 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "spectral_ops_gen",
+    visibility = ["//tensorflow/python/ops/signal:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -1936,6 +1950,19 @@ py_library(
         ":boosted_trees_ops_gen",
         ":framework",
         ":ops",
+        ":training",
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
+    ],
+)
+
+py_library(
+    name = "tensor_forest_ops",
+    srcs = ["ops/tensor_forest_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":ops",
+        ":tensor_forest_ops_gen",
         ":training",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
     ],
@@ -2138,6 +2165,7 @@ py_library(
         ":control_flow_util_v2",
         ":dtypes",
         ":framework_ops",
+        ":framework_test_lib",
         ":function_def_to_graph",
         ":functional_ops_gen",
         ":gradients_impl",
@@ -2266,7 +2294,6 @@ py_library(
         ":platform",
         ":random_grad",
         ":resource_variable_ops",
-        ":spectral_grad",
         ":tensor_array_ops",
         ":tensor_util",
         ":unconnected_gradients",
@@ -2508,7 +2535,6 @@ py_library(
         ":nn_ops_gen",
         ":sparse_ops_gen",
         ":sparse_tensor",
-        ":spectral_ops_gen",
         ":state_ops",
         ":state_ops_gen",
         ":tensor_shape",
@@ -2818,33 +2844,6 @@ py_test(
 )
 
 py_library(
-    name = "spectral_grad",
-    srcs = ["ops/spectral_grad.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":framework",
-        ":framework_for_generated_wrappers",
-        ":math_ops",
-        ":spectral_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "spectral_ops",
-    srcs = ["ops/spectral_ops.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":dtypes",
-        ":framework_ops",
-        ":math_ops",
-        ":spectral_ops_gen",
-    ],
-)
-
-py_library(
     name = "spectral_ops_test_util",
     srcs = ["ops/spectral_ops_test_util.py"],
     srcs_version = "PY2AND3",
@@ -2961,7 +2960,6 @@ py_library(
         ":sparse_grad",
         ":sparse_ops",
         ":special_math_ops",
-        ":spectral_grad",
         ":state_grad",
         ":state_ops",
         ":stateless_random_ops",
@@ -3067,13 +3065,16 @@ py_library(
     deps = [
         ":array_ops",
         ":constant_op",
+        ":control_flow_ops_gen",
         ":data_flow_ops_gen",
         ":dtypes",
         ":errors",
         ":framework_ops",
+        ":list_ops",
         ":math_ops",
         ":tensor_shape",
         ":tensor_util",
+        ":tf2",
         ":tf_should_use",
         "//tensorflow/python/eager:context",
     ],
@@ -3476,6 +3477,7 @@ py_library(
         "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -3581,8 +3583,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":constant_op",
         ":control_flow_ops",
         ":device_util",
+        ":dtypes",
         ":framework_ops",
         ":platform",
         ":resource_variable_ops",
@@ -3590,7 +3594,9 @@ py_library(
         ":util",
         ":variable_scope",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 
@@ -3601,7 +3607,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
+        ":constant_op",
         ":distribute",
+        ":dtypes",
         ":variable_scope",
     ],
 )
@@ -4902,7 +4910,7 @@ py_test(
         ":training",
         ":variable_scope",
         ":variables",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )

@@ -123,6 +123,8 @@ typedef enum {
   kTfLiteBuiltinFloorMod = 95,
   kTfLiteBuiltinRange = 96,
   kTfLiteBuiltinResizeNearestNeighbor = 97,
+  kTfLiteBuiltinLeakyRelu = 98,
+  kTfLiteBuiltinSquaredDifference = 99,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

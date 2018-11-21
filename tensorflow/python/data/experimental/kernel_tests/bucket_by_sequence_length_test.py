@@ -300,7 +300,7 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
       with self.cached_session() as sess:
         with self.assertRaises(errors.OutOfRangeError):
           while True:
-            output = sess.run(batch)
+            output = self.evaluate(batch)
             sprs_tensor = (tuple([tuple(idx) for idx in output.indices]),
                            tuple(output.values))
             all_sparse_tensors.add(sprs_tensor)

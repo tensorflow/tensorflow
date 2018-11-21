@@ -327,6 +327,9 @@ REGISTER_OP("_FusedConv2D")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // ---------------------------------------------------------------------- //
     .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
 *NOTE*: Do not invoke this operator directly in Python. Grappler is

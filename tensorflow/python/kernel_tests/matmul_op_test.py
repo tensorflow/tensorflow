@@ -44,7 +44,7 @@ class MatVecTest(test_lib.TestCase):
     with self.cached_session():
       c = math_ops.matvec(a, b)
       self.assertAllEqual((2,), c.shape)
-      c_ = c.eval()
+      c_ = self.evaluate(c)
     self.assertAllEqual([5 + 2 * 6, 3 * 5 + 4 * 6], c_)
 
 
@@ -90,7 +90,7 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
         a = constant_op.constant(effective_a_np)
         b = constant_op.constant(effective_b_np)
         res = math_ops.matmul(a, b, **kwargs_)
-        tf_val = res.eval()
+        tf_val = self.evaluate(res)
       else:
         a = array_ops.placeholder(a_np_.dtype)
         b = array_ops.placeholder(b_np_.dtype)
@@ -220,7 +220,7 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
     c = infix_matmul(a, b)
     d = math_ops.matmul(a, b)
     with self.cached_session():
-      self.assertAllEqual(c.eval(), d.eval())
+      self.assertAllEqual(c.eval(), self.evaluate(d))
 
 
 if __name__ == "__main__":

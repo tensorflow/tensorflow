@@ -39,8 +39,9 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                             "ORDER BY first_name DESC"
             })
         for _ in range(2):  # Dataset is repeated. See setUp.
-          self.assertEqual((b"John", b"Doe", b"Hi!"), sess.run(get_next))
-          self.assertEqual((b"Jane", b"Moe", b"Hi again!"), sess.run(get_next))
+          self.assertEqual((b"John", b"Doe", b"Hi!"), self.evaluate(get_next))
+          self.assertEqual((b"Jane", b"Moe", b"Hi again!"),
+                           self.evaluate(get_next))
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
@@ -58,7 +59,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                   "ON students.first_name = people.first_name "
                   "AND students.last_name = people.last_name"
           })
-      self.assertEqual((b"John", b"California", b"Hi!"), sess.run(get_next))
+      self.assertEqual((b"John", b"California", b"Hi!"),
+                       self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -75,8 +77,9 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                   "SELECT first_name, last_name, favorite_nonsense_word "
                   "FROM students ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", b"Doe", b"n\0nsense"), sess.run(get_next))
-      self.assertEqual((b"Jane", b"Moe", b"nonsense\0"), sess.run(get_next))
+      self.assertEqual((b"John", b"Doe", b"n\0nsense"), self.evaluate(get_next))
+      self.assertEqual((b"Jane", b"Moe", b"nonsense\0"),
+                       self.evaluate(get_next))
     with self.assertRaises(errors.OutOfRangeError):
       sess.run(get_next)
 
@@ -93,8 +96,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
               self.query: "SELECT first_name, last_name, motto FROM students "
                           "ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", b"Doe", b"Hi!"), sess.run(get_next))
-      self.assertEqual((b"Jane", b"Moe", b"Hi again!"), sess.run(get_next))
+      self.assertEqual((b"John", b"Doe", b"Hi!"), self.evaluate(get_next))
+      self.assertEqual((b"Jane", b"Moe", b"Hi again!"), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
       sess.run(
@@ -103,7 +106,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
               self.query: "SELECT first_name, last_name, state FROM people "
                           "ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", b"Doe", b"California"), sess.run(get_next))
+      self.assertEqual((b"John", b"Doe", b"California"),
+                       self.evaluate(get_next))
       self.assertEqual((b"Benjamin", b"Franklin", b"Pennsylvania"),
                        sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
@@ -212,8 +216,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
               self.query: "SELECT first_name, desk_number FROM students "
                           "ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", 9), sess.run(get_next))
-      self.assertEqual((b"Jane", 127), sess.run(get_next))
+      self.assertEqual((b"John", 9), self.evaluate(get_next))
+      self.assertEqual((b"Jane", 127), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -230,7 +234,7 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                           "FROM students "
                           "WHERE first_name = 'John' ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", 0, -2), sess.run(get_next))
+      self.assertEqual((b"John", 0, -2), self.evaluate(get_next))
     with self.assertRaises(errors.OutOfRangeError):
       sess.run(get_next)
 
@@ -246,9 +250,9 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                   "SELECT desk_number, favorite_negative_number FROM students "
                   "ORDER BY first_name DESC"
           })
-      self.assertEqual((9, -2), sess.run(get_next))
+      self.assertEqual((9, -2), self.evaluate(get_next))
       # Max and min values of int8
-      self.assertEqual((127, -128), sess.run(get_next))
+      self.assertEqual((127, -128), self.evaluate(get_next))
     with self.assertRaises(errors.OutOfRangeError):
       sess.run(get_next)
 
@@ -263,8 +267,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
               self.query: "SELECT first_name, desk_number FROM students "
                           "ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", 9), sess.run(get_next))
-      self.assertEqual((b"Jane", 127), sess.run(get_next))
+      self.assertEqual((b"John", 9), self.evaluate(get_next))
+      self.assertEqual((b"Jane", 127), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -281,7 +285,7 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                           "FROM students "
                           "WHERE first_name = 'John' ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", 0, -2), sess.run(get_next))
+      self.assertEqual((b"John", 0, -2), self.evaluate(get_next))
     with self.assertRaises(errors.OutOfRangeError):
       sess.run(get_next)
 
@@ -297,9 +301,9 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                           "FROM students ORDER BY first_name DESC"
           })
       # Max value of int16
-      self.assertEqual((b"John", 32767), sess.run(get_next))
+      self.assertEqual((b"John", 32767), self.evaluate(get_next))
       # Min value of int16
-      self.assertEqual((b"Jane", -32768), sess.run(get_next))
+      self.assertEqual((b"Jane", -32768), self.evaluate(get_next))
     with self.assertRaises(errors.OutOfRangeError):
       sess.run(get_next)
 
@@ -314,8 +318,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
               self.query: "SELECT first_name, desk_number FROM students "
                           "ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", 9), sess.run(get_next))
-      self.assertEqual((b"Jane", 127), sess.run(get_next))
+      self.assertEqual((b"John", 9), self.evaluate(get_next))
+      self.assertEqual((b"Jane", 127), self.evaluate(get_next))
 
   # Test that `SqlDataset` can read a negative or 0-valued integer from a
   # SQLite database table and place it in an `int32` tensor.
@@ -328,8 +332,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
               self.query: "SELECT first_name, income FROM students "
                           "ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", 0), sess.run(get_next))
-      self.assertEqual((b"Jane", -20000), sess.run(get_next))
+      self.assertEqual((b"John", 0), self.evaluate(get_next))
+      self.assertEqual((b"Jane", -20000), self.evaluate(get_next))
     with self.assertRaises(errors.OutOfRangeError):
       sess.run(get_next)
 
@@ -345,9 +349,9 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                           "ORDER BY first_name DESC"
           })
       # Max value of int32
-      self.assertEqual((b"John", 2147483647), sess.run(get_next))
+      self.assertEqual((b"John", 2147483647), self.evaluate(get_next))
       # Min value of int32
-      self.assertEqual((b"Jane", -2147483648), sess.run(get_next))
+      self.assertEqual((b"Jane", -2147483648), self.evaluate(get_next))
     with self.assertRaises(errors.OutOfRangeError):
       sess.run(get_next)
 
@@ -362,8 +366,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
               self.query: "SELECT first_name, school_id FROM students "
                           "ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", 123), sess.run(get_next))
-      self.assertEqual((b"Jane", 1000), sess.run(get_next))
+      self.assertEqual((b"John", 123), self.evaluate(get_next))
+      self.assertEqual((b"Jane", 1000), self.evaluate(get_next))
     with self.assertRaises(errors.OutOfRangeError):
       sess.run(get_next)
 
@@ -378,8 +382,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
               self.query: "SELECT first_name, desk_number FROM students "
                           "ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", 9), sess.run(get_next))
-      self.assertEqual((b"Jane", 127), sess.run(get_next))
+      self.assertEqual((b"John", 9), self.evaluate(get_next))
+      self.assertEqual((b"Jane", 127), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -394,8 +398,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
               self.query: "SELECT first_name, income FROM students "
                           "ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", 0), sess.run(get_next))
-      self.assertEqual((b"Jane", -20000), sess.run(get_next))
+      self.assertEqual((b"John", 0), self.evaluate(get_next))
+      self.assertEqual((b"Jane", -20000), self.evaluate(get_next))
     with self.assertRaises(errors.OutOfRangeError):
       sess.run(get_next)
 
@@ -412,9 +416,9 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                   "ORDER BY first_name DESC"
           })
       # Max value of int64
-      self.assertEqual((b"John", 9223372036854775807), sess.run(get_next))
+      self.assertEqual((b"John", 9223372036854775807), self.evaluate(get_next))
       # Min value of int64
-      self.assertEqual((b"Jane", -9223372036854775808), sess.run(get_next))
+      self.assertEqual((b"Jane", -9223372036854775808), self.evaluate(get_next))
     with self.assertRaises(errors.OutOfRangeError):
       sess.run(get_next)
 
@@ -429,8 +433,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
               self.query: "SELECT first_name, desk_number FROM students "
                           "ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", 9), sess.run(get_next))
-      self.assertEqual((b"Jane", 127), sess.run(get_next))
+      self.assertEqual((b"John", 9), self.evaluate(get_next))
+      self.assertEqual((b"Jane", 127), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -446,9 +450,9 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                           "ORDER BY first_name DESC"
           })
       # Min value of uint8
-      self.assertEqual((b"John", 0), sess.run(get_next))
+      self.assertEqual((b"John", 0), self.evaluate(get_next))
       # Max value of uint8
-      self.assertEqual((b"Jane", 255), sess.run(get_next))
+      self.assertEqual((b"Jane", 255), self.evaluate(get_next))
     with self.assertRaises(errors.OutOfRangeError):
       sess.run(get_next)
 
@@ -463,8 +467,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
               self.query: "SELECT first_name, desk_number FROM students "
                           "ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", 9), sess.run(get_next))
-      self.assertEqual((b"Jane", 127), sess.run(get_next))
+      self.assertEqual((b"John", 9), self.evaluate(get_next))
+      self.assertEqual((b"Jane", 127), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -480,9 +484,9 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                           "ORDER BY first_name DESC"
           })
       # Min value of uint16
-      self.assertEqual((b"John", 0), sess.run(get_next))
+      self.assertEqual((b"John", 0), self.evaluate(get_next))
       # Max value of uint16
-      self.assertEqual((b"Jane", 65535), sess.run(get_next))
+      self.assertEqual((b"Jane", 65535), self.evaluate(get_next))
     with self.assertRaises(errors.OutOfRangeError):
       sess.run(get_next)
 
@@ -499,8 +503,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                   "SELECT first_name, registration_complete FROM students "
                   "ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", True), sess.run(get_next))
-      self.assertEqual((b"Jane", False), sess.run(get_next))
+      self.assertEqual((b"John", True), self.evaluate(get_next))
+      self.assertEqual((b"Jane", False), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -515,8 +519,8 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
               self.query: "SELECT first_name, favorite_medium_sized_number "
                           "FROM students ORDER BY first_name DESC"
           })
-      self.assertEqual((b"John", True), sess.run(get_next))
-      self.assertEqual((b"Jane", True), sess.run(get_next))
+      self.assertEqual((b"John", True), self.evaluate(get_next))
+      self.assertEqual((b"Jane", True), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -533,8 +537,9 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                   "SELECT first_name, last_name, victories FROM townspeople "
                   "ORDER BY first_name"
           })
-      self.assertEqual((b"George", b"Washington", 20.0), sess.run(get_next))
-      self.assertEqual((b"John", b"Adams", -19.95), sess.run(get_next))
+      self.assertEqual((b"George", b"Washington", 20.0),
+                       self.evaluate(get_next))
+      self.assertEqual((b"John", b"Adams", -19.95), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

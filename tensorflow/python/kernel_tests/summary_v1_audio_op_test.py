@@ -60,7 +60,7 @@ class SummaryV1AudioOpTest(test.TestCase):
         sample_rate = 8000
         summ = summary.audio(
             "snd", const, max_outputs=3, sample_rate=sample_rate)
-        value = sess.run(summ)
+        value = self.evaluate(summ)
         self.assertEqual([], summ.get_shape())
         audio_summ = self._AsSummary(value)
 

@@ -107,7 +107,7 @@ class ParseExampleTest(test.TestCase):
         for result_dict in [out, out_with_example_name]:
           result = flatten_values_tensors_or_sparse(result_dict.values())
           # Check values.
-          tf_result = sess.run(result)
+          tf_result = self.evaluate(result)
           _compare_output_to_expected(self, result_dict, expected_values,
                                       tf_result)
 

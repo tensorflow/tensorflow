@@ -80,7 +80,7 @@ class DecodeJpegBenchmark(test.Benchmark):
           initializer=image_ops.encode_jpeg(tiled_image))
 
     with session.Session() as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       images = []
       for _ in xrange(parallelism):
         if crop_window is None:

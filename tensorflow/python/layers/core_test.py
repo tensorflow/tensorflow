@@ -443,7 +443,7 @@ class DropoutTest(test.TestCase):
       dp = core_layers.Dropout(rate, name='dropout')
       inputs = array_ops.ones((5, 5))
       dropped = dp.apply(inputs, training=True)
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       np_output = sess.run(dropped, feed_dict={rate: 0.5})
       self.assertAlmostEqual(0., np_output.min())
       np_output = sess.run(dropped, feed_dict={rate: 0.0})

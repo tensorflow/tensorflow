@@ -61,6 +61,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_UINT8:
       *type = kTfLiteUInt8;
       break;
+    case TensorType_INT8:
+      *type = kTfLiteInt8;
+      break;
     case TensorType_INT64:
       *type = kTfLiteInt64;
       break;
@@ -617,6 +620,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_LEAKY_RELU: {
+      TfLiteLeakyReluParams* params =
+          allocator->AllocatePOD<TfLiteLeakyReluParams>();
+      if (auto* leaky_relu_params = op->builtin_options_as_LeakyReluOptions()) {
+        params->alpha = leaky_relu_params->alpha();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
 
     // Below are the ops with no builtin_data strcture.
     case BuiltinOperator_BATCH_TO_SPACE_ND:
@@ -668,6 +680,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_FILL:
     case BuiltinOperator_FLOOR_MOD:
     case BuiltinOperator_RANGE:
+    case BuiltinOperator_SQUARED_DIFFERENCE:
       break;
   }
   return kTfLiteOk;

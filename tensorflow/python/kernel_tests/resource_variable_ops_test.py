@@ -153,7 +153,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   def testCachedValueReadBeforeWrite(self):
     with self.cached_session() as sess:
       v = resource_variable_ops.ResourceVariable(0.0, caching_device="cpu:0")
-      sess.run(v.initializer)
+      self.evaluate(v.initializer)
       value, _ = sess.run([v, v.assign_add(1.0)])
       self.assertAllEqual(value, 0.0)
 
@@ -736,7 +736,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           # Needed in Eager since we get a unique container name by default.
           container=ops.get_default_graph()._container)
       w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
-      self.assertEqual(300.0, w_read.eval())
+      self.assertEqual(300.0, self.evaluate(w_read))
 
       x = resource_variable_ops.var_handle_op(
           dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5",

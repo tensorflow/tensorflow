@@ -291,7 +291,7 @@ class RaggedFromTensorOpTest(test_util.TensorFlowTestCase,
           dt.shape.is_compatible_with(rt.shape),
           '%s is incompatible with %s' % (dt.shape, rt.shape))
       with self.test_session():
-        self.assertEqual(rt.eval().tolist(), dt.eval().tolist())
+        self.assertEqual(rt.eval().tolist(), self.evaluate(dt).tolist())
 
   @parameterized.parameters(
       # With no padding or lengths

@@ -32,7 +32,8 @@ from tensorflow.python.training import moving_averages
 all_combinations = combinations.combine(
     distribution=[combinations.default_strategy,
                   combinations.one_device_strategy,
-                  combinations.mirrored_strategy_with_gpu_and_cpu],
+                  combinations.mirrored_strategy_with_gpu_and_cpu,
+                  combinations.core_mirrored_strategy_with_gpu_and_cpu],
     mode=["graph"])
 
 

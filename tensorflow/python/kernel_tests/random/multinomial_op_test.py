@@ -70,8 +70,8 @@ class MultinomialTest(test.TestCase):
     with self.test_session(use_gpu=True) as sess:
       sample_op1, _ = self._make_ops(10)
       # Consecutive runs shouldn't yield identical output.
-      sample1a = sess.run(sample_op1)
-      sample1b = sess.run(sample_op1)
+      sample1a = self.evaluate(sample_op1)
+      sample1b = self.evaluate(sample_op1)
       self.assertFalse(np.equal(sample1a, sample1b).all())
 
   def testEagerOneOpMultipleStepsIndependent(self):
@@ -160,7 +160,7 @@ class MultinomialTest(test.TestCase):
     with self.test_session(use_gpu=True) as sess:
       random_seed.set_random_seed(1618)
       op = sampler(constant_op.constant(logits), num_samples)
-      d = sess.run(op)
+      d = self.evaluate(op)
 
     batch_size, num_classes = logits.shape
     freqs_mat = []
@@ -197,7 +197,7 @@ class MultinomialTest(test.TestCase):
     with self.test_session(use_gpu=True):
       x = random_ops.multinomial(array_ops.zeros([5, 0]), 7)
       with self.assertRaisesOpError("num_classes should be positive"):
-        x.eval()
+        self.evaluate(x)
 
   def testNegativeMinLogits(self):
     random_seed.set_random_seed(78844)
@@ -225,8 +225,10 @@ def native_op_vs_composed_ops(batch_size, num_classes, num_samples, num_iters):
     native_op = control_flow_ops.group(native_sampler(logits, num_samples))
     composed_op = control_flow_ops.group(composed_sampler(logits, num_samples))
 
-    native_dt = timeit.timeit(lambda: sess.run(native_op), number=num_iters)
-    composed_dt = timeit.timeit(lambda: sess.run(composed_op), number=num_iters)
+    native_dt = timeit.timeit(
+        lambda: sess.run(native_op), number=num_iters)
+    composed_dt = timeit.timeit(
+        lambda: sess.run(composed_op), number=num_iters)
     return native_dt, composed_dt
 
 

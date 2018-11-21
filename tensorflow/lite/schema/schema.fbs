@@ -200,6 +200,8 @@ enum BuiltinOperator : byte {
   FLOOR_MOD = 95,
   RANGE = 96,
   RESIZE_NEAREST_NEIGHBOR = 97,
+  LEAKY_RELU = 98,
+  SQUARED_DIFFERENCE = 99,
 }
 
 // Options for the builtin operators.
@@ -278,6 +280,8 @@ union BuiltinOptions {
   FloorModOptions,
   RangeOptions,
   ResizeNearestNeighborOptions,
+  LeakyReluOptions,
+  SquaredDifferenceOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -656,6 +660,13 @@ table FloorModOptions {
 }
 
 table RangeOptions {
+}
+
+table LeakyReluOptions {
+  alpha:float;
+}
+
+table SquaredDifferenceOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

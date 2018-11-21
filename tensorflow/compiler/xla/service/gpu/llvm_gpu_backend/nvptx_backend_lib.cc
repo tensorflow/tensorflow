@@ -453,12 +453,12 @@ void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   // * 3-6 gives similar results as 2;
   // * >6 start hurting the performance of at least dot product kernels.
   //
-  // TODO(jingyue): The current threshold only considers the numbr of IR
+  // TODO(jingyue): The current threshold only considers the number of IR
   // instructions which do not accurately reflect the true cost. We need a
   // better cost model.
   FeedLLVMWithFlags({"-bonus-inst-threshold=2"});
-  // TODO(b/22073864): Increase limit when scan memory dependency.
-  // This helps to reduce more redundant load instructions.
+  // Increase limit when scanning memory dependencies.  This helps to reduce
+  // more redundant load instructions.
   //
   // The specific value is currently large enough for s3d in shoc benchmark,
   // which contains a lot of load instructions and many arithmetic instructions

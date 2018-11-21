@@ -162,5 +162,16 @@ protocol: "grpc"
   TF_DeleteStatus(status);
 }
 
+TEST(CAPI_EXPERIMENTAL, IsStateful) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  int assign = TF_OpIsStateful("AssignAddVariableOp", status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  EXPECT_EQ(assign, 1);
+  int id = TF_OpIsStateful("Identity", status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  EXPECT_EQ(id, 0);
+}
+
 }  // namespace
 }  // namespace tensorflow

@@ -24,6 +24,7 @@ import abc
 
 import six
 
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -32,8 +33,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import gradients
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer as optimizer_v1
@@ -327,8 +327,11 @@ class OptimizerV2(optimizer_v1.Optimizer):
       # this once b/118841692 is fixed.
       # with ops.control_dependencies(update_ops):
       #   apply_updates = self._iterations.assign_add(1).op
-      apply_updates = merge_update_step(update_ops, self.iteration)
+      apply_updates = merge_update_step(update_ops, self.iterations)
       return apply_updates
+
+  def get_updates(self, loss, params):
+    return [self.minimize(loss, params)]
 
   def _set_hyper(self, name, value):
     """set hyper `name` to value. value can be callable, tensor, numeric."""
@@ -371,12 +374,16 @@ class OptimizerV2(optimizer_v1.Optimizer):
     else:
       super(OptimizerV2, self).__setattr__(name, value)
 
-  def add_slot(self, var, slot_name):
+  def add_slot(self, var, slot_name, initializer="zeros"):
     var_key = _var_key(var)
     slot_dict = self._slots.setdefault(var_key, {})
     if slot_name not in slot_dict:
       slot_key = _get_slot_key_from_var(var, slot_name)
-      weight = self.add_weight(name=slot_key, shape=var.shape, dtype=var.dtype)
+      weight = self.add_weight(
+          name=slot_key,
+          shape=var.shape,
+          dtype=var.dtype,
+          initializer=initializer)
       slot_dict[slot_name] = weight
       self._weights.append(weight)
 
@@ -392,8 +399,10 @@ class OptimizerV2(optimizer_v1.Optimizer):
       self._iterations = self.add_weight(
           "iter",
           shape=[],
+          dtype=dtypes.int64,
           trainable=False,
-          aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+          aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+      self._weights.append(self._iterations)
     for name, value in self._hyper.items():
       if isinstance(value, ops.Tensor) or callable(value):
         pass
@@ -403,11 +412,12 @@ class OptimizerV2(optimizer_v1.Optimizer):
             shape=[],
             trainable=False,
             initializer=value,
-            aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+        self._weights.append(self._hyper[name])
     self._prepared = True
 
   @property
-  def iteration(self):
+  def iterations(self):
     if not self._prepared:
       self._prepare()
     return self._iterations
@@ -450,9 +460,13 @@ class OptimizerV2(optimizer_v1.Optimizer):
     value = self._get_hyper(hyperparameter_name)
     if callable(value):
       return value()
-    if isinstance(value, (ops.Tensor, variables.Variable)):
+    if isinstance(value, (ops.Tensor, tf_variables.Variable)):
       return backend.get_value(value)
     return value
+
+  def variables(self):
+    """Returns variables of this Optimizer based on the order created."""
+    return self._weights
 
   @property
   def weights(self):
@@ -490,15 +504,15 @@ class OptimizerV2(optimizer_v1.Optimizer):
                  dtype=None,
                  initializer="zeros",
                  trainable=None,
-                 synchronization=variables.VariableSynchronization.AUTO,
-                 aggregation=variables.VariableAggregation.NONE):
+                 synchronization=tf_variables.VariableSynchronization.AUTO,
+                 aggregation=tf_variables.VariableAggregation.NONE):
 
     if dtype is None:
       dtype = dtypes.float32
     if isinstance(initializer, six.string_types) or callable(initializer):
       initializer = initializers.get(initializer)
 
-    if synchronization == variables.VariableSynchronization.ON_READ:
+    if synchronization == tf_variables.VariableSynchronization.ON_READ:
       if trainable:
         raise ValueError(
             "Synchronization value can be set to "
@@ -522,6 +536,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
         use_resource=True,
         synchronization=synchronization,
         aggregation=aggregation)
+    backend.track_variable(variable)
 
     return variable
 
@@ -561,7 +576,7 @@ def merge_update_step(update_ops, local_step):
     return incre_op
 
   return distribution_strategy_context.get_replica_context().merge_call(
-      merge_update_step_fn, update_ops, local_step)
+      merge_update_step_fn, args=(update_ops, local_step))
 
 
 def merge_grads(grads_and_vars):
@@ -569,11 +584,11 @@ def merge_grads(grads_and_vars):
 
   def merge_grad_fn(strategy, grads_and_vars):
     reduced_grads = strategy.batch_reduce(
-        variable_scope.VariableAggregation.MEAN, grads_and_vars)
+        ds_reduce_util.ReduceOp.MEAN, grads_and_vars)
     return reduced_grads
 
   return distribution_strategy_context.get_replica_context().merge_call(
-      merge_grad_fn, grads_and_vars)
+      merge_grad_fn, args=(grads_and_vars,))
 
 
 def _var_key(var):

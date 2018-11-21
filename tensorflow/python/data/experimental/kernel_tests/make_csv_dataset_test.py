@@ -90,7 +90,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         batch_size,
         num_epochs,
     ):
-      actual_features = sess.run(nxt)
+      actual_features = self.evaluate(nxt)
 
       if label_name is not None:
         expected_labels = expected_features.pop(label_name)

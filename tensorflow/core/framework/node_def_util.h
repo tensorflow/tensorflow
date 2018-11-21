@@ -48,6 +48,7 @@ extern const char* const kColocationGroupPrefix;
 // than a text-format proto.
 string SummarizeNode(const Node& node);
 string SummarizeNodeDef(const NodeDef& node_def);
+string SummarizeAttrs(const NodeDef& node_def);
 
 // Produces a formatted string pattern from the node which can uniquely identify
 // this node upstream to produce an informative error message. The pattern

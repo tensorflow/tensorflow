@@ -34,7 +34,8 @@ from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-
 
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
-_tf_api_dir = _os.path.dirname(_os.path.dirname(app.__file__))  # pylint: disable=undefined-variable
+# We're using bitwise, but there's nothing special about that.
+_tf_api_dir = _os.path.dirname(_os.path.dirname(bitwise.__file__))  # pylint: disable=undefined-variable
 if _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 

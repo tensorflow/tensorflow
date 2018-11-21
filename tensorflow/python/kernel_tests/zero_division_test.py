@@ -36,7 +36,7 @@ class ZeroDivisionTest(test.TestCase):
           bads.append(one % zero)
         for bad in bads:
           try:
-            result = bad.eval()
+            result = self.evaluate(bad)
           except errors_impl.OpError as e:
             # Ideally, we'd get a nice exception.  In theory, this should only
             # happen on CPU, but 32 bit integer GPU division is actually on

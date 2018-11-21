@@ -411,6 +411,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     return default_registry_;
   }
 
+  // Returns a copy of `*this` with only the subset of functions that are
+  // reachable from the nodes of `graph` or `func`.
+  FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
+  FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
+
  private:
   // Shape inference for functions is handled separately by ShapeRefiner.
 

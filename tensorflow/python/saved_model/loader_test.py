@@ -50,7 +50,7 @@ class SavedModelLoaderTest(test.TestCase):
       x = variables.VariableV1(5, name="x")
       y = variables.VariableV1(11, name="y")
       z = x + y
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       foo_sig_def = signature_def_utils.build_signature_def(
           {"foo_input": utils.build_tensor_info(x)},
@@ -138,14 +138,14 @@ class SavedModelLoaderTest(test.TestCase):
       y = variables.VariableV1(0, name="y")
       z = x * y
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       # There are variables to restore, so a saver must be created.
       with self.assertRaises(ValueError):
         loader.restore_variables(sess, None)
 
       loader.restore_variables(sess, tf_saver.Saver())
-      self.assertEqual(55, z.eval())
+      self.assertEqual(55, self.evaluate(z))
 
   def test_run_init_op(self):
     loader = loader_impl.SavedModelLoader(SAVED_MODEL_WITH_MAIN_OP)

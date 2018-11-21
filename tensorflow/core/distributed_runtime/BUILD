@@ -467,6 +467,17 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "server_lib_test",
+    srcs = ["server_lib_test.cc"],
+    deps = [
+        ":server_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "rpc_collective_executor_mgr",
     srcs = ["rpc_collective_executor_mgr.cc"],

@@ -36,7 +36,6 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
-from tensorflow.python.ops import gen_spectral_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
@@ -52,8 +51,8 @@ linspace = gen_math_ops.lin_space
 
 arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
-tf_export("arg_max")(arg_max)
-tf_export("arg_min")(arg_min)
+tf_export(v1=["arg_max"])(arg_max)
+tf_export(v1=["arg_min"])(arg_min)
 
 # This is set by resource_variable_ops.py. It is included in this way since
 # there is a circular dependency between math_ops and resource_variable_ops
@@ -1408,7 +1407,7 @@ def reduce_sum(input_tensor,
                                    name=name))
 
 
-@tf_export("math.count_nonzero", "count_nonzero")
+@tf_export(v1=["math.count_nonzero", "count_nonzero"])
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def count_nonzero(input_tensor,
@@ -1469,20 +1468,79 @@ def count_nonzero(input_tensor,
   """
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis,
+      "reduction_indices", reduction_indices
+      )
   if keepdims is None:
     keepdims = False
 
-  with ops.name_scope(name, "count_nonzero", [input_tensor]):
-    input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
+  return count_nonzero_v2(input_tensor, axis, keepdims, dtype, name)
+
+
+@tf_export("math.count_nonzero", v1=[])
+def count_nonzero_v2(input,  # pylint: disable=redefined-builtin
+                     axis=None,
+                     keepdims=None,
+                     dtype=dtypes.int64,
+                     name=None):
+  """Computes number of nonzero elements across dimensions of a tensor.
+
+  Reduces `input` along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` has no entries, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  **NOTE** Floating point comparison to zero is done by exact floating point
+  equality check.  Small values are **not** rounded to zero for purposes of
+  the nonzero check.
+
+  For example:
+
+  ```python
+  x = tf.constant([[0, 1, 0], [1, 1, 0]])
+  tf.count_nonzero(x)  # 3
+  tf.count_nonzero(x, 0)  # [1, 2, 0]
+  tf.count_nonzero(x, 1)  # [1, 2]
+  tf.count_nonzero(x, 1, keepdims=True)  # [[1], [2]]
+  tf.count_nonzero(x, [0, 1])  # 3
+  ```
+
+  **NOTE** Strings are compared against zero-length empty string `""`. Any
+  string with a size greater than zero is already considered as nonzero.
+
+  For example:
+  ```python
+  x = tf.constant(["", "a", "  ", "b", ""])
+  tf.count_nonzero(x) # 3, with "a", "  ", and "b" as nonzero strings.
+  ```
+
+  Args:
+    input: The tensor to reduce. Should be of numeric type, `bool`,
+      or `string`.
+    axis: The dimensions to reduce. If `None` (the default),
+      reduces all dimensions. Must be in the range
+      `[-rank(input), rank(input))`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    dtype: The output dtype; defaults to `tf.int64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor (number of nonzero values).
+  """
+  with ops.name_scope(name, "count_nonzero", [input]):
+    input = ops.convert_to_tensor(input, name="input")
     # A scalar of 'zero' is enough as `not_equal` will broadcast.
-    zero = array_ops.zeros([], dtype=input_tensor.dtype)
+    zero = array_ops.zeros([], dtype=input.dtype)
     return cast(
         reduce_sum(
             # int64 reduction happens on GPU
-            to_int64(gen_math_ops.not_equal(input_tensor, zero)),
+            to_int64(gen_math_ops.not_equal(input, zero)),
             axis=axis,
-            keepdims=keepdims,
-            reduction_indices=reduction_indices),
+            keepdims=keepdims),
         dtype=dtype)
 
 
@@ -2926,8 +2984,7 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
     return summed / gen_math_ops.sqrt(N)
 
 
-@tf_export(
-    "sparse.segment_sum", v1=["sparse.segment_sum", "sparse_segment_sum"])
+@tf_export(v1=["sparse.segment_sum", "sparse_segment_sum"])
 @deprecation.deprecated_endpoints("sparse_segment_sum")
 def sparse_segment_sum(data, indices, segment_ids, name=None,
                        num_segments=None):
@@ -3001,8 +3058,17 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
         data=data, indices=indices, segment_ids=segment_ids, name=name)
 
 
-@tf_export(
-    "sparse.segment_mean", v1=["sparse.segment_mean", "sparse_segment_mean"])
+@tf_export("sparse.segment_sum", v1=[])
+def sparse_segment_sum_v2(data,
+                          indices,
+                          segment_ids,
+                          num_segments=None,
+                          name=None):
+  return sparse_segment_mean(
+      data, indices, segment_ids, name=name, num_segments=num_segments)
+
+
+@tf_export(v1=["sparse.segment_mean", "sparse_segment_mean"])
 @deprecation.deprecated_endpoints("sparse_segment_mean")
 def sparse_segment_mean(data,
                         indices,
@@ -3048,9 +3114,44 @@ def sparse_segment_mean(data,
         data=data, indices=indices, segment_ids=segment_ids, name=name)
 
 
-@tf_export(
-    "sparse.segment_sqrt_n",
-    v1=["sparse.segment_sqrt_n", "sparse_segment_sqrt_n"])
+@tf_export("sparse.segment_mean", v1=[])
+def sparse_segment_mean_v2(data,
+                           indices,
+                           segment_ids,
+                           num_segments=None,
+                           name=None):
+  r"""Computes the mean along sparse segments of a tensor.
+
+  Read [the section on
+  segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+  for an explanation of segments.
+
+  Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
+  dimension, selecting a subset of dimension 0, specified by `indices`.
+  `segment_ids` is allowed to have missing ids, in which case the output will
+  be zeros at those indices. In those cases `num_segments` is used to determine
+  the size of the output.
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`. Values
+      should be sorted and can be repeated.
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  return sparse_segment_mean(
+      data, indices, segment_ids, name=name, num_segments=num_segments)
+
+
+@tf_export(v1=["sparse.segment_sqrt_n", "sparse_segment_sqrt_n"])
 @deprecation.deprecated_endpoints("sparse_segment_sqrt_n")
 def sparse_segment_sqrt_n(data,
                           indices,
@@ -3088,6 +3189,35 @@ def sparse_segment_sqrt_n(data,
         data=data, indices=indices, segment_ids=segment_ids, name=name)
 
 
+@tf_export("sparse.segment_sqrt_n", v1=[])
+def sparse_segment_sqrt_n_v2(data,
+                             indices,
+                             segment_ids,
+                             num_segments=None,
+                             name=None):
+  r"""Computes the sum along sparse segments of a tensor divided by the sqrt(N).
+
+  `N` is the size of the segment being reduced.
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`. Values
+      should be sorted and can be repeated.
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  return sparse_segment_sqrt_n(
+      data, indices, segment_ids, name=name, num_segments=num_segments)
+
+
 @tf_export("tensordot", "linalg.tensordot")
 def tensordot(a, b, axes, name=None):
   r"""Tensor contraction of a and b along specified axes.
@@ -3121,12 +3251,11 @@ def tensordot(a, b, axes, name=None):
     a: `Tensor` of type `float32` or `float64`.
     b: `Tensor` with the same type as `a`.
     axes: Either a scalar `N`, or a list or an `int32` `Tensor` of shape [2, k].
-     If axes is a scalar, sum over the last N axes of a and the first N axes
-     of b in order.
-     If axes is a list or `Tensor` the first and second row contain the set of
-     unique integers specifying axes along which the contraction is computed,
-     for `a` and `b`, respectively. The number of axes for `a` and `b` must
-     be equal.
+      If axes is a scalar, sum over the last N axes of a and the first N axes of
+      b in order. If axes is a list or `Tensor` the first and second row contain
+      the set of unique integers specifying axes along which the contraction is
+      computed, for `a` and `b`, respectively. The number of axes for `a` and
+      `b` must be equal.
     name: A name for the operation (optional).
 
   Returns:
@@ -3358,13 +3487,3 @@ def bessel_i1e(x, name=None):
           indices=x.indices, values=x_i1e, dense_shape=x.dense_shape)
     else:
       return gen_math_ops.bessel_i1e(x, name=name)
-
-
-# FFT ops were moved to tf.spectral. tf.fft symbols were part of the TensorFlow
-# 1.0 API so we leave these here for backwards compatibility.
-fft = gen_spectral_ops.fft
-ifft = gen_spectral_ops.ifft
-fft2d = gen_spectral_ops.fft2d
-ifft2d = gen_spectral_ops.ifft2d
-fft3d = gen_spectral_ops.fft3d
-ifft3d = gen_spectral_ops.ifft3d

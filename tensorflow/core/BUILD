@@ -300,6 +300,7 @@ filegroup(
         "platform/env_time.h",
         "platform/logging.h",
         "platform/macros.h",
+        "platform/platform_strings.h",
         "platform/types.h",
     ],
     visibility = ["//visibility:private"],
@@ -517,6 +518,19 @@ cc_library(
         ":lib_platform",
         ":platform_env",
     ],
+)
+
+cc_library(
+    name = "platform_strings",
+    srcs = tf_platform_srcs([
+        "platform/platform_strings.cc",
+        "platform/platform_strings_computed.h",
+    ]),
+    hdrs = [
+        "platform/platform_strings.h",
+    ],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [":lib"],
 )
 
 filegroup(
@@ -1038,6 +1052,7 @@ tf_gen_op_libs(
         "batch_ops",
         "bitwise_ops",
         "boosted_trees_ops",
+        "tensor_forest_ops",
         "candidate_sampling_ops",
         "checkpoint_ops",
         "collective_ops",
@@ -1187,6 +1202,7 @@ cc_library(
         ":batch_ops_op_lib",
         ":bitwise_ops_op_lib",
         ":boosted_trees_ops_op_lib",
+        ":tensor_forest_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
         ":checkpoint_ops_op_lib",
         ":collective_ops_op_lib",
@@ -1340,6 +1356,7 @@ cc_library(
         "//tensorflow/core/kernels:batch_kernels",
         "//tensorflow/core/kernels:bincount_op",
         "//tensorflow/core/kernels:boosted_trees_ops",
+        "//tensorflow/core/kernels:tensor_forest_ops",
         "//tensorflow/core/kernels:candidate_sampler_ops",
         "//tensorflow/core/kernels:checkpoint_ops",
         "//tensorflow/core/kernels:collective_ops",
@@ -1671,6 +1688,7 @@ cc_library(
 cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1775,6 +1793,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
@@ -1799,6 +1818,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
@@ -2640,6 +2660,7 @@ tf_cuda_library(
         ":stats_calculator_portable",
         ":version_lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
@@ -3408,12 +3429,6 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "platform_strings",
-    srcs = ["platform/platform_strings_computed.h"],
-    hdrs = ["platform/platform_strings.h"],
-)
-
 tf_cc_test(
     name = "platform_strings_test",
     size = "small",
@@ -4102,6 +4117,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:immutable_constant_op",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:topk_op",
         "//third_party/eigen3",
     ],
 )
@@ -4874,6 +4890,7 @@ transitive_hdrs(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:platform_strings",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor",
     ],

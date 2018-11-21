@@ -3375,7 +3375,7 @@ void IrEmitterUnnested::EmitTileElementForFusion(
   fused_emitter.SetTiledParameterInfo(tiled_param_info);
   TF_CHECK_OK(hlo->fused_expression_root()->Accept(&fused_emitter));
   IrArray::Index untiled_index =
-      kernel_info->GetKernelMappingScheme()->GetReshapedOutputIndex(
+      kernel_info->GetKernelMappingScheme()->GetUnnormalizedIndex(
           index, output_arrays[0].GetShape());
   const llvm_ir::ElementGenerator& output_generator =
       fused_emitter.GetRootGenerator();
@@ -3677,7 +3677,7 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
   constexpr int kNumRows = 4;
   KernelMappingScheme mapping_scheme(
       reduced_output_dims, /*tile_size_y=*/kWarpSize,
-      /*tile_size_x=*/kWarpSize, /*req_block_sizes=*/{2, 2, 2},
+      /*tile_size_x=*/kWarpSize, /*req_block_sizes=*/{1, 1, 1},
       /*num_threads_y=*/kNumRows,
       /*num_threads_x=*/kWarpSize, &b_);
   TileElementGenerator element_generator;

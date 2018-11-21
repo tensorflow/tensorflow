@@ -16,12 +16,13 @@ limitations under the License.
 #include "tensorflow/c/c_api_experimental.h"
 
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
@@ -51,8 +52,8 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
     // These XLA flags are needed to trigger XLA properly from C (more generally
     // non-Python) clients. If this API is called again with `enable` set to
     // false, it is safe to keep these flag values as is.
-    tensorflow::legacy_flags::MarkForCompilationPassFlags* flags =
-        tensorflow::legacy_flags::GetMarkForCompilationPassFlags();
+    tensorflow::MarkForCompilationPassFlags* flags =
+        tensorflow::GetMarkForCompilationPassFlags();
     flags->tf_xla_cpu_global_jit = true;
     flags->tf_xla_min_cluster_size = 1;
   } else {
@@ -71,8 +72,8 @@ TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
     // These XLA flags are needed to trigger XLA properly from C (more generally
     // non-Python) clients. If this API is called again with `enable` set to
     // false, it is safe to keep these flag values as is.
-    tensorflow::legacy_flags::MarkForCompilationPassFlags* flags =
-        tensorflow::legacy_flags::GetMarkForCompilationPassFlags();
+    tensorflow::MarkForCompilationPassFlags* flags =
+        tensorflow::GetMarkForCompilationPassFlags();
     flags->tf_xla_cpu_global_jit = true;
     flags->tf_xla_min_cluster_size = 1;
   } else {
@@ -8799,4 +8800,18 @@ const char* TF_GetNumberAttrForOpListInput(const char* op_name, int input_index,
 
   // The returned string is owned by OpRegistry, so liveness is not a concern.
   return input_arg.number_attr().c_str();
+}
+
+int TF_OpIsStateful(const char* op_type, TF_Status* status) {
+  const tensorflow::OpRegistrationData* op_reg_data;
+  status->status =
+      tensorflow::OpRegistry::Global()->LookUp(op_type, &op_reg_data);
+  if (!status->status.ok()) {
+    return 0;
+  }
+  return op_reg_data->op_def.is_stateful();
+}
+
+void TF_InitMain(const char* usage, int* argc, char*** argv) {
+  tensorflow::port::InitMain(usage, argc, argv);
 }

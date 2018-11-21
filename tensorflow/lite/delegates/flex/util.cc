@@ -66,6 +66,8 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
       return TF_INT32;
     case kTfLiteUInt8:
       return TF_UINT8;
+    case kTfLiteInt8:
+      return TF_INT8;
     case kTfLiteInt64:
       return TF_INT64;
     case kTfLiteComplex64:
@@ -87,6 +89,8 @@ TfLiteType GetTensorFlowLiteType(TF_DataType type) {
       return kTfLiteInt32;
     case TF_UINT8:
       return kTfLiteUInt8;
+    case TF_INT8:
+      return kTfLiteInt8;
     case TF_INT64:
       return kTfLiteInt64;
     case TF_COMPLEX64:

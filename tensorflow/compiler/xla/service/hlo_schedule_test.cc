@@ -56,10 +56,10 @@ ENTRY main {
                           ParseHloString(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
-  const std::vector<const HloInstruction*>& entry_schedule =
+  const auto& entry_schedule =
       schedule.sequence(module->entry_computation()).instructions();
 
   EXPECT_EQ(entry_schedule.size(), 6);
@@ -90,7 +90,7 @@ ENTRY main {
                           ParseHloString(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
 
@@ -139,7 +139,7 @@ ENTRY main {
                           ParseHloString(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
 
@@ -183,7 +183,7 @@ ENTRY main {
                           ParseHloString(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
 
@@ -244,7 +244,7 @@ ENTRY %WhileLoop () -> s32[] {
                           ParseHloString(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(),
                                      /*pointer_size=*/sizeof(void*));
       }));
@@ -313,7 +313,7 @@ ENTRY %WhileLoop () -> s32[] {
                           ParseHloString(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(),
                                      /*pointer_size=*/sizeof(void*));
       }));

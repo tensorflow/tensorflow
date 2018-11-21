@@ -411,6 +411,8 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(ZerosLike)
     HANDLE_OPERATORTYPENAME_CASE(UnidirectionalSequenceLstm)
     HANDLE_OPERATORTYPENAME_CASE(ResizeNearestNeighbor)
+    HANDLE_OPERATORTYPENAME_CASE(LeakyRelu)
+    HANDLE_OPERATORTYPENAME_CASE(SquaredDifference)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -439,6 +441,7 @@ bool OperatorSupportsFusedActivation(OperatorType type) {
     case OperatorType::kMaxPool:
     case OperatorType::kMul:
     case OperatorType::kSub:
+    case OperatorType::kSquaredDifference:
       return true;
     default:
       return false;
@@ -2207,6 +2210,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kFloat;
     case QUANTIZED_UINT8:
       return ArrayDataType::kUint8;
+    case INT8:
+      return ArrayDataType::kInt8;
     case QUANTIZED_INT16:
       return ArrayDataType::kInt16;
     case INT32:

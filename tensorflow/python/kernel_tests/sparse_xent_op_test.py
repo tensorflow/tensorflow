@@ -164,7 +164,7 @@ class SparseXentTest(test.TestCase):
     with self.session(use_gpu=True):
       loss = nn_ops.sparse_softmax_cross_entropy_with_logits(
           labels=constant_op.constant(0), logits=constant_op.constant([1.0]))
-      self.assertAllClose(0.0, loss.eval())
+      self.assertAllClose(0.0, self.evaluate(loss))
 
   def testFloat(self):
     for label_dtype in np.int32, np.int64:

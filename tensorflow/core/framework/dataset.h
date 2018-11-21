@@ -30,8 +30,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/tracing.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
@@ -285,15 +287,20 @@ class IteratorContext {
     explicit Params(OpKernelContext* ctx)
         : env(ctx->env()),
           lib(ctx->function_library()),
-          runner(*(ctx->runner())),
-          runner_threadpool_size(
-              ctx->device()->tensorflow_cpu_worker_threads()->num_threads) {
+          runner(*(ctx->runner())) {
       // NOTE: need reinterpret_cast because function.h forward-declares Device.
       DeviceBase* device =
           reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
       allocator_getter = [device](AllocatorAttributes attrs) {
         return device->GetAllocator(attrs);
       };
+      thread::ThreadPool* thread_pool =
+          ctx->device()->tensorflow_device_thread_pool();
+      if (thread_pool) {
+        runner_threadpool_size = thread_pool->NumThreads();
+      } else {
+        runner_threadpool_size = port::NumSchedulableCPUs();
+      }
     }
 
     // The Allocator to be used to allocate the output of an iterator.

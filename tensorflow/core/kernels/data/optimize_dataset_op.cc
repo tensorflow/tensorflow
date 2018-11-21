@@ -226,7 +226,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       (*meta_graph_def.mutable_collection_def())["train_op"] = collection_def;
 
       // Create Grappler item.
-      tensorflow::RewriterConfig rewriter_config;
+      tensorflow::ConfigProto config;
+      RewriterConfig& rewriter_config =
+          *config.mutable_graph_options()->mutable_rewrite_options();
       for (const string& optimization : optimizations_) {
         rewriter_config.add_optimizers(optimization);
       }
@@ -264,7 +266,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
         }
       }
       TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
-          *grappler_item, rewriter_config, ctx->device(), &cluster, graph_def));
+          *grappler_item, config, ctx->device(), &cluster, graph_def));
 
       return Status::OK();
     }

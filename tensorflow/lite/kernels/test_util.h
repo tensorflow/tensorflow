@@ -307,6 +307,7 @@ class SingleOpModel {
 
     if (is_quantized) {
       if (t.min != 0 || t.max != 0) {
+        // TODO(b/119422369): Handle signed int8 here.
         if (t.type == TensorType_UINT8) {
           std::tie(t.scale, t.zero_point) =
               QuantizationParams<uint8_t>(t.min, t.max);

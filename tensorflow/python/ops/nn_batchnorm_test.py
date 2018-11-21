@@ -507,8 +507,8 @@ class MomentsTest(test.TestCase):
       expected_variance = expected_x_squared - expected_mean_squared
 
       # Check that the moments are correct.
-      self.assertAllCloseAccordingToType(expected_mean, mean.eval())
-      self.assertAllCloseAccordingToType(expected_variance, var.eval())
+      self.assertAllCloseAccordingToType(expected_mean, self.evaluate(mean))
+      self.assertAllCloseAccordingToType(expected_variance, self.evaluate(var))
 
   def testBasic(self):
     for keep_dims in [False, True]:

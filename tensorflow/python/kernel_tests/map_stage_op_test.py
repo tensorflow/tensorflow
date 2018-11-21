@@ -148,7 +148,7 @@ class MapStageTest(test.TestCase):
       for i in range(n):
         self.assertTrue(sess.run(peek, feed_dict={gi: i})[0] == i)
 
-      self.assertTrue(sess.run(size) == 10)
+      self.assertTrue(self.evaluate(size) == 10)
 
   def testSizeAndClear(self):
     with ops.Graph().as_default() as G:
@@ -170,11 +170,11 @@ class MapStageTest(test.TestCase):
 
     with self.session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1, pi: 3})
-      self.assertEqual(sess.run(size), 1)
+      self.assertEqual(self.evaluate(size), 1)
       sess.run(stage, feed_dict={x: -1, pi: 1})
-      self.assertEqual(sess.run(size), 2)
+      self.assertEqual(self.evaluate(size), 2)
       sess.run(clear)
-      self.assertEqual(sess.run(size), 0)
+      self.assertEqual(self.evaluate(size), 0)
 
   def testCapacity(self):
     capacity = 3
@@ -231,13 +231,13 @@ class MapStageTest(test.TestCase):
                                              capacity))
 
       # Should have capacity elements in the staging area
-      self.assertTrue(sess.run(size) == capacity)
+      self.assertTrue(self.evaluate(size) == capacity)
 
       # Clear the staging area completely
       for i in range(n):
         sess.run(get)
 
-      self.assertTrue(sess.run(size) == 0)
+      self.assertTrue(self.evaluate(size) == 0)
 
   def testMemoryLimit(self):
     memory_limit = 512 * 1024  # 512K
@@ -295,13 +295,13 @@ class MapStageTest(test.TestCase):
                                              capacity))
 
       # Should have capacity elements in the staging area
-      self.assertTrue(sess.run(size) == capacity)
+      self.assertTrue(self.evaluate(size) == capacity)
 
       # Clear the staging area completely
       for i in range(n):
         sess.run(get)
 
-      self.assertTrue(sess.run(size) == 0)
+      self.assertTrue(self.evaluate(size) == 0)
 
   def testOrdering(self):
     import six
@@ -332,14 +332,14 @@ class MapStageTest(test.TestCase):
       for i in keys:
         sess.run(stage, feed_dict={pi: i, x: i})
 
-      self.assertTrue(sess.run(size) == n)
+      self.assertTrue(self.evaluate(size) == n)
 
       # Check that key, values come out in ascending order
       for i, k in enumerate(reversed(keys)):
-        get_key, values = sess.run(get)
+        get_key, values = self.evaluate(get)
         self.assertTrue(i == k == get_key == values)
 
-      self.assertTrue(sess.run(size) == 0)
+      self.assertTrue(self.evaluate(size) == 0)
 
   def testPartialDictInsert(self):
     with ops.Graph().as_default() as G:

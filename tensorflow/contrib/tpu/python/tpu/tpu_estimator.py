@@ -298,9 +298,9 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
       host_calls['host_call'] = host_call
     _OutfeedHostCall.validate(host_calls)
 
-    training_hooks = list(training_hooks or [])
-    evaluation_hooks = list(evaluation_hooks or [])
-    prediction_hooks = list(prediction_hooks or [])
+    training_hooks = tuple(training_hooks or [])
+    evaluation_hooks = tuple(evaluation_hooks or [])
+    prediction_hooks = tuple(prediction_hooks or [])
 
     for hook in training_hooks + evaluation_hooks + prediction_hooks:
       if not isinstance(hook, session_run_hook.SessionRunHook):
@@ -335,7 +335,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
     hooks = None
     if self.host_call is not None:
       hooks = [_OutfeedHostCallHook(host_call_ret['host_call'])]
-    hooks = list(hooks or [])
+    hooks = tuple(hooks or [])
     scaffold = self.scaffold_fn() if self.scaffold_fn else None
     return model_fn_lib.EstimatorSpec(
         mode=self.mode,

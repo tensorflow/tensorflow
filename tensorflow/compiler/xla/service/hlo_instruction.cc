@@ -2628,36 +2628,6 @@ Status HloInstruction::AcceptWithOperandOrder(
   return Status::OK();
 }
 
-namespace {
-
-// Returns true if the given order is a topological sort of the instructions
-// it contains.
-bool OrderIsTopologicalSort(const std::vector<const HloInstruction*>& order) {
-  // Create a map from instruction to its position in 'order'.
-  std::unordered_map<const HloInstruction*, int> order_position;
-  for (int i = 0; i < order.size(); i++) {
-    if (!order_position.insert({order[i], i}).second) {
-      // Instruction order[i] is duplicated in the order.
-      return false;
-    }
-  }
-  // Verify that the operand of each instruction in the order is also in the
-  // order *and* the operand's position is earlier (defs are before uses for
-  // all ops).
-  for (auto* instruction : order) {
-    for (auto* operand : instruction->operands()) {
-      if (!ContainsKey(order_position, operand) ||
-          order_position.at(operand) >= order_position.at(instruction)) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-}  // namespace
-
 Status HloInstruction::Accept(
     const std::function<Status(HloInstruction*)>& visitor_func) {
   FunctionVisitor visitor(visitor_func);
@@ -3067,6 +3037,10 @@ int64 HloInstruction::channel_id() const {
 
 int64 HloInstruction::concatenate_dimension() const {
   return Cast<HloConcatenateInstruction>(this)->concatenate_dimension();
+}
+
+int64 HloInstruction::dimension() const {
+  return Cast<HloGetDimensionSizeInstruction>(this)->dimension();
 }
 
 bool HloInstruction::IsRank2Transpose() const {

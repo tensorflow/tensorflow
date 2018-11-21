@@ -3197,7 +3197,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scan_ops",
     prefix = "scan_ops",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
@@ -3365,6 +3365,29 @@ tf_cuda_cc_test(
         ":batch_matmul_op",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "scan_ops_test",
+    size = "small",
+    srcs = ["scan_ops_test.cc"],
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":host_constant_op",
+        ":ops_testutil",
+        ":ops_util",
+        ":scan_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -4800,6 +4823,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:string_ops_op_lib",
+        "//third_party/icu/data:conversion_data",
         "@icu//:common",
     ],
 )
@@ -5372,6 +5396,7 @@ filegroup(
         "mfcc_mel_filterbank.h",
         "mirror_pad_op.h",
         "mirror_pad_op_cpu_impl.h",
+        "multinomial_op.h",
         "pad_op.h",
         "pooling_ops_3d.h",
         "random_op.h",
@@ -5390,6 +5415,7 @@ filegroup(
         "spacetobatch_functor.h",
         "spacetodepth_op.h",
         "spectrogram.h",
+        "stateless_random_ops.h",
         "string_util.h",
         "tensor_array.h",
         "tile_functor.h",
@@ -5529,6 +5555,7 @@ filegroup(
         "mirror_pad_op_cpu_impl_3.cc",
         "mirror_pad_op_cpu_impl_4.cc",
         "mirror_pad_op_cpu_impl_5.cc",
+        "multinomial_op.cc",
         "pad_op.cc",
         "padding_fifo_queue.cc",
         "padding_fifo_queue_op.cc",
@@ -5569,6 +5596,7 @@ filegroup(
         "stack.cc",
         "stack.h",
         "stack_ops.cc",
+        "stateless_random_ops.cc",
         "string_join_op.cc",
         "string_util.cc",
         "summary_op.cc",
@@ -6728,6 +6756,13 @@ tf_kernel_library(
     name = "boosted_trees_ops",
     deps = [
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_ops",
+    ],
+)
+
+tf_kernel_library(
+    name = "tensor_forest_ops",
+    deps = [
+        "//tensorflow/core/kernels/tensor_forest:tensor_forest_ops",
     ],
 )
 

@@ -68,6 +68,14 @@ class CallConvention(enum.Enum):
   POSITIONAL_ARGUMENTS_ARE_INPUTS = 3
 
 
+def _create_mean_metric(value, name=None):
+  # TODO(psv): Remove this import when b/110718070 is fixed.
+  from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
+  metric_obj = metrics_module.Mean(name=name)
+  result = metric_obj(value)
+  return metric_obj, result
+
+
 @tf_export('keras.layers.Layer')
 class Layer(checkpointable.CheckpointableBase):
   """Base layer class.
@@ -170,6 +178,13 @@ class Layer(checkpointable.CheckpointableBase):
     # in eager mode or graph mode alternatively, we need to keep track of
     # eager losses and symbolic losses via separate attributes.
     self._eager_losses = []
+    # A list of metric instances corresponding to the symbolic metric tensors
+    # added using the `add_metric` API.
+    self._metrics = []
+    # TODO(psv): Remove this property.
+    # A dictionary that maps metric names to metric result tensors. The results
+    # are the running averages of metric values over an epoch.
+    self._metrics_tensors = {}
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
     self._call_fn_args = function_utils.fn_args(self.call)
     self._compute_previous_mask = ('mask' in self._call_fn_args or
@@ -432,6 +447,84 @@ class Layer(checkpointable.CheckpointableBase):
           self._eager_losses.append(_tag_unconditional(loss))
         else:
           self._losses.append(_tag_unconditional(loss))
+
+  @doc_controls.for_subclass_implementers
+  def add_metric(self, value, aggregation=None, name=None):
+    """Adds metric tensor to the layer.
+
+    Args:
+      value: Metric tensor.
+      aggregation: Sample-wise metric reduction function. If `aggregation=None`,
+        it indicates that the metric tensor provided has been aggregated
+        already. eg, `model.add_metric(BinaryAccuracy(name='acc')(y_true,
+        y_pred))`. If aggregation='mean', the given metric tensor will be
+        sample-wise reduced using `mean` function. eg, `model.add_metric(
+        tf.reduce_mean(outputs), name='output_mean', aggregation='mean')`.
+      name: String metric name.
+
+    Raises:
+      ValueError: If `aggregation` is anything other than None or `mean`.
+    """
+    if aggregation is not None and aggregation != 'mean':
+      raise ValueError(
+          'We currently support only `mean` sample-wise metric aggregation. '
+          'You provided aggregation=`%s`' % aggregation)
+
+    if tf_utils.is_symbolic_tensor(value):
+      self._symbolic_add_metric(value, aggregation, name)
+    else:
+      self._eager_add_metric(value, aggregation, name)
+
+  def _get_existing_metric(self, name=None):
+    match = [m for m in self._metrics if m.name == name]
+    if not match:
+      return
+    if len(match) > 1:
+      raise ValueError(
+          'Please provide different names for the metrics you have added. '
+          'We found {} metrics with the name: "{}"'.format(len(match), name))
+    return match[0]
+
+  def _eager_add_metric(self, value, aggregation=None, name=None):
+    # If the given metric is available in `metrics` list we just update state
+    # on it, otherwise we create a new metric instance and
+    # add it to the `metrics` list.
+    match = self._get_existing_metric(name)
+    if match:
+      match(value)  # Update the metric state.
+      return
+    else:
+      if aggregation is None:
+        raise ValueError('We do not support adding an aggregated metric tensor '
+                         'in `call` in eager execution.')
+      metric_obj, _ = _create_mean_metric(value, name)
+      self._metrics.append(metric_obj)
+
+  def _symbolic_add_metric(self, value, aggregation=None, name=None):
+    if aggregation is None:
+      # Iterate over the metrics and check if the given metric exists already.
+      # This can happen when a metric instance is created in subclassed model
+      # layer `__init__` and we have tracked that instance already in
+      # model.__setattr__.
+      match = self._get_existing_metric(name)
+      if match:
+        result_tensor = value
+        if match.name not in self._metrics_tensors:
+          self._metrics_tensors[match.name] = result_tensor
+          return
+        else:
+          raise ValueError(
+              'We currently do not support reusing a metric instance.')
+      else:
+        # We track the instance using the metadata on the result tensor.
+        result_tensor = value
+        metric_obj = result_tensor._metric_obj
+    else:
+      # If a non-aggregated tensor is given as input (ie. `aggregation` is
+      # explicitly set to `mean`), we wrap the tensor in `Mean` metric.
+      metric_obj, result_tensor = _create_mean_metric(value, name)
+    self._metrics.append(metric_obj)
+    self._metrics_tensors[metric_obj.name] = result_tensor
 
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.

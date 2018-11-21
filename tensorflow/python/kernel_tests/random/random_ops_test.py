@@ -49,9 +49,9 @@ class RandomOpTestCommon(test.TestCase):
         random_seed.set_random_seed(graph_seed)
       x = rng_func([num], min_or_mean, max_or_stddev, dtype=dtype, seed=op_seed)
 
-      y = sess.run(x)
-      z = sess.run(x)
-      w = sess.run(x)
+      y = self.evaluate(x)
+      z = self.evaluate(x)
+      w = self.evaluate(x)
 
       # We use exact equality here. If the random-number generator is producing
       # the same output, all three outputs will be bitwise identical.
@@ -69,7 +69,7 @@ class RandomNormalTest(RandomOpTestCommon):
             [num], mean=mu, stddev=sigma, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
         for i in xrange(10):
-          ret[i, :] = sess.run(rng)
+          ret[i, :] = self.evaluate(rng)
       return ret
 
     return func
@@ -160,7 +160,7 @@ class TruncatedNormalTest(test.TestCase):
             [num], mean=mu, stddev=sigma, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
         for i in xrange(10):
-          ret[i, :] = sess.run(rng)
+          ret[i, :] = self.evaluate(rng)
       return ret
 
     return func
@@ -256,7 +256,7 @@ class RandomUniformTest(RandomOpTestCommon):
             [num], minval=minv, maxval=maxv, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
         for i in xrange(10):
-          ret[i, :] = sess.run(rng)
+          ret[i, :] = self.evaluate(rng)
       return ret
 
     return func

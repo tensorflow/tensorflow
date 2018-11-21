@@ -135,6 +135,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
@@ -294,6 +295,31 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "conv_depthwise_test",
+    timeout = "long",
+    srcs = ["conv_depthwise_test.cc"],
+    blacklisted_backends = [
+        # disabled because of a break b/119590850.
+        "cpu",
+        "gpu",
+    ],
+    shard_count = 50,
+    deps = [
+        "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:bfloat16_normalization",
+        "//tensorflow/compiler/xla/service:despecializer",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

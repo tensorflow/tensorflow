@@ -21,9 +21,11 @@ from __future__ import print_function
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 
@@ -70,6 +72,17 @@ class AutomaticControlDependencies(object):
       self._returned_tensors.add(indices)
       self._returned_tensors.add(values)
       return ops.IndexedSlices(values, indices, dense_shape=tensor.dense_shape)
+    elif isinstance(tensor, sparse_tensor.SparseTensor):
+      values = array_ops.identity(tensor.values)
+      indices = array_ops.identity(tensor.indices)
+      self._returned_tensors.add(indices)
+      self._returned_tensors.add(values)
+      return sparse_tensor.SparseTensor(
+          indices, values, dense_shape=tensor.dense_shape)
+    elif isinstance(tensor, tensor_array_ops.TensorArray):
+      flow = array_ops.identity(tensor.flow)
+      self._returned_tensors.add(flow)
+      return tensor_array_ops.build_ta_with_new_flow(tensor, flow)
     # We want to make the return values depend on the stateful operations, but
     # we don't want to introduce a cycle, so we make the return value the result
     # of a new identity operation that the stateful operations definitely don't

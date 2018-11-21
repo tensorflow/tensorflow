@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/math_ops.h"
-#include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
@@ -208,8 +208,12 @@ Status ComputeSliceSize(const Scope& host_scope,
     DCHECK_EQ(slice_size.back().type(), DT_INT64);
   }
 
-  *size = ops::Concat(host_scope.WithOpName("slice_size"), slice_size,
-                      ops::Const(host_scope.WithOpName("concat_axis"), 0));
+  // Trivial ConcatV2 nodes (with exactly one input) are disallowed.
+  *size =
+      slice_size.size() == 1
+          ? slice_size[0]
+          : ops::Concat(host_scope.WithOpName("slice_size"), slice_size,
+                        ops::Const(host_scope.WithOpName("concat_axis"), 0));
   return Status::OK();
 }
 
@@ -242,6 +246,9 @@ Status ConvertTensorFlowSliceToStaticShapedSlice(
                      .WithOpName("static_shaped_slice"),
                  slice_inputs_int64.input, slice_inputs_int64.begin, slice_size)
           .node();
+
+  TF_RETURN_IF_ERROR(main_scope.status());
+
   std::vector<string> compile_time_const_inputs;
   compile_time_const_inputs.push_back("size");
   (*result)->AddAttr(kXlaCompileTimeConstantInputsAttr,
@@ -284,49 +291,45 @@ Status RewriteSlice(Graph* g, Node* slice, const SliceInputs& slice_inputs,
   return Status::OK();
 }
 
-// If `n` is a slice we can rewrite to have a static shape (i.e. have the output
-// shape only depend on the "size" input) then returns the a SliceInputs
-// representing the inputs to `n`.  Otherwise returns nullopt.
-StatusOrOptional<SliceInputs> IsRewritableSlice(Node* n) {
+// Return true if `n` is a slice we can rewrite to have a static shape
+// (i.e. have the output shape only depend on the "size" input).
+xla::StatusOr<bool> IsRewritableSlice(Node* n) {
   if (n->type_string() != "Slice") {
-    return {absl::nullopt};
+    return false;
   }
 
   if (!GetXlaClusterForNode(*n).has_value()) {
     // There is no need to change slice ops outside XLA clusters.
-    return {absl::nullopt};
+    return false;
   }
 
   TF_ASSIGN_OR_RETURN(absl::optional<SliceInputs> slice_inputs,
                       GetSliceInputs(n));
   if (!slice_inputs.has_value()) {
-    return {absl::nullopt};
+    return false;
   }
 
   // If slice_size[i] < -1 for any i then executing the slice will throw an
   // error, and we don't do anything here.
-  bool slice_is_ok = absl::c_all_of(slice_inputs->size_as_vector,
-                                    [](int64 size_i) { return size_i >= -1; });
-  if (!slice_is_ok) {
-    return {absl::nullopt};
-  }
-
-  return slice_inputs;
+  return absl::c_all_of(slice_inputs->size_as_vector,
+                        [](int64 size_i) { return size_i >= -1; });
 }
 
 Status FindAndRewriteSlices(Graph* g, bool* changed) {
-  std::vector<std::pair<Node*, SliceInputs>> slices_to_rewrite;
+  std::vector<Node*> slices_to_rewrite;
   for (Node* n : g->nodes()) {
-    TF_ASSIGN_OR_RETURN(absl::optional<SliceInputs> slice_inputs,
-                        IsRewritableSlice(n));
-    if (slice_inputs.has_value()) {
-      slices_to_rewrite.push_back({n, std::move(*slice_inputs)});
+    TF_ASSIGN_OR_RETURN(bool is_rewritable, IsRewritableSlice(n));
+    if (is_rewritable) {
+      slices_to_rewrite.push_back(n);
     }
   }
 
-  for (const auto& pair : slices_to_rewrite) {
-    TF_RETURN_IF_ERROR(RewriteSlice(g, pair.first, pair.second,
-                                    *GetXlaClusterForNode(*pair.first)));
+  for (Node* n : slices_to_rewrite) {
+    TF_ASSIGN_OR_RETURN(absl::optional<SliceInputs> slice_inputs,
+                        GetSliceInputs(n));
+    TF_RET_CHECK(slice_inputs.has_value());
+    TF_RETURN_IF_ERROR(
+        RewriteSlice(g, n, *slice_inputs, *GetXlaClusterForNode(*n)));
   }
 
   if (!slices_to_rewrite.empty()) {
@@ -342,8 +345,7 @@ Status FindAndRewriteSlices(Graph* g, bool* changed) {
 
 Status IncreaseDynamismForAutoJitPass::Run(
     const GraphOptimizationPassOptions& options) {
-  legacy_flags::MarkForCompilationPassFlags* flags =
-      legacy_flags::GetMarkForCompilationPassFlags();
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   if (flags->tf_xla_clustering_debug) {
     dump_graph::DumpGraphToFile("before_increase_dynamism_for_auto_jit_pass",
                                 **options.graph, options.flib_def);

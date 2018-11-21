@@ -42,6 +42,14 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "metrics"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "metrics_names"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "name"
     mtype: "<type \'property\'>"
   }
@@ -110,12 +118,16 @@ tf_class {
     argspec: "args=[\'self\', \'losses\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "add_metric"
+    argspec: "args=[\'self\', \'value\', \'aggregation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "add_update"
     argspec: "args=[\'self\', \'updates\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "add_variable"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "add_weight"

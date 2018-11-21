@@ -41,10 +41,10 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
 
       for start in range(0, len(components), 4):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual([[i, j]
                              for i, c in enumerate(components[start:start + 4])
                              for j in range(c)], results.indices)
@@ -69,10 +69,10 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
 
       for start in range(0, len(components), 4):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual([[i, j, z]
                              for i, c in enumerate(components[start:start + 4])
                              for j in range(c)

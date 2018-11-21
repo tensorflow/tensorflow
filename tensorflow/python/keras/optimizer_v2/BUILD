@@ -7,14 +7,20 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "optimizer_v2",
     srcs = [
+        "adadelta.py",
+        "adagrad.py",
         "adam.py",
+        "adamax.py",
         "gradient_descent.py",
+        "nadam.py",
         "optimizer_v2.py",
+        "rmsprop.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -24,10 +30,86 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:reduce_util",
     ],
+)
+
+cuda_py_test(
+    name = "adagrad_test",
+    size = "medium",
+    srcs = ["adagrad_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+    shard_count = 4,
+)
+
+cuda_py_test(
+    name = "adam_test",
+    size = "medium",
+    srcs = ["adam_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+    shard_count = 4,
+)
+
+cuda_py_test(
+    name = "adamax_test",
+    size = "medium",
+    srcs = ["adamax_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+    shard_count = 4,
+)
+
+cuda_py_test(
+    name = "adadelta_test",
+    size = "medium",
+    srcs = ["adadelta_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -50,9 +132,50 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "nadam_test",
+    size = "medium",
+    srcs = ["nadam_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+    shard_count = 4,
+)
+
+py_test(
     name = "optimizer_v2_test",
     size = "medium",
     srcs = ["optimizer_v2_test.py"],
+    tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:def_function",
+    ],
+)
+
+cuda_py_test(
+    name = "rmsprop_test",
+    size = "medium",
+    srcs = ["rmsprop_test.py"],
     additional_deps = [
         ":optimizer_v2",
         "//tensorflow/python/eager:def_function",

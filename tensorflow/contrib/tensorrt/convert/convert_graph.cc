@@ -264,7 +264,9 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 #endif
 
   // Create RewriterConfig.
-  tensorflow::RewriterConfig rw_cfg;
+  tensorflow::ConfigProto config_proto;
+  auto& rw_cfg =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   // TODO(aaroey): use only const folding and layout for the time being since
   // new optimizers break the graph for trt.
   rw_cfg.add_optimizers("constfold");
@@ -287,7 +289,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   }
 
   // Run optimizer.
-  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
+  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, config_proto);
   TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, new_graph_def));
 
   if (VLOG_IS_ON(5)) {
