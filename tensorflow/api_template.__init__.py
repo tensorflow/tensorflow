@@ -21,8 +21,6 @@ from __future__ import print_function as _print_function
 import os as _os
 
 # pylint: disable=g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-
 from tensorflow.python.tools import component_api_helper as _component_api_helper
 _component_api_helper.package_hook(
     parent_package_str=__name__,
