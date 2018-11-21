@@ -23,6 +23,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
+#include "mlir/Support/FileUtilities.h"
 #include "mlir/Translation.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/CommandLine.h"
@@ -54,19 +55,6 @@ static Module *parseMLIRInput(StringRef inputFilename, MLIRContext *context) {
   llvm::SourceMgr sourceMgr;
   sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), llvm::SMLoc());
   return parseSourceFile(sourceMgr, context);
-}
-
-static std::unique_ptr<llvm::ToolOutputFile>
-openOutputFile(llvm::StringRef outputFilename) {
-  std::error_code error;
-  auto result = llvm::make_unique<llvm::ToolOutputFile>(outputFilename, error,
-                                                        llvm::sys::fs::F_None);
-  if (error) {
-    llvm::errs() << error.message();
-    return nullptr;
-  }
-
-  return result;
 }
 
 static bool printMLIROutput(const Module &module,
