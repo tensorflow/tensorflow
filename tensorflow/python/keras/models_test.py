@@ -26,10 +26,12 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
@@ -218,6 +220,33 @@ class TestModelCloning(test.TestCase):
       keras.models._clone_sequential_model(seq_model, input_tensors=[x, x])
     with self.assertRaises(ValueError):
       keras.models._clone_sequential_model(seq_model, input_tensors=y)
+
+  def test_functional_cloning_does_not_create_unnecessary_placeholders(self):
+    with ops.Graph().as_default():
+      x = keras.Input((4,))
+      y = keras.layers.Dense(4)(x)
+      model = keras.models.Model(x, y)
+    graph = ops.Graph()
+    with graph.as_default():
+      x = array_ops.ones((10, 4))
+      _ = keras.models.clone_model(model, input_tensors=[x])
+      has_placeholder = _has_placeholder(graph)
+      self.assertFalse(has_placeholder)
+
+  def test_sequential_cloning_does_not_create_unnecessary_placeholders(self):
+    with ops.Graph().as_default():
+      model = keras.models.Sequential([keras.layers.Dense(4)])
+    graph = ops.Graph()
+    with graph.as_default():
+      x = array_ops.ones((10, 4))
+      _ = keras.models.clone_model(model, input_tensors=[x])
+      has_placeholder = _has_placeholder(graph)
+      self.assertFalse(has_placeholder)
+
+
+def _has_placeholder(graph):
+  ops_types = [op.type for op in graph.get_operations()]
+  return any('Placeholder' in s for s in ops_types)
 
 
 class CheckpointingTests(test.TestCase):

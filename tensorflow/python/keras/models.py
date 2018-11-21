@@ -100,17 +100,19 @@ def _clone_functional_model(model, input_tensors=None):
       input_tensors = list(input_tensors)
     input_tensors = generic_utils.to_list(input_tensors)
     input_tensors_ = []
-    for i, x in enumerate(input_tensors):
-      if not K.is_keras_tensor(x):
-        name = model._input_layers[i].name
-        input_tensor = Input(tensor=x, name='input_wrapper_for_' + name)
+    for i in range(len(input_tensors)):
+      input_tensor = input_tensors[i]
+      if not K.is_keras_tensor(input_tensor):
+        original_input_layer = model._input_layers[i]
+        name = original_input_layer.name
+        input_tensor = Input(tensor=input_tensor,
+                             name='input_wrapper_for_' + name)
         input_tensors_.append(input_tensor)
         # Cache newly created input layer.
-        original_input_layer = x._keras_history[0]
         newly_created_input_layer = input_tensor._keras_history[0]
         layer_map[original_input_layer] = newly_created_input_layer
       else:
-        input_tensors_.append(x)
+        input_tensors_.append(input_tensor)
     input_tensors = input_tensors_
 
   for x, y in zip(model.inputs, input_tensors):
