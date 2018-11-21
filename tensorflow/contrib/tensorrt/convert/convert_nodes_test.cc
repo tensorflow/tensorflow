@@ -1964,6 +1964,48 @@ TEST_F(OpConverterTest, ConvertRelu6) {
   }
 }
 
+TEST_F(OpConverterTest, ConvertSquare) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_square", "Square", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Square expects one input, at my_square");
+  }
+
+  // Get the NodeDef for Square.
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+  auto square = ops::Square(s.WithOpName("my_square"), input);
+  const NodeDef& node_def = square.operation.node()->def();
+
+  {
+    // Input is weights, should fail.
+    Reset();
+    AddTestWeights<int32>("input", {1, 2, 3}, {1, 2, 3, 4, -5, 6});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+        "Square is only implemented for tensors, at my_square");
+  }
+  {
+    // Input is tensor, Ok.
+    Reset();
+    AddTestTensor("input", {1, 2, 3});
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_square", &output));
+    EXPECT_TRUE(output.is_tensor());
+    EXPECT_TRUE(TrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions()))
+        << output.DebugString();
+
+    std::vector<float> output_data(6);
+    std::vector<float> expected_output_data = {1, 4, 9, 16, 25, 36};
+    BuildAndRun("input", {1, 2, 3, 4, -5, 6}, "my_square", &output_data);
+    for (int i = 0; i < output_data.size(); i++) {
+      EXPECT_FLOAT_EQ(output_data[i], expected_output_data[i]);
+    }
+  }
+}
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
