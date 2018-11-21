@@ -1553,10 +1553,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           const auto& row_data = row_to_sort.data<NativeT>();
 
           std::vector<NativeT> result_data(row_data.begin(), row_data.end());
-          std::sort(result_data.begin(), result_data.end(),
-                    [](const NativeT& a, const NativeT& b) {
-                      return SafeLess<NativeT>(a, b);
-                    });
+          std::stable_sort(result_data.begin(), result_data.end(),
+                           [](const NativeT& a, const NativeT& b) {
+                             return SafeLess<NativeT>(a, b);
+                           });
           Literal sorted_row(ShapeUtil::MakeShape(keys->shape().element_type(),
                                                   {sort_dim_elements}));
           sorted_row.PopulateR1(absl::Span<const NativeT>(result_data));
