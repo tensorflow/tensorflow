@@ -237,6 +237,10 @@ TF_CAPI_EXPORT extern int TF_OpIsStateful(const char* op_type,
 // this to be called.
 TF_CAPI_EXPORT void TF_InitMain(const char* usage, int* argc, char*** argv);
 
+// Platform-specific implementation to return an unused port. (This should used
+// in tests only.)
+TF_CAPI_EXPORT int TF_PickUnusedPortOrDie();
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

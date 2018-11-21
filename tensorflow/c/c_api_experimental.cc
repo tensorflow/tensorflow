@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
@@ -8864,4 +8865,8 @@ int TF_OpIsStateful(const char* op_type, TF_Status* status) {
 
 void TF_InitMain(const char* usage, int* argc, char*** argv) {
   tensorflow::port::InitMain(usage, argc, argv);
+}
+
+int TF_PickUnusedPortOrDie() {
+  return tensorflow::internal::PickUnusedPortOrDie();
 }
