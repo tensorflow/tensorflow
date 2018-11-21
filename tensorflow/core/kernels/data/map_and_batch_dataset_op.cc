@@ -566,7 +566,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         RecordStart(ctx.get());
         auto stop_cleanup =
             gtl::MakeCleanup([this, &ctx]() { RecordStop(ctx.get()); });
-        new_calls.reserve(num_parallel_calls_->value);
+        {
+          tf_shared_lock l(*mu_);  // mu_ == num_parallel_calls_->mu
+          new_calls.reserve(num_parallel_calls_->value);
+        }
         auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
           int64 num_parallel_calls = num_parallel_calls_->value;
           int64 max_batch_results =
