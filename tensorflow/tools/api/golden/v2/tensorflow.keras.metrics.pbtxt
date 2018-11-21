@@ -13,11 +13,35 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "FalseNegatives"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FalsePositives"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Mean"
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Precision"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Recall"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SparseCategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TrueNegatives"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TruePositives"
     mtype: "<type \'type\'>"
   }
   member_method {
