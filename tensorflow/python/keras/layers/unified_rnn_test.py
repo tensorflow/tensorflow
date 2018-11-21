@@ -36,8 +36,7 @@ from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.engine.base_layer import \
-  InputSpec
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNLSTM
 from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.keras.utils import tf_utils

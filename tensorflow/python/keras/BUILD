@@ -124,6 +124,7 @@ py_library(
         "engine/base_layer.py",
         "engine/distributed_training_utils.py",
         "engine/input_layer.py",
+        "engine/input_spec.py",
         "engine/network.py",
         "engine/saving.py",
         "engine/sequential.py",
