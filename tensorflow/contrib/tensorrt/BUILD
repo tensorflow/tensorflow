@@ -514,28 +514,6 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
-    name = "tf_trt_quantization_mnist_integration_test",
-    srcs = [
-        "test/quantization_mnist_test.py",
-    ],
-    additional_deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/keras:keras",
-        "//tensorflow/python/estimator:estimator",
-    ],
-    data = [
-        "//tensorflow/contrib/tensorrt/test/quantization_mnist_test_data:quantization_mnist_data",
-    ],
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_windows",
-        "nomac",
-    ],
-)
-
-cuda_py_tests(
     name = "tf_trt_integration_test_no_oss",
     srcs = [
         "test/unary_test.py",

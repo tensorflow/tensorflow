@@ -38,8 +38,6 @@ struct SegmentOptions {
   // Segment must contain at least this many nodes.
   int minimum_segment_size = 2;
   std::set<string> exclude_node_list;
-  // Quantization nodes are only included for quantized precisions
-  int precision_mode;
 };
 
 // Get the subgraphs of a graph that can be handled by TensorRT.

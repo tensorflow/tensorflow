@@ -884,7 +884,6 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     segment_options.exclude_node_list.insert(node);
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
-  segment_options.precision_mode = params.precision_mode;
   tensorflow::tensorrt::segment::SegmentNodesVector initial_segments;
   TrtCandidateSelector candidate_selector(*params.graph_properties,
                                           params.precision_mode);
