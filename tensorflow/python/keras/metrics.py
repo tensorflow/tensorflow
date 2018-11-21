@@ -977,6 +977,126 @@ class TruePositives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
+class Precision(Metric):
+  """Computes the precision of the predictions with respect to the labels.
+
+  The metric creates two local variables, `true_positives` and `false_positives`
+  that are used to compute the precision. This value is ultimately returned as
+  `precision`, an idempotent operation that simply divides `true_positives`
+  by the sum of `true_positives` and `false_positives`.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+  """
+
+  def __init__(self, thresholds=None, name=None, dtype=None):
+    """Creates a `Precision` instance.
+
+    Args:
+      thresholds: (Optional) Defaults to [0.5]. A python list/tuple of float
+        threshold values in [0, 1]. A threshold is compared with prediction
+        values to determine the truth value of predictions (i.e., above the
+        threshold is `true`, below is `false`). One metric value is generated
+        for each threshold value.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(Precision, self).__init__(name=name, dtype=dtype)
+    self.thresholds = [0.5] if thresholds is None else thresholds
+    self.tp = self.add_weight(
+        'true_positives',
+        shape=(len(self.thresholds),),
+        initializer=init_ops.zeros_initializer)
+    self.fp = self.add_weight(
+        'false_positives',
+        shape=(len(self.thresholds),),
+        initializer=init_ops.zeros_initializer)
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    """Accumulates true positive and false positive statistics.
+
+    Args:
+      y_true: The ground truth values.
+      y_pred: The predicted values.
+      sample_weight: Optional weighting of each example. Defaults to 1. Can be a
+        `Tensor` whose rank is either 0, or the same rank as `y_true`, and must
+        be broadcastable to `y_true`.
+
+    Returns:
+      Update op.
+    """
+    return _update_confusion_matrix_variables({
+        _ConfusionMatrix.TRUE_POSITIVES: self.tp,
+        _ConfusionMatrix.FALSE_POSITIVES: self.fp
+    }, y_true, y_pred, self.thresholds, sample_weight)
+
+  def result(self):
+    return array_ops.where(
+        math_ops.greater(self.tp + self.fp, 0),
+        math_ops.div(self.tp, self.tp + self.fp),
+        array_ops.zeros_like(self.thresholds))
+
+
+class Recall(Metric):
+  """Computes the recall of the predictions with respect to the labels.
+
+  This metric creates two local variables, `true_positives` and
+  `false_negatives`, that are used to compute the recall. This value is
+  ultimately returned as `recall`, an idempotent operation that simply divides
+  `true_positives` by the sum of `true_positives` and `false_negatives`.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+  """
+
+  def __init__(self, thresholds=None, name=None, dtype=None):
+    """Creates a `Recall` instance.
+
+    Args:
+      thresholds: (Optional) Defaults to [0.5]. A python list/tuple of float
+        threshold values in [0, 1]. A threshold is compared with prediction
+        values to determine the truth value of predictions (i.e., above the
+        threshold is `true`, below is `false`). One metric value is generated
+        for each threshold value.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(Recall, self).__init__(name=name, dtype=dtype)
+    self.thresholds = [0.5] if thresholds is None else thresholds
+    self.tp = self.add_weight(
+        'true_positives',
+        shape=(len(self.thresholds),),
+        initializer=init_ops.zeros_initializer)
+    self.fn = self.add_weight(
+        'false_negatives',
+        shape=(len(self.thresholds),),
+        initializer=init_ops.zeros_initializer)
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    """Accumulates true positive and false negative statistics.
+
+    Args:
+      y_true: The ground truth values.
+      y_pred: The predicted values.
+      sample_weight: Optional weighting of each example. Defaults to 1. Can be a
+        `Tensor` whose rank is either 0, or the same rank as `y_true`, and must
+        be broadcastable to `y_true`.
+
+    Returns:
+      Update op.
+    """
+    return _update_confusion_matrix_variables({
+        _ConfusionMatrix.TRUE_POSITIVES: self.tp,
+        _ConfusionMatrix.FALSE_NEGATIVES: self.fn
+    }, y_true, y_pred, self.thresholds, sample_weight)
+
+  def result(self):
+    return array_ops.where(
+        math_ops.greater(self.tp + self.fn, 0),
+        math_ops.div(self.tp, self.tp + self.fn),
+        array_ops.zeros_like(self.thresholds))
+
+
 @tf_export('keras.metrics.binary_accuracy')
 def binary_accuracy(y_true, y_pred, threshold=0.5):
   threshold = math_ops.cast(threshold, y_pred.dtype)
