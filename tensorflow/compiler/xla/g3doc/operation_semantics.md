@@ -13,6 +13,22 @@ arbitrary-dimensional array. For convenience, special cases have more specific
 and familiar names; for example a *vector* is a 1-dimensional array and a
 *matrix* is a 2-dimensional array.
 
+## AfterAll
+
+See also
+[`XlaBuilder::AfterAll`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+AfterAll takes a variadic number of tokens and produces a single token. Tokens
+are primitive types which can be threaded between side-effecting operations to
+enforce ordering. `AfterAll` can be used as a join of tokens for ordering a
+operation after a set operations.
+
+<b> `AfterAll(operands)` </b>
+
+Arguments  | Type    | Semantics
+---------- | ------- | -------------------------
+`operands` | `XlaOp` | variadic number of tokens
+
 ## AllToAll
 
 See also

@@ -1320,6 +1320,15 @@ XlaOp XlaBuilder::AfterAll(absl::Span<const XlaOp> tokens) {
     if (tokens.empty()) {
       return InvalidArgument("AfterAll requires at least one operand");
     }
+    for (int i = 0; i < tokens.size(); ++i) {
+      const XlaOp& operand = tokens[i];
+      TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+      if (!ShapeUtil::IsToken(operand_shape)) {
+        return InvalidArgument(
+            "All operands to AfterAll must be tokens; operand %d has shape %s",
+            i, ShapeUtil::HumanString(operand_shape));
+      }
+    }
     HloInstructionProto instr;
     *instr.mutable_shape() = ShapeUtil::MakeTokenShape();
     return AddInstruction(std::move(instr), HloOpcode::kAfterAll, tokens);

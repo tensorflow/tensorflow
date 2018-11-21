@@ -2398,7 +2398,7 @@ Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleAfterAll(HloInstruction* gen_token) {
+Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
   return Status::OK();
 }
 

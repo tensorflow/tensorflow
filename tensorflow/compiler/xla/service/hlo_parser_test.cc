@@ -1241,7 +1241,38 @@ ENTRY Sort {
 }
 
 )"
+    },
+// AfterAll with multiple operands
+{
+"AfterAllWithMultipleOperands",
+R"(HloModule AfterAllWithMultipleOperands
+
+ENTRY AfterAllWithMultipleOperands {
+  p0 = f32[] parameter(0)
+  token0 = token[] after-all()
+  token1 = token[] after-all()
+  ROOT after-all = token[] after-all(p0, token0, token1)
 }
+
+)"
+},
+// AddDependency
+// A dependency chain is created from 'neg' to 'exp' using tokens.
+{
+"AddDependency",
+R"(HloModule AddDependency
+
+ENTRY AddDependency {
+  p = f32[] parameter(0)
+  neg = f32[] negate(p)
+  token = token[] after-all(neg)
+  p_after_token = f32[] add-dependency(p, token)
+  exp = f32[] exponential(p_after_token)
+  ROOT sum = f32[] add(neg, exp)
+}
+
+)"
+},
 });
   // clang-format on
 }

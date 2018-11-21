@@ -391,17 +391,6 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   return ShapeUtil::MakeShape(element_type, new_dimensions);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferAfterAllShape(
-    absl::Span<const Shape* const> arg_shapes) {
-  for (const Shape* arg_shape : arg_shapes) {
-    if (arg_shape->element_type() != TOKEN) {
-      return InvalidArgument(
-          "Operands of token instructions must be TOKEN types.");
-    }
-  }
-  return ShapeUtil::MakeTokenShape();
-}
-
 /* static */ StatusOr<Shape> ShapeInference::InferConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
   auto old_element_type = operand_shape.element_type();
