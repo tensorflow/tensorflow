@@ -47,9 +47,6 @@ class TrtCandidateSelector {
   // supported. It will operate in validation-only mode.
   TrtNodeValidator validator_;
 
-  // Quantization ops are only converted when using quantized precisions.
-  int precision_mode_;
-
   // GraphProperties of the graph whose nodes are to be validated by
   // IsTensorRTCandidate().
   const grappler::GraphProperties& graph_properties_;

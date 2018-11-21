@@ -108,7 +108,6 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Conj",
                                           "Cos",
                                           "Cosh",
-                                          "Dequantize",
                                           "Digamma",
                                           "Div",
                                           "Elu",

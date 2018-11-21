@@ -181,7 +181,7 @@ def create_inference_graph(input_graph_def,
     max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
       engine can use at execution time. This corresponds to the 'workspaceSize'
       parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
-    precision_mode: one of TrtPrecisionMode.supported_precision_modes(). 
+    precision_mode: one of TrtPrecisionMode.supported_precision_modes().
     minimum_segment_size: the minimum number of nodes required for a subgraph to
       be replaced by TRTEngineOp.
     is_dynamic_op: whether to generate dynamic TRT ops which will build the TRT
