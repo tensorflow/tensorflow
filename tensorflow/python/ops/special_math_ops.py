@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import re
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -188,6 +189,13 @@ def einsum(equation, *inputs, **kwargs):
     *inputs: the inputs to contract (each one a `Tensor`), whose shapes should
       be consistent with `equation`.
     name: A name for the operation (optional).
+    optimize: `{False, True, 'dfspairs'}`, optional
+      If not `False`, the contraction sequence will be optimized before 
+      building the computation graph. Not that this will be ignored if the 
+      function falls back to the exponential-space implementation.
+      If `False`, tensors will be contracted from left to right. 
+      If `'dfspairs'`, a depth-first search for a sequence of pairwise tensor
+      contractions will be performed.
 
   Returns:
     The contracted `Tensor`, with shape determined by `equation`.
@@ -204,6 +212,7 @@ def einsum(equation, *inputs, **kwargs):
   equation = equation.replace(' ', '')
 
   name = kwargs.pop('name', None)
+  optimize = kwargs.pop('optimize', False)
   if kwargs:
     raise TypeError('invalid keyword arguments for this function: ' + ', '.join(
         [format(key) for key in sorted(list(kwargs.keys()))]))
@@ -251,31 +260,45 @@ def einsum(equation, *inputs, **kwargs):
             ' because index "%s" is summed over more than two inputs.', a)
         return _exponential_space_einsum(equation, *inputs)
 
-    temp = inputs[0]
-    temp_axis_labels = input_axis_labels[0]
-    for i in xrange(len(inputs) - 1):
-      axes_to_sum = (
-          set(temp_axis_labels) &
-          set(input_axis_labels[i + 1]) - set(output_axis_labels))
-      temp, temp_axis_labels = _einsum_reduction(
-          temp, temp_axis_labels, inputs[i + 1], input_axis_labels[i + 1],
-          axes_to_sum)
-
-    missing_indices = set(temp_axis_labels) - set(output_axis_labels)
+    # the list seq gives the order of pairwise contractions; seq[0] is the
+    # first, seq[1] the second contraction and so forth; each element of seq
+    # (j,k) tells us to contract tensors j and k in the list of inputs, remove
+    # them from inputs and prepend the new tensor to the list
+    if not optimize:
+      seq = [(0,1)]*(len(inputs)-1) # contract from left to right
+    elif optimize in {True, 'dfspairs'}:
+      seq = _einsum_optimize_dfspairs(
+        [t.shape.as_list() for t in inputs],
+        input_axis_labels, 
+        output_axis_labels
+      )[0]
+    else:
+      raise ValueError('invalid optimization strategy "{}"'.format(optimize))
+    
+    for j, k in seq:
+      if j > k: j, k = k, j
+      t2, l2 = inputs.pop(k), input_axis_labels.pop(k)
+      t1, l1 = inputs.pop(j), input_axis_labels.pop(j)
+      axes_to_sum = (set(l1) & set(l2)) - set(output_axis_labels)
+      t3, l3 = _einsum_reduction(t1, l1, t2, l2, axes_to_sum)
+      inputs.insert(0, t3)
+      input_axis_labels.insert(0, l3)
+    
+    missing_indices = set(input_axis_labels[0]) - set(output_axis_labels)
     if missing_indices:
       axis = [
-          i for i, a in enumerate(temp_axis_labels)
+          i for i, a in enumerate(input_axis_labels[0])
           if a not in output_axis_labels
       ]
-      temp = math_ops.reduce_sum(temp, axis=axis)
+      temp = math_ops.reduce_sum(inputs[0], axis=axis)
       temp_axis_labels = ''.join(
-          a for a in temp_axis_labels if a in output_axis_labels)
-
-    if sorted(temp_axis_labels) != sorted(output_axis_labels):
+          a for a in input_axis_labels[0] if a in output_axis_labels)
+    
+    if sorted(input_axis_labels[0]) != sorted(output_axis_labels):
       raise ValueError('Invalid equation: %s' % equation)
-
-    perm = [temp_axis_labels.index(a) for a in output_axis_labels]
-    return _transpose_if_necessary(temp, perm)
+    
+    perm = [input_axis_labels[0].index(a) for a in output_axis_labels]
+    return _transpose_if_necessary(inputs[0], perm)
 
 
 def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
@@ -450,6 +473,54 @@ def _total_size(shape_values):
   for val in shape_values:
     result *= val
   return result
+
+
+
+def _einsum_optimize_dfspairs(ishapes, ilabels, olabels,
+                              contraction=[], cost=0, min_cost=np.inf):
+
+  n = len(ishapes)
+
+  if cost > min_cost:
+    return None, None
+
+  if n == 1:
+    return contraction, cost
+
+  contraction_best = None
+
+  for j in range(n-1):
+    for k in range(j+1, n):
+
+      common_indices = set(ilabels[j]) & set(ilabels[k])
+      contraction_indices = common_indices - set(olabels)
+
+      # m1[l] <-- is ilabels[j][l] an index of the new tensor? (m2 for k)
+      m1 = [l not in contraction_indices for l in ilabels[j]]
+      m2 = [l not in common_indices      for l in ilabels[k]]
+
+      new_shape = tuple(
+        [d for d, f in zip(ishapes[j], m1) if f] + \
+        [d for d, f in zip(ishapes[k], m2) if f]
+      )
+
+      new_labels = \
+        ''.join([l for l, f in zip(ilabels[j], m1) if f]) + \
+        ''.join([l for l, f in zip(ilabels[k], m2) if f])
+
+      contraction_cost = np.prod(ishapes[j]) * \
+                         np.prod([d for d, f in zip(ishapes[k], m2) if f])
+
+      res = _einsum_optimize_dfspairs(
+        [new_shape]  + ishapes[:j] + ishapes[j+1:k] + ishapes[k+1:],
+        [new_labels] + ilabels[:j] + ilabels[j+1:k] + ilabels[k+1:],
+        olabels, contraction + [(j,k)],
+        cost + contraction_cost, min_cost
+      )
+      if res[0] is not None and res[1] < min_cost:
+        contraction_best, min_cost = res
+
+  return contraction_best, min_cost
 
 
 def _exponential_space_einsum(equation, *inputs):
