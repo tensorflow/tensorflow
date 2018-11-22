@@ -82,18 +82,14 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,4], filter: f32[1,2,2]) -> f32[1,2
   ConvolutionFeatureGroupConverter converter;
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
-  // Make sure the convolution is converted to one with feature_group_count = 1.
-  EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
-  EXPECT_EQ(root->feature_group_count(), 1);
-  // Verify that the filter operand has been replaced.
-  EXPECT_THAT(root->operand(1),
-              op::Select(op::Eq(op::Broadcast(op::Constant()),
-                                op::Broadcast(op::Constant())),
-                         // We expect to see Concatenate here instead of
-                         // Broadcast, because feature_group_count < input
-                         // feature dimension.
-                         op::Concatenate(op::Parameter(), op::Parameter()),
-                         op::Broadcast(op::Constant())));
+  // Make sure the convolution is replaced with a concatenate.
+  EXPECT_EQ(root->opcode(), HloOpcode::kConcatenate);
+  // And the operands of the concatenate are convolutions, each with a feature
+  // group count = 1.
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConvolution);
+  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kConvolution);
+  EXPECT_EQ(root->operand(0)->feature_group_count(), 1);
+  EXPECT_EQ(root->operand(1)->feature_group_count(), 1);
 }
 
 }  // namespace
