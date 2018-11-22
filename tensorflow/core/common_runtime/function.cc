@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
 
-// See core/kernels/function_ops.cc for related kernels.
+// See core/kernels/function_ops.cc and core/kernels/functional_ops.cc for related kernels.
 
 namespace tensorflow {
 

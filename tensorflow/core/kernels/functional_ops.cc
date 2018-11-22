@@ -23,9 +23,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/kernels/functional_ops.h"
+#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -51,9 +51,8 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input("target", &target), done);
   string target_device;
   OP_REQUIRES_OK_ASYNC(
-      ctx,
-      DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()(),
-                                              source_device, &target_device),
+      ctx, DeviceNameUtils::CanonicalizeDeviceName(
+               target->scalar<string>()(),source_device, &target_device),
       done);
 
   AttrValueMap attr_values = func_.attr();
@@ -73,9 +72,8 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       tracing::ScopedActivity activity(strings::StrCat(
           "RemoteCall: Instantiate: ", func_.name(), " on ", target_device));
       OP_REQUIRES_OK_ASYNC(
-          ctx,
-          lib->Instantiate(func_.name(), AttrSlice(&attr_values),
-                           instantiate_opts, &handle),
+          ctx, lib->Instantiate(func_.name(), AttrSlice(&attr_values),
+                                instantiate_opts, &handle),
           done);
       auto insert_result = handle_cache_.insert({function_target, handle});
       CHECK(insert_result.second) << "Insert unsuccessful.";
