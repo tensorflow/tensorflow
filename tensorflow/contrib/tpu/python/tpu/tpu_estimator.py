@@ -45,7 +45,6 @@ from tensorflow.contrib.training.python.training import hparam
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest as data_nest
 from tensorflow.python.estimator import estimator as estimator_lib
@@ -413,15 +412,12 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
                enqueue_ops,
                dequeue_ops,
                run_infeed_loop_on_coordinator=True,
-               rendezvous=None,
-               master=None,
-               session_config=None):
+               rendezvous=None):
     self._master_job = ctx.master_job
     self._enqueue_ops = enqueue_ops
     self._dequeue_ops = dequeue_ops
     self._rendezvous = rendezvous
-    self._master = master
-    self._session_config = session_config
+
     self._run_infeed_loop_on_coordinator = run_infeed_loop_on_coordinator
     self._initial_infeed_sleep_secs = (
         ctx.config.tpu_config.initial_infeed_sleep_secs)
@@ -433,10 +429,11 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
   def begin(self):
     logging.info('TPU job name %s', self._master_job)
     self._iterations_per_loop_var = _create_or_get_iterations_per_loop()
-    self._init_ops = []
     if self._should_initialize_tpu:
+      self._init_ops = [tpu.initialize_system(job=self._master_job)]
       self._finalize_ops = [tpu.shutdown_system(job=self._master_job)]
     else:
+      self._init_ops = []
       self._finalize_ops = []
 
     summary_writer_init_ops = contrib_summary.summary_writer_initializer_op()
@@ -478,17 +475,11 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     return _OpQueueContext(name=name, target=target, args=args)
 
   def after_create_session(self, session, coord):
-    if self._should_initialize_tpu:
-      logging.info('Init TPU system')
-      start = time.time()
-      with ops.Graph().as_default():
-        with tf_session.Session(
-            self._master, config=self._session_config) as sess:
-          sess.run(tpu.initialize_system(job=self._master_job))
-      logging.info('Initialized TPU in %d seconds', time.time() - start)
-
+    logging.info('Init TPU system')
+    start = time.time()
     session.run(self._init_ops,
                 options=config_pb2.RunOptions(timeout_in_ms=5 * 60 * 1000))
+    logging.info('Initialized TPU in %d seconds', time.time() - start)
 
     self._infeed_controller = self._create_infeed_controller(
         name='InfeedController', target=self._run_infeed, args=(session,))
@@ -2573,8 +2564,6 @@ class TPUEstimator(estimator_lib.Estimator):
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator),
                   rendezvous=self._rendezvous[mode],
-                  master=self._config.master,
-                  session_config=self._session_config,
               ),
               InstallSignalHandlerHook()
           ])
@@ -2677,10 +2666,8 @@ class TPUEstimator(estimator_lib.Estimator):
                   eval_update_ops + host_ops,
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator),
-                  rendezvous=self._rendezvous[mode],
-                  master=self._config.master,
-                  session_config=self._session_config,
-              )] + input_hooks
+                  rendezvous=self._rendezvous[mode]),
+          ] + input_hooks
 
           if eval_hooks:
             hooks.extend(eval_hooks)
