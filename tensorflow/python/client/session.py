@@ -173,7 +173,7 @@ def register_session_run_conversion_functions(
     feed_function: A callable that takes feed_key and feed_value as input, and
       returns a list of tuples (feed_tensor, feed_val), feed_key must have type
       `tensor_type`, and feed_tensor must have type `tf.Tensor`. Each feed
-      function describes how to unpack a single fed value and map it to feeds
+      function describes how to unpack a single feed value and map it to feeds
       of one or more tensors and their corresponding values.
     feed_function_for_partial_run: A callable for specifying tensor values to
       feed when setting up a partial run, which takes a `tensor_type` type
