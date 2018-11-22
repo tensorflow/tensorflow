@@ -26,7 +26,6 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.layers import core as tf_core_layers
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import rnn_cell
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
 
@@ -312,15 +311,6 @@ class KerasIntegrationTest(test.TestCase):
                           validation_data=(x_train, y_train),
                           verbose=0)
       self.assertGreater(history.history['val_acc'][-1], 0.7)
-
-  def test_regularizers_with_get_variable(self):
-    # Test case for GitHub issue 22470.
-    with self.cached_session():
-      v = variable_scope.get_variable(
-          'v',
-          shape=[4, 4],
-          initializer=keras.initializers.glorot_uniform(),
-          regularizer=keras.regularizers.l2(0.))
 
 
 if __name__ == '__main__':
