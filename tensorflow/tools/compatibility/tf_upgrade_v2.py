@@ -111,6 +111,41 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.gfile.Exists": {
             "filename": "path",
         },
+        "tf.gfile.Remove": {
+            "filename": "path",
+        },
+        "tf.gfile.Stat": {
+            "filename": "path",
+        },
+        "tf.gfile.Glob": {
+            "filename": "pattern",
+        },
+        "tf.gfile.MkDir": {
+            "dirname": "path",
+        },
+        "tf.gfile.MakeDirs": {
+            "dirname": "path",
+        },
+        "tf.gfile.DeleteRecursively": {
+            "dirname": "path",
+        },
+        "tf.gfile.IsDirectory": {
+            "dirname": "path",
+        },
+        "tf.gfile.ListDirectory": {
+            "dirname": "path",
+        },
+        "tf.gfile.Copy": {
+            "oldpath": "src",
+            "newpath": "dst",
+        },
+        "tf.gfile.Rename": {
+            "oldpath": "src",
+            "newpath": "dst",
+        },
+        "tf.gfile.Walk": {
+            "in_order": "topdown",
+        },
         "tf.random.stateless_multinomial": {
             "output_dtype": "dtype",
         },
@@ -212,6 +247,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # These renames happen after the arguments have been processed.
     self.symbol_renames.update({
         "tf.batch_to_space_nd": "tf.batch_to_space",
+        "tf.gfile.Copy": "tf.io.gfile.Copy",
+        "tf.gfile.DeleteRecursively": "tf.io.gfile.DeleteRecursively",
+        "tf.gfile.Exists": "tf.io.gfile.Exists",
+        "tf.gfile.Glob": "tf.io.gfile.Glob",
+        "tf.gfile.IsDirectory": "tf.io.gfile.IsDirectory",
+        "tf.gfile.ListDirectory": "tf.io.gfile.ListDirectory",
+        "tf.gfile.MakeDirs": "tf.io.gfile.MakeDirs",
+        "tf.gfile.MkDir": "tf.io.gfile.MkDir",
+        "tf.gfile.Remove": "tf.io.gfile.Remove",
+        "tf.gfile.Rename": "tf.io.gfile.Rename",
+        "tf.gfile.Stat": "tf.io.gfile.Stat",
+        "tf.gfile.Walk": "tf.io.gfile.Walk",
         "tf.contrib.data.AUTOTUNE": "tf.data.experimental.AUTOTUNE",
         "tf.contrib.data.Counter": "tf.data.experimental.Counter",
         "tf.contrib.data.CheckpointInputPipelineHook": "tf.data.experimental.CheckpointInputPipelineHook",
