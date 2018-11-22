@@ -464,6 +464,7 @@ static void emitSlice(MaterializationState *state,
     // slice are topologically sorted, we can just clone them in order.
     for (auto *stmt : *slice) {
       auto fail = cloneAndInsertHardwareVectorInstance(stmt, &scopedState);
+      (void)fail;
       assert(!fail && "Unhandled super-vector materialization failure");
     }
   }
