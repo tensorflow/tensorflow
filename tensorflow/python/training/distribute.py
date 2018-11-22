@@ -991,7 +991,7 @@ class DistributionStrategyExtended(object):
   def _call_dataset_fn(self, dataset_fn):
     """Call the `dataset_fn` with `input_context` as argument."""
     result = dataset_fn()
-    if not isinstance(result, dataset_ops.Dataset):
+    if not isinstance(result, dataset_ops.DatasetV2):
       raise ValueError(
           "dataset_fn() must return a tf.data.Dataset when using a "
           "tf.distribute.Strategy.")

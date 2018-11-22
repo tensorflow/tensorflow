@@ -381,7 +381,7 @@ def validate_inputs(x, y, distribution_strategy):
 
   if is_tpu_strategy(distribution_strategy):
     for i in [x, y]:
-      if isinstance(i, dataset_ops.Dataset):
+      if isinstance(i, dataset_ops.DatasetV2):
         shapes = nest.flatten(i.output_shapes)
         try:
           s = next(s for s in shapes if not s.is_fully_defined())
