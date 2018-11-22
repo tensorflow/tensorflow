@@ -91,7 +91,7 @@ vocabulary_size = 50000
 
 def build_dataset(words, n_words):
   """Process raw inputs into a dataset."""
-  count = [['UNK', -1]]
+  count = [('UNK', -1)]
   count.extend(collections.Counter(words).most_common(n_words - 1))
   dictionary = dict()
   for word, _ in count:
@@ -125,6 +125,7 @@ data_index = 0
 
 # Step 3: Function to generate a training batch for the skip-gram model.
 def generate_batch(batch_size, num_skips, skip_window):
+  global data
   global data_index
   assert batch_size % num_skips == 0
   assert num_skips <= 2 * skip_window
