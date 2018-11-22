@@ -350,6 +350,7 @@ def configure_and_create_session(distribution_strategy):
       session = session_module.Session(
           config=dc_session_config, target=worker_context.master_target)
     else:
+      distribution_strategy.configure(session_config)
       session = session_module.Session(config=session_config)
 
   K.set_session(session)
