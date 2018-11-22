@@ -3487,30 +3487,6 @@ func BoostedTreesQuantileStreamResourceFlush(scope *Scope, quantile_stream_resou
 	return scope.AddOperation(opspec)
 }
 
-// Add the quantile summaries to each quantile stream resource.
-//
-// An op that adds a list of quantile summaries to a quantile stream resource. Each
-// summary Tensor is rank 2, containing summaries (value, weight, min_rank, max_rank)
-// for a single feature.
-//
-// Arguments:
-//	quantile_stream_resource_handle: resource handle referring to a QuantileStreamResource.
-//	summaries: string; List of Rank 2 Tensor each containing the summaries for a single feature.
-//
-// Returns the created operation.
-func BoostedTreesQuantileStreamResourceAddSummaries(scope *Scope, quantile_stream_resource_handle tf.Output, summaries []tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BoostedTreesQuantileStreamResourceAddSummaries",
-		Input: []tf.Input{
-			quantile_stream_resource_handle, tf.OutputList(summaries),
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
 // Makes the summary of quantiles for the batch.
 //
 // An op that takes a list of tensors and outputs the quantile summaries for each tensor.
@@ -30163,6 +30139,30 @@ func ExperimentalDirectedInterleaveDataset(scope *Scope, selector_input_dataset 
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Add the quantile summaries to each quantile stream resource.
+//
+// An op that adds a list of quantile summaries to a quantile stream resource. Each
+// summary Tensor is rank 2, containing summaries (value, weight, min_rank, max_rank)
+// for a single feature.
+//
+// Arguments:
+//	quantile_stream_resource_handle: resource handle referring to a QuantileStreamResource.
+//	summaries: string; List of Rank 2 Tensor each containing the summaries for a single feature.
+//
+// Returns the created operation.
+func BoostedTreesQuantileStreamResourceAddSummaries(scope *Scope, quantile_stream_resource_handle tf.Output, summaries []tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesQuantileStreamResourceAddSummaries",
+		Input: []tf.Input{
+			quantile_stream_resource_handle, tf.OutputList(summaries),
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Gets the next element from a FunctionBufferingResource.
