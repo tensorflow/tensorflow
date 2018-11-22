@@ -1000,7 +1000,7 @@ class Model(Network):
     # TODO(anjalisridhar): Remove this check once we refactor the
     # _standardize_user_data code path. This check is already present elsewhere
     # in the codebase.
-    if check_steps and isinstance(x, dataset_ops.Dataset) and steps is None:
+    if check_steps and isinstance(x, dataset_ops.DatasetV2) and steps is None:
       raise ValueError('When using Datasets as input, '
                        'you should specify the `{steps_name}` argument.'
                        .format(steps_name=steps_name))
@@ -1043,7 +1043,7 @@ class Model(Network):
         x = dataset_ops.Dataset.from_tensor_slices(var_x)
         x = x.batch(batch_size, drop_remainder=drop_remainder)
 
-    assert isinstance(x, dataset_ops.Dataset)
+    assert isinstance(x, dataset_ops.DatasetV2)
 
     with self._distribution_strategy.scope():
       iterator = self._distribution_strategy.make_dataset_iterator(x)
@@ -1132,7 +1132,7 @@ class Model(Network):
           shuffle=shuffle)
       return iterator, None, None
 
-    if isinstance(x, dataset_ops.Dataset):
+    if isinstance(x, dataset_ops.DatasetV2):
       if context.executing_eagerly():
         x = x.make_one_shot_iterator()
       else:
@@ -1691,7 +1691,7 @@ class Model(Network):
     if validation_data:
       if (isinstance(validation_data, iterator_ops.Iterator) or
           isinstance(validation_data, iterator_ops.EagerIterator) or
-          isinstance(validation_data, dataset_ops.Dataset)):
+          isinstance(validation_data, dataset_ops.DatasetV2)):
         val_x = validation_data
         val_y = None
         val_sample_weight = None
@@ -2195,7 +2195,7 @@ class Model(Network):
     inputs, _, _ = self._standardize_user_data(x)
     if self.run_eagerly:
       if (isinstance(inputs, iterator_ops.EagerIterator) or
-          (isinstance(inputs, dataset_ops.Dataset))):
+          (isinstance(inputs, dataset_ops.DatasetV2))):
         inputs = training_utils.cast_if_floating_dtype(inputs)
       elif isinstance(inputs, collections.Sequence):
         inputs = [

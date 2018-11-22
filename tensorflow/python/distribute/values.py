@@ -1433,7 +1433,7 @@ class InputFunctionIterator(InputIteratorImpl):
       # TODO(priyag): We should probably explicitly specify CPU device on worker.
       with ops.device(worker):
         result = input_fn(ctx)
-        if not isinstance(result, dataset_ops.Dataset):
+        if not isinstance(result, dataset_ops.DatasetV2):
           raise ValueError("input_fn must return a tf.data.Dataset.")
         iterator = _SingleWorkerDatasetIterator(result, worker, devices)
         iterators.append(iterator)
