@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 # =============================================================================
 """Python front-end supports for functions.
 
-NOTE: functions are currently experimental and subject to change!
+NOTE: At this time, functions are experimental and subject to change!. Proceed with caution.
 """
 
 from __future__ import absolute_import
@@ -59,8 +59,8 @@ class Defun(object):
       def foo(x, y):
         ...
 
-  When you call the decorated function it will add `call` ops to the
-  default graph and adds the definition of the function into the
+  When you call the decorated function, it adds the `call` ops to the
+  default graph. In addition, it adds the definition of the function into the
   default graph. Because the addition of the function into the graph
   is deferred, the decorator can be used anywhere in the program.
 
@@ -300,7 +300,7 @@ class _DefinedFunction(object):
 
   @property
   def grad_func_name(self):
-    """Its gradient function's name."""
+    """Returns the name of the gradient function."""
     return self._grad_func.name if self._grad_func else None
 
   @property
