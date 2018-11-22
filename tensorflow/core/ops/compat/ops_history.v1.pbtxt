@@ -31545,18 +31545,6 @@ op {
   }
 }
 op {
-  name: "MatchingFilesDataset"
-  input_arg {
-    name: "patterns"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  is_stateful: true
-}
-op {
   name: "MatrixBandPart"
   input_arg {
     name: "input"

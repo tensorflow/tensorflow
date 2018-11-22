@@ -200,6 +200,17 @@ py_library(
 )
 
 py_library(
+    name = "matching_files",
+    srcs = ["matching_files.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+    ],
+)
+
+py_library(
     name = "optimization",
     srcs = ["optimization.py"],
     srcs_version = "PY2AND3",
@@ -397,6 +408,7 @@ py_library(
         ":indexed_dataset_ops",
         ":interleave_ops",
         ":map_defun",
+        ":matching_files",
         ":optimization",
         ":prefetching_ops",
         ":readers",

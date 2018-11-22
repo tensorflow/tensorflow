@@ -86,6 +86,18 @@ REGISTER_OP("ExperimentalMapDataset")
     .Attr("use_inter_op_parallelism: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ExperimentalMatchingFilesDataset")
+    .Input("patterns: string")
+    .Output("handle: variant")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `patterns` must be a scalar or a vector.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("ExperimentalNonSerializableDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
