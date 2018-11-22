@@ -146,11 +146,11 @@ tf_module {
   }
   member_method {
     name: "serialize_many_sparse"
-    argspec: "args=[\'sp_input\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'string\'>\"], "
+    argspec: "args=[\'sp_input\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'string\'>\", \'None\'], "
   }
   member_method {
     name: "serialize_sparse"
-    argspec: "args=[\'sp_input\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'string\'>\"], "
+    argspec: "args=[\'sp_input\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'string\'>\", \'None\'], "
   }
   member_method {
     name: "serialize_tensor"
