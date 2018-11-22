@@ -62,7 +62,7 @@ class CategoricalOp : public XlaOpKernel {
 
     xla::Shape uniform_shape;
     int class_dimension;
-    if (num_samples > 1) {
+    if (num_samples != 1) {
       std::array<int64, 3> uniform_shape_array = {
           {batch_size, num_samples, num_classes}};
       xla::PrimitiveType uniform_xla_type;
