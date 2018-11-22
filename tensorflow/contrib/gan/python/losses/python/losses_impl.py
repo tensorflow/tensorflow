@@ -36,6 +36,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -45,7 +46,6 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.distributions import distribution as ds
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops.losses import util
 from tensorflow.python.summary import summary
@@ -738,11 +738,16 @@ def least_squares_discriminator_loss(
 def _validate_distributions(distributions):
   if not isinstance(distributions, (list, tuple)):
     raise ValueError('`distributions` must be a list or tuple. Instead, '
-                     'found %s.', type(distributions))
+                     'found %s.' % type(distributions))
   for x in distributions:
-    if not isinstance(x, ds.Distribution):
+    # We used to check with `isinstance(x, tf.distributions.Distribution)`.
+    # However, distributions have migrated to `tfp.distributions.Distribution`,
+    # which is a new code repo, so we can't check this way anymore until
+    # TF-GAN is migrated to a new repo as well.
+    # This new check is not sufficient, but is a useful heuristic for now.
+    if not callable(getattr(x, 'log_prob', None)):
       raise ValueError('`distributions` must be a list of `Distributions`. '
-                       'Instead, found %s.', type(x))
+                       'Instead, found %s.' % type(x))
 
 
 def _validate_information_penalty_inputs(
