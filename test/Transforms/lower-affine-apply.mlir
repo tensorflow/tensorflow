@@ -1,4 +1,4 @@
-// RUN: mlir-opt -deaffinator %s | FileCheck %s
+// RUN: mlir-opt -lower-affine-apply %s | FileCheck %s
 
 #map0 = () -> (0)
 #map1 = ()[s0] -> (s0)

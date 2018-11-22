@@ -85,9 +85,9 @@ FunctionPass *createDmaGenerationPass(unsigned lowMemorySpace,
 
 /// Replaces affine_apply operations in CFGFunctions with the arithmetic
 /// primitives (addition, multplication) they comprise.  Errors out on
-/// MLFunctions since they may contain affine_applies baked into the For loop
+/// any MLFunction since it may contain affine_applies baked into the For loop
 /// bounds that cannot be replaced.
-FunctionPass *createDeaffinatorPass();
+FunctionPass *createLowerAffineApplyPass();
 
 } // end namespace mlir
 

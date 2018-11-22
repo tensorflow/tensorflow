@@ -1,4 +1,4 @@
-//===- LoweringUtils.h ---- Utilities for Lowering Passes -----------------===//
+//===- LoweringUtils.h ---- Utilities for Lowering Passes -------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -30,7 +30,7 @@ class AffineApplyOp;
 /// arithmetic instructions that have the same effect and insert them at the
 /// current location of the `op`.  Erase the `op` from its parent.  Return true
 /// if any errors happened during expansion.
-bool expandAffineApply(AffineApplyOp &op);
+bool expandAffineApply(AffineApplyOp *op);
 
 } // namespace mlir
 

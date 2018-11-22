@@ -37,11 +37,10 @@ namespace {
 class AffineApplyExpander
     : public AffineExprVisitor<AffineApplyExpander, SSAValue *> {
 public:
-  // This must take AffineApplyOp by non-const reference because it needs
-  // non-const SSAValue pointers for arguments; it is not supposed to actually
-  // modify the op.  Non-const SSAValues are required by the BinaryOp builders.
-  AffineApplyExpander(FuncBuilder &builder, AffineApplyOp &op)
-      : builder(builder), applyOp(op), loc(op.getLoc()) {}
+  // This internal clsas expects arguments to be non-null, checks must be
+  // performed at the call site.
+  AffineApplyExpander(FuncBuilder *builder, AffineApplyOp *op)
+      : builder(*builder), applyOp(*op), loc(op->getLoc()) {}
 
   template <typename OpTy> SSAValue *buildBinaryExpr(AffineBinaryOpExpr expr) {
     auto lhs = visit(expr.getLHS());
@@ -115,22 +114,24 @@ private:
 // Given an affine expression `expr` extracted from `op`, build the sequence of
 // primitive instructions that correspond to the affine expression in the
 // `builder`.
-static SSAValue *expandAffineExpr(FuncBuilder &builder, const AffineExpr &expr,
-                                  AffineApplyOp &op) {
+static SSAValue *expandAffineExpr(FuncBuilder *builder, AffineExpr expr,
+                                  AffineApplyOp *op) {
   auto expander = AffineApplyExpander(builder, op);
   return expander.visit(expr);
 }
 
-bool mlir::expandAffineApply(AffineApplyOp &op) {
-  FuncBuilder builder(op.getOperation());
-  builder.setInsertionPoint(op.getOperation());
-  auto affineMap = op.getAffineMap();
+bool mlir::expandAffineApply(AffineApplyOp *op) {
+  if (!op)
+    return true;
+
+  FuncBuilder builder(op->getOperation());
+  auto affineMap = op->getAffineMap();
   for (auto numberedExpr : llvm::enumerate(affineMap.getResults())) {
-    SSAValue *expanded = expandAffineExpr(builder, numberedExpr.value(), op);
+    SSAValue *expanded = expandAffineExpr(&builder, numberedExpr.value(), op);
     if (!expanded)
       return true;
-    op.getResult(numberedExpr.index())->replaceAllUsesWith(expanded);
+    op->getResult(numberedExpr.index())->replaceAllUsesWith(expanded);
   }
-  op.erase();
+  op->erase();
   return false;
 }

@@ -1,4 +1,4 @@
-//===- Deaffinator.cpp - Convert affine_apply to primitives -----*- C++ -*-===//
+//===- LowerAffineApply.cpp - Convert affine_apply to primitives ----------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -33,9 +33,9 @@ using namespace mlir;
 
 namespace {
 
-struct Deaffinator : public FunctionPass {
+struct LowerAffineApply : public FunctionPass {
 
-  explicit Deaffinator() : FunctionPass(&Deaffinator::passID) {}
+  explicit LowerAffineApply() : FunctionPass(&LowerAffineApply::passID) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
   PassResult runOnCFGFunction(CFGFunction *f) override;
@@ -45,26 +45,26 @@ struct Deaffinator : public FunctionPass {
 
 } // end anonymous namespace
 
-char Deaffinator::passID = 0;
+char LowerAffineApply::passID = 0;
 
-PassResult Deaffinator::runOnMLFunction(MLFunction *f) {
+PassResult LowerAffineApply::runOnMLFunction(MLFunction *f) {
   f->emitError("ML Functions contain syntactically hidden affine_apply's that "
                "cannot be expanded");
   return failure();
 }
 
-PassResult Deaffinator::runOnCFGFunction(CFGFunction *f) {
+PassResult LowerAffineApply::runOnCFGFunction(CFGFunction *f) {
   for (BasicBlock &bb : *f) {
     // Handle iterators with care because we erase in the same loop.
     // In particular, step to the next element before erasing the current one.
     for (auto it = bb.begin(); it != bb.end();) {
       Instruction &inst = *it;
-      auto affineApplyOp = inst.dyn_cast<AffineApplyOp>();
+      OpPointer<AffineApplyOp> affineApplyOp = inst.dyn_cast<AffineApplyOp>();
       ++it;
 
       if (!affineApplyOp)
         continue;
-      if (expandAffineApply(*affineApplyOp))
+      if (expandAffineApply(&*affineApplyOp))
         return failure();
     }
   }
@@ -72,7 +72,8 @@ PassResult Deaffinator::runOnCFGFunction(CFGFunction *f) {
   return success();
 }
 
-static PassRegistration<Deaffinator>
-    pass("deaffinator", "Decompose affine_applies into primitive operations");
+static PassRegistration<LowerAffineApply>
+    pass("lower-affine-apply",
+         "Decompose affine_applies into primitive operations");
 
-FunctionPass *createDeaffinatorPass() { return new Deaffinator(); }
+FunctionPass *createLowerAffineApplyPass() { return new LowerAffineApply(); }
