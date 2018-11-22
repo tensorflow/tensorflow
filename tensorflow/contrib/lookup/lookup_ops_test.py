@@ -504,9 +504,9 @@ class MutableHashTableOpTest(test.TestCase):
                           msg="Saw shape %s" % exported_values.shape)
       # exported data is in the order of the internal map, i.e. undefined
       sorted_keys = np.sort(exported_keys.eval())
-      sorted_values = np.sort(exported_values.eval())
+      sorted_values = np.sort(exported_values.eval(), axis=0)
       self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
-      self.assertAllEqual([[4, 5], [2, 3], [0, 1]], sorted_values)
+      self.assertAllEqual([[0, 1], [2, 3], [4, 5]], sorted_values)
 
   def testMutableHashTableExportInsert(self):
     with self.cached_session():
