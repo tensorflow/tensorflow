@@ -905,40 +905,46 @@ def make_reduce_tests(reduce_op,
   def f(zip_path):
     """Actual function that generates examples."""
 
-    test_parameters = [{
-        "input_dtype": [tf.float32, tf.int32, tf.int64],
-        "input_shape": [[3, 2, 4]],
-        "axis": [
-            0, 1, 2, [0, 1], [0, 2], [1, 2], [0, 1, 2], [1, 0], [2, 0],
-            [2, 1], [2, 1, 0], [2, 0, 1], -1, -2, -3, [1, -1], [0, -1], [-1, 0],
-            [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
-        ],
-        "const_axis": [True, False],
-        "keepdims": [True, False],
-    }, {
-        "input_dtype": [tf.float32],
-        "input_shape": [[1, 8, 8, 3]],
-        "axis": [
-            0, 1, 2, 3, [1, 2], [0, 3], [1, 2, 3], [0, 1, 2, 3],
-            [3, 2, 1, 0], [3, 1, 0, 2], [2, 0], [3, 0], [3, 1], [1, 0], -1, -2,
-            -3, -4, [0, -2], [2, 3, -1, 0], [3, 1, 2, -3], [3, -4], [2, 2, 2],
-            [2, 2, 3], [-3, -3, -4], [-3, 2, 1]
-        ],
-        "const_axis": [True, False],
-        "keepdims": [True, False],
-    }, {
-        "input_dtype": [tf.float32],
-        "input_shape": [[], [1, 8, 8, 3], [3, 2, 4]],
-        "axis": [[]],   # shape is: [0]
-        "const_axis": [False],
-        "keepdims": [True, False],
-    }, {
-        "input_dtype": [tf.float32],
-        "input_shape": [[], [1, 8, 8, 3], [3, 2, 4]],
-        "axis": [None],  # shape is: []
-        "const_axis": [True],
-        "keepdims": [True, False],
-    }]
+    test_parameters = [
+        {
+            "input_dtype": [tf.float32, tf.int32, tf.int64],
+            "input_shape": [[3, 3, 2, 4]],
+            "axis": [
+                0, 1, 2, [0, 1], [0, 2], [1, 2], [0, 1, 2], [1, 0], [2, 0],
+                [2, 1], [2, 1, 0], [2, 0, 1], -1, -2, -3, [1, -1], [0, -1],
+                [-1, 0], [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
+            ],
+            "const_axis": [True, False],
+            "keepdims": [True, False],
+        },
+        {
+            "input_dtype": [tf.float32],
+            "input_shape": [[1, 8, 8, 3]],
+            "axis": [
+                0, 1, 2, 3, [1, 2], [0, 3], [1, 2, 3], [0, 1, 2,
+                                                        3], [3, 2, 1, 0],
+                [3, 1, 0, 2], [2, 0], [3, 0], [3, 1], [1, 0], -1, -2, -3, -4,
+                [0, -2], [2, 3, -1, 0], [3, 1, 2, -3], [3, -4], [2, 2, 2],
+                [2, 2, 3], [-3, -3, -4], [-3, 2, 1]
+            ],
+            "const_axis": [True, False],
+            "keepdims": [True, False],
+        },
+        {
+            "input_dtype": [tf.float32],
+            "input_shape": [[], [1, 8, 8, 3], [3, 2, 4]],
+            "axis": [[]],  # shape is: [0]
+            "const_axis": [False],
+            "keepdims": [True, False],
+        },
+        {
+            "input_dtype": [tf.float32],
+            "input_shape": [[], [1, 8, 8, 3], [3, 2, 4]],
+            "axis": [None],  # shape is: []
+            "const_axis": [True],
+            "keepdims": [True, False],
+        }
+    ]
 
     def build_graph(parameters):
       """Build the mean op testing graph."""
