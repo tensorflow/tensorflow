@@ -676,7 +676,8 @@ class Mean(Metric):
     update_total_op = state_ops.assign_add(self.total, values)
     with ops.control_dependencies([update_total_op]):
       update_count_op = state_ops.assign_add(self.count, num_values)
-      return ops.convert_to_tensor(update_count_op)
+      with ops.control_dependencies([update_count_op]):
+        return control_flow_ops.no_op()
 
   def result(self):
     return math_ops.div_no_nan(self.total, self.count)
