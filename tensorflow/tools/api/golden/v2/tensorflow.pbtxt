@@ -221,10 +221,6 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
-    name: "gfile"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "glorot_uniform_initializer"
     mtype: "<type \'type\'>"
   }

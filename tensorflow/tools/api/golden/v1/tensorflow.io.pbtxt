@@ -44,6 +44,10 @@ tf_module {
     name: "VarLenFeature"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "gfile"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "decode_and_crop_jpeg"
     argspec: "args=[\'contents\', \'crop_window\', \'channels\', \'ratio\', \'fancy_upscaling\', \'try_recover_truncated\', \'acceptable_fraction\', \'dct_method\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \'True\', \'False\', \'1\', \'\', \'None\'], "
