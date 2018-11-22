@@ -169,6 +169,27 @@ class CategoricalTest(xla_test.XLATestCase):
           for s1, v1 in values:
             self.assertEqual(s0 == s1, np.all(v0 == v1))
 
+  def testEmpty(self):
+    with self.cached_session() as sess:
+      with self.test_scope():
+        x = random_ops.multinomial(
+            array_ops.zeros([42, 40]), 0, output_dtype=dtypes.int32)
+        y = sess.run(x)
+        self.assertEqual(y.shape, (42, 0))
+
+  def testEmptyStateless(self):
+    with self.cached_session() as sess:
+      with self.test_scope():
+        seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
+        x = stateless_random_ops.stateless_multinomial(
+            array_ops.zeros([42, 40]),
+            0,
+            seed=seed_t,
+            output_dtype=dtypes.int32)
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+        self.assertEqual(y.shape, (42, 0))
+
+
 
 if __name__ == '__main__':
   googletest.main()
