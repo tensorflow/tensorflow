@@ -328,6 +328,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # IMPORTANT: order here should correspond to OLD argument order.
     # We just prepend "arg_name=" to all arguments in function calls.
     self.function_reorders = {
+        "tf.io.serialize_sparse": ["sp_input", "name", "out_type"],
+        "tf.io.serialize_many_sparse": ["sp_input", "name", "out_type"],
         "tf.argmax": ["input", "axis", "name", "dimension", "output_type"],
         "tf.argmin": ["input", "axis", "name", "dimension", "output_type"],
         "tf.batch_to_space": ["input", "crops", "block_size", "name"],

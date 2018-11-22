@@ -1849,8 +1849,7 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
         dense_shape=sp_input.dense_shape), empty_row_indicator)
 
 
-@tf_export(
-    "io.serialize_sparse", v1=["io.serialize_sparse", "serialize_sparse"])
+@tf_export(v1=["io.serialize_sparse", "serialize_sparse"])
 @deprecation.deprecated_endpoints("serialize_sparse")
 def serialize_sparse(sp_input, name=None, out_type=dtypes.string):
   """Serialize a `SparseTensor` into a 3-vector (1-D `Tensor`) object.
@@ -1859,6 +1858,25 @@ def serialize_sparse(sp_input, name=None, out_type=dtypes.string):
     sp_input: The input `SparseTensor`.
     name: A name prefix for the returned tensors (optional).
     out_type: The `dtype` to use for serialization.
+
+  Returns:
+    A 3-vector (1-D `Tensor`), with each column representing the serialized
+    `SparseTensor`'s indices, values, and shape (respectively).
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+  """
+  return serialize_sparse_v2(sp_input, out_type, name)
+
+
+@tf_export("io.serialize_sparse", v1=[])
+def serialize_sparse_v2(sp_input, out_type=dtypes.string, name=None):
+  """Serialize a `SparseTensor` into a 3-vector (1-D `Tensor`) object.
+
+  Args:
+    sp_input: The input `SparseTensor`.
+    out_type: The `dtype` to use for serialization.
+    name: A name prefix for the returned tensors (optional).
 
   Returns:
     A 3-vector (1-D `Tensor`), with each column representing the serialized
@@ -1877,9 +1895,7 @@ def serialize_sparse(sp_input, name=None, out_type=dtypes.string):
       out_type=out_type)
 
 
-@tf_export(
-    "io.serialize_many_sparse",
-    v1=["io.serialize_many_sparse", "serialize_many_sparse"])
+@tf_export(v1=["io.serialize_many_sparse", "serialize_many_sparse"])
 @deprecation.deprecated_endpoints("serialize_many_sparse")
 def serialize_many_sparse(sp_input, name=None, out_type=dtypes.string):
   """Serialize `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor`.
@@ -1896,6 +1912,34 @@ def serialize_many_sparse(sp_input, name=None, out_type=dtypes.string):
     sp_input: The input rank `R` `SparseTensor`.
     name: A name prefix for the returned tensors (optional).
     out_type: The `dtype` to use for serialization.
+
+  Returns:
+    A matrix (2-D `Tensor`) with `N` rows and `3` columns. Each column
+    represents serialized `SparseTensor`'s indices, values, and shape
+    (respectively).
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+  """
+  return serialize_many_sparse_v2(sp_input, out_type, name)
+
+
+@tf_export("io.serialize_many_sparse", v1=[])
+def serialize_many_sparse_v2(sp_input, out_type=dtypes.string, name=None):
+  """Serialize `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor`.
+
+  The `SparseTensor` must have rank `R` greater than 1, and the first dimension
+  is treated as the minibatch dimension.  Elements of the `SparseTensor`
+  must be sorted in increasing order of this first dimension.  The serialized
+  `SparseTensor` objects going into each row of the output `Tensor` will have
+  rank `R-1`.
+
+  The minibatch size `N` is extracted from `sparse_shape[0]`.
+
+  Args:
+    sp_input: The input rank `R` `SparseTensor`.
+    out_type: The `dtype` to use for serialization.
+    name: A name prefix for the returned tensors (optional).
 
   Returns:
     A matrix (2-D `Tensor`) with `N` rows and `3` columns. Each column
