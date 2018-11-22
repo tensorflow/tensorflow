@@ -3133,11 +3133,6 @@ void Converter::RegisterOpConverters() {
   op_registry_["Softmax"] = ConvertSoftmax;
   op_registry_["BatchMatMul"] = ConvertBatchMatMul;
   op_registry_["TopKV2"] = ConvertTopK;
-  op_registry_["Relu6"] = ConvertRelu6;
-  op_registry_["QuantizeAndDequantizeV2"] = ConvertQuantize;
-  op_registry_["QuantizeAndDequantizeV3"] = ConvertQuantize;
-  op_registry_["FakeQuantWithMinMaxVars"] = ConvertQuantize;
-  op_registry_["FakeQuantWithMinMaxArgs"] = ConvertQuantize;
 
   plugin_converter_ = ConvertPlugin;
 }
