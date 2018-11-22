@@ -2769,30 +2769,6 @@ class MapDataset(UnaryDataset):
     return "Dataset.map()"
 
 
-class MatchingFilesDataset(DatasetSource):
-  """A `Dataset` that list the files according to the input patterns."""
-
-  def __init__(self, patterns):
-    super(MatchingFilesDataset, self).__init__()
-    self._patterns = ops.convert_to_tensor(
-        patterns, dtype=dtypes.string, name="patterns")
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.matching_files_dataset(self._patterns)
-
-  @property
-  def output_classes(self):
-    return ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
-
-  @property
-  def output_types(self):
-    return dtypes.string
-
-
 class ParallelMapDataset(MapDataset):
   """A `Dataset` that maps a function over elements in its input in parallel."""
 

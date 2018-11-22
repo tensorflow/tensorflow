@@ -361,6 +361,7 @@ py_test(
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:matching_files",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
