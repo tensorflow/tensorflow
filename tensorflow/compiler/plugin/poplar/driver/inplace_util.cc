@@ -29,27 +29,35 @@ bool IsNotDependencyOfPeers(HloInstruction* inplace,
                             HloReachabilityMap* reachability_map,
                             std::vector<HloInstruction*>& added_dependencies) {
   HloComputation* comp = inplace->parent();
-  // Verify that inplace is not a dependency of any of the peers (cond 3b).
   for (auto* peer : inplace_parent->users()) {
     if (peer == inplace) {
       continue;
     }
-
-    // If peer is a depenency of inplace, this can't be inplace
-    if (reachability_map->IsReachable(inplace, peer)) {
-      return false;
+    if (inplace->opcode() == HloOpcode::kGetTupleElement) {
+      // Special case for GTE - it's not a dependency if all other users of
+      // parent are GTEs and there is no other GTE with the same GTE index.
+      if (peer->opcode() != HloOpcode::kGetTupleElement) {
+        return false;
+      }
+      if (peer->tuple_index() == inplace->tuple_index()) {
+        return false;
+      }
     } else {
-      // If there already wasn't a control depdenency then insert it
-      if (!reachability_map->IsReachable(peer, inplace)) {
-        peer->AddControlDependencyTo(inplace);
-        comp->UpdateReachabilityThroughInstruction(inplace, reachability_map);
-        added_dependencies.push_back(peer);
+      if (reachability_map->IsReachable(inplace, peer)) {
+        return false;
+      } else {
+        // If there already wasn't a control dependency then insert it
+        if (!reachability_map->IsReachable(peer, inplace)) {
+          peer->AddControlDependencyTo(inplace);
+          comp->UpdateReachabilityThroughInstruction(inplace, reachability_map);
+          added_dependencies.push_back(peer);
+        }
       }
     }
   }
   return true;
 }
-}
+}  // namespace
 
 HloInstructionDescription::HloInstructionDescription() {}
 bool HloInstructionDescription::IsInPlaceType(const HloInstruction*) {

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -136,18 +135,18 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
     // For each route in map
     for (auto& r : routes) {
       for (auto& inst : r.second) {
-        if (!InplaceUtil::IsInPlace(inst, annotations_,
-                                    reachability_map.get())) {
-          continue;
-        }
         switch (inst->opcode()) {
           case HloOpcode::kAdd:
+          case HloOpcode::kCall:
           case HloOpcode::kDynamicUpdateSlice:
+          case HloOpcode::kGetTupleElement:
           case HloOpcode::kMultiply:
           case HloOpcode::kSubtract:
-          case HloOpcode::kCall:
-            annotations_.inplace_instructions.insert(inst);
-            changed = true;
+            if (InplaceUtil::IsInPlace(inst, annotations_,
+                                       reachability_map.get())) {
+              annotations_.inplace_instructions.insert(inst);
+              changed = true;
+            }
           default:
             break;
         }
@@ -163,8 +162,21 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
       }
 
       switch (inst->opcode()) {
+        case HloOpcode::kBitcast:
+        case HloOpcode::kBroadcast:
         case HloOpcode::kCall:
+        case HloOpcode::kConcatenate:
         case HloOpcode::kCustomCall:
+        case HloOpcode::kDynamicUpdateSlice:
+        case HloOpcode::kFusion:
+        case HloOpcode::kGetTupleElement:
+        case HloOpcode::kMap:
+        case HloOpcode::kReshape:
+        case HloOpcode::kSlice:
+        case HloOpcode::kSort:
+        case HloOpcode::kTranspose:
+        case HloOpcode::kTuple:
+        case HloOpcode::kPad:
           inplace_instructions_queue.push_front(inst);
           break;
         case HloOpcode::kAdd:
