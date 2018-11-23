@@ -47,13 +47,6 @@ unittest_main = main
 # directory only once per test binary invocation.
 _googletest_temp_dir = ''
 
-_os_exit = sys.exit
-
-
-def SetOSExit(exit_func):
-  global _os_exit
-  _os_exit = exit_func
-
 
 # pylint: disable=invalid-name
 # pylint: disable=undefined-variable
@@ -68,7 +61,7 @@ def g_main(argv):
       except IOError:
         sys.stderr.write('Error opening TEST_SHARD_STATUS_FILE (%s). Exiting.'
                          % os.environ['TEST_SHARD_STATUS_FILE'])
-        _os_exit(1)
+        sys.exit(1)
     finally:
       if f is not None: f.close()
 
