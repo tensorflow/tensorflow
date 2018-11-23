@@ -1649,7 +1649,7 @@ REGISTER_OP("_MklPadWithConv2D")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("Tpaddings: {int32, int64} = DT_INT32")
-    .SetShapeFn(shape_inference::Conv2DShape) 
+    .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
 MKL version of Pad and Conv2D operator. Uses MKL DNN APIs to perform
 Pad and 2D convolution to the output of convolution.
@@ -2158,7 +2158,6 @@ on the input.
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
-
 
 REGISTER_OP("_MklAvgPool3DGrad")
     .Input("orig_input_shape: int32")
