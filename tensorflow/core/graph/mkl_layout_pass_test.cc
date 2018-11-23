@@ -490,7 +490,6 @@ TEST_F(MklLayoutPassTest, NodeRewrite_DepthwiseConv2dNative_Basic) {
       "node { name: 'C' op: 'DepthwiseConv2dNative'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
       " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
