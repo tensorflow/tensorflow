@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MKL_CONV_OPS_H_
 
 #include <limits>
-#include <vector>
 #include <memory>
+#include <vector>
 
 #include "mkldnn.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -538,18 +538,17 @@ class MklConvBackpropCommonOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     int stride_n = GetTensorDim(strides_, data_format_, 'N');
     int stride_c = GetTensorDim(strides_, data_format_, 'C');
-    OP_REQUIRES(context, (stride_n == 1 && stride_c == 1),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "strides in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context, (stride_n == 1 && stride_c == 1),
+        errors::InvalidArgument("Current implementation does not yet support "
+                                "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
 
     if (strides_.size() == 4) {
       // Check Conv2D dilations
       OP_REQUIRES(context, dilations_.size() == 4,
-                  errors::InvalidArgument(
-                      "Sliding window dilations field must "
-                      "specify 4 dimensions"));
+                  errors::InvalidArgument("Sliding window dilations field must "
+                                          "specify 4 dimensions"));
       int dilation_n = GetTensorDim(dilations_, data_format_, 'N');
       int dilation_c = GetTensorDim(dilations_, data_format_, 'C');
       int dilation_h = GetTensorDim(dilations_, data_format_, 'H');
@@ -587,9 +586,9 @@ class MklDummyOp : public OpKernel {
   explicit MklDummyOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    TF_CHECK_OK(errors::Unimplemented(
-        "This is a dummy op."
-        "It should not have been invoked."));
+    TF_CHECK_OK(
+        errors::Unimplemented("This is a dummy op."
+                              "It should not have been invoked."));
   }
 };
 

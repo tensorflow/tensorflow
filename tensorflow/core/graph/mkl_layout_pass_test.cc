@@ -496,13 +496,13 @@ TEST_F(MklLayoutPassTest, NodeRewrite_DepthwiseConv2dNative_Basic) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(_MklDepthwiseConv2dNative);D(Zeta);DMT/_0(Const);"
-            "DMT/_1(Const)|A->C;A:control->DMT/_0:control;"
-            "A:control->DMT/_1:control;B->C:1;B->D;C->D:1;DMT/_0->C:2;"
-            "DMT/_1->C:3");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);B(Input);C(_MklDepthwiseConv2dNative);D(Zeta);DMT/_0(Const);"
+      "DMT/_1(Const)|A->C;A:control->DMT/_0:control;"
+      "A:control->DMT/_1:control;B->C:1;B->D;C->D:1;DMT/_0->C:2;"
+      "DMT/_1->C:3");
 }
-
 
 // 2 Conv2D Ops in sequence. Both should get transformed and 1st Conv2D will
 // have 2 outputs, both of which will be inputs to next Conv2D.
