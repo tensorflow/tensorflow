@@ -54,7 +54,7 @@ class CastOpTest(test.TestCase):
       return None
 
   def _cast(self, x, dtype, use_gpu=False):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       val = constant_op.constant(x, self._toDataType(np.array([x]).dtype))
       return math_ops.cast(val, self._toDataType(dtype), name="cast").eval()
 
@@ -105,12 +105,12 @@ class CastOpTest(test.TestCase):
 
   def testBfloat16(self):
     a = np.random.uniform(-100, 100, 100).astype(np.float32)
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
-      self.assertAllClose(a, b.eval(), rtol=1 / 128.)
-    with self.test_session(use_gpu=True):
+      self.assertAllClose(a, self.evaluate(b), rtol=1 / 128.)
+    with self.cached_session(use_gpu=True):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
-      self.assertAllClose(a, b.eval(), rtol=1 / 128.)
+      self.assertAllClose(a, self.evaluate(b), rtol=1 / 128.)
 
   def testRandom(self):
     self._testAll(np.random.normal(0, 10, 210).reshape([2, 3, 5, 7]))
@@ -187,7 +187,7 @@ class CastOpTest(test.TestCase):
       y = variables.Variable(True, dtype=dtypes.bool)
       cast = math_ops.cast(y, x.dtype)
       variables.global_variables_initializer().run()
-      self.assertEqual(1.0, sess.run(cast))
+      self.assertEqual(1.0, self.evaluate(cast))
 
   def testGradients(self):
     t = [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]

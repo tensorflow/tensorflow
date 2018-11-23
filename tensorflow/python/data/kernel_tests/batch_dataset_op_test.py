@@ -93,13 +93,13 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           })
       num_full_batches = (count * 7) // batch_size
       for i in range(num_full_batches):
-        result = sess.run(get_next)
+        result = self.evaluate(get_next)
         for component, result_component in zip(components, result):
           for j in range(batch_size):
             self.assertAllEqual(component[(i * batch_size + j) % 7]**2,
                                 result_component[j])
       if not drop_remainder and (count * 7) % batch_size > 0:
-        result = sess.run(get_next)
+        result = self.evaluate(get_next)
         for component, result_component in zip(components, result):
           for j in range((count * 7) % batch_size):
             self.assertAllEqual(
@@ -128,9 +128,9 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(2):
-        actual = sess.run(get_next)
+        actual = self.evaluate(get_next)
         expected = sparse_tensor.SparseTensorValue(
             indices=[[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],
             values=[i * 5, i * 5 + 1, i * 5 + 2, i * 5 + 3, i * 5 + 4],
@@ -155,9 +155,9 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(2):
-        actual = sess.run(get_next)
+        actual = self.evaluate(get_next)
         expected_indices = []
         expected_values = []
         for j in range(5):
@@ -185,8 +185,8 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      actual = sess.run(get_next)
+      self.evaluate(init_op)
+      actual = self.evaluate(get_next)
       expected = sparse_tensor.SparseTensorValue(
           indices=[[0, 0, 0], [0, 1, 0], [0, 2, 0], [0, 3, 0], [0, 4, 0],
                    [1, 0, 0], [1, 1, 0], [1, 2, 0], [1, 3, 0], [1, 4, 0]],
@@ -211,7 +211,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
           r'Cannot batch tensors with different shapes in component 0. '
@@ -271,7 +271,7 @@ class PaddedBatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       num_full_batches = len(seq_lens) // batch_size
 
       for i in range(num_full_batches):
-        result = sess.run(get_next)
+        result = self.evaluate(get_next)
         padded_len = padded_shapes[0]
         if padded_len is None or padded_len == -1:
           padded_len = np.max(result) if result.size > 0 else 0
@@ -283,7 +283,7 @@ class PaddedBatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                               [0] * (padded_len - seq_len))
 
       if not drop_remainder and len(seq_lens) % batch_size > 0:
-        result = sess.run(get_next)
+        result = self.evaluate(get_next)
         padded_len = np.max(result) if result.size > 0 else 0
         self.assertEqual((len(seq_lens) % batch_size, padded_len),
                          result.shape)
@@ -315,7 +315,7 @@ class PaddedBatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      result = sess.run(get_next)
+      result = self.evaluate(get_next)
       self.assertAllEqual([[], [], [], []], result)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -347,7 +347,7 @@ class PaddedBatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
               seq_lens: random_seq_lens
           })
       for i in range(8):
-        result = sess.run(get_next)
+        result = self.evaluate(get_next)
         padded_len = np.max(result[0])
         self.assertEqual((4, padded_len), result[0].shape)
         self.assertEqual((4, padded_len), result[1].shape)
@@ -453,7 +453,8 @@ class PaddedBatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           5, padded_shapes=shape_as_tensor)
 
     with self.assertRaisesRegexp(
-        ValueError, r'The padded shape \(\?, \?\) is not compatible with the '
+        ValueError,
+        r'The padded shape \((\?|None), (\?|None)\) is not compatible with the '
         r'corresponding input component shape \(\).'):
       shape_as_tensor = array_ops.placeholder(dtypes.int64, shape=[2])
       _ = dataset_ops.Dataset.range(10).padded_batch(

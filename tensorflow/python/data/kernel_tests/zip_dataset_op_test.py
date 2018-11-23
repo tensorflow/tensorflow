@@ -55,7 +55,7 @@ class ZipDatasetTest(test_base.DatasetTestBase):
       sess.run(init_op, feed_dict={ph: value for ph, value in zip(
           component_placeholders, equal_length_components)})
       for i in range(4):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(
             equal_length_components, results):
           self.assertAllEqual(component[i], result_component)
@@ -66,7 +66,7 @@ class ZipDatasetTest(test_base.DatasetTestBase):
       sess.run(init_op, feed_dict={ph: value for ph, value in zip(
           component_placeholders, variable_length_components)})
       for i in range(2):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(
             variable_length_components, results):
           self.assertAllEqual(component[i], result_component)
@@ -103,7 +103,7 @@ class ZipDatasetTest(test_base.DatasetTestBase):
       sess.run(init_op, feed_dict={ph: value for ph, value in zip(
           component_placeholders, equal_length_components)})
       for i in range(4):
-        result1, (result2, result3) = sess.run(get_next)
+        result1, (result2, result3) = self.evaluate(get_next)
         self.assertAllEqual(equal_length_components[0][i], result1)
         self.assertAllEqual(equal_length_components[1][i], result2)
         self.assertAllEqual(equal_length_components[2][i], result3)

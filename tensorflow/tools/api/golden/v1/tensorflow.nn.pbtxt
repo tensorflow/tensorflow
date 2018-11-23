@@ -73,6 +73,10 @@ tf_module {
     argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'[1, 1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
+    name: "conv3d_backprop_filter"
+    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'[1, 1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
     name: "conv3d_backprop_filter_v2"
     argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'[1, 1, 1, 1, 1]\', \'None\'], "
   }
@@ -93,6 +97,10 @@ tf_module {
     argspec: "args=[\'inputs\', \'sequence_length\', \'beam_width\', \'top_paths\', \'merge_repeated\'], varargs=None, keywords=None, defaults=[\'100\', \'1\', \'True\'], "
   }
   member_method {
+    name: "ctc_beam_search_decoder_v2"
+    argspec: "args=[\'inputs\', \'sequence_length\', \'beam_width\', \'top_paths\'], varargs=None, keywords=None, defaults=[\'100\', \'1\'], "
+  }
+  member_method {
     name: "ctc_greedy_decoder"
     argspec: "args=[\'inputs\', \'sequence_length\', \'merge_repeated\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }
@@ -107,6 +115,14 @@ tf_module {
   member_method {
     name: "depthwise_conv2d"
     argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'rate\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "depthwise_conv2d_backprop_filter"
+    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
+    name: "depthwise_conv2d_backprop_input"
+    argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "depthwise_conv2d_native"
@@ -298,7 +314,7 @@ tf_module {
   }
   member_method {
     name: "softmax_cross_entropy_with_logits_v2"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'-1\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "softplus"

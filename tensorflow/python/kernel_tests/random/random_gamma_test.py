@@ -43,12 +43,12 @@ class RandomGammaTest(test.TestCase):
   def _Sampler(self, num, alpha, beta, dtype, use_gpu, seed=None):
 
     def func():
-      with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
+      with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
         rng = random_ops.random_gamma(
             [num], alpha, beta=beta, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
         for i in xrange(10):
-          ret[i, :] = sess.run(rng)
+          ret[i, :] = self.evaluate(rng)
       return ret
 
     return func
@@ -216,7 +216,7 @@ class RandomGammaTest(test.TestCase):
     """
     for dtype in dtypes.float16, dtypes.float32, dtypes.float64:
       for use_gpu in [False, True]:
-        with self.test_session(use_gpu=use_gpu):
+        with self.cached_session(use_gpu=use_gpu):
           rnd1 = random_ops.random_gamma([24], 2.0, dtype=dtype)
           rnd2 = random_ops.random_gamma([24], 2.0, dtype=dtype)
           diff = rnd2 - rnd1

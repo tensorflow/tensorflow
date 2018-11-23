@@ -74,4 +74,4 @@ class BaseBeamScorer {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SCORER_H_
-// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_beam_scorer.h)
+// LINT.ThenChange(//tensorflow/lite/experimental/kernels/ctc_beam_scorer.h)

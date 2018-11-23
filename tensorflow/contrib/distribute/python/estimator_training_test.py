@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import glob
 import json
 import os
@@ -27,6 +28,7 @@ import threading
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import multi_worker_test_base
@@ -43,11 +45,13 @@ from tensorflow.python.estimator import training as estimator_training
 from tensorflow.python.estimator.canned import dnn_linear_combined
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export as export_lib
-from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import session_manager
+
 
 BATCH_SIZE = 10
 LABEL_DIMENSION = 2
@@ -139,6 +143,8 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
   def _extract_loss_and_global_step(self, event_folder):
     """Returns the loss and global step in last event."""
     event_paths = glob.glob(os.path.join(event_folder, "events*"))
+    self.assertGreater(len(event_paths), 0,
+                       msg="Event file not found in dir %s" % event_folder)
 
     loss = None
     global_step_count = None
@@ -189,7 +195,8 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
   def _complete_flow(self,
                      train_distribute,
                      eval_distribute,
-                     remote_cluster=None):
+                     remote_cluster=None,
+                     use_train_and_evaluate=True):
     estimator = self._get_estimator(train_distribute, eval_distribute,
                                     remote_cluster)
 
@@ -214,16 +221,37 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
     ]
     feature_columns = linear_feature_columns + dnn_feature_columns
 
-    estimator_training.train_and_evaluate(
-        estimator,
-        estimator_training.TrainSpec(train_input_fn, max_steps=MAX_STEPS),
-        estimator_training.EvalSpec(
-            name=EVAL_NAME,
-            input_fn=eval_input_fn,
-            steps=None,
-            exporters=self._get_exporter(EXPORTER_NAME, feature_columns),
-            start_delay_secs=0,
-            throttle_secs=1))
+    eval_spec = estimator_training.EvalSpec(
+        name=EVAL_NAME,
+        input_fn=eval_input_fn,
+        steps=None,
+        exporters=self._get_exporter(EXPORTER_NAME, feature_columns),
+        start_delay_secs=0,
+        throttle_secs=1)
+
+    if use_train_and_evaluate:
+      estimator_training.train_and_evaluate(
+          estimator,
+          estimator_training.TrainSpec(train_input_fn, max_steps=MAX_STEPS),
+          eval_spec)
+    else:
+      estimator.train(train_input_fn, max_steps=MAX_STEPS)
+
+      latest_ckpt_path = estimator.latest_checkpoint()
+      metrics = estimator.evaluate(eval_input_fn,
+                                   checkpoint_path=latest_ckpt_path,
+                                   name=EVAL_NAME)
+
+      # Export the eval result to files.
+      eval_result = estimator_training._EvalResult(
+          status=estimator_training._EvalStatus.EVALUATED,
+          metrics=metrics,
+          checkpoint_path=latest_ckpt_path)
+      evaluator = estimator_training._TrainingExecutor._Evaluator(estimator,
+                                                                  eval_spec,
+                                                                  None)
+      evaluator._export_eval_result(eval_result, True)
+
     return estimator
 
   def _inspect_train_and_eval_events(self, estimator):
@@ -263,28 +291,68 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
       combinations.combine(
           mode=["graph"],
           train_distribute_cls=[
+              collective_all_reduce_strategy.CollectiveAllReduceStrategy,
               mirrored_strategy.MirroredStrategy,
+              mirrored_strategy.CoreMirroredStrategy,
               parameter_server_strategy.ParameterServerStrategy
           ],
           eval_distribute_cls=[
-              None, mirrored_strategy.MirroredStrategy,
-              parameter_server_strategy.ParameterServerStrategy
+              None,
+              mirrored_strategy.MirroredStrategy,
+              mirrored_strategy.CoreMirroredStrategy,
+              parameter_server_strategy.ParameterServerStrategy,
           ],
-          required_gpus=1))
+          required_gpus=[0, 1]))
   def test_complete_flow_standalone_client(self, train_distribute_cls,
                                            eval_distribute_cls):
-    try:
-      train_distribute = train_distribute_cls(num_gpus=context.num_gpus())
-    except TypeError:
-      train_distribute = train_distribute_cls(num_gpus_per_worker=2)
+    train_distribute = train_distribute_cls(
+        num_gpus_per_worker=context.num_gpus())
 
     if eval_distribute_cls:
-      eval_distribute = eval_distribute_cls()
+      eval_distribute = eval_distribute_cls(
+          num_gpus_per_worker=context.num_gpus())
     else:
       eval_distribute = None
 
+    cluster_spec = copy.deepcopy(self._cluster_spec)
+    if (train_distribute_cls !=
+        parameter_server_strategy.ParameterServerStrategy):
+      cluster_spec.pop("ps", None)
+    estimator = self._complete_flow(train_distribute, eval_distribute,
+                                    cluster_spec)
+    self._inspect_train_and_eval_events(estimator)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["graph"],
+          train_distribute_cls=[
+              mirrored_strategy.MirroredStrategy,
+              mirrored_strategy.CoreMirroredStrategy,
+          ],
+          eval_distribute_cls=[
+              None,
+              mirrored_strategy.MirroredStrategy,
+              mirrored_strategy.CoreMirroredStrategy,
+          ],
+          required_gpus=[0, 1]))
+  def test_estimator_standalone_client(self, train_distribute_cls,
+                                       eval_distribute_cls):
+    train_distribute = train_distribute_cls(
+        num_gpus_per_worker=context.num_gpus())
+
+    if eval_distribute_cls:
+      eval_distribute = eval_distribute_cls(
+          num_gpus_per_worker=context.num_gpus())
+    else:
+      eval_distribute = None
+
+    # We use the whole cluster for evaluation.
+    cluster = copy.deepcopy(self._cluster_spec)
+    cluster.pop("evaluator", None)
+
     estimator = self._complete_flow(
-        train_distribute, eval_distribute, remote_cluster=self._cluster_spec)
+        train_distribute, eval_distribute, remote_cluster=cluster,
+        use_train_and_evaluate=False)
     self._inspect_train_and_eval_events(estimator)
 
   def _mock_run_std_server(self, *args, **kwargs):
@@ -339,27 +407,41 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
       combinations.combine(
           mode=["graph"],
           train_distribute_cls=[
+              collective_all_reduce_strategy.CollectiveAllReduceStrategy,
               parameter_server_strategy.ParameterServerStrategy,
           ],
           eval_distribute_cls=[
               None, mirrored_strategy.MirroredStrategy,
-              parameter_server_strategy.ParameterServerStrategy
+              mirrored_strategy.CoreMirroredStrategy,
+              parameter_server_strategy.ParameterServerStrategy,
           ],
-          required_gpus=1))
+          required_gpus=[0, 1]))
   def test_complete_flow_indepedent_worker_between_graph(
       self, train_distribute_cls, eval_distribute_cls):
     train_distribute = train_distribute_cls(
         num_gpus_per_worker=context.num_gpus())
 
+    if (context.num_gpus() < 2 and eval_distribute_cls ==
+        collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest("`CollectiveAllReduceStrategy` needs at least two towers.")
+
     if eval_distribute_cls:
-      eval_distribute = eval_distribute_cls()
+      eval_distribute = eval_distribute_cls(
+          num_gpus_per_worker=context.num_gpus())
     else:
       eval_distribute = None
 
-    cluster_spec = multi_worker_test_base.create_cluster_spec(
-        num_workers=3, num_ps=2, has_eval=True)
-    # 3 workers, 2 ps and 1 evaluator.
-    self._barrier = dc._Barrier(6)
+    if (train_distribute_cls == parameter_server_strategy
+        .ParameterServerStrategy):
+      cluster_spec = multi_worker_test_base.create_cluster_spec(
+          num_workers=3, num_ps=2, has_eval=True)
+      # 3 workers, 2 ps and 1 evaluator.
+      self._barrier = dc._Barrier(6)
+    else:
+      cluster_spec = multi_worker_test_base.create_cluster_spec(
+          num_workers=3, num_ps=0, has_eval=True)
+      # 3 workers and 1 evaluator.
+      self._barrier = dc._Barrier(4)
 
     threads = self._run_multiple_tasks_in_threads(
         cluster_spec, train_distribute, eval_distribute)
@@ -375,15 +457,24 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
-          train_distribute_cls=[mirrored_strategy.MirroredStrategy],
-          eval_distribute_cls=[None, mirrored_strategy.MirroredStrategy],
-          required_gpus=1))
+          train_distribute_cls=[
+              mirrored_strategy.MirroredStrategy,
+              mirrored_strategy.CoreMirroredStrategy
+          ],
+          eval_distribute_cls=[
+              None,
+              mirrored_strategy.MirroredStrategy,
+              mirrored_strategy.CoreMirroredStrategy
+          ],
+          required_gpus=[0, 1]))
   def test_complete_flow_indepedent_worker_in_graph(self, train_distribute_cls,
                                                     eval_distribute_cls):
-    train_distribute = train_distribute_cls(num_gpus=context.num_gpus())
+    train_distribute = train_distribute_cls(
+        num_gpus_per_worker=context.num_gpus())
 
     if eval_distribute_cls:
-      eval_distribute = eval_distribute_cls()
+      eval_distribute = eval_distribute_cls(
+          num_gpus_per_worker=context.num_gpus())
     else:
       eval_distribute = None
 
@@ -430,7 +521,8 @@ class RunConfigTest(test.TestCase):
         "os.environ", {"TF_CONFIG": json.dumps(TF_CONFIG_WITHOUT_TASK)}):
       run_config_lib.RunConfig(
           experimental_distribute=DistributeConfig(
-              train_distribute=mirrored_strategy.MirroredStrategy(num_gpus=2)))
+              train_distribute=mirrored_strategy.CoreMirroredStrategy(
+                  num_gpus=2)))
 
   def test_should_run_distribute_coordinator(self):
     """Tests that should_run_distribute_coordinator return a correct value."""
@@ -453,10 +545,12 @@ class RunConfigTest(test.TestCase):
                               {"TF_CONFIG": json.dumps(TF_CONFIG_WITH_CHIEF)}):
       config_with_train_distribute = run_config_lib.RunConfig(
           experimental_distribute=DistributeConfig(
-              train_distribute=mirrored_strategy.MirroredStrategy(num_gpus=2)))
+              train_distribute=mirrored_strategy.CoreMirroredStrategy(
+                  num_gpus=2)))
       config_with_eval_distribute = run_config_lib.RunConfig(
           experimental_distribute=DistributeConfig(
-              eval_distribute=mirrored_strategy.MirroredStrategy(num_gpus=2)))
+              eval_distribute=mirrored_strategy.CoreMirroredStrategy(
+                  num_gpus=2)))
     self.assertTrue(
         dc_training.should_run_distribute_coordinator(
             config_with_train_distribute))
@@ -469,26 +563,27 @@ class RunConfigTest(test.TestCase):
                               {"TF_CONFIG": json.dumps(TF_CONFIG_WITH_MASTER)}):
       config = run_config_lib.RunConfig(
           experimental_distribute=DistributeConfig(
-              train_distribute=mirrored_strategy.MirroredStrategy(num_gpus=2)))
+              train_distribute=mirrored_strategy.CoreMirroredStrategy(
+                  num_gpus=2)))
     self.assertFalse(dc_training.should_run_distribute_coordinator(config))
 
   def test_init_run_config_duplicate_distribute(self):
     with self.assertRaises(ValueError):
       run_config_lib.RunConfig(
-          train_distribute=mirrored_strategy.MirroredStrategy(),
+          train_distribute=mirrored_strategy.CoreMirroredStrategy(),
           experimental_distribute=DistributeConfig(
-              train_distribute=mirrored_strategy.MirroredStrategy()))
+              train_distribute=mirrored_strategy.CoreMirroredStrategy()))
 
     with self.assertRaises(ValueError):
       run_config_lib.RunConfig(
-          eval_distribute=mirrored_strategy.MirroredStrategy(),
+          eval_distribute=mirrored_strategy.CoreMirroredStrategy(),
           experimental_distribute=DistributeConfig(
-              eval_distribute=mirrored_strategy.MirroredStrategy()))
+              eval_distribute=mirrored_strategy.CoreMirroredStrategy()))
 
   def test_init_run_config_none_distribute_coordinator_mode(self):
     # We don't use distribute coordinator for local training.
     config = run_config_lib.RunConfig(
-        train_distribute=mirrored_strategy.MirroredStrategy())
+        train_distribute=mirrored_strategy.CoreMirroredStrategy())
     dc_training.init_run_config(config, {})
     self.assertIsNone(config._distribute_coordinator_mode)
 
@@ -496,7 +591,7 @@ class RunConfigTest(test.TestCase):
     with test.mock.patch.dict("os.environ",
                               {"TF_CONFIG": json.dumps(TF_CONFIG_WITH_MASTER)}):
       config = run_config_lib.RunConfig(
-          train_distribute=mirrored_strategy.MirroredStrategy())
+          train_distribute=mirrored_strategy.CoreMirroredStrategy())
       self.assertIsNone(config._distribute_coordinator_mode)
 
     # When `train_distribute` is not specified, don't use distribute
@@ -512,7 +607,7 @@ class RunConfigTest(test.TestCase):
     with test.mock.patch.dict("os.environ",
                               {"TF_CONFIG": json.dumps(TF_CONFIG_WITH_CHIEF)}):
       config = run_config_lib.RunConfig(
-          train_distribute=mirrored_strategy.MirroredStrategy())
+          train_distribute=mirrored_strategy.CoreMirroredStrategy())
     self.assertEqual(config._distribute_coordinator_mode,
                      dc.CoordinatorMode.INDEPENDENT_WORKER)
 
@@ -521,7 +616,7 @@ class RunConfigTest(test.TestCase):
     # `experimental.remote_cluster` is set use distribute coordinator with
     # STANDALONE_CLIENT mode.
     config = run_config_lib.RunConfig(
-        train_distribute=mirrored_strategy.MirroredStrategy(),
+        train_distribute=mirrored_strategy.CoreMirroredStrategy(),
         experimental_distribute=DistributeConfig(
             remote_cluster={"chief": ["fake_worker"]}))
     self.assertEqual(config._distribute_coordinator_mode,
@@ -529,5 +624,15 @@ class RunConfigTest(test.TestCase):
 
 
 if __name__ == "__main__":
+  # Reduce `recovery_wait_secs` from 30 seconds so the test completes quickly.
+  orig_init = session_manager.SessionManager.__init__
+
+  def new_init(*args, **kwargs):
+    kwargs.pop("recovery_wait_secs", None)
+    kwargs["recovery_wait_secs"] = 0.5
+    orig_init(*args, **kwargs)
+
+  session_manager.SessionManager.__init__ = new_init
+
   with test.mock.patch.object(sys, "exit", os._exit):
     test.main()

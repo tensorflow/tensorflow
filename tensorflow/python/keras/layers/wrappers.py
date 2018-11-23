@@ -29,6 +29,7 @@ from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -229,17 +230,12 @@ class TimeDistributed(Wrapper):
     kwargs = {}
     if generic_utils.has_arg(self.layer.call, 'training'):
       kwargs['training'] = training
-    uses_learning_phase = False  # pylint: disable=redefined-outer-name
 
     input_shape = K.int_shape(inputs)
     if input_shape[0]:
       # batch size matters, use rnn-based implementation
       def step(x, _):
-        global uses_learning_phase  # pylint: disable=global-variable-undefined
         output = self.layer.call(x, **kwargs)
-        if hasattr(output, '_uses_learning_phase'):
-          uses_learning_phase = (output._uses_learning_phase or
-                                 uses_learning_phase)
         return output, []
 
       _, outputs, _ = K.rnn(
@@ -267,8 +263,6 @@ class TimeDistributed(Wrapper):
         inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
         kwargs['mask'] = K.reshape(mask, inner_mask_shape)
       y = self.layer.call(inputs, **kwargs)
-      if hasattr(y, '_uses_learning_phase'):
-        uses_learning_phase = y._uses_learning_phase
       # Shape: (num_samples, timesteps, ...)
       output_shape = self.compute_output_shape(input_shape).as_list()
       output_shape = self._get_shape_tuple(
@@ -280,9 +274,6 @@ class TimeDistributed(Wrapper):
         self.layer.activity_regularizer is not None):
       regularization_loss = self.layer.activity_regularizer(y)
       self.add_loss(regularization_loss, inputs)
-
-    if uses_learning_phase:
-      y._uses_learning_phase = True
     return y
 
   def compute_mask(self, inputs, mask=None):
@@ -398,6 +389,10 @@ class Bidirectional(Wrapper):
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '
                        '{"sum", "mul", "ave", "concat", None}')
+    if getattr(layer, 'zero_output_for_mask', None) is not None:
+      # Force the zero_output_for_mask to be True if it presents.
+      layer.zero_output_for_mask = True
+
     self.forward_layer = copy.copy(layer)
     config = layer.get_config()
     config['go_backwards'] = not config['go_backwards']
@@ -517,7 +512,10 @@ class Bidirectional(Wrapper):
     if is_keras_tensor:
       # Compute the full input spec, including state
       full_input = [inputs] + additional_inputs
-      full_input_spec = self.input_spec + additional_specs
+      # The original input_spec is None since there could be a nested tensor
+      # input. Update the input_spec to match the inputs.
+      full_input_spec = [None for _ in range(len(nest.flatten(inputs)))
+                        ] + additional_specs
 
       # Perform the call with temporarily replaced input_spec
       original_input_spec = self.input_spec
@@ -587,15 +585,9 @@ class Bidirectional(Wrapper):
       output = y * y_rev
     elif self.merge_mode is None:
       output = [y, y_rev]
-
-    # Properly set learning phase
-    if (getattr(y, '_uses_learning_phase', False) or
-        getattr(y_rev, '_uses_learning_phase', False)):
-      if self.merge_mode is None:
-        for out in output:
-          out._uses_learning_phase = True
-      else:
-        output._uses_learning_phase = True
+    else:
+      raise ValueError(
+          'Unrecognized value for `merge_mode`: %s' % (self.merge_mode))
 
     if self.return_state:
       if self.merge_mode is None:

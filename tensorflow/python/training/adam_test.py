@@ -83,23 +83,24 @@ class AdamOptimizerTest(test.TestCase):
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         beta1_power, beta2_power = opt._get_beta_accumulators()
 
         # Run 3 steps of Adam
         for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
+          self.assertAllCloseAccordingToType(0.9**t, self.evaluate(beta1_power))
+          self.assertAllCloseAccordingToType(0.999**t,
+                                             self.evaluate(beta2_power))
           update.run()
 
           var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
           var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
   def testSparse(self):
     self.doTestSparse(use_resource=False)
@@ -109,7 +110,7 @@ class AdamOptimizerTest(test.TestCase):
 
   def testSparseDevicePlacement(self):
     for index_dtype in [dtypes.int32, dtypes.int64]:
-      with self.test_session(force_gpu=test.is_gpu_available()):
+      with self.cached_session(force_gpu=test.is_gpu_available()):
         # If a GPU is available, tests that all optimizer ops can be placed on
         # it (i.e. they have GPU kernels).
         var = variables.Variable([[1.0], [2.0]])
@@ -143,12 +144,12 @@ class AdamOptimizerTest(test.TestCase):
             [(grad_aggregated, aggregated_update_var)])
         variables.global_variables_initializer().run()
         self.assertAllClose(aggregated_update_var.eval(),
-                            repeated_index_update_var.eval())
+                            self.evaluate(repeated_index_update_var))
         for _ in range(3):
           repeated_update.run()
           aggregated_update.run()
           self.assertAllClose(aggregated_update_var.eval(),
-                              repeated_index_update_var.eval())
+                              self.evaluate(repeated_index_update_var))
 
   def doTestBasic(self, use_resource=False, use_callable_params=False):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
@@ -254,23 +255,24 @@ class AdamOptimizerTest(test.TestCase):
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         beta1_power, beta2_power = opt._get_beta_accumulators()
 
         # Run 3 steps of Adam
         for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
+          self.assertAllCloseAccordingToType(0.9**t, self.evaluate(beta1_power))
+          self.assertAllCloseAccordingToType(0.999**t,
+                                             self.evaluate(beta2_power))
           update.run()
 
           var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
           var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -294,13 +296,14 @@ class AdamOptimizerTest(test.TestCase):
         beta1_power, beta2_power = opt._get_beta_accumulators()
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         # Run 3 steps of intertwined Adam1 and Adam2.
         for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
+          self.assertAllCloseAccordingToType(0.9**t, self.evaluate(beta1_power))
+          self.assertAllCloseAccordingToType(0.999**t,
+                                             self.evaluate(beta2_power))
           if t % 2 == 0:
             update1.run()
           else:
@@ -310,8 +313,8 @@ class AdamOptimizerTest(test.TestCase):
           var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
   def testTwoSessions(self):
     optimizer = adam.AdamOptimizer()

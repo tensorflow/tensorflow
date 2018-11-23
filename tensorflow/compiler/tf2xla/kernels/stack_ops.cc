@@ -126,7 +126,9 @@ class StackOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StackOp);
 };
 
-REGISTER_XLA_OP(Name("StackV2").CompileTimeConstInput("max_size"), StackOp);
+REGISTER_XLA_OP(
+    Name("StackV2").CompileTimeConstantInput("max_size").CompilationOnly(),
+    StackOp);
 
 class StackPushOp : public XlaOpKernel {
  public:
@@ -173,7 +175,7 @@ class StackPushOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StackPushOp);
 };
 
-REGISTER_XLA_OP(Name("StackPushV2"), StackPushOp);
+REGISTER_XLA_OP(Name("StackPushV2").CompilationOnly(), StackPushOp);
 
 class StackPopOp : public XlaOpKernel {
  public:
@@ -227,7 +229,7 @@ class StackPopOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StackPopOp);
 };
 
-REGISTER_XLA_OP(Name("StackPopV2"), StackPopOp);
+REGISTER_XLA_OP(Name("StackPopV2").CompilationOnly(), StackPopOp);
 
 class StackCloseOp : public XlaOpKernel {
  public:
@@ -241,7 +243,7 @@ class StackCloseOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StackCloseOp);
 };
 
-REGISTER_XLA_OP(Name("StackCloseV2"), StackCloseOp);
+REGISTER_XLA_OP(Name("StackCloseV2").CompilationOnly(), StackCloseOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

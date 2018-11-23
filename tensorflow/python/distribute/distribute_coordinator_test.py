@@ -47,6 +47,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import monitored_session
+from tensorflow.python.training import session_manager
 
 
 CHIEF = distribute_coordinator._TaskType.CHIEF
@@ -317,9 +318,9 @@ class DistributeCoordinatorTestBase(test.TestCase):
     with ops.device("/job:ps/task:0"):
       # TODO(yuefengz): investigate why not using resource variable will make
       # the test flaky.
-      x = variable_scope.get_variable("x", initializer=10.0, use_resource=True)
+      x = variable_scope.get_variable("xx", initializer=10.0, use_resource=True)
     with ops.device("/job:ps/task:1"):
-      y = variable_scope.get_variable("y", initializer=20.0, use_resource=True)
+      y = variable_scope.get_variable("yy", initializer=20.0, use_resource=True)
 
     x_add = x.assign_add(2.0)
     y_sub = y.assign_sub(2.0)
@@ -930,4 +931,14 @@ class RunStandardTensorflowServerTest(test.TestCase):
 if __name__ == "__main__":
   # TODO(yuefengz): find a smart way to terminite std server threads.
   with test.mock.patch.object(sys, "exit", os._exit):
+    # Reduce `recovery_wait_secs` from 30 seconds so the test completes quickly.
+    orig_init = session_manager.SessionManager.__init__
+
+    def new_init(*args, **kwargs):
+      kwargs.pop("recovery_wait_secs", None)
+      kwargs["recovery_wait_secs"] = 0.5
+      orig_init(*args, **kwargs)
+
+    session_manager.SessionManager.__init__ = new_init
+
     test.main()

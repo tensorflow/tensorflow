@@ -173,6 +173,10 @@ tf_module {
     argspec: "args=[\'image\', \'lower\', \'upper\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "resize"
+    argspec: "args=[\'images\', \'size\', \'method\', \'align_corners\', \'preserve_aspect_ratio\'], varargs=None, keywords=None, defaults=[\'0\', \'False\', \'False\'], "
+  }
+  member_method {
     name: "resize_area"
     argspec: "args=[\'images\', \'size\', \'align_corners\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
@@ -239,6 +243,10 @@ tf_module {
   member_method {
     name: "total_variation"
     argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "transpose"
+    argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "transpose_image"

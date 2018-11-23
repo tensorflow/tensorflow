@@ -52,14 +52,15 @@ Status GdrServer::Init() {
       [this](const WorkerEnv* env) {
         return new GdrRendezvousMgr(env, remote_memory_manager_.get());
       };
-  WorkerCreationFunction worker_func = [this](WorkerEnv* env) {
+  WorkerCreationFunction worker_func = [this](WorkerEnv* env,
+                                              const ConfigProto& config) {
     return std::unique_ptr<GdrWorker>(
-        new GdrWorker(env, remote_memory_manager_.get()));
+        new GdrWorker(env, config, remote_memory_manager_.get()));
   };
-  TF_RETURN_IF_ERROR(
-      GrpcServer::Init(nullptr, rendezvous_mgr_func, nullptr, worker_func));
 
-  return remote_memory_manager_->Init();
+  TF_RETURN_IF_ERROR(remote_memory_manager_->Init());
+
+  return GrpcServer::Init(nullptr, rendezvous_mgr_func, nullptr, worker_func);
 }
 
 Status GdrServer::Start() {

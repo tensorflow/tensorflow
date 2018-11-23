@@ -37,7 +37,7 @@ class SessionOpsTest(test.TestCase):
       b = constant_op.constant(5)
       c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
-      h = sess.run(h)
+      h = self.evaluate(h)
 
       # Feed a tensor handle.
       f, x = session_ops.get_session_tensor(h.handle, dtypes.int32)
@@ -51,7 +51,7 @@ class SessionOpsTest(test.TestCase):
       b = constant_op.constant(5)
       c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
-      h = sess.run(h)
+      h = self.evaluate(h)
 
       # Get the tensor from its handle.
       self.assertEqual(50, h.eval())
@@ -94,7 +94,7 @@ class SessionOpsTest(test.TestCase):
       # Initialize a handle.
       a = constant_op.constant(0)
       h = session_ops.get_session_handle(a)
-      h = sess.run(h)
+      h = self.evaluate(h)
 
       # Do some computation.
       f, x = session_ops.get_session_tensor(h.handle, dtypes.int32)
@@ -111,7 +111,7 @@ class SessionOpsTest(test.TestCase):
       # Initialize a handle.
       a = constant_op.constant(0)
       h = session_ops.get_session_handle(a)
-      h = sess.run(h)
+      h = self.evaluate(h)
 
       # Do some computation.
       f, x = session_ops.get_session_tensor(h.handle, dtypes.int32)
@@ -133,7 +133,7 @@ class SessionOpsTest(test.TestCase):
       b = constant_op.constant(5)
       c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
-      h = sess.run(h)
+      h = self.evaluate(h)
 
       # Feed a tensor handle.
       f, x = session_ops.get_session_tensor(h.handle, dtypes.int32)
@@ -144,7 +144,7 @@ class SessionOpsTest(test.TestCase):
       with ops.device(test.gpu_device_name()):
         a = constant_op.constant(10)
         h = session_ops.get_session_handle(a)
-        h = sess.run(h)
+        h = self.evaluate(h)
         self.assertEqual(100, sess.run(y, feed_dict={f: h.handle}))
 
   def testHandleDelete(self):
@@ -163,7 +163,7 @@ class SessionOpsTest(test.TestCase):
       b = constant_op.constant(5)
       c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
-      h = sess.run(h)
+      h = self.evaluate(h)
 
       # Delete using a raw tensor handle.
       raw_h = h.get_raw_handle()
@@ -219,8 +219,8 @@ class SessionOpsTest(test.TestCase):
       b = constant_op.constant(2.0)
       b_handle_op = session_ops.get_session_handle(b)
 
-      a_handle = sess.run(a_handle_op)
-      b_handle = sess.run(b_handle_op)
+      a_handle = self.evaluate(a_handle_op)
+      b_handle = self.evaluate(b_handle_op)
 
       a_p, a_t = session_ops.get_session_tensor(a_handle.handle, dtypes.float32)
       b_p, b_t = session_ops.get_session_tensor(b_handle.handle, dtypes.float32)
@@ -288,10 +288,10 @@ class SessionOpsTest(test.TestCase):
       a = variables.Variable(12.0)
       inc_a = state_ops.assign_add(a, 2.0)
       b = math_ops.add(a, 5.0)
-      sess.run(a.initializer)
+      self.evaluate(a.initializer)
 
       h_a_read = sess.run(session_ops.get_session_handle(a.read_value()))
-      self.assertAllClose(12.0, sess.run(a))
+      self.assertAllClose(12.0, self.evaluate(a))
 
       self.assertAllClose(17.0, sess.run(b, feed_dict={a: h_a_read}))
       sess.run(inc_a)

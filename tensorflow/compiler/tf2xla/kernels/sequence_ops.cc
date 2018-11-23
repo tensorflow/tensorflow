@@ -30,31 +30,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-template <typename T>
-Status GetValue(int index, XlaOpKernelContext* ctx, T* value) {
-  xla::Literal literal;
-  TF_RETURN_IF_ERROR(ctx->ConstantInput(index, &literal));
-  *value = literal.Get<T>({});
-  return Status::OK();
-}
-
-Status GetIntValue(int index, XlaOpKernelContext* ctx, int64* value) {
-  xla::Literal literal;
-  TF_RETURN_IF_ERROR(ctx->ConstantInput(index, &literal));
-  switch (literal.shape().element_type()) {
-    case xla::S32:
-      *value = literal.Get<int32>({});
-      break;
-    case xla::S64:
-      *value = literal.Get<int64>({});
-      break;
-    default:
-      return errors::InvalidArgument("Invalid argument type for argument",
-                                     index);
-  }
-  return Status::OK();
-}
-
 // The type-specific part of the implementation of Range.
 template <typename T>
 xla::StatusOr<xla::XlaOp> CreateRangeTensor(
@@ -98,13 +73,13 @@ class RangeOp : public XlaOpKernel {
     const TensorShape start_in_shape = ctx->InputShape(0);
     const TensorShape limit_in_shape = ctx->InputShape(1);
     const TensorShape delta_in_shape = ctx->InputShape(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(start_in_shape),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(start_in_shape),
                 errors::InvalidArgument("start must be a scalar, not shape ",
                                         start_in_shape.DebugString()));
-    OP_REQUIRES(ctx, IsLegacyScalar(limit_in_shape),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(limit_in_shape),
                 errors::InvalidArgument("limit must be a scalar, not shape ",
                                         limit_in_shape.DebugString()));
-    OP_REQUIRES(ctx, IsLegacyScalar(delta_in_shape),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(delta_in_shape),
                 errors::InvalidArgument("delta must be a scalar, not shape ",
                                         delta_in_shape.DebugString()));
     xla::Literal start, limit, delta;
@@ -137,9 +112,9 @@ class RangeOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("Range")
-                    .CompileTimeConstInput("start")
-                    .CompileTimeConstInput("limit")
-                    .CompileTimeConstInput("delta"),
+                    .CompileTimeConstantInput("start")
+                    .CompileTimeConstantInput("limit")
+                    .CompileTimeConstantInput("delta"),
                 RangeOp);
 
 class LinSpaceOp : public XlaOpKernel {
@@ -147,9 +122,9 @@ class LinSpaceOp : public XlaOpKernel {
   explicit LinSpaceOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape start_in_shape = ctx->InputShape(0);
-    const TensorShape stop_in_shape = ctx->InputShape(1);
-    const TensorShape num_in_shape = ctx->InputShape(2);
+    const TensorShape start_in_shape = ctx->InputShape("start");
+    const TensorShape stop_in_shape = ctx->InputShape("stop");
+    const TensorShape num_in_shape = ctx->InputShape("num");
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(start_in_shape),
                 errors::InvalidArgument("start must be a scalar, not shape ",
                                         start_in_shape.DebugString()));
@@ -163,16 +138,20 @@ class LinSpaceOp : public XlaOpKernel {
     DataType type = ctx->input_type(0);
 
     int64 num;
-    OP_REQUIRES_OK(ctx, GetIntValue(2, ctx, &num));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("num", &num));
     OP_REQUIRES(ctx, num > 0,
                 errors::InvalidArgument("Requires num > 0: ", num));
     Tensor out_constant(type, TensorShape({num}));
 
+    xla::Literal start_literal;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInput("start", &start_literal));
+    xla::Literal stop_literal;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInput("stop", &stop_literal));
+
     switch (type) {
       case DT_FLOAT: {
-        float start, stop;
-        OP_REQUIRES_OK(ctx, GetValue(0, ctx, &start));
-        OP_REQUIRES_OK(ctx, GetValue(1, ctx, &stop));
+        float start = start_literal.GetFirstElement<float>();
+        float stop = stop_literal.GetFirstElement<float>();
         auto flat = out_constant.flat<float>();
         if (num == 1) {
           flat(0) = start;
@@ -185,9 +164,8 @@ class LinSpaceOp : public XlaOpKernel {
         break;
       }
       case DT_DOUBLE: {
-        double start, stop;
-        OP_REQUIRES_OK(ctx, GetValue(0, ctx, &start));
-        OP_REQUIRES_OK(ctx, GetValue(1, ctx, &stop));
+        double start = start_literal.GetFirstElement<double>();
+        double stop = stop_literal.GetFirstElement<double>();
         auto flat = out_constant.flat<double>();
         if (num == 1) {
           flat(0) = start;
@@ -210,9 +188,9 @@ class LinSpaceOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("LinSpace")
-                    .CompileTimeConstInput("start")
-                    .CompileTimeConstInput("stop")
-                    .CompileTimeConstInput("num"),
+                    .CompileTimeConstantInput("start")
+                    .CompileTimeConstantInput("stop")
+                    .CompileTimeConstantInput("num"),
                 LinSpaceOp);
 
 }  // namespace

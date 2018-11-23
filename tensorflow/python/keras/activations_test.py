@@ -169,6 +169,16 @@ class KerasActivationsTest(test.TestCase):
     expected = np.tanh(test_values)
     self.assertAllClose(result, expected, rtol=1e-05)
 
+  def test_exponential(self):
+    with self.cached_session():
+      test_values = np.random.random((2, 5))
+      x = keras.backend.placeholder(ndim=2)
+      exp = keras.activations.exponential(x)
+      f = keras.backend.function([x], [exp])
+      result = f([test_values])[0]
+    expected = np.exp(test_values)
+    self.assertAllClose(result, expected, rtol=1e-05)
+
   def test_linear(self):
     x = np.random.random((10, 5))
     self.assertAllClose(x, keras.activations.linear(x))

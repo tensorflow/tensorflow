@@ -78,7 +78,7 @@ RUN mkdir /bazel && \
 
 # Download and build TensorFlow.
 WORKDIR /tensorflow
-RUN git clone --branch=r1.11 --depth=1 https://github.com/tensorflow/tensorflow.git .
+RUN git clone --branch=r1.12 --depth=1 https://github.com/tensorflow/tensorflow.git .
 
 # TODO(craigcitro): Don't install the pip package, since it makes it
 # more difficult to experiment with local changes. Instead, just add

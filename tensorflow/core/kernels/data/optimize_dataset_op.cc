@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -26,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
+#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -36,7 +37,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 class OptimizeDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -94,9 +95,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       Node* input_node = nullptr;
       SerializationContext::Params params;
       std::vector<std::pair<string, Tensor>> input_list;
-      params.allow_stateful_functions = true;
       params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
       params.input_list = &input_list;
+      params.optimization_only = true;
       SerializationContext serialization_ctx(params);
       TF_RETURN_IF_ERROR(
           db.AddInputDataset(&serialization_ctx, input_, &input_node));
@@ -113,6 +114,16 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       // using the optimized function library.
       TF_RETURN_IF_ERROR(
           ctx->function_library()->Clone(&flib_def_, &pflr_, &lib_));
+
+      // Some functions may have been modified without having their names
+      // changed (for example, nested dataset graphs from FlatMap or
+      // Interleave). To avoid name conflicts, we remove these functions from
+      // flib_def_ before adding the optimized function library.
+      for (const FunctionDef& fd : graph_def.library().function()) {
+        if (flib_def_->Find(fd.signature().name()) != nullptr) {
+          TF_RETURN_IF_ERROR(flib_def_->RemoveFunction(fd.signature().name()));
+        }
+      }
       TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph_def.library()));
 
       Graph graph(OpRegistry::Global());
@@ -154,22 +165,28 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        IteratorContext::Params params = ctx->params();
+        IteratorContext::Params params(ctx);
         params.lib = dataset()->lib_;
         return dataset()->optimized_input_->MakeIterator(
-            IteratorContext(params), prefix(), &input_impl_);
+            IteratorContext(std::move(params)), prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        IteratorContext::Params params = ctx->params();
+        IteratorContext::Params params(ctx);
         params.lib = dataset()->lib_;
-        return input_impl_->GetNext(IteratorContext(params), out_tensors,
-                                    end_of_sequence);
+        return input_impl_->GetNext(IteratorContext(std::move(params)),
+                                    out_tensors, end_of_sequence);
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         return Status::OK();
@@ -187,11 +204,16 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
 
     Status ApplyOptimizations(OpKernelContext* ctx, GraphDef* graph_def,
                               string* output_node) {
-      // Add a fake sink node to allow rewriting the actual sink node.
+      // Add an identity node as the fetch node, otherwise we might get
+      // 'placeholder is both fed and fetched' errors in some cases when using
+      // input list with placeholder dataset nodes.
       NodeDef* node = graph_def->mutable_node()->Add();
-      node->set_name("FakeSink");
-      node->set_op("SinkDataset");
+      tensorflow::grappler::graph_utils::SetUniqueGraphNodeName(
+          "Sink", graph_def, node);
+      node->set_op("Identity");
       node->add_input(*output_node);
+      (*node->mutable_attr())["T"].set_type(DT_VARIANT);
+      *output_node = node->name();
 
       // Create metagraph.
       MetaGraphDef meta_graph_def;
@@ -200,11 +222,13 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       // Grappler determines fetch ops from collection 'train_op'.
       CollectionDef collection_def;
       auto node_list = collection_def.mutable_node_list();
-      node_list->add_value("FakeSink");
+      node_list->add_value(*output_node);
       (*meta_graph_def.mutable_collection_def())["train_op"] = collection_def;
 
       // Create Grappler item.
-      tensorflow::RewriterConfig rewriter_config;
+      tensorflow::ConfigProto config;
+      RewriterConfig& rewriter_config =
+          *config.mutable_graph_options()->mutable_rewrite_options();
       for (const string& optimization : optimizations_) {
         rewriter_config.add_optimizers(optimization);
       }
@@ -214,6 +238,17 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       // moment (e.g. because we have no cost model for dataset ops).
       if (optimizations_.empty()) {
         rewriter_config.add_optimizers("non-existent");
+      } else {
+        // If we apply custom dataset optimizers, explicitly trigger a subset of
+        // standard grappler optimizations to further optimize modified dataset
+        // graphs (e.g. performing constant folding on merged functions,
+        // removing unused graph nodes)
+        // TODO(b/118175421): This should be part of the tf.data optimization
+        // pass manager.
+        for (const auto& optimizer : {"pruning", "function", "constfold",
+                                      "shape", "arithmetic", "dependency"}) {
+          rewriter_config.add_optimizers(optimizer);
+        }
       }
       tensorflow::grappler::ItemConfig item_config;
       item_config.apply_optimizations = true;
@@ -231,15 +266,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
         }
       }
       TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
-          *grappler_item, rewriter_config, ctx->device(), &cluster, graph_def));
-
-      // Set `output_node` to the input of the fake sink node.
-      {
-        grappler::GraphView graph(graph_def);
-        grappler::GraphView::InputPort input_port =
-            graph.GetInputPort("FakeSink", 0);
-        *output_node = graph.GetRegularFanin(input_port).node->name();
-      }
+          *grappler_item, config, ctx->device(), &cluster, graph_def));
 
       return Status::OK();
     }

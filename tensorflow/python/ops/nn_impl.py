@@ -26,6 +26,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_nn_ops
@@ -360,6 +361,27 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
     return math_ops.multiply(x, x_inv_norm, name=name)
 
 
+def _count_nonzero(input_tensor, dtype=dtypes.int64):
+  """Same as math_ops.count_nonzero.
+
+  The reduction is done in dtype, which can be faster for 32-bit dtypes.
+
+  Args:
+      input_tensor: numeric tensor
+      dtype: reduction dtype
+
+  Returns:
+      number of nonzero values with type dtype
+  """
+  with ops.name_scope("count_nonzero", [input_tensor]):
+    zero = array_ops.zeros([], dtype=input_tensor.dtype)
+    nonzero_count = math_ops.reduce_sum(
+        math_ops.cast(
+            math_ops.not_equal(input_tensor, zero),
+            dtype=dtype), name="nonzero_count")
+    return nonzero_count
+
+
 @tf_export("math.zero_fraction", "nn.zero_fraction")
 def zero_fraction(value, name=None):
   """Returns the fraction of zeros in `value`.
@@ -382,13 +404,27 @@ def zero_fraction(value, name=None):
   """
   with ops.name_scope(name, "zero_fraction", [value]):
     value = ops.convert_to_tensor(value, name="value")
-    zero = constant_op.constant(0, dtype=value.dtype, name="zero")
-    return math_ops.reduce_mean(
-        math_ops.cast(math_ops.equal(value, zero), dtypes.float32))
+    size = array_ops.size(value, out_type=dtypes.int64)
+    # If the count is small, we can save memory/CPU with an int32 reduction.
+    num_nonzero = control_flow_ops.cond(
+        size <= dtypes.int32.max,
+        # pylint: disable=g-long-lambda
+        true_fn=lambda: math_ops.cast(
+            _count_nonzero(value, dtype=dtypes.int32),
+            dtype=dtypes.int64),
+        false_fn=lambda: _count_nonzero(value, dtype=dtypes.int64))
+
+    with ops.name_scope("counts_to_fraction"):
+      num_zero = size - num_nonzero
+      num_zero_float32 = math_ops.cast(num_zero, dtype=dtypes.float32)
+      size_float32 = math_ops.cast(size, dtype=dtypes.float32)
+      zero_fraction_float32 = num_zero_float32 / size_float32
+
+    return array_ops.identity(zero_fraction_float32, "fraction")
 
 
 # pylint: disable=redefined-builtin
-@tf_export("nn.depthwise_conv2d")
+@tf_export(v1=["nn.depthwise_conv2d"])
 def depthwise_conv2d(input,
                      filter,
                      strides,
@@ -461,11 +497,68 @@ def depthwise_conv2d(input,
         op=op)
 
 
+@tf_export("nn.depthwise_conv2d", v1=[])
+def depthwise_conv2d_v2(input,
+                        filter,
+                        strides,
+                        padding,
+                        data_format=None,
+                        dilations=None,
+                        name=None):
+  """Depthwise 2-D convolution.
+
+  Given a 4D input tensor ('NHWC' or 'NCHW' data formats)
+  and a filter tensor of shape
+  `[filter_height, filter_width, in_channels, channel_multiplier]`
+  containing `in_channels` convolutional filters of depth 1, `depthwise_conv2d`
+  applies a different filter to each input channel (expanding from 1 channel
+  to `channel_multiplier` channels for each), then concatenates the results
+  together.  The output has `in_channels * channel_multiplier` channels.
+
+  In detail,
+
+      output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
+           filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
+                                           strides[2] * j + rate[1] * dj, k]
+
+  Must have `strides[0] = strides[3] = 1`.  For the most common case of the
+  same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+  If any value in `rate` is greater than 1, we perform atrous depthwise
+  convolution, in which case all values in the `strides` tensor must be equal
+  to 1.
+
+  Args:
+    input: 4-D with shape according to `data_format`.
+    filter: 4-D with shape
+      `[filter_height, filter_width, in_channels, channel_multiplier]`.
+    strides: 1-D of size 4.  The stride of the sliding window for each
+      dimension of `input`.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the "returns" section of `tf.nn.convolution` for details.
+    data_format: The data format for input. Either "NHWC" (default) or "NCHW".
+    dilations: 1-D of size 2. The dilation rate in which we sample input values
+      across the `height` and `width` dimensions in atrous convolution. If it is
+      greater than 1, then all values of strides must be 1.
+    name: A name for this operation (optional).
+
+  Returns:
+    A 4-D `Tensor` with shape according to `data_format`.  E.g., for
+    "NHWC" format, shape is
+    `[batch, out_height, out_width, in_channels * channel_multiplier].`
+  """
+  return depthwise_conv2d(input=input,
+                          filter=filter,
+                          strides=strides,
+                          padding=padding,
+                          rate=dilations,
+                          name=name,
+                          data_format=data_format)
+
 # pylint: enable=redefined-builtin
 
 
 # pylint: disable=redefined-builtin,line-too-long
-@tf_export("nn.separable_conv2d")
+@tf_export(v1=["nn.separable_conv2d"])
 def separable_conv2d(input,
                      depthwise_filter,
                      pointwise_filter,
@@ -528,8 +621,8 @@ def separable_conv2d(input,
         pointwise_filter, name="pointwise_filter")
 
     pointwise_filter_shape = pointwise_filter.get_shape().with_rank(4)
-    pointwise_filter_shape[0].assert_is_compatible_with(1)
-    pointwise_filter_shape[1].assert_is_compatible_with(1)
+    pointwise_filter_shape.dims[0].assert_is_compatible_with(1)
+    pointwise_filter_shape.dims[1].assert_is_compatible_with(1)
 
     if rate is None:
       rate = [1, 1]
@@ -563,10 +656,76 @@ def separable_conv2d(input,
         name=name)
 
 
+@tf_export("nn.separable_conv2d", v1=[])
+def separable_conv2d_v2(
+    input,
+    depthwise_filter,
+    pointwise_filter,
+    strides,
+    padding,
+    data_format=None,
+    dilations=None,
+    name=None,
+):
+  """2-D convolution with separable filters.
+
+  Performs a depthwise convolution that acts separately on channels followed by
+  a pointwise convolution that mixes channels.  Note that this is separability
+  between dimensions `[1, 2]` and `3`, not spatial separability between
+  dimensions `1` and `2`.
+
+  In detail,
+
+      output[b, i, j, k] = sum_{di, dj, q, r}
+          input[b, strides[1] * i + di, strides[2] * j + dj, q] *
+          depthwise_filter[di, dj, q, r] *
+          pointwise_filter[0, 0, q * channel_multiplier + r, k]
+
+  `strides` controls the strides for the depthwise convolution only, since
+  the pointwise convolution has implicit strides of `[1, 1, 1, 1]`.  Must have
+  `strides[0] = strides[3] = 1`.  For the most common case of the same
+  horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+  If any value in `rate` is greater than 1, we perform atrous depthwise
+  convolution, in which case all values in the `strides` tensor must be equal
+  to 1.
+
+  Args:
+    input: 4-D `Tensor` with shape according to `data_format`.
+    depthwise_filter: 4-D `Tensor` with shape `[filter_height, filter_width,
+      in_channels, channel_multiplier]`. Contains `in_channels` convolutional
+      filters of depth 1.
+    pointwise_filter: 4-D `Tensor` with shape `[1, 1, channel_multiplier *
+      in_channels, out_channels]`.  Pointwise filter to mix channels after
+      `depthwise_filter` has convolved spatially.
+    strides: 1-D of size 4.  The strides for the depthwise convolution for each
+      dimension of `input`.
+    padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
+    data_format: The data format for input. Either "NHWC" (default) or "NCHW".
+    dilations: 1-D of size 2. The dilation rate in which we sample input values
+      across the `height` and `width` dimensions in atrous convolution. If it is
+      greater than 1, then all values of strides must be 1.
+    name: A name for this operation (optional).
+
+  Returns:
+    A 4-D `Tensor` with shape according to 'data_format'. For
+      example, with data_format="NHWC", shape is [batch, out_height,
+      out_width, out_channels].
+  """
+  return separable_conv2d(
+      input,
+      depthwise_filter,
+      pointwise_filter,
+      strides,
+      padding,
+      rate=dilations,
+      name=name,
+      data_format=data_format)
+
 # pylint: enable=redefined-builtin,line-too-long
 
 
-@tf_export("nn.sufficient_statistics")
+@tf_export(v1=["nn.sufficient_statistics"])
 def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   """Calculate the sufficient statistics for the mean and variance of `x`.
 
@@ -595,10 +754,10 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   with ops.name_scope(name, "sufficient_statistics", [x, shift]):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
-    if all(x_shape[d].value is not None for d in axes):
+    if all(x_shape.dims[d].value is not None for d in axes):
       counts = 1
       for d in axes:
-        counts *= x_shape[d].value
+        counts *= x_shape.dims[d].value
       counts = constant_op.constant(counts, dtype=x.dtype)
     else:  # shape needs to be inferred at runtime.
       x_dims = array_ops.gather(
@@ -614,6 +773,35 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
     m_ss = math_ops.reduce_sum(m_ss, axes, keepdims=keep_dims, name="mean_ss")
     v_ss = math_ops.reduce_sum(v_ss, axes, keepdims=keep_dims, name="var_ss")
   return counts, m_ss, v_ss, shift
+
+
+@tf_export("nn.sufficient_statistics", v1=[])
+def sufficient_statistics_v2(x, axes, shift=None, keepdims=False, name=None):
+  """Calculate the sufficient statistics for the mean and variance of `x`.
+
+  These sufficient statistics are computed using the one pass algorithm on
+  an input that's optionally shifted. See:
+  https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
+
+  Args:
+    x: A `Tensor`.
+    axes: Array of ints. Axes along which to compute mean and variance.
+    shift: A `Tensor` containing the value by which to shift the data for
+      numerical stability, or `None` if no shift is to be performed. A shift
+      close to the true mean provides the most numerically stable results.
+    keepdims: produce statistics with the same dimensionality as the input.
+    name: Name used to scope the operations that compute the sufficient stats.
+
+  Returns:
+    Four `Tensor` objects of the same type as `x`:
+
+    * the count (number of elements to average over).
+    * the (possibly shifted) sum of the elements in the array.
+    * the (possibly shifted) sum of squares of the elements in the array.
+    * the shift by which the mean must be corrected or None if `shift` is None.
+  """
+  return sufficient_statistics(
+      x=x, axes=axes, shift=shift, keep_dims=keepdims, name=name)
 
 
 @tf_export("nn.normalize_moments")
@@ -707,7 +895,7 @@ def moments(
       return (mean, variance)
 
 
-@tf_export("nn.weighted_moments")
+@tf_export(v1=["nn.weighted_moments"])
 def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
   """Returns the frequency-weighted mean and variance of `x`.
 
@@ -777,6 +965,30 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
       weighted_variance = math_ops.cast(weighted_variance, dtypes.float16)
 
     return weighted_mean, weighted_variance
+
+
+@tf_export("nn.weighted_moments", v1=[])
+def weighted_moments_v2(x, axes, frequency_weights, keepdims=False, name=None):
+  """Returns the frequency-weighted mean and variance of `x`.
+
+  Args:
+    x: A tensor.
+    axes: 1-d tensor of int32 values; these are the axes along which
+      to compute mean and variance.
+    frequency_weights: A tensor of positive weights which can be
+      broadcast with x.
+    keepdims: Produce moments with the same dimensionality as the input.
+    name: Name used to scope the operation.
+
+  Returns:
+    Two tensors: `weighted_mean` and `weighted_variance`.
+  """
+  return weighted_moments(
+      x=x,
+      axes=axes,
+      frequency_weights=frequency_weights,
+      name=name,
+      keep_dims=keepdims)
 
 
 @tf_export("nn.batch_normalization")
@@ -910,7 +1122,7 @@ def fused_batch_norm(
   return y, batch_mean, batch_var
 
 
-@tf_export("nn.batch_norm_with_global_normalization")
+@tf_export(v1=["nn.batch_norm_with_global_normalization"])
 def batch_norm_with_global_normalization(t,
                                          m,
                                          v,
@@ -946,6 +1158,53 @@ def batch_norm_with_global_normalization(t,
   """
   return batch_normalization(t, m, v, beta, gamma if scale_after_normalization
                              else None, variance_epsilon, name)
+
+
+# pylint: disable=redefined-builtin,line-too-long
+@tf_export("nn.batch_norm_with_global_normalization", v1=[])
+def batch_norm_with_global_normalization_v2(input,
+                                            mean,
+                                            variance,
+                                            beta,
+                                            gamma,
+                                            variance_epsilon,
+                                            scale_after_normalization,
+                                            name=None):
+  """Batch normalization.
+
+  This op is deprecated. See `tf.nn.batch_normalization`.
+
+  Args:
+    input: A 4D input Tensor.
+    mean: A 1D mean Tensor with size matching the last dimension of t.
+      This is the first output from tf.nn.moments,
+      or a saved moving average thereof.
+    variance: A 1D variance Tensor with size matching the last dimension of t.
+      This is the second output from tf.nn.moments,
+      or a saved moving average thereof.
+    beta: A 1D beta Tensor with size matching the last dimension of t.
+      An offset to be added to the normalized tensor.
+    gamma: A 1D gamma Tensor with size matching the last dimension of t.
+      If "scale_after_normalization" is true, this tensor will be multiplied
+      with the normalized tensor.
+    variance_epsilon: A small float number to avoid dividing by 0.
+    scale_after_normalization: A bool indicating whether the resulted tensor
+      needs to be multiplied with gamma.
+    name: A name for this operation (optional).
+
+  Returns:
+     A batch-normalized `t`.
+  """
+  return batch_norm_with_global_normalization(t=input,
+                                              m=mean,
+                                              v=variance,
+                                              beta=beta,
+                                              gamma=gamma,
+                                              variance_epsilon=variance_epsilon,
+                                              scale_after_normalization=scale_after_normalization,
+                                              name=name)
+
+# pylint: enable=redefined-builtin,line-too-long
 
 
 def _sum_rows(x):

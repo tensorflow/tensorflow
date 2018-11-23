@@ -7,15 +7,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "experimental_deterministic"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "experimental_filter_fusion"
     mtype: "<type \'property\'>"
   }
   member {
     name: "experimental_hoist_random_uniform"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "experimental_latency_all_edges"
     mtype: "<type \'property\'>"
   }
   member {
@@ -43,7 +43,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "experimental_numa_aware"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "experimental_shuffle_and_repeat_fusion"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_stats"
     mtype: "<type \'property\'>"
   }
   member_method {

@@ -57,7 +57,7 @@ class CTCGreedyDecoderTest(test.TestCase):
     # from a len time python list of [batch_size x depth] tensors
     inputs_t = array_ops.stack(inputs_t)
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       decoded_list, log_probability = decoder(
           inputs_t, sequence_length=seq_lens, **decoder_args)
       decoded_unwrapped = list(

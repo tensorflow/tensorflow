@@ -40,78 +40,91 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.tf_export import tf_export
 
 
-# Name for a collection which is expected to have at most a single boolean
-# Tensor. If this tensor is True the summary ops will record summaries.
-_SHOULD_RECORD_SUMMARIES_NAME = "ShouldRecordSummaries"
+# Dictionary mapping graph keys to a boolean Tensor (or callable returning
+# a boolean Tensor) indicating whether we should record summaries for the
+# graph identified by the key of the dictionary.
+_SHOULD_RECORD_SUMMARIES = {}
 
-_SUMMARY_WRITER_INIT_COLLECTION_NAME = "_SUMMARY_WRITER_V2"
+# A global dictionary mapping graph keys to a list of summary writer init ops.
+_SUMMARY_WRITER_INIT_OP = {}
 
 _EXPERIMENT_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,256}$")
 _RUN_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,512}$")
 _USER_NAME_PATTERNS = re.compile(r"^[a-z]([-a-z0-9]{0,29}[a-z0-9])?$", re.I)
 
 
+@tf_export("summary.should_record_summaries", v1=[])
 def should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
-  should_record_collection = ops.get_collection(_SHOULD_RECORD_SUMMARIES_NAME)
-  if not should_record_collection:
-    return False
-  if len(should_record_collection) != 1:
-    raise ValueError(
-        "More than one tensor specified for whether summaries "
-        "should be recorded: %s" % should_record_collection)
-  return should_record_collection[0]
+  global _SHOULD_RECORD_SUMMARIES
+  key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+  should = _SHOULD_RECORD_SUMMARIES.setdefault(key, False)
+  return should() if callable(should) else should
+
+
+@tf_export("summary.record_summaries", v1=[])
+@tf_contextlib.contextmanager
+def record_summaries(boolean=True):
+  """Sets summary recording on or off per the provided boolean value.
+
+  The provided value can be a python boolean, a scalar boolean Tensor, or
+  or a callable providing such a value; if a callable is passed it will be
+  invoked each time should_record_summaries() is called to determine whether
+  summary writing should be enabled.
+
+  Args:
+    boolean: can be True, False, a bool Tensor, or a callable providing such.
+      Defaults to True.
+
+  Yields:
+    Returns a context manager that sets this value on enter and restores the
+    previous value on exit.
+  """
+  # TODO(nickfelt): make this threadlocal
+  global _SHOULD_RECORD_SUMMARIES
+  key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+  old = _SHOULD_RECORD_SUMMARIES.setdefault(key, False)
+  try:
+    _SHOULD_RECORD_SUMMARIES[key] = boolean
+    yield
+  finally:
+    _SHOULD_RECORD_SUMMARIES[key] = old
 
 
 # TODO(apassos) consider how to handle local step here.
-@tf_contextlib.contextmanager
 def record_summaries_every_n_global_steps(n, global_step=None):
   """Sets the should_record_summaries Tensor to true if global_step % n == 0."""
   if global_step is None:
     global_step = training_util.get_or_create_global_step()
-  collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
-  old = collection_ref[:]
-  try:
-    with ops.device("cpu:0"):
-      collection_ref[:] = [math_ops.equal(global_step % n, 0)]
-    yield
-  finally:
-    collection_ref[:] = old
+  with ops.device("cpu:0"):
+    should = lambda: math_ops.equal(global_step % n, 0)
+    if not context.executing_eagerly():
+      should = should()
+  return record_summaries(should)
 
 
-@tf_contextlib.contextmanager
 def always_record_summaries():
   """Sets the should_record_summaries Tensor to always true."""
-  collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
-  old = collection_ref[:]
-  try:
-    collection_ref[:] = [True]
-    yield
-  finally:
-    collection_ref[:] = old
+  return record_summaries(True)
 
 
-@tf_contextlib.contextmanager
 def never_record_summaries():
   """Sets the should_record_summaries Tensor to always false."""
-  collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
-  old = collection_ref[:]
-  try:
-    collection_ref[:] = [False]
-    yield
-  finally:
-    collection_ref[:] = old
+  return record_summaries(False)
 
 
+@tf_export("summary.SummaryWriter", v1=[])
 class SummaryWriter(object):
   """Encapsulates a stateful summary writer resource.
 
   See also:
-  - `tf.contrib.summary.create_file_writer`
-  - `tf.contrib.summary.create_db_writer`
+  - `tf.summary.create_file_writer`
+  - `tf.summary.create_db_writer`
   """
 
   def  __init__(self, resource, init_op_fn):
@@ -142,7 +155,6 @@ class SummaryWriter(object):
           gen_summary_ops.flush_summary_writer(self._resource)
       finally:
         context.context().summary_writer_resource = old
-
 
   def init(self):
     """Operation to initialize the summary writer resource."""
@@ -207,6 +219,7 @@ def initialize(
     session.run(_graph(x, 0), feed_dict={x: data})
 
 
+@tf_export("summary.create_file_writer", v1=[])
 def create_file_writer(logdir,
                        max_queue=None,
                        flush_millis=None,
@@ -282,7 +295,7 @@ def create_db_writer(db_uri,
       `tf.Graph`.
 
   Returns:
-    A `tf.contrib.summary.SummaryWriter` instance.
+    A `tf.summary.SummaryWriter` instance.
   """
   with ops.device("cpu:0"):
     if experiment_name is None:
@@ -311,7 +324,9 @@ def _make_summary_writer(name, factory, **kwargs):
   if not context.executing_eagerly():
     # TODO(apassos): Consider doing this instead.
     #   ops.get_default_session().run(init_op)
-    ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, init_op)
+    global _SUMMARY_WRITER_INIT_OP
+    key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+    _SUMMARY_WRITER_INIT_OP.setdefault(key, []).append(init_op)
   return SummaryWriter(resource, init_op_fn)
 
 
@@ -329,7 +344,7 @@ def _nothing():
 def all_summary_ops():
   """Graph-mode only. Returns all summary ops.
 
-  Please note this excludes `tf.contrib.summary.graph` ops.
+  Please note this excludes `tf.summary.graph` ops.
 
   Returns:
     The summary ops.
@@ -352,7 +367,9 @@ def summary_writer_initializer_op():
     raise RuntimeError(
         "tf.contrib.summary.summary_writer_initializer_op is only "
         "supported in graph mode.")
-  return ops.get_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME)
+  global _SUMMARY_WRITER_INIT_OP
+  key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+  return _SUMMARY_WRITER_INIT_OP.setdefault(key, [])
 
 
 def summary_writer_function(name, tensor, function, family=None):
@@ -495,7 +512,7 @@ def graph(param, step=None, name=None):
   """Writes a TensorFlow graph to the summary interface.
 
   The graph summary is, strictly speaking, not a summary. Conditions
-  like `tf.contrib.summary.never_record_summaries` do not apply. Only
+  like `tf.summary.should_record_summaries` do not apply. Only
   a single graph can be associated with a particular run. If multiple
   graphs are written, then only the last one will be considered by
   TensorBoard.
@@ -539,14 +556,13 @@ def graph(param, step=None, name=None):
 _graph = graph  # for functions with a graph parameter
 
 
+@tf_export("summary.import_event", v1=[])
 def import_event(tensor, name=None):
   """Writes a `tf.Event` binary proto.
 
-  When using create_db_writer(), this can be used alongside
-  `tf.TFRecordReader` to load event logs into the database. Please
-  note that this is lower level than the other summary functions and
-  will ignore any conditions set by methods like
-  `tf.contrib.summary.should_record_summaries`.
+  This can be used to import existing event logs into a new summary writer sink.
+  Please note that this is lower level than the other summary functions and
+  will ignore the `tf.summary.should_record_summaries` setting.
 
   Args:
     tensor: A `tf.Tensor` of type `string` containing a serialized
@@ -560,13 +576,14 @@ def import_event(tensor, name=None):
       context.context().summary_writer_resource, tensor, name=name)
 
 
+@tf_export("summary.flush", v1=[])
 def flush(writer=None, name=None):
   """Forces summary writer to send any buffered data to storage.
 
   This operation blocks until that finishes.
 
   Args:
-    writer: The `tf.contrib.summary.SummaryWriter` resource to flush.
+    writer: The `tf.summary.SummaryWriter` resource to flush.
       The thread default will be used if this parameter is None.
       Otherwise a `tf.no_op` is returned.
     name: A name for the operation (optional).
@@ -593,6 +610,8 @@ def eval_dir(model_dir, name=None):
   return os.path.join(model_dir, "eval" if not name else "eval_" + name)
 
 
+@deprecation.deprecated(date=None,
+                        instructions="Renamed to create_file_writer().")
 def create_summary_file_writer(*args, **kwargs):
   """Please use `tf.contrib.summary.create_file_writer`."""
   logging.warning("Deprecation Warning: create_summary_file_writer was renamed "

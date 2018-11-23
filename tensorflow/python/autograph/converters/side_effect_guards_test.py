@@ -48,12 +48,12 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     with self.compiled(node, {}, state_ops.assign) as result:
       with self.cached_session() as sess:
         v = variable_scope.get_variable('test', initializer=2)
-        sess.run(v.initializer)
+        self.evaluate(v.initializer)
         sess.run(result.test_fn(v))
         # TODO(mdan): Add support for this use case.
         # Right now the variable `a` is not conditioned on the `assign` because
         # there's no way to add control dependencies to a variable object.
-        self.assertEqual(2, sess.run(v))
+        self.assertEqual(2, self.evaluate(v))
 
   def test_side_effect_on_used_variable(self):
 
@@ -69,11 +69,11 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     with self.compiled(node, {}, state_ops.assign) as result:
       with self.cached_session() as sess:
         v = variable_scope.get_variable('test', initializer=2)
-        sess.run(v.initializer)
+        self.evaluate(v.initializer)
         sess.run(result.test_fn(v))
         # TODO(mdan): Ensure the result of test_fn(v) is also deterministic.
         # Right now it's 3 or 4 based on whether the read is synchronized.
-        self.assertEqual(3, sess.run(v))
+        self.assertEqual(3, self.evaluate(v))
 
   def test_side_effect_on_tensor(self):
 
@@ -109,10 +109,10 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     with self.compiled(node, {}, state_ops.assign_add) as result:
       with self.cached_session() as sess:
         v = variable_scope.get_variable('test', initializer=2)
-        sess.run(v.initializer)
+        self.evaluate(v.initializer)
         sess.run(result.test_fn(v))
         # TODO(mdan): Ensure the result of test_fn(v) is also deterministic.
-        self.assertEqual(4, sess.run(v))
+        self.assertEqual(4, self.evaluate(v))
 
   def test_multiline_nested_block(self):
 
@@ -130,10 +130,10 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     with self.compiled(node, {}, state_ops.assign, ops.name_scope) as result:
       with self.cached_session() as sess:
         v = variable_scope.get_variable('test', initializer=2)
-        sess.run(v.initializer)
+        self.evaluate(v.initializer)
         sess.run(result.test_fn(v))
         # TODO(mdan): Ensure the result of test_fn(v) is also deterministic.
-        self.assertEqual(3, sess.run(v))
+        self.assertEqual(3, self.evaluate(v))
 
   def test_multiline_block_unsafe(self):
 
@@ -153,10 +153,10 @@ class SideEffectGuardsTest(converter_testing.TestCase):
                        state_ops.assign_add) as result:
       with self.cached_session() as sess:
         v = variable_scope.get_variable('test', initializer=2)
-        sess.run(v.initializer)
+        self.evaluate(v.initializer)
         sess.run(result.test_fn(v))
         # TODO(mdan): Ensure the result of test_fn(v) is also deterministic.
-        self.assertEqual(4, sess.run(v))
+        self.assertEqual(4, self.evaluate(v))
 
 
 if __name__ == '__main__':

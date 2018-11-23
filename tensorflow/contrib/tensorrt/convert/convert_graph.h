@@ -31,6 +31,26 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
+// Helper class for the segmenter to determine whether given TF node is
+// supported by TRT.
+class TrtCandidateSelector {
+ public:
+  TrtCandidateSelector(const grappler::GraphProperties& graph_properties);
+
+  // Returns OK iff 'node' is a TF-TRT conversion candidate, which will be added
+  // to TRT subgraph and later converted into TRT engine.
+  Status IsTensorRTCandidate(const tensorflow::Node* node);
+
+ private:
+  // The TF-TRT node converter used to verify whether individual node is
+  // supported. It will operate in validation-only mode.
+  TrtNodeValidator validator_;
+
+  // GraphProperties of the graph whose nodes are to be validated by
+  // IsTensorRTCandidate().
+  const grappler::GraphProperties& graph_properties_;
+};
+
 struct ConversionParams {
   ConversionParams()
       : input_graph_def(nullptr),

@@ -103,6 +103,21 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "numa_map_and_batch_dataset_op",
+    srcs = ["numa_map_and_batch_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:inplace_ops",
+        "//tensorflow/core/kernels/data:captured_function",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_kernel_library(
     name = "unique_dataset_op",
     srcs = ["unique_dataset_op.cc"],
     deps = [
@@ -124,6 +139,25 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "sleep_dataset_op",
+    srcs = ["sleep_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_kernel_library(
+    name = "non_serializable_dataset_op",
+    srcs = ["non_serializable_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
     name = "dataset_kernels",
     deps = [
         ":assert_next_dataset_op",
@@ -132,7 +166,10 @@ tf_kernel_library(
         ":ignore_errors_dataset_op",
         ":indexed_dataset",
         ":lmdb_dataset_op",
+        ":non_serializable_dataset_op",
+        ":numa_map_and_batch_dataset_op",
         ":prefetching_kernels",
+        ":sleep_dataset_op",
         ":threadpool_dataset_op",
         ":unique_dataset_op",
     ],

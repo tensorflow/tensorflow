@@ -72,7 +72,7 @@ class SparseToIndicatorTest(test_util.TensorFlowTestCase):
         constant_op.constant(shape, dtypes.int64))
 
   def testInt32(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_input = self._SparseTensor_5x6(dtypes.int32)
       output = sparse_ops.sparse_to_indicator(sp_input, 50).eval()
 
@@ -84,7 +84,7 @@ class SparseToIndicatorTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output, expected_output)
 
   def testInt64(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_input = self._SparseTensor_5x6(dtypes.int64)
       output = sparse_ops.sparse_to_indicator(sp_input, 50).eval()
 
@@ -96,7 +96,7 @@ class SparseToIndicatorTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output, expected_output)
 
   def testHigherRank(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_input = self._SparseTensor_2x3x4(dtypes.int64)
       output = sparse_ops.sparse_to_indicator(sp_input, 200).eval()
 
@@ -147,63 +147,63 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
   def testInt32AndFloat32(self):
     vocab_size = 50
     indices_v, values_v = self._SparseTensorValue_3x50(np.int32, np.float32)
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       for indices in (indices_v,
                       sparse_tensor.SparseTensor.from_value(indices_v)):
         for values in (values_v,
                        sparse_tensor.SparseTensor.from_value(values_v)):
           sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
-          output = sess.run(sp_output)
+          output = self.evaluate(sp_output)
           self._AssertResultsSorted(output, vocab_size)
 
   def testInt64AndFloat32(self):
     vocab_size = 50
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       indices, values = self._SparseTensor_3x50(np.int64, np.float32)
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsSorted(output, vocab_size)
 
   def testInt64AndFloat64(self):
     vocab_size = 50
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       indices, values = self._SparseTensor_3x50(np.int64, np.float64)
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsSorted(output, vocab_size)
 
   def testInt32AndFloat32NonCanonicalOrder(self):
     vocab_size = 50
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       indices, values = self._SparseTensor_3x50(np.int32, np.float32)
       sp_output = sparse_ops.sparse_merge(
           indices, values, vocab_size, already_sorted=True)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsNotSorted(output, vocab_size)
 
   def testInt64AndFloat32NonCanonicalOrder(self):
     vocab_size = 50
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       indices, values = self._SparseTensor_3x50(np.int64, np.float32)
       sp_output = sparse_ops.sparse_merge(
           indices, values, vocab_size, already_sorted=True)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsNotSorted(output, vocab_size)
 
   def testInt64AndFloat64NonCanonicalOrder(self):
     vocab_size = 50
     vocab_size_tensor = constant_op.constant(vocab_size, dtypes.int64)
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       indices, values = self._SparseTensor_3x50(np.int64, np.float64)
       sp_output = sparse_ops.sparse_merge(
           indices, values, vocab_size_tensor, already_sorted=True)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsNotSorted(output, vocab_size)
 
   def testShouldSetLastDimensionInDynamicShape(self):
@@ -257,29 +257,29 @@ class SparseMergeHighDimTest(test_util.TensorFlowTestCase):
 
   def testInt64AndFloat32(self):
     vocab_size = [50, 31]
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       indices, values = self._SparseTensor_3x50(np.int64, np.float32)
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsSorted(output, vocab_size)
 
   def testInt64AndFloat64(self):
     vocab_size = [50, 31]
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       indices, values = self._SparseTensor_3x50(np.int64, np.float64)
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsSorted(output, vocab_size)
 
   def testInt64AndFloat64Shape(self):
     vocab_size = [50, 30]
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       indices, values = self._SparseTensor_3x50(np.int64, np.float64)
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsSorted(output, vocab_size)
 
 
@@ -297,31 +297,31 @@ class SparseRetainTest(test_util.TensorFlowTestCase):
     return sparse_tensor.SparseTensor.from_value(self._SparseTensorValue_5x6())
 
   def testBasic(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       for sp_input in (self._SparseTensorValue_5x6(), self._SparseTensor_5x6()):
         to_retain = np.array([1, 0, 0, 1, 1, 0], dtype=np.bool)
         sp_output = sparse_ops.sparse_retain(sp_input, to_retain)
 
-        output = sess.run(sp_output)
+        output = self.evaluate(sp_output)
 
         self.assertAllEqual(output.indices, [[0, 0], [1, 4], [3, 2]])
         self.assertAllEqual(output.values, [0, 14, 32])
         self.assertAllEqual(output.dense_shape, [5, 6])
 
   def testRetainNone(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensor_5x6()
       to_retain = np.zeros((6,), dtype=np.bool)
       sp_output = sparse_ops.sparse_retain(sp_input, to_retain)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
 
       self.assertAllEqual(output.indices, np.array([]).reshape((0, 2)))
       self.assertAllEqual(output.values, [])
       self.assertAllEqual(output.dense_shape, [5, 6])
 
   def testMismatchedRetainShape(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_input = self._SparseTensor_5x6()
       to_retain = np.array([1, 0, 0, 1, 0], dtype=np.bool)
       with self.assertRaises(ValueError):
@@ -360,12 +360,12 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([3, 6, 7], sp_output.get_shape())
 
   def testBasic(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensor_2x5x6()
       new_shape = np.array([3, 6, 7], dtype=np.int64)
       sp_output = sparse_ops.sparse_reset_shape(sp_input, new_shape)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
 
       self.assertAllEqual(output.indices, [[0, 0, 0], [0, 1, 0], [0, 1, 3],
                                            [1, 1, 4], [1, 3, 2], [1, 3, 3]])
@@ -373,12 +373,12 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output.dense_shape, [3, 6, 7])
 
   def testInputUnavailableInGraphConstructionOk(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorValue_2x5x6()
       new_shape = np.array([3, 6, 7], dtype=np.int64)
       sp_output = sparse_ops.sparse_reset_shape(sp_input, new_shape)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
 
       self.assertAllEqual(output.indices, [[0, 0, 0], [0, 1, 0], [0, 1, 3],
                                            [1, 1, 4], [1, 3, 2], [1, 3, 3]])
@@ -386,7 +386,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output.dense_shape, [3, 6, 7])
 
   def testFeedInputUnavailableInGraphConstructionOk(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = array_ops.sparse_placeholder(dtype=dtypes.int32)
       new_shape = np.array([3, 6, 7], dtype=np.int64)
       sp_output = sparse_ops.sparse_reset_shape(sp_input, new_shape)
@@ -400,11 +400,11 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output.dense_shape, [3, 6, 7])
 
   def testTightBoundingBox(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensor_2x5x6()
       sp_output = sparse_ops.sparse_reset_shape(sp_input)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
 
       self.assertAllEqual(output.indices, [[0, 0, 0], [0, 1, 0], [0, 1, 3],
                                            [1, 1, 4], [1, 3, 2], [1, 3, 3]])
@@ -412,18 +412,18 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output.dense_shape, [2, 4, 5])
 
   def testTightBoundingBoxEmpty(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensor_2x5x6_Empty()
       sp_output = sparse_ops.sparse_reset_shape(sp_input)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
 
       self.assertAllEqual(output.indices.shape, [0, 3])
       self.assertAllEqual(output.values.shape, [0])
       self.assertAllEqual(output.dense_shape, [0, 0, 0])
 
   def testInvalidRank(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_input = self._SparseTensor_2x5x6()
       new_shape = np.array([3, 7], dtype=np.int64)
 
@@ -431,7 +431,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
         sparse_ops.sparse_reset_shape(sp_input, new_shape)
 
   def testInvalidRankNewShapeUnavailableInGraphConstruction(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       new_shape = array_ops.placeholder(dtype=dtypes.int64)
       sp_input = self._SparseTensor_2x5x6()
       out = sparse_ops.sparse_reset_shape(sp_input, new_shape)
@@ -447,7 +447,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       sparse_ops.sparse_reset_shape(sp_input, new_shape)
 
   def testInvalidDimensionSizeDynamic(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensor_2x5x6()
       new_shape = array_ops.placeholder(dtype=dtypes.int32)
       out = sparse_ops.sparse_reset_shape(sp_input, new_shape)
@@ -457,7 +457,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
 
   def testInvalidDimensionSizeInputUnavailableInGraphConstruction(self):
     sp_input = array_ops.sparse_placeholder(dtype=dtypes.int32)
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       new_shape = np.array([3, 7, 5], dtype=np.int64)
       out = sparse_ops.sparse_reset_shape(sp_input, new_shape)
 
@@ -497,7 +497,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
         constant_op.constant(shape, dtypes.int64))
 
   def testFillNumber(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       for sp_input in (self._SparseTensorValue_5x6(), self._SparseTensor_5x6()):
         sp_output, empty_row_indicator = (
             sparse_ops.sparse_fill_empty_rows(sp_input, -1))
@@ -514,7 +514,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
                             np.array([0, 0, 1, 0, 1]).astype(np.bool))
 
   def testFillFloat(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       values = constant_op.constant(
           [0.0, 10.0, 13.0, 14.0, 32.0, 33.0], dtype=dtypes.float64)
       default_value = constant_op.constant(-1.0, dtype=dtypes.float64)
@@ -548,7 +548,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
       self.assertLess(default_value_grad_err, 1e-8)
 
   def testFillString(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensor_String5x6()
       sp_output, empty_row_indicator = (
           sparse_ops.sparse_fill_empty_rows(sp_input, ""))
@@ -566,7 +566,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
                           np.array([0, 0, 1, 0, 1]).astype(np.bool))
 
   def testNoEmptyRows(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensor_2x6()
       sp_output, empty_row_indicator = (
           sparse_ops.sparse_fill_empty_rows(sp_input, -1))
@@ -590,9 +590,9 @@ class SparseAddTest(test_util.TensorFlowTestCase):
     sp_input = sparse_tensor.SparseTensor(indices, values, shape)
     sp_output = sparse_ops.sparse_add(sp_input, sp_input)
 
-    with self.test_session(use_gpu=False) as sess:
-      sess.run(variables.global_variables_initializer())
-      output = sess.run(sp_output)
+    with self.session(use_gpu=False) as sess:
+      self.evaluate(variables.global_variables_initializer())
+      output = self.evaluate(sp_output)
       self.assertAllEqual(output.values, [2])
 
 
@@ -635,7 +635,7 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
       else:
         tf_dense_ans = sparse_ops.sparse_reduce_max(sp_t, reduction_axes,
                                                     keep_dims)
-      out_dense = tf_dense_ans.eval()
+      out_dense = self.evaluate(tf_dense_ans)
 
       if do_sum:
         tf_sparse_ans = sparse_ops.sparse_reduce_sum_sparse(sp_t,
@@ -663,7 +663,7 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
 
     sp_t = sparse_tensor.SparseTensor(self.ind, self.vals, self.dense_shape)
 
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       self._compare_all(sp_t, None, ndims=2)
       self._compare_all(sp_t, 0, ndims=2)
       self._compare_all(sp_t, [1], ndims=2)
@@ -674,7 +674,7 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
 
     np.random.seed(1618)
     test_dims = [(1618, 1, 11, 7, 1), (1,), (1, 1, 1)]
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       for dims in test_dims:
         sp_t, unused_nnz = _sparsify(np.random.randn(*dims))
         # reduce all using None
@@ -686,7 +686,7 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
 
   def testInvalidAxes(self):
     sp_t = sparse_tensor.SparseTensor(self.ind, self.vals, self.dense_shape)
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       with self.assertRaisesOpError("Invalid reduction dimension -3"):
         sparse_ops.sparse_reduce_sum(sp_t, -3).eval()
       with self.assertRaisesOpError("Invalid reduction dimension 2"):
@@ -702,7 +702,7 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
 
     np.random.seed(8161)
     test_dims = [(11, 1, 5, 7, 1), (2, 2)]
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       for dims in test_dims:
         sp_t, nnz = _sparsify(np.random.randn(*dims))
         # reduce random axes from 1D to N-D
@@ -710,16 +710,16 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
           axes = np.random.choice(len(dims), size=d, replace=False).tolist()
           reduced = sparse_ops.sparse_reduce_sum(sp_t, axes)
 
-          err = gradient_checker.compute_gradient_error(sp_t.values, (nnz,),
-                                                        reduced,
-                                                        reduced.eval().shape)
+          err = gradient_checker.compute_gradient_error(
+              sp_t.values, (nnz,), reduced,
+              self.evaluate(reduced).shape)
           self.assertLess(err, 1e-3)
 
         # Tests for negative axes.
         reduced = sparse_ops.sparse_reduce_sum(sp_t, -1)
-        err = gradient_checker.compute_gradient_error(sp_t.values, (nnz,),
-                                                      reduced,
-                                                      reduced.eval().shape)
+        err = gradient_checker.compute_gradient_error(
+            sp_t.values, (nnz,), reduced,
+            self.evaluate(reduced).shape)
         self.assertLess(err, 1e-3)
 
 
@@ -742,7 +742,7 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
     sp_shapes = [(10, 10, 10), (5, 5), (1618,), (3, 3, 7)]
     dense_shapes = [(10, 10, 1), (5, 5), (1,), (1, 7)]
 
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       for dtype in [np.float32, np.float64, np.int32, np.int64]:
         for sp_shape, dense_shape in zip(sp_shapes, dense_shapes):
           sp_vals_np = np.random.rand(*sp_shape).astype(dtype) + 1
@@ -761,7 +761,7 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
             self.assertEqual(res.values.eval().dtype, np.float64)
 
   def testCwiseAdd(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       # Identity(2) + AllOnes(2,2).  Should be equal to 2 * Identity(2).
       indices = [[0, 0], [1, 1]]
       vals = [1, 1]
@@ -784,7 +784,7 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
     sp_shapes = [(10, 10, 10), (5, 5), (1618,), (3, 3, 7)]
     dense_shapes = [(10, 10, 1), (5, 5), (1,), (1, 7)]
 
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       for dtype in [np.float32, np.float64]:
         for sp_shape, dense_shape in zip(sp_shapes, dense_shapes):
           sp_vals_np = np.random.rand(*sp_shape).astype(dtype) + 1
@@ -822,7 +822,7 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
       batched_sp_t, unused_nnz1 = _sparsify(
           sp_vals_np.reshape((1, n, m)), thresh=0.)  # No masking.
 
-      with self.test_session(use_gpu=False):
+      with self.cached_session(use_gpu=False):
         densified = constant_op.constant(sp_vals_np)
 
         sp_result = sparse_ops.sparse_softmax(batched_sp_t).eval(
@@ -853,7 +853,7 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
       sp_t, unused_nnz = _sparsify(values, thresh=1e-2)
       expected_values = [1., 1., 1., .5, .5]
 
-      with self.test_session(use_gpu=False):
+      with self.cached_session(use_gpu=False):
         result = sparse_ops.sparse_softmax(sp_t).eval()
 
         self.assertAllEqual(expected_values, result.values)
@@ -862,7 +862,7 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
 
   def testGradient(self):
     x_shape = [2, 5, 10]
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       for dtype in [np.float32, np.float64]:
         x_np = np.random.randn(*x_shape).astype(dtype)
         x_tf, nnz = _sparsify(x_np)
@@ -880,7 +880,7 @@ class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testBasic(self):
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       # 1-D, values at index 0.
       sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
       sp_one = sparse_tensor.SparseTensor([[0]], [1], [7])
@@ -908,7 +908,7 @@ class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
         sp_a, unused_a_nnz = _sparsify(a_np, thresh=-.5)
         sp_b, unused_b_nnz = _sparsify(b_np, thresh=-.5)
 
-        with self.test_session(use_gpu=False):
+        with self.cached_session(use_gpu=False):
           maximum_tf = sparse_ops.sparse_maximum(sp_a, sp_b)
           maximum_tf_densified = sparse_ops.sparse_tensor_to_dense(
               maximum_tf).eval()
@@ -925,7 +925,7 @@ class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
             np.minimum(a_densified, b_densified), minimum_tf_densified)
 
   def testMismatchedShapes(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_zero = sparse_tensor.SparseTensor([[0, 0]], [0], [1, 1])
       sp_one = sparse_tensor.SparseTensor([[0]], [1], [2])
       with self.assertRaisesOpError("Operands do not have the same ranks"):
@@ -943,7 +943,7 @@ class SparseTransposeTest(test.TestCase):
     if np.__version__ == "1.13.0":
       self.skipTest("numpy 1.13.0 bug")
 
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       np.random.seed(1618)
       shapes = [np.random.randint(1, 10, size=rank) for rank in range(1, 6)]
       for shape in shapes:

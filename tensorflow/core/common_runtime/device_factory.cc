@@ -127,7 +127,12 @@ Device* DeviceFactory::NewDevice(const string& type,
   (*opt.config.mutable_device_count())[type] = 1;
   std::vector<Device*> devices;
   TF_CHECK_OK(device_factory->CreateDevices(opt, name_prefix, &devices));
-  CHECK_EQ(devices.size(), size_t{1});
+  int expected_num_devices = 1;
+  auto iter = options.config.device_count().find(type);
+  if (iter != options.config.device_count().end()) {
+    expected_num_devices = iter->second;
+  }
+  DCHECK_EQ(devices.size(), static_cast<size_t>(expected_num_devices));
   return devices[0];
 }
 

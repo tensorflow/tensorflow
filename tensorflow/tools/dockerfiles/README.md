@@ -5,6 +5,9 @@ MANUALLY!** They are maintained by `assembler.py`, which builds Dockerfiles from
 the files in `partials/` and the rules in `spec.yml`. See [the Contributing
 section](#contributing) for more information.
 
+These Dockerfiles are planned to replace the Dockerfiles used to generate
+[TensorFlow's official Docker images](https://hub.docker.com/r/tensorflow/tensorflow).
+
 ## Building
 
 The Dockerfiles in the `dockerfiles` directory must have their build context set

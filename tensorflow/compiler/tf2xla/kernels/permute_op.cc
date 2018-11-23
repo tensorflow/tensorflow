@@ -78,7 +78,7 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
       keys = xla::BroadcastInDim(
           keys, xla::ShapeUtil::MakeShape(xla::S32, {4, 2}), {0});
     }
-    auto sorted = xla::Sort(keys, ctx->Input(0), 0);
+    auto sorted = xla::Sort(keys, {ctx->Input(0)}, 0);
     auto output = xla::GetTupleElement(sorted, 1);
     ctx->SetOutput(0, output);
   }
@@ -90,9 +90,9 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(DataFormatVecPermuteOp);
 };
 
-// TODO(b/115384656): Support DT_INT64.
-REGISTER_XLA_OP(Name("DataFormatVecPermute").TypeConstraint("T", DT_INT32),
-                DataFormatVecPermuteOp);
+REGISTER_XLA_OP(
+    Name("DataFormatVecPermute").TypeConstraint("T", {DT_INT32, DT_INT64}),
+    DataFormatVecPermuteOp);
 
 }  // namespace
 }  // namespace tensorflow

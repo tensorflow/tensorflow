@@ -2303,6 +2303,95 @@ TEST_F(ConstantFoldingTest, NoOpReduction) {
   test::ExpectTensorNear<float>(tensors_expected[1], tensors[1], 1e-5);
 }
 
+TEST_F(ConstantFoldingTest, SingleElementEmptyAxisReduction) {
+  // Build a simple graph with reductions that involve single-element input and
+  // no axes to reduce along.
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output input_var_three_dim = ops::Variable(
+      scope.WithOpName("input_var_three_dim"), {1, 1, 1}, DT_FLOAT);
+  Output input_var_one_dim =
+      ops::Variable(scope.WithOpName("input_var_one_dim"), {1}, DT_FLOAT);
+  Output one_axis = ops::Const(scope.WithOpName("one_axis"), {0}, {1});
+  Output multiple_axes =
+      ops::Const(scope.WithOpName("multiple_axes"), {1, 0}, {2});
+  Output variable_axis =
+      ops::Variable(scope.WithOpName("input_var_axis"), {1}, DT_INT32);
+  ops::Mean::Attrs attr;
+  attr = attr.KeepDims(false);
+  // Should be optimized to Reshape.
+  Output mean_1 = ops::Mean(scope.WithOpName("mean_1"), input_var_three_dim,
+                            one_axis, attr.KeepDims(false));
+  Output mean_2 = ops::Mean(scope.WithOpName("mean_2"), input_var_three_dim,
+                            multiple_axes, attr.KeepDims(false));
+  // Should remain as-is, since OutputProperties will not be known this node.
+  Output mean_3 = ops::Mean(scope.WithOpName("mean_3"), input_var_one_dim,
+                            one_axis, attr.KeepDims(false));
+  // Should remain as-is.
+  Output mean_4 = ops::Mean(scope.WithOpName("mean_4"), input_var_three_dim,
+                            variable_axis, attr.KeepDims(false));
+  // Should be optimized to Identity, since KeepDims=true.
+  Output mean_5 = ops::Mean(scope.WithOpName("mean_5"), input_var_three_dim,
+                            multiple_axes, attr.KeepDims(true));
+
+  GrapplerItem item;
+  item.fetch = {"mean_1", "mean_2", "mean_3", "mean_4", "mean_5"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // Ensure Mean node is optimized to Reshape.
+  int found = 0;
+  for (const auto& node : output.node()) {
+    if (node.name() == "mean_1" || node.name() == "mean_2") {
+      found++;
+      EXPECT_EQ("Reshape", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("input_var_three_dim", node.input(0));
+    } else if (node.name() == "mean_3") {
+      found++;
+      EXPECT_EQ("Mean", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("input_var_one_dim", node.input(0));
+    } else if (node.name() == "mean_4") {
+      found++;
+      EXPECT_EQ("Mean", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("input_var_three_dim", node.input(0));
+    } else if (node.name() == "mean_5") {
+      found++;
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("^multiple_axes", node.input(1));
+    }
+  }
+  EXPECT_EQ(5, found);
+
+  // Ensure resultant values from Mean and Reshape are the same.
+  auto input_var_three_dim_t =
+      GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 1, 1}));
+  auto input_var_one_dim_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({1}));
+  Tensor input_var_axis_t(DT_INT32, TensorShape({1}));
+  input_var_axis_t.flat<int32>()(0) = 0;
+  auto tensors_expected =
+      EvaluateNodes(item.graph, item.fetch,
+                    {{"input_var_three_dim", input_var_three_dim_t},
+                     {"input_var_one_dim", input_var_one_dim_t},
+                     {"input_var_axis", input_var_axis_t}});
+  EXPECT_EQ(5, tensors_expected.size());
+  auto tensors = EvaluateNodes(output, item.fetch,
+                               {{"input_var_three_dim", input_var_three_dim_t},
+                                {"input_var_one_dim", input_var_one_dim_t},
+                                {"input_var_axis", input_var_axis_t}});
+  EXPECT_EQ(5, tensors.size());
+  for (int i = 0; i < 5; ++i) {
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-5);
+  }
+}
+
 TEST_F(ConstantFoldingTest, NoOpReshape) {
   // Build a simple graph with a reshape that can be reduced to the identity.
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
@@ -3255,6 +3344,36 @@ TEST_F(ConstantFoldingTest, FoldingPreservesDenormalFlushing) {
   EXPECT_EQ(1, tensors_expected.size());
   EXPECT_EQ(1, tensors.size());
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
+TEST_F(ConstantFoldingTest, EvaluatingLargeConstantNoFoldingMergingLoop) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  int size = 10 * 1024 * 1024 / 4 / 2;
+  Output nonconst =
+      ops::RandomUniform(s.WithOpName("nonconst"), {size, 1}, DT_FLOAT);
+  Output const1 = ops::Const(s.WithOpName("const1"), 0.0f, {size, 1});
+  Output const2 = ops::Const(s.WithOpName("const2"), 1.0f, {size, 1});
+  Output axis = ops::Const(s.WithOpName("axis"), -1, {});
+  Output concat1 =
+      ops::Concat(s.WithOpName("concat1"), {nonconst, const1}, axis);
+  Output result = ops::Concat(s.WithOpName("result"), {concat1, const2}, axis);
+
+  GrapplerItem item;
+  item.fetch.push_back("result");
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  std::vector<string> fetch = {"result"};
+  auto tensors_expected = EvaluateNodes(item.graph, fetch);
+  auto tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+  EXPECT_EQ(1, tensors.size());
+  EXPECT_EQ(tensors_expected[0].shape(), tensors[0].shape());
 }
 
 }  // namespace

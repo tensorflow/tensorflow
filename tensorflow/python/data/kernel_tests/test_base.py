@@ -19,10 +19,13 @@ from __future__ import print_function
 
 import re
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -35,7 +38,7 @@ class DatasetTestBase(test.TestCase):
     self.assertAllEqual(a.values, b.values)
     self.assertAllEqual(a.dense_shape, b.dense_shape)
 
-  def getNext(self, dataset):
+  def getNext(self, dataset, requires_initialization=False):
     """Returns a callable that returns the next element of the dataset.
 
     Example use:
@@ -47,22 +50,87 @@ class DatasetTestBase(test.TestCase):
     ```
 
     Args:
-      dataset: A dataset whose next element is returned
-
+      dataset: A dataset whose elements will be returned.
+      requires_initialization: Indicates that when the test is executed in graph
+        mode, it should use an initializable iterator to iterate through the
+        dataset (e.g. when it contains stateful nodes). Defaults to False.
     Returns:
-      A callable that returns the next element of `dataset`
+      A callable that returns the next element of `dataset`.
     """
-    it = dataset.make_one_shot_iterator()
     if context.executing_eagerly():
-      return it.get_next
+      iterator = dataset.__iter__()
+      return iterator._next_internal  # pylint: disable=protected-access
     else:
-      nxt = it.get_next()
-      return lambda: nxt
+      if requires_initialization:
+        iterator = dataset.make_initializable_iterator()
+        self.evaluate(iterator.initializer)
+      else:
+        iterator = dataset.make_one_shot_iterator()
+      return iterator.get_next
+
+  def _compareOutputToExpected(self, result_values, expected_values):
+    for i in range(len(result_values)):
+      if sparse_tensor.is_sparse(result_values[i]):
+        self.assertSparseValuesEqual(result_values[i], expected_values[i])
+      else:
+        self.assertAllEqual(result_values[i], expected_values[i])
+
+  def assertDatasetProduces(self,
+                            dataset,
+                            expected_output=None,
+                            expected_error=None,
+                            requires_initialization=False,
+                            num_test_iterations=2):
+    """Asserts that a dataset produces the expected output / error.
+
+    Args:
+      dataset: A dataset to check for the expected output / error.
+      expected_output: A list of elements that the dataset is expected to
+        produce.
+      expected_error: A tuple `(type, predicate)` identifying the expected error
+        `dataset` should raise. The `type` should match the expected exception
+        type, while `predicate` should either be 1) a unary function that inputs
+        the raised exception and returns a boolean indicator of success or 2) a
+        regular expression that is expected to match the error message
+        partially.
+      requires_initialization: Indicates that when the test is executed in graph
+        mode, it should use an initializable iterator to iterate through the
+        dataset (e.g. when it contains stateful nodes). Defaults to False.
+      num_test_iterations: Number of times `dataset` will be iterated. Defaults
+        to 2.
+    """
+    self.assertTrue(
+        expected_error is not None or expected_output is not None,
+        "Exactly one of expected_output or expected error should be provided.")
+    if expected_error:
+      self.assertTrue(
+          expected_output is None,
+          "Exactly one of expected_output or expected error should be provided."
+      )
+      with self.assertRaisesWithPredicateMatch(expected_error[0],
+                                               expected_error[1]):
+        get_next = self.getNext(
+            dataset, requires_initialization=requires_initialization)
+        self.evaluate(get_next())
+      return
+    self.assertGreater(num_test_iterations, 0)
+    for _ in range(num_test_iterations):
+      get_next = self.getNext(
+          dataset, requires_initialization=requires_initialization)
+      result = []
+      for _ in range(len(expected_output)):
+        result.append(self.evaluate(get_next()))
+      self._compareOutputToExpected(result, expected_output)
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
 
   def assertDatasetsEqual(self, dataset1, dataset2):
     """Checks that datasets are equal. Supports both graph and eager mode."""
     self.assertEqual(dataset1.output_types, dataset2.output_types)
     self.assertEqual(dataset1.output_classes, dataset2.output_classes)
+    flattened_types = nest.flatten(dataset1.output_types)
 
     next1 = self.getNext(dataset1)
     next2 = self.getNext(dataset2)
@@ -79,12 +147,12 @@ class DatasetTestBase(test.TestCase):
       op2 = nest.flatten(op2)
       assert len(op1) == len(op2)
       for i in range(len(op1)):
-        if isinstance(
-            op1[i],
-            (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
+        if sparse_tensor.is_sparse(op1[i]):
           self.assertSparseValuesEqual(op1[i], op2[i])
-        else:
+        elif flattened_types[i] == dtypes.string:
           self.assertAllEqual(op1[i], op2[i])
+        else:
+          self.assertAllClose(op1[i], op2[i])
 
   def assertDatasetsRaiseSameError(self,
                                    dataset1,
@@ -97,7 +165,7 @@ class DatasetTestBase(test.TestCase):
     try:
       self.evaluate(next1())
       raise ValueError(
-          'Expected dataset to raise an error of type %s, but it did not.' %
+          "Expected dataset to raise an error of type %s, but it did not." %
           repr(exception_class))
     except exception_class as e:
       expected_message = e.message
@@ -107,3 +175,29 @@ class DatasetTestBase(test.TestCase):
       with self.assertRaisesRegexp(exception_class,
                                    re.escape(expected_message)):
         self.evaluate(next2())
+
+  def structuredDataset(self, structure, shape=None, dtype=dtypes.int64):
+    """Returns a singleton dataset with the given structure."""
+    if shape is None:
+      shape = []
+    if structure is None:
+      return dataset_ops.Dataset.from_tensors(
+          array_ops.zeros(shape, dtype=dtype))
+    else:
+      return dataset_ops.Dataset.zip(
+          tuple([
+              self.structuredDataset(substructure, shape, dtype)
+              for substructure in structure
+          ]))
+
+  def structuredElement(self, structure, shape=None, dtype=dtypes.int64):
+    """Returns an element with the given structure."""
+    if shape is None:
+      shape = []
+    if structure is None:
+      return array_ops.zeros(shape, dtype=dtype)
+    else:
+      return tuple([
+          self.structuredElement(substructure, shape, dtype)
+          for substructure in structure
+      ])

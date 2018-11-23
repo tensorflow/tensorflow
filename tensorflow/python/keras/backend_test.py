@@ -23,9 +23,14 @@ import scipy.sparse
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
@@ -88,6 +93,7 @@ def compare_two_inputs_op_to_numpy(keras_op,
                          str(keras_output))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class BackendUtilsTest(test.TestCase):
 
   def test_backend(self):
@@ -129,8 +135,9 @@ class BackendUtilsTest(test.TestCase):
       keras.backend.set_learning_phase(0)
       x = keras.Input((3,))
       y = keras.layers.BatchNormalization()(x)
-      sess.run(variables.global_variables_initializer())
-      sess.run(y, feed_dict={x: np.random.random((2, 3))})
+      if not context.executing_eagerly():
+        self.evaluate(variables.global_variables_initializer())
+        sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
   def test_learning_phase_scope(self):
     with self.cached_session():
@@ -149,22 +156,29 @@ class BackendUtilsTest(test.TestCase):
       self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
 
   def test_int_shape(self):
-    x = keras.backend.placeholder(shape=(3, 4))
+    x = keras.backend.ones(shape=(3, 4))
     self.assertEqual(keras.backend.int_shape(x), (3, 4))
 
-    x = keras.backend.placeholder(shape=(None, 4))
-    self.assertEqual(keras.backend.int_shape(x), (None, 4))
+    if not context.executing_eagerly():
+      x = keras.backend.placeholder(shape=(None, 4))
+      self.assertEqual(keras.backend.int_shape(x), (None, 4))
 
   def test_in_train_phase(self):
     with self.cached_session():
       y1 = keras.backend.variable(1)
       y2 = keras.backend.variable(2)
-      y = keras.backend.in_train_phase(y1, y2)
-      f = keras.backend.function([keras.backend.learning_phase()], [y])
-      y_val = f([0])[0]
-      self.assertAllClose(y_val, 2)
-      y_val = f([1])[0]
-      self.assertAllClose(y_val, 1)
+      if context.executing_eagerly():
+        with keras.backend.learning_phase_scope(0):
+          y_val_test = keras.backend.in_train_phase(y1, y2).numpy()
+        with keras.backend.learning_phase_scope(1):
+          y_val_train = keras.backend.in_train_phase(y1, y2).numpy()
+      else:
+        y = keras.backend.in_train_phase(y1, y2)
+        f = keras.backend.function([keras.backend.learning_phase()], [y])
+        y_val_test = f([0])[0]
+        y_val_train = f([1])[0]
+      self.assertAllClose(y_val_test, 2)
+      self.assertAllClose(y_val_train, 1)
 
   def test_is_keras_tensor(self):
     x = keras.backend.variable(1)
@@ -174,164 +188,20 @@ class BackendUtilsTest(test.TestCase):
     with self.assertRaises(ValueError):
       keras.backend.is_keras_tensor(0)
 
-  def test_is_placeholder(self):
-    x = keras.backend.placeholder(shape=(1,))
-    self.assertEqual(keras.backend.is_placeholder(x), True)
-    # Test with TF placeholder
-    x = keras.backend.array_ops.placeholder(dtype='float32', shape=(1,))
-    self.assertEqual(keras.backend.is_placeholder(x), True)
-    x = keras.backend.variable(1)
-    self.assertEqual(keras.backend.is_placeholder(x), False)
-
   def test_stop_gradient(self):
     x = keras.backend.variable(1)
     y = keras.backend.stop_gradient(x)
-    self.assertEqual(y.op.name[:12], 'StopGradient')
+    if not context.executing_eagerly():
+      self.assertEqual(y.op.name[:12], 'StopGradient')
 
     xs = [keras.backend.variable(1) for _ in range(3)]
     ys = keras.backend.stop_gradient(xs)
-    for y in ys:
-      self.assertEqual(y.op.name[:12], 'StopGradient')
-
-  def test_function_tf_feed_symbols(self):
-    with self.cached_session():
-      # Test feeding a resource variable to `function`.
-      x1 = keras.backend.placeholder(shape=())
-      x2 = keras.backend.placeholder(shape=())
-      lr = keras.backend.learning_phase()  # Include a placeholder_with_default.
-
-      y1 = keras.backend.variable(10.)
-      y2 = 3
-
-      f = keras.backend.function(
-          inputs=[x1, x2, lr],
-          outputs=[x1 + 1,
-                   keras.backend.in_train_phase(x2 + 2, x2 - 1)])
-      outs = f([y1, y2, None])  # Use default learning_phase value.
-      self.assertEqual(outs, [11., 2.])
-      outs = f([y1, y2, 1])  # Set learning phase value.
-      self.assertEqual(outs, [11., 5.])
-
-      # Test triggering a callable refresh by changing the input.
-      y3 = keras.backend.constant(20.)  # Test with tensor
-      outs = f([y3, y2, None])
-      self.assertEqual(outs, [21., 2.])
-
-      y4 = 4  # Test with non-symbol
-      outs = f([y4, y2, None])
-      self.assertEqual(outs, [5., 2.])
-
-      # Test with a different dtype
-      y5 = keras.backend.constant(10., dtype='float64')
-      outs = f([y5, y2, None])
-      self.assertEqual(outs, [11., 2.])
-
-  def test_function_tf_fetches(self):
-    # Additional operations can be passed to tf.Session().run() via its
-    # `fetches` arguments. In contrast to `updates` argument of
-    # keras.backend.function() these do not have control dependency on `outputs`
-    # so they can run in parallel. Also they should not contribute to output of
-    # keras.backend.function().
-    with self.cached_session():
-      x = keras.backend.variable(0.)
-      y = keras.backend.variable(0.)
-      x_placeholder = keras.backend.placeholder(shape=())
-      y_placeholder = keras.backend.placeholder(shape=())
-
-      f = keras.backend.function(inputs=[x_placeholder, y_placeholder],
-                                 outputs=[x_placeholder + y_placeholder],
-                                 updates=[(x, x_placeholder + 1.)],
-                                 fetches=[keras.backend.update(y, 5.)])
-      output = f([10., 20.])
-      self.assertEqual(output, [30.])
-      self.assertEqual(
-          keras.backend.get_session().run(fetches=[x, y]), [11., 5.])
-
-  def test_function_tf_feed_dict(self):
-    # Additional substitutions can be passed to `tf.Session().run()` via its
-    # `feed_dict` arguments. Note that the feed_dict is passed once in the
-    # constructor but we can modify the values in the dictionary. Through
-    # this feed_dict we can provide additional substitutions besides Keras
-    # inputs.
-    with self.cached_session():
-      x = keras.backend.variable(0.)
-      y = keras.backend.variable(0.)
-      x_placeholder = keras.backend.placeholder(shape=())
-      y_placeholder = keras.backend.placeholder(shape=())
-
-      feed_dict = {y_placeholder: 3.}
-      fetches = [keras.backend.update(y, y_placeholder * 10.)]
-      f = keras.backend.function(inputs=[x_placeholder],
-                                 outputs=[x_placeholder + 1.],
-                                 updates=[(x, x_placeholder + 10.)],
-                                 feed_dict=feed_dict,
-                                 fetches=fetches)
-      output = f([10.])
-      self.assertEqual(output, [11.])
-      self.assertEqual(
-          keras.backend.get_session().run(fetches=[x, y]), [20., 30.])
-
-      # updated value in feed_dict will be modified within the K.function()
-      feed_dict[y_placeholder] = 4.
-      output = f([20.])
-      self.assertEqual(output, [21.])
-      self.assertEqual(
-          keras.backend.get_session().run(fetches=[x, y]), [30., 40.])
-
-  def test_function_tf_run_options_with_run_metadata(self):
-    with self.cached_session():
-      x_placeholder = keras.backend.placeholder(shape=())
-      y_placeholder = keras.backend.placeholder(shape=())
-
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      run_metadata = config_pb2.RunMetadata()
-      # enable run_options.
-      f = keras.backend.function(inputs=[x_placeholder, y_placeholder],
-                                 outputs=[x_placeholder + y_placeholder],
-                                 options=run_options,
-                                 run_metadata=run_metadata)
-      output = f([10., 20.])
-      self.assertEqual(output, [30.])
-      self.assertGreater(len(run_metadata.partition_graphs), 0)
-      # disable run_options.
-      f1 = keras.backend.function(inputs=[x_placeholder, y_placeholder],
-                                  outputs=[x_placeholder + y_placeholder],
-                                  run_metadata=run_metadata)
-      output1 = f1([10., 20.])
-      self.assertEqual(output1, [30.])
-      self.assertEqual(len(run_metadata.partition_graphs), 0)
-
-  def test_function_fetch_callbacks(self):
-
-    class CallbackStub(object):
-
-      def __init__(self):
-        self.times_called = 0
-        self.callback_result = 0
-
-      def _fetch_callback(self, result):
-        self.times_called += 1
-        self.callback_result = result
-
-    with self.cached_session():
-      callback = CallbackStub()
-      x_placeholder = keras.backend.placeholder(shape=())
-      y_placeholder = keras.backend.placeholder(shape=())
-
-      callback_op = x_placeholder * y_placeholder
-
-      f = keras.backend.function(
-          inputs=[x_placeholder, y_placeholder],
-          outputs=[x_placeholder + y_placeholder])
-      f.fetches.append(callback_op)
-      f.fetch_callbacks[callback_op] = callback._fetch_callback
-
-      _ = f([10., 20.])
-
-      self.assertEqual(callback.times_called, 1)
-      self.assertEqual(callback.callback_result, 200)
+    if not context.executing_eagerly():
+      for y in ys:
+        self.assertEqual(y.op.name[:12], 'StopGradient')
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class BackendVariableTest(test.TestCase):
 
   def test_zeros(self):
@@ -404,23 +274,18 @@ class BackendVariableTest(test.TestCase):
       y = keras.backend.to_dense(x)
       self.assertFalse(keras.backend.is_sparse(y))
 
-  def test_placeholder(self):
-    x = keras.backend.placeholder(shape=(3, 4))
-    self.assertEqual(x.get_shape().as_list(), [3, 4])
-    x = keras.backend.placeholder(shape=(3, 4), sparse=True)
-    self.assertEqual(x.get_shape().as_list(), [3, 4])
 
-
+@test_util.run_all_in_graph_and_eager_modes
 class BackendLinearAlgebraTest(test.TestCase):
 
   def test_dot(self):
-    x = keras.backend.placeholder(shape=(2, 3))
-    y = keras.backend.placeholder(shape=(3, 4))
+    x = keras.backend.ones(shape=(2, 3))
+    y = keras.backend.ones(shape=(3, 4))
     xy = keras.backend.dot(x, y)
     self.assertEqual(xy.get_shape().as_list(), [2, 4])
 
-    x = keras.backend.placeholder(shape=(32, 28, 3))
-    y = keras.backend.placeholder(shape=(3, 4))
+    x = keras.backend.ones(shape=(32, 28, 3))
+    y = keras.backend.ones(shape=(3, 4))
     xy = keras.backend.dot(x, y)
     self.assertEqual(xy.get_shape().as_list(), [32, 28, 4])
 
@@ -524,7 +389,8 @@ class BackendLinearAlgebraTest(test.TestCase):
 
       # alpha (leaky relu used)
       relu_op = keras.backend.relu(x, alpha=0.5)
-      self.assertTrue('LeakyRelu' in relu_op.name)
+      if not context.executing_eagerly():
+        self.assertTrue('LeakyRelu' in relu_op.name)
       self.assertAllClose(keras.backend.eval(relu_op), [[-2, 0], [2, 7]])
 
       # max_value < some elements
@@ -533,7 +399,8 @@ class BackendLinearAlgebraTest(test.TestCase):
 
       # nn.relu6 used
       relu_op = keras.backend.relu(x, max_value=6)
-      self.assertTrue('Relu6' in relu_op.name)  # uses tf.nn.relu6
+      if not context.executing_eagerly():
+        self.assertTrue('Relu6' in relu_op.name)  # uses tf.nn.relu6
       self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 6]])
 
       # max value > 6
@@ -577,6 +444,7 @@ class BackendLinearAlgebraTest(test.TestCase):
       self.assertAllClose(keras.backend.eval(relu_op), [[-2, -1], [-0.5, 5]])
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class BackendShapeOpsTest(test.TestCase):
 
   def test_reshape(self):
@@ -662,9 +530,10 @@ class BackendShapeOpsTest(test.TestCase):
     self.assertEqual(y.get_shape().as_list(), [1, 9, 2])
 
     # Use with a dynamic axis:
-    x = keras.backend.placeholder(shape=(2, None, 2))
-    y = keras.backend.repeat_elements(x, 3, axis=1)
-    self.assertEqual(y.get_shape().as_list(), [2, None, 2])
+    if not context.executing_eagerly():
+      x = keras.backend.placeholder(shape=(2, None, 2))
+      y = keras.backend.repeat_elements(x, 3, axis=1)
+      self.assertEqual(y.get_shape().as_list(), [2, None, 2])
 
   def test_repeat(self):
     x = keras.backend.variable(np.ones((1, 3)))
@@ -779,6 +648,7 @@ class BackendShapeOpsTest(test.TestCase):
           np_kwargs={'data_format': 'channels_first'})
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
 
   def test_bias_add(self):
@@ -798,7 +668,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
                                      input_shape_a=(4, 3, 5, 2, 7),
                                      input_shape_b=(7,))
 
-      with self.assertRaises(ValueError):
+      with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
         x = keras.backend.variable((3, 4))
         b = keras.backend.variable((3, 4))
         keras.backend.bias_add(x, b)
@@ -1277,8 +1147,11 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
 
     rnn_fn = rnn_step_fn()
     inputs = keras.backend.variable(input_val)
-    initial_states = [keras.backend.variable(init_state_val),
-                      np.concatenate([init_state_val, init_state_val], axis=-1)]
+    initial_states = [
+        keras.backend.variable(init_state_val),
+        ops.convert_to_tensor(
+            np.concatenate([init_state_val, init_state_val], axis=-1))
+    ]
     mask = keras.backend.variable(np_mask)
 
     kwargs_list = [
@@ -1382,6 +1255,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(var.get_shape().as_list(), [3,])
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class TestCTC(test.TestCase):
 
   def test_ctc_decode(self):
@@ -1487,6 +1361,7 @@ class TestCTC(test.TestCase):
       self.assertAllClose(res[:, 0], ref, atol=1e-05)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class TestRandomOps(test.TestCase):
 
   def test_random_binomial(self):
@@ -1506,12 +1381,235 @@ class TestRandomOps(test.TestCase):
       self.assertAllClose(np.min(y), -2., atol=0.1)
 
   def test_string_input(self):
-    seq = keras.Sequential([
-        keras.layers.InputLayer(input_shape=(1,), dtype=dtypes.string),
-        keras.layers.Lambda(lambda x: x[0])
-    ])
-    preds = seq.predict([['tensorflow eager']])
-    self.assertEqual(preds.shape, (1,))
+    with self.cached_session():
+      seq = keras.Sequential([
+          keras.layers.InputLayer(input_shape=(1,), dtype=dtypes.string),
+          keras.layers.Lambda(lambda x: x[0])
+      ])
+      preds = seq.predict([['tensorflow eager']])
+      self.assertEqual(preds.shape, (1,))
+
+
+class BackendGraphTests(test.TestCase):
+
+  def test_is_placeholder(self):
+    x = keras.backend.placeholder(shape=(1,))
+    self.assertEqual(keras.backend.is_placeholder(x), True)
+    # Test with TF placeholder
+    x = keras.backend.array_ops.placeholder(dtype='float32', shape=(1,))
+    self.assertEqual(keras.backend.is_placeholder(x), True)
+    x = keras.backend.variable(1)
+    self.assertEqual(keras.backend.is_placeholder(x), False)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_basics(self):
+    x1 = keras.backend.placeholder(shape=(), dtype='float32')
+    x2 = keras.backend.placeholder(shape=(), dtype='int32')
+    v = keras.backend.variable(10.)
+    with keras.backend.get_graph().as_default():
+      y1 = x1 + keras.backend.cast(x2, 'float32') + v
+      y2 = x1 * keras.backend.cast(x2, 'float32')
+      with ops.control_dependencies([y1]):
+        u = keras.backend.update(v, 5.)
+    f = keras.backend.function([x1, x2], [y1, y2], updates=[u])
+    output_values = f([2, 3])
+    self.assertEqual(output_values, [15., 6.])
+    self.assertEqual(keras.backend.eval(v), 5.)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_placeholder_with_default(self):
+    with keras.backend.get_graph().as_default():
+      x1 = array_ops.placeholder_with_default(
+          np.array(2., dtype='float32'), shape=())
+      x2 = array_ops.placeholder_with_default(
+          np.array(3, dtype='int32'), shape=())
+    y1 = x1 + keras.backend.cast(x2, 'float32')
+    y2 = x1 * keras.backend.cast(x2, 'float32')
+    f = keras.backend.function([x1, x2], [y1, y2])
+    output_values = f([4, 5])
+    self.assertEqual(output_values, [9., 20.])
+    output_values = f([None, None])
+    self.assertEqual(output_values, [5., 6.])
+
+  def test_function_tf_feed_symbols(self):
+    # Test Keras backend functions with TF tensor inputs.
+    with self.cached_session():
+      # Test feeding a resource variable to `function`.
+      x1 = keras.backend.placeholder(shape=())
+      x2 = keras.backend.placeholder(shape=())
+      lr = keras.backend.learning_phase()  # Include a placeholder_with_default.
+
+      y1 = keras.backend.variable(10.)
+      y2 = 3
+
+      f = keras.backend.function(
+          inputs=[x1, x2, lr],
+          outputs=[x1 + 1, keras.backend.in_train_phase(x2 + 2, x2 - 1)])
+      outs = f([y1, y2, None])  # Use default learning_phase value.
+      self.assertEqual(outs, [11., 2.])
+      outs = f([y1, y2, 1])  # Set learning phase value.
+      self.assertEqual(outs, [11., 5.])
+
+      # Test triggering a callable refresh by changing the input.
+      y3 = keras.backend.constant(20.)  # Test with tensor
+      outs = f([y3, y2, None])
+      self.assertEqual(outs, [21., 2.])
+
+      y4 = 4  # Test with non-symbol
+      outs = f([y4, y2, None])
+      self.assertEqual(outs, [5., 2.])
+
+      # Test with a different dtype
+      y5 = keras.backend.constant(10., dtype='float64')
+      outs = f([y5, y2, None])
+      self.assertEqual(outs, [11., 2.])
+
+  def test_function_tf_fetches(self):
+    # Additional operations can be passed to tf.Session().run() via its
+    # `fetches` arguments. In contrast to `updates` argument of
+    # keras.backend.function() these do not have control dependency on `outputs`
+    # so they can run in parallel. Also they should not contribute to output of
+    # keras.backend.function().
+    with self.cached_session():
+      x = keras.backend.variable(0.)
+      y = keras.backend.variable(0.)
+      x_placeholder = keras.backend.placeholder(shape=())
+      y_placeholder = keras.backend.placeholder(shape=())
+
+      f = keras.backend.function(
+          inputs=[x_placeholder, y_placeholder],
+          outputs=[x_placeholder + y_placeholder],
+          updates=[(x, x_placeholder + 1.)],
+          fetches=[keras.backend.update(y, 5.)])
+      output = f([10., 20.])
+      self.assertEqual(output, [30.])
+      self.assertEqual(keras.backend.get_session().run(fetches=[x, y]),
+                       [11., 5.])
+
+  def test_function_tf_feed_dict(self):
+    # Additional substitutions can be passed to `tf.Session().run()` via its
+    # `feed_dict` arguments. Note that the feed_dict is passed once in the
+    # constructor but we can modify the values in the dictionary. Through
+    # this feed_dict we can provide additional substitutions besides Keras
+    # inputs.
+    with self.cached_session():
+      x = keras.backend.variable(0.)
+      y = keras.backend.variable(0.)
+      x_placeholder = keras.backend.placeholder(shape=())
+      y_placeholder = keras.backend.placeholder(shape=())
+
+      feed_dict = {y_placeholder: 3.}
+      fetches = [keras.backend.update(y, y_placeholder * 10.)]
+      f = keras.backend.function(
+          inputs=[x_placeholder],
+          outputs=[x_placeholder + 1.],
+          updates=[(x, x_placeholder + 10.)],
+          feed_dict=feed_dict,
+          fetches=fetches)
+      output = f([10.])
+      self.assertEqual(output, [11.])
+      self.assertEqual(keras.backend.get_session().run(fetches=[x, y]),
+                       [20., 30.])
+
+      # updated value in feed_dict will be modified within the K.function()
+      feed_dict[y_placeholder] = 4.
+      output = f([20.])
+      self.assertEqual(output, [21.])
+      self.assertEqual(keras.backend.get_session().run(fetches=[x, y]),
+                       [30., 40.])
+
+  def test_function_tf_run_options_with_run_metadata(self):
+    with self.cached_session():
+      x_placeholder = keras.backend.placeholder(shape=())
+      y_placeholder = keras.backend.placeholder(shape=())
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      run_metadata = config_pb2.RunMetadata()
+      # enable run_options.
+      f = keras.backend.function(
+          inputs=[x_placeholder, y_placeholder],
+          outputs=[x_placeholder + y_placeholder],
+          options=run_options,
+          run_metadata=run_metadata)
+      output = f([10., 20.])
+      self.assertEqual(output, [30.])
+      self.assertGreater(len(run_metadata.partition_graphs), 0)
+      # disable run_options.
+      f1 = keras.backend.function(
+          inputs=[x_placeholder, y_placeholder],
+          outputs=[x_placeholder + y_placeholder],
+          run_metadata=run_metadata)
+      output1 = f1([10., 20.])
+      self.assertEqual(output1, [30.])
+      self.assertEqual(len(run_metadata.partition_graphs), 0)
+
+  def test_function_fetch_callbacks(self):
+
+    class CallbackStub(object):
+
+      def __init__(self):
+        self.times_called = 0
+        self.callback_result = 0
+
+      def _fetch_callback(self, result):
+        self.times_called += 1
+        self.callback_result = result
+
+    with self.cached_session():
+      callback = CallbackStub()
+      x_placeholder = keras.backend.placeholder(shape=())
+      y_placeholder = keras.backend.placeholder(shape=())
+
+      callback_op = x_placeholder * y_placeholder
+
+      f = keras.backend.function(
+          inputs=[x_placeholder, y_placeholder],
+          outputs=[x_placeholder + y_placeholder])
+      f.fetches.append(callback_op)
+      f.fetch_callbacks[callback_op] = callback._fetch_callback
+
+      _ = f([10., 20.])
+
+      self.assertEqual(callback.times_called, 1)
+      self.assertEqual(callback.callback_result, 200)
+
+  def test_placeholder(self):
+    x = keras.backend.placeholder(shape=(3, 4))
+    self.assertEqual(x.get_shape().as_list(), [3, 4])
+    x = keras.backend.placeholder(shape=(3, 4), sparse=True)
+    self.assertEqual(x.get_shape().as_list(), [3, 4])
+
+  def test_batch_normalization(self):
+    # No eager CPU kernel.
+    g_val = np.random.random((3,))
+    b_val = np.random.random((3,))
+    gamma = keras.backend.variable(g_val)
+    beta = keras.backend.variable(b_val)
+
+    # 3D NHC case
+    val = np.random.random((10, 5, 3))
+    x = keras.backend.variable(val)
+    mean, var = nn.moments(x, (0, 1), None, None, False)
+    normed = keras.backend.batch_normalization(
+        x, mean, var, beta, gamma, axis=-1, epsilon=1e-3)
+    self.assertEqual(normed.shape.as_list(), [10, 5, 3])
+
+    # 4D NHWC case
+    val = np.random.random((10, 5, 5, 3))
+    x = keras.backend.variable(val)
+    mean, var = nn.moments(x, (0, 1, 2), None, None, False)
+    normed = keras.backend.batch_normalization(
+        x, mean, var, beta, gamma, axis=-1, epsilon=1e-3)
+    self.assertEqual(normed.shape.as_list(), [10, 5, 5, 3])
+
+    # 4D NCHW case
+    val = np.random.random((10, 3, 5, 5))
+    x = keras.backend.variable(val)
+    mean, var = nn.moments(x, (0, 2, 3), None, None, False)
+    normed = keras.backend.batch_normalization(
+        x, mean, var, beta, gamma, axis=1, epsilon=1e-3)
+    self.assertEqual(normed.shape.as_list(), [10, 3, 5, 5])
+
 
 if __name__ == '__main__':
   test.main()

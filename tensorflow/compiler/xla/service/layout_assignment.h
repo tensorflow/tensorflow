@@ -315,6 +315,10 @@ class LayoutAssignment : public HloModulePass {
   // rank as the output to have the same layout as the output.
   static bool InstructionCanChangeLayout(const HloInstruction* instruction);
 
+  // In case of an array shape returns true iff it is at most rank 1. In case of
+  // a tuple shape returns true iff all leaf shapes are at most rank 1.
+  static bool IsAtMostRank1(const Shape& shape);
+
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
   // constraint to its neighbors (i.e. operands and users) in order to minimize
@@ -332,19 +336,6 @@ class LayoutAssignment : public HloModulePass {
   virtual Status PropagateResultConstraint(
       const ResultLayoutConstraint& layout_constraint,
       LayoutConstraints* constraints);
-
-  // By default LayoutAssignment ensures that inputs and outputs of CustomCalls
-  // have the "major-first" layout (i.e.  {n, n-1, ..., 0}).
-  //
-  // If this function returns true, LayoutAssignment does not set a layout for
-  // the given CustomCall.  It's up to the backend to set one in
-  // AddBackendConstraints, if necessary.
-  //
-  // Precondition: instruction->opcode() == HloOpcode::kCustomCall.
-  virtual bool CustomCallRequiresMajorFirstLayout(
-      const HloInstruction* /*instruction*/) {
-    return true;
-  }
 
   // Called after layouts of an instruction have been finalized to allow
   // subclasses to check for platform specific assumptions.
@@ -375,7 +366,7 @@ class LayoutAssignment : public HloModulePass {
   // `user` that minimizes its cost on that operand.  Returns null if it can't
   // decide the best layout.
   // Precondition: `user` and the operand are array-shaped.
-  std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
+  virtual std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
       const Layout& operand_layout, const HloInstruction* user,
       int64 operand_no);
 
@@ -420,6 +411,10 @@ class LayoutAssignment : public HloModulePass {
   // minimize the local cost of the computation. This propagation is *not*
   // required for correctness.
   Status PropagateConstraints(LayoutConstraints* constraints);
+
+  Status PropagateBufferConstraintToOperands(
+      const BufferLayoutConstraint& buffer_constraint,
+      LayoutConstraints* constraints);
 
   // Check that all layouts in the module have been set and satisfy all
   // necessary conditions.

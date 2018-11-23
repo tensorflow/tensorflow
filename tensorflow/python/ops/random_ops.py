@@ -44,7 +44,8 @@ def _ShapeTensor(shape):
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 
 
-@tf_export("random.normal", "random_normal")
+@tf_export("random.normal", v1=["random.normal", "random_normal"])
+@deprecation.deprecated_endpoints("random_normal")
 def random_normal(shape,
                   mean=0.0,
                   stddev=1.0,
@@ -182,7 +183,8 @@ ops.NotDifferentiable("ParameterizedTruncatedNormal")
 ops.NotDifferentiable("TruncatedNormal")
 
 
-@tf_export("random.uniform", "random_uniform")
+@tf_export("random.uniform", v1=["random.uniform", "random_uniform"])
+@deprecation.deprecated_endpoints("random_uniform")
 def random_uniform(shape,
                    minval=0,
                    maxval=None,
@@ -247,7 +249,8 @@ def random_uniform(shape,
 ops.NotDifferentiable("RandomUniform")
 
 
-@tf_export("random.shuffle", "random_shuffle")
+@tf_export("random.shuffle", v1=["random.shuffle", "random_shuffle"])
+@deprecation.deprecated_endpoints("random_shuffle")
 def random_shuffle(value, seed=None, name=None):
   """Randomly shuffles a tensor along its first dimension.
 
@@ -278,7 +281,8 @@ def random_shuffle(value, seed=None, name=None):
       value, seed=seed1, seed2=seed2, name=name)
 
 
-@tf_export("image.random_crop", "random_crop")
+@tf_export("image.random_crop", v1=["image.random_crop", "random_crop"])
+@deprecation.deprecated_endpoints("random_crop")
 def random_crop(value, size, seed=None, name=None):
   """Randomly crops a tensor to a given size.
 
@@ -321,7 +325,9 @@ def random_crop(value, size, seed=None, name=None):
     return array_ops.slice(value, offset, size, name=name)
 
 
-@tf_export("random.multinomial", "multinomial")
+@tf_export(v1=["random.multinomial", "multinomial"])
+@deprecation.deprecated(
+    date=None, instructions="Use tf.random.categorical instead.")
 def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
   """Draws samples from a multinomial distribution.
 
@@ -338,9 +344,7 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
       `[i, :]` represents the unnormalized log-probabilities for all classes.
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A Python integer. Used to create a random seed for the distribution.
-      See
-      `tf.set_random_seed`
-      for behavior.
+      See `tf.set_random_seed` for behavior.
     name: Optional name for the operation.
     output_dtype: integer type to use for the output. Defaults to int64.
 
@@ -348,16 +352,49 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
     The drawn samples of shape `[batch_size, num_samples]`.
   """
   with ops.name_scope(name, "multinomial", [logits]):
-    logits = ops.convert_to_tensor(logits, name="logits")
-    seed1, seed2 = random_seed.get_seed(seed)
-    return gen_random_ops.multinomial(
-        logits, num_samples, seed=seed1, seed2=seed2, output_dtype=output_dtype)
+    return multinomial_categorical_impl(logits, num_samples, output_dtype, seed)
+
+
+@tf_export("random.categorical", v1=[])
+def categorical(logits, num_samples, dtype=None, seed=None, name=None):
+  """Draws samples from a multinomial distribution.
+
+  Example:
+
+  ```python
+  # samples has shape [1, 5], where each value is either 0 or 1 with equal
+  # probability.
+  samples = tf.random.categorical(tf.log([[10., 10.]]), 5)
+  ```
+
+  Args:
+    logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice
+      `[i, :]` represents the unnormalized log-probabilities for all classes.
+    num_samples: 0-D.  Number of independent samples to draw for each row slice.
+    dtype: integer type to use for the output. Defaults to int64.
+    seed: A Python integer. Used to create a random seed for the distribution.
+      See `tf.set_random_seed` for behavior.
+    name: Optional name for the operation.
+
+  Returns:
+    The drawn samples of shape `[batch_size, num_samples]`.
+  """
+  with ops.name_scope(name, "categorical", [logits]):
+    return multinomial_categorical_impl(logits, num_samples, dtype, seed)
+
+
+def multinomial_categorical_impl(logits, num_samples, dtype, seed):
+  """Implementation for random.multinomial (v1) and random.categorical (v2)."""
+  logits = ops.convert_to_tensor(logits, name="logits")
+  seed1, seed2 = random_seed.get_seed(seed)
+  return gen_random_ops.multinomial(
+      logits, num_samples, seed=seed1, seed2=seed2, output_dtype=dtype)
 
 
 ops.NotDifferentiable("Multinomial")
 
 
-@tf_export("random.gamma", "random_gamma")
+@tf_export("random.gamma", v1=["random.gamma", "random_gamma"])
 @deprecation.deprecated_endpoints("random_gamma")
 def random_gamma(shape,
                  alpha,
@@ -441,7 +478,7 @@ def random_gamma(shape,
             shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta)
 
 
-@tf_export("random.poisson", "random_poisson")
+@tf_export(v1=["random.poisson", "random_poisson"])
 @deprecation.deprecated_endpoints("random_poisson")
 def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
   """Draws `shape` samples from each of the given Poisson distribution(s).
@@ -466,6 +503,45 @@ def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
       distribution(s) to sample.
     shape: A 1-D integer Tensor or Python array. The shape of the output samples
       to be drawn per "rate"-parameterized distribution.
+    dtype: The type of the output: `float16`, `float32`, `float64`, `int32` or
+      `int64`.
+    seed: A Python integer. Used to create a random seed for the distributions.
+      See
+      `tf.set_random_seed`
+      for behavior.
+    name: Optional name for the operation.
+
+  Returns:
+    samples: a `Tensor` of shape `tf.concat([shape, tf.shape(lam)], axis=0)`
+      with values of type `dtype`.
+  """
+  return random_poisson_v2(shape, lam, dtype, seed, name)
+
+
+@tf_export("random.poisson", v1=[])
+def random_poisson_v2(shape, lam, dtype=dtypes.float32, seed=None, name=None):
+  """Draws `shape` samples from each of the given Poisson distribution(s).
+
+  `lam` is the rate parameter describing the distribution(s).
+
+  Example:
+
+  ```python
+  samples = tf.random_poisson([10], [0.5, 1.5])
+  # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
+  # the samples drawn from each distribution
+
+  samples = tf.random_poisson([7, 5], [12.2, 3.3])
+  # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
+  # represents the 7x5 samples drawn from each of the two distributions
+  ```
+
+  Args:
+    shape: A 1-D integer Tensor or Python array. The shape of the output samples
+      to be drawn per "rate"-parameterized distribution.
+    lam: A Tensor or Python value or N-D array of type `dtype`.
+      `lam` provides the rate parameter(s) describing the poisson
+      distribution(s) to sample.
     dtype: The type of the output: `float16`, `float32`, `float64`, `int32` or
       `int64`.
     seed: A Python integer. Used to create a random seed for the distributions.

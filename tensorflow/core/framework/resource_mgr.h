@@ -129,12 +129,13 @@ class ResourceMgr {
                 T** resource) const TF_MUST_USE_RESULT;
 
   // Similar to Lookup, but looks up multiple resources at once, with only a
-  // single lock acquisition.
+  // single lock acquisition.  If containers_and_names[i] is uninitialized
+  // then this function does not modify resources[i].
   template <typename T>
   Status LookupMany(absl::Span<std::pair<const string*, const string*> const>
                         containers_and_names,
                     std::vector<std::unique_ptr<T, core::RefCountDeleter>>*
-                        resource) const TF_MUST_USE_RESULT;
+                        resources) const TF_MUST_USE_RESULT;
 
   // If "container" has a resource "name", returns it in
   // "*resource". Otherwise, invokes creator() to create the resource.
@@ -261,7 +262,8 @@ Status CreateResource(OpKernelContext* ctx, const ResourceHandle& p, T* value);
 template <typename T>
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p, T** value);
 
-// Looks up multiple resources pointed by a sequence of resource handles.
+// Looks up multiple resources pointed by a sequence of resource handles.  If
+// p[i] is uninitialized then values[i] is unmodified.
 template <typename T>
 Status LookupResources(
     OpKernelContext* ctx, absl::Span<ResourceHandle const> p,
@@ -445,10 +447,11 @@ Status ResourceMgr::LookupMany(
   resources->resize(containers_and_names.size());
   for (size_t i = 0; i < containers_and_names.size(); ++i) {
     T* resource;
-    TF_RETURN_IF_ERROR(LookupInternal(*containers_and_names[i].first,
-                                      *containers_and_names[i].second,
-                                      &resource));
-    (*resources)[i].reset(resource);
+    Status s = LookupInternal(*containers_and_names[i].first,
+                              *containers_and_names[i].second, &resource);
+    if (s.ok()) {
+      (*resources)[i].reset(resource);
+    }
   }
   return Status::OK();
 }

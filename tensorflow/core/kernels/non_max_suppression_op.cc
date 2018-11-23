@@ -163,7 +163,8 @@ void DoNonMaxSuppressionOp(
     // therefore we iterate through the previously selected boxes backwards
     // in order to see if `next_candidate` should be suppressed.
     bool should_select = true;
-    for (int j = selected.size() - 1; j >= 0; --j) {
+
+    for (int j = static_cast<int>(selected.size()) - 1; j >= 0; --j) {
       if (suppress_check_fn(next_candidate.box_index, selected[j])) {
         should_select = false;
         break;
@@ -277,29 +278,30 @@ class NonMaxSuppressionV2Op : public OpKernel {
   }
 };
 
-class NonMaxSuppressionV3V4Base : public OpKernel {
+template <typename Device, typename T>
+class NonMaxSuppressionV3Op : public OpKernel {
  public:
-  explicit NonMaxSuppressionV3V4Base(OpKernelConstruction* context)
+  explicit NonMaxSuppressionV3Op(OpKernelConstruction* context)
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     // boxes: [num_boxes, 4]
-    boxes_ = context->input(0);
+    const Tensor& boxes = context->input(0);
     // scores: [num_boxes]
-    scores_ = context->input(1);
+    const Tensor& scores = context->input(1);
     // max_output_size: scalar
-    max_output_size_ = context->input(2);
+    const Tensor& max_output_size = context->input(2);
     OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size_.shape()),
+        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
         errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size_.shape().DebugString()));
+                                max_output_size.shape().DebugString()));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
                 errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
                                         iou_threshold.shape().DebugString()));
-    iou_threshold_val_ = iou_threshold.scalar<float>()();
-    OP_REQUIRES(context, iou_threshold_val_ >= 0 && iou_threshold_val_ <= 1,
+    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
                 errors::InvalidArgument("iou_threshold must be in [0, 1]"));
     // score_threshold: scalar
     const Tensor& score_threshold = context->input(4);
@@ -307,62 +309,72 @@ class NonMaxSuppressionV3V4Base : public OpKernel {
         context, TensorShapeUtils::IsScalar(score_threshold.shape()),
         errors::InvalidArgument("score_threshold must be 0-D, got shape ",
                                 score_threshold.shape().DebugString()));
-    score_threshold_val_ = score_threshold.scalar<float>()();
+    const float score_threshold_val = score_threshold.scalar<float>()();
 
-    num_boxes_ = 0;
-    ParseAndCheckBoxSizes(context, boxes_, &num_boxes_);
-    CheckScoreSizes(context, num_boxes_, scores_);
+    int num_boxes = 0;
+    ParseAndCheckBoxSizes(context, boxes, &num_boxes);
+    CheckScoreSizes(context, num_boxes, scores);
     if (!context->status().ok()) {
       return;
     }
 
-    DoComputeAndPostProcess(context);
-  }
-
- protected:
-  virtual void DoComputeAndPostProcess(OpKernelContext* context) = 0;
-
-  Tensor boxes_;
-  Tensor scores_;
-  Tensor max_output_size_;
-  int num_boxes_;
-  float iou_threshold_val_;
-  float score_threshold_val_;
-};
-
-template <typename Device, typename T>
-class NonMaxSuppressionV3Op : public NonMaxSuppressionV3V4Base {
- public:
-  explicit NonMaxSuppressionV3Op(OpKernelConstruction* context)
-      : NonMaxSuppressionV3V4Base(context) {}
-
- protected:
-  void DoComputeAndPostProcess(OpKernelContext* context) override {
     auto suppress_check_fn =
-        CreateIOUSuppressCheckFn<T>(boxes_, iou_threshold_val_);
+        CreateIOUSuppressCheckFn<T>(boxes, iou_threshold_val);
 
-    DoNonMaxSuppressionOp<T>(context, scores_, num_boxes_, max_output_size_,
-                             score_threshold_val_, suppress_check_fn);
+    DoNonMaxSuppressionOp<T>(context, scores, num_boxes, max_output_size,
+                             score_threshold_val, suppress_check_fn);
   }
 };
 
 template <typename Device, typename T>
-class NonMaxSuppressionV4Op : public NonMaxSuppressionV3V4Base {
+class NonMaxSuppressionV4Op : public OpKernel {
  public:
   explicit NonMaxSuppressionV4Op(OpKernelConstruction* context)
-      : NonMaxSuppressionV3V4Base(context) {
+      : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("pad_to_max_output_size",
                                              &pad_to_max_output_size_));
   }
 
- protected:
-  void DoComputeAndPostProcess(OpKernelContext* context) override {
+  void Compute(OpKernelContext* context) override {
+    // boxes: [num_boxes, 4]
+    const Tensor& boxes = context->input(0);
+    // scores: [num_boxes]
+    const Tensor& scores = context->input(1);
+    // max_output_size: scalar
+    const Tensor& max_output_size = context->input(2);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
+                                max_output_size.shape().DebugString()));
+    // iou_threshold: scalar
+    const Tensor& iou_threshold = context->input(3);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
+                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
+                                        iou_threshold.shape().DebugString()));
+    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
+                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
+    // score_threshold: scalar
+    const Tensor& score_threshold = context->input(4);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(score_threshold.shape()),
+        errors::InvalidArgument("score_threshold must be 0-D, got shape ",
+                                score_threshold.shape().DebugString()));
+    const float score_threshold_val = score_threshold.scalar<float>()();
+
+    int num_boxes = 0;
+    ParseAndCheckBoxSizes(context, boxes, &num_boxes);
+    CheckScoreSizes(context, num_boxes, scores);
+    if (!context->status().ok()) {
+      return;
+    }
+
     auto suppress_check_fn =
-        CreateIOUSuppressCheckFn<T>(boxes_, iou_threshold_val_);
+        CreateIOUSuppressCheckFn<T>(boxes, iou_threshold_val);
     int num_valid_outputs;
 
-    DoNonMaxSuppressionOp<T>(context, scores_, num_boxes_, max_output_size_,
-                             score_threshold_val_, suppress_check_fn,
+    DoNonMaxSuppressionOp<T>(context, scores, num_boxes, max_output_size,
+                             score_threshold_val, suppress_check_fn,
                              pad_to_max_output_size_, &num_valid_outputs);
 
     // Allocate scalar output tensor for number of indices computed.

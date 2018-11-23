@@ -216,7 +216,8 @@ REGISTER_OP("VarIsInitializedOp")
 Status VariableShapeShapeFn(InferenceContext* c) {
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data == nullptr || handle_data->empty()) {
-    return errors::InvalidArgument("Handle doesn't have shape information.");
+    c->set_output(0, c->Vector(c->UnknownDim()));
+    return Status::OK();
   }
   ShapeHandle var_shape = (*handle_data)[0].shape;
   int64 rank = c->RankKnown(var_shape) ? c->Rank(var_shape)

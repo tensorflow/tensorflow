@@ -122,11 +122,12 @@ class SideEffectGuardTransformer(converter.Base):
       # possible, gate all remaining statements (and that may fail too, see
       # _visit_and_reindent.
       args_scope = anno.getanno(node.value, NodeAnno.ARGS_SCOPE)
+      live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
       # NOTE: We can't guard object attributes because they may not be writable.
       # In addition, avoid renaming well-known names.
       # TODO(mdan): Move these names into config.
-      unguarded_names = (qual_names.QN('self'), qual_names.QN('tf'))
-      guarded_args = tuple(s for s in args_scope.used
+      unguarded_names = (qual_names.QN('self'), qual_names.QN('ag__'))
+      guarded_args = tuple(s for s in live_out
                            if not s.is_composite() and s not in unguarded_names)
 
       # TODO(mdan): Include all arguments which depended on guarded_args too.

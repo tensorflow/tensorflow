@@ -103,7 +103,8 @@ fi
 
 run_configure_for_gpu_build
 
-bazel build --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
+bazel build --announce_rc --config=opt --define=no_tensorflow_py_deps=true \
+  tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0

@@ -76,6 +76,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
+#include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -249,6 +250,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
+  pipeline.AddPass<HloGetDimensionSizeRewriter>();
   pipeline.AddPass<MapInliner>();
 
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
@@ -268,10 +270,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true);
-    pass.AddPass<AlgebraicSimplifier>(
-        /*is_layout_sensitive=*/false,
-        [](const Shape&, const Shape&) { return false; },
-        /*enable_dot_strength_reduction=*/false);
+    AlgebraicSimplifierOptions options(
+        [](const Shape&, const Shape&) { return false; });
+    options.set_enable_dot_strength_reduction(false);
+    pass.AddPass<AlgebraicSimplifier>(options);
     pass.AddPass<HloDCE>();
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
@@ -334,10 +336,11 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pass.AddInvariantChecker<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false);
-    pass.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        /*is_layout_sensitive=*/true,
-        [](const Shape&, const Shape&) { return true; },
-        /*enable_dot_strength_reduction=*/false);
+    AlgebraicSimplifierOptions options(
+        [](const Shape&, const Shape&) { return true; });
+    options.set_is_layout_sensitive(true);
+    options.set_enable_dot_strength_reduction(false);
+    pass.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
     pass.AddPass<HloDCE>();
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   }
@@ -502,8 +505,8 @@ Status CreateHloProfilingArtifacts(
 
   HloCostAnalysis cost_analysis(shape_size_bytes);
   TF_RETURN_IF_ERROR(entry_computation.Accept(&cost_analysis));
-  *hlo_profile_printer_data =
-      CreateHloProfilePrinterData(**hlo_profile_index_map, cost_analysis);
+  *hlo_profile_printer_data = CreateHloProfilePrinterData(
+      **hlo_profile_index_map, cost_analysis, entry_computation.name());
   *computation_to_profile_idx =
       (*hlo_profile_index_map)->computation_to_profile_idx();
 
@@ -587,9 +590,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // Select an order for emitting the HLO instructions for each
   // computation. Using this sequence enables tighter buffer liveness analysis
   // and reduced memory usage (as compared to using DependencyHloOrdering).
-  TF_ASSIGN_OR_RETURN(
-      HloSchedule schedule,
-      ScheduleModule(*module, BufferSizeBytesFunction(), DFSMemoryScheduler));
+  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
+                      ScheduleModule(module.get(), BufferSizeBytesFunction(),
+                                     DFSMemoryScheduler));
 
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
@@ -676,9 +679,12 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& aot_options) {
-  TF_RET_CHECK(!modules.empty());
+  TF_RET_CHECK(!module_group->empty());
+  std::vector<std::unique_ptr<HloModule>> modules =
+      module_group->ConsumeModules();
+
   std::call_once(llvm_command_line_options_initialized,
                  &llvm_ir::InitializeLLVMCommandLineOptions,
                  modules[0]->config());
@@ -776,7 +782,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     XLA_VLOG_LINES(2, module->ToString());
 
     TF_ASSIGN_OR_RETURN(HloSchedule schedule,
-                        ScheduleModule(*module, BufferSizeBytesFunction()));
+                        ScheduleModule(module, BufferSizeBytesFunction()));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.

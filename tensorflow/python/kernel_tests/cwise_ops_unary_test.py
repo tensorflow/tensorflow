@@ -84,7 +84,7 @@ class UnaryOpTest(test.TestCase):
         np_ans *= 1.1
       else:
         y = tf_func(inx)
-      tf_cpu = y.eval()
+      tf_cpu = self.evaluate(y)
       self.assertShapeEqual(np_ans, y)
       if x.dtype == np.float16:
         self.assertAllClose(np_ans, tf_cpu, rtol=1e-3, atol=1e-3)
@@ -140,7 +140,7 @@ class UnaryOpTest(test.TestCase):
     np_ans = np_func(x)
     with self.test_session(force_gpu=test_util.is_gpu_available()):
       result = tf_func(ops.convert_to_tensor(x))
-      tf_gpu = result.eval()
+      tf_gpu = self.evaluate(result)
     if x.dtype == np.float16:
       self.assertAllClose(np_ans, tf_gpu, rtol=1e-3, atol=1e-3)
     else:

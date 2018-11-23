@@ -148,7 +148,7 @@ TuplePointsToAnalysis::Run(const HloModule* module) {
 
 Status TuplePointsToAnalysis::Analyze() {
   per_instruction_.clear();
-  per_instruction_.resize(module_->NumUniqueInstructionIds());
+  per_instruction_.reserve(module_->instruction_count());
 
   logical_buffer_aliases_.clear();
   logical_buffer_aliases_.resize(
@@ -756,6 +756,7 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
     }
   }
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
+      user->opcode() == HloOpcode::kScatter ||
       user->opcode() == HloOpcode::kWhile) {
     // We eliminated other users in BufferLiveness::live_range_strictly_before,
     // so here we just need to check that the use is at operand index 0.

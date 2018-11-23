@@ -25,5 +25,5 @@ from tensorflow.python.ops.custom_gradient import custom_gradient
 from tensorflow.python.ops.gradients_impl import AggregationMethod
 from tensorflow.python.ops.gradients_impl import gradients
 from tensorflow.python.ops.gradients_impl import hessians
-from tensorflow.python.ops.gradients_impl import UnconnectedGradients
+from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 # pylint: enable=unused-import

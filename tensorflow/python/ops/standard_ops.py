@@ -31,7 +31,6 @@ from tensorflow.python.ops import manip_grad
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import random_grad
 from tensorflow.python.ops import sparse_grad
-from tensorflow.python.ops import spectral_grad
 from tensorflow.python.ops import state_grad
 from tensorflow.python.ops import tensor_array_grad
 
@@ -51,6 +50,7 @@ from tensorflow.python.ops.control_flow_ops import group
 from tensorflow.python.ops.control_flow_ops import no_op
 from tensorflow.python.ops.control_flow_ops import tuple  # pylint: disable=redefined-builtin
 # pylint: enable=redefined-builtin
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.ops.control_flow_ops import while_loop
 from tensorflow.python.ops.data_flow_ops import *
 from tensorflow.python.ops.functional_ops import *
@@ -91,6 +91,7 @@ from tensorflow.python.ops.state_ops import scatter_nd_sub
 # from tensorflow.python.ops.state_ops import scatter_nd_mul
 # from tensorflow.python.ops.state_ops import scatter_nd_div
 from tensorflow.python.ops.state_ops import scatter_nd_update
+from tensorflow.python.ops.stateless_random_ops import *
 from tensorflow.python.ops.string_ops import *
 from tensorflow.python.ops.template import *
 from tensorflow.python.ops.tensor_array_ops import *
@@ -98,4 +99,3 @@ from tensorflow.python.ops.variable_scope import *
 from tensorflow.python.ops.variables import *
 # pylint: enable=wildcard-import
 # pylint: enable=g-bad-import-order
-

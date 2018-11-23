@@ -83,7 +83,7 @@ class ControlFlowTest(converter_testing.TestCase):
       return s
 
     node, ctx = self.prepare(bad_while_loop, {})
-    with self.assertRaises(transformer.AutographParseError):
+    with self.assertRaises(NameError):
       control_flow.transform(node, ctx)
 
   def test_if_basic(self):
@@ -232,7 +232,7 @@ class ControlFlowTest(converter_testing.TestCase):
       return s
 
     node, ctx = self.prepare(bad_for_loop, {})
-    with self.assertRaises(transformer.AutographParseError):
+    with self.assertRaises(NameError):
       control_flow.transform(node, ctx)
 
   def test_for_tuple_unpacking(self):

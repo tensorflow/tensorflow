@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "manip.batch_to_space_nd"
-    deprecated: true
+    deprecation_version: 2
   }
 }

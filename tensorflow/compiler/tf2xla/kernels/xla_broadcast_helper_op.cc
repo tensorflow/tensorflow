@@ -108,7 +108,7 @@ class XlaBroadcastHelperOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(
-    Name("XlaBroadcastHelper").CompileTimeConstInput("broadcast_dims"),
+    Name("XlaBroadcastHelper").CompileTimeConstantInput("broadcast_dims"),
     XlaBroadcastHelperOp);
 
 }  // namespace

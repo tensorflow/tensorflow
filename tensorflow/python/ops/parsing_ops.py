@@ -46,7 +46,7 @@ ops.NotDifferentiable("SerializeTensor")
 ops.NotDifferentiable("StringToNumber")
 
 
-@tf_export("io.VarLenFeature", "VarLenFeature")
+@tf_export("io.VarLenFeature", v1=["VarLenFeature", "io.VarLenFeature"])
 class VarLenFeature(collections.namedtuple("VarLenFeature", ["dtype"])):
   """Configuration for parsing a variable-length input feature.
 
@@ -56,7 +56,7 @@ class VarLenFeature(collections.namedtuple("VarLenFeature", ["dtype"])):
   pass
 
 
-@tf_export("io.SparseFeature", "SparseFeature")
+@tf_export("io.SparseFeature", v1=["io.SparseFeature", "SparseFeature"])
 class SparseFeature(
     collections.namedtuple(
         "SparseFeature",
@@ -131,7 +131,7 @@ class SparseFeature(
         cls, index_key, value_key, dtype, size, already_sorted)
 
 
-@tf_export("io.FixedLenFeature", "FixedLenFeature")
+@tf_export("io.FixedLenFeature", v1=["io.FixedLenFeature", "FixedLenFeature"])
 class FixedLenFeature(collections.namedtuple(
     "FixedLenFeature", ["shape", "dtype", "default_value"])):
   """Configuration for parsing a fixed-length input feature.
@@ -151,7 +151,8 @@ class FixedLenFeature(collections.namedtuple(
         cls, shape, dtype, default_value)
 
 
-@tf_export("io.FixedLenSequenceFeature", "FixedLenSequenceFeature")
+@tf_export("io.FixedLenSequenceFeature",
+           v1=["io.FixedLenSequenceFeature", "FixedLenSequenceFeature"])
 class FixedLenSequenceFeature(collections.namedtuple(
     "FixedLenSequenceFeature",
     ["shape", "dtype", "allow_missing", "default_value"])):
@@ -217,21 +218,21 @@ def _features_to_raw_params(features, types):
       feature = features[key]
       if isinstance(feature, VarLenFeature):
         if VarLenFeature not in types:
-          raise ValueError("Unsupported VarLenFeature %s." % feature)
+          raise ValueError("Unsupported VarLenFeature %s." % (feature,))
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         sparse_keys.append(key)
         sparse_types.append(feature.dtype)
       elif isinstance(feature, SparseFeature):
         if SparseFeature not in types:
-          raise ValueError("Unsupported SparseFeature %s." % feature)
+          raise ValueError("Unsupported SparseFeature %s." % (feature,))
 
         if not feature.index_key:
           raise ValueError(
-              "Missing index_key for SparseFeature %s." % feature)
+              "Missing index_key for SparseFeature %s." % (feature,))
         if not feature.value_key:
           raise ValueError(
-              "Missing value_key for SparseFeature %s." % feature)
+              "Missing value_key for SparseFeature %s." % (feature,))
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         index_keys = feature.index_key
@@ -260,7 +261,7 @@ def _features_to_raw_params(features, types):
           sparse_types.append(feature.dtype)
       elif isinstance(feature, FixedLenFeature):
         if FixedLenFeature not in types:
-          raise ValueError("Unsupported FixedLenFeature %s." % feature)
+          raise ValueError("Unsupported FixedLenFeature %s." % (feature,))
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         if feature.shape is None:
@@ -281,7 +282,8 @@ def _features_to_raw_params(features, types):
           dense_defaults[key] = feature.default_value
       elif isinstance(feature, FixedLenSequenceFeature):
         if FixedLenSequenceFeature not in types:
-          raise ValueError("Unsupported FixedLenSequenceFeature %s." % feature)
+          raise ValueError("Unsupported FixedLenSequenceFeature %s." % (
+              feature,))
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         if feature.shape is None:
@@ -361,7 +363,7 @@ def _prepend_none_dimension(features):
     return features
 
 
-@tf_export("io.parse_example", "parse_example")
+@tf_export("io.parse_example", v1=["io.parse_example", "parse_example"])
 def parse_example(serialized, features, name=None, example_names=None):
   # pylint: disable=line-too-long
   """Parses `Example` protos into a `dict` of tensors.
@@ -730,7 +732,7 @@ def _process_raw_parameters(names, dense_defaults, sparse_keys, sparse_types,
     default_value = dense_defaults.get(key)
     dense_shape = dense_shapes[i]
     if (dense_shape.ndims is not None and dense_shape.ndims > 0 and
-        dense_shape[0].value is None):
+        dense_shape.dims[0].value is None):
       # Variable stride dense shape, the default value should be a
       # scalar padding value
       if default_value is None:
@@ -762,7 +764,8 @@ def _process_raw_parameters(names, dense_defaults, sparse_keys, sparse_types,
           dense_shapes_as_proto, dense_shapes)
 
 
-@tf_export("io.parse_single_example", "parse_single_example")
+@tf_export("io.parse_single_example",
+           v1=["io.parse_single_example", "parse_single_example"])
 def parse_single_example(serialized, features, name=None, example_names=None):
   """Parses a single `Example` proto.
 
@@ -1245,7 +1248,9 @@ def _parse_sequence_example_raw(serialized,
 
 # TODO(sundberg): rewrite this method to call the batch version, which is more
 # efficient especially for large inputs.
-@tf_export("io.parse_single_sequence_example", "parse_single_sequence_example")
+@tf_export("io.parse_single_sequence_example",
+           v1=["io.parse_single_sequence_example",
+               "parse_single_sequence_example"])
 def parse_single_sequence_example(
     serialized, context_features=None, sequence_features=None,
     example_name=None, name=None):
@@ -1565,7 +1570,7 @@ def _parse_single_sequence_example_raw(serialized,
 
 
 # Swap `name` and `na_value` for backward compatibility.
-@tf_export("io.decode_csv", "decode_csv")
+@tf_export("io.decode_csv", v1=["io.decode_csv", "decode_csv"])
 @deprecation.deprecated_endpoints("decode_csv")
 def decode_csv(records,
                record_defaults,
@@ -1769,7 +1774,7 @@ def _parse_single_example_v2_raw(serialized, sparse_keys, sparse_types,
       default_value = dense_defaults.get(key)
       dense_shape = dense_shapes[i]
       if (dense_shape.ndims is not None and dense_shape.ndims > 0 and
-          dense_shape[0].value is None):
+          dense_shape.dims[0].value is None):
         # Variable stride dense shape, the default value should be a
         # scalar padding value
         if default_value is None:

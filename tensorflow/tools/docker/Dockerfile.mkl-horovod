@@ -6,7 +6,7 @@ LABEL maintainer="Cong Xu <cong.xu@intel.com>"
 ARG TF_WHL_URL
 
 # Optional parameters
-ARG TF_BUILD_VERSION=r1.9
+ARG TF_BUILD_VERSION=r1.11
 ARG PYTHON="python"
 ARG PYTHON_DEV="python-dev"
 ARG PIP="pip"
@@ -25,6 +25,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         rsync \
         software-properties-common \
         unzip \
+        wget \
+        libnuma-dev \
+        openssh-client \
+        openssh-server \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

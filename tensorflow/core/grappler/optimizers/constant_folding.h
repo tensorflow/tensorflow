@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -71,10 +73,11 @@ class ConstantFolding : public GraphOptimizer {
                       const gtl::InlinedVector<TensorValue, 4>& inputs,
                       gtl::InlinedVector<TensorValue, 4>* output) const;
 
-  Status EvaluateOneFoldable(const NodeDef& node,
-                             std::vector<NodeDef>* outputs);
+  Status EvaluateOneFoldable(const NodeDef& node, std::vector<NodeDef>* outputs,
+                             bool* result_too_large);
 
-  Status FoldNode(NodeDef* node, GraphDef* output_graph);
+  Status FoldNode(NodeDef* node, GraphDef* output_graph,
+                  bool* result_too_large);
 
   bool IsOnes(const NodeDef& node) const;
   bool IsZeros(const NodeDef& node) const;
@@ -91,14 +94,14 @@ class ConstantFolding : public GraphOptimizer {
                                       NodeDef* node, GraphDef* graph,
                                       bool* success);
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
-  Status FoldGraph(GraphDef* output);
+  Status FoldGraph(GraphDef* output,
+                   absl::flat_hash_set<string>* nodes_to_not_simplify);
 
-  bool IsSimplifiableReduction(const NodeDef& node,
-                               const GraphProperties& properties) const;
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
   Status SimplifyGraph(bool use_shape_info, GraphDef* optimized_graph,
-                       GraphProperties* properties);
+                       GraphProperties* properties,
+                       absl::flat_hash_set<string>* nodes_to_not_simplify);
   Status SimplifyNode(bool use_shape_info, NodeDef* node,
                       GraphDef* optimized_graph, GraphProperties* properties);
 
@@ -143,8 +146,22 @@ class ConstantFolding : public GraphOptimizer {
   bool SimplifyReshape(const GraphProperties& properties, bool use_shape_info,
                        NodeDef* node);
 
-  // Simplifies a Reduction operation to an Identity operation if applicable.
-  bool SimplifyReduction(const GraphProperties& properties, NodeDef* node);
+  // Returns true if theres a possibility that a Reduce node could be simplified
+  // to an Identity/Reshape.
+  bool IsReductionCandidateForSimplification(
+      const NodeDef& node, const GraphProperties& properties,
+      TensorShapeProto* input_tensor_shape,
+      TensorShapeProto* output_tensor_shape, bool* is_single_element_op) const;
+  // Returns true iff this reduction can be reduced to an identity (i.e if the
+  // set of dimensions to reduce along is empty). This happens often in the
+  // gradient graphs.
+  bool IsReductionSimplifiableToIdentity(
+      const NodeDef& node, const TensorShapeProto& input_shape, bool keep_dims,
+      const gtl::InlinedVector<TensorValue, 4>& reduction_indices_vector) const;
+  // Simplifies a Reduction operation to an Identity/Reshape operation if
+  // applicable.
+  bool SimplifyReduction(GraphDef* optimized_graph,
+                         const GraphProperties& properties, NodeDef* node);
 
   // Switch(x, x) will always feed false to its false branch and true to
   // its true branch. By rewriting the graph a bit, we can propagate these

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -133,11 +134,13 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
   CHECK(fake_input.NextItem(&item));
 
   TestOptimizer::SetOptimized(false);
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   rewriter_config.add_optimizers("TestOptimizer");
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -150,13 +153,15 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizerWithParams) {
   CHECK(fake_input.NextItem(&item));
 
   TestOptimizer::SetOptimized(false);
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   rewriter_config.add_optimizers("TestOptimizerWithParams");
   auto* custom_config = rewriter_config.add_custom_optimizers();
   custom_config->set_name("TestOptimizerWithParams");
   (*custom_config->mutable_parameter_map())["foo"] = AttrValue();
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -170,13 +175,15 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizerAndCustomGraphOptimizer) {
 
   TestOptimizer::SetOptimized(false);
   TestGraphOptimizer::SetOptimized(false);
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   rewriter_config.add_optimizers("TestOptimizer");
   auto customGraphOptimizer = rewriter_config.add_custom_optimizers();
   customGraphOptimizer->set_name("TestGraphOptimizer");
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -189,11 +196,13 @@ TEST_F(MetaOptimizerTest, RunOptimizersTwice) {
   GrapplerItem item;
   CHECK(fake_input.NextItem(&item));
 
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -204,13 +213,15 @@ TEST_F(MetaOptimizerTest, RunToggleOptimizersAndCustomGraphOptimizerTwice) {
   GrapplerItem item;
   CHECK(fake_input.NextItem(&item));
 
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   auto customGraphOptimizer = rewriter_config.add_custom_optimizers();
   customGraphOptimizer->set_name("TestGraphOptimizer");
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -221,13 +232,16 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   using test::function::NDef;
 
   // Enable ony function optimization.
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
+
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   rewriter_config.set_function_optimization(RewriterConfig::ON);
   rewriter_config.add_optimizers("function");
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
 
   // Define function library:
   //
@@ -266,6 +280,7 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   //   square = MySquare(a);        // a^2
   //   quadratic = MyQuadratic(b);  // b^4
   GrapplerItem item;
+  item.id = "tf_graph";
   item.graph = test::function::GDef(
       {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
        NDef("b", "Placeholder", {}, {{"dtype", DT_INT32}}, kDevice),
@@ -285,36 +300,47 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
                                            output.library());
 
   // Specialized and optimized functions should be added to the graph.
-  EXPECT_EQ(5, optimized_flib.num_functions());
+  EXPECT_EQ(6, optimized_flib.num_functions());
+
+  // Get a specialized function name.
+  const auto specialized_name = [](const string& fn, const string& node,
+                                   const string& id) {
+    return absl::Substitute("$0_specialized_for_$1_at_$2", fn, node, id);
+  };
 
   // MyQuadratic should be specialized once:
   //   0. 'quadratic' node in the main graph
-  const string optimized_0 = "MyQuadratic_specialized_for_quadratic";
+  const string optimized_0 =
+      specialized_name("MyQuadratic", "quadratic", "tf_graph");
 
   // MySquare should be specialized and optimized for 3 instantiations:
-  //   1.  'square' node in the main graph
-  //   2.  'square' node in the MyQuadratic specialization
-  //   3*. 'quadratic' node in the MyQuadratic specialization
-  //        has identical instantiation context to #2
+  //   1. 'square' node in the main graph
+  //   2. 'square' node in the MyQuadratic specialization (not in a fetch set)
+  //   3. 'quadratic' node in the MyQuadratic specialization (is in a fetch set)
 
-  const string optimized_1 = "MySquare_specialized_for_square";
-  const string optimized_2 = "MySquare_specialized_for_square_1";
+  const string optimized_1 = specialized_name("MySquare", "square", "tf_graph");
+  const string optimized_2 =
+      specialized_name("MySquare", "square", optimized_0);
+  const string optimized_3 =
+      specialized_name("MySquare", "quadratic", optimized_0);
 
   const FunctionDef* optimized_func_0 = optimized_flib.Find(optimized_0);
   const FunctionDef* optimized_func_1 = optimized_flib.Find(optimized_1);
   const FunctionDef* optimized_func_2 = optimized_flib.Find(optimized_2);
+  const FunctionDef* optimized_func_3 = optimized_flib.Find(optimized_3);
 
   ASSERT_NE(optimized_func_0, nullptr);
   ASSERT_NE(optimized_func_1, nullptr);
   ASSERT_NE(optimized_func_2, nullptr);
+  ASSERT_NE(optimized_func_3, nullptr);
 
   // Graph should call optimized function.
   int count = 0;
   for (const NodeDef& node : output.node()) {
-    if (node.name() == "square" && count++) {
-      EXPECT_EQ("MySquare_specialized_for_square", node.op());
-    } else if (node.name() == "quadratic" && count++) {
-      EXPECT_EQ("MyQuadratic_specialized_for_quadratic", node.op());
+    if (node.name() == "square" && ++count) {
+      EXPECT_EQ(optimized_1, node.op());
+    } else if (node.name() == "quadratic" && ++count) {
+      EXPECT_EQ(optimized_0, node.op());
     }
   }
   EXPECT_EQ(2, count);
@@ -322,41 +348,40 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   // Specialized MySquare should call specialized functions.
   count = 0;
   for (const NodeDef& node : optimized_func_0->node_def()) {
-    if (node.name() == "square" && count++) {
+    if (node.name() == "square" && ++count) {
       EXPECT_EQ(optimized_2, node.op());
-    } else if (node.name() == "quadratic" && count++) {
-      // Share specialized function with the 'square' node.
-      EXPECT_EQ(optimized_2, node.op());
+    } else if (node.name() == "quadratic" && ++count) {
+      EXPECT_EQ(optimized_3, node.op());
     }
   }
   EXPECT_EQ(2, count);
 
-  const std::vector<const FunctionDef*> optimized_funcs = {optimized_func_1,
-                                                           optimized_func_2};
+  const std::vector<const FunctionDef*> optimized_funcs = {
+      optimized_func_1, optimized_func_2, optimized_func_3};
 
   // MyMul should be inlined into all optimized versions of MySquare.
   for (const FunctionDef* optimized_func : optimized_funcs) {
     count = 0;
     for (const NodeDef& node : optimized_func->node_def()) {
-      if (node.name() == "my_mul/inlined_inputs" && count++) {
+      if (node.name() == "my_mul/inlined_inputs" && ++count) {
         EXPECT_EQ("IdentityN", node.op());
         EXPECT_EQ(2, node.input_size());
         EXPECT_EQ("x:0", node.input(0));
         EXPECT_EQ("x:0", node.input(1));
-      } else if (node.name() == "my_mul/x" && count++) {
+      } else if (node.name() == "my_mul/x" && ++count) {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ(1, node.input_size());
         EXPECT_EQ("my_mul/inlined_inputs:output:0", node.input(0));
-      } else if (node.name() == "my_mul/y" && count++) {
+      } else if (node.name() == "my_mul/y" && ++count) {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ(1, node.input_size());
         EXPECT_EQ("my_mul/inlined_inputs:output:1", node.input(0));
-      } else if (node.name() == "my_mul/mul" && count++) {
+      } else if (node.name() == "my_mul/mul" && ++count) {
         EXPECT_EQ("Mul", node.op());
         EXPECT_EQ(2, node.input_size());
         EXPECT_EQ("my_mul/x:output:0", node.input(0));
         EXPECT_EQ("my_mul/y:output:0", node.input(1));
-      } else if (node.name() == "my_mul" && count++) {
+      } else if (node.name() == "my_mul" && ++count) {
         EXPECT_EQ("IdentityN", node.op());
         EXPECT_EQ(1, node.input_size());
         EXPECT_EQ("my_mul/mul:z:0", node.input(0));
@@ -378,6 +403,112 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   test::ExpectTensorEqual<int>(tensors_expected[1], tensors[1]);
 }
 
+TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneFunctionBody) {
+  using test::function::NDef;
+
+  // Enable function optimization and pruning.
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
+
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
+  rewriter_config.set_function_optimization(RewriterConfig::ON);
+  rewriter_config.add_optimizers("function");
+  rewriter_config.add_optimizers("pruning");
+  rewriter_config.set_min_graph_nodes(-1);
+
+  MetaOptimizer optimizer(nullptr, config_proto);
+
+  // MyFunc defines two Mul nodes inside function body and two corresponding
+  // function outputs.
+  FunctionDef my_func = FunctionDefHelper::Create(
+      "MyFunc", {"x:T", "y:T"}, {"z1:T", "z2:T"}, {"T: {float, double}"},
+      {{{"mul1"}, "Mul", {"x", "y"}, {{"T", "$T"}}},
+       {{"mul2"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z1", "mul1:z:0"}, {"z2", "mul2:z:0"}});
+  (*my_func.mutable_attr())["_noinline"].set_b(true);
+
+  // Tensorflow graph:
+  //
+  //   a = tf.Placeholder(tf.float);
+  //   b = tf.Placeholder(tf.int32);
+  //
+  //   fn1 = MyFunc(a, b);
+  //   fn2 = MyFunc(a, b);
+  //
+  // Fetch: fn1:0 and fn2:1 via Identity nodes.
+  GrapplerItem item;
+  item.id = "tf_graph";
+  item.graph = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       // Calls into function library
+       NDef("fn1", "MyFunc", {"a", "b"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("fn2", "MyFunc", {"a", "b"}, {{"T", DT_FLOAT}}, kDevice),
+       // Read outputs of function call nodes
+       NDef("out_fn1", "Identity", {"fn1:0"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("out_fn2", "Identity", {"fn2:1"}, {{"T", DT_FLOAT}}, kDevice)},
+      // FunctionLib
+      {my_func});
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  FunctionLibraryDefinition optimized_flib(OpRegistry::Global(),
+                                           output.library());
+
+  // Specialized and optimized functions should be added to the graph.
+  EXPECT_EQ(2, optimized_flib.num_functions());
+
+  // Expected names of the specialized and optimized functions.
+  const string optimized_fn1 = "MyFunc_specialized_for_fn1_at_tf_graph";
+  const string optimized_fn2 = "MyFunc_specialized_for_fn2_at_tf_graph";
+
+  const FunctionDef* optimized_func_fn1 = optimized_flib.Find(optimized_fn1);
+  const FunctionDef* optimized_func_fn2 = optimized_flib.Find(optimized_fn2);
+
+  ASSERT_NE(optimized_func_fn1, nullptr);
+  ASSERT_NE(optimized_func_fn2, nullptr);
+
+  // Graph should call optimized function.
+  int count = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "fn1" && ++count) {
+      EXPECT_EQ(optimized_fn1, node.op());
+    } else if (node.name() == "fn2" && ++count) {
+      EXPECT_EQ(optimized_fn2, node.op());
+    }
+  }
+  EXPECT_EQ(2, count);
+
+  // Specialized MyFuncs should have just one Mul node and single output arg.
+
+  // 1. Specialized for fn1:0.
+  ASSERT_EQ(1, optimized_func_fn1->node_def_size());
+  EXPECT_EQ(1, optimized_func_fn1->signature().output_arg_size());
+  EXPECT_EQ("z1", optimized_func_fn1->signature().output_arg(0).name());
+  EXPECT_EQ("mul1", optimized_func_fn1->node_def(0).name());
+
+  // 2. Specialized for fn2:1.
+  ASSERT_EQ(1, optimized_func_fn2->node_def_size());
+  EXPECT_EQ(1, optimized_func_fn2->signature().output_arg_size());
+  EXPECT_EQ("z2", optimized_func_fn2->signature().output_arg(0).name());
+  EXPECT_EQ("mul2", optimized_func_fn2->node_def(0).name());
+
+  // Verify that output tensors are equal.
+  item.fetch = {"out_fn1", "out_fn2"};
+  item.feed.emplace_back("a", test::AsScalar<float>(2.0f));
+  item.feed.emplace_back("b", test::AsScalar<float>(3.123f));
+  auto tensors_expected = EvaluateFetchNodes(item);
+
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+  test::ExpectTensorEqual<float>(tensors_expected[1], tensors[1]);
+}
+
 TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
@@ -390,12 +521,15 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
       &allowed_optimizations);
 
   // Just record properties of optimized Grappler items.
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
+
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   rewriter_config.add_optimizers("GrapplerItemPropertiesAccumulator");
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
 
   // Define simple function library with two identical mul functions.
   FunctionDef mul_func_1 = FunctionDefHelper::Create(
@@ -459,6 +593,71 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
       gtl::FindOrNull(allowed_optimizations, "MyMul2");
   ASSERT_NE(allowed_optimizations_my_mul_2, nullptr);
   EXPECT_FALSE(allowed_optimizations_my_mul_2->non_differentiable_rewrites);
+}
+
+class SleepingOptimizer : public CustomGraphOptimizer {
+ public:
+  SleepingOptimizer() {}
+  string name() const override { return "test_optimizer"; }
+
+  Status Init(
+      const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
+    return Status::OK();
+  }
+
+  Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                  GraphDef* optimized_graph) override {
+    *optimized_graph = item.graph;
+    optimized_graph->add_node();
+    sleep(1);
+    return Status::OK();
+  }
+
+  void Feedback(Cluster* cluster, const GrapplerItem& item,
+                const GraphDef& optimized_graph, double result) override {}
+};
+
+REGISTER_GRAPH_OPTIMIZER(SleepingOptimizer);
+
+TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  ConfigProto config;
+  RewriterConfig& rewriter_config =
+      *config.mutable_graph_options()->mutable_rewrite_options();
+  rewriter_config.add_optimizers("SleepingOptimizer");
+  rewriter_config.set_min_graph_nodes(-1);
+  rewriter_config.set_meta_optimizer_timeout_ms(1500);
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
+
+  GraphDef output;
+  const Status status =
+      RunMetaOptimizer(item, config, nullptr, nullptr, &output);
+  EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
+  // Make sure the graph was reverted to the original regardless of when the
+  // optimizer timed out.
+  CompareGraphs(item.graph, output);
+}
+
+TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  ConfigProto config;
+  RewriterConfig& rewriter_config =
+      *config.mutable_graph_options()->mutable_rewrite_options();
+  rewriter_config.add_optimizers("SleepingOptimizer");
+  rewriter_config.set_min_graph_nodes(-1);
+  rewriter_config.set_meta_optimizer_timeout_ms(1500);
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+  GraphDef output;
+  const Status status =
+      RunMetaOptimizer(item, config, nullptr, nullptr, &output);
+  TF_EXPECT_OK(status);
+  EXPECT_EQ(item.graph.node_size() + 1, output.node_size());
 }
 
 }  // namespace

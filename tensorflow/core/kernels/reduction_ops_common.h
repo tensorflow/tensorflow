@@ -256,7 +256,8 @@ struct ReduceFunctorBase {
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer) {
     const Device& d = ctx->eigen_device<Device>();
-    ReduceEigenImpl(d, out, in, reduction_axes, reducer);
+    ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes, Reducer> reducer_impl;
+    reducer_impl(d, out, in, reduction_axes, reducer);
   }
 
   template <typename OUT_T>

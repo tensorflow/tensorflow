@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -252,11 +253,19 @@ static RunHandlerPool* GetOrCreateRunHandlerPool(
   return pool;
 }
 
-bool DirectSession::ShouldUseRunHandlerPool() const {
-  if (options_.config.session_inter_op_thread_pool_size() > 0 ||
-      options_.config.use_per_session_threads()) {
+bool DirectSession::ShouldUseRunHandlerPool(
+    const RunOptions& run_options) const {
+  if (options_.config.use_per_session_threads()) return false;
+  if (options_.config.session_inter_op_thread_pool_size() > 0 &&
+      run_options.inter_op_thread_pool() > 0)
     return false;
-  }
+  // Only use RunHandlerPool when:
+  // a. Single global thread pool is used for inter-op parallelism.
+  // b. When multiple inter_op_thread_pool(s) are created, use it only while
+  // running sessions on the default inter_op_thread_pool=0. Typically,
+  // servo-team uses inter_op_thread_pool > 0 for model loading.
+  // TODO(crk): Revisit whether we'd want to create one (static) RunHandlerPool
+  // per entry in session_inter_op_thread_pool() in the future.
   return true;
 }
 
@@ -453,6 +462,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
                                   CallFrameInterface* call_frame,
                                   ExecutorsAndKeys* executors_and_keys,
                                   RunMetadata* run_metadata) {
+  string session_id_meta = strings::StrCat("SessionRun #id=", step_id, "#");
+  tracing::ScopedActivity activity(session_id_meta);
+
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
@@ -599,9 +611,8 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   }
 
   std::unique_ptr<RunHandler> handler;
-  if (ShouldUseRunHandlerPool() &&
+  if (ShouldUseRunHandlerPool(run_options) &&
       run_options.experimental().use_run_handler_pool()) {
-    // Non-null only when a global inter-op pool is used.
     VLOG(1) << "Using RunHandler to scheduler inter-op closures.";
     handler = GetOrCreateRunHandlerPool(options_)->Get();
   }

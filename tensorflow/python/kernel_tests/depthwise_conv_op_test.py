@@ -162,7 +162,7 @@ class DepthwiseConv2DTest(test.TestCase):
         conv_native = array_ops.transpose(conv_native, [0, 2, 3, 1])
 
       try:
-        native_result = sess.run(conv_native)
+        native_result = self.evaluate(conv_native)
       except errors.InvalidArgumentError as e:
         # Grouped convolution kernel is only registered for cuDNN 7. Silently
         # return when we are running on an earlier version or without GPU.
@@ -174,7 +174,7 @@ class DepthwiseConv2DTest(test.TestCase):
 
       conv_interface = nn_impl.depthwise_conv2d(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
-      interface_result = sess.run(conv_interface)
+      interface_result = self.evaluate(conv_interface)
 
     tf_logging.info(
         "data_type: %r, use_gpu: %r, grouped_conv: %r, max diff = %f",
@@ -209,7 +209,7 @@ class DepthwiseConv2DTest(test.TestCase):
     # GitHub issue 22110.
     if not test.is_gpu_available():
       return
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x = array_ops.placeholder(dtypes.float32)
       f = np.ones([1, 1, 1, 1], np.float32)
       v = nn_impl.depthwise_conv2d(
@@ -263,13 +263,13 @@ class DepthwiseConv2DTest(test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t1.set_shape(tensor_in_sizes)
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
       conv = nn_ops.depthwise_conv2d_native(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
-      value = sess.run(conv)
+      value = self.evaluate(conv)
     tf_logging.info("value = %r", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
@@ -522,13 +522,13 @@ class DepthwiseConv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(use_gpu):
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
         t1 = constant_op.constant(x1, shape=filter_sizes)
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_input(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -542,13 +542,13 @@ class DepthwiseConv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float64)
 
     def _GetVal(use_gpu):
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
         t1 = constant_op.constant(x1, shape=filter_sizes)
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_input(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -574,13 +574,13 @@ class DepthwiseConv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(use_gpu):
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         t0 = constant_op.constant(x0, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -594,13 +594,13 @@ class DepthwiseConv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float64)
 
     def _GetVal(use_gpu):
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         t0 = constant_op.constant(x0, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 

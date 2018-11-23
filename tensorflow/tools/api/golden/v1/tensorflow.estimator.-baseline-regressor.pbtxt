@@ -1,7 +1,9 @@
 path: "tensorflow.estimator.BaselineRegressor"
 tf_class {
-  is_instance: "<class \'tensorflow.python.estimator.canned.baseline.BaselineRegressor\'>"
-  is_instance: "<class \'tensorflow.python.estimator.estimator.Estimator\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.canned.baseline.BaselineRegressor\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.canned.baseline.BaselineRegressorV2\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "config"

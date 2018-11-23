@@ -89,7 +89,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
   def testDense(self, dtype, param_value):
     (learning_rate, decay, momentum, epsilon, centered, use_resource) = tuple(
         param_value)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # Initialize variables for numpy implementation.
       var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
       grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
@@ -157,8 +157,11 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
         self.assertAllCloseAccordingToType(rms1_np, rms1.eval())
         self.assertAllCloseAccordingToType(mom0_np, mom0.eval())
         self.assertAllCloseAccordingToType(mom1_np, mom1.eval())
-        self.assertAllCloseAccordingToType(var0_np, var0.eval())
-        self.assertAllCloseAccordingToType(var1_np, var1.eval())
+        # TODO(b/117393988): Reduce tolerances for float16.
+        self.assertAllCloseAccordingToType(
+            var0_np, var0.eval(), half_rtol=3e-3, half_atol=3e-3)
+        self.assertAllCloseAccordingToType(
+            var1_np, var1.eval(), half_rtol=3e-3, half_atol=3e-3)
 
   @parameterized.parameters([dtypes.float32, dtypes.float64])
   def testMinimizeSparseResourceVariable(self, dtype):
@@ -210,7 +213,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
   def testSparse(self, dtype, param_value):
     (learning_rate, decay, momentum, epsilon, centered, _) = tuple(
         param_value)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # Initialize variables for numpy implementation.
       var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
       grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
@@ -284,7 +287,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(_DATA_TYPES)
   def testWithoutMomentum(self, dtype):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       var0 = variables.Variable([1.0, 2.0], dtype=dtype)
       var1 = variables.Variable([3.0, 4.0], dtype=dtype)
       grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -350,7 +353,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(_DATA_TYPES)
   def testWithMomentum(self, dtype):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       var0 = variables.Variable([1.0, 2.0], dtype=dtype)
       var1 = variables.Variable([3.0, 4.0], dtype=dtype)
       grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)

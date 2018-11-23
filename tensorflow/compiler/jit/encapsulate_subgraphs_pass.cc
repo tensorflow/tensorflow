@@ -1109,6 +1109,9 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
   function_def_name_ = name;
 
   FunctionDef fdef;
+  // Verify that the graph has well-formed control flow structure.
+  std::vector<ControlFlowInfo> dummy;
+  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph_.get(), &dummy));
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph_, name, &fdef));
 
   if (VLOG_IS_ON(1)) {
@@ -1119,8 +1122,11 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
                                       fdef);
   }
 
-  if (!reuse_existing_functions || library->Find(name) == nullptr) {
+  const FunctionDef* original_fdef = library->Find(name);
+  if (!reuse_existing_functions || original_fdef == nullptr) {
     TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
+  } else if (!FunctionDefsEqual(*original_fdef, fdef)) {
+    TF_RETURN_IF_ERROR(library->ReplaceFunction(name, fdef));
   }
   return Status::OK();
 }
@@ -1531,9 +1537,6 @@ Status Encapsulator::SplitIntoSubgraphs(FunctionLibraryDefinition* library) {
   for (auto& entry : subgraphs_) {
     Subgraph& subgraph = entry.second;
     FixupSourceAndSinkEdges(subgraph.GetGraph());
-    // Verify that the graph has well-formed control flow structure.
-    std::vector<ControlFlowInfo> dummy;
-    TF_RETURN_IF_ERROR(BuildControlFlowInfo(subgraph.GetGraph(), &dummy));
   }
 
   if (VLOG_IS_ON(1)) {

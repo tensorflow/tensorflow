@@ -48,13 +48,6 @@ import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
 
-from tensorflow.python.tools import component_api_helper
-component_api_helper.package_hook(
-    parent_package_str='tensorflow.python',
-    child_package_str=(
-        'tensorflow_estimator.python.estimator'))
-del component_api_helper
-
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
 from tensorflow.core.framework.node_def_pb2 import *
@@ -94,10 +87,10 @@ from tensorflow.python.ops import manip_ops as manip
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sets
-from tensorflow.python.ops import spectral_ops as spectral
 from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.ops.signal import signal
 from tensorflow.python.profiler import profiler
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
@@ -131,6 +124,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Eager execution
 from tensorflow.python.eager.context import executing_eagerly
+from tensorflow.python.eager.def_function import function
 from tensorflow.python.framework.ops import enable_eager_execution
 
 # Necessary for the symbols in this module to be taken into account by
@@ -168,7 +162,7 @@ tf_export('Summary', 'summary.Summary')(Summary)
 tf_export('summary.SummaryDescription')(SummaryDescription)
 tf_export('SummaryMetadata')(SummaryMetadata)
 tf_export('summary.TaggedRunMetadata')(TaggedRunMetadata)
-tf_export('TensorInfo')(TensorInfo)
+tf_export(v1=['TensorInfo'])(TensorInfo)
 # pylint: enable=undefined-variable
 
 # Special dunders that we choose to export:

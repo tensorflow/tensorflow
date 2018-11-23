@@ -39,7 +39,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
     get_next = dataset.make_one_shot_iterator().get_next()
     with self.cached_session() as sess:
       for expected in values:
-        got = sess.run(get_next)
+        got = self.evaluate(get_next)
         self.assertEqual(got, expected)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -127,7 +127,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
       iterator = dataset.make_one_shot_iterator()
       get_next = iterator.get_next()
       with self.cached_session() as sess:
-        x, y = sess.run(get_next)
+        x, y = self.evaluate(get_next)
         self.assertAllEqual([0] * (2**i), x)
         self.assertAllEqual(np.array(1, ndmin=i), y)
         with self.assertRaises(errors.OutOfRangeError):
@@ -190,7 +190,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
             grouping.group_by_reducer(lambda x, y: np.int64(0), reducer))
     get_next = dataset.make_one_shot_iterator().get_next()
     with self.cached_session() as sess:
-      x, y = sess.run(get_next)
+      x, y = self.evaluate(get_next)
       self.assertAllEqual(x, np.asarray([x for x in range(10)]))
       self.assertEqual(y, 45)
 

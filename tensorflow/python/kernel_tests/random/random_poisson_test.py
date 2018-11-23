@@ -39,11 +39,11 @@ class RandomPoissonTest(test.TestCase):
   def _Sampler(self, num, lam, dtype, use_gpu, seed=None):
 
     def func():
-      with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
+      with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
         rng = random_ops.random_poisson(lam, [num], dtype=dtype, seed=seed)
         ret = np.empty([10, num])
         for i in xrange(10):
-          ret[i, :] = sess.run(rng)
+          ret[i, :] = self.evaluate(rng)
       return ret
 
     return func
@@ -128,7 +128,7 @@ class RandomPoissonTest(test.TestCase):
     merged.
     """
     for dtype in dtypes.float16, dtypes.float32, dtypes.float64:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         rnd1 = random_ops.random_poisson(2.0, [24], dtype=dtype)
         rnd2 = random_ops.random_poisson(2.0, [24], dtype=dtype)
         diff = rnd2 - rnd1
@@ -140,7 +140,7 @@ class RandomPoissonTest(test.TestCase):
     with self.cached_session():
       rnd = random_ops.random_poisson([], [], seed=12345)
       self.assertEqual([0], rnd.get_shape().as_list())
-      self.assertAllClose(np.array([], dtype=np.float32), rnd.eval())
+      self.assertAllClose(np.array([], dtype=np.float32), self.evaluate(rnd))
 
   def testShape(self):
     # Fully known shape

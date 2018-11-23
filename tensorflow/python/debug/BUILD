@@ -615,7 +615,7 @@ cuda_py_test(
 
 py_test(
     name = "framework_test",
-    size = "small",
+    size = "medium",
     srcs = ["wrappers/framework_test.py"],
     srcs_version = "PY2AND3",
     deps = [

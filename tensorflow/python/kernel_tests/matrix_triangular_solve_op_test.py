@@ -74,7 +74,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
         a_np = np.tile(a_np, batch_dims + [1, 1])
         b = np.tile(b, batch_dims + [1, 1])
 
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         if use_placeholder:
           a_tf = array_ops.placeholder(a.dtype)
           b_tf = array_ops.placeholder(b.dtype)
@@ -87,7 +87,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
           b_tf = constant_op.constant(b)
           tf_ans = linalg_ops.matrix_triangular_solve(
               a_tf, b_tf, lower=lower, adjoint=adjoint)
-          tf_val = tf_ans.eval()
+          tf_val = self.evaluate(tf_ans)
           np_ans = np.linalg.solve(a_np, b)
           self.assertEqual(np_ans.shape, tf_ans.get_shape())
         self.assertEqual(np_ans.shape, tf_val.shape)

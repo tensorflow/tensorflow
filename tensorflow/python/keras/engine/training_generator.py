@@ -21,11 +21,12 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import errors
 from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras.utils.data_utils import GeneratorEnqueuer
-from tensorflow.python.keras.utils.data_utils import OrderedEnqueuer
-from tensorflow.python.keras.utils.data_utils import Sequence
+from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.platform import tf_logging as logging
 
@@ -45,7 +46,6 @@ def fit_generator(model,
                   shuffle=True,
                   initial_epoch=0):
   """See docstring for `Model.fit_generator`."""
-  wait_time = 0.01  # in seconds
   epoch = initial_epoch
 
   do_validation = bool(validation_data)
@@ -54,7 +54,7 @@ def fit_generator(model,
     if do_validation:
       model._make_test_function()
 
-  is_sequence = isinstance(generator, Sequence)
+  is_sequence = isinstance(generator, data_utils.Sequence)
   if not is_sequence and use_multiprocessing and workers > 1:
     logging.warning(
         UserWarning('Using a generator with `use_multiprocessing=True`'
@@ -65,23 +65,16 @@ def fit_generator(model,
     if is_sequence:
       steps_per_epoch = len(generator)
     else:
-      raise ValueError('`steps_per_epoch=None` is only valid for a'
-                       ' generator based on the `keras.utils.Sequence`'
-                       ' class. Please specify `steps_per_epoch` or use'
-                       ' the `keras.utils.Sequence` class.')
+      raise ValueError('Please specify the `steps_per_epoch` argument.')
 
-  # python 2 has 'next', 3 has '__next__'
-  # avoid any explicit version checks
-  val_gen = (
-      hasattr(validation_data, 'next') or
-      hasattr(validation_data, '__next__') or
-      isinstance(validation_data, Sequence))
-  if (val_gen and not isinstance(validation_data, Sequence) and
+  if (isinstance(validation_data, dataset_ops.Dataset) and
+      context.executing_eagerly()):
+    validation_data = validation_data.make_one_shot_iterator()
+  val_gen = (data_utils.is_generator_or_sequence(validation_data) or
+             isinstance(validation_data, iterator_ops.EagerIterator))
+  if (val_gen and not isinstance(validation_data, data_utils.Sequence) and
       not validation_steps):
-    raise ValueError('`validation_steps=None` is only valid for a'
-                     ' generator based on the `keras.utils.Sequence`'
-                     ' class. Please specify `validation_steps` or use'
-                     ' the `keras.utils.Sequence` class.')
+    raise ValueError('Please specify the `validation_steps` argument.')
 
   enqueuer = None
   val_enqueuer = None
@@ -117,20 +110,19 @@ def fit_generator(model,
 
     if workers > 0:
       if is_sequence:
-        enqueuer = OrderedEnqueuer(
+        enqueuer = data_utils.OrderedEnqueuer(
             generator,
             use_multiprocessing=use_multiprocessing,
             shuffle=shuffle)
       else:
-        enqueuer = GeneratorEnqueuer(
+        enqueuer = data_utils.GeneratorEnqueuer(
             generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=wait_time)
+            use_multiprocessing=use_multiprocessing)
       enqueuer.start(workers=workers, max_queue_size=max_queue_size)
       output_generator = enqueuer.get()
     else:
       if is_sequence:
-        output_generator = iter(generator)
+        output_generator = data_utils.iter_sequence_infinite(generator)
       else:
         output_generator = generator
 
@@ -138,14 +130,13 @@ def fit_generator(model,
     # Construct epoch logs.
     epoch_logs = {}
     while epoch < epochs:
-      for m in model.stateful_metric_functions:
+      for m in model.metrics:
         m.reset_states()
       callbacks.on_epoch_begin(epoch)
       steps_done = 0
       batch_index = 0
       while steps_done < steps_per_epoch:
         generator_output = next(output_generator)
-
         if not hasattr(generator_output, '__len__'):
           raise ValueError('Output of generator should be '
                            'a tuple `(x, y, sample_weight)` '
@@ -168,8 +159,8 @@ def fit_generator(model,
           batch_size = list(x.values())[0].shape[0]
         else:
           batch_size = x.shape[0]
-        batch_logs['batch'] = batch_index
-        batch_logs['size'] = batch_size
+        batch_logs['batch'] = int(batch_index)
+        batch_logs['size'] = int(batch_size)
         callbacks.on_batch_begin(batch_index, batch_logs)
 
         outs = model.train_on_batch(
@@ -218,6 +209,13 @@ def fit_generator(model,
       if callbacks.model.stop_training:
         break
 
+  except (errors.OutOfRangeError, StopIteration):
+    logging.warning(
+        'Your dataset iterator ran out of data interrupting testing. '
+        'Make sure that your dataset can generate at least `steps_per_epoch` '
+        'batches (in this case, %d batches). You may need to use the '
+        'repeat() function when building your dataset.', steps_per_epoch)
+
   finally:
     try:
       if enqueuer is not None:
@@ -241,20 +239,14 @@ def evaluate_generator(model,
   if not context.executing_eagerly():
     model._make_test_function()
 
-  if hasattr(model, 'metrics'):
-    for m in model.stateful_metric_functions:
+  if hasattr(model, '_compile_metrics'):
+    for m in model.metrics:
       m.reset_states()
-    stateful_metric_indices = [
-        i for i, name in enumerate(model.metrics_names)
-        if str(name) in model.stateful_metric_names]
-  else:
-    stateful_metric_indices = []
 
   steps_done = 0
-  wait_time = 0.01
   all_outs = []
   batch_sizes = []
-  is_sequence = isinstance(generator, Sequence)
+  is_sequence = isinstance(generator, data_utils.Sequence)
   if not is_sequence and use_multiprocessing and workers > 1:
     logging.warning(
         UserWarning('Using a generator with `use_multiprocessing=True`'
@@ -265,27 +257,23 @@ def evaluate_generator(model,
     if is_sequence:
       steps = len(generator)
     else:
-      raise ValueError('`steps=None` is only valid for a generator'
-                       ' based on the `keras.utils.Sequence` class.'
-                       ' Please specify `steps` or use the'
-                       ' `keras.utils.Sequence` class.')
+      raise ValueError('Please specify the `steps` argument.')
   enqueuer = None
 
   try:
     if workers > 0:
       if is_sequence:
-        enqueuer = OrderedEnqueuer(
+        enqueuer = data_utils.OrderedEnqueuer(
             generator, use_multiprocessing=use_multiprocessing)
       else:
-        enqueuer = GeneratorEnqueuer(
+        enqueuer = data_utils.GeneratorEnqueuer(
             generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=wait_time)
+            use_multiprocessing=use_multiprocessing)
       enqueuer.start(workers=workers, max_queue_size=max_queue_size)
       output_generator = enqueuer.get()
     else:
       if is_sequence:
-        output_generator = iter(generator)
+        output_generator = data_utils.iter_sequence_infinite(generator)
       else:
         output_generator = generator
 
@@ -310,11 +298,11 @@ def evaluate_generator(model,
       outs = model.test_on_batch(x, y, sample_weight=sample_weight)
 
       if isinstance(x, list):
-        batch_size = x[0].shape[0]
+        batch_size = int(x[0].shape[0])
       elif isinstance(x, dict):
-        batch_size = list(x.values())[0].shape[0]
+        batch_size = int(list(x.values())[0].shape[0])
       else:
-        batch_size = x.shape[0]
+        batch_size = int(x.shape[0])
       if batch_size == 0:
         raise ValueError('Received an empty batch. '
                          'Batches should at least contain one item.')
@@ -325,6 +313,13 @@ def evaluate_generator(model,
       if verbose == 1:
         progbar.update(steps_done)
 
+  except (errors.OutOfRangeError, StopIteration):
+    logging.warning(
+        'Your dataset iterator ran out of data interrupting testing. '
+        'Make sure that your dataset can generate at least `steps` '
+        'batches (in this case, %d batches). You may need to use the '
+        'repeat() function when building your dataset.', steps)
+
   finally:
     if enqueuer is not None:
       enqueuer.stop()
@@ -332,13 +327,12 @@ def evaluate_generator(model,
   if not isinstance(outs, list):
     return np.average(np.asarray(all_outs), weights=batch_sizes)
   else:
-    averages = []
-    for i in range(len(outs)):
-      if i not in stateful_metric_indices:
-        averages.append(
-            np.average([out[i] for out in all_outs], weights=batch_sizes))
-      else:
-        averages.append(np.float64(all_outs[-1][i]))
+    averages = [float(all_outs[-1][0])]  # index 0 = 'loss'
+    averages.extend([
+        np.average([out[i]
+                    for out in all_outs], weights=batch_sizes)
+        for i in range(1, len(outs))
+    ])
     return averages
 
 
@@ -351,12 +345,11 @@ def predict_generator(model,
                       verbose=0):
   """See docstring for `Model.predict_generator`."""
   if not context.executing_eagerly():
-    model._make_test_function()
+    model._make_predict_function()
 
   steps_done = 0
-  wait_time = 0.01
   all_outs = []
-  is_sequence = isinstance(generator, Sequence)
+  is_sequence = isinstance(generator, data_utils.Sequence)
   if not is_sequence and use_multiprocessing and workers > 1:
     logging.warning(
         UserWarning('Using a generator with `use_multiprocessing=True`'
@@ -367,27 +360,23 @@ def predict_generator(model,
     if is_sequence:
       steps = len(generator)
     else:
-      raise ValueError('`steps=None` is only valid for a generator'
-                       ' based on the `keras.utils.Sequence` class.'
-                       ' Please specify `steps` or use the'
-                       ' `keras.utils.Sequence` class.')
+      raise ValueError('Please specify the `steps` argument.')
   enqueuer = None
 
   try:
     if workers > 0:
       if is_sequence:
-        enqueuer = OrderedEnqueuer(
+        enqueuer = data_utils.OrderedEnqueuer(
             generator, use_multiprocessing=use_multiprocessing)
       else:
-        enqueuer = GeneratorEnqueuer(
+        enqueuer = data_utils.GeneratorEnqueuer(
             generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=wait_time)
+            use_multiprocessing=use_multiprocessing)
       enqueuer.start(workers=workers, max_queue_size=max_queue_size)
       output_generator = enqueuer.get()
     else:
       if is_sequence:
-        output_generator = iter(generator)
+        output_generator = data_utils.iter_sequence_infinite(generator)
       else:
         output_generator = generator
 
@@ -425,6 +414,13 @@ def predict_generator(model,
       steps_done += 1
       if verbose == 1:
         progbar.update(steps_done)
+
+  except (errors.OutOfRangeError, StopIteration):
+    logging.warning(
+        'Your dataset iterator ran out of data interrupting testing. '
+        'Make sure that your dataset can generate at least `steps` '
+        'batches (in this case, %d batches). You may need to use the '
+        'repeat() function when building your dataset.', steps)
 
   finally:
     if enqueuer is not None:

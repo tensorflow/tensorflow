@@ -49,12 +49,23 @@ class ControlFlowTransformer(converter.Base):
 
   def _create_cond_branch(self, body_name, aliased_orig_names,
                           aliased_new_names, body, returns):
+    if len(returns) == 1:
+      template = """
+        return retval
+      """
+      return_stmt = templates.replace(template, retval=returns[0])
+    else:
+      template = """
+        return (retvals,)
+      """
+      return_stmt = templates.replace(template, retvals=returns)
+
     if aliased_orig_names:
       template = """
         def body_name():
           aliased_new_names, = aliased_orig_names,
           body
-          return (returns,)
+          return_stmt
       """
       return templates.replace(
           template,
@@ -62,20 +73,20 @@ class ControlFlowTransformer(converter.Base):
           body=body,
           aliased_orig_names=aliased_orig_names,
           aliased_new_names=aliased_new_names,
-          returns=returns)
+          return_stmt=return_stmt)
     else:
       template = """
         def body_name():
           body
-          return (returns,)
+          return_stmt
       """
       return templates.replace(
-          template, body_name=body_name, body=body, returns=returns)
+          template, body_name=body_name, body=body, return_stmt=return_stmt)
 
   def _create_cond_expr(self, results, test, body_name, orelse_name):
     if results is not None:
       template = """
-        results = ag__.utils.run_cond(test, body_name, orelse_name)
+        results = ag__.if_stmt(test, body_name, orelse_name)
       """
       return templates.replace(
           template,
@@ -85,27 +96,15 @@ class ControlFlowTransformer(converter.Base):
           orelse_name=orelse_name)
     else:
       template = """
-        ag__.utils.run_cond(test, body_name, orelse_name)
+        ag__.if_stmt(test, body_name, orelse_name)
       """
       return templates.replace(
           template, test=test, body_name=body_name, orelse_name=orelse_name)
 
-  def _fmt_symbol_list(self, symbol_set):
+  def _fmt_symbols(self, symbol_set):
     if not symbol_set:
       return 'no variables'
     return ', '.join(map(str, symbol_set))
-
-  def _validate_no_live_vars_created(self, node):
-    body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
-    live_vars_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
-    live_vars_created_in_body = live_vars_out & body_scope.created
-    if live_vars_created_in_body:
-      raise ValueError(
-          'The following variables are created inside the loop and used later:'
-          '\n%s\n'
-          'Variables must be declared outside loops because loops may not'
-          ' necessarily execute.' % self._fmt_symbol_list(
-              live_vars_created_in_body))
 
   def visit_If(self, node):
     node = self.generic_visit(node)
@@ -123,7 +122,7 @@ class ControlFlowTransformer(converter.Base):
       elif s.is_composite():
         # Special treatment for compound objects: if any of their owner entities
         # are live, then they are outputs as well.
-        if any(owner in live_out for owner in s.owner_set):
+        if live_out & s.owner_set:
           returned_from_cond.add(s)
 
     need_alias_in_body = body_scope.modified & defined_in
@@ -132,14 +131,18 @@ class ControlFlowTransformer(converter.Base):
     created_in_body = body_scope.modified & returned_from_cond - defined_in
     created_in_orelse = orelse_scope.modified & returned_from_cond - defined_in
 
-    if created_in_body != created_in_orelse:
+    basic_created_in_body = tuple(
+        s for s in created_in_body if not s.is_composite())
+    basic_created_in_orelse = tuple(
+        s for s in created_in_orelse if not s.is_composite())
+    if basic_created_in_body != basic_created_in_orelse:
       raise ValueError(
           'if statement may not initialize all variables: the true branch'
           ' creates %s, while the false branch creates %s. Make sure all'
           ' these variables are initialized either in both'
           ' branches or before the if statement.' %
-          (self._fmt_symbol_list(created_in_body),
-           self._fmt_symbol_list(created_in_orelse)))
+          (self._fmt_symbols(basic_created_in_body),
+           self._fmt_symbols(basic_created_in_orelse)))
 
     # Alias the closure variables inside the conditional functions, to allow
     # the functions access to the respective variables.
@@ -161,10 +164,13 @@ class ControlFlowTransformer(converter.Base):
     node_body = ast_util.rename_symbols(node.body, alias_body_map)
     node_orelse = ast_util.rename_symbols(node.orelse, alias_orelse_map)
 
+    cond_var_name = self.ctx.namer.new_symbol('cond', body_scope.referenced)
+    body_name = self.ctx.namer.new_symbol('if_true', body_scope.referenced)
+    orelse_name = self.ctx.namer.new_symbol('if_false', orelse_scope.referenced)
+
     returned_from_cond = tuple(returned_from_cond)
     if returned_from_cond:
       if len(returned_from_cond) == 1:
-        # TODO(mdan): Move this quirk into the operator implementation.
         cond_results = returned_from_cond[0]
       else:
         cond_results = gast.Tuple([s.ast() for s in returned_from_cond], None)
@@ -183,12 +189,14 @@ class ControlFlowTransformer(converter.Base):
       # actually has some return value as well.
       cond_results = None
       # TODO(mdan): This doesn't belong here; it's specific to the operator.
-      returned_from_body = templates.replace_as_expression('tf.constant(1)')
-      returned_from_orelse = templates.replace_as_expression('tf.constant(1)')
+      returned_from_body = (templates.replace_as_expression(
+          'ag__.match_staging_level(1, cond_var_name)',
+          cond_var_name=cond_var_name),)
+      returned_from_orelse = (templates.replace_as_expression(
+          'ag__.match_staging_level(1, cond_var_name)',
+          cond_var_name=cond_var_name),)
 
-    body_name = self.ctx.namer.new_symbol('if_true', body_scope.referenced)
-    orelse_name = self.ctx.namer.new_symbol('if_false', orelse_scope.referenced)
-
+    cond_assign = self.create_assignment(cond_var_name, node.test)
     body_def = self._create_cond_branch(
         body_name,
         aliased_orig_names=aliased_body_orig_names,
@@ -201,56 +209,102 @@ class ControlFlowTransformer(converter.Base):
         aliased_new_names=aliased_orelse_new_names,
         body=node_orelse,
         returns=returned_from_orelse)
-    cond_expr = self._create_cond_expr(cond_results, node.test, body_name,
+    cond_expr = self._create_cond_expr(cond_results, cond_var_name, body_name,
                                        orelse_name)
 
-    return body_def + orelse_def + cond_expr
+    return cond_assign + body_def + orelse_def + cond_expr
+
+  def _get_loop_state(self, node):
+    body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
+    defined_in = anno.getanno(node, anno.Static.DEFINED_VARS_IN)
+    live_in = anno.getanno(node, anno.Static.LIVE_VARS_IN)
+    live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
+    reserved_symbols = body_scope.referenced
+
+    # Note that it doesn't matter whether the variables are live after the loop.
+    # If the loop modifies them nonlocally (e.g. the result of an iteration
+    # depends on the previous iteration), then they need to be included in
+    # the loop state, regardless of whether they are later used or not.
+    loop_state = body_scope.modified & live_in
+
+    undefined_lives = loop_state - defined_in
+    # Only simple variables must be defined. The composite ones will be
+    # implicitly checked at runtime.
+    undefined_simple_lives = {v for v in undefined_lives if v.is_simple()}
+    if undefined_simple_lives:
+      raise NameError(
+          'cannot convert loop: it includes symbols that are undefined'
+          ' when entering the loop: {}'.format(
+              self._fmt_symbols(undefined_simple_lives)))
+
+    live_defs_in_loop = (body_scope.modified - live_in) & live_out
+    if live_defs_in_loop:
+      # TODO(mdan): Include reference to explanation why.
+      raise NotImplementedError(
+          'cannot convert loop: it includes symbols that are defined'
+          ' inside the loop, but used later: {}. To fix, initialize'
+          ' these symbols before the loop'.format(
+              self._fmt_symbols(live_defs_in_loop)))
+
+    if not loop_state:
+      # TODO(mdan): Implement this properly.
+      # We need to check whether any variable created inside the body scope
+      # is used before being modified outside the scope. This should be done
+      # during activity analysis, and in general should cover the case where
+      # variables may not be initialized.
+      raise ValueError('cannot convert loop: no outputs')
+
+    return loop_state, reserved_symbols
+
+  def _state_constructs(self, loop_state, reserved_symbols):
+    loop_state = list(loop_state)
+    state_ssf = [
+        self.ctx.namer.new_symbol(s.ssf(), reserved_symbols) for s in loop_state
+    ]
+    ssf_map = {
+        name: ssf
+        for name, ssf in zip(loop_state, state_ssf)
+        if str(name) != ssf
+    }
+
+    if len(loop_state) == 1:
+      loop_state = loop_state[0]
+      state_ssf = state_ssf[0]
+      state_ast_tuple = loop_state
+    else:
+      state_ast_tuple = gast.Tuple([n.ast() for n in loop_state], None)
+
+    return loop_state, state_ssf, state_ast_tuple, ssf_map
 
   def visit_While(self, node):
     self.generic_visit(node)
 
-    self._validate_no_live_vars_created(node)
+    loop_state, reserved_symbols = self._get_loop_state(node)
 
-    body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
-    body_closure = body_scope.modified - body_scope.created
-    all_referenced = body_scope.referenced
-
+    # Note: one might expect we can dispatch based on the loop condition.
+    # But because that is dependent on the state, it cannot be evaluated ahead
+    # of time - doing that would risk duplicating any effects the condition has.
+    # Furthermore, we cannot evaluate slices and attributes, because they might
+    # trigger __getitem__ or __getattribute__.
+    #
+    # A case where this fails includes ops with side effects on a stateful
+    # resource captured in an object:
+    #
+    #   while self.v.read() > 0:
+    #     self.v.assign(1)
+    #
+    # TODO(mdan): Handle the case above.
     cond_scope = anno.getanno(node, annos.NodeAnno.COND_SCOPE)
     cond_closure = set()
-    for s in cond_scope.used:
-      for root in s.support_set:
-        if root not in body_scope.created:
-          cond_closure.add(root)
+    for s in cond_scope.read:
+      cond_closure.update(s.support_set)
+    cond_closure -= loop_state
 
-    state = list(body_closure)
-    if not state:
-      # TODO(mdan): Implement this properly.
-      # To complete this statement, we need to check whether any variable
-      # created inside the body scope is used before being modified outside the
-      # scope. This should be done during activity analysis, and in general
-      # should cover the case where variables may not be initialized.
-      raise ValueError('cannot convert while loop: no outputs')
-
-    state_ssf = [
-        self.ctx.namer.new_symbol(s.ssf(), all_referenced) for s in state
-    ]
-    ssf_map = {
-        name: ssf
-        for name, ssf in zip(state, state_ssf)
-        if str(name) != ssf
-    }
-
-    if len(state) == 1:
-      state = state[0]
-      state_ssf = state_ssf[0]
-      state_ast_tuple = state
-    else:
-      state_ast_tuple = gast.Tuple([n.ast() for n in state], None)
-
+    loop_state, state_ssf, state_ast_tuple, ssf_map = self._state_constructs(
+        loop_state, reserved_symbols)
     node_body = ast_util.rename_symbols(node.body, ssf_map)
     test = ast_util.rename_symbols(node.test, ssf_map)
 
-    # TODO(b/113118541) investigate the need-for and correctness-of extra_deps
     template = """
       def test_name(state_ssf):
         return test
@@ -262,12 +316,12 @@ class ControlFlowTransformer(converter.Base):
     """
     node = templates.replace(
         template,
-        state=state,
+        state=loop_state,
         state_ssf=state_ssf,
         state_ast_tuple=state_ast_tuple,
-        test_name=self.ctx.namer.new_symbol('loop_test', body_scope.referenced),
+        test_name=self.ctx.namer.new_symbol('loop_test', reserved_symbols),
         test=test,
-        body_name=self.ctx.namer.new_symbol('loop_body', body_scope.referenced),
+        body_name=self.ctx.namer.new_symbol('loop_body', reserved_symbols),
         body=node_body,
         extra_deps=tuple(s.ast() for s in cond_closure),
     )
@@ -277,30 +331,9 @@ class ControlFlowTransformer(converter.Base):
   def visit_For(self, node):
     self.generic_visit(node)
 
-    self._validate_no_live_vars_created(node)
-
-    body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
-    body_closure = body_scope.modified - body_scope.created
-    all_referenced = body_scope.referenced
-
-    state = list(body_closure)
-
-    state_ssf = [
-        self.ctx.namer.new_symbol(s.ssf(), all_referenced) for s in state
-    ]
-    ssf_map = {
-        name: ssf
-        for name, ssf in zip(state, state_ssf)
-        if str(name) != ssf
-    }
-
-    if len(state) == 1:
-      state = state[0]
-      state_ssf = state_ssf[0]
-      state_ast_tuple = state
-    else:
-      state_ast_tuple = gast.Tuple([n.ast() for n in state], None)
-
+    loop_state, reserved_symbols = self._get_loop_state(node)
+    loop_state, state_ssf, state_ast_tuple, ssf_map = self._state_constructs(
+        loop_state, reserved_symbols)
     node_body = ast_util.rename_symbols(node.body, ssf_map)
     if anno.hasanno(node, 'extra_test'):
       extra_test = anno.getanno(node, 'extra_test')
@@ -321,14 +354,15 @@ class ControlFlowTransformer(converter.Base):
     """
     node = templates.replace(
         template,
-        state=state,
+        state=loop_state,
         state_ssf=state_ssf,
         state_ast_tuple=state_ast_tuple,
         iter_=node.iter,
         iterate=node.target,
-        extra_test_name=self.ctx.namer.new_symbol('extra_test', all_referenced),
+        extra_test_name=self.ctx.namer.new_symbol('extra_test',
+                                                  reserved_symbols),
         extra_test_expr=extra_test,
-        body_name=self.ctx.namer.new_symbol('loop_body', all_referenced),
+        body_name=self.ctx.namer.new_symbol('loop_body', reserved_symbols),
         body=node_body)
 
     return node

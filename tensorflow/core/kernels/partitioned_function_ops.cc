@@ -24,6 +24,12 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/grappler/utils/functions.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
 
@@ -35,7 +41,6 @@ namespace tensorflow {
 typedef FunctionLibraryRuntime::Handle FHandle;
 
 namespace {
-
 // A `PartitionedCallOp` asynchronously executes a function, potentially across
 // multiple devices but within a single process. The kernel places and
 // partitions a given function's underlying graph, and executes each of the
@@ -46,6 +51,30 @@ class PartitionedCallOp : public AsyncOpKernel {
  public:
   explicit PartitionedCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+    string deprecated_config_serialized;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &deprecated_config_serialized));
+    string config_proto_serialized;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config_proto", &config_proto_serialized));
+    OP_REQUIRES(
+        ctx,
+        deprecated_config_serialized.empty() || config_proto_serialized.empty(),
+        errors::InvalidArgument("Provided both 'config' and 'config_proto' but "
+                                "only one should be provided.  Note the "
+                                "'config' option is deprecated."));
+    if (!deprecated_config_serialized.empty()) {
+      OP_REQUIRES(ctx,
+                  config_proto_.mutable_graph_options()
+                      ->mutable_rewrite_options()
+                      ->ParseFromString(deprecated_config_serialized),
+                  errors::InvalidArgument("Unable to parse config string as "
+                                          "tensorflow::RewriteOptions proto."));
+    } else {
+      OP_REQUIRES(
+          ctx, config_proto_.ParseFromString(config_proto_serialized),
+          errors::InvalidArgument("Unable to parse config_proto string as "
+                                  "tensorflow::ConfigProto proto."));
+    }
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("executor_type", &executor_type_));
   }
 
   ~PartitionedCallOp() override {}
@@ -76,12 +105,6 @@ class PartitionedCallOp : public AsyncOpKernel {
     {
       mutex_lock l(mu_);
       if (function_handles_.find(lib) == function_handles_.end()) {
-        if (local_device_name_.empty()) {
-          // The full local device name isn't known at kernel construction
-          // time, hence the need to set it here.
-          local_device_name_ = lib->device()->name();
-        }
-
         // TODO(b/37549631): Because this kernel may correspond to a stateful
         // op, it may be shared by multiple subgraphs, which in turn may have
         // different `FunctionLibraryRuntime` objects and therefore different
@@ -109,8 +132,7 @@ class PartitionedCallOp : public AsyncOpKernel {
         // by name.
         auto graph = tensorflow::MakeUnique<Graph>(fbody->graph->flib_def());
         FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
-        TF_CHECK_OK(
-                    graph.get()->AddFunctionLibrary(global_flib.ToProto()));
+        TF_CHECK_OK(graph->AddFunctionLibrary(global_flib.ToProto()));
         CopyGraph(*fbody->graph, graph.get());
         OP_REQUIRES_OK_ASYNC(ctx, PinResourceArgs(graph.get(), args), done);
 
@@ -127,8 +149,11 @@ class PartitionedCallOp : public AsyncOpKernel {
                              "find cached function partitions; "
                              "this indicates a bug."),
             done);
-        FunctionLibraryDefinition* overlay_lib =
-            new FunctionLibraryDefinition(*lib->GetFunctionLibraryDefinition());
+        // We do not need a full function library in the overlay, we just keep a
+        // subset that is reachable from the instantiated function.
+        FunctionLibraryDefinition* overlay_lib = new FunctionLibraryDefinition(
+            grappler::ReachableFunctionLibraryDefinition(
+                *lib->GetFunctionLibraryDefinition(), fbody->fdef));
         overlay_libs_.emplace(lib, overlay_lib);
 
         GraphOptimizationPassOptions optimization_options;
@@ -145,7 +170,14 @@ class PartitionedCallOp : public AsyncOpKernel {
             OptimizationPassRegistry::Global()->RunGrouping(
                 OptimizationPassRegistry::PRE_PLACEMENT, optimization_options),
             done);
-        Placer placer(graph.get(), &device_set);
+
+        // Make the FunctionLibraryRuntime's device the default device if
+        // nothing else is hard coded. This allows the same function definition
+        // to be specialized to different devices depending on the
+        // PartitionedCallOp's device.
+        Placer placer(graph.get(), &device_set,
+                      nullptr, /* No session options */
+                      lib->device() /* Default device */);
         OP_REQUIRES_OK_ASYNC(ctx, placer.Run(), done);
         OP_REQUIRES_OK_ASYNC(
             ctx,
@@ -159,10 +191,28 @@ class PartitionedCallOp : public AsyncOpKernel {
                 optimization_options),
             done);
 
+        Device* cpu_device;
+        OP_REQUIRES_OK_ASYNC(
+            ctx, lib->device_mgr()->LookupDevice("CPU:0", &cpu_device), done);
+
+        // Run grappler passes on the graph. It is possible that these are
+        // optimized by the graph executor already.
+        OP_REQUIRES_OK_ASYNC(ctx,
+                             OptimizeGraph(ctx, fbody->ret_nodes, overlay_lib,
+                                           device_set, cpu_device, &graph),
+                             done);
+
         std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
         OP_REQUIRES_OK_ASYNC(
             ctx, PartitionHelper(device_set, std::move(graph), &subgraphs),
             done);
+        if (ctx->graph_collector() != nullptr) {
+          for (const auto& pair : subgraphs) {
+            GraphDef def;
+            pair.second->ToGraphDef(&def);
+            ctx->graph_collector()->CollectGraph(def);
+          }
+        }
         optimization_options.graph = nullptr;
         optimization_options.device_set = nullptr;
         optimization_options.partition_graphs = &subgraphs;
@@ -186,6 +236,7 @@ class PartitionedCallOp : public AsyncOpKernel {
               ctx, GraphToFunctionDef(*subgraph, unique_name, &shard), done);
           OP_REQUIRES_OK_ASYNC(ctx, overlay_lib->AddFunctionDef(shard), done);
           FunctionLibraryRuntime::InstantiateOptions opts;
+          opts.executor_type = executor_type_;
           opts.target = target;
           opts.overlay_lib = overlay_lib;
           FHandle handle;
@@ -222,6 +273,12 @@ class PartitionedCallOp : public AsyncOpKernel {
         int index = attr_value->i();
         TF_RETURN_IF_ERROR(node->attrs().Find("T", &attr_value));
         DataType dtype = attr_value->type();
+        if (dtype != args[index].dtype()) {
+          return errors::InvalidArgument("For argument ", index, " expected ",
+                                         DataTypeString(dtype), " tensor, got ",
+                                         DataTypeString(args[index].dtype()),
+                                         " instead.");
+        }
         if (dtype == DT_RESOURCE) {
           const ResourceHandle& handle = args[index].flat<ResourceHandle>()(0);
           node->set_assigned_device_name(handle.device());
@@ -266,8 +323,7 @@ class PartitionedCallOp : public AsyncOpKernel {
     for (const auto& partition : partitions) {
       std::unique_ptr<Graph> subgraph(new Graph(graph->flib_def()));
       FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
-      TF_CHECK_OK(
-                subgraph.get()->AddFunctionLibrary(global_flib.ToProto()));
+      TF_CHECK_OK(subgraph->AddFunctionLibrary(global_flib.ToProto()));
       GraphConstructorOptions opts;
       opts.allow_internal_ops = true;
       opts.expect_device_spec = true;
@@ -317,14 +373,6 @@ class PartitionedCallOp : public AsyncOpKernel {
       }
     }
 
-    // Rewrite the indices of the Arg and Retval nodes for this function
-    // to range from 0 to the number of Arg nodes, Retval nodes, respectively.
-    auto sort_by_index = [](std::pair<Node*, int> one,
-                            std::pair<Node*, int> two) -> bool {
-      return one.second < two.second;
-    };
-    std::sort(arg_nodes.begin(), arg_nodes.end(), sort_by_index);
-    std::sort(ret_nodes.begin(), ret_nodes.end(), sort_by_index);
     for (int i = 0; i < arg_nodes.size(); ++i) {
       Node* arg = arg_nodes[i].first;
       arg->AddAttr("index", i);
@@ -382,6 +430,7 @@ class PartitionedCallOp : public AsyncOpKernel {
       return;
     }
 
+    const string& local_device_name = lib->device()->name();
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
     opts.step_container = ctx->step_container();
@@ -390,7 +439,7 @@ class PartitionedCallOp : public AsyncOpKernel {
     // TODO(akshayka): Consider selecting a runner on a per-device basis, i.e.,
     // using device-specific threadpools when available.
     opts.runner = ctx->runner();
-    opts.source_device = local_device_name_;
+    opts.source_device = local_device_name;
     opts.allow_dead_tensors = true;
     // TODO(akshayka): Accommodate the multiple-worker scenario by adding the
     // constructed rendezvous to a rendezvous manager.
@@ -418,7 +467,7 @@ class PartitionedCallOp : public AsyncOpKernel {
       const std::vector<int>& ret_indices = indices.second;
       opts.args_alloc_attrs = alloc_attrs.first;
       opts.rets_alloc_attrs = alloc_attrs.second;
-      if (target == local_device_name_) {
+      if (target == local_device_name) {
         opts.remote_execution = false;
         std::vector<Tensor> args = GetArgsForIndices(arg_indices, op_args);
         std::vector<Tensor>* rets = new std::vector<Tensor>;
@@ -470,11 +519,75 @@ class PartitionedCallOp : public AsyncOpKernel {
     }
   }
 
+  Status OptimizeGraph(OpKernelContext* ctx,
+                       const gtl::InlinedVector<Node*, 4>& ret_nodes,
+                       FunctionLibraryDefinition* flib,
+                       const DeviceSet& device_set, Device* cpu_device,
+                       std::unique_ptr<Graph>* graph) {
+    if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto_)) {
+      return Status::OK();
+    }
+
+    tensorflow::grappler::GrapplerItem item;
+
+    // Add fetches so that the graph can be pruned.
+    for (Node* node : ret_nodes) {
+      item.fetch.push_back(node->name());
+    }
+
+    (*graph)->ToGraphDef(&item.graph);
+
+    if (flib) {
+      *item.graph.mutable_library() = flib->ToProto();
+    }
+
+    tensorflow::GraphDef out_graph;
+
+    tensorflow::grappler::VirtualCluster cluster(&device_set);
+
+    // TODO(nareshmodi): Consider adding and using the more generic GraphOptions
+    // proto (which also contain the OptimizerOptions).
+    TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
+        item, config_proto_, cpu_device, &cluster, &out_graph));
+
+    std::unique_ptr<Graph> optimized_graph(new Graph(OpRegistry::Global()));
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+        GraphConstructorOptions(), out_graph, optimized_graph.get()));
+
+    // Copy optimized functions back to the overlay lib.
+    if (flib) {
+      for (const FunctionDef& fdef : out_graph.library().function()) {
+        const string& func_name = fdef.signature().name();
+        if (flib->Contains(func_name)) {
+          TF_RETURN_IF_ERROR(flib->ReplaceFunction(func_name, fdef));
+        } else {
+          TF_RETURN_IF_ERROR(flib->AddFunctionDef(fdef));
+        }
+      }
+    }
+
+    *graph = std::move(optimized_graph);
+
+    // The graph conversion sets the requested device names but not the
+    // assigned device names. However, since at this point the graph is
+    // placed TF expects an assigned device name for every node. Therefore
+    // we copy the requested device into the assigned device field.
+    for (Node* node : graph->get()->nodes()) {
+      node->set_assigned_device_name(node->requested_device());
+    }
+
+    return Status::OK();
+  }
+
   NameAttrList func_;
-  string local_device_name_;
+  ConfigProto config_proto_;
+  string executor_type_;
   // Contains maps from device names to handles of function partitions, keyed by
   // FunctionLibraryRuntime pointers. (Because this kernel may be instantiated
-  // for a stateful op, different invocations of it may use different FLRs.)
+  // for a stateful op, different invocations of it may use different
+  // FLRs. Different device placements of PartitionedCallOp also use different
+  // FLRs, and we use this to set the "default" device for the function to
+  // PartitionedCallOp's device.)
   gtl::FlatMap<FunctionLibraryRuntime*,
                std::unique_ptr<gtl::FlatMap<string, FHandle>>>
       function_handles_ GUARDED_BY(mu_);

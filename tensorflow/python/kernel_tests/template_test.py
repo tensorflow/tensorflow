@@ -104,10 +104,10 @@ class TemplateTest(test.TestCase):
     train_op = optimizer.minimize(train_loss)
 
     with session.Session() as sess:
-      sess.run(variables.global_variables_initializer())
-      initial_test_loss = sess.run(test_loss)
-      sess.run(train_op)
-      final_test_loss = sess.run(test_loss)
+      self.evaluate(variables.global_variables_initializer())
+      initial_test_loss = self.evaluate(test_loss)
+      self.evaluate(train_op)
+      final_test_loss = self.evaluate(test_loss)
 
     # Parameters are tied, so the loss should have gone down when we trained it.
     self.assertLess(final_test_loss, initial_test_loss)

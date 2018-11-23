@@ -72,7 +72,6 @@ py_library(
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/mixed_precision:mixed_precision",
         "//tensorflow/contrib/model_pruning",
-        "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_py",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
@@ -113,22 +112,52 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_kafka_support": [],
+        "//conditions:default": [
+            "//tensorflow/contrib/kafka",
+        ],
+    }) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_aws_support": [],
+        "//conditions:default": [
+            "//tensorflow/contrib/kinesis",
+        ],
+    }) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "//tensorflow/contrib/bigtable",
-            "//tensorflow/contrib/cloud:cloud_py",
-            "//tensorflow/contrib/fused_conv:fused_conv_py",  # unresolved symbols, need to export more symbols
-            "//tensorflow/contrib/kafka",
-            "//tensorflow/contrib/kinesis",
+            "//tensorflow/contrib/fused_conv:fused_conv_py",
             "//tensorflow/contrib/tensorrt:init_py",
             "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         ],
     }) + select({
-        "//tensorflow:with_ignite_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_gcp_support": [],
+        "//conditions:default": [
+            "//tensorflow/contrib/bigtable",
+            "//tensorflow/contrib/cloud:cloud_py",
+        ],
+    }) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_ignite_support": [],
+        "//conditions:default": [
             "//tensorflow/contrib/ignite",
         ],
-        "//conditions:default": [],
     }),
 )
 
@@ -149,17 +178,27 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
         "//tensorflow/contrib/text:all_kernels",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_cuda([
-        "//tensorflow/contrib/nccl:nccl_kernels",
-    ]) + select({
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
+        "//tensorflow:no_kafka_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/kafka:dataset_kernels",
-            "//tensorflow/contrib/kinesis:dataset_kernels",
-            "//tensorflow/contrib/tensorrt:trt_engine_op_kernel",
         ],
-    }),
+    }) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_aws_support": [],
+        "//conditions:default": [
+            "//tensorflow/contrib/kinesis:dataset_kernels",
+        ],
+    }) + if_not_windows([
+        "//tensorflow/contrib/tensorrt:trt_engine_op_kernel",
+    ]),
 )
 
 cc_library(
@@ -173,7 +212,6 @@ cc_library(
         "//tensorflow/contrib/hadoop:dataset_ops_op_lib",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
-        "//tensorflow/contrib/nccl:nccl_ops_op_lib",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_ops_op_lib",
         "//tensorflow/contrib/rnn:all_ops",
         "//tensorflow/contrib/seq2seq:beam_search_ops_op_lib",
@@ -183,17 +221,33 @@ cc_library(
         "//tensorflow/contrib/text:all_ops",
         "//tensorflow/contrib/tpu:all_ops",
     ] + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
+        "//tensorflow:no_kafka_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/kafka:dataset_ops_op_lib",
-            "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
-            "//tensorflow/contrib/tensorrt:trt_engine_op_op_lib",
         ],
     }) + select({
-        "//tensorflow:with_ignite_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_aws_support": [],
+        "//conditions:default": [
+            "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
+        ],
+    }) + if_not_windows([
+        "//tensorflow/contrib/tensorrt:trt_engine_op_op_lib",
+    ]) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_ignite_support": [],
+        "//conditions:default": [
             "//tensorflow/contrib/ignite:dataset_ops_op_lib",
         ],
-        "//conditions:default": [],
     }),
 )

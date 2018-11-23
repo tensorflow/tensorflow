@@ -162,6 +162,10 @@ tf_class {
     argspec: "args=[\'self\', \'losses\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "add_metric"
+    argspec: "args=[\'self\', \'value\', \'aggregation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "add_update"
     argspec: "args=[\'self\', \'updates\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -179,7 +183,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'instance\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "call"
@@ -191,7 +195,7 @@ tf_class {
   }
   member_method {
     name: "compute_output_shape"
-    argspec: "args=[\'instance\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"

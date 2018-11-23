@@ -500,8 +500,9 @@ class GemmFilterPacker {
   typedef Eigen::internal::const_blas_data_mapper<T, int64, Eigen::RowMajor>
       LhsMapper;
   typedef Eigen::internal::gebp_traits<T, T> Traits;
-  Eigen::internal::gemm_pack_lhs<T, int64, LhsMapper, Traits::mr,
-                                 Traits::LhsProgress, Eigen::RowMajor>
+  Eigen::internal::gemm_pack_lhs<
+      T, int64, LhsMapper, Traits::mr, Traits::LhsProgress,
+      typename Traits::LhsPacket4Packing, Eigen::RowMajor>
       pack_lhs;
 
   GemmFilterPacker(const int64 rows, const int64 depth, const T* lhs_input,

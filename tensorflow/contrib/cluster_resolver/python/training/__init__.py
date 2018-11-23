@@ -22,4 +22,7 @@ from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import
 from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import SimpleClusterResolver
 from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import UnionClusterResolver
 from tensorflow.contrib.cluster_resolver.python.training.gce_cluster_resolver import GceClusterResolver
+from tensorflow.contrib.cluster_resolver.python.training.kubernetes_cluster_resolver import KubernetesClusterResolver
+from tensorflow.contrib.cluster_resolver.python.training.slurm_cluster_resolver import SlurmClusterResolver
+from tensorflow.contrib.cluster_resolver.python.training.tfconfig_cluster_resolver import TFConfigClusterResolver
 from tensorflow.contrib.cluster_resolver.python.training.tpu_cluster_resolver import TPUClusterResolver

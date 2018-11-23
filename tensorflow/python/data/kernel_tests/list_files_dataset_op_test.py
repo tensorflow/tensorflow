@@ -102,7 +102,7 @@ class ListFilesDatasetOpTest(test_base.DatasetTestBase):
       all_produced_filenames = []
       for _ in range(3):
         produced_filenames = []
-        sess.run(itr.initializer)
+        self.evaluate(itr.initializer)
         try:
           while True:
             produced_filenames.append(sess.run(next_element))
@@ -237,6 +237,54 @@ class ListFilesDatasetOpTest(test_base.DatasetTestBase):
       self.assertItemsEqual(full_filenames, produced_filenames)
       self.assertEqual(produced_filenames[:len(filenames)],
                        produced_filenames[len(filenames):])
+
+  def testMultiplePatternsAsList(self):
+    filenames = ['a.txt', 'b.py', 'c.py', 'd.pyc']
+    self._touchTempFiles(filenames)
+
+    patterns = [path.join(self.tmp_dir, pat) for pat in ['*.py', '*.txt']]
+    dataset = dataset_ops.Dataset.list_files(patterns)
+    with self.cached_session() as sess:
+      itr = dataset.make_one_shot_iterator()
+      next_element = itr.get_next()
+
+      full_filenames = []
+      produced_filenames = []
+      for filename in filenames[:-1]:
+        full_filenames.append(
+            compat.as_bytes(path.join(self.tmp_dir, filename)))
+        produced_filenames.append(compat.as_bytes(sess.run(next_element)))
+      self.assertItemsEqual(full_filenames, produced_filenames)
+
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(itr.get_next())
+
+  def testMultiplePatternsAsTensor(self):
+    filenames = ['a.txt', 'b.py', 'c.py', 'd.pyc']
+    self._touchTempFiles(filenames)
+
+    filename_placeholder = array_ops.placeholder(
+        dtypes.string, shape=[
+            2,
+        ])
+    dataset = dataset_ops.Dataset.list_files(filename_placeholder)
+
+    with self.cached_session() as sess:
+      itr = dataset.make_initializable_iterator()
+      next_element = itr.get_next()
+      patterns = [path.join(self.tmp_dir, pat) for pat in ['*.py', '*.txt']]
+      sess.run(itr.initializer, feed_dict={filename_placeholder: patterns})
+
+      full_filenames = []
+      produced_filenames = []
+      for filename in filenames[:-1]:
+        full_filenames.append(
+            compat.as_bytes(path.join(self.tmp_dir, filename)))
+        produced_filenames.append(compat.as_bytes(sess.run(next_element)))
+      self.assertItemsEqual(full_filenames, produced_filenames)
+
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(itr.get_next())
 
 
 if __name__ == '__main__':

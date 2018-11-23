@@ -22,10 +22,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// TODO(jpienaar): Consider making it a public attribute.
-const char* const LowerIfOpPass::kLowerUsingSwitchMergeAttr =
-    "_lower_using_switch_merge";
-
 namespace {
 
 using NodeOut = NodeBuilder::NodeOut;
@@ -80,7 +76,7 @@ class CondBuilder {
   // The identity node with the same outputs as the original If op.
   Node* lowered_if_output_;
   // The predicate of the conditional.
-  Node* pred_;
+  OutputTensor pred_;
   // Node corresponding to pivot_f branch of predicate switch which is
   // the pivot node that dominates all nodes in the false/else branch.
   Node* pivot_f_;
@@ -106,7 +102,9 @@ CondBuilder::CondBuilder(Node* if_op, const string& then_fn_name,
       name_(if_op->name()),
       then_call_builder_(NewName("then"), then_fn_name, graph->op_registry()),
       else_call_builder_(NewName("else"), else_fn_name, graph->op_registry()) {
-  TF_CHECK_OK(if_op_->input_node(0, &pred_));
+  TF_CHECK_OK(if_op_->input_tensor(0, &pred_));
+  then_call_builder_.Device(if_op_->requested_device());
+  else_call_builder_.Device(if_op_->requested_device());
 }
 
 Status CondBuilder::CreatePivotNodes() {
@@ -115,17 +113,20 @@ Status CondBuilder::CreatePivotNodes() {
   Node* switch_pred;
   TF_RETURN_IF_ERROR(
       NodeBuilder(NewName("switch_pred"), "Switch", graph_->op_registry())
-          .Input(NodeOut(pred_, 0))
-          .Input(NodeOut(pred_, 0))
+          .Input(NodeOut(pred_))
+          .Input(NodeOut(pred_))
+          .Device(if_op_->requested_device())
           .Finalize(graph_, &switch_pred));
   control_predecessor_ = switch_pred;
   TF_RETURN_IF_ERROR(
       NodeBuilder(NewName("pivot_f"), "Identity", graph_->op_registry())
           .Input(switch_pred, kElseBranch)
+          .Device(if_op_->requested_device())
           .Finalize(graph_, &pivot_f_));
   TF_RETURN_IF_ERROR(
       NodeBuilder(NewName("pivot_t"), "Identity", graph_->op_registry())
           .Input(switch_pred, kThenBranch)
+          .Device(if_op_->requested_device())
           .Finalize(graph_, &pivot_t_));
   return Status::OK();
 }
@@ -139,7 +140,8 @@ Status CondBuilder::AddInput(Node* src, int src_output) {
   TF_RETURN_IF_ERROR(
       NodeBuilder(NewName(src->name()), "Switch", graph_->op_registry())
           .Input(src, src_output)
-          .Input(pred_, 0)
+          .Input(pred_)
+          .Device(if_op_->requested_device())
           .Finalize(graph_, &input));
   then_call_builder_.Input(input, kThenBranch);
   else_call_builder_.Input(input, kElseBranch);
@@ -178,6 +180,7 @@ Status CondBuilder::AddOutputs() {
     TF_RETURN_IF_ERROR(
         NodeBuilder(graph_->NewName("merge"), "Merge", graph_->op_registry())
             .Input({NodeOut(then_call_node_, i), NodeOut(else_call_node_, i)})
+            .Device(if_op_->requested_device())
             .Finalize(graph_, &merges[i]));
     outputs_[i] = NodeOut(merges[i], 0);
   }
@@ -218,7 +221,7 @@ Status InlineCallInGraph(Node* n, const FunctionLibraryDefinition& flib,
 Status CondBuilder::BuildLoweredIfOutput() {
   // Build the identity node output.
   NodeBuilder ib(name_, "IdentityN");
-  ib.Input(outputs_);
+  ib.Input(outputs_).Device(if_op_->requested_device());
   return ib.Finalize(graph_, &lowered_if_output_);
 }
 
@@ -230,45 +233,7 @@ Status CondBuilder::InlineCallNodes() {
 
 }  // namespace
 
-Status LowerIfOpPass::Run(const GraphOptimizationPassOptions& options) {
-  if (options.partition_graphs != nullptr) {
-    return errors::Internal(
-        "Lowering If op should happen before partitioning.");
-  }
-  if (options.graph == nullptr) {
-    return Status::OK();
-  }
-
-  Graph* g = options.graph->get();
-  if (g == nullptr) {
-    return errors::Internal("Lowering If op requires a graph to be available.");
-  }
-
-  FunctionLibraryDefinition* flib = options.flib_def;
-  if (flib == nullptr) {
-    return errors::Internal(
-        "Lowering If op requires a FunctionLibraryDefinition to be available.");
-  }
-
-  // Match all the nodes that need to be rewritten.
-  gtl::InlinedVector<Node*, 2> matches;
-  for (Node* n : g->op_nodes()) {
-    if (n->type_string() == "If") {
-      // Only rewrite if the If op is marked as needing to be lowered.
-      bool match;
-      Status s = GetNodeAttr(n->attrs(), kLowerUsingSwitchMergeAttr, &match);
-      if (s.ok() && match) matches.push_back(n);
-    }
-  }
-  for (Node* n : matches) {
-    TF_RETURN_IF_ERROR(RewriteNode(n, *flib, g));
-  }
-  return Status::OK();
-}
-
-Status LowerIfOpPass::RewriteNode(Node* n,
-                                  const FunctionLibraryDefinition& flib,
-                                  Graph* g) {
+Status RewriteIfNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib) {
   const AttrValue* then_attr = n->attrs().Find("then_branch");
   if (then_attr == nullptr) {
     return errors::InvalidArgument("Then branch function missing");
@@ -288,8 +253,5 @@ Status LowerIfOpPass::RewriteNode(Node* n,
 
   return Status::OK();
 }
-
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
-                      LowerIfOpPass);
 
 }  // namespace tensorflow

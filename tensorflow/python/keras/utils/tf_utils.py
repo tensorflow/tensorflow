@@ -17,8 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
@@ -153,3 +155,30 @@ def shape_type_conversion(fn):
       return tensor_shape.TensorShape(output_shape)
 
   return wrapper
+
+
+def are_all_symbolic_tensors(tensors):
+  return all(is_symbolic_tensor(tensor) for tensor in tensors)
+
+
+def is_symbolic_tensor(tensor):
+  """Returns whether a tensor is symbolic (from a TF graph) or an eager tensor.
+
+  A Variable can be seen as either: it is considered symbolic
+  when we are in a graph scope, and eager when we are in an eager scope.
+
+  Arguments:
+    tensor: A tensor instance to test.
+
+  Returns:
+    True for symbolic tensors, False for eager tensors.
+  """
+  if isinstance(tensor, variables.Variable):
+    return not context.executing_eagerly()
+  if isinstance(tensor, (ops.Tensor, sparse_tensor.SparseTensor)):
+    try:
+      _ = tensor.graph
+      return True
+    except AttributeError:
+      return False
+  return False

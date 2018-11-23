@@ -85,15 +85,15 @@ class PadOpTest(test.TestCase):
   def _testPad(self, np_inputs, paddings, mode, constant_values):
     np_val = self._npPad(np_inputs, paddings, mode=mode,
                          constant_values=constant_values)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_val = array_ops.pad(np_inputs, paddings, mode=mode,
                              constant_values=constant_values)
-      out = tf_val.eval()
+      out = self.evaluate(tf_val)
     self.assertAllEqual(np_val, out)
     self.assertShapeEqual(np_val, tf_val)
 
   def _testGradient(self, x, a, mode, constant_values):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       inx = ops.convert_to_tensor(x)
       xs = list(x.shape)
       ina = ops.convert_to_tensor(a)
@@ -117,7 +117,7 @@ class PadOpTest(test.TestCase):
                              constant_values=constant_values)
 
   def testInputDims(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
         array_ops.pad(array_ops.reshape(
             [1, 2], shape=[1, 2, 1, 1, 1, 1]),
@@ -125,7 +125,7 @@ class PadOpTest(test.TestCase):
                           [1, 2], shape=[1, 2]))
 
   def testPaddingsDim(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
         array_ops.pad(array_ops.reshape(
             [1, 2], shape=[1, 2]),
@@ -133,7 +133,7 @@ class PadOpTest(test.TestCase):
                           [1, 2], shape=[2]))
 
   def testPaddingsDim2(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
         array_ops.pad(array_ops.reshape(
             [1, 2], shape=[1, 2]),
@@ -141,7 +141,7 @@ class PadOpTest(test.TestCase):
                           [1, 2], shape=[2, 1]))
 
   def testPaddingsDim3(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
         array_ops.pad(array_ops.reshape(
             [1, 2], shape=[1, 2]),
@@ -149,7 +149,7 @@ class PadOpTest(test.TestCase):
                           [1, 2], shape=[1, 2]))
 
   def testPaddingsDim4(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
         array_ops.pad(array_ops.reshape(
             [1, 2], shape=[1, 2]),
@@ -157,7 +157,7 @@ class PadOpTest(test.TestCase):
                           [1, 2, 3, 4, 5, 6], shape=[3, 2]))
 
   def testPaddingsNonNegative(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaisesRegexp(ValueError, "must be non-negative"):
         array_ops.pad(constant_op.constant(
             [1], shape=[1]),
@@ -165,7 +165,7 @@ class PadOpTest(test.TestCase):
                           [-1, 0], shape=[1, 2]))
 
   def testPaddingsNonNegative2(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaisesRegexp(ValueError, "must be non-negative"):
         array_ops.pad(constant_op.constant(
             [1], shape=[1]),
@@ -173,7 +173,7 @@ class PadOpTest(test.TestCase):
                           [-1, 0], shape=[1, 2]))
 
   def testPaddingsMaximum(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(Exception):
         array_ops.pad(constant_op.constant(
             [1], shape=[2]),
@@ -203,12 +203,12 @@ class PadOpTest(test.TestCase):
                              paddings,
                              mode=mode,
                              constant_values=0)
-        with self.test_session(use_gpu=True):
+        with self.cached_session(use_gpu=True):
           tf_val = array_ops.pad(inputs,
                                  constant_op.constant(paddings, padding_dtype),
                                  mode=mode,
                                  constant_values=0)
-          out = tf_val.eval()
+          out = self.evaluate(tf_val)
         self.assertAllEqual(np_val, out)
         self.assertShapeEqual(np_val, tf_val)
 
@@ -249,17 +249,17 @@ class PadOpTest(test.TestCase):
                             constant_values="PAD")
     symmetric = array_ops.pad(x, [[1, 0], [0, 1]], mode="SYMMETRIC",
                               constant_values="PAD")
-    with self.test_session(use_gpu=True):
-      self.assertAllEqual([[b"PAD", b"PAD", b"PAD"],
-                           [b"Hello", b"World", b"PAD"],
-                           [b"Goodnight", b"Moon", b"PAD"]], constant.eval())
+    with self.session(use_gpu=True):
+      self.assertAllEqual(
+          [[b"PAD", b"PAD", b"PAD"], [b"Hello", b"World", b"PAD"],
+           [b"Goodnight", b"Moon", b"PAD"]], self.evaluate(constant))
       self.assertAllEqual([[b"Goodnight", b"Moon", b"Goodnight"],
                            [b"Hello", b"World", b"Hello"],
                            [b"Goodnight", b"Moon", b"Goodnight"]],
-                          reflect.eval())
-      self.assertAllEqual([[b"Hello", b"World", b"World"],
-                           [b"Hello", b"World", b"World"],
-                           [b"Goodnight", b"Moon", b"Moon"]], symmetric.eval())
+                          self.evaluate(reflect))
+      self.assertAllEqual(
+          [[b"Hello", b"World", b"World"], [b"Hello", b"World", b"World"],
+           [b"Goodnight", b"Moon", b"Moon"]], self.evaluate(symmetric))
 
   def testShapeFunctionEdgeCases(self):
     # Unknown paddings shape.
@@ -325,9 +325,9 @@ class PadOpTest(test.TestCase):
   def testScalars(self):
     paddings = np.zeros((0, 2), dtype=np.int32)
     inp = np.asarray(7)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       tf_val = array_ops.pad(inp, paddings)
-      out = tf_val.eval()
+      out = self.evaluate(tf_val)
     self.assertAllEqual(inp, out)
     self.assertShapeEqual(inp, tf_val)
 
@@ -335,9 +335,9 @@ class PadOpTest(test.TestCase):
     for dtype in [dtypes.int32, dtypes.int64]:
       paddings = np.zeros((0, 2))
       inp = np.asarray(7)
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         tf_val = array_ops.pad(inp, constant_op.constant(paddings, dtype=dtype))
-        out = tf_val.eval()
+        out = self.evaluate(tf_val)
       self.assertAllEqual(inp, out)
       self.assertShapeEqual(inp, tf_val)
 
@@ -360,12 +360,13 @@ class PadOpTest(test.TestCase):
             padded,
             [paddings_value[i][0] + inp.shape.dims[i].value for i in range(4)],
             [-1, -1, -1, -1])
-        with self.test_session(use_gpu=True):
-          self.assertAllEqual(inp.eval(), middle.eval())
+        with self.cached_session(use_gpu=True):
+          self.assertAllEqual(inp.eval(), self.evaluate(middle))
           self.assertAllEqual(
-              np.zeros([row[0] for row in paddings_value]), left.eval())
+              np.zeros([row[0] for row in paddings_value]), self.evaluate(left))
           self.assertAllEqual(
-              np.zeros([row[1] for row in paddings_value]), right.eval())
+              np.zeros([row[1] for row in paddings_value]),
+              self.evaluate(right))
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@
 // limitations under the License.
 // =============================================================================
 #include "tensorflow/contrib/boosted_trees/lib/utils/examples_iterable.h"
+#include "absl/algorithm/container.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -90,8 +91,8 @@ TEST_F(ExamplesIterableTest, Iterate) {
         EXPECT_EQ(1.0f, example.sparse_float_features[1][1].get_value());
 
         EXPECT_EQ(2, example.sparse_int_features[0].size());
-        EXPECT_EQ(1, example.sparse_int_features[0].count(1));
-        EXPECT_EQ(1, example.sparse_int_features[0].count(8));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[0], 1));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[0], 8));
         EXPECT_EQ(0, example.sparse_int_features[1].size());
       } break;
       case 1: {
@@ -105,9 +106,9 @@ TEST_F(ExamplesIterableTest, Iterate) {
         EXPECT_FALSE(example.sparse_float_features[1][1].has_value());
 
         EXPECT_EQ(1, example.sparse_int_features[0].size());
-        EXPECT_EQ(1, example.sparse_int_features[0].count(0));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[0], 0));
         EXPECT_EQ(1, example.sparse_int_features[1].size());
-        EXPECT_EQ(1, example.sparse_int_features[1].count(7));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[1], 7));
       } break;
       case 2: {
         EXPECT_EQ(2, example.example_idx);
@@ -122,7 +123,7 @@ TEST_F(ExamplesIterableTest, Iterate) {
 
         EXPECT_EQ(0, example.sparse_int_features[0].size());
         EXPECT_EQ(1, example.sparse_int_features[1].size());
-        EXPECT_EQ(1, example.sparse_int_features[1].count(13));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[1], 13));
       } break;
       case 3: {
         EXPECT_EQ(3, example.example_idx);
@@ -136,10 +137,10 @@ TEST_F(ExamplesIterableTest, Iterate) {
         EXPECT_FALSE(example.sparse_float_features[1][1].has_value());
 
         EXPECT_EQ(2, example.sparse_int_features[0].size());
-        EXPECT_EQ(1, example.sparse_int_features[0].count(2));
-        EXPECT_EQ(1, example.sparse_int_features[0].count(0));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[0], 2));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[0], 0));
         EXPECT_EQ(1, example.sparse_int_features[1].size());
-        EXPECT_EQ(1, example.sparse_int_features[1].count(4));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[1], 4));
       } break;
       case 4: {
         EXPECT_EQ(4, example.example_idx);
@@ -154,7 +155,7 @@ TEST_F(ExamplesIterableTest, Iterate) {
 
         EXPECT_EQ(0, example.sparse_int_features[0].size());
         EXPECT_EQ(1, example.sparse_int_features[1].size());
-        EXPECT_EQ(1, example.sparse_int_features[1].count(0));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[1], 0));
       } break;
       case 5: {
         EXPECT_EQ(5, example.example_idx);
@@ -191,7 +192,7 @@ TEST_F(ExamplesIterableTest, Iterate) {
         EXPECT_FALSE(example.sparse_float_features[1][1].has_value());
 
         EXPECT_EQ(1, example.sparse_int_features[0].size());
-        EXPECT_EQ(1, example.sparse_int_features[0].count(5));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[0], 5));
       } break;
       default: { LOG(QFATAL) << "Invalid example index."; } break;
     }

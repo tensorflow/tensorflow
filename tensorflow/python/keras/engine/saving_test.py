@@ -382,6 +382,42 @@ class TestWholeModelSaving(test.TestCase):
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
+  def test_sequential_model_saving_without_input_shape(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2))
+      model.add(keras.layers.RepeatVector(3))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.RMSprop(lr=0.0001),
+          metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ],
+          weighted_metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ],
+          sample_weight_mode='temporal')
+      x = np.random.random((1, 3))
+      y = np.random.random((1, 3, 3))
+      model.train_on_batch(x, y)
+
+      out = model.predict(x)
+      fd, fname = tempfile.mkstemp('.h5', dir=self.get_temp_dir())
+      model.save(fname)
+
+      new_model = keras.models.load_model(fname)
+      os.close(fd)
+      os.remove(fname)
+
+      out2 = new_model.predict(x)
+      self.assertAllClose(out, out2, atol=1e-05)
+
   def test_sequential_model_saving_without_compile(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -676,6 +712,26 @@ class TestWholeModelSaving(test.TestCase):
       self.assertAllClose(out, out2, atol=1e-05)
 
       # Cleanup
+      os.close(fd)
+      os.remove(fname)
+
+
+  def test_saving_constant_initializer_with_numpy(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.Dense(
+              2,
+              input_shape=(3,),
+              kernel_initializer=keras.initializers.Constant(np.ones((3, 2)))))
+      model.add(keras.layers.Dense(3))
+      model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
+      fd, fname = tempfile.mkstemp('.h5')
+      keras.models.save_model(model, fname)
+      model = keras.models.load_model(fname)
       os.close(fd)
       os.remove(fname)
 

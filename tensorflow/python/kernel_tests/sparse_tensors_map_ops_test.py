@@ -27,6 +27,7 @@ from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 # pylint: disable=protected-access
@@ -87,7 +88,7 @@ class SparseTensorsMapTest(test.TestCase):
       sp_out = take_many_sparse_from_tensors_map(
           sparse_map_op=handle0.op, sparse_handles=handles_concat)
 
-      combined_indices, combined_values, combined_shape = sess.run(sp_out)
+      combined_indices, combined_values, combined_shape = self.evaluate(sp_out)
 
       self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
       self.assertAllEqual(combined_indices[:6, 1:], sp_input0[0])
@@ -98,7 +99,7 @@ class SparseTensorsMapTest(test.TestCase):
       self.assertAllEqual(combined_shape, [2, 5, 6])
 
   def testFeedAddTakeMany(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
       input1_val = self._SparseTensorValue_3x4(np.arange(6))
@@ -113,7 +114,8 @@ class SparseTensorsMapTest(test.TestCase):
       sp_roundtrip = take_many_sparse_from_tensors_map(
           sparse_map_op=handle.op, sparse_handles=sparse_handles)
 
-      combined_indices, combined_values, combined_shape = sess.run(sp_roundtrip)
+      combined_indices, combined_values, combined_shape = self.evaluate(
+          sp_roundtrip)
 
       self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
       self.assertAllEqual(combined_indices[:6, 1:], input0_val[0])
@@ -124,7 +126,7 @@ class SparseTensorsMapTest(test.TestCase):
       self.assertAllEqual(combined_shape, [2, 5, 6])
 
   def testAddManyTakeManyRoundTrip(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       # N == 4 because shape_value == [4, 5]
       indices_value = np.array([[0, 0], [0, 1], [2, 0]], dtype=np.int64)
       values_value = np.array([b"a", b"b", b"c"])
@@ -146,7 +148,7 @@ class SparseTensorsMapTest(test.TestCase):
       self.assertAllEqual(roundtrip_value.dense_shape, shape_value)
 
   def testDeserializeFailsInconsistentRank(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
       input1_val = self._SparseTensorValue_1x1x1()
@@ -167,10 +169,10 @@ class SparseTensorsMapTest(test.TestCase):
         sess.run(sp_roundtrip)
 
   def testTakeManyFailsWrongInputOp(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       input_val = self._SparseTensorValue_5x6(np.arange(6))
       handle = add_sparse_to_tensors_map(input_val)
-      handle_value = sess.run(handle)
+      handle_value = self.evaluate(handle)
       bad_handle = handle_value + 10
       sp_roundtrip = take_many_sparse_from_tensors_map(
           sparse_map_op=handle.op, sparse_handles=[handle_value, bad_handle])
@@ -192,7 +194,7 @@ class BenchmarkSparseTensorsMapVsSerialization(test.Benchmark):
         sorted(zip(indices_batch, indices_value)), dtype=np.int64)
     values = ["feature_value_for_embedding_lookup"] * num_elements
     shape = np.asarray([batch_size, num_elements], dtype=np.int64)
-    with session.Session() as sess:
+    with session.Session(config=benchmark.benchmark_config()) as sess:
       with ops.device("/cpu:0"):
         indices = variables.Variable(indices)
         values = variables.Variable(values)
@@ -211,8 +213,8 @@ class BenchmarkSparseTensorsMapVsSerialization(test.Benchmark):
 
         variables.global_variables_initializer().run()
 
-        st_roundtrip_values = sess.run(st_roundtrip)
-        st_deserialized_values = sess.run(st_deserialized)
+        st_roundtrip_values = self.evaluate(st_roundtrip)
+        st_deserialized_values = self.evaluate(st_deserialized)
         np.testing.assert_equal(st_roundtrip_values.values,
                                 st_deserialized_values.values)
         np.testing.assert_equal(st_roundtrip_values.indices,

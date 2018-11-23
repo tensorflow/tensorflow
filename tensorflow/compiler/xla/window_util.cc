@@ -185,6 +185,17 @@ bool HasWindowReversal(const Window& window) {
   return false;
 }
 
+bool AllOrNoneReversed(const Window& window) {
+  if (window.dimensions().empty()) {
+    return true;
+  }
+  bool reversed = window.dimensions()[0].window_reversal();
+  return std::all_of(window.dimensions().begin(), window.dimensions().end(),
+                     [&](const WindowDimension& dim) {
+                       return dim.window_reversal() == reversed;
+                     });
+}
+
 bool HasDilation(const Window& window) {
   return HasBaseDilation(window) || HasWindowDilation(window);
 }

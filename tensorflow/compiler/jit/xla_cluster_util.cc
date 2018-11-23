@@ -28,6 +28,8 @@ namespace tensorflow {
 
 const char* const kXlaClusterAttr = "_XlaCluster";
 const char* const kXlaOutsideCompilationAttr = "_XlaOutsideCompilation";
+const char* const kXlaCompileTimeConstantInputsAttr =
+    "_XlaCompileTimeConstantInputs";
 
 namespace {
 // Returns a string describing how an edge from src to dst would

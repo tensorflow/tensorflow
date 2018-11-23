@@ -47,10 +47,10 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       for _ in range(2):  # Run twice to test reinitialization.
-        sess.run(init_op)
+        self.evaluate(init_op)
         for _ in range(num_repeats):
           for elem in elem_sequence:
-            self.assertAllEqual(elem, sess.run(get_next))
+            self.assertAllEqual(elem, self.evaluate(get_next))
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
@@ -65,7 +65,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     with self.cached_session() as sess:
       for _ in range(num_repeats):
         for elem in elem_sequence:
-          self.assertAllEqual(elem, sess.run(get_next))
+          self.assertAllEqual(elem, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -133,10 +133,10 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for _ in range(num_inner_repeats * num_outer_repeats):
         for elem in input_list:
-          val0, val1 = sess.run(get_next)
+          val0, val1 = self.evaluate(get_next)
           self.assertAllEqual(elem[0], val0)
           self.assertAllEqual(elem[1], val1)
       with self.assertRaises(errors.OutOfRangeError):
@@ -192,10 +192,10 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for elem in [0, 1]:
         for _ in range(num_parallel_iterators):
-          self.assertAllEqual(elem, sess.run(get_next))
+          self.assertAllEqual(elem, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -215,9 +215,9 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
       self.assertEqual(dtype, get_next.dtype)
 
       with self.cached_session() as sess:
-        sess.run(init_op)
+        self.evaluate(init_op)
         for expected in [[1], [2], [3]]:
-          next_val = sess.run(get_next)
+          next_val = self.evaluate(get_next)
           self.assertEqual(dtype.as_numpy_dtype, next_val.dtype)
           self.assertAllEqual(expected, next_val)
         with self.assertRaises(errors.OutOfRangeError):
@@ -236,9 +236,9 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for expected in [b"foo", b"bar", b"baz"]:
-        next_val = sess.run(get_next)
+        next_val = self.evaluate(get_next)
         self.assertAllEqual(expected, next_val)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -257,12 +257,12 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertAllEqual([1, 2, 3], sess.run(get_next))
-      self.assertAllEqual([4, 5, 6], sess.run(get_next))
+      self.evaluate(init_op)
+      self.assertAllEqual([1, 2, 3], self.evaluate(get_next))
+      self.assertAllEqual([4, 5, 6], self.evaluate(get_next))
       with self.assertRaisesOpError("The expected type was int64"):
         sess.run(get_next)
-      self.assertAllEqual([7, 8, 9], sess.run(get_next))
+      self.assertAllEqual([7, 8, 9], self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -280,12 +280,12 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertAllEqual([1, 2, 3], sess.run(get_next))
-      self.assertAllEqual([4, 5, 6], sess.run(get_next))
+      self.evaluate(init_op)
+      self.assertAllEqual([1, 2, 3], self.evaluate(get_next))
+      self.assertAllEqual([4, 5, 6], self.evaluate(get_next))
       with self.assertRaisesOpError(r"element of shape \(3,\) was expected"):
         sess.run(get_next)
-      self.assertAllEqual([11, 12, 13], sess.run(get_next))
+      self.assertAllEqual([11, 12, 13], self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -304,16 +304,16 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertEqual((1, 2), sess.run(get_next))
-      self.assertEqual((3, 4), sess.run(get_next))
+      self.evaluate(init_op)
+      self.assertEqual((1, 2), self.evaluate(get_next))
+      self.assertEqual((3, 4), self.evaluate(get_next))
       with self.assertRaisesOpError(
           r"The expected structure was \(tf\.int64, tf\.int64\)"):
         sess.run(get_next)
       with self.assertRaisesOpError(
           r"The expected structure was \(tf\.int64, tf\.int64\)"):
         sess.run(get_next)
-      self.assertEqual((9, 10), sess.run(get_next))
+      self.assertEqual((9, 10), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -329,9 +329,9 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertAllEqual(1, sess.run(get_next))
-      self.assertAllEqual([2, 3], sess.run(get_next))
+      self.evaluate(init_op)
+      self.assertAllEqual(1, self.evaluate(get_next))
+      self.assertAllEqual([2, 3], self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -349,9 +349,9 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertAllEqual(0, sess.run(get_next))
-      self.assertAllEqual(1, sess.run(get_next))
+      self.evaluate(init_op)
+      self.assertAllEqual(0, self.evaluate(get_next))
+      self.assertAllEqual(1, self.evaluate(get_next))
 
   def testFromGeneratorDestructorCalled(self):
     # Use an `Event` to signal that the generator has been deleted.
@@ -378,9 +378,9 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with session.Session() as sess:
-      sess.run(init_op)
-      self.assertAllEqual(42, sess.run(get_next))
-      self.assertAllEqual(42, sess.run(get_next))
+      self.evaluate(init_op)
+      self.assertAllEqual(42, self.evaluate(get_next))
+      self.assertAllEqual(42, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
       # Test that `GeneratorWrapper` object is destroyed when the
@@ -407,10 +407,10 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       expected = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
       for x in expected:
-        self.assertEqual(x, sess.run(get_next))
+        self.assertEqual(x, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -436,13 +436,13 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       expected = [(0, b"Hi!"),
                   (0, b"Hi!"), (1, b"Hi!"),
                   (0, b"Hi!"), (1, b"Hi!"), (2, b"Hi!"),
                   (0, b"Hi!"), (1, b"Hi!"), (2, b"Hi!"), (3, b"Hi!")]
       for x in expected:
-        self.assertEqual(x, sess.run(get_next))
+        self.assertEqual(x, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -470,9 +470,9 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertAllEqual(37, sess.run(get_next))
-      self.assertAllEqual(37, sess.run(get_next))
+      self.evaluate(init_op)
+      self.assertAllEqual(37, self.evaluate(get_next))
+      self.assertAllEqual(37, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
         self.assertTrue(event.is_set())
