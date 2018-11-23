@@ -155,12 +155,12 @@ class DirectSessionFactory : public SessionFactory {
     if (options.config.graph_options().build_cost_model() > 0) {
       EnableCPUAllocatorFullStats(true);
     }
-    std::vector<Device*> devices;
+    std::vector<std::unique_ptr<Device>> devices;
     TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
         options, "/job:localhost/replica:0/task:0", &devices));
 
     DirectSession* session =
-        new DirectSession(options, new DeviceMgr(devices), this);
+        new DirectSession(options, new DeviceMgr(std::move(devices)), this);
     {
       mutex_lock l(sessions_lock_);
       sessions_.push_back(session);

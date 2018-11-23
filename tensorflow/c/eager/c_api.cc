@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_internal.h"
@@ -80,7 +81,7 @@ tensorflow::Status GetAllRemoteDevices(
     const std::vector<string>& remote_workers,
     tensorflow::WorkerCacheInterface* worker_cache,
     std::unique_ptr<tensorflow::DeviceMgr>* device_mgr) {
-  std::vector<tensorflow::Device*> remote_devices;
+  std::vector<std::unique_ptr<tensorflow::Device>> remote_devices;
   tensorflow::Status status;
   // TODO(nareshmodi) do this in parallel instead of serially.
   for (const string& remote_worker : remote_workers) {
@@ -93,7 +94,7 @@ tensorflow::Status GetAllRemoteDevices(
           status = s;
           if (s.ok()) {
             for (tensorflow::Device* d : *devices) {
-              remote_devices.push_back(d);
+              remote_devices.emplace_back(d);
             }
           }
           n.Notify();
@@ -101,7 +102,7 @@ tensorflow::Status GetAllRemoteDevices(
     n.WaitForNotification();
   }
   std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr(
-      new tensorflow::DeviceMgr(remote_devices));
+      new tensorflow::DeviceMgr(std::move(remote_devices)));
 
   TF_RETURN_IF_ERROR(status);
 
@@ -262,13 +263,13 @@ TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<tensorflow::Device>> devices;
   status->status = tensorflow::DeviceFactory::AddDevices(
       opts->session_options.options, "/job:localhost/replica:0/task:0",
       &devices);
   if (!status->status.ok()) return nullptr;
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
-      new tensorflow::DeviceMgr(devices));
+      new tensorflow::DeviceMgr(std::move(devices)));
 
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
