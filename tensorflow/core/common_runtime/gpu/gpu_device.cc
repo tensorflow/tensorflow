@@ -907,9 +907,9 @@ Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
 const int BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength = 1000;
 const int BaseGPUDeviceFactory::InterconnectMap::kStreamExecutorStrength = 1;
 
-Status BaseGPUDeviceFactory::CreateDevices(
-    const SessionOptions& options, const string& name_prefix,
-    std::vector<std::unique_ptr<Device>>* devices) {
+Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
+                                           const string& name_prefix,
+                                           std::vector<Device*>* devices) {
   TF_RETURN_IF_ERROR(ValidateGPUMachineManager());
   se::Platform* gpu_manager = GPUMachineManager();
   if (gpu_manager == nullptr) {
@@ -1073,10 +1073,12 @@ static string GetShortDeviceDescription(PlatformGpuId platform_gpu_id,
   // LINT.ThenChange(//tensorflow/python/platform/test.py)
 }
 
-Status BaseGPUDeviceFactory::CreateGPUDevice(
-    const SessionOptions& options, const string& name_prefix, TfGpuId tf_gpu_id,
-    int64 memory_limit, const DeviceLocality& dev_locality,
-    std::vector<std::unique_ptr<Device>>* devices) {
+Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
+                                             const string& name_prefix,
+                                             TfGpuId tf_gpu_id,
+                                             int64 memory_limit,
+                                             const DeviceLocality& dev_locality,
+                                             std::vector<Device*>* devices) {
   CHECK_GE(tf_gpu_id.value(), 0);
   const string device_name =
       strings::StrCat(name_prefix, "/device:GPU:", tf_gpu_id.value());
@@ -1106,7 +1108,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   // different (which should be an error).
   //
   // TODO(laigd): report error if memory_limit doesn't match stats.bytes_limit.
-  std::unique_ptr<BaseGPUDevice> gpu_device = CreateGPUDevice(
+  BaseGPUDevice* gpu_device = CreateGPUDevice(
       options, device_name, static_cast<Bytes>(stats.bytes_limit), dev_locality,
       tf_gpu_id, GetShortDeviceDescription(platform_gpu_id, desc),
       gpu_allocator, ProcessState::singleton()->GetCPUAllocator(numa_node));
@@ -1114,7 +1116,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
             << (stats.bytes_limit >> 20) << " MB memory) -> physical GPU ("
             << GetShortDeviceDescription(platform_gpu_id, desc) << ")";
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
-  devices->push_back(std::move(gpu_device));
+  devices->push_back(gpu_device);
 
   return Status::OK();
 }

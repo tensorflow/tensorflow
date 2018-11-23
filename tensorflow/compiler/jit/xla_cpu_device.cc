@@ -31,12 +31,12 @@ namespace tensorflow {
 class XlaCpuDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<std::unique_ptr<Device>>* devices) override;
+                       std::vector<Device*>* devices) override;
 };
 
-Status XlaCpuDeviceFactory::CreateDevices(
-    const SessionOptions& session_options, const string& name_prefix,
-    std::vector<std::unique_ptr<Device>>* devices) {
+Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
+                                          const string& name_prefix,
+                                          std::vector<Device*>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   bool compile_on_demand = flags->tf_xla_compile_on_demand;
 
@@ -63,7 +63,8 @@ Status XlaCpuDeviceFactory::CreateDevices(
   options.device_ordinal = 0;
   options.compilation_device_name = DEVICE_CPU_XLA_JIT;
   options.use_multiple_streams = false;
-  devices->push_back(absl::make_unique<XlaDevice>(session_options, options));
+  auto device = absl::make_unique<XlaDevice>(session_options, options);
+  devices->push_back(device.release());
   return Status::OK();
 }
 

@@ -380,7 +380,7 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
       initialization_status_(Status::OK()),
       next_step_id_(1),
       device_(new XlaCompilationDevice(SessionOptions(), options_.device_type)),
-      device_mgr_(absl::WrapUnique(device_)) {
+      device_mgr_({device_}) {
   CHECK(!options_.device_type.type_string().empty());
   if (options_.populate_resource_manager) {
     initialization_status_ =

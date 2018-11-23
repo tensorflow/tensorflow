@@ -87,7 +87,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     return tensorflow::errors::Internal(
         "invalid eager env_ or env_->rendezvous_mgr.");
   }
-  std::vector<std::unique_ptr<tensorflow::Device>> devices;
+  std::vector<tensorflow::Device*> devices;
 
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddDevices(
       // TODO(nareshmodi): Correctly set the SessionOptions.
@@ -97,12 +97,12 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                       request->server_def().task_index()),
       &devices));
   response->mutable_device_attributes()->Reserve(devices.size());
-  for (const auto& d : devices) {
+  for (auto& d : devices) {
     *response->add_device_attributes() = d->attributes();
   }
 
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
-      new tensorflow::DeviceMgr(std::move(devices)));
+      new tensorflow::DeviceMgr(devices));
 
   auto* r = env_->rendezvous_mgr->Find(request->rendezvous_id());
   auto session_name = strings::StrCat("eager_", request->rendezvous_id());

@@ -42,9 +42,8 @@ class CollectiveRemoteAccessLocalTest : public ::testing::Test {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", NUM_DEVS});
-    std::vector<std::unique_ptr<Device>> devices;
-    TF_CHECK_OK(DeviceFactory::AddDevices(options, kTaskName, &devices));
-    device_mgr_.reset(new DeviceMgr(std::move(devices)));
+    TF_CHECK_OK(DeviceFactory::AddDevices(options, kTaskName, &devices_));
+    device_mgr_.reset(new DeviceMgr(devices_));
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
     prl_.reset(new CollectiveParamResolverLocal(device_mgr_.get(), drl_.get(),
                                                 kTaskName));
@@ -52,6 +51,7 @@ class CollectiveRemoteAccessLocalTest : public ::testing::Test {
                                                kStepId));
   }
 
+  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<DeviceResolverLocal> drl_;
   std::unique_ptr<CollectiveParamResolverLocal> prl_;

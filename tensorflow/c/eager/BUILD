@@ -50,7 +50,6 @@ tf_cuda_library(
         ],
         "//conditions:default": [],
     }) + [
-        "@com_google_absl//absl/memory",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",

@@ -48,14 +48,17 @@ static std::vector<string> ListDevicesWithSessionConfig(
   std::vector<string> output;
   SessionOptions options;
   options.config = config;
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<Device*> devices;
   Status status = DeviceFactory::AddDevices(
       options, "" /* name_prefix */, &devices);
   if (!status.ok()) {
     Set_TF_Status_from_Status(out_status, status);
   }
 
-  for (const std::unique_ptr<Device>& device : devices) {
+  std::vector<std::unique_ptr<Device>> device_holder(devices.begin(),
+                                                     devices.end());
+
+  for (const Device* device : devices) {
     const DeviceAttributes& attr = device->attributes();
     string attr_serialized;
     if (!attr.SerializeToString(&attr_serialized)) {

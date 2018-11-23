@@ -59,14 +59,15 @@ class GPUDevice : public BaseGPUDevice {
 
 class GPUDeviceFactory : public BaseGPUDeviceFactory {
  private:
-  std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
-      const SessionOptions& options, const string& name, Bytes memory_limit,
-      const DeviceLocality& locality, TfGpuId tf_gpu_id,
-      const string& physical_device_desc, Allocator* gpu_allocator,
-      Allocator* cpu_allocator) override {
-    return absl::make_unique<GPUDevice>(options, name, memory_limit, locality,
-                                        tf_gpu_id, physical_device_desc,
-                                        gpu_allocator, cpu_allocator);
+  BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
+                                 const string& name, Bytes memory_limit,
+                                 const DeviceLocality& locality,
+                                 TfGpuId tf_gpu_id,
+                                 const string& physical_device_desc,
+                                 Allocator* gpu_allocator,
+                                 Allocator* cpu_allocator) override {
+    return new GPUDevice(options, name, memory_limit, locality, tf_gpu_id,
+                         physical_device_desc, gpu_allocator, cpu_allocator);
   }
 };
 
@@ -107,7 +108,7 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
 class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<std::unique_ptr<Device>>* devices) override {
+                       std::vector<Device*>* devices) override {
     int n = 1;
     auto iter = options.config.device_count().find("CPU");
     if (iter != options.config.device_count().end()) {
@@ -115,7 +116,7 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
     }
     for (int i = 0; i < n; i++) {
       string name = strings::StrCat(name_prefix, "/device:CPU:", i);
-      devices->push_back(absl::make_unique<GPUCompatibleCPUDevice>(
+      devices->push_back(new GPUCompatibleCPUDevice(
           options, name, Bytes(256 << 20), DeviceLocality(), cpu_allocator()));
     }
 

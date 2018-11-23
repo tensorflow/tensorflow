@@ -57,7 +57,7 @@ class DeviceSetTest : public ::testing::Test {
 class DummyFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<std::unique_ptr<Device>>* devices) override {
+                       std::vector<Device*>* devices) override {
     return Status::OK();
   }
 };

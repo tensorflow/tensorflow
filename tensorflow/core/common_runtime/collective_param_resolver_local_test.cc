@@ -37,9 +37,8 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     string task_name = "/job:localhost/replica:0/task:0";
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", NUM_DEVS});
-    std::vector<std::unique_ptr<Device>> devices;
-    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
-    device_mgr_.reset(new DeviceMgr(std::move(devices)));
+    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices_));
+    device_mgr_.reset(new DeviceMgr(devices_));
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
     prl_.reset(new CollectiveParamResolverLocal(device_mgr_.get(), drl_.get(),
                                                 task_name));
@@ -74,6 +73,7 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     }
   }
 
+  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<DeviceResolverLocal> drl_;
   std::unique_ptr<CollectiveParamResolverLocal> prl_;
