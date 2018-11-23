@@ -47,6 +47,8 @@ bool IsFusible(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReduceWindow ||
          hlo.opcode() == HloOpcode::kReshape ||
+         hlo.opcode() == HloOpcode::kReverse ||
+         hlo.opcode() == HloOpcode::kScatter ||
          hlo.opcode() == HloOpcode::kSlice ||
          hlo.opcode() == HloOpcode::kTranspose;
 }
@@ -178,6 +180,10 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
           IsIEEEFloatingPointScalarConstant(alpha->operand(0))) {
         return true;
       }
+    } else if (consumer->operand_count() == 2 &&
+               consumer->opcode() == HloOpcode::kAdd) {
+      // Fuse a bias add into the output of the dot.
+      return true;
     }
   }
 
@@ -223,6 +229,11 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
+  // Scatter is only supported at the root of a kInput fusion.
+  if (producer->opcode() == HloOpcode::kScatter) {
+    return false;
+  }
+
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
   if (IsInputFusibleReduction(*consumer) &&
@@ -246,12 +257,17 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // Fuse scalar constants into loop fusion nodes, this reduces the number of
+  // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
-  if (ShapeUtil::IsEffectiveScalar(producer->shape()) &&
-      consumer->opcode() == HloOpcode::kFusion &&
-      producer->opcode() == HloOpcode::kConstant) {
-    return true;
+  //
+  // Don't fuse other constants: Unfused constants in GPU land can be
+  // represented as an external constant (i.e. not emitted in LLVM IR / PTX),
+  // but fused constants are handled by shrared CPU/GPU code and always emitted
+  // in the IR/PTX.  The external constant representation makes for faster
+  // compiles and significantly smaller assembly code.
+  if (producer->opcode() == HloOpcode::kConstant) {
+    return ShapeUtil::IsEffectiveScalar(producer->shape()) &&
+           consumer->opcode() == HloOpcode::kFusion;
   }
 
   if (!IsFusible(*producer) || !IsFusible(*consumer) ||
@@ -285,7 +301,8 @@ bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionToVector(*consumer)) {
+  if (IsReductionToVector(*consumer) ||
+      consumer->opcode() == HloOpcode::kScatter) {
     return HloInstruction::FusionKind::kInput;
   }
   if (producer->opcode() == HloOpcode::kDot ||

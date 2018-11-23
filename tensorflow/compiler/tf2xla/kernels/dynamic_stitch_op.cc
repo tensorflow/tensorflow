@@ -200,10 +200,11 @@ class DynamicStitchOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("DynamicStitch").CompileTimeConstInput("indices"),
+REGISTER_XLA_OP(Name("DynamicStitch").CompileTimeConstantInput("indices"),
                 DynamicStitchOp);
-REGISTER_XLA_OP(Name("ParallelDynamicStitch").CompileTimeConstInput("indices"),
-                DynamicStitchOp);
+REGISTER_XLA_OP(
+    Name("ParallelDynamicStitch").CompileTimeConstantInput("indices"),
+    DynamicStitchOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -33,28 +33,45 @@ from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("losses.Reduction")
-class Reduction(object):
+@tf_export("losses.Reduction", v1=[])
+class ReductionV2(object):
   """Types of loss reduction.
 
   Contains the following values:
   `NONE`: Un-reduced weighted losses with the same shape as input.
   `SUM`: Scalar sum of weighted losses.
-  `MEAN`: Scalar `SUM` divided by sum of weights.
   `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
-  `SUM_OVER_NONZERO_WEIGHTS`: Scalar `SUM` divided by number of non-zero
-     weights.
-  `SUM_BY_NONZERO_WEIGHTS`: Same as `SUM_OVER_NONZERO_WEIGHTS`.
   """
 
   NONE = "none"
-
   SUM = "weighted_sum"
-
-  MEAN = "weighted_mean"
-
   SUM_OVER_BATCH_SIZE = "weighted_sum_over_batch_size"
 
+  @classmethod
+  def all(cls):
+    return (cls.NONE, cls.SUM, cls.SUM_OVER_BATCH_SIZE)
+
+  @classmethod
+  def validate(cls, key):
+    if key not in cls.all():
+      raise ValueError("Invalid Reduction Key %s." % key)
+
+
+@tf_export(v1=["losses.Reduction"])
+class Reduction(ReductionV2):
+  """Types of loss reduction.
+
+  Contains the following values:
+  `NONE`: Un-reduced weighted losses with the same shape as input.
+  `SUM`: Scalar sum of weighted losses.
+  `MEAN`: Scalar `SUM` divided by sum of weights. DEPRECATED.
+  `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
+  `SUM_OVER_NONZERO_WEIGHTS`: Scalar `SUM` divided by number of non-zero
+     weights. DEPRECATED.
+  `SUM_BY_NONZERO_WEIGHTS`: Same as `SUM_OVER_NONZERO_WEIGHTS`.
+  """
+
+  MEAN = "weighted_mean"
   SUM_BY_NONZERO_WEIGHTS = "weighted_sum_by_nonzero_weights"
   SUM_OVER_NONZERO_WEIGHTS = SUM_BY_NONZERO_WEIGHTS
 
@@ -71,32 +88,7 @@ class Reduction(object):
   @classmethod
   def validate(cls, key):
     if key not in cls.all():
-      raise ValueError("Invalid ReductionKey %s." % key)
-
-
-def _safe_div(numerator, denominator, name="value"):
-  """Computes a safe divide which returns 0 if the denominator is zero.
-
-  Note that the function contains an additional conditional check that is
-  necessary for avoiding situations where the loss is zero causing NaNs to
-  creep into the gradient computation.
-
-  Args:
-    numerator: An arbitrary `Tensor`.
-    denominator: `Tensor` whose shape matches `numerator` and whose values are
-      assumed to be non-negative.
-    name: An optional name for the returned op.
-
-  Returns:
-    The element-wise value of the numerator divided by the denominator.
-  """
-  return array_ops.where(
-      math_ops.greater(denominator, 0),
-      math_ops.div(numerator, array_ops.where(
-          math_ops.equal(denominator, 0),
-          array_ops.ones_like(denominator), denominator)),
-      array_ops.zeros_like(numerator),
-      name=name)
+      raise ValueError("Invalid Reduction Key %s." % key)
 
 
 def _safe_mean(losses, num_present):
@@ -111,7 +103,7 @@ def _safe_mean(losses, num_present):
       then zero is returned.
   """
   total_loss = math_ops.reduce_sum(losses)
-  return _safe_div(total_loss, num_present)
+  return math_ops.div_no_nan(total_loss, num_present, name="value")
 
 
 def _num_present(losses, weights, per_batch=False):
@@ -201,7 +193,7 @@ def compute_weighted_loss(
   Reduction.validate(reduction)
   with ops.name_scope(scope, "weighted_loss", (losses, weights)):
     # Save the `reduction` argument for loss normalization when distributing
-    # to multiple towers.
+    # to multiple replicas.
     # TODO(josh11b): Associate it with the returned op for more precision.
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 
@@ -599,14 +591,19 @@ def mean_pairwise_squared_error(
           keepdims=True)
       num_present_per_batch = _num_present(diffs, weights, per_batch=True)
 
-      term1 = 2.0 * _safe_div(sum_squares_diff_per_batch,
-                              num_present_per_batch - 1)
+      term1 = 2.0 * math_ops.div_no_nan(
+          sum_squares_diff_per_batch,
+          math_ops.maximum(num_present_per_batch - 1, 0),
+          name="value")
 
       sum_diff = math_ops.reduce_sum(
           diffs, reduction_indices=reduction_indices, keepdims=True)
-      term2 = 2.0 * _safe_div(
+      term2 = 2.0 * math_ops.div_no_nan(
           math_ops.square(sum_diff),
-          math_ops.multiply(num_present_per_batch, num_present_per_batch - 1))
+          math_ops.maximum(
+              math_ops.multiply(num_present_per_batch,
+                                num_present_per_batch - 1), 0),
+          name="value")
 
       weighted_losses = math_ops.multiply(term1 - term2, weights)
       loss = math_ops.reduce_sum(weighted_losses)

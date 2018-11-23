@@ -515,14 +515,17 @@ struct CudnnRnnModelShapes {
 // key.
 struct CudnnRnnConfigHasher {
   uint64 operator()(
-      const std::pair<CudnnRnnModelShapes, AlgorithmDesc>& to_hash) const {
+      const std::pair<CudnnRnnModelShapes, absl::optional<AlgorithmDesc>>&
+          to_hash) const {
     auto& shapes = to_hash.first;
     auto& algo_desc = to_hash.second;
 
     uint64 hash =
         HashList({shapes.num_layers, shapes.input_size, shapes.num_units,
                   shapes.dir_count, shapes.batch_size});
-    hash = Hash64Combine(hash, algo_desc.hash());
+    if (algo_desc.has_value()) {
+      hash = Hash64Combine(hash, algo_desc->hash());
+    }
     return hash;
   }
 };
@@ -531,8 +534,9 @@ struct CudnnRnnConfigHasher {
 // table key.
 struct CudnnRnnConfigComparator {
   bool operator()(
-      const std::pair<CudnnRnnModelShapes, AlgorithmDesc>& lhs,
-      const std::pair<CudnnRnnModelShapes, AlgorithmDesc>& rhs) const {
+      const std::pair<CudnnRnnModelShapes, absl::optional<AlgorithmDesc>>& lhs,
+      const std::pair<CudnnRnnModelShapes, absl::optional<AlgorithmDesc>>& rhs)
+      const {
     return lhs.first.IsCompatibleWith(rhs.first) && lhs.second == rhs.second;
   }
 };
@@ -887,10 +891,9 @@ class CudnnRNNKernelCommon : public OpKernel {
     return Status::OK();
   }
 
-  using RnnStateCache =
-      gtl::FlatMap<std::pair<CudnnRnnModelShapes, AlgorithmDesc>,
-                   RnnScratchSpace, CudnnRnnConfigHasher,
-                   CudnnRnnConfigComparator>;
+  using RnnStateCache = gtl::FlatMap<
+      std::pair<CudnnRnnModelShapes, absl::optional<AlgorithmDesc>>,
+      RnnScratchSpace, CudnnRnnConfigHasher, CudnnRnnConfigComparator>;
   // Returns a raw rnn descriptor pointer. The cache owns the rnn descriptor and
   // should outlive the returned pointer.
   template <typename T>
@@ -1317,9 +1320,9 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
       OP_REQUIRES_OK(context, context->allocate_output(4, TensorShape({2}),
                                                        &output_host_reserved));
       auto output_host_reserved_int8 = output_host_reserved->vec<int8>();
-      output_host_reserved_int8(0) = best_algo_config.algorithm().algo_id();
+      output_host_reserved_int8(0) = best_algo_config.algorithm()->algo_id();
       output_host_reserved_int8(1) =
-          best_algo_config.algorithm().tensor_ops_enabled();
+          best_algo_config.algorithm()->tensor_ops_enabled();
     } else {
       OP_REQUIRES_OK(context,
                      context->allocate_output(4, {}, &output_host_reserved));
@@ -1357,6 +1360,10 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
         modeltypes.rnn_mode, modeltypes.rnn_input_mode, input->dtype());
 
     if (AutoTuneRnnConfigMap::GetInstance()->Find(rnn_params, algo_config)) {
+      VLOG(1) << "Using existing best Cudnn RNN algorithm "
+              << "(algo, tensor_op_enabled) = ("
+              << algo_config->algorithm()->algo_id() << ", "
+              << algo_config->algorithm()->tensor_ops_enabled() << ").";
       return Status::OK();
     }
 
@@ -1390,6 +1397,8 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
     }
     ProfileResult best_result;
     for (auto& algo : algorithms) {
+      VLOG(1) << "Profile Cudnn RNN algorithm (algo, tensor_op_enabled) =  ("
+              << algo.algo_id() << ", " << algo.tensor_ops_enabled() << ").";
       Status status;
       ProfileResult final_profile_result;
 
@@ -1438,8 +1447,9 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
       }
 
       auto total_time = final_profile_result.elapsed_time_in_ms();
-      VLOG(1) << "Profile Cudnn RNN algo " << algo.algo_id()
-              << " run time: " << total_time << " ms";
+      VLOG(1) << "Cudnn RNN algorithm (algo, tensor_op_enabled) =  ("
+              << algo.algo_id() << ", " << algo.tensor_ops_enabled() << ")"
+              << " run time: " << total_time << " ms.";
       if (total_time < best_result.elapsed_time_in_ms()) {
         best_result.set_elapsed_time_in_ms(total_time);
         best_result.set_algorithm(algo);
@@ -1450,6 +1460,9 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
       return Status(error::Code::INTERNAL, "No algorithm worked!");
     }
     algo_config->set_algorithm(best_result.algorithm());
+    VLOG(1) << "Best Cudnn RNN algorithm (algo, tensor_op_enabled) =  ("
+            << best_result.algorithm().algo_id() << ", "
+            << best_result.algorithm().tensor_ops_enabled() << ").";
     AutoTuneRnnConfigMap::GetInstance()->Insert(rnn_params, *algo_config);
     return Status::OK();
   }

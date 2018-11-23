@@ -29,6 +29,8 @@ NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
       index(i),
       dt(SafeGetOutput(node, i, &error)) {}
 
+NodeBuilder::NodeOut::NodeOut(OutputTensor t) : NodeOut(t.node, t.index) {}
+
 NodeBuilder::NodeOut::NodeOut(StringPiece n, int32 i, DataType t)
     : node(nullptr), error(false), name(n), index(i), dt(t) {}
 
@@ -104,6 +106,11 @@ NodeBuilder& NodeBuilder::AssignedDevice(StringPiece device) {
   return *this;
 }
 
+NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
+  def_builder_.Attr("_XlaCluster", xla_cluster);
+  return *this;
+}
+
 Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   // In case of error, set *created_node to nullptr.
   if (created_node != nullptr) *created_node = nullptr;
@@ -140,10 +147,10 @@ void NodeBuilder::AddIndexError(const Node* node, int i) {
         strings::StrCat("Attempt to add nullptr Node to node with type ",
                         def_builder_.op_def().name()));
   } else {
-    errors_.emplace_back(
-        strings::StrCat("Attempt to add output ", i, " of ", node->name(),
-                        " not in range [0, ", node->num_outputs(),
-                        ") to node with type ", def_builder_.op_def().name()));
+    errors_.emplace_back(strings::StrCat(
+        "Attempt to add output ", i, " of ", node->name(), " not in range [0, ",
+        node->num_outputs(), ") to node with type ",
+        def_builder_.op_def().name(), ". Node: ", FormatNodeForError(*node)));
   }
 }
 

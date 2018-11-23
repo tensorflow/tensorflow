@@ -345,26 +345,6 @@ TEST(ShapeUtilTest, OpaqueVsArray) {
   EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape2, shape1));
 }
 
-TEST(ShapeUtilTest, CompareShapesWithPaddedDimensionsMismatch) {
-  Shape shape1 = ShapeUtil::MakeShape(F32, {20, 30});
-  shape1.mutable_layout()->add_padded_dimensions(10);
-
-  Shape shape2 = ShapeUtil::MakeShape(F32, {20, 30});
-  shape2.mutable_layout()->add_padded_dimensions(11);
-
-  EXPECT_FALSE(ShapeUtil::Equal(shape1, shape2));
-}
-
-TEST(ShapeUtilTest, CompareShapesWithPaddingValueMismatch) {
-  Shape shape1 = ShapeUtil::MakeShape(F32, {20, 30});
-  shape1.mutable_layout()->set_padding_value(ZERO_PAD);
-
-  Shape shape2 = ShapeUtil::MakeShape(F32, {20, 30});
-  shape2.mutable_layout()->set_padding_value(LOWEST_PAD);
-
-  EXPECT_FALSE(ShapeUtil::Equal(shape1, shape2));
-}
-
 TEST(ShapeUtilTest, ScalarDefaultLayoutEqualsScalarEmptyMin2Maj) {
   Shape scalar_default_layout = ShapeUtil::MakeShape(F32, {});
   ASSERT_TRUE(scalar_default_layout.has_layout())
@@ -395,23 +375,13 @@ TEST(ShapeUtilTest, ByteSizeOfWithoutPadding) {
   EXPECT_EQ(0, ShapeUtil::ByteSizeOf(ShapeUtil::MakeTokenShape()));
 }
 
-TEST(ShapeUtilTest, ByteSizeOfWithPadding) {
-  EXPECT_EQ(4, ShapeUtil::ByteSizeOfPrimitiveType(F32));
-  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
-  EXPECT_EQ(800, ShapeUtil::ByteSizeOf(shape));
-
-  shape.mutable_layout()->add_padded_dimensions(15);
-  shape.mutable_layout()->add_padded_dimensions(21);
-  EXPECT_EQ(15 * 21 * 4, ShapeUtil::ByteSizeOf(shape));
-}
-
 TEST(ShapeUtilTest, NilShape) {
-  EXPECT_TRUE(ShapeUtil::IsNil(ShapeUtil::MakeNil()));
-  EXPECT_FALSE(ShapeUtil::IsNil(ShapeUtil::MakeShape(F32, {1, 2, 3})));
-  EXPECT_FALSE(ShapeUtil::IsNil(ShapeUtil::MakeShape(F32, {0, 1})));
-  EXPECT_FALSE(ShapeUtil::IsNil(
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeNil()));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeShape(F32, {1, 2, 3})));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeShape(F32, {0, 1})));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {})})));
-  EXPECT_FALSE(ShapeUtil::IsNil(
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {0})})));
 }
 

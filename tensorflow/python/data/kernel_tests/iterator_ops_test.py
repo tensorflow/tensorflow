@@ -21,6 +21,7 @@ import functools
 import os
 import warnings
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import cluster_pb2
@@ -30,12 +31,14 @@ from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
+from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
@@ -53,7 +56,7 @@ from tensorflow.python.training.checkpointable import util as checkpointable_uti
 from tensorflow.python.util import compat
 
 
-class IteratorTest(test.TestCase):
+class IteratorTest(test.TestCase, parameterized.TestCase):
 
   def testNoGradients(self):
     component = constant_op.constant([1.])
@@ -94,7 +97,7 @@ class IteratorTest(test.TestCase):
     with self.cached_session() as sess:
       for _ in range(14):
         for i in range(7):
-          result = sess.run(get_next)
+          result = self.evaluate(get_next)
           for component, result_component in zip(components, result):
             self.assertAllEqual(component[i]**2, result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -120,7 +123,7 @@ class IteratorTest(test.TestCase):
     with self.cached_session() as sess:
       for _ in range(14):
         for i in range(7):
-          result = sess.run(get_next)
+          result = self.evaluate(get_next)
           for component, result_component in zip(components, result):
             self.assertAllEqual(component[i]**2, result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -148,15 +151,15 @@ class IteratorTest(test.TestCase):
     #
     # The test below would fail if cname were the same across both
     # sessions.
-    for i in range(2):
+    for j in range(2):
       with session.Session(server.target) as sess:
-        cname = "iteration%d" % i
+        cname = "iteration%d" % j
         with ops.container(cname):
           get_next = within_container()
 
         for _ in range(14):
           for i in range(7):
-            result = sess.run(get_next)
+            result = self.evaluate(get_next)
             for component, result_component in zip(components, result):
               self.assertAllEqual(component[i]**2, result_component)
         with self.assertRaises(errors.OutOfRangeError):
@@ -172,7 +175,7 @@ class IteratorTest(test.TestCase):
     config = config_pb2.ConfigProto(
         inter_op_parallelism_threads=1, use_per_session_threads=True)
     with session.Session(config=config) as sess:
-      self.assertAllEqual([1, 4, 9], sess.run(next_element))
+      self.assertAllEqual([1, 4, 9], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -251,15 +254,15 @@ class IteratorTest(test.TestCase):
       get_next = iterator.get_next()
 
       with session.Session(server.target) as sess:
-        sess.run(init_op)
-        results = sess.run(get_next)
+        self.evaluate(init_op)
+        results = self.evaluate(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component, result_component)
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
         # Re-initialize the iterator in the first session.
-        sess.run(init_op)
+        self.evaluate(init_op)
 
     with ops.Graph().as_default():
       # Re-define the iterator manually, without defining any of the
@@ -274,7 +277,7 @@ class IteratorTest(test.TestCase):
 
       with session.Session(server.target) as sess:
         # Use the iterator without re-initializing in the second session.
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component, result_component)
         with self.assertRaises(errors.OutOfRangeError):
@@ -314,22 +317,48 @@ class IteratorTest(test.TestCase):
         sess.run(get_next)
 
       # Initialize with one dataset.
-      sess.run(dataset_3_init_op)
-      self.assertAllEqual([1, 2, 3], sess.run(get_next))
+      self.evaluate(dataset_3_init_op)
+      self.assertAllEqual([1, 2, 3], self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
       # Initialize with a different dataset.
-      sess.run(dataset_4_init_op)
-      self.assertAllEqual([4, 5, 6, 7], sess.run(get_next))
+      self.evaluate(dataset_4_init_op)
+      self.assertAllEqual([4, 5, 6, 7], self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
       # Reinitialize with the first dataset.
-      sess.run(dataset_3_init_op)
-      self.assertAllEqual([1, 2, 3], sess.run(get_next))
+      self.evaluate(dataset_3_init_op)
+      self.assertAllEqual([1, 2, 3], self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testReinitializableIteratorWithFunctions(self):
+
+    def g():
+      for i in range(10):
+        yield i
+
+    iterator = iterator_ops.Iterator.from_structure(dtypes.int64, [])
+    next_element = iterator.get_next()
+
+    with self.cached_session() as sess:
+      dataset_1 = dataset_ops.Dataset.from_generator(
+          g, output_types=dtypes.int64)
+      sess.run(iterator.make_initializer(dataset_1))
+      for expected in range(10):
+        self.assertEqual(expected, self.evaluate(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
+      dataset_2 = dataset_ops.Dataset.from_generator(
+          g, output_types=dtypes.int64)
+      sess.run(iterator.make_initializer(dataset_2))
+      for expected in range(10):
+        self.assertEqual(expected, self.evaluate(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
 
   def testReinitializableIteratorStaticErrors(self):
     # Non-matching structure for types and shapes.
@@ -573,7 +602,7 @@ class IteratorTest(test.TestCase):
           f=_remote_fn,
           target=target_placeholder)
 
-    with self.test_session(config=worker_config) as sess:
+    with self.session(config=worker_config) as sess:
       elem = sess.run(
           remote_op,
           feed_dict={
@@ -650,10 +679,10 @@ class IteratorTest(test.TestCase):
       n = itr.get_next()
 
     with session.Session(s3.target, config=config) as sess:
-      sess.run(itr.initializer)
+      self.evaluate(itr.initializer)
       expected_values = worker_devices
       for expected in expected_values:
-        self.assertEqual((compat.as_bytes(expected),), sess.run(n))
+        self.assertEqual((compat.as_bytes(expected),), self.evaluate(n))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(n)
@@ -757,8 +786,8 @@ class IteratorTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, _, save_op, _ = _build_range_dataset_graph()
       with self.session(graph=g) as sess:
-        sess.run(init_op)
-        sess.run(save_op)
+        self.evaluate(init_op)
+        self.evaluate(save_op)
 
     # Attempt to restore the saved iterator into an IteratorResource of
     # incompatible type. An iterator of RangeDataset has output type int64,
@@ -769,7 +798,7 @@ class IteratorTest(test.TestCase):
       _, _, _, restore_op = _build_reader_dataset_graph()
       with self.session(graph=g) as sess:
         with self.assertRaises(errors.InvalidArgumentError):
-          sess.run(restore_op)
+          self.evaluate(restore_op)
 
   def testRepeatedGetNextWarning(self):
     iterator = dataset_ops.Dataset.range(10).make_one_shot_iterator()
@@ -779,8 +808,8 @@ class IteratorTest(test.TestCase):
         iterator.get_next()
     self.assertEqual(100 - iterator_ops.GET_NEXT_CALL_WARNING_THRESHOLD, len(w))
     for warning in w:
-      self.assertTrue(
-          iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE in str(warning.message))
+      self.assertIn(
+          iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE, str(warning.message))
 
   def testEagerIteratorAsync(self):
     with context.eager_mode(), context.execution_mode(context.ASYNC):
@@ -789,6 +818,49 @@ class IteratorTest(test.TestCase):
       for foo in dataset:
         self.assertEqual(val, foo.numpy())
         val += 1
+
+  # pylint: disable=g-long-lambda
+  @parameterized.named_parameters(
+      ("Tensor", lambda: constant_op.constant(37.0),
+       structure.TensorStructure(dtypes.float32, []),
+       ops.Tensor, dtypes.float32, []),
+      ("SparseTensor", lambda: sparse_tensor.SparseTensor(
+          indices=[[0]], values=constant_op.constant([0], dtype=dtypes.int32),
+          dense_shape=[1]),
+       structure.SparseTensorStructure(dtypes.int32, [1]),
+       sparse_tensor.SparseTensor, dtypes.int32, [1]),
+      ("Nest", lambda: {
+          "a": constant_op.constant(37.0),
+          "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))},
+       structure.NestedStructure({
+           "a": structure.TensorStructure(dtypes.float32, []),
+           "b": (structure.TensorStructure(dtypes.string, [1]),
+                 structure.TensorStructure(dtypes.string, []))}),
+       {"a": ops.Tensor, "b": (ops.Tensor, ops.Tensor)},
+       {"a": dtypes.float32, "b": (dtypes.string, dtypes.string)},
+       {"a": [], "b": ([1], [])}),
+  )
+  def testIteratorStructure(self, tf_value_fn, expected_element_structure,
+                            expected_output_classes, expected_output_types,
+                            expected_output_shapes):
+    tf_value = tf_value_fn()
+    iterator = dataset_ops.Dataset.from_tensors(
+        tf_value).make_one_shot_iterator()
+
+    self.assertTrue(expected_element_structure.is_compatible_with(
+        iterator._element_structure))
+    self.assertTrue(iterator._element_structure.is_compatible_with(
+        expected_element_structure))
+
+    self.assertEqual(expected_output_classes, iterator.output_classes)
+    self.assertEqual(expected_output_types, iterator.output_types)
+    self.assertEqual(expected_output_shapes, iterator.output_shapes)
+
+  def testIteratorGetNextName(self):
+    with ops.Graph().as_default():
+      iterator = dataset_ops.Dataset.from_tensors(37.0).make_one_shot_iterator()
+      next_element = iterator.get_next(name="overridden_name")
+      self.assertEqual("overridden_name", next_element.op.name)
 
 
 class IteratorCheckpointingTest(test.TestCase):
@@ -877,7 +949,7 @@ class IteratorCheckpointingTest(test.TestCase):
         checkpoint.restore(checkpoint_management.latest_checkpoint(
             checkpoint_directory)).initialize_or_restore(sess)
         for j in range(2):
-          self.assertEqual(i * 2 + j, sess.run(get_next))
+          self.assertEqual(i * 2 + j, self.evaluate(get_next))
         checkpoint.save(file_prefix=checkpoint_prefix)
 
 

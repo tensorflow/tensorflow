@@ -41,18 +41,6 @@ HloModule::HloModule(const string& name, const HloModuleConfig& config)
       config_(config),
       unique_id_(next_unique_module_id_++) {}
 
-StatusOr<HloInstruction*> HloModule::LaunderConstInstructionFromModule(
-    const HloInstruction* hlo) {
-  if (hlo == nullptr) {
-    return nullptr;
-  }
-
-  TF_RET_CHECK(hlo->GetModule() == this);
-
-  // TODO(b/78350259): Eliminate const laundering.
-  return const_cast<HloInstruction*>(hlo);
-}
-
 Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
@@ -73,6 +61,8 @@ HloComputation* HloModule::AddComputationInternal(
       config_.SetDefaultComputationLayout(
           entry_computation_->ComputeProgramShape());
     }
+    input_output_alias_config_ = HloInputOutputAliasConfig(
+        entry_computation_->root_instruction()->shape());
   }
 
   if (uniquify_identifiers) {
@@ -244,14 +234,16 @@ HloModuleProto HloModule::ToProto() const {
   proto.set_entry_computation_id(entry_computation_->unique_id());
   for (const HloComputation* computation : MakeComputationPostOrder()) {
     HloComputationProto computation_proto = computation->ToProto();
-    if (computation->name() == entry_computation_->name()) {
-      *proto.mutable_program_shape() = computation_proto.program_shape();
-    }
     proto.add_computations()->Swap(&computation_proto);
   }
   if (has_schedule()) {
     *proto.mutable_schedule() = schedule().ToProto().ValueOrDie();
   }
+  *proto.mutable_host_program_shape() =
+      entry_computation_layout().ComputeProgramShape();
+  *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
+  *proto.mutable_dynamic_parameter_binding() =
+      dynamic_parameter_binding().ToProto();
   return proto;
 }
 
@@ -263,9 +255,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   // The ProgramShape in the passed in module config must match the shapes of
   // the entry parameters and root.
-  TF_RET_CHECK(proto.has_program_shape())
+  TF_RET_CHECK(proto.has_host_program_shape())
       << "No program shape found in the proto";
-  const auto& expected_program_shape = proto.program_shape();
+  const auto& expected_program_shape = proto.host_program_shape();
   TF_RET_CHECK(expected_program_shape.parameters_size() ==
                module_config.entry_computation_layout().parameter_count());
   for (int i = 0; i < expected_program_shape.parameters_size(); ++i) {
@@ -328,8 +320,17 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
 
+  TF_ASSIGN_OR_RETURN(
+      module->input_output_alias_config_,
+      HloInputOutputAliasConfig::CreateFromProto(
+          entry->ComputeProgramShape().result(), proto.input_output_alias()));
+
   // Because we didn't uniquify the names or the ids, double-check that the
   // instruction and computation names and ids are unique from the proto.
+  TF_ASSIGN_OR_RETURN(module->dynamic_parameter_binding_,
+                      DynamicParameterBinding::CreateFromProto(
+                          proto.dynamic_parameter_binding()));
+
   absl::flat_hash_set<string> computation_names;
   absl::flat_hash_set<string> instruction_names;
   absl::flat_hash_set<int> computation_ids;
@@ -366,9 +367,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 /* static */
 StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options) {
-  TF_RET_CHECK(module.has_program_shape())
+  TF_RET_CHECK(module.has_host_program_shape())
       << "No program shape found in the proto";
-  const auto& program_shape = module.program_shape();
+  const auto& program_shape = module.host_program_shape();
 
   HloModuleConfig module_config(program_shape);
   module_config.set_debug_options(debug_options);
@@ -558,12 +559,34 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
 }
 
 std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
+  return Clone(config(), suffix);
+}
+
+std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
+                                            const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = absl::make_unique<HloModule>(name_ + "-" + suffix, config_);
+  auto module = absl::make_unique<HloModule>(
+      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config);
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
   module->AddEntryComputation(std::move(cloned_computation));
+
+  if (has_schedule() && schedule().Verify().ok()) {
+    HloSchedule clone_schedule(module.get());
+    for (HloComputation* computation : computations()) {
+      if (schedule().is_computation_scheduled(computation)) {
+        HloInstructionSequence& clone_sequence =
+            clone_schedule.GetOrCreateSequence(
+                context.GetComputation(computation));
+        for (const HloInstruction* instruction :
+             schedule().sequence(computation).instructions()) {
+          clone_sequence.push_back(context.GetInstruction(instruction));
+        }
+      }
+    }
+    TF_CHECK_OK(module->set_schedule(std::move(clone_schedule)));
+  }
   return module;
 }
 

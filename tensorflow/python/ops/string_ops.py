@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Operations for working with string Tensors.
-
-See the [Strings](https://tensorflow.org/api_guides/python/string_ops) guide.
-"""
+"""Operations for working with string Tensors."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -75,7 +72,8 @@ def regex_full_match(input, pattern, name=None):
 regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
 
 
-@tf_export("strings.regex_replace", "regex_replace")
+@tf_export(
+    "strings.regex_replace", v1=["strings.regex_replace", "regex_replace"])
 @deprecation.deprecated_endpoints("regex_replace")
 def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
   r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
@@ -313,7 +311,7 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
     return math_ops.range(array_ops.rank(x) - 1, -1, -1)
 
 
-@tf_export("strings.reduce_join", "reduce_join")
+@tf_export("strings.reduce_join", v1=["strings.reduce_join", "reduce_join"])
 @deprecation.deprecated_endpoints("reduce_join")
 def reduce_join(inputs, axis=None,  # pylint: disable=missing-docstring
                 keep_dims=False,
@@ -339,9 +337,13 @@ reduce_join.__doc__ = reduce_join.__doc__.replace("tf.reduce_join(",
 
 # This wrapper provides backwards compatibility for code that predates the
 # unit argument and that passed 'name' as a positional argument.
-@tf_export("strings.length")
+@tf_export(v1=["strings.length"])
 def string_length(input, name=None, unit="BYTE"):
   return gen_string_ops.string_length(input, unit=unit, name=name)
+
+@tf_export("strings.length", v1=[])
+def string_length_v2(input, unit="BYTE", name=None):
+  return string_length(input, name, unit)
 
 
 string_length.__doc__ = gen_string_ops.string_length.__doc__

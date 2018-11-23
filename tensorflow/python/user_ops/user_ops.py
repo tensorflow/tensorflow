@@ -26,7 +26,7 @@ from tensorflow.python.ops.gen_user_ops import *  # pylint: disable=wildcard-imp
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('user_ops.my_fact')
+@tf_export(v1=['user_ops.my_fact'])
 def my_fact():
   """Example of overriding the generated code for an Op."""
   return _gen_user_ops.fact()

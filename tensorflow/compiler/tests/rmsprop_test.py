@@ -92,8 +92,8 @@ class RmspropTest(xla_test.XLATestCase):
           self.assertTrue(mom1 is not None)
 
           # Fetch params to validate initial values
-          self.assertAllClose([1.0, 2.0], var0.eval())
-          self.assertAllClose([3.0, 4.0], var1.eval())
+          self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+          self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
           # Run 3 steps of RMSProp
           for _ in range(3):
@@ -118,14 +118,14 @@ class RmspropTest(xla_test.XLATestCase):
 
             # Validate updated params
             if centered:
-              self.assertAllCloseAccordingToType(mg0_np, mg0.eval())
-              self.assertAllCloseAccordingToType(mg1_np, mg1.eval())
-            self.assertAllCloseAccordingToType(rms0_np, rms0.eval())
-            self.assertAllCloseAccordingToType(rms1_np, rms1.eval())
-            self.assertAllCloseAccordingToType(mom0_np, mom0.eval())
-            self.assertAllCloseAccordingToType(mom1_np, mom1.eval())
-            self.assertAllCloseAccordingToType(var0_np, var0.eval())
-            self.assertAllCloseAccordingToType(var1_np, var1.eval())
+              self.assertAllCloseAccordingToType(mg0_np, self.evaluate(mg0))
+              self.assertAllCloseAccordingToType(mg1_np, self.evaluate(mg1))
+            self.assertAllCloseAccordingToType(rms0_np, self.evaluate(rms0))
+            self.assertAllCloseAccordingToType(rms1_np, self.evaluate(rms1))
+            self.assertAllCloseAccordingToType(mom0_np, self.evaluate(mom0))
+            self.assertAllCloseAccordingToType(mom1_np, self.evaluate(mom1))
+            self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+            self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
 
 if __name__ == "__main__":

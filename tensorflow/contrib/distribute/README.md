@@ -20,7 +20,7 @@ on many GPUs on one machine. Essentially, we create copies of all variables in
 the model's layers on each device. We then use all-reduce to combine gradients
 across the devices before applying them to the variables to keep them in sync.
 * [`CollectiveAllReduceStrategy`](https://www.tensorflow.org/versions/master/api_docs/python/tf/contrib/distribute/CollectiveAllReduceStrategy):
-This is a version of `MirroredStrategy` for multi-working training. It uses
+This is a version of `MirroredStrategy` for multi-worker training. It uses
 a collective op to do all-reduce. This supports between-graph communication and
 synchronization, and delegates the specifics of the all-reduce implementation to
 the runtime (as opposed to encoding it in the graph). This allows it to perform
@@ -31,8 +31,8 @@ fault-tolerance to allow training to continue when there is worker failure.
 * [`ParameterServerStrategy`](https://www.tensorflow.org/versions/master/api_docs/python/tf/contrib/distribute/ParameterServerStrategy):
 This strategy supports using parameter servers either for multi-GPU local
 training or asynchronous multi-machine training. When used to train locally,
-variables are not mirrored, instead they placed on the CPU and operations are
-replicated across all local GPUs. In a multi-machine setting, some are
+variables are not mirrored, instead they are placed on the CPU and operations
+are replicated across all local GPUs. In a multi-machine setting, some are
 designated as workers and some as parameter servers. Each variable is placed on
 one parameter server. Computation operations are replicated across all GPUs of
 the workers.
@@ -46,6 +46,9 @@ Let's see how to scale to multiple GPUs on one machine using `MirroredStrategy` 
 Take a very simple model consisting of a single layer:
 
 ```python
+import tensorflow as tf
+from tensorflow import keras
+
 inputs = tf.keras.layers.Input(shape=(1,))
 predictions = tf.keras.layers.Dense(1)(inputs)
 model = tf.keras.models.Model(inputs=inputs, outputs=predictions)
@@ -90,8 +93,8 @@ Similarly, we can also call `evaluate` and `predict` as before using appropriate
 datasets.
 
 ```python
-model.evaluate(eval_dataset)
-model.predict(predict_dataset)
+model.evaluate(eval_dataset, steps=1)
+model.predict(predict_dataset, steps=1)
 ```
 
 That's all you need to train your model with Keras on multiple GPUs with
@@ -190,7 +193,7 @@ in the input function gives a solid boost in performance. When using
 For multi-worker training, no code change is required to the `Estimator` code.
 You can run the same model code for all tasks in your cluster including
 parameter servers and the evaluator. But you need to use
-`tf.estimator.train_and_evaluator`, explicitly specify `num_gpus_per_workers`
+`tf.estimator.train_and_evaluate`, explicitly specify `num_gpus_per_workers`
 for your strategy object, and set "TF\_CONFIG" environment variables for each
 binary running in your cluster. We'll provide a Kubernetes template in the
 [tensorflow/ecosystem](https://github.com/tensorflow/ecosystem) repo which sets

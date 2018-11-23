@@ -40,10 +40,10 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for _ in range(100):
         for i in range(10):
-          self.assertEqual(i, sess.run(next_element))
+          self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -107,7 +107,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       for i in choice_array:
-        self.assertEqual(words[i], sess.run(next_element))
+        self.assertEqual(words[i], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 

@@ -23,6 +23,7 @@ import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import clip_ops
@@ -285,14 +286,21 @@ class RMSprop(Optimizer):
 class Adagrad(Optimizer):
   """Adagrad optimizer.
 
+  Adagrad is an optimizer with parameter-specific learning rates,
+  which are adapted relative to how frequently a parameter gets
+  updated during training. The more updates a parameter receives,
+  the smaller the updates.
+
   It is recommended to leave the parameters of this optimizer
   at their default values.
 
-  Arguments:
-      lr: float >= 0. Learning rate.
+  # Arguments
+      lr: float >= 0. Initial learning rate.
       epsilon: float >= 0. If `None`, defaults to `K.epsilon()`.
       decay: float >= 0. Learning rate decay over each update.
 
+  # References
+      - [Adaptive Subgradient Methods for Online Learning and Stochastic Optimization](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
   """
 
   def __init__(self, lr=0.01, epsilon=None, decay=0., **kwargs):
@@ -345,16 +353,27 @@ class Adagrad(Optimizer):
 class Adadelta(Optimizer):
   """Adadelta optimizer.
 
+  Adadelta is a more robust extension of Adagrad
+  that adapts learning rates based on a moving window of gradient updates,
+  instead of accumulating all past gradients. This way, Adadelta continues
+  learning even when many updates have been done. Compared to Adagrad, in the
+  original version of Adadelta you don't have to set an initial learning
+  rate. In this version, initial learning rate and decay factor can
+  be set, as in most other Keras optimizers.
+
   It is recommended to leave the parameters of this optimizer
   at their default values.
 
-  Arguments:
-      lr: float >= 0. Learning rate.
+  # Arguments
+      lr: float >= 0. Initial learning rate, defaults to 1.
           It is recommended to leave it at the default value.
-      rho: float >= 0.
+      rho: float >= 0. Adadelta decay factor, corresponding to fraction of
+          gradient to keep at each time step.
       epsilon: float >= 0. Fuzz factor. If `None`, defaults to `K.epsilon()`.
-      decay: float >= 0. Learning rate decay over each update.
+      decay: float >= 0. Initial learning rate decay.
 
+  # References
+      - [Adadelta - an adaptive learning rate method](http://arxiv.org/abs/1212.5701)
   """
 
   def __init__(self, lr=1.0, rho=0.95, epsilon=None, decay=0., **kwargs):
@@ -815,17 +834,17 @@ def get(identifier):
   Raises:
       ValueError: If `identifier` cannot be interpreted.
   """
+  if isinstance(identifier, (Optimizer, optimizer_v2.OptimizerV2)):
+    return identifier
   # Wrap TF optimizer instances
-  if isinstance(identifier, tf_optimizer_module.Optimizer):
+  elif isinstance(identifier, tf_optimizer_module.Optimizer):
     opt = TFOptimizer(identifier)
     K.track_tf_optimizer(opt)
     return opt
-  if isinstance(identifier, dict):
+  elif isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
     config = {'class_name': str(identifier), 'config': {}}
     return deserialize(config)
-  if isinstance(identifier, Optimizer):
-    return identifier
   else:
     raise ValueError('Could not interpret optimizer identifier:', identifier)

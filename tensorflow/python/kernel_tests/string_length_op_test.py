@@ -29,7 +29,7 @@ class StringLengthOpTest(test.TestCase):
 
     with self.cached_session() as sess:
       lengths = string_ops.string_length(strings)
-      values = sess.run(lengths)
+      values = self.evaluate(lengths)
       self.assertAllEqual(values, [[[1, 2], [3, 4], [5, 6]]])
 
   def testUnit(self):
@@ -38,7 +38,7 @@ class StringLengthOpTest(test.TestCase):
     expected_utf8_byte_lengths = [6, 4]
     expected_utf8_char_lengths = [5, 1]
 
-    with self.test_session() as sess:
+    with self.session() as sess:
       utf8_byte_lengths = string_ops.string_length(utf8_strings, unit="BYTE")
       utf8_char_lengths = string_ops.string_length(
           utf8_strings, unit="UTF8_CHAR")
@@ -56,7 +56,7 @@ class StringLengthOpTest(test.TestCase):
     # argument for the 'name' parameter.  Check that we don't break such code.
     strings = [[["1", "12"], ["123", "1234"], ["12345", "123456"]]]
     lengths = string_ops.string_length(strings, "some_name")
-    with self.test_session():
+    with self.session():
       self.assertAllEqual(lengths.eval(), [[[1, 2], [3, 4], [5, 6]]])
 
 

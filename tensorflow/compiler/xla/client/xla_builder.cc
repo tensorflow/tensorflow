@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -34,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 
@@ -42,12 +40,30 @@ using absl::StrCat;
 
 namespace {
 
-int64 GetUniqueId() {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  static int64 built_counter = 0;
-  tensorflow::mutex_lock loc(mu);
-  const int64 id = built_counter++;
-  return id;
+static const char kNameSeparator = '.';
+
+// Retrieves the base name of an instruction or computation fully qualified
+// name, using separator as boundary between the initial base name part, and
+// the numeric identification.
+string GetBaseName(const string& name, char separator) {
+  auto pos = name.rfind(separator);
+  CHECK_NE(pos, string::npos) << name;
+  return name.substr(0, pos);
+}
+
+// Generates a fully qualified computation/instruction name.
+string GetFullName(const string& base_name, char separator, int64 id) {
+  const char separator_str[] = {separator, '\0'};
+  return StrCat(base_name, separator_str, id);
+}
+
+// Common function to standardize setting name and IDs on computation and
+// instruction proto entities.
+template <typename T>
+void SetProtoIdAndName(T* entry, const string& base_name, char separator,
+                       int64 id) {
+  entry->set_id(id);
+  entry->set_name(GetFullName(base_name, separator, id));
 }
 
 }  // namespace
@@ -223,6 +239,19 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
   visited->insert(op_handle);
 }
 
+Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
+                                     ShapeIndex dynamic_size_param_index,
+                                     int64 target_param_num,
+                                     ShapeIndex target_param_index,
+                                     int64 target_dim_num) {
+  TF_RETURN_IF_ERROR(dynamic_parameter_binding_.Bind(
+      DynamicParameterBinding::DynamicParameter{dynamic_size_param_num,
+                                                dynamic_size_param_index},
+      DynamicParameterBinding::DynamicDimension{
+          target_param_num, target_param_index, target_dim_num}));
+  return Status::OK();
+}
+
 XlaComputation XlaBuilder::BuildAndNoteError() {
   DCHECK(parent_builder_ != nullptr);
   auto build_status = Build();
@@ -258,17 +287,14 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
   }
 
   HloComputationProto entry;
-  entry.set_id(GetUniqueId());  // Give the computation a global unique id.
-  entry.set_name(StrCat(name_, entry.id()));  // Ensure that the name is unique.
-
+  SetProtoIdAndName(&entry, name_, kNameSeparator, GetNextId());
   TF_ASSIGN_OR_RETURN(*entry.mutable_program_shape(), GetProgramShape(root_id));
   entry.set_root_id(root_id);
 
   for (auto& instruction : instructions_) {
     // Ensures that the instruction names are unique among the whole graph.
-    const string& new_name =
-        StrCat(instruction.name(), ".", entry.id(), ".", instruction.id());
-    instruction.set_name(new_name);
+    instruction.set_name(
+        GetFullName(instruction.name(), kNameSeparator, instruction.id()));
     entry.add_instructions()->Swap(&instruction);
   }
 
@@ -278,11 +304,14 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
   module->set_id(entry.id());
   module->set_entry_computation_name(entry.name());
   module->set_entry_computation_id(entry.id());
-  *module->mutable_program_shape() = entry.program_shape();
+  *module->mutable_host_program_shape() = entry.program_shape();
   for (auto& e : embedded_) {
     module->add_computations()->Swap(&e.second);
   }
   module->add_computations()->Swap(&entry);
+
+  *(module->mutable_dynamic_parameter_binding()) =
+      dynamic_parameter_binding_.ToProto();
 
   // Clear data held by this builder.
   this->instructions_.clear();
@@ -546,7 +575,24 @@ XlaOp XlaBuilder::BroadcastInDim(
     const XlaOp& operand, const Shape& shape,
     const absl::Span<const int64> broadcast_dimensions) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    return InDimBroadcast(shape, operand, broadcast_dimensions);
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_RETURN_IF_ERROR(ShapeInference::InferBroadcastShape(operand_shape, shape,
+                                                           broadcast_dimensions)
+                           .status());
+    std::vector<int64> in_dim_size(ShapeUtil::Rank(shape));
+    absl::c_copy(shape.dimensions(), in_dim_size.begin());
+    for (int i = 0; i < broadcast_dimensions.size(); i++) {
+      in_dim_size[broadcast_dimensions[i]] = operand_shape.dimensions(i);
+    }
+    const auto& in_dim_shape =
+        ShapeUtil::MakeShape(shape.element_type(), in_dim_size);
+    TF_ASSIGN_OR_RETURN(
+        XlaOp in_dim_broadcast,
+        InDimBroadcast(in_dim_shape, operand, broadcast_dimensions));
+    if (ShapeUtil::Equal(in_dim_shape, shape)) {
+      return in_dim_broadcast;
+    }
+    return AddBroadcastSequence(shape, in_dim_broadcast);
   });
 }
 
@@ -1279,9 +1325,10 @@ XlaOp XlaBuilder::AfterAll(absl::Span<const XlaOp> tokens) {
   });
 }
 
-XlaOp XlaBuilder::CustomCall(const string& call_target_name,
-                             absl::Span<const XlaOp> operands,
-                             const Shape& shape, const string& opaque) {
+XlaOp XlaBuilder::CustomCall(
+    const string& call_target_name, absl::Span<const XlaOp> operands,
+    const Shape& shape, const string& opaque,
+    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
@@ -1293,6 +1340,31 @@ XlaOp XlaBuilder::CustomCall(const string& call_target_name,
     *instr.mutable_shape() = shape;
     instr.set_custom_call_target(call_target_name);
     instr.set_custom_call_opaque(opaque);
+    if (operand_shapes_with_layout.has_value()) {
+      if (!LayoutUtil::HasLayout(shape)) {
+        return InvalidArgument(
+            "Result shape must have layout for custom call with constrained "
+            "layout.");
+      }
+      if (operands.size() != operand_shapes_with_layout->size()) {
+        return InvalidArgument(
+            "Must specify a shape with layout for each operand for custom call "
+            "with constrained layout; given %d shapes, expected %d",
+            operand_shapes_with_layout->size(), operands.size());
+      }
+      instr.set_constrain_layout(true);
+      int64 operand_num = 0;
+      for (const Shape& operand_shape : *operand_shapes_with_layout) {
+        if (!LayoutUtil::HasLayout(operand_shape)) {
+          return InvalidArgument(
+              "No layout specified for operand %d for custom call with "
+              "constrained layout.",
+              operand_num);
+        }
+        *instr.add_operand_shapes_with_layout() = operand_shape;
+        ++operand_num;
+      }
+    }
     return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
   });
 }
@@ -1468,18 +1540,17 @@ XlaOp XlaBuilder::Rev(const XlaOp& operand,
   });
 }
 
-XlaOp XlaBuilder::Sort(XlaOp keys, absl::optional<XlaOp> values,
+XlaOp XlaBuilder::Sort(const XlaOp& keys, absl::Span<const XlaOp> values,
                        int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const Shape& keys_shape, GetShape(keys));
     operand_shape_ptrs.push_back(&keys_shape);
-    Shape values_shape;
-    if (values.has_value()) {
-      TF_ASSIGN_OR_RETURN(values_shape, GetShape(*values));
-      operand_shape_ptrs.push_back(&values_shape);
-    }
+    TF_ASSIGN_OR_RETURN(std::vector<Shape> values_shapes,
+                        GetOperandShapes(values));
+    absl::c_transform(values_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
                         ShapeInference::InferVariadicOpShape(
                             HloOpcode::kSort, operand_shape_ptrs));
@@ -1488,10 +1559,9 @@ XlaOp XlaBuilder::Sort(XlaOp keys, absl::optional<XlaOp> values,
       dimension = ShapeUtil::Rank(keys_shape) - 1;
     }
     instr.add_dimensions(dimension);
-    return values.has_value()
-               ? AddInstruction(std::move(instr), HloOpcode::kSort,
-                                {keys, *values})
-               : AddInstruction(std::move(instr), HloOpcode::kSort, {keys});
+    std::vector<XlaOp> operands{keys};
+    operands.insert(operands.end(), values.begin(), values.end());
+    return AddInstruction(std::move(instr), HloOpcode::kSort, operands);
   });
 }
 
@@ -1789,9 +1859,9 @@ XlaOp XlaBuilder::ReduceWindow(const XlaOp& operand, const XlaOp& init_value,
     std::vector<std::pair<int64, int64>> padding_values =
         MakePadding(AsInt64Slice(operand_shape.dimensions()), window_dimensions,
                     window_strides, padding);
-    return ReduceWindowWithGeneralPadding(operand, init_value, computation,
-                                          window_dimensions, window_strides,
-                                          padding_values);
+    return ReduceWindowWithGeneralPadding(
+        operand, init_value, computation, window_dimensions, window_strides,
+        /*base_dilations=*/{}, /*window_dilations=*/{}, padding_values);
   });
 }
 
@@ -1800,6 +1870,8 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
     const XlaComputation& computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
@@ -1810,7 +1882,8 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
                         computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
                         MakeWindow(window_dimensions, window_strides, padding,
-                                   /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
+                                   /*lhs_dilation=*/base_dilations,
+                                   /*rhs_dilation=*/window_dilations));
     TF_ASSIGN_OR_RETURN(
         *instr.mutable_shape(),
         ShapeInference::InferReduceWindowShape(operand_shape, init_shape,
@@ -2248,6 +2321,19 @@ XlaOp XlaBuilder::RecvFromHost(const XlaOp& token, const Shape& shape,
   });
 }
 
+XlaOp XlaBuilder::GetDimensionSize(const XlaOp& operand, int64 dimension) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const auto& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferGetDimensionSizeShape(operand_shape, dimension));
+    instr.add_dimensions(dimension);
+    return AddInstruction(std::move(instr), HloOpcode::kGetDimensionSize,
+                          {operand});
+  });
+}
+
 StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand) const {
   TF_RETURN_IF_ERROR(first_error_);
 
@@ -2261,7 +2347,7 @@ StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand) const {
 }
 
 StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
-    const XlaOp& root_op) const {
+    const XlaOp& root_op) {
   TF_ASSIGN_OR_RETURN(bool is_constant, IsConstant(root_op));
   if (!is_constant) {
     auto op_status = LookUpInstruction(root_op);
@@ -2283,8 +2369,8 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
                       LookUpInstruction(root_op));
 
   HloComputationProto entry;
-  entry.set_id(GetUniqueId());  // Give the computation a global unique id.
-  entry.set_name(StrCat(name_, entry.id(), "_compute_constant"));
+  SetProtoIdAndName(&entry, StrCat(name_, "_compute_constant"), kNameSeparator,
+                    GetNextId());
   entry.set_root_id(root->id());
   ProgramShape* program_shape = entry.mutable_program_shape();
   *program_shape->mutable_result() = root->shape();
@@ -2330,7 +2416,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   module->set_id(entry.id());
   module->set_entry_computation_name(entry.name());
   module->set_entry_computation_id(entry.id());
-  *module->mutable_program_shape() = *program_shape;
+  *module->mutable_host_program_shape() = *program_shape;
   for (auto& e : embedded_) {
     if (related_calls.find(e.second.id()) != related_calls.end()) {
       *module->add_computations() = e.second;
@@ -2424,7 +2510,7 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
                                            absl::Span<const XlaOp> operands) {
   TF_RETURN_IF_ERROR(first_error_);
 
-  const int64 handle = GetUniqueId();
+  const int64 handle = GetNextId();
   instr.set_id(handle);
   instr.set_opcode(HloOpcodeString(opcode));
   if (instr.name().empty()) {
@@ -2455,9 +2541,50 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
 
 void XlaBuilder::AddCalledComputation(const XlaComputation& computation,
                                       HloInstructionProto* instr) {
-  instr->add_called_computation_ids(computation.proto().entry_computation_id());
+  absl::flat_hash_map<int64, int64> remapped_ids;
+  std::vector<HloComputationProto> imported_computations;
+  imported_computations.reserve(computation.proto().computations_size());
+  // Before we import the computations by remapping IDs, and capturing the
+  // old->new mappings in remapped_ids.
   for (const HloComputationProto& e : computation.proto().computations()) {
-    embedded_.insert({e.id(), e});
+    HloComputationProto new_computation(e);
+    int64 computation_id = GetNextId();
+    remapped_ids[new_computation.id()] = computation_id;
+    SetProtoIdAndName(&new_computation,
+                      GetBaseName(new_computation.name(), kNameSeparator),
+                      kNameSeparator, computation_id);
+    for (auto& instruction : *new_computation.mutable_instructions()) {
+      int64 instruction_id = GetNextId();
+      remapped_ids[instruction.id()] = instruction_id;
+      SetProtoIdAndName(&instruction,
+                        GetBaseName(instruction.name(), kNameSeparator),
+                        kNameSeparator, instruction_id);
+    }
+    new_computation.set_root_id(remapped_ids.at(new_computation.root_id()));
+
+    imported_computations.push_back(std::move(new_computation));
+  }
+  // Once we have imported all the computations, and captured all the ID
+  // mappings, we go back and fixup the IDs in the imported computations.
+  instr->add_called_computation_ids(
+      remapped_ids.at(computation.proto().entry_computation_id()));
+  for (auto& imported_computation : imported_computations) {
+    for (auto& instruction : *imported_computation.mutable_instructions()) {
+      for (auto& operand_id : *instruction.mutable_operand_ids()) {
+        operand_id = remapped_ids.at(operand_id);
+      }
+      for (auto& control_predecessor_id :
+           *instruction.mutable_control_predecessor_ids()) {
+        control_predecessor_id = remapped_ids.at(control_predecessor_id);
+      }
+      for (auto& called_computation_id :
+           *instruction.mutable_called_computation_ids()) {
+        called_computation_id = remapped_ids.at(called_computation_id);
+      }
+    }
+
+    int64 computation_id = imported_computation.id();
+    embedded_.insert({computation_id, std::move(imported_computation)});
   }
 }
 
@@ -2687,7 +2814,16 @@ XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
 XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                  absl::Span<const XlaOp> operands, const Shape& shape,
                  const string& opaque) {
-  return builder->CustomCall(call_target_name, operands, shape, opaque);
+  return builder->CustomCall(call_target_name, operands, shape, opaque,
+                             /*operand_shapes_with_layout=*/absl::nullopt);
+}
+
+XlaOp CustomCallWithLayout(XlaBuilder* builder, const string& call_target_name,
+                           absl::Span<const XlaOp> operands, const Shape& shape,
+                           absl::Span<const Shape> operand_shapes_with_layout,
+                           const string& opaque) {
+  return builder->CustomCall(call_target_name, operands, shape, opaque,
+                             operand_shapes_with_layout);
 }
 
 XlaOp Complex(const XlaOp& real, const XlaOp& imag,
@@ -2800,10 +2936,12 @@ XlaOp ReduceWindowWithGeneralPadding(
     const XlaComputation& computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding) {
   return operand.builder()->ReduceWindowWithGeneralPadding(
       operand, init_value, computation, window_dimensions, window_strides,
-      padding);
+      base_dilations, window_dilations, padding);
 }
 
 XlaOp CrossReplicaSum(const XlaOp& operand,
@@ -2914,8 +3052,8 @@ XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions) {
   return operand.builder()->Rev(operand, dimensions);
 }
 
-XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values, int64 dimension) {
-  return keys.builder()->Sort(keys, std::move(values), dimension);
+XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values, int64 dimension) {
+  return keys.builder()->Sort(keys, values, dimension);
 }
 
 XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max) {
@@ -3047,6 +3185,10 @@ XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size) {
 
 XlaOp Iota(XlaBuilder* builder, const Shape& shape, int64 iota_dimension) {
   return builder->Iota(shape, iota_dimension);
+}
+
+XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension) {
+  return operand.builder()->GetDimensionSize(operand, dimension);
 }
 
 }  // namespace xla

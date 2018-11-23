@@ -54,7 +54,6 @@ void* Align(uint64_t alignment, uint64_t size, void*& ptr, uint64_t& space) {
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#if NV_TENSORRT_MAJOR > 2
 
 namespace tensorflow {
 namespace tensorrt {
@@ -116,6 +115,5 @@ void TRTDeviceAllocator::free(void* memory) {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA

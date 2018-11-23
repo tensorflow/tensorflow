@@ -131,8 +131,8 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     with session.Session(
         config=self.session_config, graph=graph,
         target=self.server_target) as sess:
-      sess.run(self.a.initializer)
-      sess.run(self.b.initializer)
+      self.evaluate(self.a.initializer)
+      self.evaluate(self.b.initializer)
 
       run_options = config_pb2.RunOptions()
       debug_utils.watch_graph(
@@ -198,8 +198,8 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     with session.Session(
         config=self.session_config, graph=graph,
         target=self.server_target) as sess:
-      sess.run(self.a.initializer)
-      sess.run(self.b.initializer)
+      self.evaluate(self.a.initializer)
+      self.evaluate(self.b.initializer)
 
       def watch_fn(feeds, fetch_keys):
         del feeds, fetch_keys

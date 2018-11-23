@@ -258,6 +258,22 @@ class Mnist(keras_training.Model):
     return self.fc2(y)
 
 
+def create_mnist_autobatch(batch_size, data_format, training):
+  images = random_ops.random_uniform([batch_size, 28, 28])
+  model = Mnist(data_format)
+  manual = model(images, training=training)
+
+  def loop_fn(i):
+    image = array_ops.gather(images, i)
+    return model(image, training=training)
+
+  pfor_outputs = control_flow_ops.pfor(loop_fn, batch_size)
+  while_outputs = control_flow_ops.for_loop(
+      loop_fn, dtypes.float32, batch_size)
+
+  return pfor_outputs, while_outputs, manual
+
+
 def create_mnist_per_eg_grad(batch_size, data_format, training):
   images = random_ops.random_uniform([batch_size, 28, 28])
   sparse_labels = np.random.randint(
@@ -456,7 +472,7 @@ class GradientsTest(test.TestCase):
     with session.Session() as sess:
       init = variables.global_variables_initializer()
       sess.run(init)
-      pfor = sess.run(pfor_jacobian)
+      pfor = self.evaluate(pfor_jacobian)
       for i in range(4):
         while_i = sess.run(while_gradients[i])
         self.assertAllClose(while_i, pfor[:, i, ...])
@@ -576,6 +592,16 @@ class GradientsBenchmarks(test.Benchmark):
       pfor_outputs, while_outputs = create_lstm_per_eg_grad(100, 32, 8)
       self._run(pfor_outputs, 100, name="lstm_per_eg_grad_pfor")
       self._run(while_outputs, 20, name="lstm_per_eg_grad_while")
+
+  def benchmark_mnist_autobatch(self):
+    with ops.Graph().as_default():
+      data_format = ("channels_first"
+                     if test.is_gpu_available() else "channels_last")
+      pfor_outputs, while_outputs, manual = create_mnist_autobatch(
+          100, data_format, training=False)
+      self._run(pfor_outputs, 100, name="mnist_pfor")
+      self._run(while_outputs, 20, name="mnist_while")
+      self._run(manual, 100, name="mnist_manual")
 
   def benchmark_mnist_per_eg_grad(self):
     with ops.Graph().as_default():

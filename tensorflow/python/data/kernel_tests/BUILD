@@ -8,7 +8,6 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "sycl_py_test")
 
 tf_py_test(
     name = "batch_dataset_op_test",
@@ -175,6 +174,20 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "inputs_test",
+    size = "small",
+    srcs = ["inputs_test.py"],
+    additional_deps = [
+        ":test_base",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "interleave_dataset_op_test",
     size = "small",
     srcs = ["interleave_dataset_op_test.py"],
@@ -199,12 +212,13 @@ cuda_py_test(
     size = "small",
     srcs = ["iterator_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:util",
         "//tensorflow/python:array_ops",
@@ -273,9 +287,11 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
@@ -285,6 +301,22 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
+    name = "matching_files_dataset_op_test",
+    size = "small",
+    srcs = ["matching_files_dataset_op_test.py"],
+    additional_deps = [
+        ":test_base",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -299,6 +331,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -306,6 +339,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
+        "no_oss",  # TODO(b/117920141): Investigate breakage and re-enable.
         "no_windows_gpu",
     ],
 )
@@ -443,12 +477,15 @@ tf_py_test(
     srcs = ["shuffle_dataset_op_test.py"],
     additional_deps = [
         ":test_base",
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:random_seed",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
     ],

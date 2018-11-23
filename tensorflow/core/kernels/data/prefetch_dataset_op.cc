@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
@@ -103,7 +103,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      auto stats_aggregator = ctx->stats_aggregator();
+      const auto& stats_aggregator = ctx->stats_aggregator();
       {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
@@ -123,7 +123,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         }
 
         if (!buffer_.empty()) {
-          return Consume(out_tensors, end_of_sequence, stats_aggregator);
+          return Consume(out_tensors, end_of_sequence, ctx);
         }
 
         if (prefetch_thread_finished_) {
@@ -148,6 +148,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
    protected:
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeAsyncKnownRatioNode(std::move(args),
+                                            /*ratio=*/1,
+                                            /*parameters=*/{});
+    }
+
     Status SaveInternal(IteratorStateWriter* writer) override {
       // Acquire both locks to ensure that the prefetch thread and
       // all GetNext threads are blocked.
@@ -220,8 +227,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     };
 
     Status Consume(std::vector<Tensor>* out_tensors, bool* end_of_sequence,
-                   const std::shared_ptr<StatsAggregator>& stats_aggregator)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                   IteratorContext* ctx) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      const auto& stats_aggregator = ctx->stats_aggregator();
       if (stats_aggregator) {
         stats_aggregator->AddToHistogram(
             strings::StrCat(prefix_end_, "::buffer_utilization"),
@@ -258,7 +265,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (!prefetch_thread_) {
         std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
         prefetch_thread_.reset(ctx->env()->StartThread(
-            {}, "prefetch_thread",
+            {}, "tf_data_prefetch",
             [this, new_ctx]() { PrefetchThread(new_ctx); }));
       }
       return Status::OK();

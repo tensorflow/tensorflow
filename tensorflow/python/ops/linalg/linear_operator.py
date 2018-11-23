@@ -22,14 +22,17 @@ import abc
 import contextlib
 
 import numpy as np
+import six
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
+from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
@@ -39,6 +42,7 @@ __all__ = ["LinearOperator"]
 
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
 @tf_export("linalg.LinearOperator")
+@six.add_metaclass(abc.ABCMeta)
 class LinearOperator(object):
   """Base class defining a [batch of] linear operator[s].
 
@@ -139,7 +143,6 @@ class LinearOperator(object):
   * If `is_X == None` (the default), callers should have no expectation either
     way.
   """
-  __metaclass__ = abc.ABCMeta
 
   def __init__(self,
                dtype,
@@ -282,7 +285,7 @@ class LinearOperator(object):
     `[B1,...,Bb, M, N]`, equivalent to `tf.shape(A)`.
 
     Args:
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       `int32` `Tensor`
@@ -316,7 +319,7 @@ class LinearOperator(object):
     `[B1,...,Bb]`.
 
     Args:
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       `int32` `Tensor`
@@ -338,7 +341,7 @@ class LinearOperator(object):
     `A.shape = [B1,...,Bb, M, N]`, then this returns `b + 2`.
 
     Args:
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       Python integer, or None if the tensor rank is undefined.
@@ -354,7 +357,7 @@ class LinearOperator(object):
     `A.shape = [B1,...,Bb, M, N]`, then this returns `b + 2`.
 
     Args:
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       `int32` `Tensor`, determined at runtime.
@@ -397,8 +400,9 @@ class LinearOperator(object):
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
       # Prefer to use statically defined shape if available.
-      if self.domain_dimension.value is not None:
-        return ops.convert_to_tensor(self.domain_dimension.value)
+      dim_value = tensor_shape.dimension_value(self.domain_dimension)
+      if dim_value is not None:
+        return ops.convert_to_tensor(dim_value)
       else:
         return self.shape_tensor()[-1]
 
@@ -413,7 +417,10 @@ class LinearOperator(object):
       `Dimension` object.
     """
     # Derived classes get this "for free" once .shape is implemented.
-    return self.shape[-2]
+    if self.shape.dims:
+      return self.shape.dims[-2]
+    else:
+      return tensor_shape.Dimension(None)
 
   def range_dimension_tensor(self, name="range_dimension_tensor"):
     """Dimension (in the sense of vector spaces) of the range of this operator.
@@ -432,8 +439,9 @@ class LinearOperator(object):
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
       # Prefer to use statically defined shape if available.
-      if self.range_dimension.value is not None:
-        return ops.convert_to_tensor(self.range_dimension.value)
+      dim_value = tensor_shape.dimension_value(self.range_dimension)
+      if dim_value is not None:
+        return ops.convert_to_tensor(dim_value)
       else:
         return self.shape_tensor()[-2]
 
@@ -574,23 +582,38 @@ class LinearOperator(object):
     ```
 
     Args:
-      x: `Tensor` with compatible shape and same `dtype` as `self`.
-        See class docstring for definition of compatibility.
+      x: `LinearOperator` or `Tensor` with compatible shape and same `dtype` as
+        `self`. See class docstring for definition of compatibility.
       adjoint: Python `bool`.  If `True`, left multiply by the adjoint: `A^H x`.
       adjoint_arg:  Python `bool`.  If `True`, compute `A x^H` where `x^H` is
         the hermitian transpose (transposition and complex conjugation).
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
-      A `Tensor` with shape `[..., M, R]` and same `dtype` as `self`.
+      A `LinearOperator` or `Tensor` with shape `[..., M, R]` and same `dtype`
+        as `self`.
     """
+    if isinstance(x, LinearOperator):
+      if adjoint or adjoint_arg:
+        raise ValueError(".matmul not supported with adjoints.")
+      if (x.range_dimension is not None and
+          self.domain_dimension is not None and
+          x.range_dimension != self.domain_dimension):
+        raise ValueError(
+            "Operators are incompatible. Expected `x` to have dimension"
+            " {} but got {}.".format(self.domain_dimension, x.range_dimension))
+      with self._name_scope(name):
+        return linear_operator_algebra.matmul(self, x)
+
     with self._name_scope(name, values=[x]):
       x = ops.convert_to_tensor(x, name="x")
       self._check_input_dtype(x)
 
       self_dim = -2 if adjoint else -1
       arg_dim = -1 if adjoint_arg else -2
-      self.shape[self_dim].assert_is_compatible_with(x.get_shape()[arg_dim])
+      tensor_shape.dimension_at_index(
+          self.shape, self_dim).assert_is_compatible_with(
+              x.get_shape()[arg_dim])
 
       return self._matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
@@ -621,7 +644,7 @@ class LinearOperator(object):
         dimensions, the last dimension defines a vector.
         See class docstring for definition of compatibility.
       adjoint: Python `bool`.  If `True`, left multiply by the adjoint: `A^H x`.
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
@@ -630,7 +653,8 @@ class LinearOperator(object):
       x = ops.convert_to_tensor(x, name="x")
       self._check_input_dtype(x)
       self_dim = -2 if adjoint else -1
-      self.shape[self_dim].assert_is_compatible_with(x.get_shape()[-1])
+      tensor_shape.dimension_at_index(
+          self.shape, self_dim).assert_is_compatible_with(x.get_shape()[-1])
       return self._matvec(x, adjoint=adjoint)
 
   def _determinant(self):
@@ -639,13 +663,13 @@ class LinearOperator(object):
         "  Requires conversion to a dense matrix and O(N^3) operations.")
     if self._can_use_cholesky():
       return math_ops.exp(self.log_abs_determinant())
-    return linalg_ops.matrix_determinant(self._matrix)
+    return linalg_ops.matrix_determinant(self.to_dense())
 
   def determinant(self, name="det"):
     """Determinant for every batch member.
 
     Args:
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
@@ -667,14 +691,14 @@ class LinearOperator(object):
     if self._can_use_cholesky():
       diag = array_ops.matrix_diag_part(linalg_ops.cholesky(self.to_dense()))
       return 2 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
-    _, log_abs_det = linalg.slogdet(self._matrix)
+    _, log_abs_det = linalg.slogdet(self.to_dense())
     return log_abs_det
 
   def log_abs_determinant(self, name="log_abs_det"):
     """Log absolute value of determinant for every batch member.
 
     Args:
-      name:  A name for this `Op.
+      name:  A name for this `Op`.
 
     Returns:
       `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
@@ -759,7 +783,9 @@ class LinearOperator(object):
 
       self_dim = -1 if adjoint else -2
       arg_dim = -1 if adjoint_arg else -2
-      self.shape[self_dim].assert_is_compatible_with(rhs.get_shape()[arg_dim])
+      tensor_shape.dimension_at_index(
+          self.shape, self_dim).assert_is_compatible_with(
+              rhs.get_shape()[arg_dim])
 
       return self._solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
@@ -812,9 +838,36 @@ class LinearOperator(object):
       rhs = ops.convert_to_tensor(rhs, name="rhs")
       self._check_input_dtype(rhs)
       self_dim = -1 if adjoint else -2
-      self.shape[self_dim].assert_is_compatible_with(rhs.get_shape()[-1])
+      tensor_shape.dimension_at_index(
+          self.shape, self_dim).assert_is_compatible_with(
+              rhs.get_shape()[-1])
 
       return self._solvevec(rhs, adjoint=adjoint)
+
+  def cholesky(self, name="cholesky"):
+    """Returns a Cholesky factor as a `LinearOperator`.
+
+    Given `A` representing this `LinearOperator`, if `A` is positive definite
+    self-adjoint, return `L`, where `A = L L^T`, i.e. the cholesky
+    decomposition.
+
+    Args:
+      name:  A name for this `Op`.
+
+    Returns:
+      `LinearOperator` which represents the lower triangular matrix
+      in the Cholesky decomposition.
+
+    Raises:
+      ValueError: When the `LinearOperator` is not hinted to be positive
+        definite and self adjoint.
+    """
+
+    if not self._can_use_cholesky():
+      raise ValueError("Cannot take the Cholesky decomposition: "
+                       "Not a positive definite self adjoint matrix.")
+    with self._name_scope(name):
+      return linear_operator_algebra.cholesky(self)
 
   def _to_dense(self):
     """Generic and often inefficient implementation.  Override often."""
@@ -825,8 +878,9 @@ class LinearOperator(object):
     else:
       batch_shape = self.batch_shape_tensor()
 
-    if self.domain_dimension.value is not None:
-      n = self.domain_dimension.value
+    dim_value = tensor_shape.dimension_value(self.domain_dimension)
+    if dim_value is not None:
+      n = dim_value
     else:
       n = self.domain_dimension_tensor()
 
@@ -907,6 +961,4 @@ class LinearOperator(object):
       return self._add_to_tensor(x)
 
   def _can_use_cholesky(self):
-    # TODO(langmore) Add complex types when tf.cholesky can use them.
-    return (not self.dtype.is_complex and self.is_self_adjoint and
-            self.is_positive_definite)
+    return self.is_self_adjoint and self.is_positive_definite

@@ -99,22 +99,29 @@ def _get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
   collection_def = meta_graph_def_to_load.collection_def
 
   asset_tensor_dict = {}
-  if constants.ASSETS_KEY in collection_def:
-    # Location of the assets for SavedModel.
-    assets_directory = os.path.join(
-        compat.as_bytes(export_dir),
-        compat.as_bytes(constants.ASSETS_DIRECTORY))
+  asset_protos = []
+
+  if meta_graph_def_to_load.asset_file_def:
+    asset_protos = meta_graph_def_to_load.asset_file_def
+  elif constants.ASSETS_KEY in collection_def:
     assets_any_proto = collection_def[constants.ASSETS_KEY].any_list.value
-    # Process each asset and add it to the asset tensor dictionary.
     for asset_any_proto in assets_any_proto:
       asset_proto = meta_graph_pb2.AssetFileDef()
       asset_any_proto.Unpack(asset_proto)
-      tensor_name = asset_proto.tensor_info.name
-      if import_scope:
-        tensor_name = "%s/%s" % (import_scope, tensor_name)
-      asset_tensor_dict[tensor_name] = os.path.join(
-          compat.as_bytes(assets_directory),
-          compat.as_bytes(asset_proto.filename))
+      asset_protos.append(asset_proto)
+
+  # Location of the assets for SavedModel.
+  assets_directory = os.path.join(
+      compat.as_bytes(export_dir), compat.as_bytes(constants.ASSETS_DIRECTORY))
+  # Process each asset and add it to the asset tensor dictionary.
+  for asset_proto in asset_protos:
+    tensor_name = asset_proto.tensor_info.name
+    if import_scope:
+      tensor_name = "%s/%s" % (import_scope, tensor_name)
+    asset_tensor_dict[tensor_name] = os.path.join(
+        compat.as_bytes(assets_directory),
+        compat.as_bytes(asset_proto.filename))
+
   return asset_tensor_dict
 
 
@@ -145,8 +152,11 @@ def _get_main_op_tensor(
   return main_op_tensor
 
 
-@tf_export("saved_model.maybe_saved_model_directory",
-           "saved_model.loader.maybe_saved_model_directory")
+@tf_export(v1=[
+    "saved_model.contains_saved_model",
+    "saved_model.maybe_saved_model_directory",
+    "saved_model.loader.maybe_saved_model_directory"
+])
 @deprecation.deprecated_endpoints(
     "saved_model.loader.maybe_saved_model_directory")
 def maybe_saved_model_directory(export_dir):
@@ -169,7 +179,32 @@ def maybe_saved_model_directory(export_dir):
   return file_io.file_exists(txt_path) or file_io.file_exists(pb_path)
 
 
-@tf_export("saved_model.load", "saved_model.loader.load")
+@tf_export("saved_model.contains_saved_model", v1=[])
+def contains_saved_model(export_dir):
+  """Checks whether the provided export directory could contain a SavedModel.
+
+  Note that the method does not load any data by itself. If the method returns
+  `false`, the export directory definitely does not contain a SavedModel. If the
+  method returns `true`, the export directory may contain a SavedModel but
+  provides no guarantee that it can be loaded.
+
+  Args:
+    export_dir: Absolute string path to possible export location. For example,
+                '/my/foo/model'.
+
+  Returns:
+    True if the export directory contains SavedModel files, False otherwise.
+  """
+  return maybe_saved_model_directory(export_dir)
+
+
+@tf_export(v1=["saved_model.load", "saved_model.loader.load"])
+@deprecation.deprecated(
+    None,
+    "This function will only be available through the v1 compatibility "
+    "library as tf.compat.v1.saved_model.loader.load or "
+    "tf.compat.v1.saved_model.load. There will be a new function for importing "
+    "SavedModels in Tensorflow 2.0.")
 def load(sess, tags, export_dir, import_scope=None, **saver_kwargs):
   """Loads the model from a SavedModel as specified by tags.
 

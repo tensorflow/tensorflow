@@ -79,10 +79,6 @@ struct TFE_TensorHandle {
                    tensorflow::Device* op_device)
       : handle(new tensorflow::TensorHandle(t, d, op_device, nullptr)) {}
 
-  TFE_TensorHandle(tensorflow::uint64 node_id, tensorflow::DataType dtype,
-                   tensorflow::EagerContext* ctx)
-      : handle(new tensorflow::TensorHandle(node_id, dtype, ctx)) {}
-
   TFE_TensorHandle(tensorflow::TensorHandle* handle) : handle(handle) {}
 
   tensorflow::TensorHandle* handle;
@@ -97,10 +93,9 @@ struct TFE_TensorDebugInfo {
 };
 
 struct TFE_Op {
-  // t is NULL iff the TFE_Op corresponds to a TensorFlow function instead of a
-  // primitive operation.
-  TFE_Op(TFE_Context* ctx, const char* op, const tensorflow::AttrTypeMap* t)
-      : operation(&ctx->context, op, t) {}
+  TFE_Op(TFE_Context* ctx, const char* op, bool is_function,
+         const tensorflow::AttrTypeMap* t)
+      : operation(&ctx->context, op, is_function, t) {}
 
   tensorflow::EagerOperation operation;
 };

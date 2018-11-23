@@ -28,8 +28,12 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('saved_model.build_signature_def',
-           'saved_model.signature_def_utils.build_signature_def')
+@tf_export(
+    'saved_model.build_signature_def',
+    v1=[
+        'saved_model.build_signature_def',
+        'saved_model.signature_def_utils.build_signature_def'
+    ])
 @deprecation.deprecated_endpoints(
     'saved_model.signature_def_utils.build_signature_def')
 def build_signature_def(inputs=None, outputs=None, method_name=None):
@@ -57,8 +61,12 @@ def build_signature_def(inputs=None, outputs=None, method_name=None):
   return signature_def
 
 
-@tf_export('saved_model.regression_signature_def',
-           'saved_model.signature_def_utils.regression_signature_def')
+@tf_export(
+    'saved_model.regression_signature_def',
+    v1=[
+        'saved_model.regression_signature_def',
+        'saved_model.signature_def_utils.regression_signature_def'
+    ])
 @deprecation.deprecated_endpoints(
     'saved_model.signature_def_utils.regression_signature_def')
 def regression_signature_def(examples, predictions):
@@ -102,8 +110,12 @@ def regression_signature_def(examples, predictions):
   return signature_def
 
 
-@tf_export('saved_model.classification_signature_def',
-           'saved_model.signature_def_utils.classification_signature_def')
+@tf_export(
+    'saved_model.classification_signature_def',
+    v1=[
+        'saved_model.classification_signature_def',
+        'saved_model.signature_def_utils.classification_signature_def'
+    ])
 @deprecation.deprecated_endpoints(
     'saved_model.signature_def_utils.classification_signature_def')
 def classification_signature_def(examples, classes, scores):
@@ -158,8 +170,12 @@ def classification_signature_def(examples, classes, scores):
   return signature_def
 
 
-@tf_export('saved_model.predict_signature_def',
-           'saved_model.signature_def_utils.predict_signature_def')
+@tf_export(
+    'saved_model.predict_signature_def',
+    v1=[
+        'saved_model.predict_signature_def',
+        'saved_model.signature_def_utils.predict_signature_def'
+    ])
 @deprecation.deprecated_endpoints(
     'saved_model.signature_def_utils.predict_signature_def')
 def predict_signature_def(inputs, outputs):
@@ -252,8 +268,12 @@ def _supervised_signature_def(
   return signature_def
 
 
-@tf_export('saved_model.is_valid_signature',
-           'saved_model.signature_def_utils.is_valid_signature')
+@tf_export(
+    'saved_model.is_valid_signature',
+    v1=[
+        'saved_model.is_valid_signature',
+        'saved_model.signature_def_utils.is_valid_signature'
+    ])
 @deprecation.deprecated_endpoints(
     'saved_model.signature_def_utils.is_valid_signature')
 def is_valid_signature(signature_def):

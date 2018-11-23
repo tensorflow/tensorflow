@@ -37,9 +37,9 @@ class SoftplusTest(test.TestCase):
 
   def _testSoftplus(self, np_features, use_gpu=False):
     np_softplus = self._npSoftplus(np_features)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       softplus = nn_ops.softplus(np_features)
-      tf_softplus = softplus.eval()
+      tf_softplus = self.evaluate(softplus)
     self.assertAllCloseAccordingToType(np_softplus, tf_softplus)
     self.assertTrue(np.all(tf_softplus > 0))
     self.assertShapeEqual(np_softplus, softplus)

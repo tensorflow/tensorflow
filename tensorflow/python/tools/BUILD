@@ -29,6 +29,8 @@ py_library(
         ":optimize_for_inference_lib",
         ":selective_registration_header_lib",
         ":strip_unused_lib",
+        # Include the TF upgrade script to users can run it directly after install TF
+        "//tensorflow/tools/compatibility:tf_upgrade_v2",
     ],
 )
 

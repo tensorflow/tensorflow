@@ -24,7 +24,7 @@ from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
-from tensorflow.python.data.util import structure
+from tensorflow.python.data.util import structure as structure_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -94,9 +94,17 @@ class Iterator(checkpointable.CheckpointableBase):
     """
     self._iterator_resource = iterator_resource
     self._initializer = initializer
-    self._output_classes = output_classes
-    self._output_types = output_types
-    self._output_shapes = output_shapes
+
+    if (output_types is None or output_shapes is None
+        or output_classes is None):
+      raise ValueError("If `structure` is not specified, all of "
+                       "`output_types`, `output_shapes`, and `output_classes`"
+                       " must be specified.")
+    # pylint: disable=protected-access
+    self._structure = structure_lib.Structure._from_legacy_structure(
+        output_types, output_shapes, output_classes)
+    # pylint: enable=protected-access
+
     self._string_handle = gen_dataset_ops.iterator_to_string_handle(
         self._iterator_resource)
     self._get_next_call_count = 0
@@ -332,28 +340,28 @@ class Iterator(checkpointable.CheckpointableBase):
         element structure.
     """
     with ops.name_scope(name, "make_initializer") as name:
-      nest.assert_same_structure(self._output_types, dataset.output_types)
-      nest.assert_same_structure(self._output_shapes, dataset.output_shapes)
+      nest.assert_same_structure(self.output_types, dataset.output_types)
+      nest.assert_same_structure(self.output_shapes, dataset.output_shapes)
       for iterator_class, dataset_class in zip(
-          nest.flatten(self._output_classes),
+          nest.flatten(self.output_classes),
           nest.flatten(dataset.output_classes)):
         if iterator_class is not dataset_class:
           raise TypeError(
               "Expected output classes %r but got dataset with output class %r."
-              % (self._output_classes, dataset.output_classes))
+              % (self.output_classes, dataset.output_classes))
       for iterator_dtype, dataset_dtype in zip(
-          nest.flatten(self._output_types), nest.flatten(dataset.output_types)):
+          nest.flatten(self.output_types), nest.flatten(dataset.output_types)):
         if iterator_dtype != dataset_dtype:
           raise TypeError(
               "Expected output types %r but got dataset with output types %r." %
-              (self._output_types, dataset.output_types))
+              (self.output_types, dataset.output_types))
       for iterator_shape, dataset_shape in zip(
-          nest.flatten(self._output_shapes), nest.flatten(
+          nest.flatten(self.output_shapes), nest.flatten(
               dataset.output_shapes)):
         if not iterator_shape.is_compatible_with(dataset_shape):
           raise TypeError("Expected output shapes compatible with %r but got "
                           "dataset with output shapes %r." %
-                          (self._output_shapes, dataset.output_shapes))
+                          (self.output_shapes, dataset.output_shapes))
     with ops.colocate_with(self._iterator_resource):
       return gen_dataset_ops.make_iterator(
           dataset._as_variant_tensor(), self._iterator_resource, name=name)  # pylint: disable=protected-access
@@ -406,20 +414,12 @@ class Iterator(checkpointable.CheckpointableBase):
     if self._get_next_call_count > GET_NEXT_CALL_WARNING_THRESHOLD:
       warnings.warn(GET_NEXT_CALL_WARNING_MESSAGE)
 
-    return sparse.deserialize_sparse_tensors(
-        nest.pack_sequence_as(self._output_types,
-                              gen_dataset_ops.iterator_get_next(
-                                  self._iterator_resource,
-                                  output_types=nest.flatten(
-                                      sparse.as_dense_types(
-                                          self._output_types,
-                                          self._output_classes)),
-                                  output_shapes=nest.flatten(
-                                      sparse.as_dense_shapes(
-                                          self._output_shapes,
-                                          self._output_classes)),
-                                  name=name)), self._output_types,
-        self._output_shapes, self._output_classes)
+    # pylint: disable=protected-access
+    flat_ret = gen_dataset_ops.iterator_get_next(
+        self._iterator_resource,
+        output_types=self._structure._flat_types,
+        output_shapes=self._structure._flat_shapes, name=name)
+    return self._structure._from_tensor_list(flat_ret)
 
   def string_handle(self, name=None):
     """Returns a string-valued `tf.Tensor` that represents this iterator.
@@ -446,7 +446,7 @@ class Iterator(checkpointable.CheckpointableBase):
       A nested structure of Python `type` objects corresponding to each
       component of an element of this dataset.
     """
-    return self._output_classes
+    return self._structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
   def output_shapes(self):
@@ -456,7 +456,7 @@ class Iterator(checkpointable.CheckpointableBase):
       A nested structure of `tf.TensorShape` objects corresponding to each
       component of an element of this dataset.
     """
-    return self._output_shapes
+    return self._structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
   def output_types(self):
@@ -466,7 +466,17 @@ class Iterator(checkpointable.CheckpointableBase):
       A nested structure of `tf.DType` objects corresponding to each component
       of an element of this dataset.
     """
-    return self._output_types
+    return self._structure._to_legacy_output_types()  # pylint: disable=protected-access
+
+  @property
+  def _element_structure(self):
+    """The structure of an element of this iterator.
+
+    Returns:
+      A `Structure` object representing the structure of the components of this
+        optional.
+    """
+    return self._structure
 
   def _gather_saveables_for_checkpoint(self):
 
@@ -519,14 +529,12 @@ class EagerIterator(checkpointable.CheckpointableBase):
           format(type(self)))
     self._device = context.context().device_name
     with ops.device("/cpu:0"):
-      ds_variant = dataset._as_variant_tensor()  # pylint: disable=protected-access
-      self._output_classes = dataset.output_classes
-      self._output_types = dataset.output_types
-      self._output_shapes = dataset.output_shapes
-      self._flat_output_types = nest.flatten(
-          sparse.as_dense_types(self._output_types, self._output_classes))
-      self._flat_output_shapes = nest.flatten(
-          sparse.as_dense_shapes(self._output_shapes, self._output_classes))
+      # pylint: disable=protected-access
+      ds_variant = dataset._as_variant_tensor()
+      self._structure = structure_lib.Structure._from_legacy_structure(
+          dataset.output_types, dataset.output_shapes, dataset.output_classes)
+      self._flat_output_types = self._structure._flat_types
+      self._flat_output_shapes = self._structure._flat_shapes
       with ops.colocate_with(ds_variant):
         self._resource = gen_dataset_ops.anonymous_iterator(
             output_types=self._flat_output_types,
@@ -563,9 +571,7 @@ class EagerIterator(checkpointable.CheckpointableBase):
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)
 
-      return sparse.deserialize_sparse_tensors(
-          nest.pack_sequence_as(self._output_types, ret), self._output_types,
-          self._output_shapes, self._output_classes)
+      return self._structure._from_compatible_tensor_list(ret)  # pylint: disable=protected-access
 
   def next(self):
     """Returns a nested structure of `tf.Tensor`s containing the next element.
@@ -585,7 +591,7 @@ class EagerIterator(checkpointable.CheckpointableBase):
       A nested structure of Python `type` objects corresponding to each
       component of an element of this dataset.
     """
-    return self._output_classes
+    return self._structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
   def output_shapes(self):
@@ -595,7 +601,7 @@ class EagerIterator(checkpointable.CheckpointableBase):
       A nested structure of `tf.TensorShape` objects corresponding to each
       component of an element of this dataset.
     """
-    return self._output_shapes
+    return self._structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
   def output_types(self):
@@ -605,7 +611,17 @@ class EagerIterator(checkpointable.CheckpointableBase):
       A nested structure of `tf.DType` objects corresponding to each component
       of an element of this dataset.
     """
-    return self._output_types
+    return self._structure._to_legacy_output_types()  # pylint: disable=protected-access
+
+  @property
+  def _element_structure(self):
+    """The structure of an element of this iterator.
+
+    Returns:
+      A `Structure` object representing the structure of the components of this
+        optional.
+    """
+    return self._structure
 
   def get_next(self, name=None):
     """Returns a nested structure of `tf.Tensor`s containing the next element.
@@ -640,7 +656,6 @@ class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
     specs = [
         BaseSaverBuilder.SaveSpec(serialized_iterator, "", name + "_STATE")
     ]
-    # pylint: disable=protected-access
     super(_IteratorSaveable, self).__init__(iterator_resource, specs, name)
 
   def restore(self, restored_tensors, restored_shapes):
@@ -665,12 +680,6 @@ def get_next_as_optional(iterator):
   return optional_ops._OptionalImpl(
       gen_dataset_ops.iterator_get_next_as_optional(
           iterator._iterator_resource,
-          output_types=nest.flatten(
-              sparse.as_dense_types(iterator.output_types,
-                                    iterator.output_classes)),
-          output_shapes=nest.flatten(
-              sparse.as_dense_shapes(iterator.output_shapes,
-                                     iterator.output_classes))),
-      structure.Structure._from_legacy_structure(iterator.output_types,
-                                                 iterator.output_shapes,
-                                                 iterator.output_classes))
+          output_types=iterator._element_structure._flat_types,
+          output_shapes=iterator._element_structure._flat_shapes),
+      iterator._element_structure)

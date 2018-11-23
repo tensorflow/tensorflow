@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -315,14 +316,23 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   const PerInstruction* PerInst(const HloInstruction* inst) const {
     int id = inst->unique_id();
     DCHECK_GE(id, 0);
-    DCHECK_LT(id, per_instruction_.size());
-    return &per_instruction_[id];
+    auto iter = per_instruction_.find(id);
+    if (iter == per_instruction_.end()) {
+      LOG(FATAL) << "Expected per-instruction information to already exist";
+    } else {
+      return iter->second.get();
+    }
   }
   PerInstruction* PerInst(const HloInstruction* inst) {
     int id = inst->unique_id();
     DCHECK_GE(id, 0);
-    DCHECK_LT(id, per_instruction_.size());
-    return &per_instruction_[id];
+    auto iter = per_instruction_.find(id);
+    if (iter == per_instruction_.end()) {
+      return per_instruction_.emplace(id, absl::make_unique<PerInstruction>())
+          .first->second.get();
+    } else {
+      return iter->second.get();
+    }
   }
 
   std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
@@ -339,7 +349,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   const std::unique_ptr<LogicalBufferAnalysis> logical_buffer_analysis_;
 
   // A map from instruction->unique_id() to
-  std::vector<PerInstruction> per_instruction_;
+  absl::flat_hash_map<int, std::unique_ptr<PerInstruction>> per_instruction_;
 
   // A map from LogicalBuffer->id() to alias information about that logical
   // buffer

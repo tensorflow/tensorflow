@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/graph_view.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/ops/parsing_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -158,19 +160,22 @@ TEST_F(GraphViewTest, BasicGraph) {
 
   const NodeDef* add_node = graph.GetNode("AddN");
   EXPECT_NE(nullptr, add_node);
-  string fanouts;
-  for (const auto& fo : graph.GetFanouts(*add_node, false)) {
-    strings::StrAppend(&fanouts,
-                       strings::StrCat(fo.node->name(), ":", fo.port_id, " "));
-  }
-  EXPECT_EQ("AddN_2:0 AddN_3:0 ", fanouts);
 
-  string fanins;
-  for (const auto& fi : graph.GetFanins(*add_node, false)) {
-    strings::StrAppend(&fanins,
-                       strings::StrCat(fi.node->name(), ":", fi.port_id, " "));
+  absl::flat_hash_set<string> fanouts;
+  absl::flat_hash_set<string> expected_fanouts = {"AddN_2:0", "AddN_3:0"};
+  for (const auto& fo : graph.GetFanouts(*add_node, false)) {
+    fanouts.insert(absl::StrCat(fo.node->name(), ":", fo.port_id));
   }
-  EXPECT_EQ("Square_1:0 Square:0 ", fanins);
+  EXPECT_EQ(graph.NumFanouts(*add_node, false), 2);
+  EXPECT_EQ(fanouts, expected_fanouts);
+
+  absl::flat_hash_set<string> fanins;
+  absl::flat_hash_set<string> expected_fanins = {"Square_1:0", "Square:0"};
+  for (const auto& fi : graph.GetFanins(*add_node, false)) {
+    fanins.insert(absl::StrCat(fi.node->name(), ":", fi.port_id));
+  }
+  EXPECT_EQ(graph.NumFanins(*add_node, false), 2);
+  EXPECT_EQ(fanins, expected_fanins);
 }
 
 TEST_F(GraphViewTest, ControlDependencies) {

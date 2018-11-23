@@ -154,30 +154,30 @@ class IdentityReaderTest(test.TestCase):
       queued_length = queue.size()
       key, value = reader.read(queue)
 
-      self.assertAllEqual(0, work_completed.eval())
-      self.assertAllEqual(0, produced.eval())
-      self.assertAllEqual(0, queued_length.eval())
+      self.assertAllEqual(0, self.evaluate(work_completed))
+      self.assertAllEqual(0, self.evaluate(produced))
+      self.assertAllEqual(0, self.evaluate(queued_length))
 
       queue.enqueue_many([["A", "B", "C"]]).run()
       queue.close().run()
-      self.assertAllEqual(3, queued_length.eval())
+      self.assertAllEqual(3, self.evaluate(queued_length))
 
       self._ExpectRead(sess, key, value, b"A")
-      self.assertAllEqual(1, produced.eval())
+      self.assertAllEqual(1, self.evaluate(produced))
 
       self._ExpectRead(sess, key, value, b"B")
 
       self._ExpectRead(sess, key, value, b"C")
-      self.assertAllEqual(3, produced.eval())
-      self.assertAllEqual(0, queued_length.eval())
+      self.assertAllEqual(3, self.evaluate(produced))
+      self.assertAllEqual(0, self.evaluate(queued_length))
 
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
         sess.run([key, value])
 
-      self.assertAllEqual(3, work_completed.eval())
-      self.assertAllEqual(3, produced.eval())
-      self.assertAllEqual(0, queued_length.eval())
+      self.assertAllEqual(3, self.evaluate(work_completed))
+      self.assertAllEqual(3, self.evaluate(produced))
+      self.assertAllEqual(0, self.evaluate(queued_length))
 
   def testMultipleEpochs(self):
     with self.cached_session() as sess:
@@ -209,23 +209,23 @@ class IdentityReaderTest(test.TestCase):
       key, value = reader.read(queue)
 
       self._ExpectRead(sess, key, value, b"X")
-      self.assertAllEqual(1, produced.eval())
+      self.assertAllEqual(1, self.evaluate(produced))
       state = reader.serialize_state().eval()
 
       self._ExpectRead(sess, key, value, b"Y")
       self._ExpectRead(sess, key, value, b"Z")
-      self.assertAllEqual(3, produced.eval())
+      self.assertAllEqual(3, self.evaluate(produced))
 
       queue.enqueue_many([["Y", "Z"]]).run()
       queue.close().run()
       reader.restore_state(state).run()
-      self.assertAllEqual(1, produced.eval())
+      self.assertAllEqual(1, self.evaluate(produced))
       self._ExpectRead(sess, key, value, b"Y")
       self._ExpectRead(sess, key, value, b"Z")
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
         sess.run([key, value])
-      self.assertAllEqual(3, produced.eval())
+      self.assertAllEqual(3, self.evaluate(produced))
 
       self.assertEqual(bytes, type(state))
 
@@ -266,17 +266,17 @@ class IdentityReaderTest(test.TestCase):
 
       queue.enqueue_many([["X", "Y", "Z"]]).run()
       self._ExpectRead(sess, key, value, b"X")
-      self.assertLess(0, queued_length.eval())
-      self.assertAllEqual(1, produced.eval())
+      self.assertLess(0, self.evaluate(queued_length))
+      self.assertAllEqual(1, self.evaluate(produced))
 
       self._ExpectRead(sess, key, value, b"Y")
-      self.assertLess(0, work_completed.eval())
-      self.assertAllEqual(2, produced.eval())
+      self.assertLess(0, self.evaluate(work_completed))
+      self.assertAllEqual(2, self.evaluate(produced))
 
       reader.reset().run()
-      self.assertAllEqual(0, work_completed.eval())
-      self.assertAllEqual(0, produced.eval())
-      self.assertAllEqual(1, queued_length.eval())
+      self.assertAllEqual(0, self.evaluate(work_completed))
+      self.assertAllEqual(0, self.evaluate(produced))
+      self.assertAllEqual(1, self.evaluate(queued_length))
       self._ExpectRead(sess, key, value, b"Z")
 
       queue.enqueue_many([["K", "L"]]).run()
@@ -707,7 +707,7 @@ class AsyncReaderTest(test.TestCase):
     """Tests that reading does not block main execution threads."""
     config = config_pb2.ConfigProto(
         inter_op_parallelism_threads=1, intra_op_parallelism_threads=1)
-    with self.test_session(config=config) as sess:
+    with self.session(config=config) as sess:
       thread_data_t = collections.namedtuple("thread_data_t",
                                              ["thread", "queue", "output"])
       thread_data = []
@@ -724,7 +724,7 @@ class AsyncReaderTest(test.TestCase):
         thread_data.append(thread_data_t(t, queue, output))
 
       # Start all readers. They are all blocked waiting for queue entries.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       for d in thread_data:
         d.thread.start()
 

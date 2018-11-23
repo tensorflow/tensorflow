@@ -47,6 +47,8 @@ class ThreadPoolResource : public ResourceBase {
     }
   }
 
+  int32 NumThreads() { return thread_pool_.NumThreads(); }
+
   string DebugString() override { return "ThreadPoolResource"; }
 
  private:
@@ -127,16 +129,17 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
                                        &threadpool_resource));
     core::ScopedUnref unref_iterator(threadpool_resource);
 
-    *output = new Dataset(ctx, input, threadpool_resource);
+    *output = new Dataset(ctx, input, ctx->input(1), threadpool_resource);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            ThreadPoolResource* threadpool)
+            const Tensor& resource_handle, ThreadPoolResource* threadpool)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
+          resource_handle_(resource_handle),
           threadpool_(threadpool) {
       input_->Ref();
       threadpool_->Ref();
@@ -168,8 +171,13 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented("%s does not support serialization",
-                                   DebugString());
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
+      Node* resource_handle_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddTensor(resource_handle_, &resource_handle_node));
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {input_graph_node, resource_handle_node}, output));
+      return Status::OK();
     }
 
    private:
@@ -186,18 +194,20 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         ThreadPoolResource* pool = dataset()->threadpool_;
-        IteratorContext::Params params;
-        params.env = ctx->env();
+        IteratorContext::Params params(ctx);
         params.runner = [pool](std::function<void()> c) {
           pool->Schedule(std::move(c));
         };
-        params.stats_aggregator = ctx->stats_aggregator();
-        params.lib = ctx->lib();
-        params.function_library = ctx->function_library();
-        params.allocator_getter = ctx->allocator_getter();
-        IteratorContext threadpool_ctx(params);
-        return input_impl_->GetNext(&threadpool_ctx, out_tensors,
-                                    end_of_sequence);
+        params.runner_threadpool_size = pool->NumThreads();
+        IteratorContext iter_ctx(params);
+        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
+      }
+
+     protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
       }
 
      private:
@@ -205,6 +215,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
+    const Tensor resource_handle_;
     ThreadPoolResource* const threadpool_;
   };
 };

@@ -35,6 +35,7 @@ from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
@@ -244,6 +245,16 @@ class ArrayTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 5)
 
+  def test_split_v(self):
+    x = random_ops.random_uniform([3, 6, 3])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return (array_ops.split(x1, [2, 1, 3], axis=0),
+              array_ops.split(x1, [3], axis=-1))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 4)
+
   def test_transpose(self):
     x = random_ops.random_uniform([3, 2, 3, 4])
 
@@ -289,6 +300,22 @@ class ArrayTest(PForTest):
       # pylint: enable=cell-var-from-loop
 
       self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+
+  def test_identity_n(self):
+    x = random_ops.random_uniform([3, 4])
+
+    def loop_fn(i):
+      return array_ops.identity_n([x, array_ops.gather(x, i)])
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+
+  def test_matrix_diag_part(self):
+    x = random_ops.random_uniform([3, 4, 2])
+
+    def loop_fn(i):
+      return array_ops.matrix_diag_part(array_ops.gather(x, i))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32])
 
   def test_strided_slice(self):
     x = random_ops.random_uniform([3, 3, 4, 4, 2, 2, 2])
@@ -773,9 +800,12 @@ class NNTest(PForTest):
       output = nn.max_pool(
           x1, ksize, strides=[1, 2, 2, 1], padding="VALID", data_format="NHWC")
       loss = nn.l2_loss(output)
-      return output, gradient_ops.gradients(loss, x1)
+      ones = array_ops.ones_like(output)
+      grad = gradient_ops.gradients(loss, x1, grad_ys=ones)
+      grad_grad = gradient_ops.gradients(grad, ones)
+      return output, grad, grad_grad
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
   def test_fused_batch_norm(self):
     data_formats = ["NHWC"]
@@ -1358,14 +1388,77 @@ class Benchmarks(test.Benchmark):
     with sess:
       init = variables.global_variables_initializer()
       sess.run(init)
-      sess.run(targets)
+      run_fn = sess.make_callable(targets)
+      run_fn()  # Warm up
       begin = time.time()
       for _ in range(iters):
-        sess.run(targets)
+        run_fn()
       end = time.time()
     avg_time_ms = 1000 * (end - begin) / iters
     self.report_benchmark(iters=iters, wall_time=avg_time_ms, name=name)
     return avg_time_ms
+
+  def benchmark_sess_run_overhead(self):
+    with ops.Graph().as_default():
+      x = constant_op.constant(1.0)
+      self._run(x, 10000, name="session_run_overhead")
+
+  def benchmark_add(self):
+    with ops.Graph().as_default():
+      n = 256
+      params = 1000
+      x = random_ops.random_normal([n, params])
+      y = random_ops.random_normal([n, params])
+
+      def loop_fn(i):
+        x_i = array_ops.gather(x, i)
+        y_i = array_ops.gather(y, i)
+        return x_i + y_i
+
+      pfor_outputs = pfor_control_flow_ops.pfor(loop_fn, n)
+      while_outputs = pfor_control_flow_ops.for_loop(loop_fn, dtypes.float32, n)
+      manual = x + y
+
+      self._run(manual, 1000, name="manual_add")
+      self._run(pfor_outputs, 1000, name="pfor_add")
+      self._run(while_outputs, 100, name="while_add")
+
+  def benchmark_matmul(self):
+    with ops.Graph().as_default():
+      n = 1024
+      params = 1000
+      x = random_ops.random_normal([n, params])
+      y = random_ops.random_normal([params, params])
+
+      def loop_fn(i):
+        x_i = array_ops.expand_dims(array_ops.gather(x, i), 0)
+        return math_ops.matmul(x_i, y)
+
+      pfor_outputs = pfor_control_flow_ops.pfor(loop_fn, n)
+      while_outputs = pfor_control_flow_ops.for_loop(loop_fn, dtypes.float32, n)
+      manual = math_ops.matmul(x, y)
+
+      self._run(manual, 1000, name="manual_matmul")
+      self._run(pfor_outputs, 1000, name="pfor_matmul")
+      self._run(while_outputs, 100, name="while_matmul")
+
+  def benchmark_map_fn(self):
+    with ops.Graph().as_default():
+      b = 256
+      params = 1000
+      inp = random_ops.random_normal((b, params))
+      map_fn = lambda x: x * x
+
+      def pfor_map_fn(f, x):
+        return pfor_control_flow_ops.pfor(
+            lambda i: f(array_ops.gather(x, i)),
+            array_ops.shape(x)[0])
+
+      map_output = functional_ops.map_fn(map_fn, inp)
+      pfor_output = pfor_map_fn(map_fn, inp)
+
+      self._run(map_output, 100, name="tf_map_fn")
+      self._run(pfor_output, 100, name="pfor_map_fn")
 
   def benchmark_basic_while(self):
     with ops.Graph().as_default():
@@ -1390,13 +1483,6 @@ class Benchmarks(test.Benchmark):
                                                      128, 512, 16)
       self._run(pfor_outputs, 100, name="pfor_rnn")
       self._run(tf_outputs, 100, name="tf_rnn")
-
-  def benchmark_dynamic_lstm(self):
-    with ops.Graph().as_default():
-      pfor_outputs, tf_outputs = create_dynamic_lstm(rnn_cell.BasicLSTMCell,
-                                                     128, 512, 16)
-      self._run(pfor_outputs, 100, name="pfor_lstm")
-      self._run(tf_outputs, 100, name="tf_lstm")
 
 
 class SparseTest(PForTest):

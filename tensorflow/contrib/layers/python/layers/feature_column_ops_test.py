@@ -27,7 +27,7 @@ from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
-from tensorflow.python.feature_column import feature_column as fc_core
+from tensorflow.python.feature_column import feature_column_lib as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

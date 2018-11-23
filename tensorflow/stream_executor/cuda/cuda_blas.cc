@@ -49,6 +49,7 @@ limitations under the License.
 #include <assert.h>
 #include <complex>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -322,7 +322,7 @@ static string ToString(cublasStatus_t status) {
       return "CUBLAS_STATUS_LICENSE_ERROR";
 #endif
     default:
-      return port::StrCat("<invalid cublas status: ", status, ">");
+      return absl::StrCat("<invalid cublas status: ", status, ">");
   }
 }
 

@@ -38,13 +38,13 @@ class ResizeNearestNeighborOpTest(test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 4).reshape(in_shape).astype(nptype)
 
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         input_tensor = constant_op.constant(x, shape=in_shape)
         resize_out = image_ops.resize_nearest_neighbor(input_tensor,
                                                        out_shape[1:3])
         self.assertEqual(out_shape, list(resize_out.get_shape()))
 
-        resize_out = sess.run(resize_out)
+        resize_out = self.evaluate(resize_out)
       self.assertEqual(out_shape, list(resize_out.shape))
 
   def testGradFromResizeToLargerInBothDims(self):
@@ -54,7 +54,7 @@ class ResizeNearestNeighborOpTest(test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 6).reshape(in_shape).astype(nptype)
 
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         input_tensor = constant_op.constant(x, shape=in_shape)
         resize_out = image_ops.resize_nearest_neighbor(input_tensor,
                                                        out_shape[1:3])
@@ -69,7 +69,7 @@ class ResizeNearestNeighborOpTest(test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 24).reshape(in_shape).astype(nptype)
 
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         input_tensor = constant_op.constant(x, shape=in_shape)
         resize_out = image_ops.resize_nearest_neighbor(input_tensor,
                                                        out_shape[1:3])
@@ -84,14 +84,14 @@ class ResizeNearestNeighborOpTest(test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, np.prod(in_shape)).reshape(in_shape).astype(nptype)
       for align_corners in [True, False]:
-        with self.test_session(use_gpu=False):
+        with self.cached_session(use_gpu=False):
           input_tensor = constant_op.constant(x, shape=in_shape)
           resize_out = image_ops.resize_nearest_neighbor(
               input_tensor, out_shape[1:3], align_corners=align_corners)
           grad_cpu = gradient_checker.compute_gradient(
               input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
 
-        with self.test_session(use_gpu=True):
+        with self.cached_session(use_gpu=True):
           input_tensor = constant_op.constant(x, shape=in_shape)
           resize_out = image_ops.resize_nearest_neighbor(
               input_tensor, out_shape[1:3], align_corners=align_corners)
@@ -113,7 +113,7 @@ class ResizeBilinearOpTest(test.TestCase):
       resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
       self.assertEqual(out_shape, list(resize_out.get_shape()))
 
-      resize_out = sess.run(resize_out)
+      resize_out = self.evaluate(resize_out)
       self.assertEqual(out_shape, list(resize_out.shape))
 
   def testGradFromResizeToLargerInBothDims(self):
@@ -151,7 +151,7 @@ class ResizeBilinearOpTest(test.TestCase):
     for align_corners in [True, False]:
       grad = {}
       for use_gpu in [False, True]:
-        with self.test_session(use_gpu=use_gpu):
+        with self.cached_session(use_gpu=use_gpu):
           input_tensor = constant_op.constant(x, shape=in_shape)
           resized_tensor = image_ops.resize_bilinear(
               input_tensor, out_shape[1:3], align_corners=align_corners)
@@ -196,7 +196,7 @@ class ResizeBicubicOpTest(test.TestCase):
                                               align_corners=align_corners)
         self.assertEqual(out_shape, list(resize_out.get_shape()))
 
-        resize_out = sess.run(resize_out)
+        resize_out = self.evaluate(resize_out)
         self.assertEqual(out_shape, list(resize_out.shape))
 
   def testGradFromResizeToLargerInBothDims(self):
@@ -262,7 +262,7 @@ class CropAndResizeOpTest(test.TestCase):
     boxes = np.array([[0, 0, 1, 1], [.1, .2, .7, .8]], dtype=np.float32)
     box_ind = np.array([0, 1], dtype=np.int32)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       crops = image_ops.crop_and_resize(
           constant_op.constant(
               image, shape=image_shape),
@@ -273,7 +273,7 @@ class CropAndResizeOpTest(test.TestCase):
           constant_op.constant(
               crop_size, shape=[2]))
       self.assertEqual(crops_shape, list(crops.get_shape()))
-      crops = sess.run(crops)
+      crops = self.evaluate(crops)
       self.assertEqual(crops_shape, list(crops.shape))
 
   def _randomUniformAvoidAnchors(self, low, high, anchors, radius, num_samples):
@@ -351,7 +351,7 @@ class CropAndResizeOpTest(test.TestCase):
               boxes = np.array(boxes, dtype=np.float32)
               box_ind = np.arange(batch, dtype=np.int32)
 
-              with self.test_session(use_gpu=True):
+              with self.cached_session(use_gpu=True):
                 image_tensor = constant_op.constant(image, shape=image_shape)
                 boxes_tensor = constant_op.constant(boxes, shape=[num_boxes, 4])
                 box_ind_tensor = constant_op.constant(

@@ -36,7 +36,7 @@ class DecodeImageOpTest(test.TestCase):
   def testBmp(self):
     # Read a real bmp and verify shape
     path = os.path.join(prefix_path, "bmp", "testdata", "lena.bmp")
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       bmp0 = io_ops.read_file(path)
       image0 = image_ops.decode_image(bmp0)
       image1 = image_ops.decode_bmp(bmp0)
@@ -52,7 +52,7 @@ class DecodeImageOpTest(test.TestCase):
     stride = 5
     shape = (12, height, width, 3)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       gif0 = io_ops.read_file(path)
       image0 = image_ops.decode_image(gif0)
       image1 = image_ops.decode_gif(gif0)
@@ -76,12 +76,12 @@ class DecodeImageOpTest(test.TestCase):
 
         bad_channels = image_ops.decode_image(gif0, channels=1)
         with self.assertRaises(errors_impl.InvalidArgumentError):
-          bad_channels.eval()
+          self.evaluate(bad_channels)
 
   def testJpeg(self):
     # Read a real jpeg and verify shape
     path = os.path.join(prefix_path, "jpeg", "testdata", "jpeg_merge_test1.jpg")
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       jpeg0 = io_ops.read_file(path)
       image0 = image_ops.decode_image(jpeg0)
       image1 = image_ops.decode_jpeg(jpeg0)
@@ -92,14 +92,14 @@ class DecodeImageOpTest(test.TestCase):
 
       bad_channels = image_ops.decode_image(jpeg0, channels=4)
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        bad_channels.eval()
+        self.evaluate(bad_channels)
 
   def testPng(self):
     # Read some real PNGs, converting to different channel numbers
     inputs = [(1, "lena_gray.png")]
     for channels_in, filename in inputs:
       for channels in 0, 1, 3, 4:
-        with self.test_session(use_gpu=True) as sess:
+        with self.cached_session(use_gpu=True) as sess:
           path = os.path.join(prefix_path, "png", "testdata", filename)
           png0 = io_ops.read_file(path)
           image0 = image_ops.decode_image(png0, channels=channels)
@@ -113,7 +113,7 @@ class DecodeImageOpTest(test.TestCase):
     decode = image_ops.decode_image(image_bytes)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        decode.eval()
+        self.evaluate(decode)
 
 
 if __name__ == "__main__":

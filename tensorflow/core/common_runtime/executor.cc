@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -1240,6 +1241,7 @@ class ExecutorState {
   StepStatsCollectorInterface* const stats_collector_;
   const tracing::TraceCollector* const trace_collector_;
   const tracing::EventCollector* const event_collector_;
+  Context context_;
 
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
@@ -1367,6 +1369,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       trace_collector_(tracing::GetTraceCollector()),
       event_collector_(
           tracing::GetEventCollector(tracing::EventCategory::kCompute)),
+      context_(ContextKind::kThread),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
       impl_(impl),
@@ -1586,6 +1589,7 @@ bool MightTrace(const NodeItem& item,
 }
 
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
+  WithContext wc(context_);
   const GraphView& gview = impl_->gview_;
   TaggedNodeSeq ready;
   TaggedNodeReadyQueue inline_ready;
@@ -1647,9 +1651,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     params.track_allocations = false;
     stats = nullptr;
     if (stats_collector_ && !tagged_node.is_dead) {
-      // track allocations if and only if we are collecting statistics
-      params.track_allocations = true;
       stats = stats_collector_->CreateNodeExecStats(node);
+      // Track allocations if and only if we are collecting statistics, and
+      // `stats` object is expecting allocations to be tracked.
+      params.track_allocations = stats ? stats->TrackAllocations() : false;
       nodestats::SetScheduled(stats, scheduled_nsec);
       nodestats::SetAllStart(stats);
     }
@@ -1767,14 +1772,18 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
             // The OpKernel may create child activities (such as GPU kernel
             // launches), so use a `ScopedAnnotation` to relate these activities
             // in the trace.
-            tracing::ScopedAnnotation activity(op_name,
-                                               op_kernel->type_string());
+            tracing::ScopedAnnotation activity(
+                op_name, strings::StrCat(op_kernel->type_string(),
+                                         "#id=", step_id_, "#"));
             device->Compute(op_kernel, &ctx);
           } else {
             // Use the cheaper `ScopedActivity` to trace just the OpKernel
             // execution.
-            tracing::ScopedActivity activity(op_name, op_kernel->type_string(),
-                                             item.kernel_is_expensive);
+            tracing::ScopedActivity activity(
+                op_name,
+                strings::StrCat(op_kernel->type_string(), "#id=", step_id_,
+                                "#"),
+                item.kernel_is_expensive);
             device->Compute(op_kernel, &ctx);
           }
         } else {
@@ -1968,7 +1977,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       // tensor value at i-th output.
       if (!IsSwitch(node) && !IsRecv(node)) {
         s.Update(errors::Internal("Missing ", i, "-th output from ",
-                                  SummarizeNode(*node)));
+                                  FormatNodeForError(*node)));
       }
     } else {
       Entry* out = &((*outputs)[i]);
@@ -2022,7 +2031,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
                                   DataTypeString(dtype),
                                   " does not match declared output type ",
                                   DataTypeString(item.output_type(i)),
-                                  " for node ", SummarizeNode(*node)));
+                                  " for node ", FormatNodeForError(*node)));
       }
     }
     if (!val.is_ref()) {
@@ -2037,6 +2046,23 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      const NodeItem* item, EntryVector* outputs,
                                      TaggedNodeSeq* ready) {
+  auto activity_handle =
+      [&]() -> std::unique_ptr<tracing::TraceCollector::Handle> {
+    if (TF_PREDICT_FALSE(trace_collector_ != nullptr &&
+                         trace_collector_->IsEnabledForActivities(
+                             false /* is_expensive */))) {
+      const string& op_name = item->kernel->name();
+      // Intentionally using ExecutorPropagateOutputs as the first key so that
+      // users are aware that it's not the op invocation.
+      return trace_collector_->CreateActivityHandle(
+          "ExecutorPropagateOutputs",
+          strings::StrCat(op_name, "#id=", step_id_, "#"),
+          false /* is_expensive */);
+    } else {
+      return nullptr;
+    }
+  }();
+
   const Node* node = tagged_node.node;
   FrameState* input_frame = tagged_node.input_frame;
   const int64 input_iter = tagged_node.input_iter;

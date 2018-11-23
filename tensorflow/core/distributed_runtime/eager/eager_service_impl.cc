@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/host_info.h"
 
 namespace tensorflow {
 namespace eager {
@@ -152,20 +153,19 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   std::unique_ptr<tensorflow::EagerOperation> op;
   const char* name = operation.name().c_str();  // Shorthand
   const tensorflow::AttrTypeMap* types;
-  auto status = tensorflow::AttrTypeMapForOp(name, &types);
-  if (status.ok()) {
-    op.reset(
-        new tensorflow::EagerOperation(server_context->Context(), name, types));
-  } else if (errors::IsNotFound(status)) {
-    if (server_context->Context()->FindFunctionByName(name)) {
-      op.reset(new tensorflow::EagerOperation(server_context->Context(), name,
-                                              nullptr));
-    } else {
-      return status;
-    }
-  } else {
-    return status;
+  bool is_function = false;
+  TF_RETURN_IF_ERROR(tensorflow::AttrTypeMapForOp(name, &types, &is_function));
+  if (is_function && !server_context->Context()->FindFunctionByName(name)) {
+    return errors::NotFound(
+        "'", name,
+        "' is neither a type of a primitive operation nor a name "
+        "of a function registered in binary running on ",
+        port::Hostname(),
+        ". Make sure the operation or function is "
+        "registered in the binary running in this process.");
   }
+  op.reset(new tensorflow::EagerOperation(server_context->Context(), name,
+                                          is_function, types));
 
   TF_RETURN_IF_ERROR(op->SetDevice(operation.device().c_str()));
 

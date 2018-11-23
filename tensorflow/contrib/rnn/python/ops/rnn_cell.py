@@ -251,11 +251,13 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
       m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
 
     dtype = inputs.dtype
-    input_size = inputs.get_shape().with_rank(2)[1]
+    input_size = inputs.get_shape().with_rank(2).dims[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
     concat_w = _get_concat_variable(
-        "W", [input_size.value + num_proj, 3 * self._num_units], dtype,
+        "W",
+        [input_size.value + num_proj, 3 * self._num_units],
+        dtype,
         self._num_unit_shards)
 
     b = vs.get_variable(
@@ -429,7 +431,7 @@ class TimeFreqLSTMCell(rnn_cell_impl.RNNCell):
 
     # initialize the first freq state to be zero
     m_prev_freq = array_ops.zeros(
-        [inputs.shape[0].value or inputs.get_shape()[0], self._num_units],
+        [inputs.shape.dims[0].value or inputs.get_shape()[0], self._num_units],
         dtype)
     for fq in range(len(freq_inputs)):
       c_prev = array_ops.slice(state, [0, 2 * fq * self._num_units],
@@ -480,7 +482,7 @@ class TimeFreqLSTMCell(rnn_cell_impl.RNNCell):
     Raises:
       ValueError: if input_size cannot be inferred from static shape inference.
     """
-    input_size = input_feat.get_shape().with_rank(2)[-1].value
+    input_size = input_feat.get_shape().with_rank(2).dims[-1].value
     if input_size is None:
       raise ValueError("Cannot infer input_size from static shape inference.")
     num_feats = int(
@@ -636,7 +638,8 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
       ValueError: if an input_size was specified and the provided inputs have
         a different dimension.
     """
-    batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
+    batch_size = tensor_shape.dimension_value(
+        inputs.shape[0]) or array_ops.shape(inputs)[0]
     freq_inputs = self._make_tf_features(inputs)
     m_out_lst = []
     state_out_lst = []
@@ -886,7 +889,7 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
     Raises:
       ValueError: if input_size cannot be inferred from static shape inference.
     """
-    input_size = input_feat.get_shape().with_rank(2)[-1].value
+    input_size = input_feat.get_shape().with_rank(2).dims[-1].value
     if input_size is None:
       raise ValueError("Cannot infer input_size from static shape inference.")
     if slice_offset > 0:
@@ -910,7 +913,7 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
     if not self._start_freqindex_list:
       if len(self._num_frequency_blocks) != 1:
         raise ValueError("Length of num_frequency_blocks"
-                         " is not 1, but instead is %d",
+                         " is not 1, but instead is %d" %
                          len(self._num_frequency_blocks))
       num_feats = int(
           (input_size - self._feature_size) / (self._frequency_skip)) + 1
@@ -1058,7 +1061,8 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
       ValueError: if an input_size was specified and the provided inputs have
         a different dimension.
     """
-    batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
+    batch_size = tensor_shape.dimension_value(
+        inputs.shape[0]) or array_ops.shape(inputs)[0]
     fwd_inputs = self._make_tf_features(inputs)
     if self._backward_slice_offset:
       bwd_inputs = self._make_tf_features(inputs, self._backward_slice_offset)
@@ -1110,7 +1114,7 @@ _Linear = core_rnn_cell._Linear  # pylint: disable=invalid-name
 class AttentionCellWrapper(rnn_cell_impl.RNNCell):
   """Basic attention cell wrapper.
 
-  Implementation based on https://arxiv.org/abs/1409.0473.
+  Implementation based on https://arxiv.org/abs/1601.06733.
   """
 
   def __init__(self,
@@ -1289,7 +1293,7 @@ class HighwayWrapper(rnn_cell_impl.RNNCell):
       return self._cell.zero_state(batch_size, dtype)
 
   def _highway(self, inp, out):
-    input_size = inp.get_shape().with_rank(2)[1].value
+    input_size = inp.get_shape().with_rank(2).dims[1].value
     carry_weight = vs.get_variable("carry_w", [input_size, input_size])
     carry_bias = vs.get_variable(
         "carry_b", [input_size],
@@ -1536,7 +1540,7 @@ class NASCell(rnn_cell_impl.RNNCell):
     (c_prev, m_prev) = state
 
     dtype = inputs.dtype
-    input_size = inputs.get_shape().with_rank(2)[1]
+    input_size = inputs.get_shape().with_rank(2).dims[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
     # Variables for the NAS cell. W_m is all matrices multiplying the
@@ -1674,7 +1678,7 @@ class UGRNNCell(rnn_cell_impl.RNNCell):
     """
     sigmoid = math_ops.sigmoid
 
-    input_size = inputs.get_shape().with_rank(2)[1]
+    input_size = inputs.get_shape().with_rank(2).dims[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 
@@ -1785,7 +1789,7 @@ class IntersectionRNNCell(rnn_cell_impl.RNNCell):
     sigmoid = math_ops.sigmoid
     tanh = math_ops.tanh
 
-    input_size = inputs.get_shape().with_rank(2)[1]
+    input_size = inputs.get_shape().with_rank(2).dims[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 
@@ -2362,11 +2366,12 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
     """
     (c_prev, m_prev) = state
 
-    self._batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
+    self._batch_size = tensor_shape.dimension_value(
+        inputs.shape[0]) or array_ops.shape(inputs)[0]
 
     # If the input size is statically-known, calculate and validate its group
     # size.  Otherwise, use the output group size.
-    input_size = inputs.shape[1].value
+    input_size = tensor_shape.dimension_value(inputs.shape[1])
     if input_size is None:
       raise ValueError("input size must be statically known")
     if input_size % self._number_of_groups != 0:
@@ -2587,11 +2592,11 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     for shape in shapes:
       if shape.ndims != 2:
         raise ValueError("linear is expecting 2D arguments: %s" % shapes)
-      if shape[1].value is None:
+      if tensor_shape.dimension_value(shape[1]) is None:
         raise ValueError("linear expects shape[1] to be provided for shape %s, "
                          "but saw %s" % (shape, shape[1]))
       else:
-        total_arg_size += shape[1].value
+        total_arg_size += tensor_shape.dimension_value(shape[1])
 
     dtype = [a.dtype for a in args][0]
 
@@ -2649,7 +2654,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     (c_prev, m_prev) = state
 
     dtype = inputs.dtype
-    input_size = inputs.get_shape().with_rank(2)[1]
+    input_size = inputs.get_shape().with_rank(2).dims[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
     scope = vs.get_variable_scope()
@@ -2758,11 +2763,11 @@ class SRUCell(rnn_cell_impl.LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if tensor_shape.dimension_value(inputs_shape[1]) is None:
       raise ValueError(
           "Expected inputs.shape[-1] to be known, saw shape: %s" % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = tensor_shape.dimension_value(inputs_shape[1])
 
     # pylint: disable=protected-access
     self._kernel = self.add_variable(
@@ -2935,11 +2940,11 @@ class WeightNormLSTMCell(rnn_cell_impl.RNNCell):
     for shape in shapes:
       if shape.ndims != 2:
         raise ValueError("linear is expecting 2D arguments: %s" % shapes)
-      if shape[1].value is None:
+      if tensor_shape.dimension_value(shape[1]) is None:
         raise ValueError("linear expects shape[1] to be provided for shape %s, "
                          "but saw %s" % (shape, shape[1]))
       else:
-        total_arg_size += shape[1].value
+        total_arg_size += tensor_shape.dimension_value(shape[1])
 
     dtype = [a.dtype for a in args][0]
 
@@ -2955,7 +2960,7 @@ class WeightNormLSTMCell(rnn_cell_impl.RNNCell):
         st = 0
         with ops.control_dependencies(None):
           for i in range(len(args)):
-            en = st + shapes[i][1].value
+            en = st + tensor_shape.dimension_value(shapes[i][1])
             wn.append(
                 self._normalize(weights[st:en, :], name="norm_{}".format(i)))
             st = en
@@ -3009,7 +3014,7 @@ class WeightNormLSTMCell(rnn_cell_impl.RNNCell):
     sigmoid = math_ops.sigmoid
     c, h = state
 
-    input_size = inputs.get_shape().with_rank(2)[1]
+    input_size = inputs.get_shape().with_rank(2).dims[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 
@@ -3098,11 +3103,11 @@ class IndRNNCell(rnn_cell_impl.LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if tensor_shape.dimension_value(inputs_shape[1]) is None:
       raise ValueError(
           "Expected inputs.shape[-1] to be known, saw shape: %s" % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = tensor_shape.dimension_value(inputs_shape[1])
     # pylint: disable=protected-access
     self._kernel_w = self.add_variable(
         "%s_w" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
@@ -3194,11 +3199,11 @@ class IndyGRUCell(rnn_cell_impl.LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if tensor_shape.dimension_value(inputs_shape[1]) is None:
       raise ValueError(
           "Expected inputs.shape[-1] to be known, saw shape: %s" % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = tensor_shape.dimension_value(inputs_shape[1])
     # pylint: disable=protected-access
     self._gate_kernel_w = self.add_variable(
         "gates/%s_w" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
@@ -3335,11 +3340,11 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if tensor_shape.dimension_value(inputs_shape[1]) is None:
       raise ValueError(
           "Expected inputs.shape[-1] to be known, saw shape: %s" % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = tensor_shape.dimension_value(inputs_shape[1])
     # pylint: disable=protected-access
     self._kernel_w = self.add_variable(
         "%s_w" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
@@ -3492,12 +3497,13 @@ class MinimalRNNCell(rnn_cell_impl.LayerRNNCell):
         static shape inference.
     """
     input_size = inputs.get_shape()[1]
-    if input_size.value is None:
+    if tensor_shape.dimension_value(input_size) is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 
     feedforward_weight, gate_weight = array_ops.split(
         value=self.kernel,
-        num_or_size_splits=[input_size.value, 2 * self.units],
+        num_or_size_splits=[tensor_shape.dimension_value(input_size),
+                            2 * self.units],
         axis=0)
 
     feedforward = math_ops.matmul(inputs, feedforward_weight)
@@ -3611,7 +3617,7 @@ class CFNCell(rnn_cell_impl.LayerRNNCell):
         static shape inference.
     """
     input_size = inputs.get_shape()[-1]
-    if input_size.value is None:
+    if tensor_shape.dimension_value(input_size) is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 
     # The variable names u, v, w, b are consistent with the notations in the

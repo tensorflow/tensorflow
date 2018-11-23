@@ -100,7 +100,7 @@ class SpaceToBatchTest(test.TestCase, PythonOpImpl):
   """
 
   def _testPad(self, inputs, paddings, block_size, outputs):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       # outputs = space_to_batch(inputs)
       x_tf = self.space_to_batch(
           math_ops.to_float(inputs), paddings, block_size=block_size)
@@ -190,7 +190,7 @@ class SpaceToBatchNDTest(test.TestCase):
     block_shape = np.array(block_shape)
     paddings = np.array(paddings).reshape((len(block_shape), 2))
     for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         # outputs = space_to_batch(inputs)
         x_tf = array_ops.space_to_batch_nd(
             math_ops.to_float(inputs), block_shape, paddings)
@@ -309,7 +309,7 @@ class SpaceToBatchSpaceToDepth(test.TestCase, PythonOpImpl):
         array_ops.space_to_depth(
             array_ops.transpose(x, [3, 1, 2, 0]), block_size=block_size),
         [3, 1, 2, 0])
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllEqual(y1.eval(), y2.eval())
 
 
@@ -494,7 +494,7 @@ class SpaceToBatchGradientTest(test.TestCase, PythonOpImpl):
   # Check the gradients.
   def _checkGrad(self, x, paddings, block_size):
     assert 4 == x.ndim
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_x = ops.convert_to_tensor(x)
       tf_y = self.space_to_batch(tf_x, paddings, block_size)
       epsilon = 1e-5

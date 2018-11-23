@@ -1,0 +1,26 @@
+licenses(["restricted"])
+
+package(default_visibility = ["//visibility:public"])
+
+java_runtime(
+    name = "windows_jdk8",
+    srcs = [],
+    java_home = "C:/openjdk",
+)
+
+platform(
+    name = "rbe_windows_1803",
+    constraint_values = [
+        "@bazel_tools//platforms:x86_64",
+        "@bazel_tools//platforms:windows",
+    ],
+    remote_execution_properties = """
+        properties:{
+          name:"container-image"
+          value:"docker://gcr.io/tensorflow-testing/tf-rbe-win@sha256:bd22c6bfff6afc1fa4304ec4411df2410d93645494117585332a4e2258358422"
+        }
+        properties:{
+          name: "OSFamily" value: "Windows"
+        }
+        """,
+)

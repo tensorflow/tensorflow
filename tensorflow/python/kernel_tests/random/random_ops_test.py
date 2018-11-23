@@ -44,14 +44,14 @@ class RandomOpTestCommon(test.TestCase):
                                     use_gpu,
                                     op_seed=None,
                                     graph_seed=None):
-    with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
+    with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
       if graph_seed is not None:
         random_seed.set_random_seed(graph_seed)
       x = rng_func([num], min_or_mean, max_or_stddev, dtype=dtype, seed=op_seed)
 
-      y = sess.run(x)
-      z = sess.run(x)
-      w = sess.run(x)
+      y = self.evaluate(x)
+      z = self.evaluate(x)
+      w = self.evaluate(x)
 
       # We use exact equality here. If the random-number generator is producing
       # the same output, all three outputs will be bitwise identical.
@@ -64,12 +64,12 @@ class RandomNormalTest(RandomOpTestCommon):
   def _Sampler(self, num, mu, sigma, dtype, use_gpu, seed=None):
 
     def func():
-      with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
+      with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
         rng = random_ops.random_normal(
             [num], mean=mu, stddev=sigma, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
         for i in xrange(10):
-          ret[i, :] = sess.run(rng)
+          ret[i, :] = self.evaluate(rng)
       return ret
 
     return func
@@ -112,7 +112,7 @@ class RandomNormalTest(RandomOpTestCommon):
 
   def testNoCSE(self):
     for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
+      with self.session(use_gpu=use_gpu):
         shape = [2, 3, 4]
         rnd1 = random_ops.random_normal(shape, 0.0, 1.0, dtypes.float32)
         rnd2 = random_ops.random_normal(shape, 0.0, 1.0, dtypes.float32)
@@ -155,12 +155,12 @@ class TruncatedNormalTest(test.TestCase):
   def _Sampler(self, num, mu, sigma, dtype, use_gpu, seed=None):
 
     def func():
-      with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
+      with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
         rng = random_ops.truncated_normal(
             [num], mean=mu, stddev=sigma, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
         for i in xrange(10):
-          ret[i, :] = sess.run(rng)
+          ret[i, :] = self.evaluate(rng)
       return ret
 
     return func
@@ -220,14 +220,14 @@ class TruncatedNormalTest(test.TestCase):
       self.assertTrue(abs(np.std(x) / stddev - 0.85) < 0.04)
 
   def testLargeShape(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       v = variables.Variable(
           array_ops.zeros(dtype=dtypes.float32, shape=[2**33, 1]))
       n = random_ops.truncated_normal(v.shape)
       self.assertEqual([8589934592, 1], n.shape.as_list())
 
   def testNoCSE(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [2, 3, 4]
       rnd1 = random_ops.truncated_normal(shape, 0.0, 1.0, dtypes.float32)
       rnd2 = random_ops.truncated_normal(shape, 0.0, 1.0, dtypes.float32)
@@ -251,12 +251,12 @@ class RandomUniformTest(RandomOpTestCommon):
   def _Sampler(self, num, minv, maxv, dtype, use_gpu, seed=None):
 
     def func():
-      with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
+      with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
         rng = random_ops.random_uniform(
             [num], minval=minv, maxval=maxv, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
         for i in xrange(10):
-          ret[i, :] = sess.run(rng)
+          ret[i, :] = self.evaluate(rng)
       return ret
 
     return func
@@ -353,7 +353,7 @@ class RandomUniformTest(RandomOpTestCommon):
   def testNoCSE(self):
     shape = [2, 3, 4]
     for dtype in dtypes.float16, dtypes.float32, dtypes.int32:
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         rnd1 = random_ops.random_uniform(shape, 0, 17, dtype=dtype)
         rnd2 = random_ops.random_uniform(shape, 0, 17, dtype=dtype)
         diff = (rnd2 - rnd1).eval()

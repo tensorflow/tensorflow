@@ -50,12 +50,12 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypes(self, x, alpha, delta, use_gpu=None):
     self.setUp()
-    with self.test_session(use_gpu=use_gpu):
+    with self.session(use_gpu=use_gpu):
       var = variables.VariableV1(x)
       variables.global_variables_initializer().run()
-      self.assertAllCloseAccordingToType(x, var.eval())
+      self.assertAllCloseAccordingToType(x, self.evaluate(var))
       apply_sgd = training_ops.apply_gradient_descent(var, alpha, delta)
-      out = apply_sgd.eval()
+      out = self.evaluate(apply_sgd)
       self.assertShapeEqual(out, apply_sgd)
       self.assertAllCloseAccordingToType(x - alpha * delta, out)
 
@@ -69,18 +69,18 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypesForAdagrad(self, x, y, lr, grad, use_gpu=None):
     self.setUp()
-    with self.test_session(use_gpu=use_gpu):
+    with self.session(use_gpu=use_gpu):
       var = variables.VariableV1(x)
       accum = variables.VariableV1(y)
       variables.global_variables_initializer().run()
 
-      self.assertAllCloseAccordingToType(x, var.eval())
+      self.assertAllCloseAccordingToType(x, self.evaluate(var))
       apply_adagrad = training_ops.apply_adagrad(var, accum, lr, grad)
-      out = apply_adagrad.eval()
+      out = self.evaluate(apply_adagrad)
       self.assertShapeEqual(out, apply_adagrad)
       self.assertAllCloseAccordingToType(x - lr * grad * (y + grad * grad)**
                                          (-0.5), out)
-      self.assertAllCloseAccordingToType(y + grad * grad, accum.eval())
+      self.assertAllCloseAccordingToType(y + grad * grad, self.evaluate(accum))
 
   def _testTypesForFtrl(self,
                         x,
@@ -93,16 +93,16 @@ class TrainingOpsTest(TensorFlowTestCase):
                         l2=0.0,
                         lr_power=-0.5):
     self.setUp()
-    with self.test_session(use_gpu=use_gpu):
+    with self.session(use_gpu=use_gpu):
       var = variables.VariableV1(x)
       accum = variables.VariableV1(y)
       linear = variables.VariableV1(z)
       variables.global_variables_initializer().run()
 
-      self.assertAllCloseAccordingToType(x, var.eval())
+      self.assertAllCloseAccordingToType(x, self.evaluate(var))
       apply_ftrl = training_ops.apply_ftrl(var, accum, linear, grad, lr, l1, l2,
                                            lr_power)
-      out = apply_ftrl.eval()
+      out = self.evaluate(apply_ftrl)
       self.assertShapeEqual(out, apply_ftrl)
       accum_update = y + grad * grad
       linear_update = z + grad - (accum_update**(-lr_power) - y**
@@ -112,17 +112,19 @@ class TrainingOpsTest(TensorFlowTestCase):
           np.sign(linear_update[i]) * l1 - linear_update[i]) / (quadratic[i]) if
                                np.abs(linear_update[i]) > l1 else 0.0
                                for i in range(linear_update.size)])
-      self.assertAllCloseAccordingToType(accum_update, accum.eval())
+      self.assertAllCloseAccordingToType(accum_update, self.evaluate(accum))
       if x.dtype == np.float16:
         # The calculations here really are not very precise in float16.
-        self.assertAllClose(linear_update, linear.eval(), rtol=2e-2, atol=2e-2)
+        self.assertAllClose(
+            linear_update, self.evaluate(linear), rtol=2e-2, atol=2e-2)
         self.assertAllClose(expected_out, out, rtol=2e-2, atol=2e-2)
       elif x.dtype == np.float32:
         # The calculations here not sufficiently precise in float32.
-        self.assertAllClose(linear_update, linear.eval(), rtol=1e-5, atol=1e-5)
+        self.assertAllClose(
+            linear_update, self.evaluate(linear), rtol=1e-5, atol=1e-5)
         self.assertAllClose(expected_out, out, rtol=1e-5, atol=1e-5)
       else:
-        self.assertAllClose(linear_update, linear.eval())
+        self.assertAllClose(linear_update, self.evaluate(linear))
         self.assertAllClose(expected_out, out)
 
   def testApplyAdagrad(self):
@@ -147,24 +149,24 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypesForSparseAdagrad(self, x, y, lr, grad, indices):
     self.setUp()
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       var = variables.VariableV1(x)
       accum = variables.VariableV1(y)
       variables.global_variables_initializer().run()
 
-      self.assertAllCloseAccordingToType(x, var.eval())
+      self.assertAllCloseAccordingToType(x, self.evaluate(var))
       sparse_apply_adagrad = training_ops.sparse_apply_adagrad(
           var, accum, lr, grad,
           constant_op.constant(indices, self._toType(indices.dtype)))
-      out = sparse_apply_adagrad.eval()
+      out = self.evaluate(sparse_apply_adagrad)
       self.assertShapeEqual(out, sparse_apply_adagrad)
 
       for (i, index) in enumerate(indices):
         self.assertAllCloseAccordingToType(
             x[index] - lr * grad[i] * (y[index] + grad[i] * grad[i])**(-0.5),
-            var.eval()[index])
+            self.evaluate(var)[index])
         self.assertAllCloseAccordingToType(y[index] + grad[i] * grad[i],
-                                           accum.eval()[index])
+                                           self.evaluate(accum)[index])
 
   def _testTypesForSparseFtrl(self,
                               x,
@@ -177,13 +179,13 @@ class TrainingOpsTest(TensorFlowTestCase):
                               l2=0.0,
                               lr_power=-0.5):
     self.setUp()
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       var = variables.VariableV1(x)
       accum = variables.VariableV1(y)
       linear = variables.VariableV1(z)
       variables.global_variables_initializer().run()
 
-      self.assertAllCloseAccordingToType(x, var.eval())
+      self.assertAllCloseAccordingToType(x, self.evaluate(var))
       sparse_apply_ftrl = training_ops.sparse_apply_ftrl(
           var,
           accum,
@@ -194,15 +196,16 @@ class TrainingOpsTest(TensorFlowTestCase):
           l1,
           l2,
           lr_power=lr_power)
-      out = sparse_apply_ftrl.eval()
+      out = self.evaluate(sparse_apply_ftrl)
       self.assertShapeEqual(out, sparse_apply_ftrl)
 
       for (i, index) in enumerate(indices):
-        self.assertAllCloseAccordingToType(x[index] - lr * grad[i] *
-                                           (y[index] + grad[i] * grad[i])**
-                                           (lr_power), var.eval()[index])
+        self.assertAllCloseAccordingToType(
+            x[index] - lr * grad[i] * (y[index] + grad[i] * grad[i])**
+            (lr_power),
+            self.evaluate(var)[index])
         self.assertAllCloseAccordingToType(y[index] + grad[i] * grad[i],
-                                           accum.eval()[index])
+                                           self.evaluate(accum)[index])
 
   def testSparseApplyAdagrad(self):
     for (dtype, index_type) in itertools.product(
@@ -256,7 +259,7 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypesForAdam(self, var, m, v, grad, use_gpu):
     self.setUp()
-    with self.test_session(use_gpu=use_gpu):
+    with self.session(use_gpu=use_gpu):
       var_t = variables.VariableV1(var)
       m_t = variables.VariableV1(m)
       v_t = variables.VariableV1(v)
@@ -276,13 +279,13 @@ class TrainingOpsTest(TensorFlowTestCase):
       epsilon_t = constant_op.constant(epsilon, self._toType(var.dtype), [])
       variables.global_variables_initializer().run()
 
-      self.assertAllCloseAccordingToType(var, var_t.eval())
+      self.assertAllCloseAccordingToType(var, self.evaluate(var_t))
       new_var, _, _ = self._adamUpdateNumpy(var, grad, t, m, v, lr, beta1,
                                             beta2, epsilon)
       apply_adam = training_ops.apply_adam(var_t, m_t, v_t, beta1_power_t,
                                            beta2_power_t, lr_t, beta1_t,
                                            beta2_t, epsilon_t, grad)
-      out = apply_adam.eval()
+      out = self.evaluate(apply_adam)
       self.assertShapeEqual(out, apply_adam)
       self.assertAllCloseAccordingToType(new_var, out)
 

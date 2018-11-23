@@ -85,24 +85,6 @@ class CallTreesTest(converter_testing.TestCase):
       tc = TestClass()
       self.assertEquals(3, result.test_fn_2(tc, 1))
 
-  def test_py_func_no_retval(self):
-
-    def test_fn(a):
-      setattr(a, 'foo', 'bar')
-
-    with self.converted(test_fn, call_trees, {'setattr': setattr}) as result:
-      with self.cached_session() as sess:
-
-        class Dummy(object):
-          pass
-
-        a = Dummy()
-        result.test_fn(a)
-        py_func_op, = sess.graph.get_operations()
-        self.assertFalse(hasattr(a, 'foo'))
-        sess.run(py_func_op)
-        self.assertEquals('bar', a.foo)
-
   def test_py_func_known_function(self):
 
     def test_fn():
@@ -131,7 +113,22 @@ class CallTreesTest(converter_testing.TestCase):
     with self.compiled(node, ns) as result:
       with self.cached_session() as sess:
         result_tensor = result.test_fn(constant_op.constant(1))
-        self.assertEquals(sess.run(result_tensor), 3)
+        self.assertEquals(self.evaluate(result_tensor), 3)
+
+  def test_call_to_decorated_function(self):
+
+    def decorator(f):
+      return f
+
+    @decorator
+    def called_fn(a):
+      return a
+
+    def test_fn(a):
+      return called_fn(a)
+
+    node, ctx = self.prepare(test_fn, {'called_fn': called_fn})
+    node = call_trees.transform(node, ctx)
 
 
 if __name__ == '__main__':

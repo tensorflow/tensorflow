@@ -106,9 +106,11 @@ class RFFTOp : public GenericFftOp {
   explicit RFFTOp(OpKernelConstruction* ctx)
       : GenericFftOp(ctx, /*fft_type=*/FftType::RFFT, /*fft_rank=*/FFTRank) {}
 };
-REGISTER_XLA_OP(Name("RFFT").CompileTimeConstInput("fft_length"), RFFTOp<1>);
-REGISTER_XLA_OP(Name("RFFT2D").CompileTimeConstInput("fft_length"), RFFTOp<2>);
-REGISTER_XLA_OP(Name("RFFT3D").CompileTimeConstInput("fft_length"), RFFTOp<3>);
+REGISTER_XLA_OP(Name("RFFT").CompileTimeConstantInput("fft_length"), RFFTOp<1>);
+REGISTER_XLA_OP(Name("RFFT2D").CompileTimeConstantInput("fft_length"),
+                RFFTOp<2>);
+REGISTER_XLA_OP(Name("RFFT3D").CompileTimeConstantInput("fft_length"),
+                RFFTOp<3>);
 
 template <int FFTRank>
 class IRFFTOp : public GenericFftOp {
@@ -116,10 +118,11 @@ class IRFFTOp : public GenericFftOp {
   explicit IRFFTOp(OpKernelConstruction* ctx)
       : GenericFftOp(ctx, /*fft_type=*/FftType::IRFFT, /*fft_rank=*/FFTRank) {}
 };
-REGISTER_XLA_OP(Name("IRFFT").CompileTimeConstInput("fft_length"), IRFFTOp<1>);
-REGISTER_XLA_OP(Name("IRFFT2D").CompileTimeConstInput("fft_length"),
+REGISTER_XLA_OP(Name("IRFFT").CompileTimeConstantInput("fft_length"),
+                IRFFTOp<1>);
+REGISTER_XLA_OP(Name("IRFFT2D").CompileTimeConstantInput("fft_length"),
                 IRFFTOp<2>);
-REGISTER_XLA_OP(Name("IRFFT3D").CompileTimeConstInput("fft_length"),
+REGISTER_XLA_OP(Name("IRFFT3D").CompileTimeConstantInput("fft_length"),
                 IRFFTOp<3>);
 
 }  // namespace

@@ -180,6 +180,7 @@ REGISTER_OP("ParseExampleDataset")
     .Attr("output_shapes: list(shape) >= 1")  // Output components will be
                                               // sorted by key (dense_keys and
                                               // sparse_keys combined) here.
+    .Attr("sloppy: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SetStatsAggregatorDataset")
@@ -213,6 +214,7 @@ REGISTER_OP("ParallelMapDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("use_inter_op_parallelism: bool = true")
+    .Attr("sloppy: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("MapAndBatchDataset")
@@ -340,6 +342,7 @@ REGISTER_OP("ParallelInterleaveDatasetV2")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("sloppy: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("GroupByReducerDataset")
@@ -619,6 +622,18 @@ REGISTER_OP("TextLineDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("MatchingFilesDataset")
+    .Input("patterns: string")
+    .Output("handle: variant")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `patterns` must be a scalar or a vector.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("SqlDataset")
     .Input("driver_name: string")
     .Input("data_source_name: string")
@@ -643,6 +658,29 @@ REGISTER_OP("FixedLengthRecordDataset")
     .Input("record_bytes: int64")
     .Input("footer_bytes: int64")
     .Input("buffer_size: int64")
+    .Output("handle: variant")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `filenames` must be a scalar or a vector.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
+      // header_bytes, record_bytes, footer_bytes, buffer_size should be
+      // scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("FixedLengthRecordDatasetV2")
+    .Input("filenames: string")
+    .Input("header_bytes: int64")
+    .Input("record_bytes: int64")
+    .Input("footer_bytes: int64")
+    .Input("buffer_size: int64")
+    .Input("compression_type: string")
     .Output("handle: variant")
     .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
@@ -850,11 +888,6 @@ REGISTER_OP("DatasetToTFRecord")
 REGISTER_OP("DatasetToGraph")
     .Input("input_dataset: variant")
     .Output("graph: string")
-    .SetShapeFn(shape_inference::ScalarShape);
-
-REGISTER_OP("SinkDataset")
-    .Input("input_dataset: variant")
-    .Output("handle: variant")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("OptimizeDataset")

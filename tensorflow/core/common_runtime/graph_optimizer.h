@@ -47,16 +47,13 @@ class GraphOptimizer {
   // returns true will be considered for CSE.
   // If cf_consider_fn is not null then only nodes for which cf_consider_fn
   // returns true will be considered for CF.
-  // If cf_disable_memory_output_type_check is true, CF will discard output
-  // memory type check for constant node replacement.
   void Optimize(
       FunctionLibraryRuntime* runtime, Env* env, Device* device,
       std::unique_ptr<Graph>* graph,
       const std::unordered_map<string, std::vector<PartialTensorShape>>*
           shape_map,
       const std::function<bool(const Node*)>& cse_consider_fn = nullptr,
-      const std::function<bool(const Node*)>& cf_consider_fn = nullptr,
-      bool cf_disable_memory_output_type_check = false);
+      const std::function<bool(const Node*)>& cf_consider_fn = nullptr);
 
   const OptimizerOptions& options() { return opts_; }
 

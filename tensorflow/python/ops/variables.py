@@ -58,6 +58,21 @@ def _make_getter(captured_getter, captured_previous):
   return getter
 
 
+def _has_cycle(op, path):
+  """Detect cycles in the dependencies of `initial_value`."""
+  if op.name in path:
+    return True
+  path.add(op.name)
+  for op_input in op.inputs:
+    if _has_cycle(op_input.op, path):
+      return True
+  for op_control_input in op.control_inputs:
+    if _has_cycle(op_control_input, path):
+      return True
+  path.remove(op.name)
+  return False
+
+
 @tf_export("VariableSynchronization")
 class VariableSynchronization(enum.Enum):
   """Indicates when a distributed variable will be synced.
@@ -79,28 +94,42 @@ class VariableSynchronization(enum.Enum):
   ON_READ = 3
 
 
-@tf_export("VariableAggregation")
-class VariableAggregation(enum.Enum):
+@tf_export("VariableAggregation", v1=[])
+class VariableAggregationV2(enum.Enum):
   """Indicates how a distributed variable will be aggregated.
 
   `tf.contrib.distribute.DistributionStrategy` distributes a model by making
-  multiple copies (called "towers") acting data-parallel on different elements
+  multiple copies (called "replicas") acting data-parallel on different elements
   of the input batch. When performing some variable-update operation, say
   `var.assign_add(x)`, in a model, we need to resolve how to combine the
-  different values for `x` computed in the different towers.
+  different values for `x` computed in the different replicas.
 
   * `NONE`: This is the default, giving an error if you use a
-    variable-update operation with multiple towers.
-  * `SUM`: Add the updates across towers.
-  * `MEAN`: Take the arithmetic mean ("average") of the updates across towers.
-  * `ONLY_FIRST_TOWER`: This is for when every tower is performing the same
+    variable-update operation with multiple replicas.
+  * `SUM`: Add the updates across replicas.
+  * `MEAN`: Take the arithmetic mean ("average") of the updates across replicas.
+  * `ONLY_FIRST_REPLICA`: This is for when every replica is performing the same
     update, but we only want to perform the update once. Used, e.g., for the
     global step counter.
   """
   NONE = 0
   SUM = 1
   MEAN = 2
-  ONLY_FIRST_TOWER = 3
+  ONLY_FIRST_REPLICA = 3
+
+
+@tf_export(v1=["VariableAggregation"])
+class VariableAggregation(enum.Enum):
+  NONE = 0
+  SUM = 1
+  MEAN = 2
+  ONLY_FIRST_REPLICA = 3
+  ONLY_FIRST_TOWER = 3  # DEPRECATED
+
+
+VariableAggregation.__doc__ = (
+    VariableAggregationV2.__doc__ +
+    "* `ONLY_FIRST_TOWER`: Deprecated alias for `ONLY_FIRST_REPLICA`.\n  ")
 
 
 class VariableMetaclass(type):
@@ -187,7 +216,7 @@ class VariableMetaclass(type):
       return super(VariableMetaclass, cls).__call__(*args, **kwargs)
 
 
-@tf_export(v2=["Variable"])
+@tf_export("Variable", v1=[])
 class Variable(six.with_metaclass(VariableMetaclass,
                                   checkpointable.CheckpointableBase)):
   """See the [Variables Guide](https://tensorflow.org/guide/variables).
@@ -2158,20 +2187,7 @@ class RefVariable(VariableV1):
       raise TypeError("initial_value needs to be a Tensor: %s" % initial_value)
 
     # Don't modify initial_value if it contains any cyclic dependencies.
-    def has_cycle(op, path):
-      """Detect cycles in the dependencies of `initial_value`."""
-      if op.name in path:
-        return True
-      path.add(op.name)
-      for op_input in op.inputs:
-        if has_cycle(op_input.op, path):
-          return True
-      for op_control_input in op.control_inputs:
-        if has_cycle(op_control_input, path):
-          return True
-      path.remove(op.name)
-      return False
-    if has_cycle(initial_value.op, path=set()):
+    if _has_cycle(initial_value.op, path=set()):
       return initial_value
 
     return self._safe_initial_value_from_tensor(initial_value, op_cache={})
@@ -2441,34 +2457,6 @@ class PartitionedVariable(object):
   @end_compatibility
   """
 
-  class PartitionedVariableIterator(object):
-    """An iterator that allows accessing the underlying `Variable` objects.
-
-    This iterator is necessary to control order of access when Variables
-    are not partitioned in a standard way along a single axis.
-
-    Allows e.g. `list(partitioned_variable)` to return a proper list.
-    """
-
-    def __init__(self, partitioned_variable):
-      self._ix = 0
-      self._partitioned_variable = partitioned_variable
-
-    def __iter__(self):
-      return self
-
-    def __next__(self):  # For python3 compatibility.
-      return self.next()
-
-    def next(self):
-      # pylint: disable=protected-access
-      if self._ix >= len(self._partitioned_variable._variable_list):
-        raise StopIteration()
-      variable = self._partitioned_variable._variable_list[self._ix]
-      # pylint: enable=protected-access
-      self._ix += 1
-      return variable
-
   def __init__(self, name, shape, dtype, variable_list, partitions):
     """Creates a new partitioned variable wrapper.
 
@@ -2488,11 +2476,7 @@ class PartitionedVariable(object):
         `partitions` is not a list.
       ValueError: If `variable_list` is empty, or the `Variable` shape
         information does not match `shape`, or `partitions` has invalid values.
-      RuntimeError: If eager execution is enabled
     """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          "tf.PartitionedVariable not supported with eager execution enabled.")
     if not isinstance(variable_list, (list, tuple)):
       raise TypeError(
           "variable_list is not a list or tuple: %s" % variable_list)
@@ -2529,7 +2513,7 @@ class PartitionedVariable(object):
 
   def __iter__(self):
     """Return an iterable for accessing the underlying partition Variables."""
-    return self.PartitionedVariableIterator(self)
+    return iter(self._variable_list)
 
   def __len__(self):
     num_partition_axes = len(self._partition_axes())
@@ -2627,44 +2611,51 @@ class PartitionedVariable(object):
           "Cannot do assign action along more than one dimension: %s.  "
           "Multi-axis partition assign action is not supported " %
           str(partition_axes))
-    partition_ix = partition_axes[0]
-    size_splits_list = [
-        var.shape[partition_ix].value for var in self._variable_list
-    ]
-    value_list = array_ops.split(value, size_splits_list, axis=partition_ix)
+    if isinstance(value, list):
+      assert len(value) == len(self._variable_list)
+      value_list = value
+    elif isinstance(value, PartitionedVariable):
+      value_list = [var_part for var_part in value]
+    else:
+      partition_ix = partition_axes[0]
+      size_splits_list = [
+          tensor_shape.dimension_value(var.shape[partition_ix])
+          for var in self._variable_list
+      ]
+      value_list = array_ops.split(value, size_splits_list, axis=partition_ix)
+
     op_list = [
-        assign_fn(var, value_list[idx], idx)
+        assign_fn(var, value_list[idx])
         for idx, var in enumerate(self._variable_list)
     ]
     return op_list
 
   def assign(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, r_value, idx: var.assign(
+    assign_fn = lambda var, r_value: var.assign(
         r_value, use_locking=use_locking,
-        name="%s_%d" % (name, idx), read_value=read_value)
+        name=name, read_value=read_value)
     assign_list = self._apply_assign_fn(assign_fn, value)
     if read_value:
       return assign_list
     return [assign.op for assign in assign_list]
 
   def assign_add(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, r_value, idx: var.assign_add(
+    assign_fn = lambda var, r_value: var.assign_add(
         r_value, use_locking=use_locking,
-        name="%s_%d" % (name, idx), read_value=read_value)
+        name=name, read_value=read_value)
     assign_list = self._apply_assign_fn(assign_fn, value)
     if read_value:
       return assign_list
     return [assign.op for assign in assign_list]
 
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, r_value, idx: var.assign_sub(
+    assign_fn = lambda var, r_value: var.assign_sub(
         r_value, use_locking=use_locking,
-        name="%s_%d" % (name, idx), read_value=read_value)
+        name=name, read_value=read_value)
     assign_list = self._apply_assign_fn(assign_fn, value)
     if read_value:
       return assign_list
     return [assign.op for assign in assign_list]
-
 
 @tf_export(v1=["global_variables"])
 def global_variables(scope=None):

@@ -232,7 +232,7 @@ class ConfusionMatrixTest(test.TestCase):
     with self.cached_session():
       cm = confusion_matrix.confusion_matrix(
           labels, predictions, dtype=dtypes.int32)
-      tf_cm = cm.eval()
+      tf_cm = self.evaluate(cm)
     self.assertEqual(tf_cm.dtype, np.int32)
 
   def testOutputIsInt64(self):
@@ -241,7 +241,7 @@ class ConfusionMatrixTest(test.TestCase):
     with self.cached_session():
       cm = confusion_matrix.confusion_matrix(
           labels, predictions, dtype=dtypes.int64)
-      tf_cm = cm.eval()
+      tf_cm = self.evaluate(cm)
     self.assertEqual(tf_cm.dtype, np.int64)
 
 
@@ -261,8 +261,8 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
             labels_placeholder, predictions_placeholder))
 
     with self.cached_session():
-      self.assertAllEqual(label_values, static_labels.eval())
-      self.assertAllEqual(prediction_values, static_predictions.eval())
+      self.assertAllEqual(label_values, self.evaluate(static_labels))
+      self.assertAllEqual(prediction_values, self.evaluate(static_predictions))
       feed_dict = {
           labels_placeholder: label_values,
           predictions_placeholder: prediction_values
@@ -286,8 +286,8 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
             labels_placeholder, predictions_placeholder))
 
     with self.cached_session():
-      self.assertAllEqual(label_values, static_labels.eval())
-      self.assertAllEqual(prediction_values, static_predictions.eval())
+      self.assertAllEqual(label_values, self.evaluate(static_labels))
+      self.assertAllEqual(prediction_values, self.evaluate(static_predictions))
       feed_dict = {
           labels_placeholder: label_values,
           predictions_placeholder: prediction_values
@@ -311,8 +311,8 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
             labels_placeholder, predictions_placeholder, expected_rank_diff=0))
 
     with self.cached_session():
-      self.assertAllEqual(label_values, static_labels.eval())
-      self.assertAllEqual(prediction_values, static_predictions.eval())
+      self.assertAllEqual(label_values, self.evaluate(static_labels))
+      self.assertAllEqual(prediction_values, self.evaluate(static_predictions))
       feed_dict = {
           labels_placeholder: label_values,
           predictions_placeholder: prediction_values
@@ -337,8 +337,8 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
 
     expected_label_values = np.reshape(label_values, newshape=(2, 3))
     with self.cached_session():
-      self.assertAllEqual(expected_label_values, static_labels.eval())
-      self.assertAllEqual(prediction_values, static_predictions.eval())
+      self.assertAllEqual(expected_label_values, self.evaluate(static_labels))
+      self.assertAllEqual(prediction_values, self.evaluate(static_predictions))
       feed_dict = {
           labels_placeholder: label_values,
           predictions_placeholder: prediction_values
@@ -363,8 +363,8 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
 
     expected_label_values = np.reshape(label_values, newshape=(2, 3))
     with self.cached_session():
-      self.assertAllEqual(expected_label_values, static_labels.eval())
-      self.assertAllEqual(prediction_values, static_predictions.eval())
+      self.assertAllEqual(expected_label_values, self.evaluate(static_labels))
+      self.assertAllEqual(prediction_values, self.evaluate(static_predictions))
       feed_dict = {
           labels_placeholder: label_values,
           predictions_placeholder: prediction_values
@@ -389,8 +389,9 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
 
     expected_prediction_values = np.reshape(prediction_values, newshape=(2, 3))
     with self.cached_session():
-      self.assertAllEqual(label_values, static_labels.eval())
-      self.assertAllEqual(expected_prediction_values, static_predictions.eval())
+      self.assertAllEqual(label_values, self.evaluate(static_labels))
+      self.assertAllEqual(expected_prediction_values,
+                          self.evaluate(static_predictions))
       feed_dict = {
           labels_placeholder: label_values,
           predictions_placeholder: prediction_values
@@ -416,8 +417,9 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
 
     expected_prediction_values = np.reshape(prediction_values, newshape=(2, 3))
     with self.cached_session():
-      self.assertAllEqual(label_values, static_labels.eval())
-      self.assertAllEqual(expected_prediction_values, static_predictions.eval())
+      self.assertAllEqual(label_values, self.evaluate(static_labels))
+      self.assertAllEqual(expected_prediction_values,
+                          self.evaluate(static_predictions))
       feed_dict = {
           labels_placeholder: label_values,
           predictions_placeholder: prediction_values

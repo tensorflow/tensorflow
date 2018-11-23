@@ -24,11 +24,12 @@ from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
@@ -58,7 +59,7 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
   def _create_ops(self, ds, ds_iterator, buffer_name, device0, device1):
     ds_iterator_handle = ds_iterator.string_handle()
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_fn(h):
       remote_iterator = iterator_ops.Iterator.from_string_handle(
           h, ds.output_types, ds.output_shapes)
@@ -67,7 +68,7 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
     target = constant_op.constant(device0)
     with ops.device(device1):
       buffer_resource_handle = prefetching_ops.function_buffering_resource(
-          f=_remote_fn,
+          f=_remote_fn.get_concrete_function(),
           output_types=[dtypes.float32],
           target_device=target,
           string_arg=ds_iterator_handle,
@@ -93,18 +94,18 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
                                                   device0, device1)
 
     with self.test_session(config=worker_config) as sess:
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [1.0])
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [2.0])
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [3.0])
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [4.0])
       self._event.wait()
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [5.0])
-      sess.run(destroy_op)
+      self.evaluate(destroy_op)
 
   def testSameDeviceCPU(self):
     self._prefetch_fn_helper_one_shot("same_device_cpu",
@@ -134,35 +135,35 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
         ds, ds_iterator, "reinit", device0, device1)
 
     with self.test_session(config=worker_config) as sess:
-      sess.run(ds_iterator.initializer)
-      elem = sess.run(prefetch_op)
+      self.evaluate(ds_iterator.initializer)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [1.0])
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [2.0])
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [3.0])
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [4.0])
       self._event.wait()
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [5.0])
       # Lets reset the function buffering resource and reinitialize the
       # iterator. Should be able to go through this again.
       self._event.clear()
-      sess.run(reset_op)
-      sess.run(ds_iterator.initializer)
-      elem = sess.run(prefetch_op)
+      self.evaluate(reset_op)
+      self.evaluate(ds_iterator.initializer)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [1.0])
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [2.0])
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [3.0])
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [4.0])
       self._event.wait()
-      elem = sess.run(prefetch_op)
+      elem = self.evaluate(prefetch_op)
       self.assertEqual(elem, [5.0])
-      sess.run(destroy_op)
+      self.evaluate(destroy_op)
 
   def testReinitializationOutOfRange(self):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
@@ -174,30 +175,30 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
         ds, ds_iterator, "reinit", device0, device1)
 
     with self.test_session(config=worker_config) as sess:
-      sess.run(ds_iterator.initializer)
+      self.evaluate(ds_iterator.initializer)
       for i in range(1, 10):
-        elem = sess.run(prefetch_op)
+        elem = self.evaluate(prefetch_op)
         self.assertEqual(elem, [float(i)])
       # Try fetching after its over twice to test out end of sequence.
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(prefetch_op)
+        self.evaluate(prefetch_op)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(prefetch_op)
+        self.evaluate(prefetch_op)
 
       # Now reset everything and try it out again.
       self._event.clear()
-      sess.run(reset_op)
-      sess.run(ds_iterator.initializer)
+      self.evaluate(reset_op)
+      self.evaluate(ds_iterator.initializer)
       for i in range(1, 10):
-        elem = sess.run(prefetch_op)
+        elem = self.evaluate(prefetch_op)
         self.assertEqual(elem, [float(i)])
       # Try fetching after its over twice to test out end of sequence.
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(prefetch_op)
+        self.evaluate(prefetch_op)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(prefetch_op)
+        self.evaluate(prefetch_op)
 
-      sess.run(destroy_op)
+      self.evaluate(destroy_op)
 
   def testStringsGPU(self):
     if not test_util.is_gpu_available():
@@ -210,7 +211,7 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
     ds_iterator = ds.make_one_shot_iterator()
     ds_iterator_handle = ds_iterator.string_handle()
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_fn(h):
       remote_iterator = iterator_ops.Iterator.from_string_handle(
           h, ds.output_types, ds.output_shapes)
@@ -219,7 +220,7 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
     target = constant_op.constant(device0)
     with ops.device(device1):
       buffer_resource_handle = prefetching_ops.function_buffering_resource(
-          f=_remote_fn,
+          f=_remote_fn.get_concrete_function(),
           output_types=[dtypes.string],
           target_device=target,
           string_arg=ds_iterator_handle,
@@ -234,13 +235,13 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
           buffer_resource_handle, ignore_lookup_error=True)
 
     with self.cached_session() as sess:
-      self.assertEqual([b"a"], sess.run(prefetch_op))
-      self.assertEqual([b"b"], sess.run(prefetch_op))
-      self.assertEqual([b"c"], sess.run(prefetch_op))
+      self.assertEqual([b"a"], self.evaluate(prefetch_op))
+      self.assertEqual([b"b"], self.evaluate(prefetch_op))
+      self.assertEqual([b"c"], self.evaluate(prefetch_op))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(prefetch_op)
+        self.evaluate(prefetch_op)
 
-      sess.run(destroy_op)
+      self.evaluate(destroy_op)
 
 
 if __name__ == "__main__":

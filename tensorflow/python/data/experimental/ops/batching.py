@@ -611,6 +611,9 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
   def output_types(self):
     return self._output_types
 
+  def _transformation_name(self):
+    return "tf.data.experimental.map_and_batch()"
+
 
 @tf_export("data.experimental.map_and_batch")
 def map_and_batch(map_func,

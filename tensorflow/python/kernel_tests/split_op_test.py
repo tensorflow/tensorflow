@@ -54,13 +54,13 @@ class SplitOpTest(test.TestCase):
     model_input = array_ops.placeholder(dtypes.float32)
     inp = np.zeros((1, 10))
     # check that we still fail at runtime if the shapes were unknown
-    with self.test_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       with self.assertRaises(errors_impl.InvalidArgumentError):
         sess.run(array_ops.split(model_input, [4]), {model_input: inp})
 
     # test that we can pass a scalar Tensor as num_splits
     for axis in [0, -2]:
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         result = sess.run(
             array_ops.split(
                 array_ops.ones([4, 4]),
@@ -82,7 +82,7 @@ class SplitOpTest(test.TestCase):
     model_input2 = array_ops.placeholder(dtypes.float32, shape=[None, 2])
     result = array_ops.split(model_input2, [2, 2], axis=0)[0]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       sess.run(result, feed_dict={model_input2: np.ones([4, 2])})
 
   def testFailWithoutExplicitNum(self):
@@ -90,7 +90,7 @@ class SplitOpTest(test.TestCase):
 
     value = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       with self.assertRaises(ValueError) as context:
         sess.run(array_ops.split(value, size_splits), {size_splits: [2, 2, 6]})
       self.assertTrue("Cannot infer num from shape" in str(context.exception))
@@ -211,7 +211,7 @@ class SplitOpTest(test.TestCase):
 
   def testOutputShape(self):
     for axis in [1, -1]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         tensor = array_ops.placeholder(dtypes.float32, shape=[None, 12])
         size_splits = [3, 7, 2]
         outputs = array_ops.split(tensor, size_splits, axis)
@@ -312,13 +312,13 @@ class SplitOpTest(test.TestCase):
 
   def _testGradientsSimple(self, dtype):
     inp = self._makeData((4, 4), dtype)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       inp_tensor = ops.convert_to_tensor(inp)
       s = array_ops.split(value=inp_tensor, num_or_size_splits=4, axis=1)
       inp_grads = [self._makeData((4, 1), dtype)for _ in range(4)]
       grad_tensors = [constant_op.constant(x) for x in inp_grads]
       grad = gradients_impl.gradients(s, [inp_tensor], grad_tensors)[0]
-      result = grad.eval()
+      result = self.evaluate(grad)
     for i in range(4):
       self.assertAllEqual(result[:, i:i + 1], inp_grads[i])
 
@@ -375,7 +375,7 @@ class SplitOpTest(test.TestCase):
 
     splits = array_ops.placeholder(dtypes.int32, [3])
     y = array_ops.split(values, splits, axis=x)
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "must have exactly one element"):
         sess.run(y, {x: np.array([], dtype=np.int32), splits: [4, 11, 15]})

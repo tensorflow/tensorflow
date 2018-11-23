@@ -25,6 +25,8 @@ tf_ops_fuzz_target_lib("string_to_number")
 
 tf_ops_fuzz_target_lib("string_split")
 
+tf_ops_fuzz_target_lib("string_split_v2")
+
 tf_ops_fuzz_target_lib("encode_base64")
 
 tf_ops_fuzz_target_lib("decode_base64")
@@ -34,8 +36,6 @@ tf_ops_fuzz_target_lib("encode_jpeg")
 tf_ops_fuzz_target_lib("decode_bmp")
 
 tf_ops_fuzz_target_lib("decode_png")
-
-tf_ops_fuzz_target_lib("decode_jpeg")
 
 tf_ops_fuzz_target_lib("decode_wav")
 

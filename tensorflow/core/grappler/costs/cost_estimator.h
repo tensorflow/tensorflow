@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 
 #include <chrono>
+#include <cmath>
 #include <unordered_map>
 #include "tensorflow/core/lib/core/status.h"
 
@@ -29,6 +30,40 @@ struct GrapplerItem;
 
 constexpr int64 kMemoryUnknown = -1ll;
 constexpr int64 kZeroMemory = 0ll;
+
+struct DeviceInfo {
+  // Billions of operations executed per second.
+  double gigaops;
+
+  // Bandwidth to main memory in GB per second.
+  double gb_per_sec;
+
+  // Read bandwidth to intermediate memory in GB per second.
+  double intermediate_read_gb_per_sec;
+
+  // Read bandwidth to intermediate memory in GB per second.
+  double intermediate_write_gb_per_sec;
+
+  DeviceInfo()
+      : gigaops(INFINITY),
+        gb_per_sec(INFINITY),
+        intermediate_read_gb_per_sec(INFINITY),
+        intermediate_write_gb_per_sec(INFINITY) {}
+
+  DeviceInfo(const DeviceInfo& input)
+      : gigaops(input.gigaops),
+        gb_per_sec(input.gb_per_sec),
+        intermediate_read_gb_per_sec(input.intermediate_read_gb_per_sec),
+        intermediate_write_gb_per_sec(input.intermediate_write_gb_per_sec) {}
+
+  DeviceInfo(double gigaops, double gb_per_sec,
+             double intermediate_read_gb_per_sec = INFINITY,
+             double intermediate_write_gb_per_sec = INFINITY)
+      : gigaops(gigaops),
+        gb_per_sec(gb_per_sec),
+        intermediate_read_gb_per_sec(intermediate_read_gb_per_sec),
+        intermediate_write_gb_per_sec(intermediate_write_gb_per_sec) {}
+};
 
 // Holds the set of things we might want to estimate or measure in Grappler.
 // Always produce execution time. Other fields are optional depending on the
@@ -96,6 +131,9 @@ struct Costs {
   // Memory access cost of running the graph.
   Duration memory_time;
 
+  // Intermediate memory access cost of running the graph
+  Duration intermediate_memory_time;
+
   // This field can be a very pessimistic estimate of the main memory
   // requirements of a graph. For example, it might assume that all activations
   // are live for all of a graph's execution.
@@ -141,6 +179,7 @@ Costs::Costs() {
   execution_time = Duration::zero();
   compute_time = Duration::zero();
   memory_time = Duration::zero();
+  intermediate_memory_time = Duration::zero();
   max_memory = kMemoryUnknown;
   persistent_memory = kMemoryUnknown;
   temporary_memory = kMemoryUnknown;
@@ -153,6 +192,7 @@ Costs Costs::ZeroCosts() {
   costs.execution_time = Duration::zero();
   costs.compute_time = Duration::zero();
   costs.memory_time = Duration::zero();
+  costs.intermediate_memory_time = Duration::zero();
   costs.max_memory = kZeroMemory;
   costs.persistent_memory = kZeroMemory;
   costs.temporary_memory = kZeroMemory;

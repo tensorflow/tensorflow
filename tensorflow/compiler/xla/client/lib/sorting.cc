@@ -29,7 +29,7 @@ XlaOp TopK(XlaOp input, int64 k) {
     auto input_dims = input_shape.dimensions();
     std::vector<int64> broadcast_dims(input_dims.begin(), input_dims.end() - 1);
     XlaOp broadcast_s32 = Broadcast(iota_s32, broadcast_dims);
-    XlaOp sort_result = Sort(Neg(input), broadcast_s32);
+    XlaOp sort_result = Sort(Neg(input), {broadcast_s32});
     std::vector<int64> start_indices(input_shape.dimensions_size(), 0);
     std::vector<int64> limit_indices(input_dims.begin(), input_dims.end());
     limit_indices[last_dim] = k;

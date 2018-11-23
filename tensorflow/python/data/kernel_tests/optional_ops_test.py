@@ -227,7 +227,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       # For each element of the dataset, assert that the optional evaluates to
       # the expected value.
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for _ in range(3):
         elem_has_value, elem_value = sess.run([elem_has_value_t, elem_value_t])
         self.assertTrue(elem_has_value)
@@ -236,7 +236,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
       # After exhausting the iterator, `next_elem.has_value()` will evaluate to
       # false, and attempting to get the value will fail.
       for _ in range(2):
-        self.assertFalse(sess.run(elem_has_value_t))
+        self.assertFalse(self.evaluate(elem_has_value_t))
         with self.assertRaises(errors.InvalidArgumentError):
           sess.run(elem_value_t)
 

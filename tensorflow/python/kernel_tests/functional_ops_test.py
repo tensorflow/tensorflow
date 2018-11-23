@@ -56,6 +56,7 @@ def simple_scoped_fn(a, x):
     return math_ops.multiply(math_ops.add(a, x), two)
 
 
+@test_util.with_control_flow_v2
 class FunctionalOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -481,6 +482,7 @@ class FunctionalOpsTest(test.TestCase):
     y = functional_ops.map_fn(lambda e: e, x)
     self.assertIs(None, y.get_shape().dims)
 
+  @test_util.disable_control_flow_v2("b/119323354")
   @test_util.run_in_graph_and_eager_modes
   def testMapEmptyScalar(self):
     map_return = functional_ops.map_fn(lambda x: 1, constant_op.constant([]))
@@ -489,6 +491,7 @@ class FunctionalOpsTest(test.TestCase):
 
   # TODO(akshayka): this test fails in eager: the iterable is of length 0 so
   # so the body of the while loop never executes
+  @test_util.disable_control_flow_v2("b/119323354")
   def testMapEmptyTensor(self):
     with self.cached_session():
       map_return = functional_ops.map_fn(lambda x: array_ops.zeros([3, 2]),
@@ -564,8 +567,8 @@ class FunctionalOpsTest(test.TestCase):
           target="/job:worker/replica:0/task:0/cpu:1")
 
     with session.Session(worker[0].target) as sess:
-      sess.run(variables.global_variables_initializer())
-      mul = sess.run(remote_op)
+      self.evaluate(variables.global_variables_initializer())
+      mul = self.evaluate(remote_op)
       self.assertEqual(mul, [6])
 
   def testRemoteFunctionDirectSession(self):
@@ -588,8 +591,8 @@ class FunctionalOpsTest(test.TestCase):
           target="/job:localhost/replica:0/task:0/cpu:1")
 
     with self.test_session(config=worker_config) as sess:
-      sess.run(variables.global_variables_initializer())
-      mul = sess.run(remote_op)
+      self.evaluate(variables.global_variables_initializer())
+      mul = self.evaluate(remote_op)
       self.assertEqual(mul, [6])
 
   def testRemoteFunctionSameDeviceDirectSession(self):
@@ -607,8 +610,8 @@ class FunctionalOpsTest(test.TestCase):
           args=[a, b], Tout=[dtypes.int32], f=_remote_fn, target="/cpu:0")
 
     with self.cached_session() as sess:
-      sess.run(variables.global_variables_initializer())
-      mul = sess.run(remote_op)
+      self.evaluate(variables.global_variables_initializer())
+      mul = self.evaluate(remote_op)
       self.assertEqual(mul, [6])
 
   def testRemoteFunctionCPUGPU(self):
@@ -631,8 +634,8 @@ class FunctionalOpsTest(test.TestCase):
           target="/job:localhost/replica:0/task:0/device:GPU:0")[0] + 3.0
 
     with self.cached_session() as sess:
-      sess.run(variables.global_variables_initializer())
-      mul = sess.run(remote_op)
+      self.evaluate(variables.global_variables_initializer())
+      mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9.0)
 
   def testRemoteFunctionGPUCPU(self):
@@ -655,8 +658,8 @@ class FunctionalOpsTest(test.TestCase):
           target="/job:localhost/replica:0/task:0/cpu:0")[0] + 3.0
 
     with self.cached_session() as sess:
-      sess.run(variables.global_variables_initializer())
-      mul = sess.run(remote_op)
+      self.evaluate(variables.global_variables_initializer())
+      mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9.0)
 
   def testRemoteFunctionGPUCPUStrings(self):
@@ -674,7 +677,7 @@ class FunctionalOpsTest(test.TestCase):
           args=[a], Tout=[dtypes.string], f=_remote_fn, target="/cpu:0")
 
     with self.cached_session() as sess:
-      ret = sess.run(remote_op)
+      ret = self.evaluate(remote_op)
       self.assertAllEqual(ret, [b"a"])
 
   def testRemoteFunctionCrossProcess(self):
@@ -696,8 +699,8 @@ class FunctionalOpsTest(test.TestCase):
           target="/job:worker/replica:0/task:1/cpu:0")[0] + 3.0
 
     with session.Session(workers[0].target) as sess:
-      sess.run(variables.global_variables_initializer())
-      mul = sess.run(remote_op)
+      self.evaluate(variables.global_variables_initializer())
+      mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9)
 
   def testIf(self):
@@ -829,6 +832,49 @@ class FunctionalOpsTest(test.TestCase):
           self.assertAllEqual(5050.,
                               sess.run([result, c], feed_dict={n: 100.})[0])
 
+  # pylint: disable=cell-var-from-loop
+  def testWhileCapturedInputs(self):
+    for use_gpu in (True, False):
+      with ops.Graph().as_default() as g:
+        v = variables.Variable(1.0)
+
+        def TestCond(n, *args):
+          del args
+          return n < 10
+
+        @function.Defun(*[dtypes.float32] * 2)
+        def TestUnary(n, x):
+          return math_ops.add(n, 1), x + n + v
+
+        @function.Defun(*[dtypes.float32] * 3)
+        def TestBinary(n, x, x2):
+          return math_ops.add(n, 1), x + n + v, x2 + v
+
+        with self.session(graph=g, use_gpu=use_gpu) as sess:
+          result_unary = functional_ops.While(
+              [1.0, 0.],
+              function.Defun(*[dtypes.float32] * 2)(TestCond), TestUnary)
+          result_binary = functional_ops.While(
+              [1.0, 0., 0.],
+              function.Defun(*[dtypes.float32] * 3)(TestCond), TestBinary)
+          self.evaluate(variables.global_variables_initializer())
+          assert len(result_unary) == 2
+          self.assertEqual([10.0, 54.0], self.evaluate(result_unary))
+          assert len(result_binary) == 3
+          self.assertEqual([10.0, 54.0, 9.0], self.evaluate(result_binary))
+
+          def TestCondCapture(n, *args):
+            del args
+            return math_ops.to_float(n) + v < 10
+
+          with self.assertRaises(ValueError):
+            _ = functional_ops.While(
+                [1],
+                function.Defun(dtypes.int32)(TestCondCapture),
+                function.Defun(dtypes.int32, dtypes.float32)(TestUnary))
+
+  # pylint: enable=cell-var-from-loop
+
   def _tfSum(self, use_gpu, rewrite_with_while):
     with ops.Graph().as_default() as g:
       with self.session(graph=g, use_gpu=use_gpu) as sess:
@@ -846,7 +892,7 @@ class FunctionalOpsTest(test.TestCase):
                 100, 0, -1, [0.], Body, rewrite_with_while=rewrite_with_while)
             [0],
         ]
-        xvals = sess.run(xs)
+        xvals = self.evaluate(xs)
       self.assertAllEqual(210, xvals[0])
       self.assertAllEqual(5050, xvals[1])
 
@@ -903,16 +949,16 @@ class FunctionalOpsTest(test.TestCase):
         result_binary = functional_ops.For(
             1, 10, 1, [0., 0.], TestBinary,
             rewrite_with_while=rewrite_with_while)
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         assert not result_nullary
         # The nullary variant doesn't return anything so we can't easily run it.
         # As a total hack, fetch the operation by name and run it.
         sess.run(ops.get_default_graph().get_operation_by_name(
             "While" if rewrite_with_while else "For"))
         assert len(result_unary) == 1
-        self.assertEqual([54.0], sess.run(result_unary))
+        self.assertEqual([54.0], self.evaluate(result_unary))
         assert len(result_binary) == 2
-        self.assertEqual([54.0, 9.0], sess.run(result_binary))
+        self.assertEqual([54.0, 9.0], self.evaluate(result_binary))
 
   def _tfMLP(self, xval, wsval, bsval, rewrite_with_while):
     # On GPU, don't rewrite using a while loop.
@@ -931,7 +977,7 @@ class FunctionalOpsTest(test.TestCase):
           MLP,
           rewrite_with_while=rewrite_with_while)[0]
 
-      return ret.eval()
+      return self.evaluate(ret)
 
   def _npMLP(self, xval, wsval, bsval):
     for i in range(wsval.shape[0]):
@@ -995,8 +1041,8 @@ class FunctionalOpsTest(test.TestCase):
       avals = [Poly(a), Grad(a)]
       b = constant_op.constant(1.)
       bvals = [Poly(b), Grad(b)]
-      self.assertAllEqual(sess.run(avals), [8., 4.])
-      self.assertAllEqual(sess.run(bvals), [17., 16.])
+      self.assertAllEqual(self.evaluate(avals), [8., 4.])
+      self.assertAllEqual(self.evaluate(bvals), [17., 16.])
 
 
 # TODO(akshayka): Replace `function.Defun` with tf.contrib.eager.defun` in the
@@ -1147,12 +1193,26 @@ class PartitionedCallTest(test.TestCase):
             allow_soft_placement=False,
             log_device_placement=True,
             device_count={"CPU": 2})) as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       expected = sess.run(sum_gather())
       result = sess.run(
           functional_ops.partitioned_call(
               args=defined.captured_inputs, f=defined))
       self.assertAllEqual(expected, result)
+
+  # Use an invalid executor name to test the plumbing of the executor_type attr.
+  def testExecutorTypeAttrExecutorNotFound(self):
+    @function.Defun(dtypes.int32)
+    def AddFive(x):
+      return x + 5
+
+    op = functional_ops.partitioned_call(
+        args=[constant_op.constant([1, 2, 3], dtype=dtypes.int32)],
+        f=AddFive,
+        executor_type="NON_EXISTENT_EXECUTOR")
+    with self.assertRaisesRegexp(errors.NotFoundError,
+                                 "NON_EXISTENT_EXECUTOR"):
+      self.evaluate(op)
 
 
 if __name__ == "__main__":

@@ -276,8 +276,8 @@ class ConvTest(test.TestCase):
         # Check the names of weights in order.
         self.assertTrue('kernel' in weights[0].name)
         self.assertTrue('bias' in weights[1].name)
-        sess.run(variables.global_variables_initializer())
-        weights = sess.run(weights)
+        self.evaluate(variables.global_variables_initializer())
+        weights = self.evaluate(weights)
         # Check that the kernel weights got initialized to ones (from scope)
         self.assertAllClose(weights[0], np.ones((3, 3, 3, 32)))
         # Check that the bias still got initialized to zeros.
@@ -663,8 +663,8 @@ class SeparableConv2DTest(test.TestCase):
         self.assertTrue('depthwise_kernel' in weights[0].name)
         self.assertTrue('pointwise_kernel' in weights[1].name)
         self.assertTrue('bias' in weights[2].name)
-        sess.run(variables.global_variables_initializer())
-        weights = sess.run(weights)
+        self.evaluate(variables.global_variables_initializer())
+        weights = self.evaluate(weights)
         # Check that the kernel weights got initialized to ones (from scope)
         self.assertAllClose(weights[0], np.ones((3, 3, 3, 1)))
         self.assertAllClose(weights[1], np.ones((1, 1, 3, 32)))
@@ -902,8 +902,8 @@ class Conv2DTransposeTest(test.TestCase):
         # Check the names of weights in order.
         self.assertTrue('kernel' in weights[0].name)
         self.assertTrue('bias' in weights[1].name)
-        sess.run(variables.global_variables_initializer())
-        weights = sess.run(weights)
+        self.evaluate(variables.global_variables_initializer())
+        weights = self.evaluate(weights)
         # Check that the kernel weights got initialized to ones (from scope)
         self.assertAllClose(weights[0], np.ones((3, 3, 32, 3)))
         # Check that the bias still got initialized to zeros.
@@ -1084,8 +1084,8 @@ class Conv3DTransposeTest(test.TestCase):
         # Check the names of weights in order.
         self.assertTrue('kernel' in weights[0].name)
         self.assertTrue('bias' in weights[1].name)
-        sess.run(variables.global_variables_initializer())
-        weights = sess.run(weights)
+        self.evaluate(variables.global_variables_initializer())
+        weights = self.evaluate(weights)
         # Check that the kernel weights got initialized to ones (from scope)
         self.assertAllClose(weights[0], np.ones((3, 3, 3, 4, 32)))
         # Check that the bias still got initialized to zeros.

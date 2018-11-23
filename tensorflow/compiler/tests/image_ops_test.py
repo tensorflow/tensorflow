@@ -26,7 +26,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -449,8 +448,8 @@ class ResizeBilinearTest(xla_test.XLATestCase):
     for dtype in self.float_types:
       self._assertForwardOpMatchesExpected(
           np.array([[1, 2]], dtype=dtype), [3, 3],
-          expected=np.array(
-              [[1, 1.5, 2], [1, 1.5, 2], [1, 1.5, 2]], dtype=np.float32))
+          expected=np.array([[1, 1.5, 2], [1, 1.5, 2], [1, 1.5, 2]],
+                            dtype=np.float32))
 
   def testAlignCorners1x2To3x2Grad(self):
     for dtype in self.float_types:
@@ -478,8 +477,8 @@ class ResizeBilinearTest(xla_test.XLATestCase):
     for dtype in self.float_types:
       self._assertForwardOpMatchesExpected(
           np.array([[1, 2], [3, 4]], dtype=dtype), [3, 3],
-          expected=np.array(
-              [[1, 1.5, 2], [2, 2.5, 3], [3, 3.5, 4]], dtype=np.float32))
+          expected=np.array([[1, 1.5, 2], [2, 2.5, 3], [3, 3.5, 4]],
+                            dtype=np.float32))
 
   def testAlignCorners2x2To3x3Grad(self):
     self._assertBackwardOpMatchesExpected(
@@ -499,8 +498,8 @@ class ResizeBilinearTest(xla_test.XLATestCase):
           np.array([[7, 13], [22, 4]], dtype=np.float32),
           input_shape=[3, 3],
           dtype=dtype,
-          expected=np.array(
-              [[7, 0, 13], [0, 0, 0], [22, 0, 4]], dtype=np.float32))
+          expected=np.array([[7, 0, 13], [0, 0, 0], [22, 0, 4]],
+                            dtype=np.float32))
 
   def testAlignCorners4x4To3x3(self):
     for dtype in self.float_types:
@@ -508,8 +507,8 @@ class ResizeBilinearTest(xla_test.XLATestCase):
           np.array(
               [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]],
               dtype=dtype), [3, 3],
-          expected=np.array(
-              [[1, 2.5, 4], [7, 8.5, 10], [13, 14.5, 16]], dtype=np.float32))
+          expected=np.array([[1, 2.5, 4], [7, 8.5, 10], [13, 14.5, 16]],
+                            dtype=np.float32))
 
   def testAlignCorners4x4To3x3Grad(self):
     for dtype in self.float_types:
@@ -517,41 +516,39 @@ class ResizeBilinearTest(xla_test.XLATestCase):
           np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32),
           input_shape=[4, 4],
           dtype=dtype,
-          expected=np.array(
-              [[1, 1, 1, 3], [2, 1.25, 1.25, 3], [2, 1.25, 1.25, 3],
-               [7, 4, 4, 9]],
-              dtype=np.float32))
+          expected=np.array([[1, 1, 1, 3], [2, 1.25, 1.25, 3],
+                             [2, 1.25, 1.25, 3], [7, 4, 4, 9]],
+                            dtype=np.float32))
 
   def testAlignCorners3x3To9x9(self):
     for dtype in self.float_types:
       self._assertForwardOpMatchesExpected(
           np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=dtype), [9, 9],
           expected=np.array(
-              [[1.0, 1.25, 1.50, 1.75, 2.00, 2.25, 2.50, 2.75, 3.00], [
-                  1.75, 2.00, 2.25, 2.50, 2.75, 3.00, 3.25, 3.50, 3.75
-              ], [2.50, 2.75, 3.00, 3.25, 3.50, 3.75, 4.00, 4.25, 4.50], [
-                  3.25, 3.50, 3.75, 4.00, 4.25, 4.50, 4.75, 5.00, 5.25
-              ], [4.00, 4.25, 4.50, 4.75, 5.00, 5.25, 5.50, 5.75, 6.00], [
-                  4.75, 5.00, 5.25, 5.50, 5.75, 6.00, 6.25, 6.50, 6.75
-              ], [5.50, 5.75, 6.00, 6.25, 6.50, 6.75, 7.00, 7.25, 7.50], [
-                  6.25, 6.50, 6.75, 7.00, 7.25, 7.50, 7.75, 8.00, 8.25
-              ], [7.00, 7.25, 7.50, 7.75, 8.00, 8.25, 8.50, 8.75, 9.00]],
+              [[1.0, 1.25, 1.50, 1.75, 2.00, 2.25, 2.50, 2.75, 3.00],
+               [1.75, 2.00, 2.25, 2.50, 2.75, 3.00, 3.25, 3.50, 3.75],
+               [2.50, 2.75, 3.00, 3.25, 3.50, 3.75, 4.00, 4.25, 4.50],
+               [3.25, 3.50, 3.75, 4.00, 4.25, 4.50, 4.75, 5.00, 5.25],
+               [4.00, 4.25, 4.50, 4.75, 5.00, 5.25, 5.50, 5.75, 6.00],
+               [4.75, 5.00, 5.25, 5.50, 5.75, 6.00, 6.25, 6.50, 6.75],
+               [5.50, 5.75, 6.00, 6.25, 6.50, 6.75, 7.00, 7.25, 7.50],
+               [6.25, 6.50, 6.75, 7.00, 7.25, 7.50, 7.75, 8.00, 8.25],
+               [7.00, 7.25, 7.50, 7.75, 8.00, 8.25, 8.50, 8.75, 9.00]],
               dtype=np.float32))
 
   def testAlignCorners3x3To9x9Grad(self):
     for dtype in self.float_types:
       self._assertBackwardOpMatchesExpected(
-          np.array(
-              [[1.00, 1.25, 1.50, 1.75, 2.00, 2.25, 2.50, 2.75, 3.00], [
-                  1.75, 2.00, 2.25, 2.50, 2.75, 3.00, 3.25, 3.50, 3.75
-              ], [2.50, 2.75, 3.00, 3.25, 3.50, 3.75, 4.00, 4.25, 4.50], [
-                  3.25, 3.50, 3.75, 4.00, 4.25, 4.50, 4.75, 5.00, 5.25
-              ], [4.00, 4.25, 4.50, 4.75, 5.00, 5.25, 5.50, 5.75, 6.00], [
-                  4.75, 5.00, 5.25, 5.50, 5.75, 6.00, 6.25, 6.50, 6.75
-              ], [5.50, 5.75, 6.00, 6.25, 6.50, 6.75, 7.00, 7.25, 7.50], [
-                  6.25, 6.50, 6.75, 7.00, 7.25, 7.50, 7.75, 8.00, 8.25
-              ], [7.00, 7.25, 7.50, 7.75, 8.00, 8.25, 8.50, 8.75, 9.00]],
-              dtype=np.float32),
+          np.array([[1.00, 1.25, 1.50, 1.75, 2.00, 2.25, 2.50, 2.75, 3.00],
+                    [1.75, 2.00, 2.25, 2.50, 2.75, 3.00, 3.25, 3.50, 3.75],
+                    [2.50, 2.75, 3.00, 3.25, 3.50, 3.75, 4.00, 4.25, 4.50],
+                    [3.25, 3.50, 3.75, 4.00, 4.25, 4.50, 4.75, 5.00, 5.25],
+                    [4.00, 4.25, 4.50, 4.75, 5.00, 5.25, 5.50, 5.75, 6.00],
+                    [4.75, 5.00, 5.25, 5.50, 5.75, 6.00, 6.25, 6.50, 6.75],
+                    [5.50, 5.75, 6.00, 6.25, 6.50, 6.75, 7.00, 7.25, 7.50],
+                    [6.25, 6.50, 6.75, 7.00, 7.25, 7.50, 7.75, 8.00, 8.25],
+                    [7.00, 7.25, 7.50, 7.75, 8.00, 8.25, 8.50, 8.75, 9.00]],
+                   dtype=np.float32),
           input_shape=[3, 3],
           dtype=dtype,
           expected=np.array(
@@ -572,12 +569,12 @@ class ResizeBilinearTest(xla_test.XLATestCase):
         (np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.float32) + np.array(
             [[0], [1], [2], [3], [4], [5], [6], [7]], dtype=np.float32)) * 15.0,
         [16, 16],
-        expected=7 * (np.array(
-            [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]],
-            dtype=np.float32) + np.array(
-                [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11],
-                 [12], [13], [14], [15]],
-                dtype=np.float32)),
+        expected=7 *
+        (np.array([[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]],
+                  dtype=np.float32) +
+         np.array([[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11],
+                   [12], [13], [14], [15]],
+                  dtype=np.float32)),
         large_tolerance=True)
 
   def testNonAlignCorners3x2To6x4(self):
@@ -601,172 +598,230 @@ class ResizeBilinearTest(xla_test.XLATestCase):
           expected=np.array(expected_data, dtype=dtype),
           align_corners=False)
 
+  def testNonAlignCorners3x2To6x4Batch2(self):
+    input_data = [[[64, 32], [32, 64], [50, 100]], [[32, 16], [16, 32],
+                                                    [25, 50]]]
+    expected_data = [[[64.0, 48.0, 32.0, 32.0], [48.0, 48.0, 48.0, 48.0],
+                      [32.0, 48.0, 64.0, 64.0], [41.0, 61.5, 82.0, 82.0],
+                      [50.0, 75.0, 100.0, 100.0], [50.0, 75.0, 100.0, 100.0]],
+                     [[32.0, 24.0, 16.0, 16.0], [24.0, 24.0, 24.0, 24.0],
+                      [16.0, 24.0, 32.0, 32.0], [20.5, 30.75, 41.0, 41.0],
+                      [25.0, 37.5, 50.0, 50.0], [25.0, 37.5, 50.0, 50.0]]]
+
+    for dtype in self.float_types:
+      input_image = np.array(input_data, dtype=dtype)
+      expected = np.array(expected_data, dtype=dtype)
+      with self.cached_session() as sess, self.test_scope():
+        image = array_ops.placeholder(input_image.dtype)
+        resized = gen_image_ops.resize_bilinear(
+            image, [6, 4], align_corners=False)
+        out = sess.run(resized, {image: input_image[:, :, :, np.newaxis]})
+        self.assertAllClose(expected[:, :, :, np.newaxis], out)
+
 
 class NonMaxSuppressionTest(xla_test.XLATestCase):
 
   def testNMS128From1024(self):
-    with compat.forward_compatibility_horizon(2018, 8, 8):
-      num_boxes = 1024
-      boxes_np = np.random.normal(50, 10, (num_boxes, 4)).astype("f4")
-      scores_np = np.random.normal(0.5, 0.1, (num_boxes,)).astype("f4")
+    num_boxes = 1024
+    boxes_np = np.random.normal(50, 10, (num_boxes, 4)).astype("f4")
+    scores_np = np.random.normal(0.5, 0.1, (num_boxes,)).astype("f4")
 
-      max_output_size = 128
-      iou_threshold_np = np.array(0.5, dtype=np.float32)
-      score_threshold_np = np.array(0.0, dtype=np.float32)
+    max_output_size = 128
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    score_threshold_np = np.array(0.0, dtype=np.float32)
 
-      with self.cached_session() as sess:
-        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
-        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
-        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
-                                              iou_threshold_np.shape)
-        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
-                                                score_threshold_np.shape)
-        with self.test_scope():
-          selected_indices = image_ops.non_max_suppression_padded(
-              boxes=boxes,
-              scores=scores,
-              max_output_size=max_output_size,
-              iou_threshold=iou_threshold,
-              score_threshold=score_threshold,
-              pad_to_max_output_size=True)
-        inputs_feed = {
-            boxes: boxes_np,
-            scores: scores_np,
-            score_threshold: score_threshold_np,
-            iou_threshold: iou_threshold_np
-        }
-        (indices_tf, _) = sess.run(selected_indices, feed_dict=inputs_feed)
+    with self.cached_session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                            iou_threshold_np.shape)
+      score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                              score_threshold_np.shape)
+      with self.test_scope():
+        selected_indices = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+            pad_to_max_output_size=True)
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          score_threshold: score_threshold_np,
+          iou_threshold: iou_threshold_np
+      }
+      (indices_tf, _) = sess.run(selected_indices, feed_dict=inputs_feed)
 
-        self.assertEqual(indices_tf.size, max_output_size)
+      self.assertEqual(indices_tf.size, max_output_size)
 
   def testNMS3From6Boxes(self):
-    with compat.forward_compatibility_horizon(2018, 8, 8):
-      # Three boxes are selected based on IOU.
-      boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
-                    [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
-      boxes_np = np.array(boxes_data, dtype=np.float32)
+    # Three boxes are selected based on IOU.
+    boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    boxes_np = np.array(boxes_data, dtype=np.float32)
 
-      scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
-      scores_np = np.array(scores_data, dtype=np.float32)
+    scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    scores_np = np.array(scores_data, dtype=np.float32)
 
-      max_output_size = 3
-      iou_threshold_np = np.array(0.5, dtype=np.float32)
-      score_threshold_np = np.array(0.0, dtype=np.float32)
+    max_output_size = 3
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    score_threshold_np = np.array(0.0, dtype=np.float32)
 
-      with self.cached_session() as sess:
-        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
-        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
-        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
-                                              iou_threshold_np.shape)
-        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
-                                                score_threshold_np.shape)
-        with self.test_scope():
-          selected_indices = image_ops.non_max_suppression_padded(
-              boxes=boxes,
-              scores=scores,
-              max_output_size=max_output_size,
-              iou_threshold=iou_threshold,
-              score_threshold=score_threshold,
-              pad_to_max_output_size=True)
-        inputs_feed = {
-            boxes: boxes_np,
-            scores: scores_np,
-            score_threshold: score_threshold_np,
-            iou_threshold: iou_threshold_np
-        }
-        (indices_tf, num_valid) = sess.run(
-            selected_indices, feed_dict=inputs_feed)
+    with self.cached_session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                            iou_threshold_np.shape)
+      score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                              score_threshold_np.shape)
+      with self.test_scope():
+        selected_indices = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+            pad_to_max_output_size=True)
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          score_threshold: score_threshold_np,
+          iou_threshold: iou_threshold_np
+      }
+      (indices_tf, num_valid) = sess.run(
+          selected_indices, feed_dict=inputs_feed)
 
-        self.assertEqual(indices_tf.size, max_output_size)
-        self.assertEqual(num_valid, 3)
-        self.assertAllClose(indices_tf[:num_valid], [3, 0, 5])
+      self.assertEqual(indices_tf.size, max_output_size)
+      self.assertEqual(num_valid, 3)
+      self.assertAllClose(indices_tf[:num_valid], [3, 0, 5])
 
   def testNMS3Then2WithScoreThresh(self):
     # Three boxes are selected based on IOU.
     # One is filtered out by score threshold.
 
-    with compat.forward_compatibility_horizon(2018, 8, 8):
-      boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
-                    [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
-      boxes_np = np.array(boxes_data, dtype=np.float32)
+    boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    boxes_np = np.array(boxes_data, dtype=np.float32)
 
-      scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
-      scores_np = np.array(scores_data, dtype=np.float32)
-      max_output_size = 3
-      iou_threshold_np = np.array(0.5, dtype=np.float32)
-      score_threshold_np = np.array(0.4, dtype=np.float32)
+    scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    scores_np = np.array(scores_data, dtype=np.float32)
+    max_output_size = 3
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    score_threshold_np = np.array(0.4, dtype=np.float32)
 
-      with self.cached_session() as sess:
-        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
-        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
-        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
-                                              iou_threshold_np.shape)
-        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
-                                                score_threshold_np.shape)
-        with self.test_scope():
-          selected_indices = image_ops.non_max_suppression_padded(
-              boxes=boxes,
-              scores=scores,
-              max_output_size=max_output_size,
-              iou_threshold=iou_threshold,
-              score_threshold=score_threshold,
-              pad_to_max_output_size=True)
-        inputs_feed = {
-            boxes: boxes_np,
-            scores: scores_np,
-            iou_threshold: iou_threshold_np,
-            score_threshold: score_threshold_np
-        }
-        (indices_tf, num_valid) = sess.run(
-            selected_indices, feed_dict=inputs_feed)
+    with self.cached_session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                            iou_threshold_np.shape)
+      score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                              score_threshold_np.shape)
+      with self.test_scope():
+        selected_indices = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+            pad_to_max_output_size=True)
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          iou_threshold: iou_threshold_np,
+          score_threshold: score_threshold_np
+      }
+      (indices_tf, num_valid) = sess.run(
+          selected_indices, feed_dict=inputs_feed)
 
-        self.assertEqual(indices_tf.size, max_output_size)
-        self.assertEqual(num_valid, 2)
-        self.assertAllClose(indices_tf[:num_valid], [3, 0])
+      self.assertEqual(indices_tf.size, max_output_size)
+      self.assertEqual(num_valid, 2)
+      self.assertAllClose(indices_tf[:num_valid], [3, 0])
 
   def testNMS3Then1WithScoreMaxThresh(self):
     # Three boxes are selected based on IOU.
     # One is filtered out by score threshold.
     # One is filtered out by max_output_size.
 
-    with compat.forward_compatibility_horizon(2018, 8, 8):
-      boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
-                    [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
-      boxes_np = np.array(boxes_data, dtype=np.float32)
+    boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    boxes_np = np.array(boxes_data, dtype=np.float32)
 
-      scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
-      scores_np = np.array(scores_data, dtype=np.float32)
-      max_output_size = 1
-      iou_threshold_np = np.array(0.5, dtype=np.float32)
-      score_threshold_np = np.array(0.4, dtype=np.float32)
+    scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    scores_np = np.array(scores_data, dtype=np.float32)
+    max_output_size = 1
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    score_threshold_np = np.array(0.4, dtype=np.float32)
 
-      with self.cached_session() as sess:
-        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
-        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
-        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
-                                              iou_threshold_np.shape)
-        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
-                                                score_threshold_np.shape)
-        with self.test_scope():
-          selected_indices = image_ops.non_max_suppression_padded(
-              boxes=boxes,
-              scores=scores,
-              max_output_size=max_output_size,
-              iou_threshold=iou_threshold,
-              score_threshold=score_threshold,
-              pad_to_max_output_size=True)
-        inputs_feed = {
-            boxes: boxes_np,
-            scores: scores_np,
-            iou_threshold: iou_threshold_np,
-            score_threshold: score_threshold_np
-        }
-        (indices_tf, num_valid) = sess.run(
-            selected_indices, feed_dict=inputs_feed)
+    with self.cached_session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                            iou_threshold_np.shape)
+      score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                              score_threshold_np.shape)
+      with self.test_scope():
+        selected_indices = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+            pad_to_max_output_size=True)
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          iou_threshold: iou_threshold_np,
+          score_threshold: score_threshold_np
+      }
+      (indices_tf, num_valid) = sess.run(
+          selected_indices, feed_dict=inputs_feed)
 
-        self.assertEqual(indices_tf.size, max_output_size)
-        self.assertEqual(num_valid, 1)
-        self.assertAllClose(indices_tf[:num_valid], [3])
+      self.assertEqual(indices_tf.size, max_output_size)
+      self.assertEqual(num_valid, 1)
+      self.assertAllClose(indices_tf[:num_valid], [3])
+
+  def testSelectFromContinuousOverLap(self):
+    # Tests that a suppressed box does not itself suppress other boxes.
+
+    boxes_data = [[0, 0, 1, 1], [0, 0.2, 1, 1.2], [0, 0.4, 1, 1.4],
+                  [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 3]]
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+
+    scores_data = [0.9, 0.75, 0.6, 0.5, 0.4, 0.3]
+    scores_np = np.array(scores_data, dtype=np.float32)
+    max_output_size = 3
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    score_threshold_np = np.array(0.1, dtype=np.float32)
+
+    with self.cached_session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                            iou_threshold_np.shape)
+      score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                              score_threshold_np.shape)
+      with self.test_scope():
+        selected_indices = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+            pad_to_max_output_size=True)
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          iou_threshold: iou_threshold_np,
+          score_threshold: score_threshold_np
+      }
+      (indices_tf, num_valid) = sess.run(
+          selected_indices, feed_dict=inputs_feed)
+
+      self.assertEqual(indices_tf.size, max_output_size)
+      self.assertEqual(num_valid, 3)
+      self.assertAllClose(indices_tf[:num_valid], [0, 2, 4])
+
 
 if __name__ == "__main__":
   test.main()

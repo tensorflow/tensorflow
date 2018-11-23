@@ -149,7 +149,7 @@ class ConditionalAccumulatorTest(test.TestCase):
         accum_op.run()
 
       is_all_equal = True
-      val = takeg_t.eval()
+      val = self.evaluate(takeg_t)
       for i in range(len(val)):
         for j in range(len(val[i])):
           is_all_equal &= (val[i][j] == elems_ave[i][j])
@@ -184,7 +184,7 @@ class ConditionalAccumulatorTest(test.TestCase):
         sess.run(accum_op, feed_dict={x: elem})
 
       is_all_equal = True
-      val = takeg_t.eval()
+      val = self.evaluate(takeg_t)
       for i in range(len(val)):
         for j in range(len(val[i])):
           is_all_equal &= (val[i][j] == elems_ave[i][j])
@@ -259,7 +259,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       for accum_op in accum_ops:
         accum_op.run()
 
-      val = takeg_t.eval()
+      val = self.evaluate(takeg_t)
       self.assertEqual(15.0, val)
 
       accum_ops = [q.apply_grad((x,), local_step=1) for x in elems]
@@ -268,7 +268,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       for accum_op in accum_ops:
         accum_op.run()
 
-      val = takeg_t.eval()
+      val = self.evaluate(takeg_t)
       self.assertEqual(15.0, val)
 
   def testAccumulatorTakeGradSum(self):
@@ -286,7 +286,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       for accum_op in accum_ops:
         accum_op.run()
 
-      val = takeg_t.eval()
+      val = self.evaluate(takeg_t)
       self.assertEqual(30.0, val)
 
       accum_ops = [q.apply_grad((x,), local_step=1) for x in elems]
@@ -295,7 +295,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       for accum_op in accum_ops:
         accum_op.run()
 
-      val = takeg_t.eval()
+      val = self.evaluate(takeg_t)
       self.assertEqual(30.0, val)
 
   def testAccumulatorTakeGradInvalidReductionType(self):
@@ -319,7 +319,7 @@ class ConditionalAccumulatorTest(test.TestCase):
         accum_op.run()
 
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        takeg_t.eval()
+        self.evaluate(takeg_t)
 
   def testAccumulatorRepeatedTakeGradMean(self):
     with self.cached_session():
@@ -334,7 +334,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       for accum_op in accum_ops:
         accum_op.run()
 
-      val = takeg_t.eval()
+      val = self.evaluate(takeg_t)
       self.assertEqual(elems_ave, val)
 
       elems = [20.0, 30.0]
@@ -345,7 +345,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       for accum_op in accum_ops:
         accum_op.run()
 
-      val = takeg_t.eval()
+      val = self.evaluate(takeg_t)
       self.assertEqual(elems_ave + 0.0, val)
 
   def testAccumulatorRepeatedTakeGradSum(self):
@@ -364,7 +364,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       for accum_op in accum_ops:
         accum_op.run()
 
-      val = takeg_t.eval()
+      val = self.evaluate(takeg_t)
       self.assertEqual(elems_sum, val)
 
       elems = [20.0, 30.0]
@@ -375,7 +375,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       for accum_op in accum_ops:
         accum_op.run()
 
-      val = takeg_t.eval()
+      val = self.evaluate(takeg_t)
       self.assertEqual(elems_sum, val)
 
   def testAccumulatorIncrementGlobalStep(self):
@@ -392,7 +392,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       variables.global_variables_initializer().run()
       for _ in range(3):
         set_global_step_op.run()
-        inc_global_step.eval()
+        self.evaluate(inc_global_step)
 
   def testAccumulatorSetGlobalStepPreventsAccumulation(self):
     with self.cached_session():
@@ -410,7 +410,7 @@ class ConditionalAccumulatorTest(test.TestCase):
           accum_op.run()
         takeg_t = q.take_grad(1)
 
-        val = takeg_t.eval()
+        val = self.evaluate(takeg_t)
         self.assertEqual(0.0 + sum(x for x in local_steps
                                    if x >= ls) / sum(1 for x in local_steps
                                                      if x >= ls), val)
@@ -424,7 +424,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       takeg_t = q.take_grad(1)
 
       def apply_grad(accum_op):
-        sess.run(accum_op)
+        self.evaluate(accum_op)
 
       threads = [
           self.checkedThread(
@@ -436,7 +436,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       for thread in threads:
         thread.join()
 
-      val = takeg_t.eval()
+      val = self.evaluate(takeg_t)
 
       self.assertEqual(val, sum(elems) / len(elems))
 
@@ -451,7 +451,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       def apply_grad():
         for accum_op in accum_ops:
           time.sleep(1.0)
-          sess.run(accum_op)
+          self.evaluate(accum_op)
 
       apply_grad_thread = self.checkedThread(target=apply_grad)
 
@@ -485,7 +485,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       def apply_grad():
         time.sleep(1.0)
         for accum_op in accum_ops:
-          sess.run(accum_op)
+          self.evaluate(accum_op)
 
       return_array = []
 
@@ -503,7 +503,7 @@ class ConditionalAccumulatorTest(test.TestCase):
 
   def _blocking_takeg(self, sess, takeg_op):
     with self.assertRaisesOpError("was cancelled"):
-      sess.run(takeg_op)
+      self.evaluate(takeg_op)
 
   def testAccumulatorCancel(self):
     with self.cached_session() as sess:

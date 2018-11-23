@@ -1,7 +1,9 @@
 path: "tensorflow.estimator.DNNLinearCombinedClassifier"
 tf_class {
-  is_instance: "<class \'tensorflow.python.estimator.canned.dnn_linear_combined.DNNLinearCombinedClassifier\'>"
-  is_instance: "<class \'tensorflow.python.estimator.estimator.Estimator\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.canned.dnn_linear_combined.DNNLinearCombinedClassifier\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.canned.dnn_linear_combined.DNNLinearCombinedClassifierV2\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "config"

@@ -109,8 +109,8 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
       self.w = math_ops.matmul(self.u, self.v, name="w")
       self.w_line_number = line_number_above()
 
-      sess.run(self.u.initializer)
-      sess.run(self.v.initializer)
+      self.evaluate(self.u.initializer)
+      self.evaluate(self.v.initializer)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_utils.watch_graph(

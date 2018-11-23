@@ -65,7 +65,7 @@ class PoolingTest(test.TestCase):
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x = [f * 1.0 for f in range(1, total_size + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       t = constant_op.constant(x, shape=input_sizes)
       window = [1] + list(window) + [1]
       strides = [1] + list(strides) + [1]
@@ -81,7 +81,7 @@ class PoolingTest(test.TestCase):
           data_format=data_format)
       if data_format == "NCDHW":
         t = test_util.NCHWToNHWC(t)
-      vals = sess.run(t)
+      vals = self.evaluate(t)
     # Verifies values.
     actual = vals.flatten()
     self.assertAllClose(expected, actual)
@@ -233,7 +233,7 @@ class PoolingTest(test.TestCase):
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x = np.arange(1, total_size + 1, dtype=np.float32)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       input_tensor = constant_op.constant(x, shape=input_sizes, name="input")
       err_g_margin = 1e-3
       err_gg_margin = 1.5e-2

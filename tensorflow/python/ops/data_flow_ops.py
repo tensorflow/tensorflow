@@ -113,7 +113,7 @@ def _shape_common(s1, s2):
 
 
 # pylint: disable=protected-access
-@tf_export("io.QueueBase", "QueueBase")
+@tf_export("io.QueueBase", v1=["io.QueueBase", "QueueBase"])
 @deprecation.deprecated_endpoints("QueueBase")
 class QueueBase(object):
   """Base class for queue implementations.
@@ -376,10 +376,16 @@ class QueueBase(object):
 
       # NOTE(mrry): Not using a shape function because we need access to
       # the `QueueBase` object.
-      batch_dim = vals[0].get_shape().with_rank_at_least(1)[0]
+      # NOTE(fchollet): the code that follow is verbose because it needs to be
+      # compatible with both TF v1 TensorShape behavior and TF v2 behavior.
+      batch_dim = tensor_shape.dimension_value(
+          vals[0].get_shape().with_rank_at_least(1)[0])
+      batch_dim = tensor_shape.Dimension(batch_dim)
       for val, shape in zip(vals, self._shapes):
-        batch_dim = batch_dim.merge_with(
+        val_batch_dim = tensor_shape.dimension_value(
             val.get_shape().with_rank_at_least(1)[0])
+        val_batch_dim = tensor_shape.Dimension(val_batch_dim)
+        batch_dim = batch_dim.merge_with(val_batch_dim)
         val.get_shape()[1:].assert_is_compatible_with(shape)
 
       return gen_data_flow_ops.queue_enqueue_many_v2(
@@ -606,7 +612,8 @@ def _shared_name(shared_name):
   return shared_name
 
 
-@tf_export("io.RandomShuffleQueue", "RandomShuffleQueue")
+@tf_export(
+    "io.RandomShuffleQueue", v1=["io.RandomShuffleQueue", "RandomShuffleQueue"])
 @deprecation.deprecated_endpoints("RandomShuffleQueue")
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
@@ -749,7 +756,8 @@ class FIFOQueue(QueueBase):
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("io.PaddingFIFOQueue", "PaddingFIFOQueue")
+@tf_export(
+    "io.PaddingFIFOQueue", v1=["io.PaddingFIFOQueue", "PaddingFIFOQueue"])
 @deprecation.deprecated_endpoints("PaddingFIFOQueue")
 class PaddingFIFOQueue(QueueBase):
   """A FIFOQueue that supports batching variable-sized tensors by padding.
@@ -824,7 +832,7 @@ class PaddingFIFOQueue(QueueBase):
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("io.PriorityQueue", "PriorityQueue")
+@tf_export("io.PriorityQueue", v1=["io.PriorityQueue", "PriorityQueue"])
 @deprecation.deprecated_endpoints("PriorityQueue")
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
@@ -1140,7 +1148,7 @@ class Barrier(object):
         self._barrier_ref, name=name)
 
 
-@tf_export("ConditionalAccumulatorBase")
+@tf_export(v1=["ConditionalAccumulatorBase"])
 class ConditionalAccumulatorBase(object):
   """A conditional accumulator for aggregating gradients.
 
@@ -1219,7 +1227,7 @@ class ConditionalAccumulatorBase(object):
         name=name)
 
 
-@tf_export("ConditionalAccumulator")
+@tf_export(v1=["ConditionalAccumulator"])
 class ConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating gradients.
 
@@ -1305,8 +1313,9 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     return out
 
 
-@tf_export("sparse.SparseConditionalAccumulator",
-           "SparseConditionalAccumulator")
+@tf_export(
+    "sparse.SparseConditionalAccumulator",
+    v1=["sparse.SparseConditionalAccumulator", "SparseConditionalAccumulator"])
 @deprecation.deprecated_endpoints("SparseConditionalAccumulator")
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.

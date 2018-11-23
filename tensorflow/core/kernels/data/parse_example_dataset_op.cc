@@ -23,9 +23,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
-
 class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ParseExampleDatasetOp(OpKernelConstruction* ctx)
@@ -38,6 +37,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dense_shapes", &dense_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("sloppy", &sloppy_));
     for (int i = 0; i < dense_shapes_.size(); ++i) {
       bool shape_ok = true;
       if (dense_shapes_[i].dims() == -1) {
@@ -142,11 +142,11 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       it->second = i++;
     }
 
-    *output = new Dataset(ctx, input, std::move(dense_defaults),
-                          std::move(sparse_keys_), std::move(dense_keys_),
-                          std::move(key_to_output_index), std::move(config),
-                          num_parallel_calls, sparse_types_, dense_types_,
-                          dense_shapes_, output_types_, output_shapes_);
+    *output =
+        new Dataset(ctx, input, dense_defaults, sparse_keys_, dense_keys_,
+                    std::move(key_to_output_index), std::move(config),
+                    num_parallel_calls, sparse_types_, dense_types_,
+                    dense_shapes_, output_types_, output_shapes_, sloppy_);
   }
 
  private:
@@ -161,7 +161,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             const DataTypeVector& dense_types,
             const std::vector<PartialTensorShape>& dense_shapes,
             const DataTypeVector& output_types,
-            const std::vector<PartialTensorShape>& output_shapes)
+            const std::vector<PartialTensorShape>& output_shapes, bool sloppy)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           dense_defaults_(std::move(dense_defaults)),
@@ -174,7 +174,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           dense_types_(dense_types),
           dense_shapes_(dense_shapes),
           output_types_(output_types),
-          output_shapes_(output_shapes) {
+          output_shapes_(output_shapes),
+          sloppy_(sloppy) {
       input_->Ref();
     }
 
@@ -182,14 +183,14 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      auto map_fn = [this](IteratorContext* ctx,
+      auto map_fn = [this](IteratorContext* ctx, const string& prefix,
                            std::vector<Tensor> input_element,
                            std::vector<Tensor>* result, StatusCallback done) {
         (*ctx->runner())([this, ctx, input_element, result, done]() {
           thread::ThreadPool* device_threadpool =
               ctx->lib()->device()->tensorflow_cpu_worker_threads()->workers;
           std::vector<string> slice_vec;
-          for (Tensor t : input_element) {
+          for (const Tensor& t : input_element) {
             auto serialized_t = t.flat<string>();
             gtl::ArraySlice<string> slice(serialized_t.data(),
                                           serialized_t.size());
@@ -226,12 +227,14 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
               (*result)[output_index] = example_result.dense_values[d];
             }
             for (int d = 0; d < sparse_keys_.size(); ++d) {
-              Tensor serialized_sparse = Tensor(DT_VARIANT, TensorShape({3}));
+              int output_index = key_to_output_index_.at(sparse_keys_[d]);
+              (*result)[output_index] =
+                  Tensor(ctx->allocator({}), DT_VARIANT, {3});
+              Tensor& serialized_sparse = (*result)[output_index];
               auto serialized_sparse_t = serialized_sparse.vec<Variant>();
               serialized_sparse_t(0) = example_result.sparse_indices[d];
               serialized_sparse_t(1) = example_result.sparse_values[d];
               serialized_sparse_t(2) = example_result.sparse_shapes[d];
-              int output_index = key_to_output_index_.at(sparse_keys_[d]);
               CHECK(serialized_sparse.dtype() == output_dtypes()[output_index])
                   << "Got wrong type for FastParseExample return value " << d
                   << " (expected "
@@ -243,7 +246,6 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                   << " (expected "
                   << output_shapes()[output_index].DebugString() << ", got "
                   << serialized_sparse.shape().DebugString() << ").";
-              (*result)[output_index] = serialized_sparse;
             }
             // TODO(b/111553342): User provided tags instead of fixed tag.
             if (stats_aggregator) {
@@ -272,7 +274,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
       return NewParallelMapIterator(
           {this, strings::StrCat(prefix, "::ParseExample")}, input_,
-          std::move(map_fn), num_parallel_calls_);
+          /*init_func=*/nullptr, std::move(map_fn), num_parallel_calls_,
+          sloppy_);
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -312,12 +315,14 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       AttrValue sparse_types_attr;
       AttrValue dense_attr;
       AttrValue dense_shapes_attr;
+      AttrValue sloppy_attr;
 
       b->BuildAttrValue(sparse_keys_, &sparse_keys_attr);
       b->BuildAttrValue(dense_keys_, &dense_keys_attr);
       b->BuildAttrValue(sparse_types_, &sparse_types_attr);
       b->BuildAttrValue(dense_types_, &dense_attr);
       b->BuildAttrValue(dense_shapes_, &dense_shapes_attr);
+      b->BuildAttrValue(sloppy_, &sloppy_attr);
 
       TF_RETURN_IF_ERROR(b->AddDataset(this,
                                        {
@@ -329,7 +334,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                                         {"dense_keys", dense_keys_attr},
                                         {"sparse_types", sparse_types_attr},
                                         {"Tdense", dense_attr},
-                                        {"dense_shapes", dense_shapes_attr}},
+                                        {"dense_shapes", dense_shapes_attr},
+                                        {"sloppy", sloppy_attr}},
                                        output));
       return Status::OK();
     }
@@ -347,11 +353,13 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<PartialTensorShape> dense_shapes_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
+    const bool sloppy_;
   };
 
   const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
+  bool sloppy_;
   std::vector<string> sparse_keys_;
   std::vector<string> dense_keys_;
   DataTypeVector sparse_types_;

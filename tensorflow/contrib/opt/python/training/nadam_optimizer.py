@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -83,14 +84,14 @@ class NadamOptimizer(adam.AdamOptimizer):
     with ops.control_dependencies([m_t]):
       m_t = scatter_add(m, indices, m_scaled_g_values)
       # m_bar = (1 - beta1) * g_t + beta1 * m_t
-      m_bar = m_scaled_g_values + beta1_t * m_t
+      m_bar = m_scaled_g_values + beta1_t * array_ops.gather(m_t, indices)
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, "v")
     v_scaled_g_values = (grad * grad) * (1 - beta2_t)
     v_t = state_ops.assign(v, v * beta2_t, use_locking=self._use_locking)
     with ops.control_dependencies([v_t]):
       v_t = scatter_add(v, indices, v_scaled_g_values)
-    v_sqrt = math_ops.sqrt(v_t)
-    var_update = state_ops.assign_sub(
-        var, lr * m_bar / (v_sqrt + epsilon_t), use_locking=self._use_locking)
+    v_t_slice = array_ops.gather(v_t, indices)
+    v_sqrt = math_ops.sqrt(v_t_slice)
+    var_update = scatter_add(var, indices, -lr * m_bar / (v_sqrt + epsilon_t))
     return control_flow_ops.group(*[var_update, m_bar, v_t])

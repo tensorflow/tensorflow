@@ -46,11 +46,11 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
       self.assertEqual(sp.get_shape(), (4, 5))
 
       with self.cached_session() as sess:
-        value = sp.eval()
+        value = self.evaluate(sp)
         self.assertAllEqual(indices, value.indices)
         self.assertAllEqual(values, value.values)
         self.assertAllEqual(shape, value.dense_shape)
-        sess_run_value = sess.run(sp)
+        sess_run_value = self.evaluate(sp)
         self.assertAllEqual(sess_run_value.indices, value.indices)
         self.assertAllEqual(sess_run_value.values, value.values)
         self.assertAllEqual(sess_run_value.dense_shape, value.dense_shape)
@@ -85,7 +85,7 @@ class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
       value = [42, 43]
       from_value = sparse_tensor.convert_to_tensor_or_sparse_tensor(
           value)
-      self.assertAllEqual(value, from_value.eval())
+      self.assertAllEqual(value, self.evaluate(from_value))
 
   def test_convert_sparse(self):
     with self.cached_session():

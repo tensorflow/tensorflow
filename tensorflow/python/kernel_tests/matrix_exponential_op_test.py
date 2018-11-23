@@ -30,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
@@ -49,7 +50,7 @@ class ExponentialOpTest(test.TestCase):
 
   def _verifyExponential(self, x, np_type):
     inp = x.astype(np_type)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_ans = linalg_impl.matrix_exponential(inp)
       if x.size == 0:
         np_ans = np.empty(x.shape, dtype=np_type)
@@ -60,7 +61,7 @@ class ExponentialOpTest(test.TestCase):
             np_ans[i] = np_expm(inp[i])
         else:
           np_ans = np_expm(inp)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
 
   def _verifyExponentialReal(self, x):
@@ -137,14 +138,14 @@ class ExponentialOpTest(test.TestCase):
     self._verifyExponentialReal(np.empty([2, 0, 0]))
 
   def testDynamic(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       inp = array_ops.placeholder(ops.dtypes.float32)
       expm = linalg_impl.matrix_exponential(inp)
       matrix = np.array([[1., 2.], [3., 4.]])
       sess.run(expm, feed_dict={inp: matrix})
 
   def testConcurrentExecutesWithoutError(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       matrix1 = random_ops.random_normal([5, 5], seed=42)
       matrix2 = random_ops.random_normal([5, 5], seed=42)
       expm1 = linalg_impl.matrix_exponential(matrix1)
@@ -181,7 +182,7 @@ class MatrixExponentialBenchmark(test.Benchmark):
   def benchmarkMatrixExponentialOp(self):
     for shape in self.shapes:
       with ops.Graph().as_default(), \
-          session.Session() as sess, \
+          session.Session(config=benchmark.benchmark_config()) as sess, \
           ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
         expm = linalg_impl.matrix_exponential(matrix)
@@ -195,7 +196,7 @@ class MatrixExponentialBenchmark(test.Benchmark):
 
       if test.is_gpu_available(True):
         with ops.Graph().as_default(), \
-            session.Session() as sess, \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device("/gpu:0"):
           matrix = self._GenerateMatrix(shape)
           expm = linalg_impl.matrix_exponential(matrix)

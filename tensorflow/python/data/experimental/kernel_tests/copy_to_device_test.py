@@ -28,7 +28,9 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat as util_compat
 
 
 class CopyToDeviceTest(test_base.DatasetTestBase):
@@ -55,7 +57,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -80,7 +82,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
-      self.assertAllEqual([0, 1, 2, 3], sess.run(next_element))
+      self.assertAllEqual([0, 1, 2, 3], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -106,7 +108,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -132,7 +134,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -158,7 +160,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        self.assertEqual({"a": i}, sess.run(next_element))
+        self.assertEqual({"a": i}, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -184,7 +186,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        self.assertEqual({"a": i}, sess.run(next_element))
+        self.assertEqual({"a": i}, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -215,7 +217,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        actual = sess.run(next_element)
+        actual = self.evaluate(next_element)
         self.assertAllEqual([i], actual.values)
         self.assertAllEqual([[0, 0]], actual.indices)
         self.assertAllEqual([2, 2], actual.dense_shape)
@@ -249,7 +251,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        actual = sess.run(next_element)
+        actual = self.evaluate(next_element)
         self.assertAllEqual([i], actual.values)
         self.assertAllEqual([[0, 0]], actual.indices)
         self.assertAllEqual([2, 2], actual.dense_shape)
@@ -269,9 +271,9 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -288,9 +290,45 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
+  def testCopyToDeviceGpuWithMap(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    def generator():
+      for i in range(10):
+        yield i, float(i), str(i)
+
+    host_dataset = dataset_ops.Dataset.from_generator(
+        generator, output_types=(dtypes.int32, dtypes.float32, dtypes.string))
+    device_dataset = host_dataset.apply(
+        prefetching_ops.copy_to_device("/gpu:0"))
+
+    def gpu_map_func(x, y, z):
+      return math_ops.square(x), math_ops.square(y), z
+
+    device_dataset = device_dataset.apply(
+        prefetching_ops.map_on_gpu(gpu_map_func))
+    options = dataset_ops.Options()
+    options.experimental_autotune = False
+    device_dataset = device_dataset.with_options(options)
+
+    with ops.device("/gpu:0"):
+      iterator = device_dataset.make_initializable_iterator()
+      next_element = iterator.get_next()
+
+    with self.cached_session() as sess:
+      self.evaluate(iterator.initializer)
+      for i in range(10):
+        x, y, z = self.evaluate(next_element)
+        self.assertEqual(i**2, x)
+        self.assertEqual(float(i**2), y)
+        self.assertEqual(util_compat.as_bytes(str(i)), z)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -307,8 +345,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
-      self.assertAllEqual([0, 1, 2, 3], sess.run(next_element))
+      self.evaluate(iterator.initializer)
+      self.assertAllEqual([0, 1, 2, 3], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -325,8 +363,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
-      self.assertAllEqual([0, 1, 2, 3], sess.run(next_element))
+      self.evaluate(iterator.initializer)
+      self.assertAllEqual([0, 1, 2, 3], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -343,8 +381,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
-      self.assertAllEqual([b"a", b"b", b"c"], sess.run(next_element))
+      self.evaluate(iterator.initializer)
+      self.assertAllEqual([b"a", b"b", b"c"], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -361,8 +399,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
-      self.assertAllEqual([b"a", b"b", b"c"], sess.run(next_element))
+      self.evaluate(iterator.initializer)
+      self.assertAllEqual([b"a", b"b", b"c"], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -382,9 +420,9 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         next_element = iterator.get_next()
 
       with self.cached_session() as sess:
-        sess.run(iterator.initializer)
+        self.evaluate(iterator.initializer)
         for i in range(10):
-          self.assertEqual(i, sess.run(next_element))
+          self.assertEqual(i, self.evaluate(next_element))
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(next_element)
 
@@ -409,12 +447,12 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for i in range(5):
-        self.assertEqual(i, sess.run(next_element))
-      sess.run(iterator.initializer)
+        self.assertEqual(i, self.evaluate(next_element))
+      self.evaluate(iterator.initializer)
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -439,12 +477,12 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for i in range(5):
-        self.assertEqual(i, sess.run(next_element))
-      sess.run(iterator.initializer)
+        self.assertEqual(i, self.evaluate(next_element))
+      self.evaluate(iterator.initializer)
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -461,12 +499,12 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for i in range(5):
-        self.assertEqual(i, sess.run(next_element))
-      sess.run(iterator.initializer)
+        self.assertEqual(i, self.evaluate(next_element))
+      self.evaluate(iterator.initializer)
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -483,12 +521,12 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for i in range(5):
-        self.assertEqual(i, sess.run(next_element))
-      sess.run(iterator.initializer)
+        self.assertEqual(i, self.evaluate(next_element))
+      self.evaluate(iterator.initializer)
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -515,7 +553,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
 
       # For each element of the dataset, assert that the optional evaluates to
       # the expected value.
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for i in range(3):
         elem_has_value, elem_value = sess.run([elem_has_value_t, elem_value_t])
         self.assertTrue(elem_has_value)
@@ -524,7 +562,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       # After exhausting the iterator, `next_elem.has_value()` will evaluate to
       # false, and attempting to get the value will fail.
       for _ in range(2):
-        self.assertFalse(sess.run(elem_has_value_t))
+        self.assertFalse(self.evaluate(elem_has_value_t))
         with self.assertRaises(errors.InvalidArgumentError):
           sess.run(elem_value_t)
 

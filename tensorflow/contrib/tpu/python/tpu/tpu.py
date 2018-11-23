@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.contrib.compiler import xla
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
@@ -371,14 +372,11 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if external_control_inputs:
       # Use an identity to pull control inputs as data inputs. Note that we
       # ignore ops which don't have outputs. TODO(phawkins): fix that.
-      with ops.control_dependencies(None):
-        self.Enter()
-        external_control_inputs = [
-            array_ops.identity(x.outputs[0]).op
-            for x in external_control_inputs
-            if x.outputs
-        ]
-        self.Exit()
+      external_control_inputs = [
+          array_ops.identity(x.outputs[0]).op
+          for x in external_control_inputs
+          if x.outputs
+      ]
       # pylint: disable=protected-access
       op._add_control_inputs(external_control_inputs)
       # pylint: enable=protected-access
@@ -601,7 +599,7 @@ def split_compile_and_replicate(computation,
           "input types {}, replica {} had input types {}".format(
               input_types, i, types))
 
-  arg_error = tpu_function.check_function_argument_count(
+  arg_error = xla.check_function_argument_count(
       computation, input_arity, infeed_queue)
   if arg_error is not None:
     if infeed_queue is None:
@@ -1003,8 +1001,8 @@ def rewrite(computation,
       `rewrite` is a list of tensors corresponding to the tensors from the
       output of `computation`.
 
-      All `Operation`s returned from `computation` will be executed when
-      evaluating any of the returned output tensors.
+      All `Operation`s constructed during `computation` will be executed when
+      evaluating any of the returned output tensors, not just the ones returned.
     inputs: A list of input tensors or `None` (equivalent to an empty list).
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to `computation`.
