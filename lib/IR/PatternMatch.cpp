@@ -68,6 +68,29 @@ PatternRewriter::~PatternRewriter() {
   // Out of line to provide a vtable anchor for the class.
 }
 
+/// This method performs the final replacement for a pattern, where the
+/// results of the operation are updated to use the specified list of SSA
+/// values.  In addition to replacing and removing the specified operation,
+/// clients can specify a list of other nodes that this replacement may make
+/// (perhaps transitively) dead.  If any of those ops are dead, this will
+/// remove them as well.
+void PatternRewriter::replaceOp(Operation *op, ArrayRef<SSAValue *> newValues,
+                                ArrayRef<SSAValue *> opsToRemoveIfDead) {
+  // Notify the rewriter subclass that we're about to replace this root.
+  notifyRootReplaced(op);
+
+  assert(op->getNumResults() == newValues.size() &&
+         "incorrect # of replacement values");
+  for (unsigned i = 0, e = newValues.size(); i != e; ++i)
+    op->getResult(i)->replaceAllUsesWith(newValues[i]);
+
+  notifyOperationRemoved(op);
+  op->erase();
+
+  // TODO: Process the opsToRemoveIfDead list, removing things and calling the
+  // notifyOperationRemoved hook in the process.
+}
+
 /// This method is used as the final replacement hook for patterns that match
 /// a single result value.  In addition to replacing and removing the
 /// specified operation, clients can specify a list of other nodes that this

@@ -19,9 +19,6 @@
 #define MLIR_IR_BASICBLOCK_H
 
 #include "mlir/IR/Instructions.h"
-#include "mlir/IR/UseDefLists.h"
-#include "llvm/ADT/ilist.h"
-#include <memory>
 
 namespace mlir {
 class BBArgument;
