@@ -23,7 +23,7 @@ class WhileLoopUtil {
                                   int64 param_index);
   static bool IsIntegralConstant(const HloInstruction* inst);
   static StatusOr<bool> IsIntegralConstantOfValue(const HloInstruction* inst,
-                                                  const int64 value);
+                                                  const int32 value);
 
   // Find instructions which are incremented by 1 and for which the
   // resulting increment is *only* used in the output tuple of the while body in
@@ -32,8 +32,7 @@ class WhileLoopUtil {
   FindMatchingGTEIncrementsInsideBody(const HloInstruction* inst,
                                       const HloComputation* while_body,
                                       HloOpcode opcode);
-  static StatusOr<int64> CanConvertWhileToRepeat(
-      const HloInstruction* while_inst);
+  static StatusOr<int32> CanConvertWhileToRepeat(HloInstruction* while_inst);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(WhileLoopUtil);

@@ -60,6 +60,17 @@ StatusOr<std::vector<int64>> WideConstToInt64Vector(
   return std::vector<int64>(bcast->shape().dimensions(0), val);
 }
 
+StatusOr<int32> LiteralScalarInt32toInt32(const xla::Literal& lit) {
+  if (!ShapeUtil::IsScalar(lit.shape())) {
+    return xla::FailedPrecondition("Literal is not scalar");
+  }
+
+  Literal s32_lit;
+  TF_ASSIGN_OR_RETURN(s32_lit, lit.Convert(S32));
+
+  return *static_cast<const int32*>(s32_lit.untyped_data());
+}
+
 StatusOr<int64> LiteralScalarInt64toInt64(const xla::Literal& lit) {
   if (!ShapeUtil::IsScalar(lit.shape())) {
     return xla::FailedPrecondition("Literal is not scalar");

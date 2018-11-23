@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/while_loop_to_repeat_simplify.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -304,6 +305,106 @@ ENTRY entry {
   EXPECT_EQ(annotations.while_loop_num_iterations
                 [module.get()->entry_computation()->root_instruction()],
             5);
+}
+
+TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalHoistTheConstant) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (s32[],s32[]) parameter(0)
+  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  const = s32[] constant(1)
+  add = s32[] add(p_body.0, const)
+  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  ROOT root = (s32[],s32[]) tuple(add, p_body.1)
+}
+
+condition {
+  p_cond = (s32[],s32[]) parameter(0)
+  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  const = s32[] constant(10)
+  ROOT result = pred[] less-than(p_cond.0, const)
+}
+
+ENTRY entry {
+  const_0 = s32[] constant(0)
+  const_1 = s32[] constant(10)
+  while_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  CompilerAnnotations annotations(module.get());
+  WhileLoopToRepeatSimplify wltrs(annotations);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+
+  // Get the trip count
+  EXPECT_EQ(annotations.while_loop_num_iterations
+                [module.get()->entry_computation()->root_instruction()],
+            10);
+  // Check the constant got hoisted out.
+  HloInstruction* while_inst = module->entry_computation()->root_instruction();
+  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
+  const HloInstruction* while_init = while_inst->operand(0);
+  const HloInstruction* counter = while_init->operand(0);
+  VLOG(0) << while_init->parent()->ToString();
+  EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
+  int32 loop_counter =
+      LiteralScalarInt32toInt32(counter->literal()).ValueOrDie();
+  EXPECT_EQ(loop_counter, 10);
+}
+
+TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalDontHoistTheConstant) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (s32[],s32[]) parameter(0)
+  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  const = s32[] constant(1)
+  add = s32[] add(p_body.0, const)
+  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  add2 = s32[] add(p_body.1, add)
+  ROOT root = (s32[],s32[]) tuple(add, add2)
+}
+
+condition {
+  p_cond = (s32[],s32[]) parameter(0)
+  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  const = s32[] constant(10)
+  ROOT result = pred[] less-than(p_cond.0, const)
+}
+
+ENTRY entry {
+  const_0 = s32[] constant(0)
+  const_1 = s32[] constant(10)
+  while_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  CompilerAnnotations annotations(module.get());
+  WhileLoopToRepeatSimplify wltrs(annotations);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+
+  // Get the trip count
+  EXPECT_EQ(annotations.while_loop_num_iterations
+                [module.get()->entry_computation()->root_instruction()],
+            10);
+  // Check the constant got hoisted out.
+  HloInstruction* while_inst = module->entry_computation()->root_instruction();
+  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
+  const HloInstruction* while_init = while_inst->operand(0);
+  const HloInstruction* counter = while_init->operand(0);
+  VLOG(0) << while_init->parent()->ToString();
+  EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
+  int32 loop_start = LiteralScalarInt32toInt32(counter->literal()).ValueOrDie();
+  EXPECT_EQ(loop_start, 0);
 }
 
 using WhileLoopToRepeatSimplifyTestChangedEnv = HloTestBase;

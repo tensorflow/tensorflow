@@ -1,8 +1,10 @@
 #include "tensorflow/compiler/plugin/poplar/driver/while_loop_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include <map>
@@ -23,10 +25,10 @@ bool WhileLoopUtil::IsIntegralConstant(const HloInstruction* inst) {
 }
 
 StatusOr<bool> WhileLoopUtil::IsIntegralConstantOfValue(
-    const HloInstruction* inst, const int64 value) {
+    const HloInstruction* inst, const int32 value) {
   if (!WhileLoopUtil::IsIntegralConstant(inst)) return false;
-  int64 const_value;
-  TF_ASSIGN_OR_RETURN(const_value, LiteralScalarInt64toInt64(inst->literal()));
+  int32 const_value;
+  TF_ASSIGN_OR_RETURN(const_value, LiteralScalarInt32toInt32(inst->literal()));
   return const_value == value;
 }
 
@@ -71,8 +73,8 @@ WhileLoopUtil::FindMatchingGTEIncrementsInsideBody(
 
 static const char* err_msg = "Unable to convert this while loop";
 
-StatusOr<int64> WhileLoopUtil::CanConvertWhileToRepeat(
-    const HloInstruction* while_inst) {
+StatusOr<int32> WhileLoopUtil::CanConvertWhileToRepeat(
+    HloInstruction* while_inst) {
   HloComputation* while_condition = while_inst->while_condition();
   HloComputation* while_body = while_inst->while_body();
   // Make sure that this is a while loop with a single conditional of form
@@ -112,18 +114,18 @@ StatusOr<int64> WhileLoopUtil::CanConvertWhileToRepeat(
   }
 
   HloInstruction* comp_GTE = c_inst->mutable_operand(0);
-  int64 cond_tuple_index = comp_GTE->tuple_index();
+  int64 tuple_index = comp_GTE->tuple_index();
 
-  const HloInstruction* init_inst =
-      while_inst->operand(0)->operand(cond_tuple_index);
+  HloInstruction* input_tuple = while_inst->mutable_operand(0);
+  HloInstruction* init_inst = input_tuple->mutable_operand(tuple_index);
 
   if (init_inst->opcode() != HloOpcode::kConstant) {
     return xla::FailedPrecondition(err_msg);
   }
 
-  int64 initial_value;
+  int32 initial_value;
   TF_ASSIGN_OR_RETURN(initial_value,
-                      LiteralScalarInt64toInt64(init_inst->literal()));
+                      LiteralScalarInt32toInt32(init_inst->literal()));
 
   const HloInstruction* limit_inst = c_inst->operand(1);
 
@@ -131,18 +133,18 @@ StatusOr<int64> WhileLoopUtil::CanConvertWhileToRepeat(
     return xla::FailedPrecondition(err_msg);
   }
 
-  int64 compare_value;
+  int32 compare_value;
   TF_ASSIGN_OR_RETURN(compare_value,
-                      LiteralScalarInt64toInt64(limit_inst->literal()));
+                      LiteralScalarInt32toInt32(limit_inst->literal()));
 
   // Find corresponding GTE in the body
-  HloInstruction* body_GTE;
+  HloInstruction* body_GTE = nullptr;
   int64 matching_GTEs = 0;
   for (HloInstruction* inst : while_body->MakeInstructionPostOrder()) {
     const bool is_GTE_from_param_0 =
         WhileLoopUtil::IsGTEFromParamIndex(inst, 0);
     if (!is_GTE_from_param_0) continue;
-    if (inst->tuple_index() == cond_tuple_index) {
+    if (inst->tuple_index() == tuple_index) {
       body_GTE = inst;
       matching_GTEs++;
     }
@@ -173,22 +175,72 @@ StatusOr<int64> WhileLoopUtil::CanConvertWhileToRepeat(
                       WhileLoopUtil::FindMatchingGTEIncrementsInsideBody(
                           body_GTE, while_body, delta_op));
 
-  // Calculate and return the number of iterations
-  if (matching_increments.size() == 1) {
-    switch (c_inst->opcode()) {
-      case HloOpcode::kLt:
-        return compare_value - initial_value;
-      case HloOpcode::kLe:
-        return compare_value - initial_value + 1;
-      case HloOpcode::kGe:
-        return initial_value - compare_value + 1;
-      case HloOpcode::kGt:
-      default:
-        return initial_value - compare_value;
-    }
-  } else {
+  if (matching_increments.size() != 1) {
     return xla::FailedPrecondition(err_msg);
   }
+
+  // Calculate and return the number of iterations and the final counter state
+  int32 number_of_iterations = 0;
+  int32 final_counter_state = 0;
+  switch (c_inst->opcode()) {
+    case HloOpcode::kLt:
+      number_of_iterations = compare_value - initial_value;
+      final_counter_state = compare_value;
+      break;
+    case HloOpcode::kLe:
+      number_of_iterations = compare_value - initial_value + 1;
+      final_counter_state = compare_value + 1;
+      break;
+    case HloOpcode::kGe:
+      number_of_iterations = initial_value - compare_value + 1;
+      final_counter_state = compare_value - 1;
+      break;
+    case HloOpcode::kGt:
+    default:
+      number_of_iterations = initial_value - compare_value;
+      final_counter_state = compare_value;
+      break;
+  }
+
+  // If the unique GTE in the body is only used by the matching index in the
+  // return tuple then we can hoist out this constant.
+  HloInstruction* increment = matching_increments[0];
+  HloInstruction* while_body_root = while_body->root_instruction();
+  if (body_GTE->user_count() == 1 && increment->user_count() == 1 &&
+      while_body_root->operand(tuple_index) == increment) {
+    // Check that it only appears once in the return tuple.
+    const auto operands = while_body_root->operands();
+    const auto used_count =
+        std::count(operands.begin(), operands.end(), increment);
+    if (used_count == 1) {
+      // We clone the body of the while loop as other instructions can use this
+      // computation.
+      HloModule* module = while_body->parent();
+      while_body = module->AddEmbeddedComputation(while_body->Clone());
+      while_inst->set_while_body(while_body);
+
+      // Replace the root tuple operand.
+      for (auto* user : while_body->parameter_instruction(0)->users()) {
+        if (user->opcode() == HloOpcode::kGetTupleElement &&
+            user->tuple_index() == tuple_index) {
+          body_GTE = user;
+        }
+      }
+      while_body_root = while_body->root_instruction();
+      while_body_root->ReplaceOperandWith(tuple_index, body_GTE);
+
+      // We clone the input tuple instruction and replace the constant in the
+      // while state tuple with the final result.
+      HloComputation* parent_computation = while_inst->parent();
+      input_tuple = parent_computation->AddInstruction(input_tuple->Clone());
+      while_inst->ReplaceOperandWith(0, input_tuple);
+      HloInstruction* constant =
+          parent_computation->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0(final_counter_state)));
+      input_tuple->ReplaceOperandWith(tuple_index, constant);
+    }
+  }
+  return number_of_iterations;
 }
 
 }  // namespace poplarplugin

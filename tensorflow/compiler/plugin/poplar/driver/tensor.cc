@@ -963,7 +963,7 @@ StatusOr<poplar::Tensor> FindInstructionInput(TensorMap& map,
                                               int64 input,
                                               poplar::program::Sequence& seq) {
   const HloInstruction* operand = inst->operand(input);
-  ArgVector inputs = GetExpandedTensors(map, res, operand, seq);
+  ArgVector inputs = GetExpandedTensors(map, res, operand, seq, 0, 1);
 
   if (inputs.size() == 0) {
     return tensorflow::errors::Unknown(
