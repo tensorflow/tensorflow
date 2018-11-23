@@ -120,7 +120,7 @@ Status PoplarExceptionToTensorflowStatus(const std::string& prefix,
     return tensorflow::errors::Internal(prefix, e.what());
   } catch (const poplar::graph_program_compilation_error& e) {
     return tensorflow::errors::Internal(prefix, e.what());
-  } catch (const poputil::poplib_error& e) {
+  } catch (const poputil::poplibs_error& e) {
     return tensorflow::errors::Internal(prefix, e.what());
   } catch (const poplar::link_error& e) {
     return tensorflow::errors::ResourceExhausted(prefix, e.what());
