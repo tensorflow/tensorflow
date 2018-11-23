@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MKL_CONV_OPS_H_
 
 #include <limits>
-#include <vector>
 #include <memory>
+#include <vector>
 
 #include "mkldnn.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -85,7 +85,7 @@ class MklDnnConvUtil {
   }
 
   // Calculate Convolution dilations
-  virtual inline void GetDilationsInMklOrder(memory::dims *dilations) {
+  virtual inline void GetDilationsInMklOrder(memory::dims* dilations) {
     // For now we take the dilation from the second and third dimensions only
     // (we do not support dilation on the batch or depth dimension).
     CHECK_NOTNULL(dilations);
@@ -195,9 +195,8 @@ class MklDnnConvUtil {
                                         filter_shape.DebugString()));
 
     for (int i = 0; i < ((strides_.size() == 4) ? 3 : 5); i++) {
-      OP_REQUIRES(context_,
-                  FastBoundsCheck(filter_shape.dim_size(i),
-                                  std::numeric_limits<int>::max()),
+      OP_REQUIRES(context_, FastBoundsCheck(filter_shape.dim_size(i),
+                                            std::numeric_limits<int>::max()),
                   errors::InvalidArgument("filter too large"));
     }
 
@@ -463,8 +462,8 @@ class MklDnnConvUtil {
                                           input_tf_shape.DebugString()));
     }
 
-    GetOutputAndPadSizeInMklOrder(input_tf_shape, filter_tf_shape,
-                                  strides, dilations, output_dims_tf_order,
+    GetOutputAndPadSizeInMklOrder(input_tf_shape, filter_tf_shape, strides,
+                                  dilations, output_dims_tf_order,
                                   output_dims_mkl_order, pad_l, pad_r);
   }
 
@@ -555,7 +554,6 @@ class MklConvBackpropCommonOp : public OpKernel {
   Padding padding_;
   TensorFormat data_format_;  // NCHW or NHWC
 };
-
 
 /////////////////////////////////////////////////////////////////////
 ///  Dummy Mkl op that is just used for operators that are intermediate

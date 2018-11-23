@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
-#ifndef INTEL_MKL_ML_ONLY  // We don't support fusion in MKL ML
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
@@ -160,5 +159,4 @@ TEST_F(FusedPadConvOpTest, PaddingConvTestNchw) {
   Run<float>(DT_FLOAT, image, filter, padding, expected, "NCHW");
 }
 }  // namespace tensorflow
-#endif  // INTEL_MKL_ML_ONLY
 #endif  // INTEL_MKL

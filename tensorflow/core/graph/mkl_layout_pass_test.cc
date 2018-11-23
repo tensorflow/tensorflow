@@ -138,13 +138,8 @@ REGISTER_OP("_MklInput2")
     .Output("o: uint8")
     .Output("o1: uint8")
     .SetIsStateful();
-REGISTER_OP("Output2")
-    .Input("i: float")
-    .Input("i1: float")
-    .SetIsStateful();
-REGISTER_OP("Output")
-    .Input("i: float")
-    .SetIsStateful();
+REGISTER_OP("Output2").Input("i: float").Input("i1: float").SetIsStateful();
+REGISTER_OP("Output").Input("i: float").SetIsStateful();
 
 /////////////////////////////////////////////////////////////////////
 //  Unit tests related to node merge optiimization
@@ -162,7 +157,6 @@ TEST_F(MklLayoutPassTest, Basic) {
             "A(Input);B(Input);C(Zeta);D(Zeta)|"
             "A->C;A->D;B->C:1;B->D:1");
 }
-
 
 // Test set 1: Conv2D + AddBias
 
@@ -470,7 +464,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_ConvBpropInput_FilterFwd) {
             "E:3->G:4;F->G;F:control->DMT/_3:control;G->Z;X->Y:1;X->Z:1");
 }
 
-// Test set 3: Pad + Conv2D fusion 
+// Test set 3: Pad + Conv2D fusion
 // padding is VALID type
 // A = input(image), B = input(paddings), C= Pad = input of conv2D,
 // D=input(filter), E = Conv2D, Z = Zeta
@@ -508,10 +502,10 @@ TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Positive) {
 }
 // Test if input control edges do not duplicate after merge.
 // If both the merging ops have input control edge from a common op
-// then, the merged op will have only one control edge from that 
+// then, the merged op will have only one control edge from that
 // common op.
 // padding is VALID type
-// A = input(image), A1 = input, B = input(paddings), 
+// A = input(image), A1 = input, B = input(paddings),
 // C= Pad = input of conv2D,
 // D=input(filter), E = Conv2D, Z = Zeta
 // C=Pad(A,B); E=Conv2D(C,D); Z=Zeta(E,Y)
@@ -550,12 +544,14 @@ TEST_F(MklLayoutPassTest, Input_ControlEdge_PadWithConv2D_Positive) {
   const Edge* edge_1 = graph_.AddControlEdge(a1, e);
   ASSERT_NE(edge, nullptr);
   ASSERT_NE(edge_1, nullptr);
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);A1(Input);B(Int32Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
-            "DMT/_2(Const);E(_MklPadWithConv2D);Y(Input);Z(Zeta)|A->E;"
-            "A1:control->E:control;A:control->DMT/_0:control;A:control->DMT/_1:control;"
-            "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"
-            "DMT/_2->E:5;E->Z;Y->Z:1");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);A1(Input);B(Int32Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
+      "DMT/_2(Const);E(_MklPadWithConv2D);Y(Input);Z(Zeta)|A->E;"
+      "A1:control->E:control;A:control->DMT/_0:control;A:control->DMT/"
+      "_1:control;"
+      "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"
+      "DMT/_2->E:5;E->Z;Y->Z:1");
 }
 // Test if output control edges does not duplicate after merge.
 // If both the merging ops have output control edge to a common op,
@@ -600,16 +596,17 @@ TEST_F(MklLayoutPassTest, Output_ControlEdge_PadWithConv2D_Positive) {
   const Edge* edge_1 = graph_.AddControlEdge(e, a1);
   ASSERT_NE(edge, nullptr);
   ASSERT_NE(edge_1, nullptr);
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);A1(Input);B(Int32Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
-            "DMT/_2(Const);E(_MklPadWithConv2D);Y(Input);Z(Zeta)|A->E;"
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
-            "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"
-            "DMT/_2->E:5;E->Z;E:control->A1:control;Y->Z:1");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);A1(Input);B(Int32Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
+      "DMT/_2(Const);E(_MklPadWithConv2D);Y(Input);Z(Zeta)|A->E;"
+      "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+      "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"
+      "DMT/_2->E:5;E->Z;E:control->A1:control;Y->Z:1");
 }
 // Pad + Conv2D fusion with padding is VALID,
 // Input node pointing to both Pad and Conv2D
-// A = input(image), B = input(paddings), C= Pad 
+// A = input(image), B = input(paddings), C= Pad
 // E = Conv2D, Z = Zeta
 // C=Pad(A,B); E=Conv2D(C,A); Z=Zeta(E,Y)
 // After layout pass
@@ -645,7 +642,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Common_Input) {
 // Pad + Conv2D with padding is VALID,
 // Input node pointing to both Pad and Conv2D
 // Output of both Pad and Conv2D feeds one node (Z as Output2)
-// A = input(as image), B = input(as paddings), C= Pad 
+// A = input(as image), B = input(as paddings), C= Pad
 // E = Conv2D, Z = Output2
 // C=Pad(A,B); E=Conv2D(C,A); Z=Output(C,E)
 // After layout pass - No merging, since Pad and Conv2D both
