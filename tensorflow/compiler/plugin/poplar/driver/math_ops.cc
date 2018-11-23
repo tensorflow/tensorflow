@@ -408,6 +408,26 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
   return seq;
 }
 
+StatusOr<poplar::program::Program> CreateMatMulBiasAddOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
+  poplar::program::Sequence prog;
+
+  poplar::Tensor in;
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 0, prog));
+
+  poplar::Tensor bias;
+  TF_ASSIGN_OR_RETURN(bias,
+                      FindInstructionInput(tensor_map, res, inst, 1, prog));
+
+  poplin::addBias(graph, in, bias, prog, GetDebugName(inst));
+
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, in));
+  return prog;
+}
+
 StatusOr<poplar::program::Program> CreateSelectOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {

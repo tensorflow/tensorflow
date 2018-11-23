@@ -519,5 +519,38 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
             'avg/call/avgPool5x5']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
+  def testFullyConnectedWithBias(self):
+    with ops.device("/device:IPU:0"):
+      x = array_ops.placeholder(np.float32, shape=[2,2])
+      weights = array_ops.placeholder(np.float32, shape=[2,2])
+      bias = array_ops.placeholder(np.float32, shape=[2])
+      x_new = nn.xw_plus_b(x, weights, bias)
+
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+
+      sess.run(report)
+
+      out = sess.run(x_new, {
+        x : np.full([2,2], 3),
+        weights : np.full([2,2], 4),
+        bias: np.ones([2]),
+      })
+      self.assertAllClose(np.full([2,2], 25), out)
+
+      result = sess.run(report)
+      self.assertEqual(len(result), 4) # 1xcompile, 1xload, 1xdownload, 1xexecute
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['progIdCopy',
+            'host-exchange-local-copy',
+            'xw_plus_b/MatMul/dot.*/Conv_1/Convolve',
+            'xw_plus_b/call/addToChannel']
+      self.assertTrue(tu.check_compute_sets_in_whitelist_entries(cs_list, ok))
+
 if __name__ == "__main__":
     googletest.main()

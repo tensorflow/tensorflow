@@ -36,8 +36,9 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"relugrad", 0},
     {"sigmoidgrad", 0},
     {"sigmoidgrad", 0},
-    {"biasadd", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
-    {"biasadd", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
+    {"conv_biasadd", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
+    {"conv_biasadd", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
+    {"matmul_biasadd", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
     {"zero_pad", 0},
     {"norm_scale_add", 4},
     {"norm_scale_add", 6},
@@ -159,6 +160,12 @@ static const std::vector<HloMatcherPattern> patterns = {
     {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
      {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
      {HloOpcode::kConvolution, false, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 1, Is1DVector, {}}},
+
+    // BiasAdd on a MatMul (w/ broadcast)
+    {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
+     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+     {HloOpcode::kDot, false, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 1, Is1DVector, {}}},
 
     // External padding with constant zero

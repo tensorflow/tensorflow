@@ -422,7 +422,7 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
   return prog;
 }
 
-StatusOr<poplar::program::Program> CreateBiasAddOp(
+StatusOr<poplar::program::Program> CreateConvBiasAddOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);

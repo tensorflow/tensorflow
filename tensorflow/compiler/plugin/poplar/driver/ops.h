@@ -115,6 +115,10 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map);
 
+StatusOr<poplar::program::Program> CreateMatMulBiasAddOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map);
+
 StatusOr<poplar::program::Program> CreateSelectOp(CompilerResources& res,
                                                   const HloInstruction* inst,
                                                   const xla::Shape& output,
@@ -180,7 +184,7 @@ StatusOr<poplar::program::Program> CreateConv2D(CompilerResources& res,
                                                 const xla::Shape& output_shape,
                                                 TensorMap& tensor_map);
 
-StatusOr<poplar::program::Program> CreateBiasAddOp(
+StatusOr<poplar::program::Program> CreateConvBiasAddOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
 
