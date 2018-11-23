@@ -1616,7 +1616,7 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node,
 }
 
 void MklLayoutRewritePass::CopyAttrsConv2DDepthwise(const Node* orig_node,
-                                           NodeBuilder* nb) {
+                                                    NodeBuilder* nb) {
   DataType T;
   string data_format;
   string padding;

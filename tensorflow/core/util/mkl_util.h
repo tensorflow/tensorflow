@@ -111,7 +111,8 @@ typedef enum {
   Dim3d_I = 1
 } MklDnnDims3D;
 
-// Enum for the order of dimensions of a TF 2D filter with shape [filter_height, filter_width, in_channels, out_channels]
+// Enum for the order of dimensions of a TF 2D filter with shape [filter_height,
+// filter_width, in_channels, out_channels]
 typedef enum {
   TF_2DFILTER_DIM_H = 0,
   TF_2DFILTER_DIM_W = 1,
@@ -119,7 +120,8 @@ typedef enum {
   TF_2DFILTER_DIM_O = 3
 } TFFilterDims2d;
 
-// Enum for the order of dimensions of a TF 3D filter with shape [filter_depth, filter_height, filter_width, in_channels, out_channels]
+// Enum for the order of dimensions of a TF 3D filter with shape [filter_depth,
+// filter_height, filter_width, in_channels, out_channels]
 typedef enum {
   TF_3DFILTER_DIM_P = 0,
   TF_3DFILTER_DIM_H = 1,
@@ -128,13 +130,14 @@ typedef enum {
   TF_3DFILTER_DIM_O = 4
 } TFFilterDims3d;
 
-// The dimensions order that MKL DNN requires for the filter in a grouped convolution (2D only)
+// The dimensions order that MKL DNN requires for the filter in a grouped
+// convolution (2D only)
 typedef enum {
-   MKL_GROUP_FILTER_DIM_G = 0,
-   MKL_GROUP_FILTER_DIM_O = 1,
-   MKL_GROUP_FILTER_DIM_I = 2,
-   MKL_GROUP_FILTER_DIM_H = 3,
-   MKL_GROUP_FILTER_DIM_W = 4
+  MKL_GROUP_FILTER_DIM_G = 0,
+  MKL_GROUP_FILTER_DIM_O = 1,
+  MKL_GROUP_FILTER_DIM_I = 2,
+  MKL_GROUP_FILTER_DIM_H = 3,
+  MKL_GROUP_FILTER_DIM_W = 4
 } MklDnnFilterGroupDims;
 
 // Enum used to templatize MklOp kernel implementations
@@ -292,32 +295,32 @@ class MklShape {
     CHECK_EQ(dnnDelete_F32(convert), E_SUCCESS);
   }
 
-  // The following methods are used for serializing and de-serializing the
-  // contents of the mklshape object.
-  // The data is serialized in this order
-  // isMklTensor_
-  // dimension_
-  // sizes_
-  // strides_
-  // mklLayout_
-  // tfLayout_
-  // tf_to_mkl_dim_map_
+// The following methods are used for serializing and de-serializing the
+// contents of the mklshape object.
+// The data is serialized in this order
+// isMklTensor_
+// dimension_
+// sizes_
+// strides_
+// mklLayout_
+// tfLayout_
+// tf_to_mkl_dim_map_
 
 #define SIZE_OF_MKL_DNN_BUF \
   (dnnLayoutSerializationBufferSize_F32())  // Size of buffer needed to
                                             // serialize dnn_layout pointer
 
-  // Size of buffer to hold the serialized object, the size is computed as
-  // follows sizeof(isMklTensor_) + sizeof(dimension_) + sizeof(sizes_) +
-  // sizeof(strides_)
-  // + sizeof(mklLayout_ buffer) + sizeof(tfLayout_ buffer)
-  // + sizeof(tf_to_mkl_dim_map_)
+// Size of buffer to hold the serialized object, the size is computed as
+// follows sizeof(isMklTensor_) + sizeof(dimension_) + sizeof(sizes_) +
+// sizeof(strides_)
+// + sizeof(mklLayout_ buffer) + sizeof(tfLayout_ buffer)
+// + sizeof(tf_to_mkl_dim_map_)
 
 #define SIZE_OF_MKL_SERIAL_DATA(dims) \
   (2 * sizeof(size_t) + 3 * dims * sizeof(size_t) + 2 * SIZE_OF_MKL_DNN_BUF)
 
-  // First we need to define some macro for offsets into the serial buffer where
-  // different elements of Mklshape is written/read from
+// First we need to define some macro for offsets into the serial buffer where
+// different elements of Mklshape is written/read from
 
 #define IS_MKL_TENSOR_OFFSET 0
 // Location from start of buffer where isMklTensor_ is serialized
@@ -860,9 +863,9 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
       CHECK(output_tensor.CopyFrom(mkl_tensor, output_shape));
     }
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + string(e.message) + ", in file " +
-                       string(__FILE__) + ":" + std::to_string(__LINE__);
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       string(e.message) + ", in file " + string(__FILE__) +
+                       ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
   return output_tensor;
