@@ -75,12 +75,12 @@ Benchmark::Benchmark(const string& device, Graph* g,
   const int graph_def_version = g->versions().producer();
 
   LocalExecutorParams params;
-  params.device = device_.get();
+  params.device = device_;
   params.function_library = nullptr;
   params.create_kernel = [this, graph_def_version](const NodeDef& ndef,
                                                    OpKernel** kernel) {
-    return CreateNonCachedKernel(device_.get(), nullptr, ndef,
-                                 graph_def_version, kernel);
+    return CreateNonCachedKernel(device_, nullptr, ndef, graph_def_version,
+                                 kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
@@ -107,7 +107,7 @@ Benchmark::~Benchmark() {
     // run kernel destructors that may attempt to access state borrowed from
     // `device_`, such as the resource manager.
     exec_.reset();
-    device_.reset();
+    delete device_;
     delete pool_;
   }
 }

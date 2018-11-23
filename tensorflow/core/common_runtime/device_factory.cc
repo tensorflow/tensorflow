@@ -20,7 +20,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -90,9 +89,9 @@ DeviceFactory* DeviceFactory::GetFactory(const string& device_type) {
   return it->second.factory.get();
 }
 
-Status DeviceFactory::AddDevices(
-    const SessionOptions& options, const string& name_prefix,
-    std::vector<std::unique_ptr<Device>>* devices) {
+Status DeviceFactory::AddDevices(const SessionOptions& options,
+                                 const string& name_prefix,
+                                 std::vector<Device*>* devices) {
   // CPU first. A CPU device is required.
   auto cpu_factory = GetFactory("CPU");
   if (!cpu_factory) {
@@ -117,16 +116,16 @@ Status DeviceFactory::AddDevices(
   return Status::OK();
 }
 
-std::unique_ptr<Device> DeviceFactory::NewDevice(const string& type,
-                                                 const SessionOptions& options,
-                                                 const string& name_prefix) {
+Device* DeviceFactory::NewDevice(const string& type,
+                                 const SessionOptions& options,
+                                 const string& name_prefix) {
   auto device_factory = GetFactory(type);
   if (!device_factory) {
     return nullptr;
   }
   SessionOptions opt = options;
   (*opt.config.mutable_device_count())[type] = 1;
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<Device*> devices;
   TF_CHECK_OK(device_factory->CreateDevices(opt, name_prefix, &devices));
   int expected_num_devices = 1;
   auto iter = options.config.device_count().find(type);
@@ -134,7 +133,7 @@ std::unique_ptr<Device> DeviceFactory::NewDevice(const string& type,
     expected_num_devices = iter->second;
   }
   DCHECK_EQ(devices.size(), static_cast<size_t>(expected_num_devices));
-  return std::move(devices[0]);
+  return devices[0];
 }
 
 }  // namespace tensorflow

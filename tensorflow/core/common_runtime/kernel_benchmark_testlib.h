@@ -55,7 +55,7 @@ class Benchmark {
 
  private:
   thread::ThreadPool* pool_ = nullptr;
-  std::unique_ptr<Device> device_ = nullptr;
+  Device* device_ = nullptr;
   Rendezvous* rendez_ = nullptr;
   std::unique_ptr<Executor> exec_;
 

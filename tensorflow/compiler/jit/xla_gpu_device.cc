@@ -29,12 +29,12 @@ namespace tensorflow {
 class XlaGpuDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<std::unique_ptr<Device>>* devices) override;
+                       std::vector<Device*>* devices) override;
 };
 
-Status XlaGpuDeviceFactory::CreateDevices(
-    const SessionOptions& session_options, const string& name_prefix,
-    std::vector<std::unique_ptr<Device>>* devices) {
+Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
+                                          const string& name_prefix,
+                                          std::vector<Device*>* devices) {
   XlaOpRegistry::DeviceRegistration registration;
   registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
   registration.autoclustering_policy =
@@ -70,7 +70,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
       return status;
     }
 
-    devices->push_back(std::move(device));
+    devices->push_back(device.release());
   }
   return Status::OK();
 }

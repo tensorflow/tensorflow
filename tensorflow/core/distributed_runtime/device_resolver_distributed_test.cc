@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 
-#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/test_utils.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -42,8 +41,8 @@ class TestableDeviceResolverDistributed : public DeviceResolverDistributed {
 
 // Create a fake 'Device' whose only interesting attribute is a non-default
 // DeviceLocality.
-static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
-                                         int numa_node) {
+static Device* NewDevice(const string& type, const string& name,
+                         int numa_node) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
@@ -54,7 +53,7 @@ static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
   attr.set_name(name);
   attr.set_device_type(type);
   attr.mutable_locality()->set_numa_node(numa_node);
-  return absl::make_unique<FakeDevice>(attr);
+  return new FakeDevice(attr);
 }
 
 // Create a fake WorkerInterface that responds to requests without RPCs,
@@ -152,19 +151,19 @@ class DeviceResDistTest : public ::testing::Test {
 
   void DefineWorker(const string& worker_name, const string& device_type,
                     int num_devices) {
-    std::vector<std::unique_ptr<Device>> devices;
+    std::vector<Device*> devices;
     for (int i = 0; i < num_devices; ++i) {
       devices.push_back(NewDevice(
           device_type,
           strings::StrCat(worker_name, "/device:", device_type, ":", i), i));
     }
-    DeviceMgr* dev_mgr = new DeviceMgr(std::move(devices));
+    DeviceMgr* dev_mgr = new DeviceMgr(devices);
     TestableDeviceResolverDistributed* dev_res =
         new TestableDeviceResolverDistributed(dev_mgr, &wc_, worker_name);
     resolvers_[worker_name] = dev_res;
     device_mgrs_.push_back(dev_mgr);
     std::vector<string>* dv = &dev_by_task_[worker_name];
-    for (auto* d : dev_mgr->ListDevices()) {
+    for (auto d : devices) {
       dv->push_back(d->name());
     }
     FakeWorker* fw = new FakeWorker(worker_name, dev_mgr, dev_res);

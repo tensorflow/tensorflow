@@ -2963,7 +2963,6 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
-        "@com_google_absl//absl/memory",
         "//third_party/eigen3",
         "//tensorflow/core/grappler:grappler_item",
     ] + mkl_deps(),
@@ -3817,7 +3816,6 @@ tf_cc_tests_gpu(
         ":test",
         ":test_main",
         ":testlib",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -3846,7 +3844,6 @@ tf_cc_tests_gpu(
         ":test",
         ":test_main",
         ":testlib",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -4414,7 +4411,6 @@ tf_cc_test(
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:shape_ops",
         "//third_party/eigen3",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )

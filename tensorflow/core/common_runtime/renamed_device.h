@@ -28,10 +28,9 @@ namespace tensorflow {
 // session.
 class RenamedDevice : public Device {
  public:
-  static std::unique_ptr<Device> NewRenamedDevice(const string& new_base,
-                                                  Device* underlying,
-                                                  bool owns_underlying,
-                                                  bool isolate_session_state);
+  static Device* NewRenamedDevice(const string& new_base, Device* underlying,
+                                  bool owns_underlying,
+                                  bool isolate_session_state);
 
   ~RenamedDevice() override;
 

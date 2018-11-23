@@ -18,7 +18,6 @@ limitations under the License.
 #include <atomic>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
@@ -148,15 +147,14 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 3});
-    std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(
-        options, "/job:localhost/replica:0/task:0", &devices));
+        options, "/job:localhost/replica:0/task:0", &devices_));
 
     FunctionDefLibrary proto;
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+    device_mgr_.reset(new DeviceMgr(devices_));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
         opts, default_thread_pool, nullptr /* cluster_flr */));
@@ -360,6 +358,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   FunctionLibraryRuntime* flr0_;
   FunctionLibraryRuntime* flr1_;
   FunctionLibraryRuntime* flr2_;
+  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;

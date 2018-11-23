@@ -16,9 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 
 #include <unordered_map>
-#include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -345,15 +343,14 @@ class FunctionOptimizerContext {
       DeviceAttributes attr;
       attr.set_name("/device:CPU:0");
       attr.set_device_type("CPU");
-      std::vector<std::unique_ptr<Device>> devices;
-      devices.push_back(absl::make_unique<FakeCPUDevice>(env, attr));
-      device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+      Device* device = new FakeCPUDevice(env, attr);
+      device_mgr_.reset(new DeviceMgr({device}));
       OptimizerOptions optimizer_opts;
       optimizer_opts.set_do_function_inlining(true);
       process_flr_.reset(new ProcessFunctionLibraryRuntime(
           device_mgr_.get(), env, graph_version_, &function_library_,
           optimizer_opts));
-      flr_ = process_flr_->GetFLR(device_mgr_->ListDevices()[0]->name());
+      flr_ = process_flr_->GetFLR(device->name());
     }
   }
 

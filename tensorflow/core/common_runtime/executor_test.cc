@@ -53,17 +53,17 @@ class ExecutorTest : public ::testing::Test {
     // when the test completes.
     CHECK(rendez_->Unref());
     delete exec_;
+    delete device_;
   }
 
   // Resets executor_ with a new executor based on a graph 'gdef'.
   void Create(std::unique_ptr<const Graph> graph) {
     const int version = graph->versions().producer();
     LocalExecutorParams params;
-    params.device = device_.get();
+    params.device = device_;
     params.create_kernel = [this, version](const NodeDef& ndef,
                                            OpKernel** kernel) {
-      return CreateNonCachedKernel(device_.get(), nullptr, ndef, version,
-                                   kernel);
+      return CreateNonCachedKernel(device_, nullptr, ndef, version, kernel);
     };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
@@ -83,7 +83,7 @@ class ExecutorTest : public ::testing::Test {
   }
 
   thread::ThreadPool* thread_pool_ = nullptr;
-  std::unique_ptr<Device> device_;
+  Device* device_ = nullptr;
   Executor* exec_ = nullptr;
   StepStatsCollector step_stats_collector_;
   StepStats step_stats_;

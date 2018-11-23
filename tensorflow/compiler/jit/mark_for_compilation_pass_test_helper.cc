@@ -34,8 +34,14 @@ namespace tensorflow {
   //
   // It may be worth refactoring out XlaOpRegistry::RegisterCompilationDevice to
   // make this more direct, but probably not worth it solely for this test.
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<Device*> devices;
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(*session_options, "", &devices));
+
+  auto delete_devices = gtl::MakeCleanup([&] {
+    for (Device* d : devices) {
+      delete d;
+    }
+  });
 
   GraphOptimizationPassOptions opt_options;
   opt_options.graph = graph;

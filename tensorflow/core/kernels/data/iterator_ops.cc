@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 
-#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
@@ -546,9 +545,10 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
   // in its resource manager. The existing device will outlive the
   // IteratorResource, because we are storing the IteratorResource
   // in that device's resource manager.
-  *device_mgr = absl::make_unique<DeviceMgr>(RenamedDevice::NewRenamedDevice(
+  Device* wrapped_device = RenamedDevice::NewRenamedDevice(
       ctx->device()->name(), down_cast<Device*>(ctx->device()),
-      false /* owns_underlying */, false /* isolate_session_state */));
+      false /* owns_underlying */, false /* isolate_session_state */);
+  device_mgr->reset(new DeviceMgr({wrapped_device}));
   flib_def->reset(new FunctionLibraryDefinition(
       *ctx->function_library()->GetFunctionLibraryDefinition()));
   pflr->reset(new ProcessFunctionLibraryRuntime(

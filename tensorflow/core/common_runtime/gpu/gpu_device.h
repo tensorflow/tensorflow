@@ -166,7 +166,7 @@ class BaseGPUDevice : public LocalDevice {
 class BaseGPUDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<std::unique_ptr<Device>>* devices) override;
+                       std::vector<Device*>* devices) override;
 
   struct InterconnectMap {
     // Name of interconnect technology, if known.
@@ -207,13 +207,15 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   Status CreateGPUDevice(const SessionOptions& options,
                          const string& name_prefix, TfGpuId tf_gpu_id,
                          int64 memory_limit, const DeviceLocality& dev_locality,
-                         std::vector<std::unique_ptr<Device>>* devices);
+                         std::vector<Device*>* devices);
 
-  virtual std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
-      const SessionOptions& options, const string& name, Bytes memory_limit,
-      const DeviceLocality& dev_locality, TfGpuId tf_gpu_id,
-      const string& physical_device_desc, Allocator* gpu_allocator,
-      Allocator* cpu_allocator) = 0;
+  virtual BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
+                                         const string& name, Bytes memory_limit,
+                                         const DeviceLocality& dev_locality,
+                                         TfGpuId tf_gpu_id,
+                                         const string& physical_device_desc,
+                                         Allocator* gpu_allocator,
+                                         Allocator* cpu_allocator) = 0;
 
   // Returns into 'ids' the list of valid platform GPU ids, in the order that
   // they should map to TF GPU ids "/device:GPU:0", "/device:GPU:1", etc,

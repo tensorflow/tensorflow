@@ -88,7 +88,7 @@ class GPUDeviceTest : public ::testing::Test {
 
 TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
   SessionOptions opts = MakeSessionOptions("0,abc");
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
@@ -97,7 +97,7 @@ TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
 
 TEST_F(GPUDeviceTest, InvalidGpuId) {
   SessionOptions opts = MakeSessionOptions("100");
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
@@ -107,7 +107,7 @@ TEST_F(GPUDeviceTest, InvalidGpuId) {
 
 TEST_F(GPUDeviceTest, DuplicateEntryInVisibleDeviceList) {
   SessionOptions opts = MakeSessionOptions("0,0");
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
@@ -117,7 +117,7 @@ TEST_F(GPUDeviceTest, DuplicateEntryInVisibleDeviceList) {
 
 TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithMemoryFractionSettings) {
   SessionOptions opts = MakeSessionOptions("0", 0.1, 1, {{}});
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
@@ -129,7 +129,7 @@ TEST_F(GPUDeviceTest, GpuDeviceCountTooSmall) {
   // device_count is 0, but with one entry in visible_device_list and one
   // (empty) VirtualDevices messages.
   SessionOptions opts = MakeSessionOptions("0", 0, 0, {{}});
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::UNKNOWN);
@@ -141,7 +141,7 @@ TEST_F(GPUDeviceTest, NotEnoughGpuInVisibleDeviceList) {
   // Single entry in visible_device_list with two (empty) VirtualDevices
   // messages.
   SessionOptions opts = MakeSessionOptions("0", 0, 8, {{}, {}});
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::UNKNOWN);
@@ -155,7 +155,7 @@ TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
   // Three entries in visible_device_list with two (empty) VirtualDevices
   // messages.
   SessionOptions opts = MakeSessionOptions("0,1", 0, 8, {{}});
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
@@ -169,36 +169,39 @@ TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
 TEST_F(GPUDeviceTest, EmptyVirtualDeviceConfig) {
   // It'll create single virtual device when the virtual device config is empty.
   SessionOptions opts = MakeSessionOptions("0");
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(1, devices.size());
   EXPECT_GE(devices[0]->attributes().memory_limit(), 0);
+  gtl::STLDeleteElements(&devices);
 }
 
 TEST_F(GPUDeviceTest, SingleVirtualDeviceWithNoMemoryLimit) {
   // It'll create single virtual device for the gpu in question when
   // memory_limit_mb is unset.
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {{}});
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(1, devices.size());
   EXPECT_GE(devices[0]->attributes().memory_limit(), 0);
+  gtl::STLDeleteElements(&devices);
 }
 
 TEST_F(GPUDeviceTest, SingleVirtualDeviceWithMemoryLimit) {
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123}});
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(1, devices.size());
   EXPECT_EQ(123 << 20, devices[0]->attributes().memory_limit());
+  gtl::STLDeleteElements(&devices);
 }
 
 TEST_F(GPUDeviceTest, MultipleVirtualDevices) {
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}});
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(2, devices.size());
@@ -216,6 +219,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevices) {
             devices[1]->attributes().locality().links().link(0).type());
   EXPECT_EQ(BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength,
             devices[1]->attributes().locality().links().link(0).strength());
+  gtl::STLDeleteElements(&devices);
 }
 
 // Enabling unified memory on pre-Pascal GPUs results in an initialization
@@ -232,7 +236,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
   opts.config.mutable_gpu_options()
       ->mutable_experimental()
       ->set_use_unified_memory(true);
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INTERNAL);
@@ -255,7 +259,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   }
 
   SessionOptions opts = MakeSessionOptions("0", kGpuMemoryFraction);
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<tensorflow::Device*> devices;
   TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   ASSERT_EQ(1, devices.size());
@@ -274,6 +278,8 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
                                      (memory_limit >> 20) << 20);
   EXPECT_NE(ptr, nullptr);
   allocator->DeallocateRaw(ptr);
+
+  gtl::STLDeleteElements(&devices);
 }
 
 }  // namespace tensorflow

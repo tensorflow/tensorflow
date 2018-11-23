@@ -386,7 +386,7 @@ TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps) {
   TF_ASSERT_OK(s.ToGraph(graph.get()));
 
   // This is needed to register the XLA_GPU device.
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<Device*> devices;
   TF_ASSERT_OK(DeviceFactory::AddDevices(
       SessionOptions(), "/job:localhost/replica:0/task:0", &devices));
 
@@ -400,6 +400,10 @@ TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps) {
   TF_ASSERT_OK(PartiallyDecluster(&graph));
 
   EXPECT_EQ(GetXlaClusterForNode(*n), "cluster_0");
+
+  for (Device* d : devices) {
+    delete d;
+  }
 }
 
 TEST(PartiallyDeclusterPassTest, DontDeclusterNonTensorFlowOps) {

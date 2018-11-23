@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 
-#include <memory>
 #include <vector>
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -25,32 +24,32 @@ limitations under the License.
 
 namespace tensorflow {
 
-DeviceMgr::DeviceMgr(std::vector<std::unique_ptr<Device>> devices)
-    : devices_(std::move(devices)), name_backing_store_(128) {
-  for (auto& d : devices_) {
+DeviceMgr::DeviceMgr(const std::vector<Device*>& devices)
+    : name_backing_store_(128) {
+  for (Device* d : devices) {
     CHECK(d->device_mgr_ == nullptr);
     d->device_mgr_ = this;
+
+    devices_.push_back(d);
 
     // Register under the (1) full name and (2) canonical name.
     for (const string& name :
          DeviceNameUtils::GetNamesForDeviceMappings(d->parsed_name())) {
-      device_map_[CopyToBackingStore(name)] = d.get();
+      device_map_[CopyToBackingStore(name)] = d;
     }
     // Register under the (3) local name and (4) legacy local name.
     for (const string& name :
          DeviceNameUtils::GetLocalNamesForDeviceMappings(d->parsed_name())) {
-      device_map_[CopyToBackingStore(name)] = d.get();
+      device_map_[CopyToBackingStore(name)] = d;
     }
     device_type_counts_[d->device_type()]++;
   }
 }
 
-DeviceMgr::DeviceMgr(std::unique_ptr<Device> device)
-    : DeviceMgr([&device] {
-        std::vector<std::unique_ptr<Device>> vector;
-        vector.push_back(std::move(device));
-        return vector;
-      }()) {}
+DeviceMgr::~DeviceMgr() {
+  // TODO(b/37437134): Remove destructor after converting to std::unique_ptr.
+  for (Device* p : devices_) delete p;
+}
 
 StringPiece DeviceMgr::CopyToBackingStore(StringPiece s) {
   size_t n = s.size();
@@ -62,22 +61,18 @@ StringPiece DeviceMgr::CopyToBackingStore(StringPiece s) {
 void DeviceMgr::ListDeviceAttributes(
     std::vector<DeviceAttributes>* devices) const {
   devices->reserve(devices_.size());
-  for (const auto& dev : devices_) {
+  for (Device* dev : devices_) {
     devices->emplace_back(dev->attributes());
   }
 }
 
 std::vector<Device*> DeviceMgr::ListDevices() const {
-  std::vector<Device*> devices(devices_.size());
-  for (size_t i = 0; i < devices_.size(); ++i) {
-    devices[i] = devices_[i].get();
-  }
-  return devices;
+  return std::vector<Device*>(devices_.begin(), devices_.end());
 }
 
 string DeviceMgr::DebugString() const {
   string out;
-  for (const auto& dev : devices_) {
+  for (Device* dev : devices_) {
     strings::StrAppend(&out, dev->name(), "\n");
   }
   return out;
@@ -85,7 +80,7 @@ string DeviceMgr::DebugString() const {
 
 string DeviceMgr::DeviceMappingString() const {
   string out;
-  for (const auto& dev : devices_) {
+  for (Device* dev : devices_) {
     if (!dev->attributes().physical_device_desc().empty()) {
       strings::StrAppend(&out, dev->name(), " -> ",
                          dev->attributes().physical_device_desc(), "\n");
@@ -112,7 +107,7 @@ Status DeviceMgr::LookupDevice(StringPiece name, Device** device) const {
 
 void DeviceMgr::ClearContainers(gtl::ArraySlice<string> containers) const {
   Status s;
-  for (const auto& dev : devices_) {
+  for (Device* dev : devices_) {
     if (containers.empty()) {
       s.Update(dev->resource_manager()->Cleanup(
           dev->resource_manager()->default_container()));

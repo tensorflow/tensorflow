@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/hierarchical_tree_broadcaster.h"
 
 #include <algorithm>
-#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -218,7 +217,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
             << " num_devices_per_worker=" << num_devices_per_worker;
     int total_num_devices = num_workers * num_devices_per_worker;
     device_type_ = device_type;
-    std::vector<std::unique_ptr<Device>> local_devices;
+    std::vector<Device*> local_devices;
     SessionOptions sess_opts;
     sess_opts.env = Env::Default();
     Bytes mem_limit(4 << 20);
@@ -228,7 +227,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
         if (device_type == DEVICE_CPU) {
           string dev_name = strings::StrCat("/job:worker/replica:0/task:", wi,
                                             "/device:CPU:", di);
-          local_devices.push_back(absl::make_unique<ThreadPoolDevice>(
+          local_devices.push_back(new ThreadPoolDevice(
               sess_opts, dev_name, mem_limit, dev_locality, cpu_allocator()));
         } else if (device_type == DEVICE_GPU && !gpu_devices_.empty()) {
           int dev_idx = (wi * num_devices_per_worker) + di;
@@ -236,7 +235,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
             LOG(INFO) << "dev_mgr has access to limited GPUs, reusing for more "
                          "than one ring node.";
           } else {
-            local_devices.push_back(std::move(gpu_devices_[dev_idx]));
+            local_devices.push_back(gpu_devices_[dev_idx]);
           }
         } else {
           LOG(FATAL) << "Unsupported device_type " << device_type;
@@ -244,7 +243,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       }
     }
     if (!dev_mgr_ || device_type == DEVICE_CPU) {
-      dev_mgr_.reset(new DeviceMgr(std::move(local_devices)));
+      dev_mgr_.reset(new DeviceMgr(local_devices));
     }
     if (!gpu_ring_order_) gpu_ring_order_.reset(new string());
     dev_resolver_.reset(new DeviceResolverLocal(dev_mgr_.get()));
@@ -715,7 +714,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
   std::unique_ptr<DeviceResolverLocal> dev_resolver_;
   std::vector<DeviceInstance*> instances_;
   CollectiveParams col_params_;
-  std::vector<std::unique_ptr<tensorflow::Device>> gpu_devices_;
+  std::vector<tensorflow::Device*> gpu_devices_;
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
   std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
