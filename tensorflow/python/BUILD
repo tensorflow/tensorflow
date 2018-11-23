@@ -3805,8 +3805,8 @@ tf_py_test(
     deps = [
         ":client_testlib",
         ":array_ops",
-        ":util"
-    ]
+        ":util",
+    ],
 )
 
 tf_py_test(
