@@ -96,6 +96,11 @@ bool ReshapeOrCopyIsBitcast(
          valid_bitcast_callback(operand->shape(), instr->shape());
 }
 
+bool IsUnstridedSlice(const HloInstruction* hlo) {
+  return absl::c_all_of(hlo->slice_strides(),
+                        [](int64 stride) { return stride == 1; });
+}
+
 // AlgebraicSimplifierVisitor traverses the HLO computation and reduces certain
 // algebraic expressions to simplified forms. Note: This only supports
 // simplifications that simply look at the operands of an instruction. For the
@@ -520,7 +525,74 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
     VLOG(10) << "trying to replace " << concatenate->ToString() << " with "
              << replacement->ToString();
     ReplaceInstructionIfSameShape(concatenate, replacement);
-  } else if (operands.size() == 2) {
+    return Status::OK();
+  }
+
+  // Check if we can merge "adjacent" slice operands which take slices from the
+  // same other op. For simplicity we only merge unstrided slices.
+  int64 concatenate_dimension = concatenate->concatenate_dimension();
+  for (int64 i = 0; i < operands.size(); ++i) {
+    if (operands[i]->opcode() != HloOpcode::kSlice ||
+        !IsUnstridedSlice(operands[i])) {
+      continue;
+    }
+    int64 slice_end = operands[i]->slice_limits(concatenate_dimension);
+    HloInstruction* slice_operand = operands[i]->mutable_operand(0);
+    int64 j = i + 1;
+    while (j < operands.size() && operands[j]->opcode() == HloOpcode::kSlice &&
+           IsUnstridedSlice(operands[j]) &&
+           operands[j]->operand(0) == slice_operand &&
+           operands[j]->slice_starts(concatenate_dimension) == slice_end) {
+      // Check that all the slice_start values are the same in all other
+      // dimensions. This implies that the slice_limit values are also the same,
+      // because operands of concatenate need to have the same shape, and we
+      // already checked that the slices are unstrided.
+      bool same_other_starts = true;
+      for (int64 k = 0; k < operands[j]->slice_starts().size(); ++k) {
+        if (k == concatenate_dimension) {
+          continue;
+        }
+        if (operands[i]->slice_starts(k) != operands[j]->slice_starts(k)) {
+          same_other_starts = false;
+          break;
+        }
+      }
+      if (!same_other_starts) {
+        break;
+      }
+      slice_end = operands[j]->slice_limits(concatenate_dimension);
+      ++j;
+    }
+    if (j - i > 1) {
+      Shape new_slice_shape = operands[i]->shape();
+      new_slice_shape.set_dimensions(
+          concatenate_dimension,
+          slice_end - operands[i]->slice_starts(concatenate_dimension));
+      auto new_limit_indices = operands[i]->slice_limits();
+      new_limit_indices[concatenate_dimension] = slice_end;
+      auto new_slice_op =
+          computation_->AddInstruction(HloInstruction::CreateSlice(
+              new_slice_shape, slice_operand,
+              /*start_indices=*/operands[i]->slice_starts(),
+              /*limit_indices=*/new_limit_indices,
+              /*strides=*/operands[i]->slice_strides()));
+      std::vector<HloInstruction*> new_operands;
+      for (int64 k = 0; k < i; ++k) {
+        new_operands.push_back(operands[k]);
+      }
+      new_operands.push_back(new_slice_op);
+      for (int64 k = j; k < operands.size(); ++k) {
+        new_operands.push_back(operands[k]);
+      }
+      auto replacement =
+          computation_->AddInstruction(concatenate->CloneWithNewOperands(
+              concatenate->shape(), new_operands));
+      ReplaceInstructionIfSameShape(concatenate, replacement);
+      return Status::OK();
+    }
+  }
+
+  if (operands.size() == 2) {
     // A binary concat with a broadcasted scalar as an operand can be converted
     // into a pad which is simpler to fold into other operations.
     bool is_effective_low_pad = Match(
@@ -536,7 +608,7 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
       padding_config_dim->set_edge_padding_high(0);
       padding_config_dim->set_edge_padding_low(0);
       padding_config_dim->set_interior_padding(0);
-      if (dim == concatenate->concatenate_dimension()) {
+      if (dim == concatenate_dimension) {
         if (is_effective_low_pad) {
           padding_config_dim->set_edge_padding_low(
               operands[0]->shape().dimensions(dim));
@@ -2008,11 +2080,6 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
   }
 
   return false;
-}
-
-bool IsUnstridedSlice(const HloInstruction* hlo) {
-  return absl::c_all_of(hlo->slice_strides(),
-                        [](int64 stride) { return stride == 1; });
 }
 
 StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
