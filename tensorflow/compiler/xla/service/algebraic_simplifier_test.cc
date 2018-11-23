@@ -1437,6 +1437,76 @@ TEST_F(AlgebraicSimplifierTest, ConcatenateOfBroadcastBecomesPad) {
   EXPECT_THAT(computation->root_instruction(), op::Pad(param0, param1));
 }
 
+TEST_F(AlgebraicSimplifierTest, SimplifyConcatenateOfSlices) {
+  auto m = CreateNewVerifiedModule();
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {100, 99});
+  Shape concat_shape = ShapeUtil::MakeShape(F32, {50, 80});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r2f32, "param1"));
+
+  HloInstruction* slice0 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{0, 0},
+      /*limit_indices=*/{50, 10}, /*strides=*/{1, 1}));
+
+  // Cannot merge 'slice0' and 'slice1' because of different start indices in
+  // dimension 0.
+  HloInstruction* slice1 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{50, 10},
+      /*limit_indices=*/{100, 20}, /*strides=*/{1, 1}));
+
+  // Cannot merge 'slice1' and 'slice2' because of stride in dimension 2.
+  HloInstruction* slice2 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{50, 20},
+      /*limit_indices=*/{100, 40}, /*strides=*/{1, 2}));
+
+  // Cannot merge 'slice2' and 'slice3' because of stride in dimension 2.
+  HloInstruction* slice3 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{50, 40},
+      /*limit_indices=*/{100, 50}, /*strides=*/{1, 1}));
+
+  // Can merge 'slice3' and 'slice4'.
+  HloInstruction* slice4 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{50, 50},
+      /*limit_indices=*/{100, 60}, /*strides=*/{1, 1}));
+
+  // Can merge 'slice4' and 'slice5'.
+  HloInstruction* slice5 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{50, 60},
+      /*limit_indices=*/{100, 70}, /*strides=*/{1, 1}));
+
+  // Cannot merge 'slice5' and 'slice6' because of overlap.
+  HloInstruction* slice6 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{50, 69},
+      /*limit_indices=*/{100, 79}, /*strides=*/{1, 1}));
+
+  // Cannot merge 'slice6' and 'slice7' because of slicing from a different
+  // parameter.
+  HloInstruction* slice7 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param1, /*start_indices=*/{50, 79},
+      /*limit_indices=*/{100, 89}, /*strides=*/{1, 1}));
+
+  builder.AddInstruction(HloInstruction::CreateConcatenate(
+      concat_shape,
+      {slice0, slice1, slice2, slice3, slice4, slice5, slice6, slice7}, 1));
+  auto computation = m->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      computation->root_instruction(),
+      op::Concatenate(op::Slice(param0), op::Slice(param0), op::Slice(param0),
+                      op::Slice(param0), op::Slice(param0), op::Slice(param1)));
+  // The operand 3 should be a merge of 'slice3', 'slice4' and 'slice5', so its
+  // shape should have dimensions {50, 30}.
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->operand(3)->shape(),
+                       ShapeUtil::MakeShape(F32, {50, 30})));
+  EXPECT_EQ(computation->root_instruction()->operand(3)->slice_starts(1), 40);
+}
+
 // Test that a simplification which changes layouts is not performed if layout
 // sensitive is true.
 TEST_F(AlgebraicSimplifierTest, CopyWithDifferentLayout) {
