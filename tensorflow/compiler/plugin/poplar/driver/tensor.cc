@@ -1016,8 +1016,7 @@ StatusOr<ArgVectors> GetInplaceOutputTensors(TensorMap& map,
                                              const HloInstruction* inst,
                                              poplar::program::Sequence& seq) {
   // Check that the instruction description is for an inplace operation.
-  auto inst_description =
-      InplaceUtil::GetHloInstructionDescription(inst, res.annotations);
+  auto inst_description = InplaceUtil::GetHloInstructionDescription(inst);
   if (!inst_description->IsInPlaceType(inst)) {
     LOG(FATAL) << "Trying to execute " << inst->name()
                << " as an inplace operation, but it is not.";

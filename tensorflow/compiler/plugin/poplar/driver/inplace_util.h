@@ -63,13 +63,12 @@ class InplaceHloInstructionDescription : public HloInstructionDescription {
 };
 
 std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
-    const HloInstruction* inst, const CompilerAnnotations& annotations);
+    const HloInstruction* inst);
 
 // A function which is used to decide whether an instruction is of inplace or
 // view changing or not-inplace type given our backend implementation of these
 // ops in Poplar.
-bool IsInPlace(HloInstruction* inst, const CompilerAnnotations& annotations,
-               HloReachabilityMap* reachability_map);
+bool IsInPlace(HloInstruction* inst, HloReachabilityMap* reachability_map);
 }
 
 }  // namespace poplarplugin

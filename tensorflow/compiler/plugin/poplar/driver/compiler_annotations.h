@@ -42,10 +42,6 @@ struct CompilerAnnotations {
 
   ConvClassification classification_map;
 
-  absl::flat_hash_map<const HloInstruction*,
-                      InplaceUtil::InplaceHloInstructionDescription>
-      inplace_calls;
-
   InplaceUtil::InplaceInstructions inplace_instructions;
 
   std::map<const HloComputation*, const HloInstruction*> fusion_map;

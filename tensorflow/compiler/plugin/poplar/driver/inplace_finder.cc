@@ -142,8 +142,7 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
           case HloOpcode::kGetTupleElement:
           case HloOpcode::kMultiply:
           case HloOpcode::kSubtract:
-            if (InplaceUtil::IsInPlace(inst, annotations_,
-                                       reachability_map.get())) {
+            if (InplaceUtil::IsInPlace(inst, reachability_map.get())) {
               annotations_.inplace_instructions.insert(inst);
               changed = true;
             }
@@ -189,7 +188,7 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
     }
 
     for (auto* inst : inplace_instructions_queue) {
-      if (InplaceUtil::IsInPlace(inst, annotations_, reachability_map.get())) {
+      if (InplaceUtil::IsInPlace(inst, reachability_map.get())) {
         annotations_.inplace_instructions.insert(inst);
         changed = true;
       }

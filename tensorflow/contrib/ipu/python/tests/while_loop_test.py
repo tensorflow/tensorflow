@@ -15,6 +15,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.training import gradient_descent
@@ -97,6 +98,31 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       sess.run(variables.global_variables_initializer())
       result = sess.run(r, {X: [[1,3,5,7],[0,2,4,6]], Y: [1, 0]})
       self.assertAllClose(result[0], [[3,2],[1,0]])
+
+  def testInplaceOpsInRepeats(self):
+    def my_net(x):
+      def cond(i, x):
+        return i < 3
+
+      def body(i, x):
+        i = i + 1
+        x = nn.relu(x * x)
+        return (i, x)
+
+      i = 0
+      return control_flow_ops.while_loop(cond, body, (i, x))
+
+    with ops.device('cpu'):
+      x = array_ops.placeholder(dtypes.float32, [4])
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      r = xla.compile(my_net, inputs=[x])
+
+    with session_lib.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      (c, x) = sess.run(r, {x: np.full([4], 2)})
+      self.assertEqual(c, 3)
+      self.assertAllClose(x, np.full([4], 256))
 
 if __name__ == "__main__":
     googletest.main()

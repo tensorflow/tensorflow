@@ -30,14 +30,6 @@ unsigned SingleHloMatcher::ReplaceNodes() {
         const OutlinedInfo outlined_info =
             OutlineExpressionFromComputation(match, name, fuse.op_index);
         replacement_count += MarkReplacedInstructions(outlined_info);
-
-        // If the call is inplace, then add it to the inplace map along with its
-        // inplace description.
-        if (fuse.inplace_call_description) {
-          annotations_
-              .inplace_calls[outlined_info.call_to_outlined_computation] =
-              *fuse.inplace_call_description;
-        }
       }
     }
   }

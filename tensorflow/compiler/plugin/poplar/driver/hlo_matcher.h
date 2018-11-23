@@ -70,24 +70,12 @@ struct HloMatcherMatched {
 };
 
 struct FusedGraphInfo {
-  FusedGraphInfo(const char* name, const char op_index)
-      : name(name), op_index(op_index) {}
-  FusedGraphInfo(const char* name, const char op_index,
-                 const InplaceUtil::InplaceHloInstructionDescription
-                     inplace_call_description)
-      : name(name),
-        op_index(op_index),
-        inplace_call_description(inplace_call_description) {}
   // The names to give the extracted fused graphs
   const char* name;
 
   // The index of the op within each fusion which should have its op_metadata
   // copied to the kCall instruction.
   const char op_index;
-
-  // Inplace description
-  absl::optional<InplaceUtil::InplaceHloInstructionDescription>
-      inplace_call_description;
 };
 
 using HloMatcherPattern = std::vector<HloMatcherNode>;
