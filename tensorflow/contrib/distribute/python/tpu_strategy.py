@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import functools
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
@@ -539,10 +540,15 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
                  task_id=None):
     del cluster_spec, task_type, task_id
     if session_config:
-      session_config.isolate_session_state = True
-      cluster_spec = self._tpu_cluster_resolver.cluster_spec()
-      if cluster_spec:
-        session_config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+      session_config.CopyFrom(self._update_config_proto(session_config))
+
+  def _update_config_proto(self, config_proto):
+    updated_config = copy.deepcopy(config_proto)
+    updated_config.isolate_session_state = True
+    cluster_spec = self._tpu_cluster_resolver.cluster_spec()
+    if cluster_spec:
+      updated_config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+    return updated_config
 
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property

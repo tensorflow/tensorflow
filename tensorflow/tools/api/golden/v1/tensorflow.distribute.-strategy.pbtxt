@@ -123,6 +123,10 @@ tf_class {
     argspec: "args=[\'self\', \'var\', \'fn\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
+    name: "update_config_proto"
+    argspec: "args=[\'self\', \'config_proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "update_non_slot"
     argspec: "args=[\'self\', \'colocate_with\', \'fn\'], varargs=args, keywords=kwargs, defaults=None"
   }
