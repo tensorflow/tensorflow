@@ -24,7 +24,6 @@ py_library(
         ":extenders",
         ":head",
         ":hooks",
-        ":linear",
         ":logit_fns",
         ":multi_head",
         ":replicate_model_fn",
@@ -128,17 +127,6 @@ py_library(
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:estimator_py",
-    ],
-)
-
-py_library(
-    name = "linear",
-    srcs = ["python/estimator/linear.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":expect_tensorflow_estimator_installed",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:linear",
     ],
 )
 
