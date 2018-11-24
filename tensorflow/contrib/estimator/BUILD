@@ -16,7 +16,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":boosted_trees",
-        ":dnn",
         ":dnn_with_layer_annotations",
         ":early_stopping",
         ":expect_tensorflow_estimator_installed",
@@ -44,18 +43,6 @@ py_library(
         ":expect_tensorflow_estimator_installed",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:boosted_trees",
-    ],
-)
-
-py_library(
-    name = "dnn",
-    srcs = ["python/estimator/dnn.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":expect_tensorflow_estimator_installed",
-        "//tensorflow:tensorflow_py_no_contrib",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:dnn",
     ],
 )
 
