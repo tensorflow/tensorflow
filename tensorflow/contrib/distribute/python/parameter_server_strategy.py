@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import multi_worker_util
@@ -462,21 +464,27 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
       self._initialize_multi_worker(self._num_gpus_per_worker,
                                     self._cluster_spec, task_type, task_id)
 
-    if not session_config or not self._cluster_spec:
-      return
+    if session_config:
+      session_config.CopyFrom(self._update_config_proto(session_config))
 
-    session_config.isolate_session_state = False
+  def _update_config_proto(self, config_proto):
+    updated_config = copy.deepcopy(config_proto)
+    if not self._cluster_spec:
+      updated_config.isolate_session_state = True
+      return updated_config
 
-    assert self._cluster_spec
+    updated_config.isolate_session_state = False
+
     assert self._task_type
     assert self._task_id is not None
 
     # The device filters prevent communication between workers.
     if self._task_type not in ["chief", "worker"]:
       return
-    del session_config.device_filters[:]
-    session_config.device_filters.extend(
+    del updated_config.device_filters[:]
+    updated_config.device_filters.extend(
         ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
+    return updated_config
 
   @property
   def _num_replicas_in_sync(self):

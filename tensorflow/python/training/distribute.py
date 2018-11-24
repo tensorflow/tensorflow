@@ -610,9 +610,34 @@ class DistributionStrategy(object):
                 cluster_spec=None,
                 task_type=None,
                 task_id=None):
-    """Configures the strategy class."""
+    # pylint: disable=g-doc-return-or-yield,g-doc-args
+    """DEPRECATED: use `update_config_proto` instead.
+
+    Configures the strategy class.
+
+    DEPRECATED: This method's functionality has been split into the strategy
+    constructor and `update_config_proto`. In the future, we will allow passing
+    cluster and config_proto to the constructor to configure the strategy. And
+    `update_config_proto` can be used to update the config_proto based on the
+    specific strategy.
+    """
     return self._extended._configure(  # pylint: disable=protected-access
         session_config, cluster_spec, task_type, task_id)
+
+  def update_config_proto(self, config_proto):
+    """Returns a copy of `config_proto` modified for use with this strategy.
+
+    The updated config has something needed to run a strategy, e.g.
+    configuration to run collective ops, or device filters to improve
+    distributed training performance.
+
+    Args:
+      config_proto: a `tf.ConfigProto` object.
+
+    Returns:
+      The updated copy of the `config_proto`.
+    """
+    return self._extended._update_config_proto(config_proto)  # pylint: disable=protected-access
 
   @property
   @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
@@ -1344,6 +1369,9 @@ class DistributionStrategyExtended(object):
                  task_id=None):
     """Configures the strategy class."""
     del session_config, cluster_spec, task_type, task_id
+
+  def _update_config_proto(self, config_proto):
+    return copy.deepcopy(config_proto)
 
   @property
   def experimental_should_init(self):

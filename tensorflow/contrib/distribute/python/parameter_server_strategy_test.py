@@ -656,6 +656,33 @@ class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
         num_gpus_per_worker=context.num_gpus())
     self._test_global_step_update(strategy)
 
+  def testUpdateConfigProtoMultiWorker(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    distribution.configure(
+        cluster_spec=self._cluster_spec, task_type='worker', task_id=1)
+
+    config_proto = config_pb2.ConfigProto(device_filters=['to_be_overridden'])
+
+    new_config = distribution.update_config_proto(config_proto)
+
+    # Verify device filters.
+    self.assertEqual(['/job:worker/task:1', '/job:ps'],
+                     new_config.device_filters)
+
+    # Verify isolate_session_state
+    self.assertFalse(new_config.isolate_session_state)
+
+  def testUpdateConfigProtoLocal(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+
+    config_proto = config_pb2.ConfigProto()
+    new_config = distribution.update_config_proto(config_proto)
+
+    # Verify isolate_session_state
+    self.assertTrue(new_config.isolate_session_state)
+
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                                            parameterized.TestCase):
