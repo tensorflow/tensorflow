@@ -75,7 +75,7 @@ PatternRewriter::~PatternRewriter() {
 /// (perhaps transitively) dead.  If any of those ops are dead, this will
 /// remove them as well.
 void PatternRewriter::replaceOp(Operation *op, ArrayRef<SSAValue *> newValues,
-                                ArrayRef<SSAValue *> opsToRemoveIfDead) {
+                                ArrayRef<SSAValue *> valuesToRemoveIfDead) {
   // Notify the rewriter subclass that we're about to replace this root.
   notifyRootReplaced(op);
 
@@ -87,28 +87,23 @@ void PatternRewriter::replaceOp(Operation *op, ArrayRef<SSAValue *> newValues,
   notifyOperationRemoved(op);
   op->erase();
 
-  // TODO: Process the opsToRemoveIfDead list, removing things and calling the
-  // notifyOperationRemoved hook in the process.
+  // TODO: Process the valuesToRemoveIfDead list, removing things and calling
+  // the notifyOperationRemoved hook in the process.
 }
 
-/// This method is used as the final replacement hook for patterns that match
-/// a single result value.  In addition to replacing and removing the
-/// specified operation, clients can specify a list of other nodes that this
-/// replacement may make (perhaps transitively) dead.  If any of those ops are
-/// dead, this will remove them as well.
-void PatternRewriter::replaceSingleResultOp(
-    Operation *op, SSAValue *newValue, ArrayRef<SSAValue *> opsToRemoveIfDead) {
-  // Notify the rewriter subclass that we're about to replace this root.
-  notifyRootReplaced(op);
+/// op and newOp are known to have the same number of results, replace the
+/// uses of op with uses of newOp
+void PatternRewriter::replaceOpWithResultsOfAnotherOp(
+    Operation *op, Operation *newOp,
+    ArrayRef<SSAValue *> valuesToRemoveIfDead) {
+  assert(op->getNumResults() == newOp->getNumResults() &&
+         "replacement op doesn't match results of original op");
+  if (op->getNumResults() == 1)
+    return replaceOp(op, newOp->getResult(0), valuesToRemoveIfDead);
 
-  assert(op->getNumResults() == 1 && "op isn't a SingleResultOp!");
-  op->getResult(0)->replaceAllUsesWith(newValue);
-
-  notifyOperationRemoved(op);
-  op->erase();
-
-  // TODO: Process the opsToRemoveIfDead list, removing things and calling the
-  // notifyOperationRemoved hook in the process.
+  SmallVector<SSAValue *, 8> newResults(newOp->getResults().begin(),
+                                        newOp->getResults().end());
+  return replaceOp(op, newResults, valuesToRemoveIfDead);
 }
 
 /// This method is used as the final notification hook for patterns that end
@@ -120,12 +115,12 @@ void PatternRewriter::replaceSingleResultOp(
 /// should remove if they are dead at this point.
 ///
 void PatternRewriter::updatedRootInPlace(
-    Operation *op, ArrayRef<SSAValue *> opsToRemoveIfDead) {
+    Operation *op, ArrayRef<SSAValue *> valuesToRemoveIfDead) {
   // Notify the rewriter subclass that we're about to replace this root.
   notifyRootUpdated(op);
 
-  // TODO: Process the opsToRemoveIfDead list, removing things and calling the
-  // notifyOperationRemoved hook in the process.
+  // TODO: Process the valuesToRemoveIfDead list, removing things and calling
+  // the notifyOperationRemoved hook in the process.
 }
 
 //===----------------------------------------------------------------------===//

@@ -200,36 +200,28 @@ public:
   /// results of the operation are updated to use the specified list of SSA
   /// values.  In addition to replacing and removing the specified operation,
   /// clients can specify a list of other nodes that this replacement may make
-  /// (perhaps transitively) dead.  If any of those ops are dead, this will
+  /// (perhaps transitively) dead.  If any of those values are dead, this will
   /// remove them as well.
   void replaceOp(Operation *op, ArrayRef<SSAValue *> newValues,
-                 ArrayRef<SSAValue *> opsToRemoveIfDead = {});
+                 ArrayRef<SSAValue *> valuesToRemoveIfDead = {});
 
-  /// This method is used as the final replacement hook for patterns that match
-  /// a single result value.  In addition to replacing and removing the
-  /// specified operation, clients can specify a list of other nodes that this
-  /// replacement may make (perhaps transitively) dead.  If any of those ops are
-  /// dead, this will remove them as well.
-  void replaceSingleResultOp(Operation *op, SSAValue *newValue,
-                             ArrayRef<SSAValue *> opsToRemoveIfDead = {});
-
-  /// Replaces the single result op with a new op that is created without
-  /// verification.
+  /// Replaces the result op with a new op that is created without verification.
+  /// The result values of the two ops must be the same types.
   template <typename OpTy, typename... Args>
-  void replaceSingleResultOpWithNewOp(Operation *op, Args... args) {
+  void replaceOpWithNewOp(Operation *op, Args... args) {
     auto newOp = create<OpTy>(op->getLoc(), args...);
-    replaceSingleResultOp(op, newOp);
+    replaceOpWithResultsOfAnotherOp(op, newOp, {});
   }
 
-  /// Replaces the single result op with a new op that is created without
-  /// verification and allows specifying a list of ops that may be removed if
-  /// dead.
+  /// Replaces the result op with a new op that is created without verification.
+  /// The result values of the two ops must be the same types.  This allows
+  /// specifying a list of ops that may be removed if dead.
   template <typename OpTy, typename... Args>
-  void replaceSingleResultOpWithNewOp(Operation *op,
-                                      ArrayRef<SSAValue *> opsToRemoveIfDead,
-                                      Args... args) {
+  void replaceOpWithNewOp(Operation *op,
+                          ArrayRef<SSAValue *> valuesToRemoveIfDead,
+                          Args... args) {
     auto newOp = create<OpTy>(op->getLoc(), args...);
-    replaceSingleResultOp(op, newOp, opsToRemoveIfDead);
+    replaceOpWithResultsOfAnotherOp(op, newOp, valuesToRemoveIfDead);
   }
 
   /// This method is used as the final notification hook for patterns that end
@@ -237,11 +229,11 @@ public:
   /// a minor efficiency win (it avoids creating a new instruction and removing
   /// the old one) but also often allows simpler code in the client.
   ///
-  /// The opsToRemoveIfDead list is an optional list of nodes that the rewriter
-  /// should remove if they are dead at this point.
+  /// The valuesToRemoveIfDead list is an optional list of values that the
+  /// rewriter should remove if they are dead at this point.
   ///
   void updatedRootInPlace(Operation *op,
-                          ArrayRef<SSAValue *> opsToRemoveIfDead = {});
+                          ArrayRef<SSAValue *> valuesToRemoveIfDead = {});
 
 protected:
   PatternRewriter(MLIRContext *context) : Builder(context) {}
@@ -267,6 +259,13 @@ protected:
   /// before the operation is deleted.  At this point, the operation has zero
   /// uses.
   virtual void notifyOperationRemoved(Operation *op) {}
+
+private:
+  /// op and newOp are known to have the same number of results, replace the
+  /// uses of op with uses of newOp
+  void
+  replaceOpWithResultsOfAnotherOp(Operation *op, Operation *newOp,
+                                  ArrayRef<SSAValue *> valuesToRemoveIfDead);
 };
 
 //===----------------------------------------------------------------------===//

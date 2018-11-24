@@ -124,7 +124,7 @@ struct SimplifyAddX0 : public Pattern {
     return matchFailure();
   }
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
-    rewriter.replaceSingleResultOp(op, op->getOperand(0));
+    rewriter.replaceOp(op, op->getOperand(0));
   }
 };
 } // end anonymous namespace.
@@ -279,7 +279,7 @@ struct SimplifyAllocConst : public Pattern {
     auto resultCast = rewriter.create<MemRefCastOp>(allocOp->getLoc(), newAlloc,
                                                     allocOp->getType());
 
-    rewriter.replaceSingleResultOp(op, resultCast, droppedOperands);
+    rewriter.replaceOp(op, {resultCast}, droppedOperands);
   }
 };
 } // end anonymous namespace.
@@ -1075,7 +1075,7 @@ struct SimplifyMulX1 : public Pattern {
     return matchFailure();
   }
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
-    rewriter.replaceSingleResultOp(op, op->getOperand(0));
+    rewriter.replaceOp(op, op->getOperand(0));
   }
 };
 } // end anonymous namespace.
@@ -1212,7 +1212,7 @@ struct SimplifyXMinusX : public Pattern {
     auto result =
         rewriter.create<ConstantIntOp>(op->getLoc(), 0, subi->getType());
 
-    rewriter.replaceSingleResultOp(op, result);
+    rewriter.replaceOp(op, {result});
   }
 };
 } // end anonymous namespace.
