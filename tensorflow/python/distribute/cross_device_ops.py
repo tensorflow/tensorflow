@@ -916,15 +916,15 @@ def _choose_all_reduce_algorithm(device_links):
 
 
 def choose_the_best(devices, session_config=None):
-  """Find the best subclass of CrossDeviceOps given a tensorflow session.
+  """Find the best subclass of CrossDeviceOps given a session config.
 
   Args:
-    devices: a list of devices passed for distribute strategy.
-    session_config: a tensorflow session config or None. If None, it will make
-      deciesion based on all local devices.
+    devices: a list of devices passed to `tf.distribute.Strategy`.
+    session_config: a `tf.ConfigProto` or `None`. If `None`, it will make
+      decision based on all local devices.
 
   Returns:
-    a subclass of CrossDeviceOps.
+    A subclass of `CrossDeviceOps`.
   """
   requested_devices = set([device_util.canonicalize(d) for d in devices])
   machine_devices = device_lib.list_local_devices(session_config=session_config)
@@ -937,13 +937,13 @@ def choose_the_best(devices, session_config=None):
           "Device is available but not used by distribute strategy: %s", d.name)
 
   if len(using_devices) != len(requested_devices):
-    logging.warning("Not all devices in distribute strategy are visible by "
-                    "TensorFlow sessions.")
+    logging.warning("Not all devices in `tf.distribute.Strategy` are visible "
+                    "to TensorFlow.")
     return ReductionToOneDeviceCrossDeviceOps()
 
   if any(d.device_type.lower() != "gpu" for d in using_devices):
-    logging.warning("Not all devices in DistributionStrategy are visible to "
-                    "TensorFlow session.")
+    logging.warning("Not all devices in `tf.distribute.Strategy` are visible "
+                    "to TensorFlow.")
     return ReductionToOneDeviceCrossDeviceOps()
 
   device_links = [[] for _ in range(len(using_devices))]
