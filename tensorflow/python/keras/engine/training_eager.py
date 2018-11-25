@@ -31,9 +31,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as cbks
+from tensorflow.python.keras import losses as losses_module
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 
@@ -128,11 +130,24 @@ def _model_loss(model,
       else:
         weights = None
       mask = masks[i]
-
-      weighted_masked_fn = training_utils.weighted_masked_objective(loss_fn)
       with backend.name_scope(model.output_names[i] + '_loss'):
-        output_loss = weighted_masked_fn(
-            targets[i], outs[i], weights, mask=mask)
+        if isinstance(loss_fn, losses_module.Loss):
+          if mask is not None:
+            mask = math_ops.cast(mask, outs[i].dtype)
+            # Update weights with mask.
+            if weights is None:
+              weights = mask
+            else:
+              # Update dimensions of weights to match with mask if possible.
+              mask, _, weights = squeeze_or_expand_dimensions(
+                  mask, None, weights)
+              weights *= mask
+          output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
+        else:
+          weighted_masked_fn = training_utils.weighted_masked_objective(loss_fn)
+          output_loss = weighted_masked_fn(
+              targets[i], outs[i], weights, mask=mask)
+
       # If the number of outputs is 1 then we don't append the loss metric
       # associated with each model output. When there are multiple outputs
       # associated with a model, each output's loss is calculated and returned
@@ -351,8 +366,10 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
   output_loss_metrics = []
   for i in range(len(model.outputs)):
     loss_fn = model.loss_functions[i]
+    loss_name = loss_fn.name if isinstance(
+        loss_fn, losses_module.Loss) else loss_fn.__name__
     mean_wrapped_loss = metrics_module.MeanMetricWrapper(
-        loss_fn, name=loss_fn.__name__)
+        loss_fn, name=loss_name)
     output_loss_metrics.append(mean_wrapped_loss)
 
   num_samples = 0
@@ -744,8 +761,10 @@ def fit_loop(model,
     output_loss_metrics = []
     for i in range(len(model.outputs)):
       loss_fn = model.loss_functions[i]
+      loss_name = loss_fn.name if isinstance(
+          loss_fn, losses_module.Loss) else loss_fn.__name__
       mean_wrapped_loss = metrics_module.MeanMetricWrapper(
-          loss_fn, name=loss_fn.__name__)
+          loss_fn, name=loss_name)
       output_loss_metrics.append(mean_wrapped_loss)
 
     callbacks.on_train_begin()

@@ -600,6 +600,34 @@ class TrainingTest(test.TestCase):
           np.ones((10, 10), 'float32'), np.ones((10, 1), 'float32'), epochs=10)
     self.assertTrue('Epoch 5/10' in mock_stdout.getvalue())
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_training_with_loss_instance(self):
+    a = keras.layers.Input(shape=(3,), name='input_a')
+    b = keras.layers.Input(shape=(3,), name='input_b')
+
+    dense = keras.layers.Dense(4, name='dense')
+    c = dense(a)
+    d = dense(b)
+    e = keras.layers.Dropout(0.5, name='dropout')(c)
+
+    model = keras.models.Model([a, b], [d, e])
+    loss_weights = [1., 0.5]
+    model.compile(
+        RMSPropOptimizer(learning_rate=0.001),
+        loss=keras.losses.MeanSquaredError(),
+        metrics=[metrics_module.CategoricalAccuracy(), 'mae'],
+        loss_weights=loss_weights)
+
+    input_a_np = np.random.random((10, 3))
+    input_b_np = np.random.random((10, 3))
+
+    output_d_np = np.random.random((10, 4))
+    output_e_np = np.random.random((10, 4))
+
+    model.fit([input_a_np, input_b_np], [output_d_np, output_e_np],
+              epochs=1,
+              batch_size=5)
+
 
 class TestExceptionsAndWarnings(test.TestCase):
 
@@ -1918,7 +1946,7 @@ class TestTrainingWithMetrics(test.TestCase):
 
     w = np.array([[3., 4.], [1., 2.]])
     outs = model.evaluate(x, y, sample_weight=w)
-    self.assertArrayNear(outs, [0.3, 0.7, 0.3], .001)
+    self.assertArrayNear(outs, [0.75, 0.7, 0.3], .001)
 
     # Verify that metric value is same with arbitrary weights and batch size.
     x = np.random.random((50, 2, 1))
@@ -1988,7 +2016,7 @@ class TestTrainingWithMetrics(test.TestCase):
       # verify that masking is combined with sample weights.
       w = np.array([3, 2, 4])
       scores = model.train_on_batch(x, y, sample_weight=w)
-      self.assertArrayNear(scores, [0.2, 0.8], 0.1)
+      self.assertArrayNear(scores, [0.3328, 0.8], 0.001)
 
   def test_add_metric_with_tensor_on_model_in_graph_mode(self):
     with self.cached_session():

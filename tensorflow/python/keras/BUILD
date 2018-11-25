@@ -142,6 +142,7 @@ py_library(
         "regularizers.py",
         "utils/data_utils.py",
         "utils/io_utils.py",
+        "utils/losses_utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
