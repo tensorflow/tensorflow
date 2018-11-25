@@ -41,6 +41,8 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
+from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -568,16 +570,16 @@ class Model(Network):
               '" missing from loss dictionary. We assume '
               'this was done on purpose. The fit and evaluate APIs will not be '
               'expecting any data to be passed to "' + name + '".')
-        loss_functions.append(losses.get(loss.get(name)))
+        loss_functions.append(training_utils.get_loss_function(loss.get(name)))
     elif isinstance(loss, list):
       if len(loss) != len(self.outputs):
         raise ValueError('When passing a list as loss, '
                          'it should have one entry per model outputs. '
                          'The model has ' + str(len(self.outputs)) +
                          ' outputs, but you passed loss=' + str(loss))
-      loss_functions = [losses.get(l) for l in loss]
+      loss_functions = [training_utils.get_loss_function(l) for l in loss]
     else:
-      loss_function = losses.get(loss)
+      loss_function = training_utils.get_loss_function(loss)
       loss_functions = [loss_function for _ in range(len(self.outputs))]
     self.loss_functions = loss_functions
 
@@ -730,8 +732,21 @@ class Model(Network):
           mask = masks[i]
           loss_weight = loss_weights_list[i]
           with K.name_scope(self.output_names[i] + '_loss'):
-            weighted_loss = training_utils.weighted_masked_objective(loss_fn)
-            output_loss = weighted_loss(y_true, y_pred, sample_weight, mask)
+            if isinstance(loss_fn, losses.Loss):
+              if mask is not None:
+                mask = math_ops.cast(mask, y_pred.dtype)
+                # Update weights with mask.
+                if sample_weight is None:
+                  sample_weight = mask
+                else:
+                  # Update dimensions of weights to match with mask if possible.
+                  mask, _, sample_weight = squeeze_or_expand_dimensions(
+                      mask, None, sample_weight)
+                  sample_weight *= mask
+              output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
+            else:
+              weighted_loss = training_utils.weighted_masked_objective(loss_fn)
+              output_loss = weighted_loss(y_true, y_pred, sample_weight, mask)
 
           if len(self.outputs) > 1:
             # Keep track of the un-aggregated loss result tensor.
@@ -739,8 +754,10 @@ class Model(Network):
                                           '_loss'] = output_loss
 
             # Keep track of stateful result tensor and function for the loss.
+            loss_name = loss_fn.name if isinstance(
+                loss_fn, losses.Loss) else loss_fn.__name__
             mean_wrapped_loss = metrics_module.MeanMetricWrapper(
-                loss_fn, name=loss_fn.__name__)
+                loss_fn, name=loss_name)
             result_tensor = training_utils.call_metric_function(
                 mean_wrapped_loss,
                 y_true,

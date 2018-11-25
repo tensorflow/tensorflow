@@ -19,15 +19,118 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
+
 import six
 
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.keras.utils.losses_utils import compute_weighted_loss
+from tensorflow.python.keras.utils.losses_utils import ReductionV2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.util.tf_export import tf_export
+
+
+class Loss(object):
+  """Loss base class.
+
+  To be implemented by subclasses:
+  * `call()`: Contains the logic for loss calculation using `y_true`, `y_pred`.
+
+  Example subclass implementation:
+  ```
+  class MeanSquaredError(Loss):
+    def call(self, y_true, y_pred):
+      y_pred = ops.convert_to_tensor(y_pred)
+      y_true = math_ops.cast(y_true, y_pred.dtype)
+      return K.mean(math_ops.square(y_pred - y_true), axis=-1)
+  ```
+
+  Args:
+    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
+      `SUM_OVER_BATCH_SIZE`.
+    name: Optional name for the op.
+  """
+
+  def __init__(self, reduction=ReductionV2.SUM_OVER_BATCH_SIZE, name=None):
+    self.reduction = reduction
+    self.name = name
+
+  def __call__(self, y_true, y_pred, sample_weight=None):
+    """Invokes the `Loss` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+      sample_weight: Optional `Tensor` whose rank is either 0, or the same rank
+        as `y_true`, or is broadcastable to `y_true`. `sample_weight` acts as a
+        coefficient for the loss. If a scalar is provided, then the loss is
+        simply scaled by the given value. If `sample_weight` is a tensor of size
+        `[batch_size]`, then the total loss for each sample of the batch is
+        rescaled by the corresponding element in the `sample_weight` vector. If
+        the shape of `sample_weight` matches the shape of `y_pred`, then the
+        loss of each measurable element of `y_pred` is scaled by the
+        corresponding value of `sample_weight`.
+
+    Returns:
+      Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
+        shape as `y_true`; otherwise, it is scalar.
+
+    Raises:
+      ValueError: If the shape of `sample_weight` is invalid.
+    """
+    with ops.name_scope(self.name, format(self.__class__.__name__),
+                        (y_pred, y_true, sample_weight)):
+      losses = self.call(y_true, y_pred)
+      return compute_weighted_loss(
+          losses, sample_weight, reduction=self.reduction)
+
+  @classmethod
+  def from_config(cls, config):
+    """Instantiates a `Loss` from its config (output of `get_config()`).
+
+    Args:
+        config: Output of `get_config()`.
+
+    Returns:
+        A `Loss` instance.
+    """
+    return cls(**config)
+
+  def get_config(self):
+    return {'reduction': self.reduction, 'name': self.name}
+
+  @abc.abstractmethod
+  def call(self, y_true, y_pred):
+    """Invokes the `Loss` instance.
+
+    Args:
+      y_true: Ground truth values, with the same shape as 'y_pred'.
+      y_pred: The predicted values.
+    """
+    NotImplementedError('Must be implemented in subclasses.')
+
+
+class MeanSquaredError(Loss):
+  """Computes the mean of squares of errors between labels and predictions."""
+
+  def call(self, y_true, y_pred):
+    """Invokes the `MeanSquaredError` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Mean squared error losses.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return mean_squared_error(y_true, y_pred)
 
 
 @tf_export('keras.metrics.mean_squared_error',
