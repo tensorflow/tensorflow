@@ -28,9 +28,14 @@ limitations under the License.
 
 #include <cmath>
 
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/model_settings.h"
-
 namespace {
+
+// These constants allow us to allocate fixed-sized arrays on the stack for our
+// working memory.
+constexpr int kInputSize = 512;
+constexpr int kAverageWindowSize = 6;
+constexpr int kOutputSize =
+    ((kInputSize / 2) + (kAverageWindowSize - 1)) / kAverageWindowSize;
 
 // Performs a discrete Fourier transform on the real inputs. This corresponds to
 // rdft() in the FFT package at http://www.kurims.kyoto-u.ac.jp/~ooura/fft.html,
@@ -73,27 +78,27 @@ TfLiteStatus Preprocess(tflite::ErrorReporter* error_reporter,
                         const int16_t* input, int input_size, int output_size,
                         uint8_t* output) {
   // Ensure our input and output data arrays are valid.
-  if (input_size > kMaxAudioSampleSize) {
+  if (input_size > kInputSize) {
     error_reporter->Report("Input size %d larger than %d", input_size,
-                           kMaxAudioSampleSize);
+                           kInputSize);
     return kTfLiteError;
   }
-  if (output_size != kFeatureSliceSize) {
+  if (output_size != kOutputSize) {
     error_reporter->Report("Requested output size %d doesn't match %d",
-                           output_size, kFeatureSliceSize);
+                           output_size, kOutputSize);
     return kTfLiteError;
   }
 
   // Pre-calculate the window function we'll be applying to the input data.
   // In a real application, we'd calculate this table once in an initialization
   // function and store it for repeated reuse.
-  float window_function[kMaxAudioSampleSize];
+  float window_function[kInputSize];
   CalculatePeriodicHann(input_size, window_function);
 
   // Apply the window function to our time series input, and pad it with zeroes
   // to the next power of two.
-  float float_input[kMaxAudioSampleSize];
-  for (int i = 0; i < kMaxAudioSampleSize; ++i) {
+  float float_input[kInputSize];
+  for (int i = 0; i < kInputSize; ++i) {
     if (i < input_size) {
       float_input[i] =
           (input[i] * window_function[i]) / static_cast<float>(1 << 15);
@@ -103,15 +108,14 @@ TfLiteStatus Preprocess(tflite::ErrorReporter* error_reporter,
   }
 
   // Pull the frequency data from the time series sample.
-  float fourier_values[kMaxAudioSampleSize];
-  CalculateDiscreteFourierTransform(float_input, kMaxAudioSampleSize,
-                                    fourier_values);
+  float fourier_values[kInputSize];
+  CalculateDiscreteFourierTransform(float_input, kInputSize, fourier_values);
 
   // We have the complex numbers giving us information about each frequency
   // band, but all we want to know is how strong each frequency is, so calculate
   // the squared magnitude by adding together the squares of each component.
-  float power_spectrum[kMaxAudioSampleSize / 2];
-  for (int i = 0; i < (kMaxAudioSampleSize / 2); ++i) {
+  float power_spectrum[kInputSize / 2];
+  for (int i = 0; i < (kInputSize / 2); ++i) {
     const float real = fourier_values[(i * 2) + 0];
     const float imaginary = fourier_values[(i * 2) + 1];
     power_spectrum[i] = (real * real) + (imaginary * imaginary);
@@ -119,11 +123,11 @@ TfLiteStatus Preprocess(tflite::ErrorReporter* error_reporter,
 
   // Finally, reduce the size of the output by averaging together six adjacent
   // frequencies into each slot, producing an array of 43 values.
-  for (int i = 0; i < kFeatureSliceSize; ++i) {
+  for (int i = 0; i < kOutputSize; ++i) {
     float total = 0.0f;
     for (int j = 0; j < kAverageWindowSize; ++j) {
       const int index = (i * kAverageWindowSize) + j;
-      if (index < (kMaxAudioSampleSize / 2)) {
+      if (index < (kInputSize / 2)) {
         total += power_spectrum[index];
       }
     }
