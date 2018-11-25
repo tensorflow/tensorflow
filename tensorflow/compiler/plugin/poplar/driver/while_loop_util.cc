@@ -81,7 +81,7 @@ StatusOr<int32> WhileLoopUtil::CanConvertWhileToRepeat(
   // "cond COMP const". There must be only 4 instructions which prevents
   // detached stateful instructions from being excluded from execution.
   if (while_condition->instruction_count() != 4) {
-    return xla::FailedPrecondition(err_msg);
+    return xla::FailedPrecondition("%s", err_msg);
   }
 
   // The root instruction must be the comparison
@@ -93,7 +93,7 @@ StatusOr<int32> WhileLoopUtil::CanConvertWhileToRepeat(
     case HloOpcode::kGe:
       break;
     default:
-      return xla::FailedPrecondition(err_msg);
+      return xla::FailedPrecondition("%s", err_msg);
   }
 
   // Make sure that for the comparison instruction:
@@ -103,13 +103,13 @@ StatusOr<int32> WhileLoopUtil::CanConvertWhileToRepeat(
     const bool lhs_is_GTE_param_from_param_0 =
         WhileLoopUtil::IsGTEFromParamIndex(c_inst->operand(0), 0);
     if (!lhs_is_GTE_param_from_param_0) {
-      return xla::FailedPrecondition(err_msg);
+      return xla::FailedPrecondition("%s", err_msg);
     }
 
     const bool rhs_is_integral_const =
         WhileLoopUtil::IsIntegralConstant(c_inst->operand(1));
     if (!rhs_is_integral_const) {
-      return xla::FailedPrecondition(err_msg);
+      return xla::FailedPrecondition("%s", err_msg);
     }
   }
 
@@ -120,7 +120,7 @@ StatusOr<int32> WhileLoopUtil::CanConvertWhileToRepeat(
   HloInstruction* init_inst = input_tuple->mutable_operand(tuple_index);
 
   if (init_inst->opcode() != HloOpcode::kConstant) {
-    return xla::FailedPrecondition(err_msg);
+    return xla::FailedPrecondition("%s", err_msg);
   }
 
   int32 initial_value;
@@ -130,7 +130,7 @@ StatusOr<int32> WhileLoopUtil::CanConvertWhileToRepeat(
   const HloInstruction* limit_inst = c_inst->operand(1);
 
   if (limit_inst->opcode() != HloOpcode::kConstant) {
-    return xla::FailedPrecondition(err_msg);
+    return xla::FailedPrecondition("%s", err_msg);
   }
 
   int32 compare_value;
@@ -151,7 +151,7 @@ StatusOr<int32> WhileLoopUtil::CanConvertWhileToRepeat(
   }
   // Make sure there is only one
   if (matching_GTEs != 1) {
-    return xla::FailedPrecondition(err_msg);
+    return xla::FailedPrecondition("%s", err_msg);
   }
 
   // Check that the mapped GTE instruction is modified by 1 and that the
@@ -176,7 +176,7 @@ StatusOr<int32> WhileLoopUtil::CanConvertWhileToRepeat(
                           body_GTE, while_body, delta_op));
 
   if (matching_increments.size() != 1) {
-    return xla::FailedPrecondition(err_msg);
+    return xla::FailedPrecondition("%s", err_msg);
   }
 
   // Calculate and return the number of iterations and the final counter state
