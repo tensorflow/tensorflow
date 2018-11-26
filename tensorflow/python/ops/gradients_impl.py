@@ -1239,7 +1239,7 @@ def _hessian_vector_product(ys, xs, v):
   return gradients(elemwise_products, xs)
 
 
-@tf_export("hessians")
+@tf_export(v1=["hessians"])
 def hessians(ys,
              xs,
              name="hessians",
@@ -1304,3 +1304,16 @@ def hessians(ys,
                                           array_ops.concat((_shape, _shape), 0))
     hessians.append(_reshaped_hessian)
   return hessians
+
+
+@tf_export("hessians", v1=[])
+def HessiansV2(ys,
+               xs,
+               gate_gradients=False,
+               aggregation_method=None,
+               name="hessians"):
+  return hessians(ys, xs, name=name, gate_gradients=gate_gradients,
+                  aggregation_method=aggregation_method)
+
+
+HessiansV2.__doc__ = hessians.__doc__

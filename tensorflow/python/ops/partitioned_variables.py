@@ -237,7 +237,7 @@ def fixed_size_partitioner(num_shards, axis=0):
   return _partitioner
 
 
-@tf_export("create_partitioned_variables")
+@tf_export(v1=["create_partitioned_variables"])
 @deprecation.deprecated(
     date=None,
     instructions="Use tf.get_variable with a partitioner set.")
