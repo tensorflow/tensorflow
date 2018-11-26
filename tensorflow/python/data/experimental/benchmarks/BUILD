@@ -8,15 +8,67 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_test(
+    name = "csv_dataset_benchmark",
+    srcs = ["csv_dataset_benchmark.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/ops:readers",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "map_and_batch_benchmark",
-    size = "medium",
     srcs = ["map_and_batch_benchmark.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "map_vectorization_benchmark",
+    srcs = ["map_vectorization_benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "autotune_benchmark",
+    srcs = ["autotune_benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:optimization",
@@ -26,17 +78,14 @@ py_test(
 )
 
 py_test(
-    name = "map_benchmark",
-    size = "medium",
-    srcs = ["map_benchmark.py"],
+    name = "optimize_benchmark",
+    srcs = ["optimize_benchmark.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
-        "//tensorflow/python/data/experimental/ops:batching",
-        "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],

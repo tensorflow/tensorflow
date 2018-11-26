@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""MultiDeviceIterator tests."""
+"""Tests for `tf.data.MultiDeviceIterator`."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -31,7 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-# TODO(b/117581999): Add eager coverage for the following tests.
+# TODO(b/117581999): Add eager coverage.
 class MultiDeviceIteratorTest(test_base.DatasetTestBase):
 
   def testNoGetNext(self):

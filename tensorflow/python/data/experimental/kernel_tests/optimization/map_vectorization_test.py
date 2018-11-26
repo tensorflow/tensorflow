@@ -17,18 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
-from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -437,103 +433,6 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
         unoptimized, optimized, errors.InvalidArgumentError,
         [("OneShotIterator", "OneShotIterator_1", 1),
          ("IteratorGetNext", "IteratorGetNext_1", 1)])
-
-
-class MapVectorizationBenchmark(test.Benchmark):
-  # TODO(rachelim): Add a benchmark for more expensive transformations, such as
-  # vgg_preprocessing.
-
-  def _run(self, x, num_iters=100, name=None):
-    deltas = []
-    with session.Session() as sess:
-      for _ in range(5):
-        # Warm up session...
-        sess.run(x)
-      for _ in range(num_iters):
-        start = time.time()
-        sess.run(x)
-        end = time.time()
-        deltas.append(end - start)
-    median_time = np.median(deltas)
-    self.report_benchmark(iters=num_iters, wall_time=median_time, name=name)
-    return median_time
-
-  def _compare(self, input_dataset, map_fn, batch_size, input_size, str_id):
-    num_elems = sum(np.prod(x) for x in input_size)
-    name_template = "{}__batch_size_{}_input_element_size_{}_{}"
-    unoptimized = input_dataset.map(map_fn).batch(batch_size)
-    unoptimized_op = unoptimized.make_one_shot_iterator().get_next()
-
-    optimized = input_dataset.map(map_fn).batch(batch_size)
-    options = dataset_ops.Options()
-    options.experimental_map_vectorization = True
-    optimized = optimized.with_options(options)
-    optimized_op = optimized.make_one_shot_iterator().get_next()
-
-    unoptimized_time = self._run(
-        unoptimized_op,
-        name=name_template.format(str_id, batch_size, num_elems, "unoptimized"))
-    optimized_time = self._run(
-        optimized_op,
-        name=name_template.format(str_id, batch_size, num_elems, "optimized"))
-
-    print("Batch size: {}\n"
-          "Input element size: {}\n"
-          "Transformation: {}\n"
-          "Speedup: {}\n".format(batch_size, input_size, str_id,
-                                 (unoptimized_time / optimized_time)))
-
-  # Known cheap functions
-  def benchmarkIdentity(self):
-    self._benchmark_helper(lambda *args: [array_ops.identity(x) for x in args],
-                           "identity")
-
-  def benchmarkAddConst(self):
-    self._benchmark_helper(lambda *args: [x + 1 for x in args], "add_const")
-
-  def benchmarkReturnConst(self):
-    self._benchmark_helper(lambda *args: [constant_op.constant(2)], "ret_const")
-
-  def benchmarkSelect(self):
-    self._benchmark_helper(lambda *args: args[0], "select")
-
-  def benchmarkCast(self):
-    self._benchmark_helper(
-        lambda *args: [math_ops.cast(x, dtypes.float64) for x in args], "cast")
-
-  def benchmarkReshape(self):
-    self._benchmark_helper(
-        lambda *args: [array_ops.reshape(x, (-1, 30)) for x in args], "reshape")
-
-  def benchmarkDecodeCSV(self):
-    csv_fn, csv_factory = _generate_csv_test_case()
-    self._benchmark_helper(csv_fn, "decode_csv", lambda: [csv_factory()])
-
-  def benchmarkParseSingleExample(self):
-    # NOTE: Since we haven't implemented a vectorizer for "SerializeSparse",
-    # this function is only naively vectorized.
-    parse_fn, parse_factory = _generate_parse_single_example_test_case()
-
-    self._benchmark_helper(parse_fn, "parse_single_example",
-                           lambda: [parse_factory()])
-
-  def _default_dataset_factory(self):
-    input_sizes = [(10, 10, 3), (10, 100, 300)]
-    for sz in input_sizes:
-      yield dataset_ops.Dataset.from_tensor_slices(np.random.rand(*sz))
-
-  def _benchmark_helper(self, map_fn, str_id, base_dataset_factory=None):
-    if base_dataset_factory is None:
-      base_dataset_factory = self._default_dataset_factory
-
-    batch_size = 1000
-    for base_dataset in base_dataset_factory():
-      base_dataset = base_dataset.repeat()
-      input_size = [
-          tuple(shape.as_list())
-          for shape in nest.flatten(base_dataset.output_shapes)
-      ]
-      self._compare(base_dataset, map_fn, batch_size, input_size, str_id)
 
 
 if __name__ == "__main__":
