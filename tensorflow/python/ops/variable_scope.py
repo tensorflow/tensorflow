@@ -909,18 +909,20 @@ class _VariableStore(object):
         # Instantiate initializer if provided initializer is a type object.
         if isinstance(initializer, type(init_ops.Initializer)):
           initializer = initializer(dtype=dtype)
-        if shape and shape.is_fully_defined():
+        spec = tf_inspect.getargspec(initializer)
+        if shape is not None and shape.is_fully_defined():
           init_val = lambda: initializer(  # pylint: disable=g-long-lambda
               shape.as_list(), dtype=dtype, partition_info=partition_info)
-        elif not tf_inspect.getargspec(initializer).args:
+          variable_dtype = dtype.base_dtype
+        elif len(spec.args) == len(spec.defaults or []):
           init_val = initializer
+          variable_dtype = None
         else:
-          raise ValueError("You can only pass an initializer function that "
-                           "expects no arguments to its callable when the "
-                           "shape is not fully defined. The given initializer "
-                           "function expects the following args %s" %
-                           tf_inspect.getargspec(initializer).args)
-        variable_dtype = dtype.base_dtype
+          raise ValueError("The initializer passed is not valid. It should "
+                           "be a callable with no arguments and the "
+                           "shape should not be provided or an instance of "
+                           "`tf.keras.initializers.*' and `shape` should be "
+                           "fully defined.")
 
     # Create the variable.
     if use_resource is None:
