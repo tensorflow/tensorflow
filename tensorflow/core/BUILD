@@ -3023,6 +3023,15 @@ cc_library(
 )
 
 tf_cuda_library(
+    name = "metrics",
+    srcs = ["common_runtime/metrics.cc"],
+    hdrs = ["common_runtime/metrics.h"],
+    deps = [
+        ":lib",
+    ],
+)
+
+tf_cuda_library(
     name = "direct_session_internal",
     srcs = ["common_runtime/direct_session.cc"],
     hdrs = [
@@ -3038,6 +3047,7 @@ tf_cuda_library(
         ":graph",
         ":lib",
         ":lib_internal",
+        ":metrics",
         ":proto_text",
         ":protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
