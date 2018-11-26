@@ -440,8 +440,8 @@ def erf(x, name=None):
       return gen_math_ops.erf(x, name=name)
 
 
-@tf_export("math.scalar_mul", "scalar_mul")
-def scalar_mul(scalar, x):
+@tf_export(v1=["math.scalar_mul", "scalar_mul"])
+def scalar_mul(scalar, x, name=None):
   """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
 
   Intended for use in gradient code which might deal with `IndexedSlices`
@@ -451,6 +451,7 @@ def scalar_mul(scalar, x):
   Args:
     scalar: A 0-D scalar `Tensor`. Must have known shape.
     x: A `Tensor` or `IndexedSlices` to be scaled.
+    name: A name for the operation (optional).
 
   Returns:
     `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
@@ -463,11 +464,19 @@ def scalar_mul(scalar, x):
   shape = scalar.get_shape()
   if shape.ndims == 0:
     if isinstance(x, ops.IndexedSlices):
-      return ops.IndexedSlices(scalar * x.values, x.indices, x.dense_shape)
+      return ops.IndexedSlices(gen_math_ops.mul(scalar, x.values, name),
+                               x.indices, x.dense_shape)
     else:
-      return scalar * x
+      return gen_math_ops.mul(scalar, x, name)
   else:
     raise ValueError("Only scalar multiply works, got shape %s" % shape)
+
+
+@tf_export("math.scalar_mul", "scalar_mul", v1=[])
+@_set_doc(scalar_mul.__doc__)
+def scalar_mul_v2(scalar, x, name=None):
+  with ops.name_scope(name, "scalar_mul", [x]) as name:
+    return scalar_mul(scalar, x, name)
 
 
 @tf_export("math.pow", "pow")
