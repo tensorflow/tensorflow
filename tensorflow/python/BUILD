@@ -861,6 +861,7 @@ py_library(
         ":platform",
         ":registry",
         ":tensor_shape",
+        ":tf2",
         ":traceable_stack",
         ":util",
         ":versions",
@@ -984,6 +985,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":dtypes",
+        ":tf2",
         ":util",
         "//tensorflow/core:protos_all_py",
     ],
@@ -2085,7 +2087,6 @@ py_library(
     srcs = ["ops/control_flow_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "tensor_shape",
         ":array_ops",
         ":array_ops_gen",
         ":constant_op",
@@ -2100,6 +2101,7 @@ py_library(
         ":resource_variable_ops_gen",
         ":sparse_tensor",
         ":tensor_array_ops",
+        ":tensor_shape",
         ":tf2",
         ":tf_should_use",
         ":util",

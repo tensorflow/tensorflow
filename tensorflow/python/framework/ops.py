@@ -36,6 +36,7 @@ from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import tape
@@ -2811,8 +2812,8 @@ class Graph(object):
     self._stack_state_is_thread_local = False
     self._thread_local = threading.local()
     # Functions that will be applied to choose a device if none is specified.
-    # After switch_to_thread_local(), self._thread_local._device_function_stack
-    # is used instead.
+    # In TF2.x or after switch_to_thread_local(),
+    # self._thread_local._device_function_stack is used instead.
     self._graph_device_function_stack = traceable_stack.TraceableStack()
     # Default original_op applied to new ops.
     self._default_original_op = None
@@ -2820,7 +2821,7 @@ class Graph(object):
     # WhileContext defined in ops/control_flow_ops.py
     self._control_flow_context = None
     # A new node will depend of the union of all of the nodes in the stack.
-    # After switch_to_thread_local(),
+    # In TF2.x or after switch_to_thread_local(),
     # self._thread_local._control_dependencies_stack is used instead.
     self._graph_control_dependencies_stack = []
     # Arbitrary collections of objects.
@@ -2844,7 +2845,7 @@ class Graph(object):
         producer=versions.GRAPH_DEF_VERSION,
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
     self._building_function = False
-    # Stack of colocate_with ops. After switch_to_thread_local(),
+    # Stack of colocate_with ops. In TF2.x or after switch_to_thread_local(),
     # self._thread_local._colocation_stack is used instead.
     self._graph_colocation_stack = traceable_stack.TraceableStack()
     # Set of tensors that are dangerous to feed!
@@ -2877,6 +2878,8 @@ class Graph(object):
     # requirement (many custom ops do not have shape functions, and we don't
     # want to break these existing cases).
     c_api.SetRequireShapeInferenceFns(self._c_graph, False)
+    if tf2.enabled():
+      self.switch_to_thread_local()
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
