@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
+# TODO(b/117581999): Add eager coverage for the following tests.
 class MultiDeviceIteratorTest(test_base.DatasetTestBase):
 
   def testNoGetNext(self):

@@ -26,54 +26,41 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class FlatMapDatasetTest(test_base.DatasetTestBase):
 
   # pylint: disable=g-long-lambda
   def testFlatMapDataset(self):
     repeats = [1, 2, 3, 4, 5, 0, 1]
     components = np.array(repeats, dtype=np.int64)
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components)
-        .flat_map(lambda x: dataset_ops.Dataset.from_tensors([x]).repeat(x))
-        .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in repeats:
-        for _ in range(i):
-          self.assertEqual(i, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).flat_map(
+        lambda x: dataset_ops.Dataset.from_tensors([x]).repeat(x))
+    expected_output = []
+    for i in repeats:
+      expected_output.extend([[i]] * i)
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   def testNestedFlatMapDataset(self):
     repeats = [[1, 2], [3, 4], [5, 0], [1, 7]]
     components = np.array(repeats, dtype=np.int64)
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components)
-        .flat_map(lambda x: dataset_ops.Dataset.from_tensor_slices(x)
-                  .flat_map(lambda y: dataset_ops.Dataset.from_tensors(y)
-                            .repeat(y))).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).flat_map(
+        lambda x: dataset_ops.Dataset.from_tensor_slices(x).flat_map(
+            lambda y: dataset_ops.Dataset.from_tensors(y).repeat(y))
+    )
+    expected_output = []
+    for row in repeats:
+      for i in row:
+        expected_output.extend([i] * i)
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for row in repeats:
-        for i in row:
-          for _ in range(i):
-            self.assertEqual(i, sess.run(get_next))
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testSharedResourceNestedFlatMapDataset(self):
+  # Note: no eager mode coverage, session specific test.
+  def testSkipEagerSharedResourceNestedFlatMapDataset(self):
     repeats = [[1, 2], [3, 4], [5, 0], [1, 7]]
     components = np.array(repeats, dtype=np.int64)
     iterator = (
@@ -106,22 +93,16 @@ class FlatMapDatasetTest(test_base.DatasetTestBase):
           sess.run(get_next)
 
   def testMapDict(self):
-    iterator = (dataset_ops.Dataset.range(10)
-                .map(lambda x: {"foo": x * 2, "bar": x ** 2})
-                .flat_map(lambda d: dataset_ops.Dataset.from_tensors(d["foo"])
-                          .repeat(d["bar"]))
-                .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(10):
-        for _ in range(i ** 2):
-          self.assertEqual(i * 2, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-  # pylint: enable=g-long-lambda
+    dataset = dataset_ops.Dataset.range(10).map(
+        lambda x: {"foo": x * 2, "bar": x ** 2}).flat_map(
+            lambda d: dataset_ops.Dataset.from_tensors(
+                d["foo"]).repeat(d["bar"]))
+    get_next = self.getNext(dataset)
+    for i in range(10):
+      for _ in range(i**2):
+        self.assertEqual(i * 2, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   def testSparse(self):
     def _map_fn(i):
@@ -132,20 +113,12 @@ class FlatMapDatasetTest(test_base.DatasetTestBase):
       return dataset_ops.Dataset.from_tensor_slices(
           sparse_ops.sparse_to_dense(x.indices, x.dense_shape, x.values))
 
-    iterator = (
-        dataset_ops.Dataset.range(10).map(_map_fn).flat_map(_flat_map_fn)
-        .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(10):
-        for j in range(2):
-          expected = [i, 0] if j % 2 == 0 else [0, -i]
-          self.assertAllEqual(expected, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.range(10).map(_map_fn).flat_map(_flat_map_fn)
+    expected_output = []
+    for i in range(10):
+      for j in range(2):
+        expected_output.append([i, 0] if j % 2 == 0 else [0, -i])
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
 
 if __name__ == "__main__":

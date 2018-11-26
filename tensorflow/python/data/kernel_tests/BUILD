@@ -158,7 +158,7 @@ tf_py_test(
 
 tf_py_test(
     name = "flat_map_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["flat_map_dataset_op_test.py"],
     additional_deps = [
         ":test_base",
@@ -208,7 +208,7 @@ tf_py_test(
 
 tf_py_test(
     name = "interleave_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["interleave_dataset_op_test.py"],
     additional_deps = [
         ":test_base",
@@ -233,6 +233,7 @@ cuda_py_test(
     size = "small",
     srcs = ["iterator_ops_test.py"],
     additional_deps = [
+        ":test_base",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python/data/ops:readers",
@@ -300,7 +301,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_dataset_op_test.py"],
     additional_deps = [
         ":test_base",
@@ -415,7 +416,7 @@ tf_py_test(
 
 tf_py_test(
     name = "reader_dataset_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["reader_dataset_ops_test.py"],
     additional_deps = [
         ":test_base",
@@ -453,6 +454,29 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
+    name = "save_restore_experimental_test",
+    size = "small",
+    srcs = ["save_restore_experimental_test.py"],
+    additional_deps = [
+        ":reader_dataset_ops_test",
+        ":test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -520,7 +544,7 @@ py_library(
 
 tf_py_test(
     name = "window_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["window_dataset_op_test.py"],
     additional_deps = [
         ":test_base",
