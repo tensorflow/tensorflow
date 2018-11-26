@@ -359,8 +359,7 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
           input_(input),
           num_threads_(num_threads) {
       thread_pool_ = MakeUnique<thread::ThreadPool>(
-          ctx->env(), ThreadOptions{}, "tf_data_private_threadpool",
-          num_threads,
+          ctx->env(), ThreadOptions{}, "data_private_threadpool", num_threads,
           /*low_latency_hint=*/false);
       input_->Ref();
     }

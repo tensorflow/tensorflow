@@ -1241,7 +1241,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
             element_in_use_(params.dataset->cycle_length_, false),
             thread_pool_(new thread::ThreadPool(
                 Env::Default(), ThreadOptions(),
-                "tf_data_parallel_interleave_worker_pool",
+                "data_parallel_interleave_worker_pool",
                 dataset()->cycle_length_ /* num_threads */,
                 false /* low_latency_hint */)) {
         std::vector<string> components =
