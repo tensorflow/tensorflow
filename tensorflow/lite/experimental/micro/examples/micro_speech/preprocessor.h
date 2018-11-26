@@ -19,6 +19,11 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 
+// Converts audio sample data into a more compact form that's appropriate for
+// feeding into a neural network. There are reference implementations that use
+// both floating point and fixed point available, but because the calculations
+// involved can be time-consuming, it's recommended that you use or write
+// specialized versions for your platform.
 TfLiteStatus Preprocess(tflite::ErrorReporter* error_reporter,
                         const int16_t* input, int input_size, int output_size,
                         uint8_t* output);
