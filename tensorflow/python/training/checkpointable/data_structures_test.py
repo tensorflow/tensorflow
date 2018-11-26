@@ -335,11 +335,15 @@ class MappingTests(test.TestCase):
     d = {}
     root = tracking.Checkpointable()
     root.wrapper = d
+    self.assertEqual([], root.wrapper.layers)
+    self.assertEqual([], root.wrapper.trainable_weights)
     layer1 = core.Dense(1)
     layer2 = core.Dense(1)
     d["a"] = layer1
     d["b"] = layer2
     self.assertEqual([layer1, layer2], root.wrapper.layers)
+    # The layers have still not created variables
+    self.assertEqual([], root.wrapper.trainable_weights)
 
   def testHashing(self):
     has_mappings = set([data_structures.Mapping(),
