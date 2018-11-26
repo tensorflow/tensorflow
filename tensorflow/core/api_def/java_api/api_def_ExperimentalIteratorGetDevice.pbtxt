@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ExperimentalIteratorGetDevice"
+  endpoint {
+    name: "data.ExperimentalIteratorGetDevice"
+  }
+}

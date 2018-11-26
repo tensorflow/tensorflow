@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "RFFT3D"
+  endpoint {
+    name: "signal.RFFT3D"
+  }
+}

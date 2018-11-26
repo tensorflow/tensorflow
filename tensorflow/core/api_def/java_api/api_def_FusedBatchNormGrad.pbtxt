@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "FusedBatchNormGrad"
+  endpoint {
+    name: "nn.FusedBatchNormGrad"
+  }
+}

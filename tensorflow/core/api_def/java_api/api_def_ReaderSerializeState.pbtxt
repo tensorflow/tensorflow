@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ReaderSerializeState"
+  endpoint {
+    name: "io.ReaderSerializeState"
+  }
+}

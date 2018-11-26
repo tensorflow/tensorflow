@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ReaderRestoreState"
+  endpoint {
+    name: "io.ReaderRestoreState"
+  }
+}

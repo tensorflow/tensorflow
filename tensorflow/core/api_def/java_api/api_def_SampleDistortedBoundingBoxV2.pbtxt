@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "SampleDistortedBoundingBoxV2"
+  endpoint {
+    name: "image.SampleDistortedBoundingBoxV2"
+  }
+}

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "QueueCloseV2"
+  endpoint {
+    name: "io.QueueCloseV2"
+  }
+}

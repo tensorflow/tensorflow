@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "RFFT2D"
+  endpoint {
+    name: "signal.RFFT2D"
+  }
+}

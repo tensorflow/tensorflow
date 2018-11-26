@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Conv3DBackpropInputV2"
+  endpoint {
+    name: "nn.Conv3DBackpropInputV2"
+  }
+}

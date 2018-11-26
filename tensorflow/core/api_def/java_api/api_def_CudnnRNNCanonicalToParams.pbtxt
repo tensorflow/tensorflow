@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "CudnnRNNCanonicalToParams"
+  endpoint {
+    name: "nn.CudnnRNNCanonicalToParams"
+  }
+}

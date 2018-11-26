@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "IRFFT2D"
+  endpoint {
+    name: "signal.IRFFT2D"
+  }
+}
