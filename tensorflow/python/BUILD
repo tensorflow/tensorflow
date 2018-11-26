@@ -1081,10 +1081,12 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":client",
+        ":cond_v2",
         ":framework_test_lib",
         ":gradient_checker",
         ":platform_test",
         ":util",
+        ":while_v2",
     ],
 )
 
