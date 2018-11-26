@@ -23,19 +23,11 @@ import zlib
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import python_io
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -47,6 +39,7 @@ except ImportError:
   psutil_import_succeeded = False
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class TextLineDatasetTest(test_base.DatasetTestBase):
 
   def _lineText(self, f, l):
@@ -88,66 +81,41 @@ class TextLineDatasetTest(test_base.DatasetTestBase):
   def _testTextLineDataset(self, compression_type=None):
     test_filenames = self._createFiles(
         2, 5, crlf=True, compression_type=compression_type)
-    filenames = array_ops.placeholder(dtypes.string, shape=[None])
-    num_epochs = array_ops.placeholder(dtypes.int64, shape=[])
-    batch_size = array_ops.placeholder(dtypes.int64, shape=[])
 
-    repeat_dataset = readers.TextLineDataset(
-        filenames, compression_type=compression_type).repeat(num_epochs)
-    batch_dataset = repeat_dataset.batch(batch_size)
+    def dataset_fn(filenames, num_epochs, batch_size=None):
+      repeat_dataset = readers.TextLineDataset(
+          filenames, compression_type=compression_type).repeat(num_epochs)
+      if batch_size:
+        return repeat_dataset.batch(batch_size)
+      return repeat_dataset
 
-    iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
-    init_op = iterator.make_initializer(repeat_dataset)
-    init_batch_op = iterator.make_initializer(batch_dataset)
-    get_next = iterator.get_next()
+    # Basic test: read from file 0.
+    expected_output = [self._lineText(0, i) for i in range(5)]
+    self.assertDatasetProduces(
+        dataset_fn([test_filenames[0]], 1), expected_output=expected_output)
 
-    with self.cached_session() as sess:
-      # Basic test: read from file 0.
-      sess.run(
-          init_op, feed_dict={filenames: [test_filenames[0]],
-                              num_epochs: 1})
-      for i in range(5):
-        self.assertEqual(self._lineText(0, i), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    # Basic test: read from file 1.
+    self.assertDatasetProduces(
+        dataset_fn([test_filenames[1]], 1),
+        expected_output=[self._lineText(1, i) for i in range(5)])
 
-      # Basic test: read from file 1.
-      sess.run(
-          init_op, feed_dict={filenames: [test_filenames[1]],
-                              num_epochs: 1})
-      for i in range(5):
-        self.assertEqual(self._lineText(1, i), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    # Basic test: read from both files.
+    expected_output = [self._lineText(0, i) for i in range(5)]
+    expected_output.extend([self._lineText(1, i) for i in range(5)])
+    self.assertDatasetProduces(
+        dataset_fn(test_filenames, 1), expected_output=expected_output)
 
-      # Basic test: read from both files.
-      sess.run(init_op, feed_dict={filenames: test_filenames, num_epochs: 1})
-      for j in range(2):
-        for i in range(5):
-          self.assertEqual(self._lineText(j, i), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    # Test repeated iteration through both files.
+    expected_output = [self._lineText(0, i) for i in range(5)]
+    expected_output.extend([self._lineText(1, i) for i in range(5)])
+    self.assertDatasetProduces(
+        dataset_fn(test_filenames, 10), expected_output=expected_output * 10)
 
-      # Test repeated iteration through both files.
-      sess.run(init_op, feed_dict={filenames: test_filenames, num_epochs: 10})
-      for _ in range(10):
-        for j in range(2):
-          for i in range(5):
-            self.assertEqual(self._lineText(j, i), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-      # Test batched and repeated iteration through both files.
-      sess.run(
-          init_batch_op,
-          feed_dict={filenames: test_filenames,
-                     num_epochs: 10,
-                     batch_size: 5})
-      for _ in range(10):
-        self.assertAllEqual([self._lineText(0, i) for i in range(5)],
-                            sess.run(get_next))
-        self.assertAllEqual([self._lineText(1, i) for i in range(5)],
-                            sess.run(get_next))
+    # Test batched and repeated iteration through both files.
+    self.assertDatasetProduces(
+        dataset_fn(test_filenames, 10, 5),
+        expected_output=[[self._lineText(0, i) for i in range(5)],
+                         [self._lineText(1, i) for i in range(5)]] * 10)
 
   def testTextLineDatasetNoCompression(self):
     self._testTextLineDataset()
@@ -162,14 +130,10 @@ class TextLineDatasetTest(test_base.DatasetTestBase):
     test_filenames = self._createFiles(2, 5, crlf=True)
 
     repeat_dataset = readers.TextLineDataset(test_filenames, buffer_size=10)
-    iterator = repeat_dataset.make_one_shot_iterator()
-
-    with self.cached_session() as sess:
-      for j in range(2):
-        for i in range(5):
-          self.assertEqual(self._lineText(j, i), sess.run(iterator.get_next()))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(iterator.get_next())
+    expected_output = []
+    for j in range(2):
+      expected_output.extend([self._lineText(j, i) for i in range(5)])
+    self.assertDatasetProduces(repeat_dataset, expected_output=expected_output)
 
   def testIteratorResourceCleanup(self):
     filename = os.path.join(self.get_temp_dir(), "text.txt")
@@ -200,10 +164,10 @@ class TextLineDatasetTest(test_base.DatasetTestBase):
       self.assertNotIn(filename, [open_file.path for open_file in open_files])
 
 
-class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
+class FixedLengthRecordReaderTestBase(test_base.DatasetTestBase):
 
   def setUp(self):
-    super(FixedLengthRecordReaderTest, self).setUp()
+    super(FixedLengthRecordReaderTestBase, self).setUp()
     self._num_files = 2
     self._num_records = 7
     self._header_bytes = 5
@@ -241,77 +205,64 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
 
     return filenames
 
+
+@test_util.run_all_in_graph_and_eager_modes
+class FixedLengthRecordReaderTest(FixedLengthRecordReaderTestBase):
+
   def _testFixedLengthRecordDataset(self, compression_type=None):
     test_filenames = self._createFiles(compression_type=compression_type)
-    filenames = array_ops.placeholder(dtypes.string, shape=[None])
-    num_epochs = array_ops.placeholder(dtypes.int64, shape=[])
-    batch_size = array_ops.placeholder(dtypes.int64, shape=[])
 
-    repeat_dataset = (
-        readers.FixedLengthRecordDataset(
-            filenames,
-            self._record_bytes,
-            self._header_bytes,
-            self._footer_bytes,
-            compression_type=compression_type).repeat(num_epochs))
-    batch_dataset = repeat_dataset.batch(batch_size)
+    def dataset_fn(filenames, num_epochs, batch_size=None):
+      repeat_dataset = readers.FixedLengthRecordDataset(
+          filenames,
+          self._record_bytes,
+          self._header_bytes,
+          self._footer_bytes,
+          compression_type=compression_type).repeat(num_epochs)
+      if batch_size:
+        return repeat_dataset.batch(batch_size)
+      return repeat_dataset
 
-    iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
-    init_op = iterator.make_initializer(repeat_dataset)
-    init_batch_op = iterator.make_initializer(batch_dataset)
-    get_next = iterator.get_next()
+    # Basic test: read from file 0.
+    self.assertDatasetProduces(
+        dataset_fn([test_filenames[0]], 1),
+        expected_output=[
+            self._record(0, i) for i in range(self._num_records)
+        ])
 
-    with self.cached_session() as sess:
-      # Basic test: read from file 0.
-      sess.run(
-          init_op, feed_dict={filenames: [test_filenames[0]],
-                              num_epochs: 1})
-      for i in range(self._num_records):
-        self.assertEqual(self._record(0, i), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    # Basic test: read from file 1.
+    self.assertDatasetProduces(
+        dataset_fn([test_filenames[1]], 1),
+        expected_output=[
+            self._record(1, i) for i in range(self._num_records)
+        ])
 
-      # Basic test: read from file 1.
-      sess.run(
-          init_op, feed_dict={filenames: [test_filenames[1]],
-                              num_epochs: 1})
-      for i in range(self._num_records):
-        self.assertEqual(self._record(1, i), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    # Basic test: read from both files.
+    expected_output = []
+    for j in range(self._num_files):
+      expected_output.extend(
+          [self._record(j, i) for i in range(self._num_records)])
+    self.assertDatasetProduces(
+        dataset_fn(test_filenames, 1), expected_output=expected_output)
 
-      # Basic test: read from both files.
-      sess.run(init_op, feed_dict={filenames: test_filenames, num_epochs: 1})
+    # Test repeated iteration through both files.
+    get_next = self.getNext(dataset_fn(test_filenames, 10))
+    for _ in range(10):
       for j in range(self._num_files):
         for i in range(self._num_records):
-          self.assertEqual(self._record(j, i), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+          self.assertEqual(self._record(j, i), self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
-      # Test repeated iteration through both files.
-      sess.run(init_op, feed_dict={filenames: test_filenames, num_epochs: 10})
-      for _ in range(10):
-        for j in range(self._num_files):
-          for i in range(self._num_records):
-            self.assertEqual(self._record(j, i), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-      # Test batched and repeated iteration through both files.
-      sess.run(
-          init_batch_op,
-          feed_dict={
-              filenames: test_filenames,
-              num_epochs: 10,
-              batch_size: self._num_records
-          })
-      for _ in range(10):
-        for j in range(self._num_files):
-          self.assertAllEqual(
-              [self._record(j, i) for i in range(self._num_records)],
-              sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    # Test batched and repeated iteration through both files.
+    get_next = self.getNext(dataset_fn(test_filenames, 10, self._num_records))
+    for _ in range(10):
+      for j in range(self._num_files):
+        self.assertAllEqual(
+            [self._record(j, i) for i in range(self._num_records)],
+            self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   def testFixedLengthRecordDatasetNoCompression(self):
     self._testFixedLengthRecordDataset()
@@ -330,14 +281,11 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
         self._header_bytes,
         self._footer_bytes,
         buffer_size=10)
-    iterator = dataset.make_one_shot_iterator()
-
-    with self.cached_session() as sess:
-      for j in range(self._num_files):
-        for i in range(self._num_records):
-          self.assertEqual(self._record(j, i), sess.run(iterator.get_next()))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(iterator.get_next())
+    expected_output = []
+    for j in range(self._num_files):
+      expected_output.extend(
+          [self._record(j, i) for i in range(self._num_records)])
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   def testFixedLengthRecordDatasetWrongSize(self):
     test_filenames = self._createFiles()
@@ -347,310 +295,17 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
         self._header_bytes,
         self._footer_bytes,
         buffer_size=10)
-    iterator = dataset.make_one_shot_iterator()
-
-    with self.cached_session() as sess:
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          r"Excluding the header \(5 bytes\) and footer \(2 bytes\), input "
-          r"file \".*fixed_length_record.0.txt\" has body length 21 bytes, "
-          r"which is not an exact multiple of the record length \(4 bytes\)."):
-        sess.run(iterator.get_next())
-
-  def _iterator_checkpoint_path(self):
-    return os.path.join(self.get_temp_dir(), "iterator")
-
-  def _save_op(self, iterator_resource):
-    iterator_state_variant = gen_dataset_ops.serialize_iterator(
-        iterator_resource)
-    save_op = io_ops.write_file(
-        self._iterator_checkpoint_path(),
-        parsing_ops.serialize_tensor(iterator_state_variant))
-    return save_op
-
-  def _restore_op(self, iterator_resource):
-    iterator_state_variant = parsing_ops.parse_tensor(
-        io_ops.read_file(self._iterator_checkpoint_path()), dtypes.variant)
-    restore_op = gen_dataset_ops.deserialize_iterator(iterator_resource,
-                                                      iterator_state_variant)
-    return restore_op
-
-  def _build_iterator_graph(self, num_epochs):
-    filenames = self._createFiles()
-    dataset = (readers.FixedLengthRecordDataset(
-        filenames, self._record_bytes, self._header_bytes, self._footer_bytes)
-               .repeat(num_epochs))
-    iterator = dataset.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next_op = iterator.get_next()
-    save_op = self._save_op(iterator._iterator_resource)
-    restore_op = self._restore_op(iterator._iterator_resource)
-    return init_op, get_next_op, save_op, restore_op
-
-  def _restore_iterator(self):
-    output_types = dtypes.string
-    output_shapes = tensor_shape.scalar()
-    iterator = iterator_ops.Iterator.from_structure(output_types, output_shapes)
-    get_next = iterator.get_next()
-    restore_op = self._restore_op(iterator._iterator_resource)
-    return restore_op, get_next
-
-  def testSaveRestore(self):
-    num_epochs = 10
-    epoch_break = 5
-    file_break = self._num_files // 2
-    record_break = self._num_records // 2
-
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
-          num_epochs=num_epochs)
-      with self.session(graph=g) as sess:
-        sess.run(init_op)
-        # Note: There is no checkpoint saved currently so a NotFoundError is
-        # raised.
-        with self.assertRaises(errors.NotFoundError):
-          sess.run(restore_op)
-        for epoch in range(num_epochs):
-          for f in range(self._num_files):
-            for r in range(self._num_records):
-              if (epoch == epoch_break and f == file_break and
-                  r == record_break):
-                sess.run(save_op)
-                break
-              self.assertEqual(self._record(f, r), sess.run(get_next_op))
-            else:
-              continue
-            break
-          else:
-            continue
-          break
-        else:
-          with self.assertRaises(errors.OutOfRangeError):
-            sess.run(get_next_op)
-
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
-          num_epochs=num_epochs)
-      with self.session(graph=g) as sess:
-        sess.run(restore_op)
-        for epoch in range(num_epochs):
-          for f in range(self._num_files):
-            for r in range(self._num_records):
-              if (epoch < epoch_break or
-                  (epoch == epoch_break and f < file_break) or
-                  (epoch == epoch_break and f == file_break and
-                   r < record_break)):
-                continue
-              self.assertEqual(self._record(f, r), sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-  def testInitThenRestore(self):
-    # Note: Calling init_op before restore_op is redundant. This test just makes
-    # sure we do not fail if restore is called on an already initialized
-    # iterator resource.
-    num_epochs = 10
-    epoch_break = 5
-    file_break = self._num_files // 2
-    record_break = self._num_records // 2
-
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
-          num_epochs=num_epochs)
-      with self.session(graph=g) as sess:
-        sess.run(init_op)
-        # Note: There is no checkpoint saved currently so a NotFoundError is
-        # raised.
-        with self.assertRaises(errors.NotFoundError):
-          sess.run(restore_op)
-        for epoch in range(num_epochs):
-          for f in range(self._num_files):
-            for r in range(self._num_records):
-              if (epoch == epoch_break and f == file_break and
-                  r == record_break):
-                sess.run(save_op)
-                break
-              self.assertEqual(self._record(f, r), sess.run(get_next_op))
-            else:
-              continue
-            break
-          else:
-            continue
-          break
-        else:
-          with self.assertRaises(errors.OutOfRangeError):
-            sess.run(get_next_op)
-
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
-          num_epochs=num_epochs)
-      with self.session(graph=g) as sess:
-        sess.run(init_op)
-        sess.run(restore_op)
-        for epoch in range(num_epochs):
-          for f in range(self._num_files):
-            for r in range(self._num_records):
-              if (epoch < epoch_break or
-                  (epoch == epoch_break and f < file_break) or
-                  (epoch == epoch_break and f == file_break and
-                   r < record_break)):
-                continue
-              self.assertEqual(self._record(f, r), sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-  def testRestoreInModifiedGraph(self):
-    num_epochs = 10
-    num_epochs_1 = 20
-    epoch_break = 5
-    file_break = self._num_files // 2
-    record_break = self._num_records // 2
-
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
-          num_epochs=num_epochs)
-      with self.session(graph=g) as sess:
-        sess.run(init_op)
-        # Note: There is no checkpoint saved currently so a NotFoundError is
-        # raised.
-        with self.assertRaises(errors.NotFoundError):
-          sess.run(restore_op)
-        for epoch in range(num_epochs):
-          for f in range(self._num_files):
-            for r in range(self._num_records):
-              if (epoch == epoch_break and f == file_break and
-                  r == record_break):
-                sess.run(save_op)
-                break
-              self.assertEqual(self._record(f, r), sess.run(get_next_op))
-            else:
-              continue
-            break
-          else:
-            continue
-          break
-        else:
-          with self.assertRaises(errors.OutOfRangeError):
-            sess.run(get_next_op)
-
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
-          num_epochs=num_epochs_1)
-      with self.session(graph=g) as sess:
-        sess.run(restore_op)
-        for epoch in range(num_epochs):
-          for f in range(self._num_files):
-            for r in range(self._num_records):
-              if (epoch < epoch_break or
-                  (epoch == epoch_break and f < file_break) or
-                  (epoch == epoch_break and f == file_break and
-                   r < record_break)):
-                continue
-              self.assertEqual(self._record(f, r), sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-  def testRestoreWithoutBuildingDatasetGraph(self):
-    num_epochs = 10
-    epoch_break = 5
-    file_break = self._num_files // 2
-    record_break = self._num_records // 2
-
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
-          num_epochs=num_epochs)
-      with self.session(graph=g) as sess:
-        sess.run(init_op)
-        # Note: There is no checkpoint saved currently so a NotFoundError is
-        # raised.
-        with self.assertRaises(errors.NotFoundError):
-          sess.run(restore_op)
-        for epoch in range(num_epochs):
-          for f in range(self._num_files):
-            for r in range(self._num_records):
-              if (epoch == epoch_break and f == file_break and
-                  r == record_break):
-                sess.run(save_op)
-                break
-              self.assertEqual(self._record(f, r), sess.run(get_next_op))
-            else:
-              continue
-            break
-          else:
-            continue
-          break
-        else:
-          with self.assertRaises(errors.OutOfRangeError):
-            sess.run(get_next_op)
-
-    with ops.Graph().as_default() as g:
-      restore_op, get_next_op = self._restore_iterator()
-      with self.session(graph=g) as sess:
-        sess.run(restore_op)
-        for epoch in range(num_epochs):
-          for f in range(self._num_files):
-            for r in range(self._num_records):
-              if (epoch < epoch_break or
-                  (epoch == epoch_break and f < file_break) or
-                  (epoch == epoch_break and f == file_break and
-                   r < record_break)):
-                continue
-              self.assertEqual(self._record(f, r), sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-  def testRestoreUnusedIterator(self):
-    num_epochs = 10
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
-          num_epochs=num_epochs)
-      with self.session(graph=g) as sess:
-        sess.run(init_op)
-        # Note: There is no checkpoint saved currently so a NotFoundError is
-        # raised.
-        with self.assertRaises(errors.NotFoundError):
-          sess.run(restore_op)
-        # Save unused iterator.
-        sess.run(save_op)
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
-          num_epochs=num_epochs)
-      with self.session(graph=g) as sess:
-        sess.run(restore_op)
-        for _ in range(num_epochs * self._num_files * self._num_records):
-          sess.run(get_next_op)
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-  def testRestoreExhaustedIterator(self):
-    num_epochs = 10
-
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
-          num_epochs=num_epochs)
-      with self.session(graph=g) as sess:
-        sess.run(init_op)
-        # Note: There is no checkpoint saved currently so a NotFoundError is
-        # raised.
-        with self.assertRaises(errors.NotFoundError):
-          sess.run(restore_op)
-        for _ in range(num_epochs):
-          for f in range(self._num_files):
-            for r in range(self._num_records):
-              self.assertEqual(self._record(f, r), sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-        sess.run(save_op)
-
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
-          num_epochs=num_epochs)
-      with self.session(graph=g) as sess:
-        sess.run(restore_op)
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
+    self.assertDatasetProduces(
+        dataset,
+        expected_error=(
+            errors.InvalidArgumentError,
+            r"Excluding the header \(5 bytes\) and footer \(2 bytes\), input "
+            r"file \".*fixed_length_record.0.txt\" has body length 21 bytes, "
+            r"which is not an exact multiple of the record length \(4 bytes\).")
+        )
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class TFRecordDatasetTest(test_base.DatasetTestBase):
 
   def setUp(self):
@@ -660,21 +315,17 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
 
     self.test_filenames = self._createFiles()
 
-    self.filenames = array_ops.placeholder(dtypes.string, shape=[None])
-    self.num_epochs = array_ops.placeholder_with_default(
-        constant_op.constant(1, dtypes.int64), shape=[])
-    self.compression_type = array_ops.placeholder_with_default("", shape=[])
-    self.batch_size = array_ops.placeholder(dtypes.int64, shape=[])
+  def dataset_fn(self,
+                 filenames,
+                 compression_type="",
+                 num_epochs=1,
+                 batch_size=None):
 
-    repeat_dataset = readers.TFRecordDataset(self.filenames,
-                                             self.compression_type).repeat(
-                                                 self.num_epochs)
-    batch_dataset = repeat_dataset.batch(self.batch_size)
-
-    iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
-    self.init_op = iterator.make_initializer(repeat_dataset)
-    self.init_batch_op = iterator.make_initializer(batch_dataset)
-    self.get_next = iterator.get_next()
+    repeat_dataset = readers.TFRecordDataset(
+        filenames, compression_type).repeat(num_epochs)
+    if batch_size:
+      return repeat_dataset.batch(batch_size)
+    return repeat_dataset
 
   def _record(self, f, r):
     return compat.as_bytes("Record %d of file %d" % (r, f))
@@ -691,71 +342,42 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
     return filenames
 
   def testReadOneEpoch(self):
-    with self.cached_session() as sess:
-      # Basic test: read from file 0.
-      sess.run(
-          self.init_op,
-          feed_dict={
-              self.filenames: [self.test_filenames[0]],
-              self.num_epochs: 1
-          })
-      for i in range(self._num_records):
-        self.assertAllEqual(self._record(0, i), sess.run(self.get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.get_next)
+    # Basic test: read from file 0.
+    dataset = self.dataset_fn(self.test_filenames[0])
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[self._record(0, i) for i in range(self._num_records)])
 
-      # Basic test: read from file 1.
-      sess.run(
-          self.init_op,
-          feed_dict={
-              self.filenames: [self.test_filenames[1]],
-              self.num_epochs: 1
-          })
-      for i in range(self._num_records):
-        self.assertAllEqual(self._record(1, i), sess.run(self.get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.get_next)
+    # Basic test: read from file 1.
+    dataset = self.dataset_fn(self.test_filenames[1])
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[self._record(1, i) for i in range(self._num_records)])
 
-      # Basic test: read from both files.
-      sess.run(
-          self.init_op,
-          feed_dict={self.filenames: self.test_filenames,
-                     self.num_epochs: 1})
-      for j in range(self._num_files):
-        for i in range(self._num_records):
-          self.assertAllEqual(self._record(j, i), sess.run(self.get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.get_next)
+    # Basic test: read from both files.
+    dataset = self.dataset_fn(self.test_filenames)
+    expected_output = []
+    for j in range(self._num_files):
+      expected_output.extend(
+          [self._record(j, i) for i in range(self._num_records)])
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   def testReadTenEpochs(self):
-    with self.cached_session() as sess:
-      sess.run(
-          self.init_op,
-          feed_dict={self.filenames: self.test_filenames,
-                     self.num_epochs: 10})
-      for _ in range(10):
-        for j in range(self._num_files):
-          for i in range(self._num_records):
-            self.assertAllEqual(self._record(j, i), sess.run(self.get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.get_next)
+    dataset = self.dataset_fn(self.test_filenames, num_epochs=10)
+    expected_output = []
+    for j in range(self._num_files):
+      expected_output.extend(
+          [self._record(j, i) for i in range(self._num_records)])
+    self.assertDatasetProduces(dataset, expected_output=expected_output * 10)
 
   def testReadTenEpochsOfBatches(self):
-    with self.cached_session() as sess:
-      sess.run(
-          self.init_batch_op,
-          feed_dict={
-              self.filenames: self.test_filenames,
-              self.num_epochs: 10,
-              self.batch_size: self._num_records
-          })
-      for _ in range(10):
-        for j in range(self._num_files):
-          values = sess.run(self.get_next)
-          self.assertAllEqual(
-              [self._record(j, i) for i in range(self._num_records)], values)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.get_next)
+    dataset = self.dataset_fn(
+        self.test_filenames, num_epochs=10, batch_size=self._num_records)
+    expected_output = []
+    for j in range(self._num_files):
+      expected_output.append(
+          [self._record(j, i) for i in range(self._num_records)])
+    self.assertDatasetProduces(dataset, expected_output=expected_output * 10)
 
   def testReadZlibFiles(self):
     zlib_files = []
@@ -767,17 +389,12 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
         with open(zfn, "wb") as f:
           f.write(cdata)
         zlib_files.append(zfn)
-
-    with self.cached_session() as sess:
-      sess.run(
-          self.init_op,
-          feed_dict={self.filenames: zlib_files,
-                     self.compression_type: "ZLIB"})
-      for j in range(self._num_files):
-        for i in range(self._num_records):
-          self.assertAllEqual(self._record(j, i), sess.run(self.get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.get_next)
+    expected_output = []
+    for j in range(self._num_files):
+      expected_output.extend(
+          [self._record(j, i) for i in range(self._num_records)])
+    dataset = self.dataset_fn(zlib_files, compression_type="ZLIB")
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   def testReadGzipFiles(self):
     gzip_files = []
@@ -787,59 +404,42 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
         with gzip.GzipFile(gzfn, "wb") as gzf:
           gzf.write(f.read())
         gzip_files.append(gzfn)
-
-    with self.cached_session() as sess:
-      sess.run(
-          self.init_op,
-          feed_dict={self.filenames: gzip_files,
-                     self.compression_type: "GZIP"})
-      for j in range(self._num_files):
-        for i in range(self._num_records):
-          self.assertAllEqual(self._record(j, i), sess.run(self.get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.get_next)
+    expected_output = []
+    for j in range(self._num_files):
+      expected_output.extend(
+          [self._record(j, i) for i in range(self._num_records)])
+    dataset = self.dataset_fn(gzip_files, compression_type="GZIP")
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   def testReadWithBuffer(self):
     one_mebibyte = 2**20
-    d = readers.TFRecordDataset(self.test_filenames, buffer_size=one_mebibyte)
-    iterator = d.make_one_shot_iterator()
-    next_element = iterator.get_next()
-    with self.cached_session() as sess:
-      for j in range(self._num_files):
-        for i in range(self._num_records):
-          self.assertAllEqual(self._record(j, i), sess.run(next_element))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+    dataset = readers.TFRecordDataset(
+        self.test_filenames, buffer_size=one_mebibyte)
+    expected_output = []
+    for j in range(self._num_files):
+      expected_output.extend(
+          [self._record(j, i) for i in range(self._num_records)])
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   def testReadFromDatasetOfFiles(self):
     files = dataset_ops.Dataset.from_tensor_slices(self.test_filenames)
-    d = readers.TFRecordDataset(files)
-    iterator = d.make_one_shot_iterator()
-    next_element = iterator.get_next()
-    with self.cached_session() as sess:
-      for j in range(self._num_files):
-        for i in range(self._num_records):
-          self.assertAllEqual(self._record(j, i), sess.run(next_element))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+    expected_output = []
+    for j in range(self._num_files):
+      expected_output.extend(
+          [self._record(j, i) for i in range(self._num_records)])
+    dataset = readers.TFRecordDataset(files)
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   def testReadTenEpochsFromDatasetOfFilesInParallel(self):
     files = dataset_ops.Dataset.from_tensor_slices(
         self.test_filenames).repeat(10)
-    d = readers.TFRecordDataset(files, num_parallel_reads=4)
-    iterator = d.make_one_shot_iterator()
-    next_element = iterator.get_next()
-    expected = []
-    actual = []
-    with self.cached_session() as sess:
-      for _ in range(10):
-        for j in range(self._num_files):
-          for i in range(self._num_records):
-            expected.append(self._record(j, i))
-            actual.append(sess.run(next_element))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
-      self.assertEqual(sorted(expected), sorted(actual))
+    expected_output = []
+    for j in range(self._num_files):
+      expected_output.extend(
+          [self._record(j, i) for i in range(self._num_records)])
+    dataset = readers.TFRecordDataset(files, num_parallel_reads=4)
+    self.assertDatasetProduces(
+        dataset, expected_output=expected_output * 10, assert_items_equal=True)
 
 
 if __name__ == "__main__":
