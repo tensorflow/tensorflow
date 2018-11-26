@@ -379,6 +379,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.sparse.segment_sum": [
             "data", "indices", "segment_ids", "name", "num_segments"
         ],
+        "tf.io.decode_csv": [
+            "records", "record_defaults",
+            "field_delim", "use_quote_delim",
+            "name", "na_value", "select_cols",
+        ],
         "tf.strings.substr": ["input", "pos", "len", "name", "unit"],
         "tf.strings.reduce_join": [
             "input", "axis", "keep_dims", "separator", "name",
