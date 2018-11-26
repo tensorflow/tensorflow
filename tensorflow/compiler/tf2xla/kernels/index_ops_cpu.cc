@@ -50,21 +50,24 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
     // overhead, when compiling ahead-of-time.
     int64 dim;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &dim));
-    OP_REQUIRES(ctx, dim >= 0, errors::InvalidArgument("dim must be >= 0"));
-    OP_REQUIRES(
-        ctx, dim < input_shape.dims(),
-        errors::InvalidArgument("dim must be < input rank (",
-                                input_shape.dims(), "), but got: ", dim));
-    const int64 dim_size = input_shape.dim_size(dim);
-    OP_REQUIRES(ctx, dim_size > 0,
+
+    const int input_dims = input_shape.dims();
+    const int axis = dim < 0 ? dim + input_dims : dim;
+    OP_REQUIRES(ctx, axis >= 0 && axis < input_dims,
+                errors::InvalidArgument("Expected dimension in the range [",
+                                        -input_dims, ", ", input_dims,
+                                        "), but got ", dim));
+
+    const int64 axis_size = input_shape.dim_size(axis);
+    OP_REQUIRES(ctx, axis_size > 0,
                 errors::InvalidArgument(
                     "Reduction axis ", dim,
                     " is empty in shape: ", input_shape.DebugString()));
 
-    // The output shape is the input shape contracted along dim.
+    // The output shape is the input shape contracted along axis.
     TensorShape output_shape;
     for (int d = 0; d < input_shape.dims() - 1; ++d) {
-      output_shape.AddDim(input_shape.dim_size((d < dim) ? d : d + 1));
+      output_shape.AddDim(input_shape.dim_size((d < axis) ? d : d + 1));
     }
 
     // For now we use a custom-call, only for the 1d and 2d cases.
@@ -84,7 +87,7 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
       args.push_back(xla::ConstantLiteral(
           &b, xla::LiteralUtil::CreateR1<int64>(output_shape.dim_sizes())));
       args.push_back(
-          xla::ConstantLiteral(&b, xla::LiteralUtil::CreateR0<int32>(dim)));
+          xla::ConstantLiteral(&b, xla::LiteralUtil::CreateR0<int32>(axis)));
     }
 
     // The argmax function expects row-major layout.
