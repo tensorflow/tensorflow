@@ -403,7 +403,7 @@ class _LiteOperand(object):
       out_graphdef: A graphdef that is ready to have this input added.
 
     Returns:
-      The the output that the stub should use as an input for this operand.
+      The output that the stub should use as an input for this operand.
 
     Raises:
       RuntimeError: if the method is not implemented.

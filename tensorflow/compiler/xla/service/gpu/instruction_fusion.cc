@@ -80,7 +80,7 @@ bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
 // This function limits the maximum number of operands to a fusion.
 //
 // There's a cap on how many parameters we can pass to a CUDA kernel, but
-// exactly what that limit is is hazy, as it depends on (among other things) how
+// exactly what that limit is hazy, as it depends on (among other things) how
 // much GPU constant memory is in use for other purposes.
 //
 // Moreover, we don't even know at the point that we're running fusion how many
