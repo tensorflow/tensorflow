@@ -5557,7 +5557,7 @@ def eager_run(main=None, argv=None):
   app.run(main, argv)
 
 
-@tf_export("reset_default_graph")
+@tf_export(v1=["reset_default_graph"])
 def reset_default_graph():
   """Clears the default graph stack and resets the global default graph.
 

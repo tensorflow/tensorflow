@@ -939,7 +939,7 @@ def sparse_slice(sp_input, start, size, name=None):
                                       output_shape)
 
 
-@tf_export("sparse_to_dense")
+@tf_export(v1=["sparse_to_dense"])
 @deprecation.deprecated(
     None,
     "Create a `tf.sparse.SparseTensor` and use `tf.sparse.to_dense` instead.")
