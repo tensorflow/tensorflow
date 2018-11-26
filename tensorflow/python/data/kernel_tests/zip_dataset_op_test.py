@@ -21,94 +21,80 @@ import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class ZipDatasetTest(test_base.DatasetTestBase):
 
   def testZipDataset(self):
-    component_placeholders = [
-        array_ops.placeholder(dtypes.int64),
-        array_ops.placeholder(dtypes.int64),
-        array_ops.placeholder(dtypes.float64)
+
+    def dataset_fn(components):
+      datasets = tuple([
+          dataset_ops.Dataset.from_tensor_slices(component)
+          for component in components
+      ])
+      return dataset_ops.Dataset.zip(datasets)
+
+    equal_length_components = [
+        np.tile(np.array([[1], [2], [3], [4]]), 20),
+        np.tile(np.array([[12], [13], [14], [15]]), 22),
+        np.array([37.0, 38.0, 39.0, 40.0])
     ]
 
-    datasets = tuple([
-        dataset_ops.Dataset.from_tensor_slices(component_placeholder)
-        for component_placeholder in component_placeholders
-    ])
-    zipped = dataset_ops.Dataset.zip(datasets)
+    get_next = self.getNext(dataset_fn(equal_length_components))
+    for i in range(4):
+      results = self.evaluate(get_next())
+      for component, result_component in zip(equal_length_components, results):
+        self.assertAllEqual(component[i], result_component)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
-    iterator = zipped.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      equal_length_components = [
-          np.tile(np.array([[1], [2], [3], [4]]), 20),
-          np.tile(np.array([[12], [13], [14], [15]]), 22),
-          np.array([37.0, 38.0, 39.0, 40.0])
-      ]
-      sess.run(init_op, feed_dict={ph: value for ph, value in zip(
-          component_placeholders, equal_length_components)})
-      for i in range(4):
-        results = sess.run(get_next)
-        for component, result_component in zip(
-            equal_length_components, results):
-          self.assertAllEqual(component[i], result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-      variable_length_components = [[1, 2, 3, 4], [1, 2, 3, 4, 5], [1.0, 2.0]]
-      sess.run(init_op, feed_dict={ph: value for ph, value in zip(
-          component_placeholders, variable_length_components)})
-      for i in range(2):
-        results = sess.run(get_next)
-        for component, result_component in zip(
-            variable_length_components, results):
-          self.assertAllEqual(component[i], result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    variable_length_components = [[1, 2, 3, 4], [1, 2, 3, 4, 5], [1.0, 2.0]]
+    get_next = self.getNext(dataset_fn(variable_length_components))
+    for i in range(2):
+      results = self.evaluate(get_next())
+      for component, result_component in zip(variable_length_components,
+                                             results):
+        self.assertAllEqual(component[i], result_component)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   def testNestedZipDataset(self):
-    component_placeholders = [
-        array_ops.placeholder(dtypes.int64, shape=[4, 20]),
-        array_ops.placeholder(dtypes.int64, shape=[4, 22]),
-        array_ops.placeholder(dtypes.float64, shape=[4])
-    ]
 
+    equal_length_components = [
+        np.tile(np.array([[1], [2], [3], [4]]), 20),
+        np.tile(np.array([[12], [13], [14], [15]]), 22),
+        np.array([37.0, 38.0, 39.0, 40.0])
+    ]
     datasets = [
-        dataset_ops.Dataset.from_tensor_slices(component_placeholder)
-        for component_placeholder in component_placeholders
+        dataset_ops.Dataset.from_tensor_slices(component)
+        for component in equal_length_components
     ]
-    zipped = dataset_ops.Dataset.zip((datasets[0], (datasets[1], datasets[2])))
+    dataset = dataset_ops.Dataset.zip((datasets[0], (datasets[1], datasets[2])))
 
-    iterator = zipped.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    self.assertEqual(
+        dataset.output_shapes,
+        (tensor_shape.TensorShape([20]),
+         (tensor_shape.TensorShape([22]), tensor_shape.TensorShape([]))))
 
-    self.assertEqual([20], get_next[0].shape)
-    self.assertEqual([22], get_next[1][0].shape)
-    self.assertEqual([], get_next[1][1].shape)
-
-    with self.cached_session() as sess:
-      equal_length_components = [
-          np.tile(np.array([[1], [2], [3], [4]]), 20),
-          np.tile(np.array([[12], [13], [14], [15]]), 22),
-          np.array([37.0, 38.0, 39.0, 40.0])
-      ]
-      sess.run(init_op, feed_dict={ph: value for ph, value in zip(
-          component_placeholders, equal_length_components)})
-      for i in range(4):
-        result1, (result2, result3) = sess.run(get_next)
-        self.assertAllEqual(equal_length_components[0][i], result1)
-        self.assertAllEqual(equal_length_components[1][i], result2)
-        self.assertAllEqual(equal_length_components[2][i], result3)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    get_next = self.getNext(dataset)
+    for i in range(4):
+      result1, (result2, result3) = self.evaluate(get_next())
+      self.assertAllEqual(equal_length_components[0][i], result1)
+      self.assertAllEqual(equal_length_components[1][i], result2)
+      self.assertAllEqual(equal_length_components[2][i], result3)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
 
 if __name__ == "__main__":

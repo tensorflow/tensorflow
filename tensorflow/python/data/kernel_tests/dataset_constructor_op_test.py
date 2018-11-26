@@ -31,33 +31,26 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class DatasetConstructorTest(test_base.DatasetTestBase):
 
   def testFromTensors(self):
     """Test a dataset that represents a single tuple of tensors."""
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
 
-    iterator = (dataset_ops.Dataset.from_tensors(components)
-                .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensors(components)
 
     self.assertEqual([c.shape for c in components],
-                     [t.shape for t in get_next])
+                     nest.flatten(dataset.output_shapes))
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      results = sess.run(get_next)
-      for component, result_component in zip(components, results):
-        self.assertAllEqual(component, result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    self.assertDatasetProduces(dataset, expected_output=[components])
 
   def testFromTensorsSparse(self):
     """Test a dataset that represents a single tuple of tensors."""
@@ -70,23 +63,12 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
                       values=np.array([-1, 1]),
                       dense_shape=np.array([2, 2])))
 
-    iterator = (
-        dataset_ops.Dataset.from_tensors(components)
-        .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensors(components)
 
     self.assertEqual(
         [tensor_shape.TensorShape(c.dense_shape) for c in components],
-        [shape for shape in iterator.output_shapes])
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      results = sess.run(get_next)
-      for component, result_component in zip(components, results):
-        self.assertSparseValuesEqual(component, result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        [shape for shape in dataset.output_shapes])
+    self.assertDatasetProduces(dataset, expected_output=[components])
 
   def testFromTensorsMixed(self):
     """Test an dataset that represents a single tuple of tensors."""
@@ -100,27 +82,13 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
                       values=np.array([-1, 1]),
                       dense_shape=np.array([2, 2])))
 
-    iterator = (
-        dataset_ops.Dataset.from_tensors(components)
-        .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
+    dataset = dataset_ops.Dataset.from_tensors(components)
     self.assertEqual([
         tensor_shape.TensorShape(c.dense_shape)
         if sparse_tensor.is_sparse(c) else c.shape for c in components
-    ], [shape for shape in iterator.output_shapes])
+    ], [shape for shape in dataset.output_shapes])
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      results = sess.run(get_next)
-      for component, result_component in zip(components, results):
-        if sparse_tensor.is_sparse(component):
-          self.assertSparseValuesEqual(component, result_component)
-        else:
-          self.assertAllEqual(component, result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    self.assertDatasetProduces(dataset, expected_output=[components])
 
   def testFromTensorSlices(self):
     """Test a dataset that represents the slices from a tuple of tensors."""
@@ -130,22 +98,18 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
         np.array([37.0, 38.0, 39.0, 40.0])
     )
 
-    iterator = (dataset_ops.Dataset.from_tensor_slices(components)
-                .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    get_next = self.getNext(dataset)
 
     self.assertEqual([c.shape[1:] for c in components],
-                     [t.shape for t in get_next])
+                     [shape for shape in dataset.output_shapes])
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(4):
-        results = sess.run(get_next)
-        for component, result_component in zip(components, results):
-          self.assertAllEqual(component[i], result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    for i in range(4):
+      results = self.evaluate(get_next())
+      for component, result_component in zip(components, results):
+        self.assertAllEqual(component[i], result_component)
+    with self.assertRaises(errors.OutOfRangeError):
+      results = self.evaluate(get_next())
 
   def testFromTensorSlicesSparse(self):
     """Test a dataset that represents the slices from a tuple of tensors."""
@@ -158,50 +122,39 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
                       values=np.array([1, 2, 3]),
                       dense_shape=np.array([3, 3])))
 
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components)
-        .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
 
     self.assertEqual(
         [tensor_shape.TensorShape(c.dense_shape[1:]) for c in components],
-        [shape for shape in iterator.output_shapes])
+        [shape for shape in dataset.output_shapes])
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      expected = [
-          (sparse_tensor.SparseTensorValue(
-              indices=np.array([[0]]),
-              values=np.array([0]),
-              dense_shape=np.array([1])),
-           sparse_tensor.SparseTensorValue(
-               indices=np.array([[0]]),
-               values=np.array([1]),
-               dense_shape=np.array([3]))),
-          (sparse_tensor.SparseTensorValue(
-              indices=np.array([[0]]),
-              values=np.array([0]),
-              dense_shape=np.array([1])),
-           sparse_tensor.SparseTensorValue(
-               indices=np.array([[1]]),
-               values=np.array([2]),
-               dense_shape=np.array([3]))),
-          (sparse_tensor.SparseTensorValue(
-              indices=np.array([[0]]),
-              values=np.array([0]),
-              dense_shape=np.array([1])),
-           sparse_tensor.SparseTensorValue(
-               indices=np.array([[2]]),
-               values=np.array([3]),
-               dense_shape=np.array([3]))),
-      ]
-      for i in range(3):
-        results = sess.run(get_next)
-        for component, result_component in zip(expected[i], results):
-          self.assertSparseValuesEqual(component, result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    expected = [
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[0]]),
+             values=np.array([1]),
+             dense_shape=np.array([3]))),
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[1]]),
+             values=np.array([2]),
+             dense_shape=np.array([3]))),
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[2]]),
+             values=np.array([3]),
+             dense_shape=np.array([3]))),
+    ]
+    self.assertDatasetProduces(dataset, expected_output=expected)
 
   def testFromTensorSlicesMixed(self):
     """Test a dataset that represents the slices from a tuple of tensors."""
@@ -217,78 +170,68 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
                       values=np.array([1, 2, 3]),
                       dense_shape=np.array([3, 3])))
 
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components)
-        .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    get_next = self.getNext(dataset)
     self.assertEqual([
         tensor_shape.TensorShape(c.dense_shape[1:])
         if sparse_tensor.is_sparse(c) else c.shape[1:] for c in components
-    ], [shape for shape in iterator.output_shapes])
+    ], [shape for shape in dataset.output_shapes])
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      expected = [
-          (sparse_tensor.SparseTensorValue(
-              indices=np.array([[0]]),
-              values=np.array([0]),
-              dense_shape=np.array([1])),
-           sparse_tensor.SparseTensorValue(
-               indices=np.array([[0]]),
-               values=np.array([1]),
-               dense_shape=np.array([3]))),
-          (sparse_tensor.SparseTensorValue(
-              indices=np.array([[0]]),
-              values=np.array([0]),
-              dense_shape=np.array([1])),
-           sparse_tensor.SparseTensorValue(
-               indices=np.array([[1]]),
-               values=np.array([2]),
-               dense_shape=np.array([3]))),
-          (sparse_tensor.SparseTensorValue(
-              indices=np.array([[0]]),
-              values=np.array([0]),
-              dense_shape=np.array([1])),
-           sparse_tensor.SparseTensorValue(
-               indices=np.array([[2]]),
-               values=np.array([3]),
-               dense_shape=np.array([3]))),
-      ]
-      for i in range(3):
-        results = sess.run(get_next)
-        for component, result_component in zip(
-            (list(zip(*components[:3]))[i] + expected[i]), results):
-          if sparse_tensor.is_sparse(component):
-            self.assertSparseValuesEqual(component, result_component)
-          else:
-            self.assertAllEqual(component, result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    expected = [
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[0]]),
+             values=np.array([1]),
+             dense_shape=np.array([3]))),
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[1]]),
+             values=np.array([2]),
+             dense_shape=np.array([3]))),
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[2]]),
+             values=np.array([3]),
+             dense_shape=np.array([3]))),
+    ]
+    for i in range(3):
+      results = self.evaluate(get_next())
+      for component, result_component in zip(
+          (list(zip(*components[:3]))[i] + expected[i]), results):
+        if sparse_tensor.is_sparse(component):
+          self.assertSparseValuesEqual(component, result_component)
+        else:
+          self.assertAllEqual(component, result_component)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   def testFromTensorSlicesWithDict(self):
     components = {"foo": [1, 2, 3], "bar": [[4.0], [5.0], [6.0]]}
-    iterator = (dataset_ops.Dataset.from_tensor_slices(components)
-                .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    get_next = self.getNext(dataset)
 
-    self.assertEqual(dtypes.int32, iterator.output_types["foo"])
-    self.assertEqual(dtypes.float32, iterator.output_types["bar"])
-    self.assertEqual((), iterator.output_shapes["foo"])
-    self.assertEqual((1,), iterator.output_shapes["bar"])
+    self.assertEqual(dtypes.int32, dataset.output_types["foo"])
+    self.assertEqual(dtypes.float32, dataset.output_types["bar"])
+    self.assertEqual((), dataset.output_shapes["foo"])
+    self.assertEqual((1,), dataset.output_shapes["bar"])
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(3):
-        results = sess.run(get_next)
-        self.assertEqual(components["foo"][i], results["foo"])
-        self.assertEqual(components["bar"][i], results["bar"])
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    for i in range(3):
+      results = self.evaluate(get_next())
+      self.assertEqual(components["foo"][i], results["foo"])
+      self.assertEqual(components["bar"][i], results["bar"])
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
-  def testFromSparseTensorSlices(self):
+  def testSkipEagerFromSparseTensorSlices(self):
     """Test a dataset based on slices of a `tf.SparseTensor`."""
     st = array_ops.sparse_placeholder(dtypes.float64)
     iterator = (dataset_ops.Dataset.from_sparse_tensor_slices(st)
@@ -389,39 +332,52 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
                           for s in nest.flatten(dataset.output_shapes)
                       ]))
 
-    iterator = dataset.make_one_shot_iterator()
-    (w, x), (y, z) = iterator.get_next()
-    self.assertEquals(dtypes.int64, w.dtype)
-    self.assertEquals(dtypes.int64, x.dtype)
-    self.assertEquals(dtypes.float64, y.dtype)
-    self.assertEquals(dtypes.float64, z.dtype)
-    self.assertEquals([None, 3], w.shape.as_list())
-    self.assertEquals([None, 3], x.shape.as_list())
-    self.assertEquals([None, 2], y.shape.as_list())
-    self.assertEquals([None, 2], z.shape.as_list())
-
-    iterator = dataset.make_initializable_iterator()
-    (w, x), (y, z) = iterator.get_next()
-    self.assertEquals(dtypes.int64, w.dtype)
-    self.assertEquals(dtypes.int64, x.dtype)
-    self.assertEquals(dtypes.float64, y.dtype)
-    self.assertEquals(dtypes.float64, z.dtype)
-    self.assertEquals([None, 3], w.shape.as_list())
-    self.assertEquals([None, 3], x.shape.as_list())
-    self.assertEquals([None, 2], y.shape.as_list())
-    self.assertEquals([None, 2], z.shape.as_list())
-
     # Define a separate set of components with matching leading
     # dimension for the from-slices constructor.
     components_for_slices = (np.array([1, 2, 3], dtype=np.int64),
-                             (np.array([4., 5., 6.]),
-                              np.array([7., 8., 9.])),
+                             (np.array([4., 5., 6.]), np.array([7., 8., 9.])),
                              np.array([10, 11, 12], dtype=np.int64))
 
     dataset = dataset_ops.Dataset.from_tensor_slices(components_for_slices)
-    self.assertEquals((dtypes.int64, (dtypes.float64, dtypes.float64),
-                       dtypes.int64), dataset.output_types)
+    self.assertEquals((dtypes.int64,
+                       (dtypes.float64, dtypes.float64), dtypes.int64),
+                      dataset.output_types)
     self.assertEquals(([], ([], []), []), dataset.output_shapes)
+
+  # TODO(b/117581999): more specific shapes in eager mode.
+  def testSkipEagerNestedStructure(self):
+    components = (np.array([1, 2, 3], dtype=np.int64), (np.array([4., 5.]),
+                                                        np.array([6., 7.])),
+                  np.array([8, 9, 10], dtype=np.int64))
+
+    dataset = dataset_ops.Dataset.from_tensors(components)
+    dataset = dataset.map(lambda x, y, z: ((x, z), (y[0], y[1])))
+
+    dataset = dataset.flat_map(
+        lambda x, y: dataset_ops.Dataset.from_tensors(
+            ((x[0], x[1]), (y[0], y[1])))).batch(32)
+
+    get_next = self.getNext(dataset)
+    (w, x), (y, z) = get_next()
+    self.assertEquals(dtypes.int64, w.dtype)
+    self.assertEquals(dtypes.int64, x.dtype)
+    self.assertEquals(dtypes.float64, y.dtype)
+    self.assertEquals(dtypes.float64, z.dtype)
+    self.assertEquals([None, 3], w.shape.as_list())
+    self.assertEquals([None, 3], x.shape.as_list())
+    self.assertEquals([None, 2], y.shape.as_list())
+    self.assertEquals([None, 2], z.shape.as_list())
+
+    get_next = self.getNext(dataset)
+    (w, x), (y, z) = get_next()
+    self.assertEquals(dtypes.int64, w.dtype)
+    self.assertEquals(dtypes.int64, x.dtype)
+    self.assertEquals(dtypes.float64, y.dtype)
+    self.assertEquals(dtypes.float64, z.dtype)
+    self.assertEquals([None, 3], w.shape.as_list())
+    self.assertEquals([None, 3], x.shape.as_list())
+    self.assertEquals([None, 2], y.shape.as_list())
+    self.assertEquals([None, 2], z.shape.as_list())
 
   def testNestedDict(self):
     components = {"a": {"aa": 1, "ab": [2.0, 2.0]}, "b": [3, 3, 3]}
@@ -454,12 +410,11 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     self.assertEquals(dtypes.int64, dataset.output_types)
     self.assertEquals([3], dataset.output_shapes)
 
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-    self.assertEquals(dtypes.int64, get_next.dtype)
-    self.assertEquals([3], get_next.shape)
+    get_next = self.getNext(dataset)
+    self.assertEquals(dtypes.int64, get_next().dtype)
+    self.assertEquals([3], get_next().shape)
 
-  def testSplitPipelineFailsWithPlacementError(self):
+  def testSkipEagerSplitPipelineFailsWithPlacementError(self):
     with session.Session(
         target="",
         config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
@@ -490,6 +445,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
         sess.run(iterator.get_next())
 
 
+# TODO(b/119837791): Add eager benchmarks as well.
 class DatasetConstructorBenchmark(test.Benchmark):
 
   def benchmarkSliceRepeatBatch(self):
