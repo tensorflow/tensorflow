@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ReaderReadUpToV2"
+  endpoint {
+    name: "io.ReaderReadUpToV2"
+  }
+}

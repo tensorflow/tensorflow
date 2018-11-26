@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ApplyFtrlV2"
+  endpoint {
+    name: "train.ApplyFtrlV2"
+  }
+}

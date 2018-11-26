@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "QueueDequeueManyV2"
+  endpoint {
+    name: "io.QueueDequeueManyV2"
+  }
+}

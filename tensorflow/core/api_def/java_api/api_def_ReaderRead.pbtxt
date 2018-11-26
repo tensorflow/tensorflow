@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ReaderRead"
+  endpoint {
+    name: "io.ReaderRead"
+  }
+}

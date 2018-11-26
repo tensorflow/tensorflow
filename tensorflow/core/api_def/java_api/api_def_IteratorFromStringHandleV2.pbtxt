@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "IteratorFromStringHandleV2"
+  endpoint {
+    name: "data.IteratorFromStringHandleV2"
+  }
+}

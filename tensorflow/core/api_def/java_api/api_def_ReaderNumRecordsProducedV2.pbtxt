@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ReaderNumRecordsProducedV2"
+  endpoint {
+    name: "io.ReaderNumRecordsProducedV2"
+  }
+}

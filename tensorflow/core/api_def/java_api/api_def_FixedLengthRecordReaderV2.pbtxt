@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "FixedLengthRecordReaderV2"
+  endpoint {
+    name: "io.FixedLengthRecordReaderV2"
+  }
+}
