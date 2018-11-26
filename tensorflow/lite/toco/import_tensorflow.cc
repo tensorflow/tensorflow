@@ -1221,7 +1221,7 @@ void GetOutputNamesFromNodeDef(const NodeDef& node,
 void GetOutputTypesFromNodeDef(const NodeDef& node,
                                const tensorflow::OpDef& op_def,
                                TensorFlowUnsupportedOperator* op) {
-  // The the given type to the op, or clear the types if invalid.
+  // The given type to the op, or clear the types if invalid.
   auto add_type = [&node, op](tensorflow::DataType type) {
     if (type == tensorflow::DT_INVALID) {
       LOG(WARNING) << "Op node missing output type attribute: " << node.name();
