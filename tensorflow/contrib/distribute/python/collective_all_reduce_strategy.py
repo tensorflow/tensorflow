@@ -283,7 +283,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     rewrite_options.scoped_allocator_opts.enable_op.append("CollectiveReduce")
 
     if not self._cluster_spec:
-      return
+      return updated_config
 
     assert self._task_type
     assert self._task_id is not None

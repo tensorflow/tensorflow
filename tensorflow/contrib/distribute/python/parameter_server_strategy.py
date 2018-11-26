@@ -480,7 +480,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
 
     # The device filters prevent communication between workers.
     if self._task_type not in ["chief", "worker"]:
-      return
+      return updated_config
     del updated_config.device_filters[:]
     updated_config.device_filters.extend(
         ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
