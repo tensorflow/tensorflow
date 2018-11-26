@@ -35,10 +35,20 @@ typedef enum {
   kTfLitePaddingValid,
 } TfLitePadding;
 
+typedef enum {
+  kTfLiteMirrorPaddingUnknown = 0,
+  kTfLiteMirrorPaddingReflect,
+  kTfLiteMirrorPaddingSymmetric,
+} TfLiteMirrorPaddingMode;
+
 typedef struct {
   int width;
   int height;
 } TfLitePaddingValues;
+
+typedef struct {
+  TfLiteMirrorPaddingMode mode;
+} TfLiteMirrorPaddingParams;
 
 // Possible fused activation functions.
 // TODO(aselle): rename to TfLiteActivation

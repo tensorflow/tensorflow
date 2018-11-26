@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -549,8 +550,16 @@ class FusedConv2DOpTest : public OpsTestBase {
     tensorflow::GraphDef graph;
     TF_ASSERT_OK(root.ToGraphDef(&graph));
 
+    // Disable Grappler constant folding for the test graphs.
+    tensorflow::SessionOptions session_options;
+    tensorflow::RewriterConfig* cfg =
+        session_options.config.mutable_graph_options()
+            ->mutable_rewrite_options();
+    cfg->set_constant_folding(tensorflow::RewriterConfig::OFF);
+
     std::unique_ptr<tensorflow::Session> session(
-        tensorflow::NewSession(tensorflow::SessionOptions()));
+        tensorflow::NewSession(session_options));
+
     TF_ASSERT_OK(session->Create(graph));
 
     std::vector<Tensor> unfused_tensors;
@@ -704,6 +713,7 @@ class FusedConv2DOpTest : public OpsTestBase {
     const int bias_size = filter_count;
     Tensor bias(dtype, {bias_size});
     bias.flat<T>() = bias.flat<T>().setRandom();
+    bias.flat<T>() += bias.flat<T>().constant(static_cast<T>(0.5f));
 
     Tensor conv_2d;
     Tensor fused_conv_2d;
@@ -714,7 +724,14 @@ class FusedConv2DOpTest : public OpsTestBase {
     ASSERT_EQ(conv_2d.dtype(), fused_conv_2d.dtype());
     ASSERT_EQ(conv_2d.shape(), fused_conv_2d.shape());
 
-    test::ExpectTensorNear<T>(conv_2d, fused_conv_2d, 1e-5);
+    // NOTE(ezhulenev): When filter size is equal to the input image size, we
+    // effectevily do element-wise product and full sum reduction, and these
+    // operations intoroduce higher than "normal" numerical errors.
+    if (image_width == filter_size && image_height == filter_size) {
+      test::ExpectTensorNear<T>(conv_2d, fused_conv_2d, 1e-3);
+    } else {
+      test::ExpectClose(conv_2d, fused_conv_2d);
+    }
   }
 
   void VerifyFusedBatchNormTensorsNear(int depth, int image_width,
@@ -754,7 +771,14 @@ class FusedConv2DOpTest : public OpsTestBase {
     ASSERT_EQ(conv_2d.dtype(), fused_conv_2d.dtype());
     ASSERT_EQ(conv_2d.shape(), fused_conv_2d.shape());
 
-    test::ExpectTensorNear<T>(conv_2d, fused_conv_2d, 1e-3);
+    // NOTE(ezhulenev): When filter size is equal to the input image size, we
+    // effectevily do element-wise product and full sum reduction, and these
+    // operations intoroduce higher than "normal" numerical errors.
+    if (image_width == filter_size && image_height == filter_size) {
+      test::ExpectTensorNear<T>(conv_2d, fused_conv_2d, 1e-3);
+    } else {
+      test::ExpectClose(conv_2d, fused_conv_2d);
+    }
   }
 
   // Verifies that computing Conv2D+BiasAdd in a graph is identical to

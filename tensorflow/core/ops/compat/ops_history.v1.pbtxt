@@ -21942,6 +21942,18 @@ op {
   }
 }
 op {
+  name: "ExperimentalMatchingFilesDataset"
+  input_arg {
+    name: "patterns"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
   name: "ExperimentalMaterializedIndexDatasetHandle"
   output_arg {
     name: "handle"
@@ -21968,6 +21980,33 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "ExperimentalMaxIntraOpParallelismDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "max_intra_op_parallelism"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "ExperimentalNonSerializableDataset"
@@ -22026,6 +22065,33 @@ op {
     name: "Targuments"
     type: "list(type)"
     has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "ExperimentalPrivateThreadPoolDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "num_threads"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -31489,18 +31555,6 @@ op {
     name: "filenames"
     type: DT_STRING
   }
-}
-op {
-  name: "MatchingFilesDataset"
-  input_arg {
-    name: "patterns"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  is_stateful: true
 }
 op {
   name: "MatrixBandPart"
@@ -75515,6 +75569,108 @@ op {
   is_stateful: true
 }
 op {
+  name: "TensorForestCreateTreeVariable"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "tree_config"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorForestTreeDeserialize"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "tree_config"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorForestTreeIsInitializedOp"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "is_initialized"
+    type: DT_BOOL
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorForestTreePredict"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "dense_features"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "logits"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorForestTreeResourceHandleOp"
+  output_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorForestTreeSerialize"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "tree_config"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorForestTreeSize"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "tree_size"
+    type: DT_INT32
+  }
+  is_stateful: true
+}
+op {
   name: "TensorListConcatLists"
   input_arg {
     name: "input_a"
@@ -77022,7 +77178,7 @@ op {
   }
   output_arg {
     name: "char_values"
-    type: DT_UINT32
+    type: DT_INT32
   }
   output_arg {
     name: "char_to_byte_starts"

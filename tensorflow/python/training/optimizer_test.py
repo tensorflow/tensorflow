@@ -79,13 +79,13 @@ class OptimizerTest(test.TestCase):
 
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Run 1 step of sgd through optimizer
         opt_op.run()
         # Validate updated params
-        self.assertAllClose([-14., -13.], var0.eval())
-        self.assertAllClose([-6., -5.], var1.eval())
+        self.assertAllClose([-14., -13.], self.evaluate(var0))
+        self.assertAllClose([-6., -5.], self.evaluate(var1))
 
   def testPrecomputedGradient(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -102,15 +102,15 @@ class OptimizerTest(test.TestCase):
 
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Run 1 step of sgd through optimizer
         opt_op.run()
         # Validate updated params
         self.assertAllClose([1.0 - 3 * 5 * 42.0, 2.0 - 3 * 5 * (-42.0)],
-                            var0.eval())
+                            self.evaluate(var0))
         self.assertAllClose([3.0 - 3 * 3 * 42.0, 4.0 - 3 * 3 * (-42.0)],
-                            var1.eval())
+                            self.evaluate(var1))
 
   @test_util.run_in_graph_and_eager_modes
   def testNoVariables(self):
@@ -257,13 +257,13 @@ class OptimizerTest(test.TestCase):
 
       variables.global_variables_initializer().run()
       # Fetch params to validate initial values
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([3.0, 4.0], var1.eval())
+      self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+      self.assertAllClose([3.0, 4.0], self.evaluate(var1))
       # Run 1 step of sgd through optimizer
       opt_op.run()
       # Validate updated params
-      self.assertAllClose([-0.1, -0.1], var0.eval())
-      self.assertAllClose([0., 0.], var1.eval())
+      self.assertAllClose([-0.1, -0.1], self.evaluate(var0))
+      self.assertAllClose([0., 0.], self.evaluate(var1))
 
 
 if __name__ == '__main__':

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -30,6 +32,14 @@ namespace {
 
 using ::testing::_;
 namespace op = xla::testing::opcode_matchers;
+
+// Returns the first kWhile instruction within m's entry computation.
+HloInstruction* FindFirstWhile(HloModule* m) {
+  const auto& instrs = m->entry_computation()->instructions();
+  return *absl::c_find_if(instrs, [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kWhile;
+  });
+}
 
 class WhileLoopSimplifierTest : public HloTestBase {
  protected:
@@ -542,11 +552,7 @@ TEST_F(WhileLoopSimplifierTest, FlattenNestedTuple) {
   // it easy to find.
   EXPECT_TRUE(HloDCE().Run(m.get()).ok());
 
-  const auto& instrs = m->entry_computation()->instructions();
-  HloInstruction* new_while =
-      *absl::c_find_if(instrs, [](const HloInstruction* instr) {
-        return instr->opcode() == HloOpcode::kWhile;
-      });
+  HloInstruction* new_while = FindFirstWhile(m.get());
   Shape flat_tuple =
       ShapeUtil::ParseShapeString("(s32[1], s32[2], s32[3], s32[4])")
           .ValueOrDie();
@@ -634,15 +640,9 @@ TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarry) {
   // Run the tuple simplifier to make the resulting HLO a bit easier to check.
   EXPECT_TRUE(TupleSimplifier().Run(m.get()).ok());
 
-  const auto& instrs = m->entry_computation()->instructions();
-  HloInstruction* new_while =
-      *absl::c_find_if(instrs, [](const HloInstruction* instr) {
-        return instr->opcode() == HloOpcode::kWhile;
-      });
-
+  HloInstruction* new_while = FindFirstWhile(m.get());
   Shape new_while_shape =
       ShapeUtil::ParseShapeString("(s32[1], s32[3])").ValueOrDie();
-  SCOPED_TRACE(m->ToString());
   EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_body()->root_instruction()->shape(), new_while_shape));
@@ -657,6 +657,90 @@ TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarry) {
       ShapeUtil::ParseShapeString("(s32[1], s32[2], s32[3])").ValueOrDie()));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               op::Tuple(_, op::Constant(), _));
+}
+
+const char* const kSimpleMergeInductionVariablesModule = R"(
+  HloModule Test
+  Body {
+    param = (TYPE[], TYPE[], TYPE[]) parameter(0)
+
+    a = TYPE[] get-tuple-element(param), index=0
+    one = TYPE[] constant(1)
+    a1 = TYPE[] add(a, one)
+
+    b = TYPE[] get-tuple-element(param), index=1
+    negone = TYPE[] constant(-1)
+    b1 = TYPE[] add(b, negone)
+
+    c = TYPE[] add(a, b)
+
+    ROOT tuple = (TYPE[], TYPE[], TYPE[]) tuple(a1,b1,c)
+  }
+  Cond {
+    param = (TYPE[], TYPE[], TYPE[]) parameter(0)
+    a = TYPE[] get-tuple-element(param), index=0
+    b = TYPE[] get-tuple-element(param), index=1
+    sum = TYPE[] power(a, b)
+    ten = TYPE[] constant(10)
+    ROOT cond = pred[] less-than(sum, ten)
+  }
+  ENTRY Loop {
+    a = TYPE[] constant(10)
+    b = TYPE[] constant(100)
+    c = TYPE[] constant(0)
+    init = (TYPE[], TYPE[], TYPE[]) tuple(a,b,c)
+    while = (TYPE[], TYPE[], TYPE[]) while(init), condition=Cond, body=Body
+
+    a1 = TYPE[] get-tuple-element(while), index=0
+    b1 = TYPE[] get-tuple-element(while), index=1
+    ROOT sum = TYPE[] add(a1, b1)
+  })";
+
+TEST_F(WhileLoopSimplifierTest, MergeInductionVariables_Simple) {
+  string hlo_string = absl::StrReplaceAll(kSimpleMergeInductionVariablesModule,
+                                          {{"TYPE", "s32"}});
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
+  // DCE away the old loop so there's just one while loop in the module, making
+  // it easy to find, and run the tuple simplifier to make the resulting HLO
+  // easier to check.
+  EXPECT_TRUE(HloDCE().Run(m.get()).ok());
+  EXPECT_TRUE(TupleSimplifier().Run(m.get()).ok());
+
+  HloInstruction* new_while = FindFirstWhile(m.get());
+  // We should have added a new loop counter for s32[] to the end of the tuple.
+  SCOPED_TRACE(m->ToString());
+  Shape new_while_shape =
+      ShapeUtil::ParseShapeString("(s32[], s32[], s32[], s32[])").ValueOrDie();
+  EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->root_instruction()->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->parameter_instruction(0)->shape(),
+      new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_condition()->parameter_instruction(0)->shape(),
+      new_while_shape));
+
+  EXPECT_THAT(new_while->while_body()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::Parameter(), 0),
+                        op::GetTupleElement(op::Parameter(), 1), op::Add(),
+                        op::Add(op::GetTupleElement(op::Parameter(), 3),
+                                op::Constant())));
+  EXPECT_THAT(new_while->while_condition()->root_instruction(),
+              op::Lt(op::Power(op::Add(), op::Add()), op::Constant()));
+}
+
+// We shouldn't merge S16 induction variables; we can't create constants of this
+// type because S16 literals are not implemented.
+TEST_F(WhileLoopSimplifierTest, MergeInductionVariables_SkipS16) {
+  string hlo_string = absl::StrReplaceAll(kSimpleMergeInductionVariablesModule,
+                                          {{"TYPE", "s16"}});
+  EXPECT_FALSE(
+      WhileLoopSimplifier()
+          .Run(ParseAndReturnVerifiedModule(hlo_string).ValueOrDie().get())
+          .ValueOrDie());
 }
 
 }  // namespace

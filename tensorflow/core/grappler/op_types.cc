@@ -253,6 +253,10 @@ bool IsIgammac(const NodeDef& node) { return node.op() == "Igammac"; }
 
 bool IsImag(const NodeDef& node) { return node.op() == "Imag"; }
 
+bool IsImmutableConst(const NodeDef& node) {
+  return node.op() == "ImmutableConst";
+}
+
 bool IsInvGrad(const NodeDef& node) { return node.op() == "InvGrad"; }
 
 bool IsLess(const NodeDef& node) { return node.op() == "Less"; }

@@ -26,14 +26,18 @@ from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.contrib.distribute.python import strategy_test_lib
-from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.layers import core
@@ -44,8 +48,6 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import device_util
-from tensorflow.python.training import distribution_strategy_context as ds_context
 from tensorflow.python.training import training_util
 
 CHIEF = run_config.TaskType.CHIEF
@@ -516,8 +518,40 @@ class ParameterServerStrategyTestBase(
       self.assertLess(error_after, error_before)
       return error_after < error_before
 
+  def _test_input_fn_iterator(self, task_type, task_id, num_gpus, input_fn,
+                              expected_values):
+    distribution, master_target, config = self._get_test_objects(
+        task_type, task_id, num_gpus)
+    devices = distribution.extended.worker_devices
+
+    with ops.Graph().as_default(), \
+         self.cached_session(config=config,
+                             target=master_target) as sess:
+      iterator = distribution.make_input_fn_iterator(input_fn)
+      sess.run(iterator.initialize())
+
+      for expected_value in expected_values:
+        next_element = iterator.get_next()
+        computed_value = sess.run(
+            [values.select_device(d, next_element) for d in devices])
+        self.assertEqual(expected_value, computed_value)
+
+      with self.assertRaises(errors.OutOfRangeError):
+        next_element = iterator.get_next()
+        sess.run([values.select_device(d, next_element) for d in devices])
+
+      # After re-initializing the iterator, should be able to iterate again.
+      sess.run(iterator.initialize())
+
+      for expected_value in expected_values:
+        next_element = iterator.get_next()
+        computed_value = sess.run(
+            [values.select_device(d, next_element) for d in devices])
+        self.assertEqual(expected_value, computed_value)
+
 
 class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
+                                  strategy_test_lib.DistributionTestBase,
                                   parameterized.TestCase):
 
   @classmethod
@@ -582,6 +616,73 @@ class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
   def testMinimizeLossGraphLocal(self, num_gpus):
     self._test_minimize_loss_graph(None, None, num_gpus)
 
+  # TODO(priyag): Refactor this and other multi worker tests.
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[1, 2], required_gpus=1))
+  def testMakeInputFnIteratorDistributed(self, num_gpus):
+    if context.num_gpus() < num_gpus:
+      self.skipTest('Not enough GPUs')
+    dataset_fn = lambda: dataset_ops.Dataset.range(100)
+    expected_values = [[i+j for j in range(num_gpus)]
+                       for i in range(0, 100, num_gpus)]
+
+    input_fn = self._input_fn_to_test_input_context(
+        dataset_fn,
+        expected_num_replicas_in_sync=num_gpus,
+        expected_num_input_pipelines=3,
+        expected_input_pipeline_id=1)  # because task_id = 1
+    self._test_input_fn_iterator('worker', 1, num_gpus,
+                                 input_fn, expected_values)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[1, 2], required_gpus=1))
+  def testMakeInputFnIteratorLocal(self, num_gpus):
+    if context.num_gpus() < num_gpus:
+      self.skipTest('Not enough GPUs')
+    dataset_fn = lambda: dataset_ops.Dataset.range(100)
+    expected_values = [[i+j for j in range(num_gpus)]
+                       for i in range(0, 100, num_gpus)]
+
+    input_fn = self._input_fn_to_test_input_context(
+        dataset_fn,
+        expected_num_replicas_in_sync=num_gpus,
+        expected_num_input_pipelines=1,
+        expected_input_pipeline_id=0)  # only one worker and pipeline for local.
+    self._test_input_fn_iterator(None, None, num_gpus,
+                                 input_fn, expected_values)
+
+  def testGlobalStepUpdate(self):
+    strategy = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=context.num_gpus())
+    self._test_global_step_update(strategy)
+
+  def testUpdateConfigProtoMultiWorker(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    distribution.configure(
+        cluster_spec=self._cluster_spec, task_type='worker', task_id=1)
+
+    config_proto = config_pb2.ConfigProto(device_filters=['to_be_overridden'])
+
+    new_config = distribution.update_config_proto(config_proto)
+
+    # Verify device filters.
+    self.assertEqual(['/job:worker/task:1', '/job:ps'],
+                     new_config.device_filters)
+
+    # Verify isolate_session_state
+    self.assertFalse(new_config.isolate_session_state)
+
+  def testUpdateConfigProtoLocal(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+
+    config_proto = config_pb2.ConfigProto()
+    new_config = distribution.update_config_proto(config_proto)
+
+    # Verify isolate_session_state
+    self.assertTrue(new_config.isolate_session_state)
+
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                                            parameterized.TestCase):
@@ -624,32 +725,9 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
           v = variable_scope.get_variable('v', initializer=10.0)
           _ = v * v
         v, = tape.watched_variables()
-        w = distribution.value_container(v)
+        w = distribution.extended.value_container(v)
         self.assertIs(values.AggregatingVariable, type(w))
-      distribution.call_for_each_replica(f)
-
-
-class InputContextTest(strategy_test_lib.DistributionTestBase):
-
-  def testInputContextPropertyLocal(self):
-    d = parameter_server_strategy.ParameterServerStrategy(num_gpus_per_worker=2)
-    with context.graph_mode():
-      input_fn = self._input_fn_to_test_input_context(
-          expected_num_replicas_in_sync=2,
-          expected_num_input_pipelines=1,
-          expected_input_pipeline_id=0)
-      d.make_input_fn_iterator(input_fn)
-
-  def testInputContextPropertyMultiWorker(self):
-    d = parameter_server_strategy.ParameterServerStrategy(num_gpus_per_worker=2)
-    cluster_spec = {'worker': ['worker1', 'worker2', 'worker3'], 'ps': ['ps1']}
-    d.configure(cluster_spec=cluster_spec, task_type='worker', task_id=1)
-    with context.graph_mode():
-      input_fn = self._input_fn_to_test_input_context(
-          expected_num_replicas_in_sync=2,
-          expected_num_input_pipelines=3,
-          expected_input_pipeline_id=1)  # because task_id =1
-      d.make_input_fn_iterator(input_fn)
+      distribution.extended.call_for_each_replica(f)
 
 
 if __name__ == '__main__':

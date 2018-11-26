@@ -126,9 +126,9 @@ def _FilterNonCoreGoldenFiles(golden_file_list):
   filtered_file_list = []
   filtered_package_prefixes = ['tensorflow.%s.' % p for p in _NON_CORE_PACKAGES]
   for f in golden_file_list:
-    if any([
+    if any(
         f.rsplit('/')[-1].startswith(pre) for pre in filtered_package_prefixes
-    ]):
+    ):
       continue
     filtered_file_list.append(f)
   return filtered_file_list

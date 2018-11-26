@@ -66,6 +66,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:smart_cond",
+        "//tensorflow/python:sort_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:state_ops_gen",
@@ -308,20 +309,6 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "sort_ops_test",
-    size = "medium",
-    srcs = ["python/ops/sort_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":framework_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:random_ops",
         "//third_party/py/numpy",
     ],
 )

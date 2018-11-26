@@ -25,6 +25,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
@@ -39,11 +40,11 @@ class LogarithmOpTest(test.TestCase):
 
   def _verifyLogarithm(self, x, np_type):
     inp = x.astype(np_type)
-    with self.cached_session(use_gpu=True):
+    with test_util.use_gpu():
       # Verify that expm(logm(A)) == A.
       tf_ans = linalg_impl.matrix_exponential(
           gen_linalg_ops.matrix_logarithm(inp))
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       self.assertAllClose(inp, out, rtol=1e-4, atol=1e-3)
 
   def _verifyLogarithmComplex(self, x):

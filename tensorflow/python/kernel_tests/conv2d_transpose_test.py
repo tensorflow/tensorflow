@@ -52,7 +52,7 @@ class Conv2DTransposeTest(test.TestCase):
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       output = nn_ops.conv2d_transpose(
           x, f, y_shape, strides=strides, padding="SAME")
-      value = output.eval()
+      value = self.evaluate(output)
 
       # We count the number of cells being added at the locations in the output.
       # At the center, #cells=kernel_height * kernel_width
@@ -90,7 +90,7 @@ class Conv2DTransposeTest(test.TestCase):
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       output = nn_ops.conv2d_transpose(
           x, f, y_shape, strides=strides, padding="SAME")
-      value = output.eval()
+      value = self.evaluate(output)
 
       for n in xrange(x_shape[0]):
         for k in xrange(f_shape[2]):
@@ -123,7 +123,7 @@ class Conv2DTransposeTest(test.TestCase):
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       output = nn_ops.conv2d_transpose(
           x, f, y_shape, strides=strides, padding="VALID")
-      value = output.eval()
+      value = self.evaluate(output)
 
       cache_values = np.zeros(y_shape, dtype=np.float32)
 
@@ -194,7 +194,7 @@ class Conv2DTransposeTest(test.TestCase):
         output = nn_ops.conv2d_transpose(
             x, f, y_shape, strides=strides, padding="SAME", data_format="NCHW")
 
-        value = output.eval()
+        value = self.evaluate(output)
         for n in xrange(x_shape[0]):
           for k in xrange(f_shape[2]):
             for w in xrange(y_shape[3]):
@@ -229,7 +229,7 @@ class Conv2DTransposeTest(test.TestCase):
         output = nn_ops.conv2d_transpose(
             x, f, y_shape, strides=strides, padding="SAME", data_format="NCHW")
 
-        value = output.eval()
+        value = self.evaluate(output)
         for n in xrange(x_shape[0]):
           for k in xrange(f_shape[2]):
             for w in xrange(y_shape[3]):
@@ -264,7 +264,7 @@ class Conv2DTransposeTest(test.TestCase):
         output = nn_ops.conv2d_transpose(
             x, f, y_shape, strides=strides, padding="VALID", data_format="NCHW")
 
-        value = output.eval()
+        value = self.evaluate(output)
         cache_values = np.zeros(y_shape, dtype=np.float32)
         # The amount of padding added
         pad = 1

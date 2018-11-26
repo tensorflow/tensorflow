@@ -487,12 +487,13 @@ StatusOr<CompiledXrtComputation*> LocalComputation::CompileForXrt(
 
   xrt::XLAComputation c;
   auto config = c.mutable_config();
-  auto shapes = config->mutable_program_shape();
+  ProgramShape shapes;
   for (auto& shape : argument_shapes) {
-    *shapes->add_parameters() = shape;
+    *shapes.add_parameters() = shape;
   }
-  TF_ASSIGN_OR_RETURN(*shapes->mutable_result(), GetReturnValueShape());
-  LayoutUtil::SetToDefaultLayout(shapes);
+  TF_ASSIGN_OR_RETURN(*shapes.mutable_result(), GetReturnValueShape());
+  LayoutUtil::SetToDefaultLayout(&shapes);
+  *config->mutable_program_shape() = shapes.ToProto();
   auto snapshot = computation().Snapshot().ValueOrDie();
   *c.mutable_hlo_snapshot() = *snapshot;
 

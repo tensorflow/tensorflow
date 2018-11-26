@@ -374,8 +374,12 @@ Status TensorListBinaryAdd(OpKernelContext* c, const TensorList& a,
           b_tensor.shape().DebugString(), " in position ", i);
     }
     Tensor out_tensor;
-    TF_RETURN_IF_ERROR(
-        c->allocate_temp(a_tensor.dtype(), a_tensor.shape(), &out_tensor));
+    AllocatorAttributes attr;
+    if (a_tensor.dtype() == DT_VARIANT) {
+      attr.set_on_host(true);
+    }
+    TF_RETURN_IF_ERROR(c->allocate_temp(a_tensor.dtype(), a_tensor.shape(),
+                                        &out_tensor, attr));
     out->tensors.push_back(out_tensor);
     switch (out_tensor.dtype()) {
 #define DTYPE_CASE(dtype)                                        \
@@ -387,6 +391,13 @@ Status TensorListBinaryAdd(OpKernelContext* c, const TensorList& a,
       TF_CALL_NUMBER_TYPES(DTYPE_CASE)
 
 #undef DTYPE_CASE
+      case DataTypeToEnum<Variant>::value: {
+        Variant* v_out = &(out_tensor.scalar<Variant>()());
+        TF_RETURN_IF_ERROR(BinaryOpVariants<Device>(
+            c, ADD_VARIANT_BINARY_OP, a_tensor.scalar<Variant>()(),
+            b_tensor.scalar<Variant>()(), v_out));
+        break;
+      }
       default:
         return errors::InvalidArgument("Trying to add unsupported dtype ",
                                        out_tensor.dtype());

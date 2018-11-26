@@ -86,7 +86,7 @@ class BatchMatmulOpTest(test.TestCase):
     with self.cached_session(use_gpu=is_floating) as sess:
       if static_shape:
         z0 = math_ops.matmul(x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
-        z0_val = z0.eval()
+        z0_val = self.evaluate(z0)
       else:
         x_ph = array_ops.placeholder(x.dtype)
         y_ph = array_ops.placeholder(y.dtype)

@@ -54,7 +54,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
   def __init__(self,
                learning_rate=0.001,
                rho=0.95,
-               epsilon=1e-8,
+               epsilon=1e-7,
                name='Adadelta'):
     """Construct a new Adadelta optimizer.
 

@@ -240,7 +240,7 @@ HloModuleProto HloModule::ToProto() const {
     *proto.mutable_schedule() = schedule().ToProto().ValueOrDie();
   }
   *proto.mutable_host_program_shape() =
-      entry_computation_layout().ComputeProgramShape();
+      entry_computation_layout().ComputeProgramShape().ToProto();
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
   *proto.mutable_dynamic_parameter_binding() =
       dynamic_parameter_binding().ToProto();
@@ -371,7 +371,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
       << "No program shape found in the proto";
   const auto& program_shape = module.host_program_shape();
 
-  HloModuleConfig module_config(program_shape);
+  HloModuleConfig module_config(ProgramShape{program_shape});
   module_config.set_debug_options(debug_options);
 
   // The module config is constructed with default layouts regardless of what is

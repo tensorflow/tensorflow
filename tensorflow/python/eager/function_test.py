@@ -1695,8 +1695,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                                  'be Tensors;.*'):
       graph_function('Not a Tensor.')
 
-  # TODO(scottzhu): Revive the test once the grappler plugin is updated.
-  def disabled_testSwapImplementationWithGrapplerPlugin(self):
+  def testSwapImplementationWithGrapplerPlugin(self):
     rewrites = rewriter_config_pb2.RewriterConfig()
     # function_optimizer has to be turn off, otherwise it will delete the
     # registered function if it does not get called.

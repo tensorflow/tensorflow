@@ -348,12 +348,14 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
         # feeding in the inputs and targets.
         loss, predictions, _ = sess.run(
             (outputs['loss'], outputs['predictions/' + output_name],
-             outputs['metrics/mae/update_op']),
-            {inputs[input_name]: input_arr, inputs[target_name]: target_arr})
+             outputs['metrics/mean_absolute_error/update_op']), {
+                 inputs[input_name]: input_arr,
+                 inputs[target_name]: target_arr
+             })
 
         # The metric value should be run after the update op, to ensure that it
         # reflects the correct value.
-        metric_value = sess.run(outputs['metrics/mae/value'])
+        metric_value = sess.run(outputs['metrics/mean_absolute_error/value'])
 
         self.assertEqual(int(train_before_export),
                          sess.run(training_module.get_global_step()))
@@ -368,8 +370,8 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
         self.assertEqual(int(train_before_export),
                          sess.run(training_module.get_global_step()))
         self.assertIn('loss', outputs)
-        self.assertIn('metrics/mae/update_op', outputs)
-        self.assertIn('metrics/mae/value', outputs)
+        self.assertIn('metrics/mean_absolute_error/update_op', outputs)
+        self.assertIn('metrics/mean_absolute_error/value', outputs)
         self.assertIn('predictions/' + output_name, outputs)
 
         # Train for a step

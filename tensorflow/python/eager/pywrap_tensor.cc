@@ -439,8 +439,8 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
       PyErr_SetString(
           PyExc_TypeError,
           tensorflow::strings::StrCat(
-              "Cannot convert value ", TFE_GetPythonString(value_str.get()),
-              " to EagerTensor with requested dtype: ",
+              "Cannot convert provided value to EagerTensor. Provided value: ",
+              TFE_GetPythonString(value_str.get()), " Requested dtype: ",
               tensorflow::DataTypeString(
                   static_cast<tensorflow::DataType>(desired_dtype)))
               .c_str());

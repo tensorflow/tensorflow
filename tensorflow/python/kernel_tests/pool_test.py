@@ -151,7 +151,7 @@ class PoolingTest(test.TestCase):
         np.prod(input_shape), dtype=np.float32).reshape(input_shape) - 1
     y1 = pool_direct(input=x, **kwargs)
     y2 = nn_ops.pool(input=x, **kwargs)
-    self.assertAllClose(y1, y2.eval(), rtol=1e-2, atol=1e-2)
+    self.assertAllClose(y1, self.evaluate(y2), rtol=1e-2, atol=1e-2)
 
   def testPoolSimple(self):
     with self.session(use_gpu=test.is_gpu_available()):

@@ -48,7 +48,8 @@ using tensorflow::TensorProto;
 namespace toco {
 namespace {
 
-tensorflow::DataType GetTensorFlowDataType(ArrayDataType data_type) {
+tensorflow::DataType GetTensorFlowDataType(ArrayDataType data_type,
+                                           const string& error_location) {
   switch (data_type) {
     case ArrayDataType::kBool:
       return tensorflow::DT_BOOL;
@@ -66,14 +67,21 @@ tensorflow::DataType GetTensorFlowDataType(ArrayDataType data_type) {
       return tensorflow::DT_COMPLEX64;
     default:
     case ArrayDataType::kNone:
-      LOG(FATAL) << "Unsupported data type: " << static_cast<int>(data_type);
+      LOG(FATAL) << "Unsupported data type '" << ArrayDataTypeName(data_type)
+                 << "' in " << error_location;
       return tensorflow::DT_INVALID;
   }
 }
 
+tensorflow::DataType GetTensorFlowDataTypeForOp(ArrayDataType data_type,
+                                                const string& op_name) {
+  return GetTensorFlowDataType(data_type, "op '" + op_name + "'");
+}
+
 tensorflow::DataType GetTensorFlowDataType(const Model& model,
                                            const string& array_name) {
-  return GetTensorFlowDataType(model.GetArray(array_name).data_type);
+  return GetTensorFlowDataType(model.GetArray(array_name).data_type,
+                               "array '" + array_name + "'");
 }
 
 // TensorFlow sometimes forbids what it calls "legacy scalars",
@@ -1285,7 +1293,7 @@ void ConvertRangeOperator(const Model& model, const RangeOperator& src_op,
   *range_op->add_input() = src_op.inputs[1];
   *range_op->add_input() = src_op.inputs[2];
   (*range_op->mutable_attr())["Tidx"].set_type(
-      GetTensorFlowDataType(src_op.dtype));
+      GetTensorFlowDataTypeForOp(src_op.dtype, /*op_name=*/src_op.outputs[0]));
 }
 
 void ConvertPackOperator(const Model& model, const PackOperator& src_op,
@@ -1298,7 +1306,8 @@ void ConvertPackOperator(const Model& model, const PackOperator& src_op,
   }
   (*pack_op->mutable_attr())["axis"].set_i(src_op.axis);
   (*pack_op->mutable_attr())["N"].set_i(src_op.inputs.size());
-  (*pack_op->mutable_attr())["T"].set_type(GetTensorFlowDataType(src_op.dtype));
+  (*pack_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataTypeForOp(src_op.dtype, src_op.outputs[0]));
 }
 
 void ConvertFillOperator(const Model& model, const FillOperator& src_op,
@@ -1887,7 +1896,7 @@ void ConvertRandomUniformOperator(const Model& model,
       GetTensorFlowDataType(model, src_op.inputs[0]);
   (*new_op->mutable_attr())["T"].set_type(shape_type);
   (*new_op->mutable_attr())["dtype"].set_type(
-      GetTensorFlowDataType(src_op.dtype));
+      GetTensorFlowDataTypeForOp(src_op.dtype, src_op.outputs[0]));
   (*new_op->mutable_attr())["seed"].set_i(src_op.seed);
   (*new_op->mutable_attr())["seed2"].set_i(src_op.seed2);
 }

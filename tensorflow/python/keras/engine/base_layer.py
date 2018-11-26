@@ -36,6 +36,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
@@ -66,6 +67,14 @@ class CallConvention(enum.Enum):
   # The Layer has multiple positional arguments to which its inputs should be
   # bound.
   POSITIONAL_ARGUMENTS_ARE_INPUTS = 3
+
+
+def _create_mean_metric(value, name=None):
+  # TODO(psv): Remove this import when b/110718070 is fixed.
+  from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
+  metric_obj = metrics_module.Mean(name=name)
+  result = metric_obj(value)
+  return metric_obj, result
 
 
 @tf_export('keras.layers.Layer')
@@ -170,6 +179,13 @@ class Layer(checkpointable.CheckpointableBase):
     # in eager mode or graph mode alternatively, we need to keep track of
     # eager losses and symbolic losses via separate attributes.
     self._eager_losses = []
+    # A list of metric instances corresponding to the symbolic metric tensors
+    # added using the `add_metric` API.
+    self._metrics = []
+    # TODO(psv): Remove this property.
+    # A dictionary that maps metric names to metric result tensors. The results
+    # are the running averages of metric values over an epoch.
+    self._metrics_tensors = {}
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
     self._call_fn_args = function_utils.fn_args(self.call)
     self._compute_previous_mask = ('mask' in self._call_fn_args or
@@ -433,6 +449,84 @@ class Layer(checkpointable.CheckpointableBase):
         else:
           self._losses.append(_tag_unconditional(loss))
 
+  @doc_controls.for_subclass_implementers
+  def add_metric(self, value, aggregation=None, name=None):
+    """Adds metric tensor to the layer.
+
+    Args:
+      value: Metric tensor.
+      aggregation: Sample-wise metric reduction function. If `aggregation=None`,
+        it indicates that the metric tensor provided has been aggregated
+        already. eg, `model.add_metric(BinaryAccuracy(name='acc')(y_true,
+        y_pred))`. If aggregation='mean', the given metric tensor will be
+        sample-wise reduced using `mean` function. eg, `model.add_metric(
+        tf.reduce_mean(outputs), name='output_mean', aggregation='mean')`.
+      name: String metric name.
+
+    Raises:
+      ValueError: If `aggregation` is anything other than None or `mean`.
+    """
+    if aggregation is not None and aggregation != 'mean':
+      raise ValueError(
+          'We currently support only `mean` sample-wise metric aggregation. '
+          'You provided aggregation=`%s`' % aggregation)
+
+    if tf_utils.is_symbolic_tensor(value):
+      self._symbolic_add_metric(value, aggregation, name)
+    else:
+      self._eager_add_metric(value, aggregation, name)
+
+  def _get_existing_metric(self, name=None):
+    match = [m for m in self._metrics if m.name == name]
+    if not match:
+      return
+    if len(match) > 1:
+      raise ValueError(
+          'Please provide different names for the metrics you have added. '
+          'We found {} metrics with the name: "{}"'.format(len(match), name))
+    return match[0]
+
+  def _eager_add_metric(self, value, aggregation=None, name=None):
+    # If the given metric is available in `metrics` list we just update state
+    # on it, otherwise we create a new metric instance and
+    # add it to the `metrics` list.
+    match = self._get_existing_metric(name)
+    if match:
+      match(value)  # Update the metric state.
+      return
+    else:
+      if aggregation is None:
+        raise ValueError('We do not support adding an aggregated metric tensor '
+                         'in `call` in eager execution.')
+      metric_obj, _ = _create_mean_metric(value, name)
+      self._metrics.append(metric_obj)
+
+  def _symbolic_add_metric(self, value, aggregation=None, name=None):
+    if aggregation is None:
+      # Iterate over the metrics and check if the given metric exists already.
+      # This can happen when a metric instance is created in subclassed model
+      # layer `__init__` and we have tracked that instance already in
+      # model.__setattr__.
+      match = self._get_existing_metric(name)
+      if match:
+        result_tensor = value
+        if match.name not in self._metrics_tensors:
+          self._metrics_tensors[match.name] = result_tensor
+          return
+        else:
+          raise ValueError(
+              'We currently do not support reusing a metric instance.')
+      else:
+        # We track the instance using the metadata on the result tensor.
+        result_tensor = value
+        metric_obj = result_tensor._metric_obj
+    else:
+      # If a non-aggregated tensor is given as input (ie. `aggregation` is
+      # explicitly set to `mean`), we wrap the tensor in `Mean` metric.
+      metric_obj, result_tensor = _create_mean_metric(value, name)
+    self._metrics.append(metric_obj)
+    self._metrics_tensors[metric_obj.name] = result_tensor
+
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
 
@@ -674,7 +768,7 @@ class Layer(checkpointable.CheckpointableBase):
 
     if context.executing_eagerly():
       # Accept NumPy inputs by converting to Tensors when executing eagerly.
-      if all([isinstance(x, (np.ndarray, float, int)) for x in input_list]):
+      if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
         inputs = nest.map_structure(ops.convert_to_tensor, inputs)
         input_list = nest.flatten(inputs)
 
@@ -704,7 +798,8 @@ class Layer(checkpointable.CheckpointableBase):
     with ops.name_scope(self._name_scope()):
       if not self.built:
         # Check input assumptions set before layer building, e.g. input rank.
-        self._assert_input_compatibility(inputs)
+        input_spec.assert_input_compatibility(
+            self.input_spec, inputs, self.name)
         if input_list and self._dtype is None:
           try:
             self._dtype = input_list[0].dtype.base_dtype.name
@@ -729,7 +824,8 @@ class Layer(checkpointable.CheckpointableBase):
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build
         # the corresponding TF subgraph inside `backend.get_graph()`
-        self._assert_input_compatibility(inputs)
+        input_spec.assert_input_compatibility(
+            self.input_spec, inputs, self.name)
         graph = backend.get_graph()
         with graph.as_default():
           if not executing_eagerly:
@@ -1346,8 +1442,7 @@ class Layer(checkpointable.CheckpointableBase):
                          ', but the layer isn\'t built. '
                          'You can build it manually via: `' + self.name +
                          '.build(batch_input_shape)`.')
-    weight_shapes = [w.shape.as_list() for w in self.weights]
-    return int(sum([np.prod(w) for w in weight_shapes]))
+    return int(sum(np.prod(w.shape.as_list()) for w in self.weights))
 
   @property
   def output_shape(self):
@@ -1398,101 +1493,6 @@ class Layer(checkpointable.CheckpointableBase):
   def outbound_nodes(self):
     """Deprecated, do NOT use! Only for compatibility with external Keras."""
     return self._outbound_nodes
-
-  def _assert_input_compatibility(self, inputs):
-    """Checks compatibility between the layer and provided inputs.
-
-    This checks that the tensor(s) `inputs` verify the input assumptions
-    of the layer (if any). If not, a clear and actional exception gets raised.
-
-    Arguments:
-        inputs: input tensor or list of input tensors.
-
-    Raises:
-        ValueError: in case of mismatch between
-            the provided inputs and the expectations of the layer.
-    """
-    if not self.input_spec:
-      return
-    if not isinstance(self.input_spec, (list, tuple)):
-      input_spec = nest.flatten(self.input_spec)
-    else:
-      input_spec = self.input_spec
-    inputs = nest.flatten(inputs)
-    if len(inputs) != len(input_spec):
-      raise ValueError('Layer ' + self.name + ' expects ' +
-                       str(len(input_spec)) + ' inputs, '
-                       'but it received ' + str(len(inputs)) +
-                       ' input tensors. Inputs received: ' + str(inputs))
-    for input_index, (x, spec) in enumerate(zip(inputs, input_spec)):
-      if spec is None:
-        continue
-
-      if (spec.ndim is not None or
-          spec.min_ndim is not None or
-          spec.max_ndim is not None):
-        if x.shape.ndims is None:
-          raise ValueError('Input ' + str(input_index) + ' of layer ' +
-                           self.name + ' is incompatible with the layer: '
-                           'its rank is undefined, but the layer requires a '
-                           'defined rank.')
-
-      # Check ndim.
-      if spec.ndim is not None:
-        ndim = x.shape.ndims
-        if ndim != spec.ndim:
-          raise ValueError('Input ' + str(input_index) + ' of layer ' +
-                           self.name + ' is incompatible with the layer: '
-                           'expected ndim=' + str(spec.ndim) + ', found ndim=' +
-                           str(ndim) + '. Full shape received: ' +
-                           str(x.shape.as_list()))
-      if spec.max_ndim is not None:
-        ndim = x.shape.ndims
-        if ndim is not None and ndim > spec.max_ndim:
-          raise ValueError('Input ' + str(input_index) + ' of layer ' +
-                           self.name + ' is incompatible with the layer: '
-                           'expected max_ndim=' + str(spec.max_ndim) +
-                           ', found ndim=' + str(ndim))
-      if spec.min_ndim is not None:
-        ndim = x.shape.ndims
-        if ndim is not None and ndim < spec.min_ndim:
-          raise ValueError('Input ' + str(input_index) + ' of layer ' +
-                           self.name + ' is incompatible with the layer: '
-                           ': expected min_ndim=' + str(spec.min_ndim) +
-                           ', found ndim=' + str(ndim) +
-                           '. Full shape received: ' +
-                           str(x.shape.as_list()))
-      # Check dtype.
-      if spec.dtype is not None:
-        if x.dtype != spec.dtype:
-          raise ValueError('Input ' + str(input_index) + ' of layer ' +
-                           self.name + ' is incompatible with the layer: '
-                           'expected dtype=' + str(spec.dtype) +
-                           ', found dtype=' + str(x.dtype))
-      # Check specific shape axes.
-      if spec.axes:
-        shape = x.shape.as_list()
-        if shape is not None:
-          for axis, value in spec.axes.items():
-            if hasattr(value, 'value'):
-              value = value.value
-            if value is not None and shape[int(axis)] not in {value, None}:
-              raise ValueError(
-                  'Input ' + str(input_index) + ' of layer ' + self.name + ' is'
-                  ' incompatible with the layer: expected axis ' + str(axis) +
-                  ' of input shape to have value ' + str(value) +
-                  ' but received input with shape ' + str(shape))
-      # Check shape.
-      if spec.shape is not None:
-        shape = x.shape.as_list()
-        if shape is not None:
-          for spec_dim, dim in zip(spec.shape, shape):
-            if spec_dim is not None and dim is not None:
-              if spec_dim != dim:
-                raise ValueError('Input ' + str(input_index) +
-                                 ' is incompatible with layer ' + self.name +
-                                 ': expected shape=' + str(spec.shape) +
-                                 ', found shape=' + str(shape))
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
@@ -1592,55 +1592,6 @@ class Layer(checkpointable.CheckpointableBase):
       Boolean.
     """
     return self._call_is_graph_friendly
-
-
-@tf_export(
-    'keras.layers.InputSpec', v1=['keras.layers.InputSpec', 'layers.InputSpec'])
-class InputSpec(object):
-  """Specifies the ndim, dtype and shape of every input to a layer.
-
-  Every layer should expose (if appropriate) an `input_spec` attribute:
-  a list of instances of InputSpec (one per input tensor).
-
-  A None entry in a shape is compatible with any dimension,
-  a None shape is compatible with any shape.
-
-  Arguments:
-      dtype: Expected DataType of the input.
-      shape: Shape tuple, expected shape of the input
-          (may include None for unchecked axes).
-      ndim: Integer, expected rank of the input.
-      max_ndim: Integer, maximum rank of the input.
-      min_ndim: Integer, minimum rank of the input.
-      axes: Dictionary mapping integer axes to
-          a specific dimension value.
-  """
-
-  def __init__(self,
-               dtype=None,
-               shape=None,
-               ndim=None,
-               max_ndim=None,
-               min_ndim=None,
-               axes=None):
-    self.dtype = dtype
-    self.shape = shape
-    if shape is not None:
-      self.ndim = len(shape)
-    else:
-      self.ndim = ndim
-    self.max_ndim = max_ndim
-    self.min_ndim = min_ndim
-    self.axes = axes or {}
-
-  def __repr__(self):
-    spec = [('dtype=' + str(self.dtype)) if self.dtype else '',
-            ('shape=' + str(self.shape)) if self.shape else '',
-            ('ndim=' + str(self.ndim)) if self.ndim else '',
-            ('max_ndim=' + str(self.max_ndim)) if self.max_ndim else '',
-            ('min_ndim=' + str(self.min_ndim)) if self.min_ndim else '',
-            ('axes=' + str(self.axes)) if self.axes else '']
-    return 'InputSpec(%s)' % ', '.join(x for x in spec if x)
 
 
 class Node(object):
@@ -1806,7 +1757,7 @@ def have_all_keras_metadata(iterable_or_element):
     iterable = [iterable_or_element]
   else:
     iterable = nest.flatten(iterable_or_element)
-  return all([hasattr(x, '_keras_history') for x in iterable])
+  return all(hasattr(x, '_keras_history') for x in iterable)
 
 
 def collect_previous_mask(input_tensors):
@@ -1944,3 +1895,8 @@ def default(method):
 
 def generate_placeholders_from_shape(shape):
   return array_ops.placeholder(shape=shape, dtype=backend.floatx())
+
+
+# Avoid breaking users who directly import this symbol from this file.
+# TODO(fchollet): remove this.
+InputSpec = input_spec.InputSpec  # pylint:disable=invalid-name

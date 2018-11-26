@@ -1745,7 +1745,7 @@ class LinearRegressorTest(test.TestCase):
           'place_holder':
               constant_op.constant([[0.0]] * num_examples),
       }, constant_op.constant(
-          [[1 if i % 4 is 0 else 0] for i in range(num_examples)])
+          [[1 if i % 4 == 0 else 0] for i in range(num_examples)])
 
     place_holder = feature_column_lib.real_valued_column('place_holder')
     sdca_optimizer = sdca_optimizer_lib.SDCAOptimizer(

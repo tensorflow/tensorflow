@@ -71,7 +71,7 @@ class ConcatOpTest(test.TestCase):
       x1 = constant_op.constant(p1)
       x2 = constant_op.constant(p2)
       c = array_ops.concat([x1, x2], 0)
-      result = c.eval()
+      result = self.evaluate(c)
     self.assertAllEqual(result[:2, :], p1)
     self.assertAllEqual(result[2:, :], p2)
 
@@ -83,7 +83,7 @@ class ConcatOpTest(test.TestCase):
       v2 = variables.Variable(p2)
       c = array_ops.concat([v1, v2], 0)
       variables.global_variables_initializer().run()
-      result = c.eval()
+      result = self.evaluate(c)
 
     self.assertEqual(result.shape, c.get_shape())
     self.assertAllEqual(result[:4, :], p1)
@@ -195,7 +195,7 @@ class ConcatOpTest(test.TestCase):
             grad_inp.flatten(), shape=output_shape)
         grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
         concated_grad = array_ops.concat(grad, axis)
-        result = concated_grad.eval()
+        result = self.evaluate(concated_grad)
     self.assertAllEqual(result, grad_inp)
 
   def testGradientsSimple(self):
@@ -222,7 +222,7 @@ class ConcatOpTest(test.TestCase):
           grad_inp.flatten(), shape=output_shape)
       grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
       concated_grad = array_ops.concat(grad, 0)
-      result = concated_grad.eval()
+      result = self.evaluate(concated_grad)
 
     self.assertAllEqual(result, grad_inp)
 
@@ -249,7 +249,7 @@ class ConcatOpTest(test.TestCase):
             grad_inp.flatten(), shape=output_shape)
         grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
         concated_grad = array_ops.concat(grad, axis)
-        result = concated_grad.eval()
+        result = self.evaluate(concated_grad)
 
     self.assertAllEqual(result, grad_inp)
 
@@ -279,7 +279,7 @@ class ConcatOpTest(test.TestCase):
       grad_tensor = constant_op.constant(grad_inp.flatten(), shape=output_shape)
       grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
       concated_grad = array_ops.concat(grad, concat_dim)
-      result = concated_grad.eval()
+      result = self.evaluate(concated_grad)
 
     self.assertAllEqual(result, grad_inp)
 
@@ -476,7 +476,7 @@ class ConcatOpTest(test.TestCase):
     with self.cached_session():
       concat_list_t = array_ops.concat([c1, c2], 0)
       concat_tuple_t = array_ops.concat((c1, c2), 0)
-      self.assertAllEqual(concat_list_t.eval(), concat_tuple_t.eval())
+      self.assertAllEqual(concat_list_t.eval(), self.evaluate(concat_tuple_t))
 
   def testConcatNoScalars(self):
     with self.cached_session():
@@ -543,13 +543,13 @@ class ConcatOpTest(test.TestCase):
 
       c = gen_array_ops.concat_v2([t1, t2], -2)
       self.assertEqual([4, 3], c.get_shape().as_list())
-      output = c.eval()
+      output = self.evaluate(c)
       self.assertAllEqual([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
                           output)
 
       c = gen_array_ops.concat_v2([t1, t2], -1)
       self.assertEqual([2, 6], c.get_shape().as_list())
-      output = c.eval()
+      output = self.evaluate(c)
       self.assertAllEqual([[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]], output)
 
   def _testGradientsForAxis(
@@ -615,7 +615,7 @@ class ConcatOpTest(test.TestCase):
         c = gen_array_ops.concat_v2([t1, t2],
                                     constant_op.constant(1, dtype=dtype))
         self.assertEqual([2, 6], c.get_shape().as_list())
-        output = c.eval()
+        output = self.evaluate(c)
         self.assertAllEqual([[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]], output)
 
 class ConcatOffsetTest(test.TestCase):

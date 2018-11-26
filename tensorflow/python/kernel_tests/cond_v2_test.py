@@ -33,6 +33,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
@@ -683,6 +684,104 @@ class CondV2Test(test.TestCase):
       # The fact that sess.run() succeeds means lowering is disabled, because
       # the single threaded executor does not support cond v1 ops.
       sess.run(out_cond, feed_dict={x: 1.0})
+
+  @test_util.enable_control_flow_v2
+  def testStructuredOutputs(self):
+    x = constant_op.constant(1.0, name="x")
+    y = constant_op.constant(3.0, name="y")
+
+    def true_fn():
+      return ((x * y,), y)
+
+    def false_fn():
+      return ((x,), y * 3.0)
+
+    output = control_flow_ops.cond(
+        constant_op.constant(False), true_fn, false_fn)
+    self.assertEqual(self.evaluate(output[0][0]), 1.)
+    self.assertEqual(self.evaluate(output[1]), 9.)
+
+  @test_util.enable_control_flow_v2
+  def testRaisesOutputStructuresMismatch(self):
+    x = constant_op.constant(1.0, name="x")
+    y = constant_op.constant(3.0, name="y")
+
+    def true_fn():
+      return x * y, y
+
+    def false_fn():
+      return ((x,), y * 3.0)
+
+    with self.assertRaisesRegexp(
+        ValueError, "Outputs of true_fn and false_fn must"
+        " have the same structure"):
+      control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
+
+  @test_util.enable_control_flow_v2
+  def testCondAndTensorArray(self):
+    if test_util.is_gpu_available():
+      old_enable_tensor_array_v2 = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
+      # TODO(b/119689663): Enable this.
+      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = False
+    x = math_ops.range(-5, 5)
+    output = tensor_array_ops.TensorArray(dtype=dtypes.int32, size=x.shape[0])
+
+    def loop_body(i, output):
+
+      def if_true():
+        return output.write(i, x[i]**2)
+
+      def if_false():
+        return output.write(i, x[i])
+
+      output = control_flow_ops.cond(x[i] > 0, if_true, if_false)
+      return i + 1, output
+
+    _, output = control_flow_ops.while_loop(
+        lambda i, arr: i < x.shape[0],
+        loop_body,
+        loop_vars=(constant_op.constant(0), output))
+    output_t = output.stack()
+    self.assertAllEqual(
+        self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
+    if test_util.is_gpu_available():
+      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = old_enable_tensor_array_v2
+
+  @test_util.enable_control_flow_v2
+  def testCondAndTensorArrayInDefun(self):
+    if test_util.is_gpu_available():
+      old_enable_tensor_array_v2 = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
+      # TODO(b/119689663): Enable this.
+      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = False
+
+    @function.defun
+    def f():
+      x = math_ops.range(-5, 5)
+      output = tensor_array_ops.TensorArray(dtype=dtypes.int32, size=x.shape[0])
+
+      def loop_body(i, output):
+
+        def if_true():
+          return output.write(i, x[i]**2)
+
+        def if_false():
+          return output.write(i, x[i])
+
+        output = control_flow_ops.cond(x[i] > 0, if_true, if_false)
+        return i + 1, output
+
+      _, output = control_flow_ops.while_loop(
+          lambda i, arr: i < x.shape[0],
+          loop_body,
+          loop_vars=(constant_op.constant(0), output))
+      return output.stack()
+
+    output_t = f()
+    self.assertAllEqual(
+        self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
+
+    if test_util.is_gpu_available():
+      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = old_enable_tensor_array_v2
 
 
 class CondV2CollectionTest(test.TestCase):

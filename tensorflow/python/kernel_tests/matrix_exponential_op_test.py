@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
@@ -50,7 +51,7 @@ class ExponentialOpTest(test.TestCase):
 
   def _verifyExponential(self, x, np_type):
     inp = x.astype(np_type)
-    with self.cached_session(use_gpu=True):
+    with test_util.use_gpu():
       tf_ans = linalg_impl.matrix_exponential(inp)
       if x.size == 0:
         np_ans = np.empty(x.shape, dtype=np_type)
@@ -61,7 +62,7 @@ class ExponentialOpTest(test.TestCase):
             np_ans[i] = np_expm(inp[i])
         else:
           np_ans = np_expm(inp)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
 
   def _verifyExponentialReal(self, x):

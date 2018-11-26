@@ -123,9 +123,9 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           # Record a short training history.
           variables.global_variables_initializer().run()
           save.save(sess, filepath, global_step=0)
-          inc.eval()
+          self.evaluate(inc)
           save.save(sess, filepath, global_step=1)
-          inc.eval()
+          self.evaluate(inc)
           save.save(sess, filepath, global_step=2)
 
         with self.cached_session() as sess:

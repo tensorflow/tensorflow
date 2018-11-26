@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
 
 class ANeuralNetworksModel;
@@ -50,10 +51,10 @@ class NNAPIDelegate {
   ~NNAPIDelegate();
 
   // Convert a tflite graph to NNAPI
-  TfLiteStatus BuildGraph(Interpreter* interpreter);
+  TfLiteStatus BuildGraph(Subgraph* subgraph);
 
   // Run
-  TfLiteStatus Invoke(Interpreter* interpreter);
+  TfLiteStatus Invoke(Subgraph* subgraph);
 
   // Whether the current platform supports NNAPI delegation.
   static bool IsSupported();

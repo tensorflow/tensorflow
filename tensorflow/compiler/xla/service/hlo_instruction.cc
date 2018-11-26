@@ -855,6 +855,16 @@ HloInstruction::CreateCollectivePermute(
       new HloInstruction(HloOpcode::kAfterAll, ShapeUtil::MakeTokenShape()));
 }
 
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateAddDependency(HloInstruction* data_operand,
+                                    HloInstruction* token_operand) {
+  auto instruction = absl::WrapUnique(
+      new HloInstruction(HloOpcode::kAddDependency, data_operand->shape()));
+  instruction->AppendOperand(data_operand);
+  instruction->AppendOperand(token_operand);
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateWhile(
     const Shape& shape, HloComputation* condition, HloComputation* body,
     HloInstruction* init) {
@@ -1394,6 +1404,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
         clone = CreateAfterAll(new_operands);
       }
       break;
+    case HloOpcode::kAddDependency:
+      CHECK_EQ(new_operands.size(), 2);
+      clone = CreateAddDependency(new_operands[0], new_operands[1]);
+      break;
   }
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
@@ -1680,6 +1694,7 @@ bool HloInstruction::IdenticalSlowPath(
 
     // This opcode has complex or special behavior so just return false.
     case HloOpcode::kAfterAll:
+    case HloOpcode::kAddDependency:
       return false;
 
     // Remaining instructions with special values.
@@ -2467,6 +2482,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleDomain(this);
     case HloOpcode::kAfterAll:
       return visitor->HandleAfterAll(this);
+    case HloOpcode::kAddDependency:
+      return visitor->HandleAddDependency(this);
     case HloOpcode::kIota:
       return visitor->HandleIota(this);
     case HloOpcode::kGetDimensionSize:
@@ -2627,36 +2644,6 @@ Status HloInstruction::AcceptWithOperandOrder(
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder EXIT";
   return Status::OK();
 }
-
-namespace {
-
-// Returns true if the given order is a topological sort of the instructions
-// it contains.
-bool OrderIsTopologicalSort(const std::vector<const HloInstruction*>& order) {
-  // Create a map from instruction to its position in 'order'.
-  std::unordered_map<const HloInstruction*, int> order_position;
-  for (int i = 0; i < order.size(); i++) {
-    if (!order_position.insert({order[i], i}).second) {
-      // Instruction order[i] is duplicated in the order.
-      return false;
-    }
-  }
-  // Verify that the operand of each instruction in the order is also in the
-  // order *and* the operand's position is earlier (defs are before uses for
-  // all ops).
-  for (auto* instruction : order) {
-    for (auto* operand : instruction->operands()) {
-      if (!ContainsKey(order_position, operand) ||
-          order_position.at(operand) >= order_position.at(instruction)) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-}  // namespace
 
 Status HloInstruction::Accept(
     const std::function<Status(HloInstruction*)>& visitor_func) {

@@ -24,6 +24,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -354,9 +355,10 @@ class Mean(Metric):
     def write_summary_f():
       summary_ops.scalar(name=self.name, tensor=t)
       return t
-    control_flow_ops.cond(write_summary,
+    smart_cond.smart_cond(write_summary,
                           write_summary_f,
-                          lambda: t)
+                          lambda: t,
+                          name="")
     return t
 
 

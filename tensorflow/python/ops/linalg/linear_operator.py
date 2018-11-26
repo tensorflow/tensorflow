@@ -582,16 +582,29 @@ class LinearOperator(object):
     ```
 
     Args:
-      x: `Tensor` with compatible shape and same `dtype` as `self`.
-        See class docstring for definition of compatibility.
+      x: `LinearOperator` or `Tensor` with compatible shape and same `dtype` as
+        `self`. See class docstring for definition of compatibility.
       adjoint: Python `bool`.  If `True`, left multiply by the adjoint: `A^H x`.
       adjoint_arg:  Python `bool`.  If `True`, compute `A x^H` where `x^H` is
         the hermitian transpose (transposition and complex conjugation).
       name:  A name for this `Op`.
 
     Returns:
-      A `Tensor` with shape `[..., M, R]` and same `dtype` as `self`.
+      A `LinearOperator` or `Tensor` with shape `[..., M, R]` and same `dtype`
+        as `self`.
     """
+    if isinstance(x, LinearOperator):
+      if adjoint or adjoint_arg:
+        raise ValueError(".matmul not supported with adjoints.")
+      if (x.range_dimension is not None and
+          self.domain_dimension is not None and
+          x.range_dimension != self.domain_dimension):
+        raise ValueError(
+            "Operators are incompatible. Expected `x` to have dimension"
+            " {} but got {}.".format(self.domain_dimension, x.range_dimension))
+      with self._name_scope(name):
+        return linear_operator_algebra.matmul(self, x)
+
     with self._name_scope(name, values=[x]):
       x = ops.convert_to_tensor(x, name="x")
       self._check_input_dtype(x)
@@ -677,7 +690,7 @@ class LinearOperator(object):
         "  Requires conversion to a dense matrix and O(N^3) operations.")
     if self._can_use_cholesky():
       diag = array_ops.matrix_diag_part(linalg_ops.cholesky(self.to_dense()))
-      return 2 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
+      return 2 * math_ops.reduce_sum(math_ops.log(diag), axis=[-1])
     _, log_abs_det = linalg.slogdet(self.to_dense())
     return log_abs_det
 

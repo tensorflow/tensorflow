@@ -14,8 +14,12 @@ py_library(
     name = "optimizer_v2",
     srcs = [
         "adadelta.py",
+        "adagrad.py",
         "adam.py",
+        "adamax.py",
+        "ftrl.py",
         "gradient_descent.py",
+        "nadam.py",
         "optimizer_v2.py",
         "rmsprop.py",
     ],
@@ -34,9 +38,47 @@ py_library(
 )
 
 gpu_py_test(
+    name = "adagrad_test",
+    size = "medium",
+    srcs = ["adagrad_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+    shard_count = 4,
+)
+
+gpu_py_test(
     name = "adam_test",
     size = "medium",
     srcs = ["adam_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+    shard_count = 4,
+)
+
+gpu_py_test(
+    name = "adamax_test",
+    size = "medium",
+    srcs = ["adamax_test.py"],
     additional_deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -72,9 +114,47 @@ gpu_py_test(
 )
 
 gpu_py_test(
+    name = "ftrl_test",
+    size = "medium",
+    srcs = ["ftrl_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+    shard_count = 4,
+)
+
+gpu_py_test(
     name = "gradient_descent_test",
     size = "medium",
     srcs = ["gradient_descent_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+    shard_count = 4,
+)
+
+gpu_py_test(
+    name = "nadam_test",
+    size = "medium",
+    srcs = ["nadam_test.py"],
     additional_deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -94,6 +174,9 @@ py_test(
     name = "optimizer_v2_test",
     size = "medium",
     srcs = ["optimizer_v2_test.py"],
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:array_ops",

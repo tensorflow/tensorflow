@@ -107,10 +107,10 @@ class CastOpTest(test.TestCase):
     a = np.random.uniform(-100, 100, 100).astype(np.float32)
     with self.cached_session(use_gpu=False):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
-      self.assertAllClose(a, b.eval(), rtol=1 / 128.)
+      self.assertAllClose(a, self.evaluate(b), rtol=1 / 128.)
     with self.cached_session(use_gpu=True):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
-      self.assertAllClose(a, b.eval(), rtol=1 / 128.)
+      self.assertAllClose(a, self.evaluate(b), rtol=1 / 128.)
 
   def testRandom(self):
     self._testAll(np.random.normal(0, 10, 210).reshape([2, 3, 5, 7]))

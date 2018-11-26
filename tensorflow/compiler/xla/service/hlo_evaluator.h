@@ -180,7 +180,9 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
-  Status HandleAfterAll(HloInstruction* token) override;
+  Status HandleAfterAll(HloInstruction* after_all) override;
+
+  Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   Status HandleSort(HloInstruction* sort) override;
 

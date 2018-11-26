@@ -56,6 +56,7 @@ def simple_scoped_fn(a, x):
     return math_ops.multiply(math_ops.add(a, x), two)
 
 
+@test_util.with_control_flow_v2
 class FunctionalOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -481,6 +482,7 @@ class FunctionalOpsTest(test.TestCase):
     y = functional_ops.map_fn(lambda e: e, x)
     self.assertIs(None, y.get_shape().dims)
 
+  @test_util.disable_control_flow_v2("b/119323354")
   @test_util.run_in_graph_and_eager_modes
   def testMapEmptyScalar(self):
     map_return = functional_ops.map_fn(lambda x: 1, constant_op.constant([]))
@@ -489,6 +491,7 @@ class FunctionalOpsTest(test.TestCase):
 
   # TODO(akshayka): this test fails in eager: the iterable is of length 0 so
   # so the body of the while loop never executes
+  @test_util.disable_control_flow_v2("b/119323354")
   def testMapEmptyTensor(self):
     with self.cached_session():
       map_return = functional_ops.map_fn(lambda x: array_ops.zeros([3, 2]),
@@ -974,7 +977,7 @@ class FunctionalOpsTest(test.TestCase):
           MLP,
           rewrite_with_while=rewrite_with_while)[0]
 
-      return ret.eval()
+      return self.evaluate(ret)
 
   def _npMLP(self, xval, wsval, bsval):
     for i in range(wsval.shape[0]):

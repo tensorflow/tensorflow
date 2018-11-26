@@ -50,7 +50,7 @@ class BatchNormalizationTest(test.TestCase):
     y = self._batch_norm(x, mean, var, offset, scale, epsilon)
     if data_format == 'NCHW':
       y = array_ops.transpose(y, [0, 3, 1, 2])
-    return y.eval()
+    return self.evaluate(y)
 
   def _test_inference(self,
                       x_shape,
@@ -102,7 +102,7 @@ class BatchNormalizationTest(test.TestCase):
     y = self._batch_norm(x, mean, var, offset, scale, epsilon)
     if data_format == 'NCHW':
       y = array_ops.transpose(y, [0, 3, 1, 2])
-    return y.eval(), mean.eval(), var.eval()
+    return self.evaluate(y), self.evaluate(mean), self.evaluate(var)
 
   def _test_training(self,
                      x_shape,

@@ -459,7 +459,7 @@ class MapVectorizationBenchmark(test.Benchmark):
     return median_time
 
   def _compare(self, input_dataset, map_fn, batch_size, input_size, str_id):
-    num_elems = int(np.sum([np.prod(x) for x in input_size]))
+    num_elems = sum(np.prod(x) for x in input_size)
     name_template = "{}__batch_size_{}_input_element_size_{}_{}"
     unoptimized = input_dataset.map(map_fn).batch(batch_size)
     unoptimized_op = unoptimized.make_one_shot_iterator().get_next()

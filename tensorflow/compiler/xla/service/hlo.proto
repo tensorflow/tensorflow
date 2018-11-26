@@ -205,7 +205,8 @@ message HloComputationProto {
   repeated HloInstructionProto instructions = 2;
 
   // The program shape (with layout) of this computation.
-  xla.ProgramShape program_shape = 4;
+
+  xla.ProgramShapeProto program_shape = 4;
 
   // The id of this computation.
   int64 id = 5;
@@ -297,7 +298,7 @@ message HloModuleProto {
   repeated HloComputationProto computations = 3;
 
   // The host program shape (with layout) of the entry computation.
-  xla.ProgramShape host_program_shape = 4;
+  xla.ProgramShapeProto host_program_shape = 4;
 
   // The id of this module.
   int64 id = 5;

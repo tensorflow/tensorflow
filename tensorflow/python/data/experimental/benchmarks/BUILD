@@ -41,3 +41,20 @@ py_test(
         "//third_party/py/numpy",
     ],
 )
+
+py_test(
+    name = "matching_files_benchmark",
+    size = "small",
+    srcs = ["matching_files_benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:matching_files",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)

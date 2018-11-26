@@ -191,6 +191,8 @@ string ToVlogString(dnn::DataType data_type) {
       return "dnn::DataType::kHalf";
     case dnn::DataType::kInt8:
       return "dnn::DataType::kInt8";
+    case dnn::DataType::kInt32:
+      return "dnn::DataType::kInt32";
     default:
       return "unknown DataType";
   }

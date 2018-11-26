@@ -181,13 +181,15 @@ TEST(CodegenTest, Golden) {
        BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/1),
        BufferInfo::MakeTempBuffer(3), BufferInfo::MakeTempBuffer(120)},
       5, {}));
-  compile_result.program_shape = xla::ShapeUtil::MakeProgramShape(
-      {
-          xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),
-          xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
-      },
-      xla::ShapeUtil::MakeTupleShape(
-          {xla::ShapeUtil::MakeShape(xla::U32, {5, 6})}));
+  compile_result.program_shape =
+      xla::ShapeUtil::MakeProgramShape(
+          {
+              xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),
+              xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
+          },
+          xla::ShapeUtil::MakeTupleShape(
+              {xla::ShapeUtil::MakeShape(xla::U32, {5, 6})}))
+          .ToProto();
   compile_result.entry_point = "entry_point";
   compile_result.pointer_size = 8;
 

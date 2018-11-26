@@ -51,7 +51,7 @@ class GpuExecutable : public Executable {
  public:
   GpuExecutable(const string& text, const std::vector<uint8>& binary,
                 std::unique_ptr<const ThunkSchedule> thunk_schedule,
-                std::unique_ptr<const HloModule> hlo_module,
+                std::unique_ptr<HloModule> hlo_module,
                 std::unique_ptr<const BufferAssignment> assignment,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);

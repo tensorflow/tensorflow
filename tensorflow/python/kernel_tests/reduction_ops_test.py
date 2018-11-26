@@ -562,7 +562,7 @@ class MinReductionTest(test.TestCase):
       if reduction_axes is not None:
         reduction_axes = np.array(reduction_axes).astype(np.int32)
       tf_ans = math_ops.reduce_min(x, reduction_axes, keepdims)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
     self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
@@ -675,7 +675,7 @@ class MaxReductionTest(test.TestCase):
       if reduction_axes is not None:
         reduction_axes = np.array(reduction_axes).astype(np.int32)
       tf_ans = math_ops.reduce_max(x, reduction_axes, keepdims)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
     self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
@@ -802,7 +802,7 @@ class AllReductionTest(test.TestCase):
       if reduction_axes is not None:
         reduction_axes = np.array(reduction_axes).astype(np.int32)
       tf_ans = math_ops.reduce_all(x, reduction_axes, keepdims)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
     self.assertAllEqual(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
@@ -851,7 +851,7 @@ class AnyReductionTest(test.TestCase):
       if reduction_axes is not None:
         reduction_axes = np.array(reduction_axes).astype(np.int32)
       tf_ans = math_ops.reduce_any(x, reduction_axes, keepdims)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
     self.assertAllEqual(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 

@@ -63,7 +63,7 @@ class MatrixSolveOpTest(test.TestCase):
               out = sess.run(tf_ans, {a_ph: a, b_ph: b})
             else:
               tf_ans = linalg_ops.matrix_solve(a, b, adjoint=adjoint)
-              out = tf_ans.eval()
+              out = self.evaluate(tf_ans)
               self.assertEqual(tf_ans.get_shape(), out.shape)
             self.assertEqual(np_ans.shape, out.shape)
             self.assertAllClose(np_ans, out, atol=tol, rtol=tol)

@@ -48,6 +48,7 @@ from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -66,6 +67,11 @@ WHITELIST_FUNCTION_ATTRIBUTE_REGEX = [
     BACKWARD_FUNCTION_ATTRIBUTE_NAME
 ]
 
+CacheKey = collections.namedtuple("CacheKey", [
+    "input_signature", "parent_graph", "device_functions", "colocation_stack",
+    "uses_xla"
+])
+
 
 def _parse_func_attrs(attributes):
   """Convert the keyword arguments into function_def attributes.
@@ -83,8 +89,8 @@ def _parse_func_attrs(attributes):
   """
   attrs = {}
   for key, value in attributes.items():
-    if not any([re.match(reg, key)
-                for reg in WHITELIST_FUNCTION_ATTRIBUTE_REGEX]):
+    if not any(re.match(reg, key)
+               for reg in WHITELIST_FUNCTION_ATTRIBUTE_REGEX):
       raise ValueError("Attribute name is not whitelisted. "
                        "Whitelisted: prefix %s, got: %s" %
                        (WHITELIST_FUNCTION_ATTRIBUTE_REGEX, key))
@@ -927,17 +933,17 @@ class PolymorphicFunction(object):
     """Computes the cache key given inputs and execution context."""
     if self._input_signature is None:
       inputs = (args, kwargs) if kwargs else args
-      cache_key = pywrap_tensorflow.TFE_Py_EncodeArg(inputs)
+      input_signature = pywrap_tensorflow.TFE_Py_EncodeArg(inputs)
     else:
       del args, kwargs
-      cache_key = self._flat_input_signature
+      input_signature = self._flat_input_signature
 
     ctx = context.context()
     with ops.init_scope():
       # The graph, or whether we're executing eagerly, should be a part of the
       # cache key so we don't improperly capture tensors such as variables.
       executing_eagerly = ctx.executing_eagerly()
-      execution_context = executing_eagerly or ops.get_default_graph()
+      parent_graph = None if executing_eagerly else ops.get_default_graph()
 
     # pylint: disable=protected-access
     default_graph = ops.get_default_graph()
@@ -966,8 +972,8 @@ class PolymorphicFunction(object):
       else:
         device_functions = ()
     # pylint: enable=protected-access
-    return (cache_key, execution_context, device_functions, colocation_stack,
-            uses_xla)
+    return CacheKey(input_signature, parent_graph, device_functions,
+                    colocation_stack, uses_xla)
 
   def _canonicalize_function_inputs(self, *args, **kwargs):
     """Canonicalizes `args` and `kwargs`.
@@ -1083,6 +1089,9 @@ class PolymorphicFunction(object):
                         "must be hashable.")
 
       if graph_function is None:
+        logging.vlog(1,
+                     "Creating new FuncGraph for Python function %r (key: %r)",
+                     self._python_function, cache_key)
         if self._input_signature is None:
           arglen = len(args)
         else:

@@ -183,7 +183,7 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(tuple(rt.shape.as_list()), expected_shape)
 
     with self.test_session():
-      result = rt.eval()
+      result = self.evaluate(rt)
       if rt.shape.ndims > 0:
         self.assertEqual(result.tolist(), pylist)
         if expected_shape is not None:

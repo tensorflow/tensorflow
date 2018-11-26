@@ -407,6 +407,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     return function_defs_.size();
   }
 
+  // Returns all the function names in the FunctionLibraryDefinition.
+  std::vector<string> ListFunctionNames() const LOCKS_EXCLUDED(mu_);
+
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
   }
