@@ -264,6 +264,22 @@ TEST_F(TuplePointsToAnalysisTest, GetTupleElement) {
               UnorderedElementsAre(inner_tuple));
 }
 
+TEST_F(TuplePointsToAnalysisTest, AddDependency) {
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  auto add_dependency = builder.AddInstruction(
+      HloInstruction::CreateAddDependency(constant, token));
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  auto& points_to_set = points_to_analysis_->GetPointsToSet(add_dependency);
+  EXPECT_EQ(1, points_to_set.size());
+  EXPECT_FALSE(points_to_set.IsAmbiguous());
+  EXPECT_TRUE(points_to_set.IsDistinct());
+  ExpectHasTopLevelBuffers(points_to_set.CreateFlattenedSet(), {constant});
+}
+
 TEST_F(TuplePointsToAnalysisTest, DuplicatedElement) {
   // Create a tuple which contains duplicate elements.
   auto builder = HloComputation::Builder(TestName());

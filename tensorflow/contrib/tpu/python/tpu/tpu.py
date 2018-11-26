@@ -1001,8 +1001,8 @@ def rewrite(computation,
       `rewrite` is a list of tensors corresponding to the tensors from the
       output of `computation`.
 
-      All `Operation`s returned from `computation` will be executed when
-      evaluating any of the returned output tensors.
+      All `Operation`s constructed during `computation` will be executed when
+      evaluating any of the returned output tensors, not just the ones returned.
     inputs: A list of input tensors or `None` (equivalent to an empty list).
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to `computation`.
@@ -1111,7 +1111,7 @@ def validate_inference_rewrite_for_variables(graph):
   Raises:
     RuntimeError: if validation failed.
   """
-  if not any([x.type == "GuaranteeConst" for x in graph.get_operations()]):
+  if not any(x.type == "GuaranteeConst" for x in graph.get_operations()):
     raise RuntimeError(
         "No GuaranteeConst ops found in the graph after running "
         "tpu.rewrite_for_inference(...). Please check that you are using "

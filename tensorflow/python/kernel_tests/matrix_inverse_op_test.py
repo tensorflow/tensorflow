@@ -46,7 +46,7 @@ class InverseOpTest(test.TestCase):
           tiling = list(y.shape)
           tiling[-2:] = [1, 1]
           np_ans = np.tile(np_ans, tiling)
-        out = tf_ans.eval()
+        out = self.evaluate(tf_ans)
         self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
         self.assertShapeEqual(y, tf_ans)
 

@@ -82,60 +82,73 @@ std::vector<int> GetLoadedTensorRTVersion() {
 }
 
 TrtCandidateSelector::TrtCandidateSelector(
-    const grappler::GraphProperties& graph_properties)
-    : graph_properties_(graph_properties) {}
+    const grappler::GraphProperties& graph_properties, int precision_mode)
+    : graph_properties_(graph_properties), precision_mode_(precision_mode) {}
 
 Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
   // TODO(laigd): move this set to TrtNodeValidator where it should belong.
   // LINT.IfChange
   static const std::set<string> candidate_ops = {
-    "Identity",
-    "Snapshot",
-    "Const",
-    "Conv2D",
-    "MaxPool",
-    "BiasAdd",
-    "Relu",
-    "Add",
-    "Mul",
-    "Sub",
-    "Rsqrt",
-    "Pad",
-    "Mean",
-    "AvgPool",
-    "ConcatV2",
-    "DepthwiseConv2dNative",
-    "FusedBatchNorm",
-    "FusedBatchNormV2",
-    "Div",
-    "RealDiv",
-    "Rsqrt",
-    "Reciprocal",
-    "Exp",
-    "Log",
-    "Sqrt",
-    "Abs",
-    "Neg",
-    "Transpose",
-    "Reshape",
-    "MatMul",
-    "BatchMatMul",
-    "Softmax",
-    "Minimum",
-    "Maximum",
-    "TopKV2",
-    "Sum",
-    "Prod",
-    "Max",
-    "Min",
+      "Identity",
+      "Snapshot",
+      "Const",
+      "Conv2D",
+      "MaxPool",
+      "BiasAdd",
+      "Relu",
+      "Add",
+      "Mul",
+      "Sub",
+      "Rsqrt",
+      "Pad",
+      "Mean",
+      "AvgPool",
+      "ConcatV2",
+      "DepthwiseConv2dNative",
+      "FusedBatchNorm",
+      "FusedBatchNormV2",
+      "Div",
+      "RealDiv",
+      "Rsqrt",
+      "Reciprocal",
+      "Exp",
+      "Log",
+      "Sqrt",
+      "Abs",
+      "Neg",
+      "Transpose",
+      "Reshape",
+      "MatMul",
+      "BatchMatMul",
+      "Softmax",
+      "Minimum",
+      "Maximum",
+      "TopKV2",
+      "Sum",
+      "Prod",
+      "Max",
+      "Min",
+      "Relu6",
   };
-  // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.cc)
-  const bool is_supported_op_type =
+  bool is_supported_op_type =
       (candidate_ops.count(node->type_string()) ||
        PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
+  static const std::set<string> quantize_ops = {
+      "QuantizeAndDequantizeV2",
+      "QuantizeAndDequantizeV3",
+      "FakeQuantWithMinMaxVars",
+      "FakeQuantWithMinMaxArgs",
+  };
+  // In INT8 mode, we will always apply the quantization ranges provided by
+  // these ops to the relevant tensors. This happens regardless of the value of
+  // use_calibration.
+  if (precision_mode_ == INT8MODE && quantize_ops.count(node->type_string())) {
+    is_supported_op_type = true;
+  }
+  // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.cc)
   if (!is_supported_op_type) {
     return errors::Unimplemented("Op type ", node->type_string(),
-                                 " is not supported.");
+                                 " is not supported");
   }
 
   std::vector<const Edge*> input_edges;
@@ -220,7 +233,8 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     const std::vector<string>& output_names, size_t max_batch_size,
     size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
     int precision_mode, int minimum_segment_size, bool is_dyn_op,
-    int max_cached_engines, std::vector<int> cached_engine_batches) {
+    int max_cached_engines, std::vector<int> cached_engine_batches,
+    bool use_calibration) {
   // Create GrapplerItem.
   tensorflow::grappler::GrapplerItem item;
   item.fetch = output_names;
@@ -287,6 +301,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
       list->add_i(batch);
     }
   }
+  parameters["use_calibration"].set_b(use_calibration);
 
   // Run optimizer.
   tensorflow::grappler::MetaOptimizer meta_opt(nullptr, config_proto);
@@ -566,27 +581,30 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
       }
     }
   }
+
+  const bool calibrate_int8 =
+      (info.precision_mode == INT8MODE && info.use_calibration);
+  // Build the engine and get its serialized representation.
   string segment_string;
-  if (info.engine_type == EngineInfo::EngineType::TRTStatic ||
-      info.precision_mode == INT8MODE) {
+  if (info.engine_type == EngineInfo::EngineType::TRTStatic || calibrate_int8) {
     // Create static engine for fp32/fp16 mode, and test validity of the engine
-    // for int8 mode. We don't want engine to fail at the calibration time.
-    // So we are constructing a FP32 engine here to check its validity, and if
-    // it is a valid engine then we put the serialized graphdef to the op.
-    // Otherwise we skip node creation for this engine.
+    // for int8 calibration mode. We don't want engine to fail at the
+    // calibration time. So we are constructing a FP32 engine here to check its
+    // validity, and if it is a valid engine then we put the serialized graphdef
+    // to the op. Otherwise we skip node creation for this engine.
     Logger trt_logger;
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     // TODO(sami): What happens if 1st dim is not batch?
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
-        info.segment_graph_def,
-        info.precision_mode == INT8MODE ? FP32MODE : info.precision_mode,
+        info.segment_graph_def, calibrate_int8 ? FP32MODE : info.precision_mode,
         max_batch_size, info.max_workspace_size_bytes, input_shapes,
         &trt_logger, alloc, /*calibrator=*/nullptr, &engine,
+        info.use_calibration,
         /*convert_successfully=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string =
         string((const char*)engine_data->data(), engine_data->size());
-    if (info.precision_mode == INT8MODE) {
+    if (calibrate_int8) {
       // See above comment about why not putting this inside the 'else' branch.
       segment_string = info.segment_graph_def.SerializeAsString();
     }
@@ -598,7 +616,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
   // conversion.
   string prec_string;
   TF_RETURN_IF_ERROR(GetPrecisionModeName(info.precision_mode, &prec_string));
-  if (info.precision_mode == INT8MODE &&
+  if (info.precision_mode == INT8MODE && calibrate_int8 &&
       !TRTResourceManager::instance()->getManager("TRTCalibration")) {
     LOG(ERROR) << "Failed to construct calibration storage";
   }
@@ -634,6 +652,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
           .Attr("cached_engine_batches", {max_batch_size})
           .Attr("workspace_size_bytes", info.max_workspace_size_bytes)
           .Attr("precision_mode", prec_string)
+          .Attr("use_calibration", info.use_calibration)
           .Attr("OutT", out_types)
           .Finalize(&trt_node);
   if (!status.ok()) {
@@ -866,7 +885,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
   tensorflow::tensorrt::segment::SegmentNodesVector initial_segments;
-  TrtCandidateSelector candidate_selector(*params.graph_properties);
+  TrtCandidateSelector candidate_selector(*params.graph_properties,
+                                          params.precision_mode);
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
       &graph,
       std::bind(&TrtCandidateSelector::IsTensorRTCandidate, &candidate_selector,
@@ -904,10 +924,14 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
       continue;
     }
     curr_engine.precision_mode = params.precision_mode;
-    curr_engine.engine_type =
-        (params.is_dyn_op || params.precision_mode == INT8MODE
-             ? EngineInfo::EngineType::TRTDynamic
-             : EngineInfo::EngineType::TRTStatic);
+    if (params.use_calibration && params.precision_mode != INT8MODE) {
+      return errors::InvalidArgument(
+          "Calibration with FP32 or FP16 is not supported.");
+    }
+    curr_engine.engine_type = ((params.is_dyn_op || params.use_calibration)
+                                   ? EngineInfo::EngineType::TRTDynamic
+                                   : EngineInfo::EngineType::TRTStatic);
+    curr_engine.use_calibration = params.use_calibration;
     curr_engine.cached_engine_batches = params.cached_engine_batches;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
     StrAppend(&curr_engine.engine_name, "my_trt_op_", t);

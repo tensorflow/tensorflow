@@ -68,7 +68,7 @@ class SigmoidCrossEntropyWithLogitsTest(test.TestCase):
           loss = nn_impl.sigmoid_cross_entropy_with_logits(
               labels=targets, logits=logits)
           np_loss = np.array(losses).astype(np.float32)
-          tf_loss = loss.eval()
+          tf_loss = self.evaluate(loss)
         self.assertAllClose(np_loss, tf_loss, atol=0.001)
 
   def testLogisticOutputMultiDim(self):
@@ -79,7 +79,7 @@ class SigmoidCrossEntropyWithLogitsTest(test.TestCase):
           loss = nn_impl.sigmoid_cross_entropy_with_logits(
               labels=targets, logits=logits)
           np_loss = np.array(losses).astype(np.float32)
-          tf_loss = loss.eval()
+          tf_loss = self.evaluate(loss)
         self.assertAllClose(np_loss, tf_loss, atol=0.001)
 
   def testGradient(self):
@@ -143,7 +143,7 @@ class WeightedCrossEntropyTest(test.TestCase):
         loss = nn_impl.weighted_cross_entropy_with_logits(
             targets=targets, logits=logits, pos_weight=pos_weight)
         np_loss = np.array(losses).astype(np.float32)
-        tf_loss = loss.eval()
+        tf_loss = self.evaluate(loss)
       self.assertAllClose(np_loss, tf_loss, atol=0.001)
 
   def testOutputMultiDim(self):
@@ -154,7 +154,7 @@ class WeightedCrossEntropyTest(test.TestCase):
         loss = nn_impl.weighted_cross_entropy_with_logits(
             targets=targets, logits=logits, pos_weight=pos_weight)
         np_loss = np.array(losses).astype(np.float32)
-        tf_loss = loss.eval()
+        tf_loss = self.evaluate(loss)
       self.assertAllClose(np_loss, tf_loss, atol=0.001)
 
   def testGradient(self):

@@ -108,8 +108,8 @@ class ParseExampleTest(test.TestCase):
       # properly check.
       serialized = kwargs["serialized"]
       batch_size = (
-          serialized.eval().size if isinstance(serialized, ops.Tensor) else
-          np.asarray(serialized).size)
+          self.evaluate(serialized).size if isinstance(serialized, ops.Tensor)
+          else np.asarray(serialized).size)
       for k, f in kwargs["features"].items():
         if isinstance(f, parsing_ops.FixedLenFeature) and f.shape is not None:
           self.assertEqual(

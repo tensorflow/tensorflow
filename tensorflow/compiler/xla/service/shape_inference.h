@@ -232,13 +232,6 @@ class ShapeInference {
   static StatusOr<Shape> InferConcatOpShape(
       absl::Span<const Shape* const> arg_shapes, int64 dimension);
 
-  // Infers the shape produced by a kAfterAll. Trivially this shape is always a
-  // TOKEN shape. However, ShapeInference serves two purposes: inferring shapes
-  // and checking operand shapes. This method verifies that the operand shapes
-  // are all TOKENs.
-  static StatusOr<Shape> InferAfterAllShape(
-      absl::Span<const Shape* const> arg_shapes);
-
   // Helper that validates the given operand shape can be converted to the
   // target output_shape via a convert instruction -- the requirement is that
   // the shape is identical except for the element type.

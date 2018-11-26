@@ -526,7 +526,7 @@ TEST(TFCompileTest, ProgramShape) {
 
   // muladd has the program shape defined.
   MatMulAndAddComp muladd;
-  const xla::ProgramShape* muladd_shape = muladd.ProgramShape();
+  const xla::ProgramShapeProto* muladd_shape = muladd.ProgramShape();
   ASSERT_TRUE(muladd_shape != nullptr);
   ASSERT_EQ(muladd_shape->parameters_size(), 2);
   EXPECT_TRUE(ShapeUtil::Compatible(muladd_shape->parameters(0), f32_2x2));

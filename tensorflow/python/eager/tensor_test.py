@@ -323,6 +323,14 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testConvertToTensorAllowsOverflow(self):
     _ = ops.convert_to_tensor(123456789, dtype=dtypes.uint8)
 
+  def testEagerTensorError(self):
+    with self.assertRaisesRegexp(
+        TypeError,
+        "Cannot convert provided value to EagerTensor. "
+        "Provided value.*Requested dtype.*"):
+      _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
+
+
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):
 

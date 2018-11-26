@@ -191,6 +191,7 @@ cc_library(
     hdrs = ["xla_computation.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",

@@ -18,10 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
+import copy
+
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import values
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
+from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
@@ -30,8 +34,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
-from tensorflow.python.training import device_util
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
 
 _LOCAL_CPU = "/device:CPU:0"
@@ -107,8 +109,8 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     self._initialize_local(num_gpus_per_worker)
 
     # We typically don't need to do all-reduce in this strategy.
-    self._cross_tower_ops = (
-        cross_tower_ops_lib.ReductionToOneDeviceCrossDeviceOps(
+    self._cross_device_ops = (
+        cross_device_ops_lib.ReductionToOneDeviceCrossDeviceOps(
             reduce_to_device=_LOCAL_CPU))
 
   def _initialize_multi_worker(self, num_gpus_per_worker, cluster_spec,
@@ -197,6 +199,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
 
   def _initialize_local(self, num_gpus_per_worker):
     """Initialize internal devices for local training."""
+    self._worker_device = "/job:localhost"
     # Define compute devices which is a list of device strings and one for each
     # replica. When there are GPUs, replicate operations on these GPUs.
     # Otherwise, place operations on CPU.
@@ -251,14 +254,21 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
         num_input_pipelines=num_input_pipelines,
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
-    return values.PerReplicaDataset(
-        self._call_dataset_fn(input_fn, input_context), self._compute_devices,
-        True)
+    worker_device_pairs = [(self._worker_device, self._compute_devices)]
+    return values.InputFunctionIterator(
+        input_fn, worker_device_pairs, [input_context])
 
   def _broadcast_to(self, tensor, destinations):
-    if not cross_tower_ops_lib.check_destinations(destinations):
+    # This is both a fast path for Python constants, and a way to delay
+    # converting Python values to a tensor until we know what type it
+    # should be converted to. Otherwise we have trouble with:
+    #   global_step.assign_add(1)
+    # since the `1` gets broadcast as an int32 but global_step is int64.
+    if isinstance(tensor, (float, int)):
+      return tensor
+    if not cross_device_ops_lib.check_destinations(destinations):
       destinations = self._compute_devices
-    return self._cross_tower_ops.broadcast(tensor, destinations)
+    return self._cross_device_ops.broadcast(tensor, destinations)
 
   def _allow_variable_partition(self):
     return not context.executing_eagerly()
@@ -330,7 +340,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
       return
     if destinations is None:
       return
-    for d in cross_tower_ops_lib.get_devices_from(destinations):
+    for d in cross_device_ops_lib.get_devices_from(destinations):
       d_spec = tf_device.DeviceSpec.from_string(d)
       if d_spec.job == self._task_type and d_spec.task != self._task_id:
         raise ValueError(
@@ -343,14 +353,14 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
       # pylint: disable=protected-access
       return mirrored_strategy._reduce_non_distributed_value(
           self, reduce_op, value, destinations)
-    return self._cross_tower_ops.reduce(
+    return self._cross_device_ops.reduce(
         reduce_op, value, destinations=destinations)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs):
     for _, destinations in value_destination_pairs:
       self._verify_destinations_not_different_worker(destinations)
-    return self._cross_tower_ops.batch_reduce(reduce_op,
-                                              value_destination_pairs)
+    return self._cross_device_ops.batch_reduce(reduce_op,
+                                               value_destination_pairs)
 
   def _select_single_value(self, structured):
     """Select any single values in `structured`."""
@@ -454,21 +464,27 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
       self._initialize_multi_worker(self._num_gpus_per_worker,
                                     self._cluster_spec, task_type, task_id)
 
-    if not session_config or not self._cluster_spec:
-      return
+    if session_config:
+      session_config.CopyFrom(self._update_config_proto(session_config))
 
-    session_config.isolate_session_state = False
+  def _update_config_proto(self, config_proto):
+    updated_config = copy.deepcopy(config_proto)
+    if not self._cluster_spec:
+      updated_config.isolate_session_state = True
+      return updated_config
 
-    assert self._cluster_spec
+    updated_config.isolate_session_state = False
+
     assert self._task_type
     assert self._task_id is not None
 
     # The device filters prevent communication between workers.
     if self._task_type not in ["chief", "worker"]:
-      return
-    del session_config.device_filters[:]
-    session_config.device_filters.extend(
+      return updated_config
+    del updated_config.device_filters[:]
+    updated_config.device_filters.extend(
         ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
+    return updated_config
 
   @property
   def _num_replicas_in_sync(self):
@@ -502,3 +518,8 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
   @property
   def should_save_summary(self):
     return self._is_chief
+
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return False

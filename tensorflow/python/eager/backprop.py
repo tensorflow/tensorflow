@@ -42,8 +42,19 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
+
+# Note that we need to lazy load the following two modules to avoid creating
+# circular dependencies.
+# TODO(b/119775953): fix the circular dependencies.
+pfor_ops = LazyLoader(
+    "pfor_ops", globals(),
+    "tensorflow.python.ops.parallel_for.control_flow_ops")
+
+function = LazyLoader("function", globals(),
+                      "tensorflow.python.eager.function")
 
 _op_attr_type_cache = {}
 
@@ -536,11 +547,11 @@ def _aggregate_grads(gradients):
 
   if len(gradients) == 1:
     return gradients[0]
-  if all([isinstance(g, ops.Tensor) for g in gradients]):
+  if all(isinstance(g, ops.Tensor) for g in gradients):
     return gen_math_ops.add_n(gradients)
   else:
-    assert all([isinstance(g, (ops.Tensor, ops.IndexedSlices))
-                for g in gradients])
+    assert all(isinstance(g, (ops.Tensor, ops.IndexedSlices))
+               for g in gradients)
     indexed_slices_list = []
     for grad in gradients:
       # TODO(xpan): Support nested IndexedSlices and core IndexedSlices
@@ -937,3 +948,101 @@ class GradientTape(object):
 
     grad = nest.pack_sequence_as(sources, flat_grad)
     return grad
+
+  def jacobian(self,
+               target,
+               sources,
+               unconnected_gradients=UnconnectedGradients.NONE,
+               experimental_use_pfor=True):
+    """Computes the jacobian using operations recorded in context of this tape.
+
+    See http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant for the
+    definition of a Jacobian.
+
+    Example usage:
+
+    with tf.GradientTape() as g:
+      x  = tf.constant([1.0, 2.0])
+      g.watch(x)
+      y = x * x
+    jacobian = g.jacobian(y, x)
+    # jacobian value is [[2., 0.], [0., 4.]]
+
+    Args:
+      target: Tensor to be differentiated.
+      sources: a list or nested structure of Tensors or Variables. `target`
+        will be differentiated against elements in `sources`.
+      unconnected_gradients: a value which can either hold 'none' or 'zero' and
+        alters the value which will be returned if the target and sources are
+        unconnected. The possible values and effects are detailed in
+        'UnconnectedGradients' and it defaults to 'none'.
+      experimental_use_pfor: If true, vectorizes the jacobian computation. Else
+        falls back to a sequential while_loop. Vectorization can sometimes fail
+        or lead to excessive memory usage. This option can be used to disable
+        vectorization in such cases.
+
+    Returns:
+      a list or nested structure of Tensors (or IndexedSlices, or None),
+      one for each element in `sources`. Returned structure is the same as
+      the structure of `sources`.
+
+    Raises:
+      RuntimeError: If called on a non-persistent tape with eager execution
+        enabled and without enabling experimental_use_pfor.
+      ValueError: If vectorization of jacobian computation fails.
+    """
+    flat_sources = nest.flatten(sources)
+    target_static_shape = target.shape
+    target_shape = array_ops.shape(target)
+    # Note that we push and pop the tape here and below. This is needed since we
+    # need gradients through the enclosed operations.
+    self._push_tape()
+    target = array_ops.reshape(target, [-1])
+    self._pop_tape()
+
+    def loop_fn(i):
+      self._push_tape()
+      y = array_ops.gather(target, i)
+      self._pop_tape()
+      grad = self.gradient(y, flat_sources,
+                           unconnected_gradients=unconnected_gradients)
+      return grad
+
+    try:
+      target_size = int(target.shape[0])
+    except TypeError:
+      target_size = array_ops.shape(target)[0]
+
+    if experimental_use_pfor:
+      def f():
+        return pfor_ops.pfor(loop_fn, target_size)
+      if context.executing_eagerly():
+        f = function.defun(f)
+      try:
+        output = f()
+      except ValueError as err:
+        # TODO(agarwal): Fold this error message into err.
+        logging.error("Encountered an exception while vectorizing the jacobian "
+                      "computation. Vectorization can be disabled by setting "
+                      "experimental_use_pfor to False.")
+        raise err
+    else:
+      if context.executing_eagerly():
+        if not self._persistent:
+          raise RuntimeError(
+              "GradientTape must be created with persistent=True"
+              " to compute the jacobian with eager execution enabled and with "
+              " experimental_use_pfor set to False.")
+      output = pfor_ops.for_loop(
+          loop_fn, [target.dtype] * len(flat_sources), target_size)
+
+    for i, out in enumerate(output):
+      if out is not None:
+        new_shape = array_ops.concat(
+            [target_shape, array_ops.shape(out)[1:]], axis=0)
+        out = array_ops.reshape(out, new_shape)
+        if context.executing_eagerly():
+          out.set_shape(target_static_shape.concatenate(flat_sources[i].shape))
+      output[i] = out
+
+    return nest.pack_sequence_as(sources, output)

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""RMSProp for TensorFlow."""
+"""RMSprop for TensorFlow."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -23,8 +23,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.training import training_ops
 
 
-class RMSProp(optimizer_v2.OptimizerV2):
-  r"""Optimizer that implements the RMSProp algorithm.
+class RMSprop(optimizer_v2.OptimizerV2):
+  r"""Optimizer that implements the RMSprop algorithm.
 
   A detailed description of rmsprop.
 
@@ -36,7 +36,7 @@ class RMSProp(optimizer_v2.OptimizerV2):
       mean_square_t + \epsilon}$$
   $$variable_t := variable_{t-1} - mom_t
 
-  This implementation of RMSProp uses plain momentum, not Nesterov momentum.
+  This implementation of RMSprop uses plain momentum, not Nesterov momentum.
 
   The centered version additionally maintains a moving average of the
   gradients, and uses that average to estimate the variance:
@@ -56,10 +56,10 @@ class RMSProp(optimizer_v2.OptimizerV2):
                learning_rate=0.001,
                rho=0.9,
                momentum=0.0,
-               epsilon=1e-10,
+               epsilon=1e-7,
                centered=False,
-               name="RMSProp"):
-    """Construct a new RMSProp optimizer.
+               name="RMSprop"):
+    """Construct a new RMSprop optimizer.
 
     Note that in the dense implementation of this algorithm, variables and their
     corresponding accumulators (momentum, gradient moving average, square
@@ -83,16 +83,13 @@ class RMSProp(optimizer_v2.OptimizerV2):
         True may help with training, but is slightly more expensive in terms of
         computation and memory. Defaults to False.
       name: Optional name prefix for the operations created when applying
-        gradients. Defaults to "RMSProp".
-
-    @compatibility(eager)
-    When eager execution is enabled, `learning_rate`, `decay`, `momentum`, and
-    `epsilon` can each be a callable that takes no arguments and returns the
-    actual value to use. This can be useful for changing these values across
-    different invocations of optimizer functions.
-    @end_compatibility
+        gradients. Defaults to "RMSprop".  @compatibility(eager) When eager
+        execution is enabled, `learning_rate`, `decay`, `momentum`, and
+        `epsilon` can each be a callable that takes no arguments and returns the
+        actual value to use. This can be useful for changing these values across
+        different invocations of optimizer functions. @end_compatibility
     """
-    super(RMSProp, self).__init__(name)
+    super(RMSprop, self).__init__(name)
     self._set_hyper("learning_rate", learning_rate)
     self._set_hyper("rho", rho)
 
@@ -182,7 +179,7 @@ class RMSProp(optimizer_v2.OptimizerV2):
           use_locking=self._use_locking)
 
   def get_config(self):
-    config = super(RMSProp, self).get_config()
+    config = super(RMSprop, self).get_config()
     config.update({
         "learning_rate": self._serialize_hyperparameter("learning_rate"),
         "rho": self._serialize_hyperparameter("rho"),
@@ -191,3 +188,6 @@ class RMSProp(optimizer_v2.OptimizerV2):
         "centered": self._centered,
     })
     return config
+
+
+RMSProp = RMSprop

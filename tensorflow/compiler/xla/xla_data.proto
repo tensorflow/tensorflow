@@ -183,7 +183,7 @@ message Shape {
 
 // Shape of the parameters and output of a computation (like a traditional
 // function signature).
-message ProgramShape {
+message ProgramShapeProto {
   repeated Shape parameters = 1;
   Shape result = 2;
   repeated string parameter_names = 3;

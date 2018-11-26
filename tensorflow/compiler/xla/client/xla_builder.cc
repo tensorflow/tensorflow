@@ -288,7 +288,8 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
 
   HloComputationProto entry;
   SetProtoIdAndName(&entry, name_, kNameSeparator, GetNextId());
-  TF_ASSIGN_OR_RETURN(*entry.mutable_program_shape(), GetProgramShape(root_id));
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, GetProgramShape(root_id));
+  *entry.mutable_program_shape() = program_shape.ToProto();
   entry.set_root_id(root_id);
 
   for (auto& instruction : instructions_) {
@@ -1318,6 +1319,15 @@ XlaOp XlaBuilder::AfterAll(absl::Span<const XlaOp> tokens) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (tokens.empty()) {
       return InvalidArgument("AfterAll requires at least one operand");
+    }
+    for (int i = 0; i < tokens.size(); ++i) {
+      const XlaOp& operand = tokens[i];
+      TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+      if (!ShapeUtil::IsToken(operand_shape)) {
+        return InvalidArgument(
+            "All operands to AfterAll must be tokens; operand %d has shape %s",
+            i, ShapeUtil::HumanString(operand_shape));
+      }
     }
     HloInstructionProto instr;
     *instr.mutable_shape() = ShapeUtil::MakeTokenShape();
@@ -2372,7 +2382,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   SetProtoIdAndName(&entry, StrCat(name_, "_compute_constant"), kNameSeparator,
                     GetNextId());
   entry.set_root_id(root->id());
-  ProgramShape* program_shape = entry.mutable_program_shape();
+  ProgramShapeProto* program_shape = entry.mutable_program_shape();
   *program_shape->mutable_result() = root->shape();
 
   // We use std::set to keep the instruction ids in ascending order (which is

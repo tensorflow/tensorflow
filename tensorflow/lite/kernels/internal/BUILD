@@ -234,8 +234,6 @@ cc_library(
 cc_library(
     name = "optimized",
     hdrs = [
-        "optimized/cblas_conv.h",
-        "optimized/cblas_reference.h",
         "optimized/eigen_spatial_convolutions.h",
         "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",

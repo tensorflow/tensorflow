@@ -47,7 +47,8 @@ namespace {
 // Adds the inner comparison loop body where we compare elements.
 void EmitCompareLoopBody(
     int64 iteration_bound, PrimitiveType key_type, int64 num_values,
-    llvm::Value* element_pair_index, int64 xor_mask, llvm::Type* index_type,
+    int64 iota_values_parameter_index, llvm::Value* element_pair_index,
+    int64 xor_mask, llvm::Type* index_type,
     std::function<llvm::Value*(int64 operand, llvm::Value* index)> read_element,
     std::function<void(int64 operand, llvm::Value* index, llvm::Value* value)>
         write_element,
@@ -139,34 +140,42 @@ void EmitCompareLoopBody(
       is_signed_comparison = false;
     }
     // If key2 < key1
-    ksl.IfReturnVoid(
-        "is_smaller_than",
+    auto is_smaller_than =
         b->CreateICmp(is_signed_comparison ? llvm::ICmpInst::ICMP_SLT
                                            : llvm::ICmpInst::ICMP_ULT,
-                      compare_key2, compare_key1),
-        [&]() {
-          // Swap key1 with key2.
-          write_element(0, current_keys_index, key2);
-          write_element(0, compare_keys_index, key1);
-          for (int64 i = 1; i <= num_values; ++i) {
-            // Also swap the values.
-            auto value1 = read_element(i, current_keys_index);
-            auto value2 = read_element(i, compare_keys_index);
-            write_element(i, current_keys_index, value2);
-            write_element(i, compare_keys_index, value1);
-          }
-        });
+                      compare_key2, compare_key1);
+    if (iota_values_parameter_index >= 0) {
+      auto keys_equal = b->CreateICmpEQ(compare_key1, compare_key2);
+      auto key_index1 =
+          read_element(iota_values_parameter_index, current_keys_index);
+      auto key_index2 =
+          read_element(iota_values_parameter_index, compare_keys_index);
+      auto index_is_smaller_than =
+          b->CreateICmp(llvm::ICmpInst::ICMP_ULT, key_index2, key_index1);
+      is_smaller_than = b->CreateOr(
+          is_smaller_than, b->CreateAnd(keys_equal, index_is_smaller_than));
+    }
+    ksl.IfReturnVoid("is_smaller_than", is_smaller_than, [&]() {
+      // Swap key1 with key2.
+      write_element(0, current_keys_index, key2);
+      write_element(0, compare_keys_index, key1);
+      for (int64 i = 1; i <= num_values; ++i) {
+        // Also swap the values.
+        auto value1 = read_element(i, current_keys_index);
+        auto value2 = read_element(i, compare_keys_index);
+        write_element(i, current_keys_index, value2);
+        write_element(i, compare_keys_index, value1);
+      }
+    });
   });
 }
 
-void EmitTiledCompareLoop(const IrArray::Index& tiled_keys_index,
-                          int64 dimension_to_sort,
-                          int64 dimension_to_sort_bound,
-                          PrimitiveType keys_type,
-                          absl::Span<const int64> xor_masks,
-                          const std::vector<IrArray>& params,
-                          const std::vector<llvm::Value*>& param_shmem_buffers,
-                          int64 tile_size, llvm::IRBuilder<>* b) {
+void EmitTiledCompareLoop(
+    const IrArray::Index& tiled_keys_index, int64 dimension_to_sort,
+    int64 dimension_to_sort_bound, PrimitiveType keys_type,
+    absl::Span<const int64> xor_masks, const std::vector<IrArray>& params,
+    const std::vector<llvm::Value*>& param_shmem_buffers,
+    int64 iota_values_parameter_index, int64 tile_size, llvm::IRBuilder<>* b) {
   KernelSupportLibrary ksl(b);
   llvm::Value* thread_id = llvm_ir::EmitCallToIntrinsic(
       llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b);
@@ -253,20 +262,22 @@ void EmitTiledCompareLoop(const IrArray::Index& tiled_keys_index,
                   RoundDownToNearest(dimension_to_sort_bound, tile_size))),
           [&]() {
             EmitCompareLoopBody(dimension_to_sort_bound % tile_size, keys_type,
-                                params.size() - 1, element_pair_index, xor_mask,
+                                params.size() - 1, iota_values_parameter_index,
+                                element_pair_index, xor_mask,
                                 tiled_keys_index.GetType(), read_element,
                                 write_element, b);
           },
           [&]() {
-            EmitCompareLoopBody(
-                tile_size, keys_type, params.size() - 1, element_pair_index,
-                xor_mask, tiled_keys_index.GetType(), read_element,
-                write_element, b, /*needs_bounds_checks=*/false);
+            EmitCompareLoopBody(tile_size, keys_type, params.size() - 1,
+                                iota_values_parameter_index, element_pair_index,
+                                xor_mask, tiled_keys_index.GetType(),
+                                read_element, write_element, b,
+                                /*needs_bounds_checks=*/false);
           });
     } else {
       EmitCompareLoopBody(tile_size, keys_type, params.size() - 1,
-                          element_pair_index, xor_mask,
-                          tiled_keys_index.GetType(), read_element,
+                          iota_values_parameter_index, element_pair_index,
+                          xor_mask, tiled_keys_index.GetType(), read_element,
                           write_element, b, /*needs_bounds_checks=*/false);
     }
     // Wait until all comparisons have happened.
@@ -296,6 +307,7 @@ void EmitTiledCompareLoop(const IrArray::Index& tiled_keys_index,
 
 Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
                        const std::vector<IrArray>& values_arrays,
+                       int64 iota_values_parameter_index,
                        absl::string_view name,
                        absl::Span<const int64> xor_masks, llvm::IRBuilder<>* b,
                        const gpu::LaunchDimensions& launch_dimensions,
@@ -367,8 +379,8 @@ Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
     if (xor_masks.size() > 1) {
       EmitTiledCompareLoop(keys_index, dimension_to_sort,
                            dimension_to_sort_bound, keys_shape.element_type(),
-                           xor_masks, params, param_shmem_buffers, tile_size,
-                           b);
+                           xor_masks, params, param_shmem_buffers,
+                           iota_values_parameter_index, tile_size, b);
     } else {
       auto read_element = [&](int64 operand, llvm::Value* index) {
         keys_index[dimension_to_sort] = index;
@@ -380,9 +392,10 @@ Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
         params[operand].EmitWriteArrayElement(keys_index, value, b);
       };
       EmitCompareLoopBody(dimension_to_sort_bound, keys_shape.element_type(),
-                          values_arrays.size(), tiles_index[rank - 1],
-                          xor_masks[0], tiles_index.GetType(), read_element,
-                          write_element, b);
+                          values_arrays.size(), iota_values_parameter_index,
+                          tiles_index[rank - 1], xor_masks[0],
+                          tiles_index.GetType(), read_element, write_element,
+                          b);
     }
     return Status::OK();
   };

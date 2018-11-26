@@ -30,9 +30,9 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-
+# Avoid breaking users who directly import this symbol from this file.
+# TODO(fchollet): remove this.
 InputSpec = base_layer.InputSpec  # pylint: disable=invalid-name
-
 
 _KERAS_STYLE_SCOPE = False
 

@@ -201,7 +201,7 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
       ValueError: If any argument does not have the expected shape.
     """
     super(TFRecordDatasetV2, self).__init__()
-    if isinstance(filenames, dataset_ops.Dataset):
+    if isinstance(filenames, dataset_ops.DatasetV2):
       if filenames.output_types != dtypes.string:
         raise TypeError(
             "`filenames` must be a `tf.data.Dataset` of `tf.string` elements.")

@@ -21,6 +21,7 @@ from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -322,7 +323,7 @@ class _CudnnRNN(base_layer.Layer):
       raise ValueError("The last dimension of the inputs to `CudnnRNN` "
                        "should be defined. Found `None`.")
     self._input_size = input_shape[-1].value
-    self.input_spec = base_layer.InputSpec(ndim=3, axes={-1: self._input_size})
+    self.input_spec = input_spec.InputSpec(ndim=3, axes={-1: self._input_size})
 
     self._set_scope(None)
 

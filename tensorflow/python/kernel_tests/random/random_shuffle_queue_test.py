@@ -215,9 +215,9 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertEqual([], size.get_shape())
 
       enqueue_op.run()
-      self.assertEqual([1], size.eval())
+      self.assertEqual([1], self.evaluate(size))
       dequeued_t.op.run()
-      self.assertEqual([0], size.eval())
+      self.assertEqual([0], self.evaluate(size))
 
   def testEnqueueMany(self):
     with self.cached_session():
@@ -241,9 +241,9 @@ class RandomShuffleQueueTest(test.TestCase):
       enqueue_op = q.enqueue_many((empty_t,))
       size_t = q.size()
 
-      self.assertEqual(0, size_t.eval())
+      self.assertEqual(0, self.evaluate(size_t))
       enqueue_op.run()
-      self.assertEqual(0, size_t.eval())
+      self.assertEqual(0, self.evaluate(size_t))
 
   def testEmptyDequeueMany(self):
     with self.cached_session():
@@ -251,9 +251,9 @@ class RandomShuffleQueueTest(test.TestCase):
       enqueue_op = q.enqueue((10.0,))
       dequeued_t = q.dequeue_many(0)
 
-      self.assertEqual([], dequeued_t.eval().tolist())
+      self.assertEqual([], self.evaluate(dequeued_t).tolist())
       enqueue_op.run()
-      self.assertEqual([], dequeued_t.eval().tolist())
+      self.assertEqual([], self.evaluate(dequeued_t).tolist())
 
   def testEmptyDequeueUpTo(self):
     with self.cached_session():
@@ -261,9 +261,9 @@ class RandomShuffleQueueTest(test.TestCase):
       enqueue_op = q.enqueue((10.0,))
       dequeued_t = q.dequeue_up_to(0)
 
-      self.assertEqual([], dequeued_t.eval().tolist())
+      self.assertEqual([], self.evaluate(dequeued_t).tolist())
       enqueue_op.run()
-      self.assertEqual([], dequeued_t.eval().tolist())
+      self.assertEqual([], self.evaluate(dequeued_t).tolist())
 
   def testEmptyDequeueManyWithNoShape(self):
     with self.cached_session():
@@ -275,7 +275,7 @@ class RandomShuffleQueueTest(test.TestCase):
       # Expect the operation to fail due to the shape not being constrained.
       with self.assertRaisesOpError(
           "require the components to have specified shapes"):
-        dequeued_t.eval()
+        self.evaluate(dequeued_t)
 
       enqueue_op.run()
 
@@ -284,7 +284,7 @@ class RandomShuffleQueueTest(test.TestCase):
       # elements enqueued.
       with self.assertRaisesOpError(
           "require the components to have specified shapes"):
-        dequeued_t.eval()
+        self.evaluate(dequeued_t)
 
   def testEmptyDequeueUpToWithNoShape(self):
     with self.cached_session():
@@ -296,7 +296,7 @@ class RandomShuffleQueueTest(test.TestCase):
       # Expect the operation to fail due to the shape not being constrained.
       with self.assertRaisesOpError(
           "require the components to have specified shapes"):
-        dequeued_t.eval()
+        self.evaluate(dequeued_t)
 
       enqueue_op.run()
 
@@ -305,7 +305,7 @@ class RandomShuffleQueueTest(test.TestCase):
       # elements enqueued.
       with self.assertRaisesOpError(
           "require the components to have specified shapes"):
-        dequeued_t.eval()
+        self.evaluate(dequeued_t)
 
   def testMultiEnqueueMany(self):
     with self.cached_session() as sess:
@@ -335,7 +335,7 @@ class RandomShuffleQueueTest(test.TestCase):
 
       enqueue_op.run()
 
-      results = dequeued_t.eval().tolist()
+      results = self.evaluate(dequeued_t).tolist()
       results.extend(dequeued_t.eval())
       self.assertItemsEqual(elems, results)
 
@@ -348,7 +348,7 @@ class RandomShuffleQueueTest(test.TestCase):
 
       enqueue_op.run()
 
-      results = dequeued_t.eval().tolist()
+      results = self.evaluate(dequeued_t).tolist()
       results.extend(dequeued_t.eval())
       self.assertItemsEqual(elems, results)
 
@@ -649,7 +649,7 @@ class RandomShuffleQueueTest(test.TestCase):
       # Expect the operation to fail due to the queue being closed.
       with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                    "is closed and has insufficient"):
-        dequeued_t.eval()
+        self.evaluate(dequeued_t)
 
   def testBlockingDequeueFromClosedQueue(self):
     with self.cached_session() as sess:
@@ -1040,7 +1040,7 @@ class RandomShuffleQueueTest(test.TestCase):
       # First blocking_enqueue_op of blocking_enqueue has enqueued 1 of 2
       # elements, and is blocked waiting for one more element to be dequeue.
       for i in range(50):
-        queue_size = size_t.eval()
+        queue_size = self.evaluate(size_t)
         if queue_size == 4:
           break
         elif i == 49:

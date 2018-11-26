@@ -769,7 +769,7 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
 
   def _verify_dataset_shape(self, dataset):
     """Verifies a dataset is of an appropriate shape for TPUs."""
-    if not isinstance(dataset, dataset_ops.Dataset):
+    if not isinstance(dataset, dataset_ops.DatasetV2):
       raise ValueError('The function passed as the `x` parameter did not '
                        'return a `tf.data.Dataset`.')
     if not isinstance(dataset.output_classes, tuple):
@@ -1012,9 +1012,10 @@ class TPUFunction(object):
                   optimizer=_replicated_optimizer(self._cloned_optimizer),
                   loss=self.model.loss,
                   loss_weights=self.model.loss_weights,
-                  metrics=metrics_module.clone_metrics(self.model.metrics),
+                  metrics=metrics_module.clone_metrics(
+                      self.model._compile_metrics),
                   weighted_metrics=metrics_module.clone_metrics(
-                      self.model.weighted_metrics),
+                      self.model._compile_weighted_metrics),
                   target_tensors=tpu_targets,
               )
 
@@ -1376,6 +1377,7 @@ class KerasTPUModel(models.Model):
     self.train_function = None
     self._fit_function = None
     self._eval_function = None
+    self._stateful_metric_functions = []
 
     cluster_resolver = strategy._tpu_cluster_resolver
     self._tpu_name_or_address = cluster_resolver.get_master()
@@ -1390,10 +1392,10 @@ class KerasTPUModel(models.Model):
       self.compile(
           self._cpu_model.optimizer,
           self._cpu_model.loss,
-          self._cpu_model.metrics,
+          self._cpu_model._compile_metrics,
           self._cpu_model.loss_weights,
           self._cpu_model.sample_weight_mode,
-          self._cpu_model.weighted_metrics,
+          self._cpu_model._compile_weighted_metrics,
           self._cpu_model.target_tensors,
       )
 
@@ -1463,7 +1465,7 @@ class KerasTPUModel(models.Model):
       assert not self._numpy_to_infeed_manager_list  # Ensure empty.
 
       infeed_managers = []  # Managers to clean up at the end of the fit call.
-      if isinstance(x, dataset_ops.Dataset):
+      if isinstance(x, dataset_ops.DatasetV2):
         # TODO(b/111413240): Support taking a tf.data.Dataset directly.
         raise ValueError(
             'Taking a Dataset directly is not yet supported. Please '
@@ -1489,7 +1491,7 @@ class KerasTPUModel(models.Model):
           y = infeed_manager.dummy_y
           infeed_managers.append((x, infeed_manager))
 
-      if isinstance(validation_data, dataset_ops.Dataset):
+      if isinstance(validation_data, dataset_ops.DatasetV2):
         # TODO(b/111413240): Support taking a tf.data.Dataset directly.
         raise ValueError(
             'Taking a Dataset directly is not yet supported. Please '
@@ -1548,7 +1550,7 @@ class KerasTPUModel(models.Model):
     with _tpu_session_context():
       # Managers to clean up at the end of the evaluate call.
       infeed_managers = []
-      if isinstance(x, dataset_ops.Dataset):
+      if isinstance(x, dataset_ops.DatasetV2):
         # TODO(b/111413240): Support taking a tf.data.Dataset directly.
         raise ValueError(
             'Taking a Dataset directly is not yet supported. Please '
@@ -1697,7 +1699,7 @@ class KerasTPUModel(models.Model):
     callbacks.on_train_begin()
     for epoch in range(initial_epoch, epochs):
       # Reset stateful metrics
-      for m in self.stateful_metric_functions:
+      for m in self.metrics:
         m.reset_states()
       # Update callbacks
       callbacks.on_epoch_begin(epoch)
@@ -1920,7 +1922,7 @@ class KerasTPUModel(models.Model):
     if validation_data:
       if (isinstance(validation_data, iterator_ops.Iterator) or
           isinstance(validation_data, iterator_ops.EagerIterator) or
-          isinstance(validation_data, dataset_ops.Dataset)):
+          isinstance(validation_data, dataset_ops.DatasetV2)):
         raise ValueError('KerasTPUModel cannot handle a Dataset or Iterator '
                          'for validation_data. Please instead pass a function '
                          'that returns a `tf.data.Dataset`.')
@@ -1995,14 +1997,14 @@ class KerasTPUModel(models.Model):
     self._optimizer = optimizer
 
   @property
-  def stateful_metric_functions(self):
+  def metrics(self):
     if self._tpu_model:
-      return self._tpu_model.stateful_metric_functions
+      return self._tpu_model.metrics
     return self._stateful_metric_functions
 
-  @stateful_metric_functions.setter
-  def stateful_metric_functions(self, stateful_metric_functions):
-    self._stateful_metric_functions = stateful_metric_functions
+  @metrics.setter
+  def metrics(self, metrics):
+    self._stateful_metric_functions = metrics
 
   def _make_train_function(self):
     if not self.train_function:
@@ -2227,10 +2229,10 @@ def tpu_model(model, strategy=None):
     cpu_model.compile(
         _clone_optimizer(model.optimizer, optimizer_config),
         model.loss,
-        metrics_module.clone_metrics(model.metrics),
+        metrics_module.clone_metrics(model._compile_metrics),
         model.loss_weights,
         model.sample_weight_mode,
-        metrics_module.clone_metrics(model.weighted_metrics),
+        metrics_module.clone_metrics(model._compile_weighted_metrics),
     )
 
   if model_weights:

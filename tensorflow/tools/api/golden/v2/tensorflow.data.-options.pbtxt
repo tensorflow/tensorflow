@@ -1,6 +1,7 @@
 path: "tensorflow.data.Options"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.Options\'>"
+  is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "experimental_autotune"
@@ -52,6 +53,10 @@ tf_class {
   }
   member {
     name: "experimental_stats"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_threading"
     mtype: "<type \'property\'>"
   }
   member_method {

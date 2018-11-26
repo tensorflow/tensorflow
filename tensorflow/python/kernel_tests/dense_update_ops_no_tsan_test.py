@@ -54,7 +54,7 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
       ones = np.ones((1024, 1024)).astype(np.float32)
       self.assertTrue((vals >= ones).all())
       self.assertTrue((vals <= ones * 20).all())
@@ -81,7 +81,7 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
 
       # Assert every element is taken from one of the assignments.
       self.assertTrue((vals > 0).all())
@@ -114,7 +114,7 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
       ones = np.ones((1024, 1024)).astype(np.float32)
       self.assertAllEqual(vals, ones * 20)
 
@@ -142,7 +142,7 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
 
       # Assert every element is the same, and taken from one of the assignments.
       self.assertTrue(vals[0, 0] > 0)

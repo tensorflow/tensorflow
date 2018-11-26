@@ -37,9 +37,10 @@ XlaReductionOp::XlaReductionOp(OpKernelConstruction* ctx,
 
 // Unless BuildFinalizer is overridden the reduction has no
 // finalizer.
-xla::XlaOp XlaReductionOp::BuildFinalizer(xla::XlaBuilder* builder,
-                                          const xla::XlaOp& reduce_output,
-                                          int64 num_elements_reduced) {
+xla::XlaOp XlaReductionOp::BuildFinalizer(
+    xla::XlaBuilder* /*builder*/, const xla::XlaOp& /*input*/,
+    const xla::XlaOp& reduce_output,
+    const std::vector<int64>& /*dimensions_to_reduce*/) {
   return reduce_output;
 }
 
@@ -71,7 +72,6 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
 
   absl::InlinedVector<bool, 4> bitmap(data_shape.dims(), false);
   std::vector<int64> xla_axes;
-  int64 num_elements_reduced = 1LL;
   for (int64 i = 0; i < axes_tensor_shape.num_elements(); ++i) {
     int64 index = axes[i];
     OP_REQUIRES(ctx,
@@ -82,7 +82,6 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
     index = (index + data_shape.dims()) % data_shape.dims();
     bitmap[index] = true;
     xla_axes.push_back(index);
-    num_elements_reduced *= data_shape.dim_size(index);
   }
 
   std::vector<int64> final_shape;
@@ -119,7 +118,7 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
 
   auto reduce = xla::Reduce(data, initial, reduction_computation, xla_axes);
   auto deconverted = XlaHelpers::ConvertElementType(b, reduce, input_type(0));
-  auto finalized = BuildFinalizer(b, deconverted, num_elements_reduced);
+  auto finalized = BuildFinalizer(b, data, deconverted, xla_axes);
   auto result = keep_dims_ ? xla::Reshape(finalized, final_shape) : finalized;
   ctx->SetOutput(0, result);
 }

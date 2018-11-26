@@ -100,7 +100,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
       if isinstance(distribution, tpu_strategy.TPUStrategy):
         def step_fn(ctx, inputs):
           value, update = distribution.call_for_each_replica(
-              metric_fn, args=[inputs])
+              metric_fn, args=inputs)
           ctx.set_non_tensor_output(name="value", output=value)
           return distribution.group(update)
 

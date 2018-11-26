@@ -1123,7 +1123,6 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
             }
           }
           pieces->push_back(brace_to_string("}"));
-          return;
         }
       };
 

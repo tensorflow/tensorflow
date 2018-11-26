@@ -18,18 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
-from tensorflow.contrib.distribute.python import cross_tower_utils
+import copy
+
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
+from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribute as distribute_lib
 
 
 # TODO(yuefengz): support in-graph replication.
@@ -79,11 +81,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       local_devices = ["/device:CPU:0"]
 
-    self._collective_keys = cross_tower_utils.CollectiveKeys()
+    self._collective_keys = cross_device_utils.CollectiveKeys()
     super(CollectiveAllReduceExtended, self).__init__(
         container_strategy,
         devices=local_devices,
-        cross_device_ops=cross_tower_ops_lib.CollectiveAllReduce(
+        cross_device_ops=cross_device_ops_lib.CollectiveAllReduce(
             num_workers=1,
             num_gpus_per_worker=num_gpus_per_worker,
             collective_keys=self._collective_keys))
@@ -123,11 +125,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       local_devices = [worker_device]
 
-    self._collective_keys = cross_tower_utils.CollectiveKeys()
+    self._collective_keys = cross_device_utils.CollectiveKeys()
     super(CollectiveAllReduceExtended, self).__init__(
         container_strategy,
         devices=local_devices,
-        cross_device_ops=cross_tower_ops_lib.CollectiveAllReduce(
+        cross_device_ops=cross_device_ops_lib.CollectiveAllReduce(
             num_workers=self._num_workers,
             num_gpus_per_worker=num_gpus_per_worker,
             collective_keys=self._collective_keys))
@@ -234,8 +236,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_input_pipelines=self._num_workers,
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
-    return values.PerReplicaDataset(
-        self._call_dataset_fn(input_fn, input_context), self._devices, True)
+
+    return values.InputFunctionIterator(
+        input_fn, [(self._default_device, self._devices)], [input_context])
 
   def _configure(self,
                  session_config=None,
@@ -262,13 +265,15 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           self._container_strategy(), self._num_gpus_per_worker, cluster_spec,
           task_type, task_id)
 
-    if not session_config:
-      return
+    if session_config:
+      session_config.CopyFrom(self._update_config_proto(session_config))
 
+  def _update_config_proto(self, config_proto):
+    updated_config = copy.deepcopy(config_proto)
     # Enable the scoped allocator optimization for CollectiveOps.  This
     # optimization converts many small all-reduces into fewer larger
     # all-reduces.
-    rewrite_options = session_config.graph_options.rewrite_options
+    rewrite_options = updated_config.graph_options.rewrite_options
     rewrite_options.scoped_allocator_optimization = (
         rewriter_config_pb2.RewriterConfig.ON)
     # We turn on ScopedAllocator only for CollectiveReduce op, i.e. enable_op =
@@ -278,7 +283,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     rewrite_options.scoped_allocator_opts.enable_op.append("CollectiveReduce")
 
     if not self._cluster_spec:
-      return
+      return updated_config
 
     assert self._task_type
     assert self._task_id is not None
@@ -286,19 +291,21 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # Collective group leader is needed for collective ops to coordinate
     # workers.
     if "chief" in self._cluster_spec.jobs:
-      session_config.experimental.collective_group_leader = (
+      updated_config.experimental.collective_group_leader = (
           "/job:chief/replica:0/task:0")
     else:
       if "worker" not in self._cluster_spec.jobs:
         raise ValueError(
             "You must have `chief` or `worker` jobs in the `cluster_spec`.")
-      session_config.experimental.collective_group_leader = (
+      updated_config.experimental.collective_group_leader = (
           "/job:worker/replica:0/task:0")
 
     # The device filters prevent communication between workers.
-    del session_config.device_filters[:]
-    session_config.device_filters.append(
+    del updated_config.device_filters[:]
+    updated_config.device_filters.append(
         "/job:%s/task:%d" % (self._task_type, self._task_id))
+
+    return updated_config
 
   @property
   def experimental_between_graph(self):
@@ -319,3 +326,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   @property
   def _num_replicas_in_sync(self):
     return len(self._devices) * self._num_workers
+
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return False

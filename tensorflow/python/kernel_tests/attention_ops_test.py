@@ -121,8 +121,7 @@ class ExtractGlimpseTest(test.TestCase):
     with self.cached_session():
       result = image_ops.extract_glimpse(empty_image, [1, 1], offsets)
       self.assertAllEqual(
-          np.zeros(
-              (0, 1, 1, 0), dtype=np.float32), result.eval())
+          np.zeros((0, 1, 1, 0), dtype=np.float32), self.evaluate(result))
 
   def testLargeCenterGlimpse(self):
     self._VerifyValues(

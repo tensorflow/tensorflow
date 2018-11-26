@@ -385,7 +385,6 @@ std::vector<const HloInstruction*> Pointers(const Container& container) {
 // Tell GMock to print HloInstruction* by value, so error messages are nice.
 // Has to be in the same namespace as 'HloInstruction'.
 void PrintTo(const HloInstruction* inst, ::std::ostream* os);
-void PrintTo(HloInstruction* inst, ::std::ostream* os);
 
 }  // namespace xla
 

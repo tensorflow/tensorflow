@@ -874,7 +874,7 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
       # If func only returned one value, make it a tuple.
       if not isinstance(outputs, (list, tuple)):
         outputs = (outputs,)
-      if any([_ is None for _ in outputs]):
+      if any(_ is None for _ in outputs):
         raise ValueError("Function %s can not return None." % name)
     # Ensures each output is a Tensor in the function graph.
     outputs = [ops.convert_to_tensor(t) for t in outputs]
@@ -1190,7 +1190,7 @@ def get_extra_args():
 
 
 def _type_list_to_str(types):
-  if any([_ not in _DTYPE_TO_STR for _ in types]):
+  if any(_ not in _DTYPE_TO_STR for _ in types):
     raise ValueError("Unsupported dtypes: %s" % types)
   return "".join([_DTYPE_TO_STR[_] for _ in types])
 

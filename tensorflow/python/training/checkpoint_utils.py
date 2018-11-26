@@ -187,7 +187,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
     _init_from_checkpoint(None, ckpt_dir_or_file, assignment_map)
   else:
     distribution_strategy_context.get_replica_context().merge_call(
-        _init_from_checkpoint, ckpt_dir_or_file, assignment_map)
+        _init_from_checkpoint, args=(ckpt_dir_or_file, assignment_map))
 
 
 def _init_from_checkpoint(_, ckpt_dir_or_file, assignment_map):

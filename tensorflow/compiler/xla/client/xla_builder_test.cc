@@ -446,5 +446,14 @@ TEST_F(XlaBuilderTest, ProtoMatches) {
   EXPECT_EQ(c0_string, c1_string);
 }
 
+TEST_F(XlaBuilderTest, AfterAllWithNonTokenOperands) {
+  XlaBuilder b(TestName());
+  AfterAll(&b, {CreateToken(&b), ConstantR0<float>(&b, 1.0)});
+  Status status = b.Build().status();
+  ASSERT_IS_NOT_OK(status);
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("All operands to AfterAll must be tokens"));
+}
+
 }  // namespace
 }  // namespace xla

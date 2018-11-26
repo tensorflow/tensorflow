@@ -55,28 +55,15 @@ bool useCudaMemoryGuardAllocator() {
 
 }  // namespace
 
-GPUProcessState* GPUProcessState::instance_ = nullptr;
-
-/*static*/ GPUProcessState* GPUProcessState::singleton() {
-  if (instance_ == nullptr) {
-    instance_ = new GPUProcessState;
-  }
-  CHECK(instance_->process_state_);
-
-  return instance_;
+/*static*/ GPUProcessState* GPUProcessState::singleton(GPUProcessState* ps) {
+  static GPUProcessState* instance = ps ? ps : new GPUProcessState;
+  DCHECK((!ps) || (ps == instance))
+      << "Multiple calls to GPUProcessState with non-null ps";
+  return instance;
 }
 
 GPUProcessState::GPUProcessState() : gpu_device_enabled_(false) {
-  CHECK(instance_ == nullptr);
-  instance_ = this;
   process_state_ = ProcessState::singleton();
-}
-
-// Normally the GPUProcessState singleton is never explicitly deleted.
-// This function is defined for debugging problems with the allocators.
-GPUProcessState::~GPUProcessState() {
-  CHECK_EQ(this, instance_);
-  instance_ = nullptr;
 }
 
 int GPUProcessState::BusIdForGPU(TfGpuId tf_gpu_id) {

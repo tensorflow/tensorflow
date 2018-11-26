@@ -635,7 +635,7 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
       else:
         tf_dense_ans = sparse_ops.sparse_reduce_max(sp_t, reduction_axes,
                                                     keep_dims)
-      out_dense = tf_dense_ans.eval()
+      out_dense = self.evaluate(tf_dense_ans)
 
       if do_sum:
         tf_sparse_ans = sparse_ops.sparse_reduce_sum_sparse(sp_t,
@@ -710,16 +710,16 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
           axes = np.random.choice(len(dims), size=d, replace=False).tolist()
           reduced = sparse_ops.sparse_reduce_sum(sp_t, axes)
 
-          err = gradient_checker.compute_gradient_error(sp_t.values, (nnz,),
-                                                        reduced,
-                                                        reduced.eval().shape)
+          err = gradient_checker.compute_gradient_error(
+              sp_t.values, (nnz,), reduced,
+              self.evaluate(reduced).shape)
           self.assertLess(err, 1e-3)
 
         # Tests for negative axes.
         reduced = sparse_ops.sparse_reduce_sum(sp_t, -1)
-        err = gradient_checker.compute_gradient_error(sp_t.values, (nnz,),
-                                                      reduced,
-                                                      reduced.eval().shape)
+        err = gradient_checker.compute_gradient_error(
+            sp_t.values, (nnz,), reduced,
+            self.evaluate(reduced).shape)
         self.assertLess(err, 1e-3)
 
 

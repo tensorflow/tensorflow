@@ -55,7 +55,7 @@ bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
   });
 }
 
-bool IsInputFusibleReduction(const HloInstruction& instr) {
+bool IsReduceInputFusion(const HloInstruction& instr) {
   if (instr.IsMultiOutputFusion()) {
     for (const HloInstruction* operand :
          instr.fused_expression_root()->operands()) {
@@ -67,17 +67,18 @@ bool IsInputFusibleReduction(const HloInstruction& instr) {
         return true;
       }
     }
-    return false;
-  } else if (instr.opcode() == HloOpcode::kFusion) {
-    if (IsReductionToVector(*instr.fused_expression_root())) {
-      CHECK(instr.fusion_kind() == HloInstruction::FusionKind::kInput)
-          << " Fusion rooted at reduction-to-vector op must be of kind kInput: "
-          << instr.ToString();
-      return true;
-    }
-    return false;
+  } else if (instr.opcode() == HloOpcode::kFusion &&
+             IsReductionToVector(*instr.fused_expression_root())) {
+    CHECK(instr.fusion_kind() == HloInstruction::FusionKind::kInput)
+        << " Fusion rooted at reduction-to-vector op must be of kind kInput: "
+        << instr.ToString();
+    return true;
   }
-  return IsReductionToVector(instr);
+  return false;
+}
+
+bool IsInputFusibleReduction(const HloInstruction& instr) {
+  return IsReduceInputFusion(instr) || IsReductionToVector(instr);
 }
 
 }  // namespace gpu

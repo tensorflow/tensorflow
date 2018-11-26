@@ -252,7 +252,10 @@ class ParallelMapIterator : public DatasetBaseIterator {
     RecordStart(ctx.get());
     auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
     std::vector<std::shared_ptr<InvocationResult>> new_calls;
-    new_calls.reserve(num_parallel_calls_->value);
+    {
+      tf_shared_lock l(*mu_);  // mu_ == num_parallel_calls_->mu
+      new_calls.reserve(num_parallel_calls_->value);
+    }
     auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
       int64 num_parallel_calls = num_parallel_calls_->value;
       return num_calls_ >= num_parallel_calls ||

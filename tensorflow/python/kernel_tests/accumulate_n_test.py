@@ -88,13 +88,13 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
       np_val = random_arrays[0]
       for random_array in random_arrays[1:]:
         np_val += random_array
-      self.assertAllClose(np_val, tf_val.eval())
+      self.assertAllClose(np_val, self.evaluate(tf_val))
 
   def testZeroArgs(self):
     with self.cached_session():
       with self.assertRaises(ValueError):
         tf_val = math_ops.accumulate_n([])
-        tf_val.eval()
+        self.evaluate(tf_val)
 
   def testWrongShape(self):
     with self.cached_session():

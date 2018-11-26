@@ -76,7 +76,7 @@ class ScatterAddSubTest(test.TestCase):
       # p = init
       variables.global_variables_initializer().run()
       # p += vals
-      result = p2.eval()
+      result = self.evaluate(p2)
     # Compute the expected 'p' using numpy operations.
     for i, ind in enumerate(indices):
       if scatter_op == state_ops.scatter_add:
@@ -278,7 +278,7 @@ class EmbeddingLookupTest(test.TestCase):
       norms = math_ops.sqrt(
           math_ops.reduce_sum(embeddings * embeddings, axis=1))
       normalized = embeddings / array_ops.stack([norms, norms], axis=1)
-      self.assertAllEqual(embedding.eval(), 2 * normalized.eval())
+      self.assertAllEqual(embedding.eval(), 2 * self.evaluate(normalized))
 
   def testSimpleShardedPartitionedVariable(self):
     with self.cached_session() as sess:
@@ -319,7 +319,7 @@ class EmbeddingLookupTest(test.TestCase):
       p_var_val = sess.run(list(p_variable))
       # Actual test
       print(ops.get_default_graph().as_graph_def())
-      tf_result = embedding.eval()
+      tf_result = self.evaluate(embedding)
     np_result, _, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
     self.assertAllEqual(params_values, p_var_val)
     self.assertAllEqual(np_result, tf_result)

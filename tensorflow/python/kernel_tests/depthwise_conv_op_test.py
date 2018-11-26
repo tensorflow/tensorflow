@@ -552,7 +552,7 @@ class DepthwiseConv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_input(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -572,7 +572,7 @@ class DepthwiseConv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_input(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -609,7 +609,7 @@ class DepthwiseConv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -629,7 +629,7 @@ class DepthwiseConv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
