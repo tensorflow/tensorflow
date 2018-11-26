@@ -992,6 +992,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::XrtAllocation;
 %unignore xla::swig::XrtAllocation::FromLiteral;
 %unignore xla::swig::XrtAllocation::ToLiteral;
+%unignore xla::swig::XrtAllocation::shape;
 %unignore xla::swig::XrtAllocationTuple;
 %unignore xla::swig::XrtAllocationTuple::Release;
 %unignore xla::swig::XrtAllocationTuple::size;
