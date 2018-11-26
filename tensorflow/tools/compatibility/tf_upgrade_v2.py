@@ -585,8 +585,8 @@ if __name__ == "__main__":
       description="""Convert a TensorFlow Python file to 2.0
 
 Simple usage:
-  tf_convert_v2.py --infile foo.py --outfile bar.py
-  tf_convert_v2.py --intree ~/code/old --outtree ~/code/new
+  tf_upgrade_v2.py --infile foo.py --outfile bar.py
+  tf_upgrade_v2.py --intree ~/code/old --outtree ~/code/new
 """)
   parser.add_argument(
       "--infile",
