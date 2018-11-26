@@ -199,8 +199,16 @@ tf_kernel_library(
     name = "conv_2d",
     hdrs = ["conv_2d.h"],
     gpu_srcs = [
-        "conv_2d_gpu.cu.cc",
         "conv_2d.h",
+        "conv_2d_gpu.h",
+        "conv_2d_gpu_double.cu.cc",
+        "conv_2d_gpu_float.cu.cc",
+        "conv_2d_gpu_half.cu.cc",
+        "conv_2d_gpu_int.cu.cc",
+        "conv_2d_gpu_uint16.cu.cc",
+        "conv_2d_gpu_uint32.cu.cc",
+        "conv_2d_gpu_uint64.cu.cc",
+        "conv_2d_gpu_uint8.cu.cc",
     ],
     deps = [
         ":eigen_helpers",
