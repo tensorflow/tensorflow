@@ -191,11 +191,11 @@ def einsum(equation, *inputs, **kwargs):
     name: A name for the operation (optional).
     optimize: `{False, True, 'dfspairs'}`, optional
       If not `False`, the contraction sequence will be optimized before 
-      building the computation graph. Not that this will be ignored if the 
+      building the computation graph. Note that this will be ignored if the 
       function falls back to the exponential-space implementation.
       If `False`, tensors will be contracted from left to right. 
-      If `'dfspairs'`, a depth-first search for a sequence of pairwise tensor
-      contractions will be performed.
+      If `'dfspairs'`, which is the default value, a depth-first search for a 
+      sequence of pairwise tensor contractions will be performed.
 
   Returns:
     The contracted `Tensor`, with shape determined by `equation`.
@@ -212,7 +212,7 @@ def einsum(equation, *inputs, **kwargs):
   equation = equation.replace(' ', '')
 
   name = kwargs.pop('name', None)
-  optimize = kwargs.pop('optimize', False)
+  optimize = kwargs.pop('optimize', True)
   if kwargs:
     raise TypeError('invalid keyword arguments for this function: ' + ', '.join(
         [format(key) for key in sorted(list(kwargs.keys()))]))
