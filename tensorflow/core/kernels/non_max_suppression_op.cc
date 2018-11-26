@@ -74,7 +74,7 @@ static inline void ParseAndCheckBoxSizes(OpKernelContext* context,
               errors::InvalidArgument("boxes must have 4 columns"));
 }
 
-static inline void CheckNMSLiteScoreSizes(OpKernelContext* context, 
+static inline void CheckCombinedNMSScoreSizes(OpKernelContext* context, 
                                           int num_boxes,
                                           const Tensor& scores) {
   // The shape of 'scores' is [batch_size, num_boxes, num_classes]
@@ -85,7 +85,7 @@ static inline void CheckNMSLiteScoreSizes(OpKernelContext* context,
               errors::InvalidArgument("scores has incompatible shape"));
 }
 
-static inline void ParseAndCheckNMSLiteBoxSizes(OpKernelContext* context,
+static inline void ParseAndCheckCombinedNMSBoxSizes(OpKernelContext* context,
                                          const Tensor& boxes, int* num_boxes, 
                                          const int num_classes) {
   // The shape of 'boxes' is [batch_size, num_boxes, q, 4]
@@ -686,9 +686,9 @@ class NonMaxSuppressionWithOverlapsOp : public OpKernel {
 };
 
 template <typename Device>
-class NonMaxSuppressionLiteOp : public OpKernel {
+class CombinedNonMaxSuppressionOp : public OpKernel {
  public:
-  explicit NonMaxSuppressionLiteOp(OpKernelConstruction* context)
+  explicit CombinedNonMaxSuppressionOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("pad_per_class",
                                              &pad_per_class_));
@@ -738,8 +738,8 @@ class NonMaxSuppressionLiteOp : public OpKernel {
                 errors::InvalidArgument("iou_threshold must be in [0, 1]"));
     int num_boxes = 0;
     const int num_classes = scores.dim_size(2);
-    ParseAndCheckNMSLiteBoxSizes(context, boxes, &num_boxes, num_classes);
-    CheckNMSLiteScoreSizes(context, num_boxes, scores);
+    ParseAndCheckCombinedNMSBoxSizes(context, boxes, &num_boxes, num_classes);
+    CheckCombinedNMSScoreSizes(context, num_boxes, scores);
 
     if (!context->status().ok()) {
       return;
@@ -785,7 +785,7 @@ REGISTER_KERNEL_BUILDER(
     Name("NonMaxSuppressionWithOverlaps").Device(DEVICE_CPU),
     NonMaxSuppressionWithOverlapsOp<CPUDevice>);
 
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionLite").Device(DEVICE_CPU),
-        NonMaxSuppressionLiteOp<CPUDevice>);
+REGISTER_KERNEL_BUILDER(Name("CombinedNonMaxSuppression").Device(DEVICE_CPU),
+        CombinedNonMaxSuppressionOp<CPUDevice>);
 
 }  // namespace tensorflow

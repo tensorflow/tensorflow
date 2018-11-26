@@ -3211,8 +3211,8 @@ def extract_glimpse_v2(
       uniform_noise=False,
       name=name)
 
-@tf_export('image.non_max_suppression_lite')
-def non_max_suppression_lite(boxes,
+@tf_export('image.combined_non_max_suppression')
+def combined_non_max_suppression(boxes,
                              scores,
                              max_output_size_per_class,
                              max_total_size,
@@ -3269,10 +3269,10 @@ def non_max_suppression_lite(boxes,
     'selected_indices':  A [batch_size, max_detections] int32 tensor
       containing the indices of the selected boxes
   """
-  with ops.name_scope(name, 'non_max_suppression_lite'):
+  with ops.name_scope(name, 'combined_non_max_suppression'):
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
         score_threshold, name='score_threshold')
-    return gen_image_ops.non_max_suppression_lite(boxes, scores,
+    return gen_image_ops.combined_non_max_suppression(boxes, scores,
             max_output_size_per_class, max_total_size, iou_threshold,
             score_threshold, pad_per_class)
