@@ -549,6 +549,7 @@ renames = {
     'tf.to_int32': 'tf.compat.v1.to_int32',
     'tf.to_int64': 'tf.compat.v1.to_int64',
     'tf.trace': 'tf.linalg.trace',
+    'tf.train.LooperThread': 'tf.compat.v1.train.LooperThread',
     'tf.train.MonitoredTrainingSession': 'tf.compat.v1.train.MonitoredTrainingSession',
     'tf.train.NewCheckpointReader': 'tf.compat.v1.train.NewCheckpointReader',
     'tf.train.ProfilerHook': 'tf.compat.v1.train.ProfilerHook',
