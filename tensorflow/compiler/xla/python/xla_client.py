@@ -78,6 +78,13 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
       source_line=lineno)
 
 
+def _maybe_encode_string(s):
+  if six.PY3:
+    return s.encode('utf-8')
+  else:
+    return s
+
+
 class PaddingType(enum.Enum):
   VALID = 1
   SAME = 2
@@ -228,7 +235,8 @@ class LocalBuffer(object):
     """Allocate and copy to XLA the given python value."""
     pyval = require_numpy_array_layout(pyval)
     if backend.backend_type == BackendType.XRT:
-      cbuf = c_api.XrtAllocation.FromLiteral(pyval, backend.target)
+      cbuf = c_api.XrtAllocation.FromLiteral(
+          pyval, _maybe_encode_string(backend.target))
     else:
       cbuf = c_api.LocalShapedBuffer.FromLiteral(pyval, None)
     return LocalBuffer(cbuf, backend)
@@ -248,8 +256,8 @@ class LocalBuffer(object):
     """Assuming a tuple buffer, unpack it into constituent tuple elements."""
     assert self.c_buffer is not None
     if self._backend.backend_type == BackendType.XRT:
-      result = c_api.DestructureXrtAllocationTuple(self.c_buffer,
-                                                   self._backend.target)
+      result = c_api.DestructureXrtAllocationTuple(
+          self.c_buffer, _maybe_encode_string(self._backend.target))
     else:
       result = c_api.DestructureLocalShapedBufferTuple(self.c_buffer)
     self.delete()
@@ -552,7 +560,8 @@ class LocalComputation(object):
     compile_options = compile_options or CompileOptions()
     compile_options.result_shape = result_shape
     if self._backend.backend_type == BackendType.XRT:
-      c = self.computation.CompileForXrt(argument_shapes, self._backend.target)
+      c = self.computation.CompileForXrt(
+          argument_shapes, _maybe_encode_string(self._backend.target))
     else:
       c = self.computation.Compile(argument_shapes, compile_options)
     return LocalComputation(c, is_compiled=True, backend=self._backend)
@@ -1388,8 +1397,7 @@ def initialize_platform_name(platform_name):
   Raises:
     A runtime exception if the XLA service has already been initialized.
   """
-  if six.PY3:
-    platform_name = platform_name.encode('utf-8')
+  platform_name = _maybe_encode_string(platform_name)
   c_api.InitializePlatformName(platform_name)
 
 
