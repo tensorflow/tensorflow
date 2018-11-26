@@ -2783,7 +2783,7 @@ def _export_output_to_tensors(export_output):
   elif isinstance(export_output, export_output_lib.RegressionOutput):
     return [export_output.value]
   elif isinstance(export_output, export_output_lib.PredictOutput):
-    return export_output.outputs.values()
+    return list(export_output.outputs.values())
   else:
     raise ValueError(
         '`export_output` must be have type `ClassificationOutput`, '
