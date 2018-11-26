@@ -391,7 +391,8 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* num_threads_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(num_threads_, &num_threads_node));
-      TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {input_graph_node, num_threads_node}, output));
       return Status::OK();
     }
 
