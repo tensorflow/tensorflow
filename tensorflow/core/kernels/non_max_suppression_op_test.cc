@@ -861,11 +861,11 @@ TEST_F(NonMaxSuppressionWithOverlapsOpTest, TestEmptyInput) {
   test::ExpectTensorEqual<int>(expected, *GetOutput(0));
 }
 
-class NonMaxSuppressionLiteOpTest : public OpsTestBase {
+class CombinedNonMaxSuppressionOpTest : public OpsTestBase {
  protected:
   void MakeOp(bool pad_per_class = false) {
-    TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_lite_op", 
-                                "NonMaxSuppressionLite")
+    TF_EXPECT_OK(NodeDefBuilder("combined_non_max_suppression_op",
+                                "CombinedNonMaxSuppression")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))
@@ -878,7 +878,7 @@ class NonMaxSuppressionLiteOpTest : public OpsTestBase {
   }
 };
 
-TEST_F(NonMaxSuppressionLiteOpTest, TestEmptyInput) {
+TEST_F(CombinedNonMaxSuppressionOpTest, TestEmptyInput) {
   MakeOp();
   AddInputFromArray<float>(TensorShape({0, 0, 0, 4}), {});
   AddInputFromArray<float>(TensorShape({0, 0, 0}), {});
@@ -914,7 +914,7 @@ TEST_F(NonMaxSuppressionLiteOpTest, TestEmptyInput) {
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
-TEST_F(NonMaxSuppressionLiteOpTest, TestSelectFromThreeClusters) {
+TEST_F(CombinedNonMaxSuppressionOpTest, TestSelectFromThreeClusters) {
   MakeOp();
   AddInputFromArray<float>(
       TensorShape({1, 6, 1, 4}),
@@ -951,7 +951,7 @@ TEST_F(NonMaxSuppressionLiteOpTest, TestSelectFromThreeClusters) {
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
-TEST_F(NonMaxSuppressionLiteOpTest, 
+TEST_F(CombinedNonMaxSuppressionOpTest,
         TestSelectFromThreeClustersWithScoreThreshold) {
   MakeOp();
   AddInputFromArray<float>(
@@ -989,7 +989,7 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
-TEST_F(NonMaxSuppressionLiteOpTest, 
+TEST_F(CombinedNonMaxSuppressionOpTest,
         TestSelectFromThreeClustersWithScoreThresholdZeroScores) {
   MakeOp();
   AddInputFromArray<float>(
@@ -1029,7 +1029,7 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
-TEST_F(NonMaxSuppressionLiteOpTest, TestSelectSingleBox) {
+TEST_F(CombinedNonMaxSuppressionOpTest, TestSelectSingleBox) {
   MakeOp();
   AddInputFromArray<float>(TensorShape({1, 1, 1, 4}), {0, 0, 1, 1});  
   AddInputFromArray<float>(TensorShape({1, 1, 1}), {.9f});
@@ -1061,7 +1061,7 @@ TEST_F(NonMaxSuppressionLiteOpTest, TestSelectSingleBox) {
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
-TEST_F(NonMaxSuppressionLiteOpTest, 
+TEST_F(CombinedNonMaxSuppressionOpTest,
         TestSelectFromTwoBatchesWithScoreThreshold) {
   MakeOp();
   AddInputFromArray<float>(
@@ -1102,7 +1102,7 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
-TEST_F(NonMaxSuppressionLiteOpTest, 
+TEST_F(CombinedNonMaxSuppressionOpTest,
         TestSelectFromTwoBatchesTwoClasses) {
   MakeOp();
   AddInputFromArray<float>(
@@ -1145,7 +1145,7 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
-TEST_F(NonMaxSuppressionLiteOpTest, 
+TEST_F(CombinedNonMaxSuppressionOpTest,
         TestSelectFromTwoBatchesTwoClassesWithScoreThreshold) {
   MakeOp();
   AddInputFromArray<float>(
@@ -1188,7 +1188,7 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
-TEST_F(NonMaxSuppressionLiteOpTest, 
+TEST_F(CombinedNonMaxSuppressionOpTest,
         TestSelectFromTwoBatchesTwoClassesWithScoreThresholdPadded) {
   MakeOp(true);
   AddInputFromArray<float>(
@@ -1231,7 +1231,7 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
-TEST_F(NonMaxSuppressionLiteOpTest, 
+TEST_F(CombinedNonMaxSuppressionOpTest,
         TestSelectFromTwoBatchesTwoClassesTotalSize) {
   MakeOp();
   AddInputFromArray<float>(
@@ -1278,7 +1278,7 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
-TEST_F(NonMaxSuppressionLiteOpTest, 
+TEST_F(CombinedNonMaxSuppressionOpTest,
         TestSelectFromTwoBatchesTwoClassesForBoxesAndScores) {
   MakeOp();
   AddInputFromArray<float>(

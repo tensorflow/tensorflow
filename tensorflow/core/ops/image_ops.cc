@@ -131,7 +131,7 @@ Status NMSShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
-Status NMSLiteShapeFn(InferenceContext* c) {
+Status CombinedNMSShapeFn(InferenceContext* c) {
   //Get inputs and validate ranks
   ShapeHandle boxes;
   //boxes is a tensor of Dimensions [batch_size, num_anchors, q, 4]
@@ -143,40 +143,55 @@ Status NMSLiteShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size_per_class));
   ShapeHandle max_total_size;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &max_total_size));
-  ShapeHandle iou_threshold;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &iou_threshold));
-  ShapeHandle score_threshold;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &score_threshold));
+  ShapeHandle unused_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused_shape));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused_shape));
 
   DimensionHandle unused;
+  //boxes[0] and scores[0] are both batch_size
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
   //boxes[1] and scores[1] are both num_anchors
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 1), c->Dim(scores, 1), &unused));
   // The boxes[3] is 4.
   TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 3), 4, &unused));
 
+  DimensionHandle d = c->Dim(boxes, 2);
+  auto num_classes = c->Value(c->Dim(scores, 2));
+  if (c->ValueKnown(d)) {
+    if (c->Value(d) != 1 && c->Value(d) != num_classes) {
+       return errors::InvalidArgument("third dimension of boxes must be either "
+           "1 or equal to the third dimension of scores");
+    }
+  }
+  DimensionHandle output_dim;
+  DimensionHandle batch_dim = c->Dim(boxes, 0);
+
+  TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(3, &output_dim));
+  if (c->ValueKnown(output_dim) && c->Value(output_dim) <= 0) {
+    return errors::InvalidArgument("max_total_size should be > 0 ");
+  }
+  DimensionHandle size_per_class;
+  TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &size_per_class));
+
+  int64 output_size;
   bool pad_per_class;
   TF_RETURN_IF_ERROR(c->GetAttr("pad_per_class", &pad_per_class));
-  if(!pad_per_class) {
-    DimensionHandle output_dim;
-    DimensionHandle batch_dim = c->Dim(boxes, 0);
-    
-    TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(3, &output_dim));
-    if(c->ValueKnown(output_dim) && c->Value(output_dim) <= 0) {
-      return errors::InvalidArgument("max_total_size should be > 0 ");
-    }
-    c->set_output(0, c->MakeShape({batch_dim, output_dim, 4}));
-    c->set_output(1, c->MakeShape({batch_dim, output_dim}));
-    c->set_output(2, c->MakeShape({batch_dim, output_dim}));
-    c->set_output(4, c->MakeShape({batch_dim, output_dim}));
+  if (!pad_per_class) {
+    output_size =  c->Value(output_dim);
   }
   else {
-    //TODO SR Can all the outputs be unknowndim?
-    c->set_output(0, c->Vector(c->UnknownDim()));
-    c->set_output(1, c->Vector(c->UnknownDim()));
-    c->set_output(2, c->Vector(c->UnknownDim()));
-    c->set_output(3, c->Vector(c->UnknownDim()));
-    c->set_output(4, c->Vector(c->UnknownDim()));
+    if (c->ValueKnown(size_per_class) && c->Value(size_per_class) <= 0) {
+      return errors::InvalidArgument("max_output_size_per_class must be > 0 "
+             "if pad_per_class is set to true ");
+    }
+    output_size = std::min(c->Value(output_dim),
+        c->Value(size_per_class) * num_classes);
   }
+  c->set_output(0, c->MakeShape({batch_dim, output_size, 4}));
+  c->set_output(1, c->MakeShape({batch_dim, output_size}));
+  c->set_output(2, c->MakeShape({batch_dim, output_size}));
+  c->set_output(3, c->Vector(batch_dim));
+  c->set_output(4, c->MakeShape({batch_dim, output_size}));
   return Status::OK();
 }
 
@@ -869,7 +884,7 @@ REGISTER_OP("NonMaxSuppressionWithOverlaps")
       return Status::OK();
     });
 
-REGISTER_OP("NonMaxSuppressionLite")
+REGISTER_OP("CombinedNonMaxSuppression")
     .Input("boxes: float")
     .Input("scores: float")
     .Input("max_output_size_per_class: int32")
@@ -882,6 +897,6 @@ REGISTER_OP("NonMaxSuppressionLite")
     .Output("valid_detections: int32")
     .Output("selected_indices: int32")
     .Attr("pad_per_class: bool = false")
-    .SetShapeFn(NMSLiteShapeFn);   
+    .SetShapeFn(CombinedNMSShapeFn);
 
 }  // namespace tensorflow
