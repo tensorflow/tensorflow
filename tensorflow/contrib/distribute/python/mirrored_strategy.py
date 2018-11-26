@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import functools
 
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import values
-from tensorflow.python.training import distribute as distribute_lib
 
 
 # pylint: disable=protected-access,invalid-name
