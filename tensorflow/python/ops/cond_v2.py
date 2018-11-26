@@ -74,55 +74,14 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
             false_name, read_only_collections=False),
         add_control_dependencies=add_control_dependencies,
         op_return_value=pred)
-    _check_same_outputs(true_graph, false_graph)
 
-    # Add inputs to true_graph and false_graph to make them match. Note that
-    # this modifies true_graph and false_graph.
-    cond_inputs = _make_inputs_match(true_graph, false_graph,
-                                     true_graph.external_captures,
-                                     false_graph.external_captures)
-
-    # Add all intermediate tensors as function outputs so they're available for
-    # the gradient computation.
-
-    true_intermediates = _get_intermediates(true_graph)
-    false_intermediates = _get_intermediates(false_graph)
-
-    # Save the original number of outputs to return to the caller.
-    num_cond_outputs = len(true_graph.outputs)
-
-    # Make the number/type of new intermediate outputs match.
-    extra_true_outputs, extra_false_outputs = _pad_params(
-        true_graph, false_graph, true_intermediates, false_intermediates)
-
-    true_graph.outputs.extend(extra_true_outputs)
-    false_graph.outputs.extend(extra_false_outputs)
-
-    # Create the If op.
-    tensors = gen_functional_ops._if(  # pylint: disable=protected-access
-        pred,
-        cond_inputs, [t.dtype for t in true_graph.outputs],
-        util.create_new_tf_function(true_graph),
-        util.create_new_tf_function(false_graph),
-        output_shapes=_get_output_shapes(true_graph.outputs,
-                                         false_graph.outputs),
-        name=scope)
-
-    # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
-    util.maybe_set_lowering_attr(tensors[0].op)
-
-    # Return identities for each output of the If op, rather than the output of
-    # the If op directly. This makes pruning work if the output of cond() is
-    # fetched: the lowering pass converts the If outputs into IdentityN outputs,
-    # which if fetched will cause all ops in the taken branch to be run (since
-    # it takes all merge ops as input). After lowering, each output identity op
-    # will end up with only the appropriate merge op as input.
-    # TODO(b/79984175): this doesn't have to be a tuple once we covert to the
-    # correct output structure
-    tensors = tuple(array_ops.identity(t) for t in tensors)
+    outputs = _build_cond(pred, true_graph, false_graph,
+                          true_graph.external_captures,
+                          false_graph.external_captures,
+                          name=scope)
 
     return func_graph_module.pack_sequence_as(true_graph.structured_outputs,
-                                              tensors[:num_cond_outputs])
+                                              outputs)
 
 
 @ops.RegisterGradient("If")
@@ -150,44 +109,83 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   true_grad_inputs = _resolve_grad_inputs(true_graph, true_grad_graph)
   false_grad_inputs = _resolve_grad_inputs(false_graph, false_grad_graph)
 
-  # Make the inputs to true_grad_graph and false_grad_graph match. Note that
-  # this modifies true_grad_graph and false_grad_graph.
-  grad_inputs = _make_inputs_match(true_grad_graph, false_grad_graph,
-                                   true_grad_inputs, false_grad_inputs)
-
-  # Add all intermediate tensors as function outputs so they're available for
-  # higher-order gradient computations.
-
-  true_grad_intermediates = _get_intermediates(true_grad_graph)
-  false_grad_intermediates = _get_intermediates(false_grad_graph)
-
-  # Save the original number of gradient outputs to return.
-  num_grad_outputs = len(true_grad_graph.outputs)
-
-  # Make the number/type of new intermediate outputs match.
-  extra_true_grad_outputs, extra_false_grad_outputs = _pad_params(
-      true_grad_graph, false_grad_graph,
-      true_grad_intermediates, false_grad_intermediates)
-
-  true_grad_graph.outputs.extend(extra_true_grad_outputs)
-  false_grad_graph.outputs.extend(extra_false_grad_outputs)
-
-  # Create the gradient If op.
-  tensors = gen_functional_ops._if(
-      op.inputs[0],
-      grad_inputs, [t.dtype for t in true_grad_graph.outputs],
-      util.create_new_tf_function(true_grad_graph),
-      util.create_new_tf_function(false_grad_graph),
-      output_shapes=_get_output_shapes(true_grad_graph.outputs,
-                                       false_grad_graph.outputs))
-
-  util.maybe_set_lowering_attr(tensors[0].op)
-
-  # See comment in cond_v2.
-  tensors = [array_ops.identity(t) for t in tensors]
+  outputs = _build_cond(op.inputs[0], true_grad_graph, false_grad_graph,
+                        true_grad_inputs, false_grad_inputs)
 
   # The predicate has no gradient.
-  return [None] + tensors[:num_grad_outputs]
+  return [None] + outputs
+
+
+def _build_cond(pred, true_graph, false_graph, true_inputs, false_inputs,
+                name=None):
+  """Creates an If op from the specified predicate, branch functions and inputs.
+
+  Note that this modifies true_graph and false_graph to make the inputs match,
+  and to output all intermediates values so they're available for the gradient
+  computation.
+
+  true_graph and false_graph need not have the same input types, but they must
+  have the same outpute types.
+
+  Args:
+    pred: boolean Tensor
+    true_graph: FuncGraph
+    false_graph: FuncGraph
+    true_inputs: a list of Tensors to be passed to true_graph as input.
+    false_inputs: a list of Tensors to be passed to false_graph as input.
+    name: the name for the If op.
+
+  Returns:
+    A list of Tensors which are the outputs of the If op. Does not include added
+    intermediate outputs.
+  """
+  _check_same_outputs(true_graph, false_graph)
+
+  # Add inputs to true_graph and false_graph to make them match. Note that
+  # this modifies true_graph and false_graph.
+  cond_inputs = _make_inputs_match(true_graph, false_graph,
+                                   true_inputs, false_inputs)
+
+  # Add all intermediate tensors as function outputs so they're available for
+  # the gradient computation.
+
+  true_intermediates = _get_intermediates(true_graph)
+  false_intermediates = _get_intermediates(false_graph)
+
+  # Save the original number of outputs to return to the caller.
+  num_cond_outputs = len(true_graph.outputs)
+
+  # Make the number/type of new intermediate outputs match.
+  extra_true_outputs, extra_false_outputs = _pad_params(
+      true_graph, false_graph, true_intermediates, false_intermediates)
+
+  true_graph.outputs.extend(extra_true_outputs)
+  false_graph.outputs.extend(extra_false_outputs)
+
+  # Create the If op.
+  tensors = gen_functional_ops._if(  # pylint: disable=protected-access
+      pred,
+      cond_inputs, [t.dtype for t in true_graph.outputs],
+      util.create_new_tf_function(true_graph),
+      util.create_new_tf_function(false_graph),
+      output_shapes=_get_output_shapes(true_graph.outputs,
+                                       false_graph.outputs),
+      name=name)
+
+  # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
+  util.maybe_set_lowering_attr(tensors[0].op)
+
+  # Return identities for each output of the If op, rather than the output of
+  # the If op directly. This makes pruning work if the output of cond() is
+  # fetched: the lowering pass converts the If outputs into IdentityN outputs,
+  # which if fetched will cause all ops in the taken branch to be run (since
+  # it takes all merge ops as input). After lowering, each output identity op
+  # will end up with only the appropriate merge op as input.
+  # TODO(b/79984175): this doesn't have to be a tuple once we covert to the
+  # correct output structure
+  tensors = [array_ops.identity(t) for t in tensors]
+
+  return tensors[:num_cond_outputs]
 
 
 def _get_func_graphs(if_op):
