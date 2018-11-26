@@ -3596,9 +3596,7 @@ py_library(
     srcs = ["training/device_util.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":device",
-        ":framework_ops",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python/distribute:device_util",
     ],
 )
 
@@ -3610,35 +3608,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":array_ops",
-        ":constant_op",
-        ":control_flow_ops",
-        ":device_util",
-        ":dtypes",
-        ":framework_ops",
-        ":platform",
-        ":resource_variable_ops",
-        ":state_ops",
-        ":util",
-        ":variable_scope",
-        "//tensorflow/python/data",
-        "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/ops/losses",
-        "//tensorflow/tools/docs:doc_controls",
-    ],
-)
-
-py_test(
-    name = "distribute_test",
-    size = "small",
-    srcs = ["training/distribute_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":client_testlib",
-        ":constant_op",
-        ":distribute",
-        ":dtypes",
-        ":variable_scope",
+        "//tensorflow/python/distribute:distribute_lib",
     ],
 )
 
@@ -4627,7 +4597,6 @@ cuda_py_tests(
         "training/basic_loops_test.py",
         "training/coordinator_test.py",
         "training/device_setter_test.py",
-        "training/device_util_test.py",
         "training/ftrl_test.py",
         "training/gradient_descent_test.py",
         "training/learning_rate_decay_test.py",

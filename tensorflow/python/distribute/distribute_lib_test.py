@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
-from tensorflow.python.training import distribute as distribute_lib
-from tensorflow.python.training import distribution_strategy_context
 
 
 class _TestReplicaContext(distribute_lib.ReplicaContext):

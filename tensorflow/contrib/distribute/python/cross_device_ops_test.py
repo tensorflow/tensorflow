@@ -29,6 +29,7 @@ from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
@@ -37,7 +38,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import device_util
 
 
 def _make_per_replica(values, devices, regroup=False):

@@ -28,6 +28,7 @@ from tensorflow.contrib.distribute.python import combinations
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import training
 from tensorflow.python.estimator.canned import dnn_linear_combined
@@ -46,7 +47,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
-from tensorflow.python.training import distribution_strategy_context as ds_context
 
 
 class KerasOptimizerV2IntegrationTest(test.TestCase, parameterized.TestCase):
