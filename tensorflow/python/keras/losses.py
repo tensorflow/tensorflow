@@ -133,6 +133,117 @@ class MeanSquaredError(Loss):
     return mean_squared_error(y_true, y_pred)
 
 
+class MeanAbsoluteError(Loss):
+  """Computes the mean of absolute difference between labels and predictions.
+
+  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
+  then the mean absolute error value is 3/4 (0.75).
+
+  Usage:
+
+  ```python
+  mae = tf.losses.MeanAbsoluteError()
+  loss = mae([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Loss: ', loss.numpy())  # Loss: 0.75
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.MeanAbsoluteError())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Invokes the `MeanAbsoluteError` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Mean absolute error losses.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return mean_absolute_error(y_true, y_pred)
+
+
+class MeanAbsolutePercentageError(Loss):
+  """Computes the mean absolute percentage error between `y_true` and `y_pred`.
+
+  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
+  then the mean absolute percentage error value is 5e+08.
+
+  Usage:
+
+  ```python
+  mape = tf.losses.MeanAbsolutePercentageError()
+  loss = mape([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Loss: ', loss.numpy())  # Loss: 5e+08
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.MeanAbsolutePercentageError())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Invokes the `MeanAbsolutePercentageError` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Mean absolute percentage error losses.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return mean_absolute_percentage_error(y_true, y_pred)
+
+
+class MeanSquaredLogarithmicError(Loss):
+  """Computes the mean squared logarithmic error between `y_true` and `y_pred`.
+
+  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
+  then the mean squared logarithmic error value is 0.36034.
+
+  Usage:
+
+  ```python
+  msle = tf.losses.MeanSquaredLogarithmicError()
+  loss = msle([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Loss: ', loss.numpy())  # Loss: 0.36034
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.MeanSquaredLogarithmicError())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Invokes the `MeanSquaredLogarithmicError` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Mean squared logarithmic error losses.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return mean_squared_logarithmic_error(y_true, y_pred)
+
+
 @tf_export('keras.metrics.mean_squared_error',
            'keras.metrics.mse',
            'keras.metrics.MSE',
