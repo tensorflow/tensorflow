@@ -120,6 +120,17 @@ inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
   return trt_dims;
 }
 
+inline nvinfer1::Dims VectorToTrtDims(const std::vector<int>& shape,
+                                      bool ignore_first_dim = false) {
+  nvinfer1::Dims trt_dims;
+  const int offset = (ignore_first_dim ? 1 : 0);
+  for (int i = offset; i < shape.size(); i++) {
+    trt_dims.d[i - offset] = shape[i];
+  }
+  trt_dims.nbDims = shape.size() - offset;
+  return trt_dims;
+}
+
 void GetOutputProperties(const grappler::GraphProperties& graph_properties,
                          const Node* node, const int out_port,
                          PartialTensorShape* shape,
@@ -1923,10 +1934,9 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
 
   // ExpandDims: Insert new dim of size 1.
   input_dims.insert(input_dims.begin()+axis, 1);
-  // Convert input_dims vector into nvinfer1::Dims.
+  // Reshape tensor.
   const bool ignore_first_dim = input_tensor.is_tensor();
   nvinfer1::Dims new_dims = VectorToTrtDims(input_dims, ignore_first_dim);
-  // Reshape tensor.
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, &output_tensor));
@@ -1988,10 +1998,9 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
   // Remove all dims which are equal to 0.
   input_dims.erase(std::remove(input_dims.begin(), input_dims.end(), 0),
                    input_dims.end());
-  // Convert input_dims vector into nvinfer1::Dims.
+    // Reshape tensor.
   const bool ignore_first_dim = input_tensor.is_tensor();
   nvinfer1::Dims new_dims = VectorToTrtDims(input_dims, ignore_first_dim);
-  // Reshape tensor.
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, &output_tensor));
