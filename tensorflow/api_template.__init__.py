@@ -28,8 +28,6 @@ _component_api_helper.package_hook(
 
 # API IMPORTS PLACEHOLDER
 
-from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
-
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
 # We're using bitwise, but there's nothing special about that.
