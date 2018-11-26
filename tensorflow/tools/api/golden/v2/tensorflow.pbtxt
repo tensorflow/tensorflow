@@ -929,10 +929,6 @@ tf_module {
     argspec: "args=[\'input_shape\', \'block_shape\', \'base_paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
-    name: "reset_default_graph"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "reshape"
     argspec: "args=[\'tensor\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1037,10 +1033,6 @@ tf_module {
     argspec: "args=[\'axis\', \'sp_inputs\', \'expand_nonconcat_dim\', \'concat_dim\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\'], "
   }
   member_method {
-    name: "sparse_to_dense"
-    argspec: "args=[\'sparse_indices\', \'output_shape\', \'sparse_values\', \'default_value\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'True\', \'None\'], "
-  }
-  member_method {
     name: "split"
     argspec: "args=[\'value\', \'num_or_size_splits\', \'axis\', \'num\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'split\'], "
   }
@@ -1109,10 +1101,6 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "truncated_normal"
-    argspec: "args=[\'shape\', \'mean\', \'stddev\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\', \'None\'], "
-  }
-  member_method {
     name: "truncatediv"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1139,10 +1127,6 @@ tf_module {
   member_method {
     name: "unstack"
     argspec: "args=[\'value\', \'num\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'unstack\'], "
-  }
-  member_method {
-    name: "variable_axis_size_partitioner"
-    argspec: "args=[\'max_shard_bytes\', \'axis\', \'bytes_per_string_element\', \'max_shards\'], varargs=None, keywords=None, defaults=[\'0\', \'16\', \'None\'], "
   }
   member_method {
     name: "variable_creator_scope"
