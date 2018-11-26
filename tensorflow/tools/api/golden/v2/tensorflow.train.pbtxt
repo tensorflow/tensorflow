@@ -113,10 +113,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "LooperThread"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "MomentumOptimizer"
     mtype: "<type \'type\'>"
   }
