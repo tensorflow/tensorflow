@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/wide_const_finder.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
-#include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
@@ -287,7 +286,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   {
     HloPassPipeline pipeline("IPU");
-    pipeline.AddPass<BatchNormExpander>(false, false, true);
     pipeline.AddPass<GatherExpander>();
     pipeline.AddPass<ScatterExpander>();
     pipeline.AddPass<DotDecomposer>();
