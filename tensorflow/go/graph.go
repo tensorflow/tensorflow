@@ -174,6 +174,68 @@ func (g *Graph) Operations() []Operation {
 	return ops
 }
 
+// AddGradients adds operations to compute the partial derivatives of the sum of tensors in y
+// with respect to tensors in x, i.e., d(y[0] + y[1] + ...) / d x[0], d(y[0] + y[1] + ... ) / d x[1] etc.
+//
+// prefix, if non-empty, is the name prefix used for all operations added to the graph to compute
+// these gradients.
+func (g *Graph) AddGradients(prefix string, y []Output, x []Output, dx []Output) ([]Output, error) {
+	var (
+		cprefix *C.char
+
+		cy  = make([]C.TF_Output, len(y))
+		cx  = make([]C.TF_Output, len(x))
+		cdx = make([]C.TF_Output, len(dx))
+		cdy = make([]C.TF_Output, len(x))
+
+		pcy  *C.TF_Output
+		pcx  *C.TF_Output
+		pcdx *C.TF_Output
+		pcdy *C.TF_Output
+
+		status = newStatus()
+	)
+
+	if len(y) > 0 {
+		pcy = &cy[0]
+		for i, o := range y {
+			cy[i] = o.c()
+		}
+	}
+	if len(x) > 0 {
+		pcx = &cx[0]
+		for i, o := range x {
+			cx[i] = o.c()
+		}
+		pcdy = &cdy[0]
+	}
+	if len(dx) > 0 {
+		pcdx = &cdx[0]
+		for i, o := range dx {
+			cdx[i] = o.c()
+		}
+	}
+
+	// If prefix is "", the C.TF_AddGradientsWithPrefix need cprefix to be nil but not ""
+	if len(prefix) != 0 {
+		cprefix = C.CString(prefix)
+		defer C.free(unsafe.Pointer(cprefix))
+	}
+
+	C.TF_AddGradientsWithPrefix(g.c, cprefix, pcy, C.int(len(y)), pcx, C.int(len(x)), pcdx, status.c, pcdy)
+
+	if err := status.Err(); err != nil {
+		return nil, err
+	}
+	dy := make([]Output, len(x))
+	for i, co := range cdy {
+		op := &Operation{co.oper, g}
+		dy[i] = Output{op, int(co.index)}
+	}
+
+	return dy, nil
+}
+
 // OpSpec is the specification of an Operation to be added to a Graph
 // (using Graph.AddOperation).
 type OpSpec struct {
