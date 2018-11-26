@@ -707,8 +707,10 @@ class FusedConv2DOpTest : public OpsTestBase {
     Tensor image(dtype, {image_batch_count, image_height, image_width, depth});
     image.flat<T>() = image.flat<T>().setRandom();
 
+    // Add some negative values to filter to properly test Relu.
     Tensor filter(dtype, {filter_size, filter_size, depth, filter_count});
     filter.flat<T>() = filter.flat<T>().setRandom();
+    filter.flat<T>() -= filter.flat<T>().constant(static_cast<T>(0.5f));
 
     const int bias_size = filter_count;
     Tensor bias(dtype, {bias_size});
@@ -744,8 +746,10 @@ class FusedConv2DOpTest : public OpsTestBase {
     Tensor image(dtype, {image_batch_count, image_height, image_width, depth});
     image.flat<T>() = image.flat<T>().setRandom();
 
+    // Add some negative values to filter to properly test Relu.
     Tensor filter(dtype, {filter_size, filter_size, depth, filter_count});
     filter.flat<T>() = filter.flat<T>().setRandom();
+    filter.flat<T>() -= filter.flat<T>().constant(static_cast<T>(0.5f));
 
     const int scale_size = filter_count;
 
