@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
@@ -462,6 +463,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
                                   CallFrameInterface* call_frame,
                                   ExecutorsAndKeys* executors_and_keys,
                                   RunMetadata* run_metadata) {
+  const uint64 start_time_usecs = Env::Default()->NowMicros();
   string session_id_meta = strings::StrCat("SessionRun #id=", step_id, "#");
   tracing::ScopedActivity activity(session_id_meta);
 
@@ -716,6 +718,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       exec_and_lib.graph->ToGraphDef(partition_graph_def);
     }
   }
+  UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
 
   return Status::OK();
 }

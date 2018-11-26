@@ -425,6 +425,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:metrics",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/debug",
