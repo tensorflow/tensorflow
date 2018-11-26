@@ -1380,7 +1380,12 @@ static void PackRhsHelper(int iters,
                           /* Filter (kernel) dimensions: */
                           int filter_count, int filter_cols, int filter_rows,
                           /* Input strides: */
-                          int col_strides, int row_strides) {
+                          int col_strides, int row_strides,
+                          /* Block dimensions: */
+                          Index block_rows, Index block_cols) {
+  // Set random seed for benchmark repeatability.
+  srand(12345);
+
   tensorflow::testing::UseRealTime();
   tensorflow::testing::StopTiming();
 
@@ -1508,10 +1513,6 @@ static void PackRhsHelper(int iters,
 
   PackRhsImpl pack_rhs;
 
-  // This is the typical size of the rhs block used in Tensor contractions.
-  const Index default_depth = 320;  // must be multiple of 8
-  const Index default_cols = 280;
-
   const Index packed_total_size = input_dims.TotalSize();
 
   tensorflow::testing::StartTiming();
@@ -1520,11 +1521,14 @@ static void PackRhsHelper(int iters,
         num_inputs == 1 ? 1 : internal::random<int>(0, num_inputs - 1);
 
     // Depth offset must be a multiple of 8 (float packet size with AVX2).
-    Index depth_offset = (internal::random<Index>(0, patch_size - 10) / 8) * 8;
+    Index depth_offset =
+        (patch_size > block_rows)
+            ? (internal::random<Index>(0, patch_size - 10) / 8) * 8
+            : 0;
     Index col_offset = internal::random<Index>(0, num_patches - 10);
 
-    Index depth = std::min(default_depth, patch_size - depth_offset);
-    Index cols = std::min(default_cols, num_patches - col_offset);
+    Index depth = std::min(block_rows, patch_size - depth_offset);
+    Index cols = std::min(block_cols, num_patches - col_offset);
 
     // Write packed data to random memory location to emulate cold caches.
     Index packed_size = depth * cols;
@@ -1538,20 +1542,37 @@ static void PackRhsHelper(int iters,
   tensorflow::testing::StopTiming();
 
   std::ostringstream stringStream;
-  stringStream << "patch: depth=" << patch_depth << " rows=" << patch_rows
-               << " cols=" << patch_cols << " num_patches=" << num_patches
+  stringStream << "patch: " << patch_rows << "x" << patch_cols << " D"
+               << patch_depth << "; num_patches=" << num_patches
                << " patch_size=" << patch_size << " num_inputs=" << num_inputs;
   tensorflow::testing::SetLabel(stringStream.str());
 }
 
-#define BM_NAME(prefix, N, H, W, C, FC, FH, FW, SH, SW) \
-  BM_##prefix##_##N##_##H##x##W##_IC##C##_FC##FC##_##FH##x##FW##_s##SH##x##SW
+// -------------------------------------------------------------------------- //
+// Macro argumentnames:
+//    N: batch size
+//    H: height
+//    W: width
+//    C: input channels
+//   FC: filter channles
+//   FH: filter height
+//   SH: stride in height dimensions
+//   SW: stride in width dimensions
+//   BR: block rows
+//   BC: block cols
 
-#define BM_PackRhs(N, H, W, C, FC, FH, FW, SH, SW)                          \
-  static void BM_NAME(PackRhs, N, H, W, C, FC, FH, FW, SH, SW)(int iters) { \
-    PackRhsHelper(iters, N, H, W, C, FC, FH, FW, SH, SW);                   \
-  }                                                                         \
-  BENCHMARK(BM_NAME(PackRhs, N, H, W, C, FC, FH, FW, SH, SW))
+#define BM_CONCAT(a, b) a##b
+
+#define BM_NAME(prefix, N, H, W, C, FC, FH, FW, SH, SW, BR, BC)           \
+  BM_CONCAT(BM_##prefix##_##N##_##H##x##W##_IC##C##_FC##FC##_##FH##x##FW, \
+            _s##SH##x##SW##_B##BR##x##BC)
+
+#define BM_PackRhs(N, H, W, C, FC, FH, FW, SH, SW, BR, BC)         \
+  static void BM_NAME(PackRhs, N, H, W, C, FC, FH, FW, SH, SW, BR, \
+                      BC)(int iters) {                             \
+    PackRhsHelper(iters, N, H, W, C, FC, FH, FW, SH, SW, BR, BC);  \
+  }                                                                \
+  BENCHMARK(BM_NAME(PackRhs, N, H, W, C, FC, FH, FW, SH, SW, BR, BC))
 
 // Number of input channel (input depth) it equal to the number of patch
 // channels (patch depth).
@@ -1563,14 +1584,16 @@ BM_PackRhs(/*batch*/ 32,        //
            /*channels*/ 32,     //
            /*num_filters*/ 64,  //
            /*filter*/ 5, 5,     //
-           /*stride*/ 1, 1);
+           /*stride*/ 1, 1,     //
+           /*block*/ 256, 56);
 
 BM_PackRhs(/*batch*/ 32,        //
            /*image*/ 64, 64,    //
            /*channels*/ 32,     //
            /*num_filters*/ 64,  //
            /*filter*/ 5, 5,     //
-           /*stride*/ 2, 2);
+           /*stride*/ 2, 2,     //
+           /*block*/ 256, 56);
 
 // Slow path: input channel dimension is not the multiple of the packet size.
 BM_PackRhs(/*batch*/ 32,        //
@@ -1578,12 +1601,48 @@ BM_PackRhs(/*batch*/ 32,        //
            /*channels*/ 30,     //
            /*num_filters*/ 64,  //
            /*filter*/ 5, 5,     //
-           /*stride*/ 1, 1);
+           /*stride*/ 1, 1,     //
+           /*block*/ 256, 56);
 
 BM_PackRhs(/*batch*/ 32,        //
            /*image*/ 64, 64,    //
            /*channels*/ 30,     //
            /*num_filters*/ 64,  //
            /*filter*/ 5, 5,     //
-           /*stride*/ 2, 2);
+           /*stride*/ 2, 2,     //
+           /*block*/ 256, 56);
+
+// Slow path with input channel dimension smaller than the packet size.
+BM_PackRhs(/*batch*/ 32,        //
+           /*image*/ 256, 256,  //
+           /*channels*/ 4,      //
+           /*num_filters*/ 16,  //
+           /*filter*/ 8, 8,     //
+           /*stride*/ 1, 1,     //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*batch*/ 32,        //
+           /*image*/ 256, 256,  //
+           /*channels*/ 4,      //
+           /*num_filters*/ 16,  //
+           /*filter*/ 8, 8,     //
+           /*stride*/ 2, 4,     //
+           /*block*/ 256, 56);
+
+// Short and wide block with small input channel dimension.
+BM_PackRhs(/*batch*/ 32,        //
+           /*image*/ 64, 64,    //
+           /*channels*/ 4,      //
+           /*num_filters*/ 16,  //
+           /*filter*/ 3, 3,     //
+           /*stride*/ 1, 1,     //
+           /*block*/ 36, 432);
+
+BM_PackRhs(/*batch*/ 32,        //
+           /*image*/ 64, 64,    //
+           /*channels*/ 4,      //
+           /*num_filters*/ 16,  //
+           /*filter*/ 3, 3,     //
+           /*stride*/ 2, 2,     //
+           /*block*/ 36, 432);
 }  // namespace Eigen
