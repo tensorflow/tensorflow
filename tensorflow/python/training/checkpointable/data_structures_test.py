@@ -253,6 +253,13 @@ class ListTests(test.TestCase):
     l.append(1)
     self.assertEqual([1], l_wrapper)
 
+  def testLayerCollectionWithExternalMutation(self):
+    l = []
+    l_wrapper = data_structures._ListWrapper(l)
+    layer = core.Dense(1)
+    l.append(layer)
+    self.assertEqual([layer], l_wrapper.layers)
+
   def testHashing(self):
     has_sequences = set([data_structures.List(),
                          data_structures.List()])
@@ -323,6 +330,16 @@ class MappingTests(test.TestCase):
     mapping = data_structures.Mapping()
     with self.assertRaises(TypeError):
       mapping[1] = data_structures.List()
+
+  def testLayerCollectionWithExternalMutation(self):
+    d = {}
+    root = tracking.Checkpointable()
+    root.wrapper = d
+    layer1 = core.Dense(1)
+    layer2 = core.Dense(1)
+    d["a"] = layer1
+    d["b"] = layer2
+    self.assertEqual([layer1, layer2], root.wrapper.layers)
 
   def testHashing(self):
     has_mappings = set([data_structures.Mapping(),
