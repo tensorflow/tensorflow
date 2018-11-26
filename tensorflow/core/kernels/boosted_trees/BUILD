@@ -2,7 +2,10 @@
 #   OpKernels for boosted trees ops.
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow:internal",
+    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -15,7 +18,9 @@ load(
 
 tf_proto_library(
     name = "boosted_trees_proto",
-    srcs = ["boosted_trees.proto"],
+    srcs = [
+        "boosted_trees.proto",
+    ],
     cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
@@ -87,9 +92,21 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "quantile_ops",
+    srcs = ["quantile_ops.cc"],
+    deps = [
+        "//tensorflow/core:boosted_trees_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles",
+    ],
+)
+
+tf_kernel_library(
     name = "boosted_trees_ops",
     deps = [
         ":prediction_ops",
+        ":quantile_ops",
         ":resource_ops",
         ":stats_ops",
         ":training_ops",

@@ -38,6 +38,7 @@ TARGETS+=" //tensorflow/core/common_runtime/eager:execute"
 bazel --bazelrc=/dev/null build \
     --compilation_mode=opt --cxxopt=-std=c++11 --fat_apk_cpu=x86_64 \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
+    --define=grpc_no_ares=true \
     ${TARGETS}
 
 echo "========== Makefile Build Test =========="

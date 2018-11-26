@@ -20,12 +20,12 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -57,7 +57,7 @@ class TransferManager {
   // without waiting for any other operation on a stream to complete.
   //
   // This function should be avoided in favor of the asynchronous version below.
-  virtual StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
+  virtual StatusOr<Literal> TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer);
   virtual Status TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
@@ -95,7 +95,13 @@ class TransferManager {
   // but need not have the same layout.
   //
   // This operation is performed asynchronously on the given stream. It returns
-  // once the transfer is enqueued.
+  // once the transfer is enqueued, and may return before the transfer has
+  // completed.
+  //
+  // The caller may free the data structures 'literal' and 'device_buffer'
+  // immediately after this function returns, however their constituent buffers
+  // on both host and device must remain valid until the enqueued transfer has
+  // completed on 'stream'.
   virtual Status TransferLiteralToDeviceAsync(
       se::Stream* stream, const LiteralSlice& literal,
       const ShapedBuffer& device_buffer) = 0;
@@ -113,9 +119,9 @@ class TransferManager {
   Status TransferArrayToDeviceAsync(se::Stream* stream,
                                     const LiteralSlice& literal,
                                     const se::DeviceMemoryBase& dest);
-  StatusOr<std::unique_ptr<Literal>> TransferArrayFromDevice(
-      se::Stream* stream, const Shape& shape,
-      const se::DeviceMemoryBase& source);
+  StatusOr<Literal> TransferArrayFromDevice(se::Stream* stream,
+                                            const Shape& shape,
+                                            const se::DeviceMemoryBase& source);
 
   // Transfers the given literal into the Infeed interface of the device,
   // using the given executor.
@@ -130,7 +136,7 @@ class TransferManager {
 
   // Resets the devices associated with this transfer manager.
   virtual Status ResetDevices(
-      tensorflow::gtl::ArraySlice<se::StreamExecutor*> executor) = 0;
+      absl::Span<se::StreamExecutor* const> executor) = 0;
 
   // Given an allocated ShapedBuffer, constructs the tuple index table(s) in
   // each buffer of the given ShapedBuffer corresponding to tuple shapes. If the
@@ -151,6 +157,26 @@ class TransferManager {
   StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
       const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
       int device_ordinal);
+
+  // The given ShapedBuffer holds a handle to allocated memory, but it is not
+  // in the general case legal to immediately copy or access that allocated
+  // memory because queued operations on the device may alias that memory.
+  // Memory ordering is enforced by the Stream's happens-before relationship
+  // which allows eager deallocation and reallocation of buffers host-side even
+  // if the device hasn't finished with them.
+  //
+  // In certain cases, it can be known that a ShapedBuffer does not have any
+  // conflicting accesses on the device and thus is eligible to be accessed at
+  // any time from the host.
+  //
+  // This function returns true if device_buffer can be accessed immediately
+  // without waiting for the Stream's previously enqueued items. This only
+  // returns true if all subbuffers in device_buffer can be accessed
+  // immediately.
+  virtual bool CanShapedBufferBeAccessedNow(
+      se::StreamExecutor* executor, const ShapedBuffer& device_buffer) const {
+    return false;
+  }
 
   /////
   // The TransferManager class also serves as a point to register objects for
@@ -191,8 +217,7 @@ class TransferManager {
   // to construct a tuple index table in the platform-specific tuple
   // representation.
   virtual Status WriteSingleTupleIndexTable(
-      se::Stream* stream,
-      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
+      se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) = 0;
 
  private:

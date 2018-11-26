@@ -15,8 +15,8 @@ limitations under the License.
 
 // Helper functions to run 3d pooling on GPU using CuDNN.
 
-#ifndef TENSORFLOW_KERNELS_CUDNN_POOLING_GPU_H_
-#define TENSORFLOW_KERNELS_CUDNN_POOLING_GPU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CUDNN_POOLING_GPU_H_
+#define TENSORFLOW_CORE_KERNELS_CUDNN_POOLING_GPU_H_
 
 #include <array>
 
@@ -67,4 +67,4 @@ class DnnPooling3dGradOp {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CUDNN_POOLING_GPU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CUDNN_POOLING_GPU_H_

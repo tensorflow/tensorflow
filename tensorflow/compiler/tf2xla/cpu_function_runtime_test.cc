@@ -21,6 +21,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using cpu_function_runtime::BufferInfo;
+
 TEST(XlaCompiledCpuFunctionTest, AlignmentValue) {
   // We've chosen 64 byte alignment for the tfcompile runtime to mimic the
   // regular tensorflow allocator, which was chosen to play nicely with Eigen.
@@ -30,20 +32,51 @@ TEST(XlaCompiledCpuFunctionTest, AlignmentValue) {
   EXPECT_EQ(cpu_function_runtime::kAlign, Allocator::kAllocatorAlignment);
 }
 
+std::vector<BufferInfo> SizesToBufferInfos(const intptr_t* sizes, size_t n) {
+  std::vector<BufferInfo> buffer_infos;
+  std::transform(sizes, sizes + n, std::back_inserter(buffer_infos),
+                 [&](intptr_t size) {
+                   if (size == -1) {
+                     // Use a dummy on-stack buffer allocation to indicat the
+                     // the current slot does not need an allocation.
+                     int64 on_stack_buffer_size = 4;
+                     return BufferInfo::MakeOnStackBuffer(on_stack_buffer_size);
+                   }
+                   return BufferInfo::MakeTempBuffer(size);
+                 });
+  return buffer_infos;
+}
+
+// Simple wrappers to make writing tests more ergonomic.
+
+size_t AlignedBufferBytesFromSizes(const intptr_t* sizes, size_t n) {
+  std::vector<BufferInfo> buffer_infos = SizesToBufferInfos(sizes, n);
+  return AlignedBufferBytes(buffer_infos.data(), n,
+                            /*allocate_entry_params=*/false);
+}
+
+void* MallocContiguousBuffersFromSizes(const intptr_t* sizes, size_t n,
+                                       void** bufs, bool annotate_initialized) {
+  std::vector<BufferInfo> buffer_infos = SizesToBufferInfos(sizes, n);
+  return MallocContiguousBuffers(buffer_infos.data(), n,
+                                 /*allocate_entry_params=*/false, bufs,
+                                 annotate_initialized);
+}
+
 TEST(XlaCompiledCpuFunctionTest, AlignedBufferBytes) {
-  EXPECT_EQ(cpu_function_runtime::AlignedBufferBytes(nullptr, 0), 0);
+  EXPECT_EQ(AlignedBufferBytesFromSizes(nullptr, 0), 0);
 
   static constexpr intptr_t sizesA[1] = {-1};
-  EXPECT_EQ(cpu_function_runtime::AlignedBufferBytes(sizesA, 1), 0);
+  EXPECT_EQ(AlignedBufferBytesFromSizes(sizesA, 1), 0);
 
   static constexpr intptr_t sizesB[1] = {3};
-  EXPECT_EQ(cpu_function_runtime::AlignedBufferBytes(sizesB, 1), 64);
+  EXPECT_EQ(AlignedBufferBytesFromSizes(sizesB, 1), 64);
 
   static constexpr intptr_t sizesC[1] = {32};
-  EXPECT_EQ(cpu_function_runtime::AlignedBufferBytes(sizesC, 1), 64);
+  EXPECT_EQ(AlignedBufferBytesFromSizes(sizesC, 1), 64);
 
   static constexpr intptr_t sizesD[7] = {1, -1, 32, -1, 64, 2, 3};
-  EXPECT_EQ(cpu_function_runtime::AlignedBufferBytes(sizesD, 7), 320);
+  EXPECT_EQ(AlignedBufferBytesFromSizes(sizesD, 7), 320);
 }
 
 void* add_ptr(void* base, uintptr_t delta) {
@@ -56,15 +89,14 @@ void* add_ptr(void* base, uintptr_t delta) {
 // free.  We also check the contiguous property.
 TEST(XlaCompiledCpuFunctionTest, MallocFreeContiguousBuffers) {
   // Test empty sizes.
-  void* base =
-      cpu_function_runtime::MallocContiguousBuffers(nullptr, 0, nullptr, false);
+  void* base = MallocContiguousBuffersFromSizes(nullptr, 0, nullptr, false);
   EXPECT_EQ(base, nullptr);
   cpu_function_runtime::FreeContiguous(base);
 
   // Test non-empty sizes with 0 sum.
   static constexpr intptr_t sizesA[1] = {-1};
   void* bufA[1];
-  base = cpu_function_runtime::MallocContiguousBuffers(sizesA, 1, bufA, false);
+  base = MallocContiguousBuffersFromSizes(sizesA, 1, bufA, false);
   EXPECT_EQ(base, nullptr);
   EXPECT_EQ(bufA[0], nullptr);
   cpu_function_runtime::FreeContiguous(base);
@@ -72,7 +104,7 @@ TEST(XlaCompiledCpuFunctionTest, MallocFreeContiguousBuffers) {
   // Test non-empty sizes with non-0 sum.
   static constexpr intptr_t sizesB[1] = {3};
   void* bufB[1];
-  base = cpu_function_runtime::MallocContiguousBuffers(sizesB, 1, bufB, false);
+  base = MallocContiguousBuffersFromSizes(sizesB, 1, bufB, false);
   EXPECT_NE(base, nullptr);
   EXPECT_EQ(bufB[0], add_ptr(base, 0));
   char* bufB0_bytes = static_cast<char*>(bufB[0]);
@@ -84,7 +116,7 @@ TEST(XlaCompiledCpuFunctionTest, MallocFreeContiguousBuffers) {
   // Test non-empty sizes with non-0 sum, and annotate_initialized.
   static constexpr intptr_t sizesC[1] = {3};
   void* bufC[1];
-  base = cpu_function_runtime::MallocContiguousBuffers(sizesC, 1, bufC, true);
+  base = MallocContiguousBuffersFromSizes(sizesC, 1, bufC, true);
   EXPECT_NE(base, nullptr);
   EXPECT_EQ(bufC[0], add_ptr(base, 0));
   char* bufC0_bytes = static_cast<char*>(bufC[0]);
@@ -96,7 +128,7 @@ TEST(XlaCompiledCpuFunctionTest, MallocFreeContiguousBuffers) {
   // Test mixed sizes.
   static constexpr intptr_t sizesD[7] = {1, -1, 32, -1, 64, 2, 3};
   void* bufD[7];
-  base = cpu_function_runtime::MallocContiguousBuffers(sizesD, 7, bufD, false);
+  base = MallocContiguousBuffersFromSizes(sizesD, 7, bufD, false);
   EXPECT_NE(base, nullptr);
   EXPECT_EQ(bufD[0], add_ptr(base, 0));
   EXPECT_EQ(bufD[1], nullptr);
@@ -115,6 +147,24 @@ TEST(XlaCompiledCpuFunctionTest, MallocFreeContiguousBuffers) {
     }
   }
   cpu_function_runtime::FreeContiguous(base);
+}
+
+void CheckRoundTripIsOk(const BufferInfo& buffer_info) {
+  BufferInfo round_trip(buffer_info.Encode());
+  ASSERT_EQ(round_trip, buffer_info);
+}
+
+TEST(XlaCompiledCpuFunctionTest, BufferInfoTest) {
+  CheckRoundTripIsOk(BufferInfo::MakeTempBuffer(0));
+  CheckRoundTripIsOk(BufferInfo::MakeTempBuffer(4));
+  CheckRoundTripIsOk(BufferInfo::MakeOnStackBuffer(0));
+  CheckRoundTripIsOk(BufferInfo::MakeOnStackBuffer(4));
+  CheckRoundTripIsOk(BufferInfo::MakeConstant(0));
+  CheckRoundTripIsOk(BufferInfo::MakeConstant(4));
+  CheckRoundTripIsOk(
+      BufferInfo::MakeEntryParameter(/*size=*/0, /*param_number=*/4));
+  CheckRoundTripIsOk(
+      BufferInfo::MakeEntryParameter(/*size=*/4, /*param_number=*/0));
 }
 
 }  // namespace

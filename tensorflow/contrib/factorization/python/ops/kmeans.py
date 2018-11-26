@@ -26,7 +26,7 @@ from tensorflow.contrib.factorization.python.ops import clustering_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.export import export_output
-from tensorflow.python.feature_column import feature_column as fc
+from tensorflow.python.feature_column import feature_column_lib as fc
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -188,7 +188,6 @@ class _ModelFn(object):
     #   center.
     # is_initialized: scalar indicating whether the initial cluster centers
     #   have been chosen; see init_op.
-    # cluster_centers_var: a Variable containing the cluster centers.
     # init_op: an op to choose the initial cluster centers. A single worker
     #   repeatedly executes init_op until is_initialized becomes True.
     # training_op: an op that runs an iteration of training, either an entire

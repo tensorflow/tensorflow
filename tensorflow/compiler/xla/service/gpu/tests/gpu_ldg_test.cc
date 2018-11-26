@@ -20,8 +20,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -48,7 +48,7 @@ TEST_F(GpuLdgTest, LdgForParamRead) {
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param, param));
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompileAndVerifyPtx(std::move(hlo_module), R"(
@@ -73,7 +73,7 @@ TEST_F(GpuLdgTest, LdgForNonParamRead) {
   builder.AddInstruction(HloInstruction::CreateTuple({add, square}));
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompileAndVerifyPtx(std::move(hlo_module), R"(
@@ -95,7 +95,7 @@ TEST_F(GpuLdgTest, LdgForNonParamRead) {
 // reduce in the foreseeable future.  But if that turns out to be wrong, I give
 // you, future reader, permission to delete this test.
 TEST_F(GpuLdgTest, NoLdgWhenSharingBuffer) {
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
 
   HloComputation* reduce_computation;

@@ -418,8 +418,13 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
 }  // namespace
 
-GrpcWorker::GrpcWorker(WorkerEnv* worker_env)
-    : Worker(worker_env), recent_request_ids_(100000) {}
+GrpcWorker::GrpcWorker(WorkerEnv* worker_env, const ConfigProto& config)
+    : Worker(worker_env),
+      recent_request_ids_(100000),
+      recv_buf_max_chunk_(
+          config.experimental().recv_buf_max_chunk() > 0
+              ? config.experimental().recv_buf_max_chunk()
+              : (config.experimental().recv_buf_max_chunk() < 0 ? 0 : 4096)) {}
 
 // GrpcRecvTensorAsync: unlike the other Worker methods, which use protocol
 // buffers for a response object, to avoid extra protocol buffer serialization
@@ -505,6 +510,33 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
       });
 }
 
+namespace {
+// If RecvBufRespExtra.tensor_content is a single large string, then gRPC
+// can stall on the recv side when the string buffer needs to be enlarged,
+// since the size is not sent in advance.  Changing this field to a sequence
+// of small strings costs some extra time on the send side, since we do
+// some otherwise unnecessary copies, but it improves runtime overall by
+// improving flow control.  Best performance is likely achieved with a
+// max_chunk_bytes equal to the memory page size.
+//
+// TODO(tucker): When proto3 supports [ctype=CORD] then change
+// RecvBufRespExtra.tensor_content to a cord instead of a repeated string,
+// and remove this function.
+void SetTensorInRecvBufResp(int64 max_chunk_bytes, const Tensor* tensor,
+                            int64 num_bytes, RecvBufResponse* response) {
+  RecvBufRespExtra extra;
+  const char* head = reinterpret_cast<const char*>(DMAHelper::base(tensor));
+  while (num_bytes > 0) {
+    int64 bytes =
+        max_chunk_bytes > 0 ? std::min(num_bytes, max_chunk_bytes) : num_bytes;
+    extra.add_tensor_content(std::string(head, bytes));
+    head += bytes;
+    num_bytes -= bytes;
+  }
+  response->mutable_transport_options()->PackFrom(extra);
+}
+}  // namespace
+
 void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
                               RecvBufResponse* response, StatusCallback done) {
   // This is a generic, low performance implementation appropriate for grpc.
@@ -551,11 +583,8 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
                   [this, num_bytes, response, done, hook,
                    cpu_tensor](const Status& s) {
                     if (s.ok()) {
-                      RecvBufRespExtra extra;
-                      extra.set_tensor_content(reinterpret_cast<const char*>(
-                                                   DMAHelper::base(cpu_tensor)),
-                                               num_bytes);
-                      response->mutable_transport_options()->PackFrom(extra);
+                      SetTensorInRecvBufResp(recv_buf_max_chunk_, cpu_tensor,
+                                             num_bytes, response);
                     }
                     response->set_send_start_micros(env_->env->NowMicros());
                     done(s);
@@ -566,11 +595,8 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
             }
           } else {
             // Tensor is on CPU.
-            RecvBufRespExtra extra;
-            extra.set_tensor_content(reinterpret_cast<const char*>(
-                                         DMAHelper::base(hook->prod_value)),
-                                     num_bytes);
-            response->mutable_transport_options()->PackFrom(extra);
+            SetTensorInRecvBufResp(recv_buf_max_chunk_, hook->prod_value,
+                                   num_bytes, response);
           }
         }
         response->set_send_start_micros(env_->env->NowMicros());
@@ -608,8 +634,9 @@ void GrpcWorker::LoggingAsync(const LoggingRequest* request,
 
 WorkerEnv* GrpcWorker::env() { return env_; }
 
-std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* env) {
-  return std::unique_ptr<GrpcWorker>(new GrpcWorker(env));
+std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* env,
+                                          const ConfigProto& config) {
+  return std::unique_ptr<GrpcWorker>(new GrpcWorker(env, config));
 }
 
 std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(

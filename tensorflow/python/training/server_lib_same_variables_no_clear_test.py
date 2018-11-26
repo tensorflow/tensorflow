@@ -37,8 +37,8 @@ class SameVariablesNoClearTest(test.TestCase):
     server = server_lib.Server.create_local_server()
 
     with session.Session(server.target) as sess_1:
-      v0 = variables.Variable([[2, 1]], name="v0")
-      v1 = variables.Variable([[1], [2]], name="v1")
+      v0 = variables.VariableV1([[2, 1]], name="v0")
+      v1 = variables.VariableV1([[1], [2]], name="v1")
       v2 = math_ops.matmul(v0, v1)
       sess_1.run([v0.initializer, v1.initializer])
       self.assertAllEqual([[4]], sess_1.run(v2))

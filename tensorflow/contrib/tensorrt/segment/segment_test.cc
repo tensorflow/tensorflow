@@ -34,10 +34,13 @@ namespace ops = ::tensorflow::ops;
 
 class SegmentTest : public ::testing::Test {
  protected:
-  std::function<bool(const tensorflow::Node*)> MakeCandidateFn(
+  std::function<Status(const tensorflow::Node*)> MakeCandidateFn(
       const std::set<string>& node_names) {
-    return [node_names](const tensorflow::Node* node) -> bool {
-      return node_names.find(node->name()) != node_names.end();
+    return [node_names](const tensorflow::Node* node) -> Status {
+      if (node_names.find(node->name()) != node_names.end()) {
+        return Status::OK();
+      }
+      return errors::NotFound("");
     };
   }
 

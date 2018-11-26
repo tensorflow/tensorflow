@@ -20,13 +20,25 @@ from __future__ import division
 from __future__ import print_function
 
 from keras_applications import inception_resnet_v2
+
+from tensorflow.python.keras.applications import keras_modules_injection
 from tensorflow.python.util.tf_export import tf_export
 
-InceptionResNetV2 = inception_resnet_v2.InceptionResNetV2
-decode_predictions = inception_resnet_v2.decode_predictions
-preprocess_input = inception_resnet_v2.preprocess_input
 
-tf_export('keras.applications.inception_resnet_v2.InceptionResNetV2',
-          'keras.applications.InceptionResNetV2')(InceptionResNetV2)
-tf_export(
-    'keras.applications.inception_resnet_v2.preprocess_input')(preprocess_input)
+@tf_export('keras.applications.inception_resnet_v2.InceptionResNetV2',
+           'keras.applications.InceptionResNetV2')
+@keras_modules_injection
+def InceptionResNetV2(*args, **kwargs):
+  return inception_resnet_v2.InceptionResNetV2(*args, **kwargs)
+
+
+@tf_export('keras.applications.inception_resnet_v2.decode_predictions')
+@keras_modules_injection
+def decode_predictions(*args, **kwargs):
+  return inception_resnet_v2.decode_predictions(*args, **kwargs)
+
+
+@tf_export('keras.applications.inception_resnet_v2.preprocess_input')
+@keras_modules_injection
+def preprocess_input(*args, **kwargs):
+  return inception_resnet_v2.preprocess_input(*args, **kwargs)

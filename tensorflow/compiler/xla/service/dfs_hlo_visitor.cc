@@ -28,14 +28,14 @@ template <typename HloInstructionPtr>
 Status DfsHloVisitorBase<HloInstructionPtr>::HandleElementwiseUnary(
     HloInstructionPtr hlo) {
   return Unimplemented("DfsHloVisitor::HandleElementwiseUnary: %s",
-                       HloOpcodeString(hlo->opcode()).c_str());
+                       HloOpcodeString(hlo->opcode()));
 }
 
 template <typename HloInstructionPtr>
 Status DfsHloVisitorBase<HloInstructionPtr>::HandleElementwiseBinary(
     HloInstructionPtr hlo) {
   return Unimplemented("DfsHloVisitor::HandleElementwiseBinary: %s",
-                       HloOpcodeString(hlo->opcode()).c_str());
+                       HloOpcodeString(hlo->opcode()));
 }
 
 template <typename HloInstructionPtr>
@@ -50,7 +50,7 @@ void DfsHloVisitorBase<HloInstructionPtr>::SetVisiting(
     const HloInstruction& instruction) {
   VLOG(3) << "marking HLO " << &instruction << " as visiting: ";
   DCHECK(NotVisited(instruction));
-  visit_state_.SetState(instruction.unique_id(), VisitState::kVisiting);
+  visit_state_[instruction.unique_id()] = VisitState::kVisiting;
 }
 
 template <typename HloInstructionPtr>
@@ -58,7 +58,7 @@ void DfsHloVisitorBase<HloInstructionPtr>::SetVisited(
     const HloInstruction& instruction) {
   VLOG(3) << "marking HLO " << &instruction << " as visited: ";
   DCHECK(NotVisited(instruction) || IsVisiting(instruction));
-  visit_state_.SetState(instruction.unique_id(), VisitState::kVisited);
+  visit_state_[instruction.unique_id()] = VisitState::kVisited;
 }
 
 template <typename HloInstructionPtr>

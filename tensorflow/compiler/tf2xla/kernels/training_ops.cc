@@ -688,7 +688,7 @@ void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
   }
 
   // grad_to_use = grad + 2 * l2_shrinkage * var
-  // new_accum = accum + grad_to_use * grad_to_use
+  // new_accum = accum + grad * grad
   // linear += grad_to_use -
   //     (new_accum^(-lr_power) - accum^(-lr_power)) / lr * var
   // quadratic = (new_accum^(-lr_power) / lr) + 2 * l2
@@ -704,7 +704,7 @@ void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
     grad_to_use = grad;
   }
 
-  xla::XlaOp new_accum = accum + xla::Square(grad_to_use);
+  xla::XlaOp new_accum = accum + xla::Square(grad);
   xla::XlaOp new_accum_lr_pow = xla::Pow(new_accum, -lr_power);
   xla::XlaOp accum_lr_pow = xla::Pow(accum, -lr_power);
   linear = linear + grad_to_use - (new_accum_lr_pow - accum_lr_pow) / lr * var;

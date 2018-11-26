@@ -130,6 +130,26 @@ class ValidateExportTest(test.TestCase):
     with self.assertRaises(tf_export.SymbolAlreadyExposedError):
       export_decorator(_test_function)
 
+  def testRaisesExceptionIfInvalidSymbolName(self):
+    # TensorFlow code is not allowed to export symbols under package
+    # tf.estimator
+    with self.assertRaises(tf_export.InvalidSymbolNameError):
+      tf_export.tf_export('estimator.invalid')
+
+    # All symbols exported by Estimator must be under tf.estimator package.
+    with self.assertRaises(tf_export.InvalidSymbolNameError):
+      tf_export.estimator_export('invalid')
+    with self.assertRaises(tf_export.InvalidSymbolNameError):
+      tf_export.estimator_export('Estimator.invalid')
+    with self.assertRaises(tf_export.InvalidSymbolNameError):
+      tf_export.estimator_export('invalid.estimator')
+
+  def testRaisesExceptionIfInvalidV1SymbolName(self):
+    with self.assertRaises(tf_export.InvalidSymbolNameError):
+      tf_export.tf_export('valid', v1=['estimator.invalid'])
+    with self.assertRaises(tf_export.InvalidSymbolNameError):
+      tf_export.estimator_export('estimator.valid', v1=['invalid'])
+
   def testOverridesFunction(self):
     _test_function2._tf_api_names = ['abc']
 

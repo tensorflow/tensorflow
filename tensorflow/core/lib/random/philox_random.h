@@ -17,8 +17,8 @@ limitations under the License.
 // Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.
 //   http://www.thesalmons.org/john/random123/papers/random123sc11.pdf
 
-#ifndef TENSORFLOW_LIB_RANDOM_PHILOX_RANDOM_H_
-#define TENSORFLOW_LIB_RANDOM_PHILOX_RANDOM_H_
+#ifndef TENSORFLOW_CORE_LIB_RANDOM_PHILOX_RANDOM_H_
+#define TENSORFLOW_CORE_LIB_RANDOM_PHILOX_RANDOM_H_
 
 #include <stdlib.h>
 
@@ -248,4 +248,4 @@ class PhiloxRandom {
 }  // namespace random
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_RANDOM_PHILOX_RANDOM_H_
+#endif  // TENSORFLOW_CORE_LIB_RANDOM_PHILOX_RANDOM_H_

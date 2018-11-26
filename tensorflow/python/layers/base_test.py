@@ -25,6 +25,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import base_layer as keras_base_layer
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base as base_layers
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
@@ -58,6 +60,29 @@ class BaseLayerTest(test.TestCase):
     layer = base_layers.Layer(name='my_layer', dtype='int64')
     layer.add_variable('my_var', [2, 2])
     self.assertEqual(layer.name, 'my_layer')
+
+  @test_util.run_in_graph_and_eager_modes
+  def testKerasStyleAddWeight(self):
+    keras_layer = keras_base_layer.Layer(name='keras_layer')
+    with ops.name_scope('foo'):
+      keras_variable = keras_layer.add_variable(
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+    self.assertEqual(keras_variable.name, 'foo/my_var:0')
+
+    with ops.name_scope('baz'):
+      old_style_layer = base_layers.Layer(name='my_layer')
+      # Test basic variable creation.
+      variable = old_style_layer.add_variable(
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+    self.assertEqual(variable.name, 'my_layer/my_var:0')
+
+    with base_layers.keras_style_scope():
+      layer = base_layers.Layer(name='my_layer')
+    # Test basic variable creation.
+    with ops.name_scope('bar'):
+      variable = layer.add_variable(
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+    self.assertEqual(variable.name, 'bar/my_var:0')
 
   @test_util.run_in_graph_and_eager_modes
   def testAddWeight(self):
@@ -132,11 +157,6 @@ class BaseLayerTest(test.TestCase):
             regularizer=regularizer)
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 3)
-
-  def testNoEagerActivityRegularizer(self):
-    with context.eager_mode():
-      with self.assertRaisesRegexp(ValueError, 'activity_regularizer'):
-        core_layers.Dense(1, activity_regularizer=lambda *args, **kwargs: 0.)
 
   @test_util.run_in_graph_and_eager_modes
   def testCall(self):
@@ -232,7 +252,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(ndim=2)
+        self.input_spec = input_spec.InputSpec(ndim=2)
 
       def call(self, inputs):
         return inputs
@@ -259,7 +279,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(min_ndim=2)
+        self.input_spec = input_spec.InputSpec(min_ndim=2)
 
       def call(self, inputs):
         return inputs
@@ -287,7 +307,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(max_ndim=2)
+        self.input_spec = input_spec.InputSpec(max_ndim=2)
 
       def call(self, inputs):
         return inputs
@@ -315,7 +335,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(dtype='float32')
+        self.input_spec = input_spec.InputSpec(dtype='float32')
 
       def call(self, inputs):
         return inputs
@@ -335,7 +355,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(axes={-1: 2})
+        self.input_spec = input_spec.InputSpec(axes={-1: 2})
 
       def call(self, inputs):
         return inputs
@@ -357,7 +377,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(shape=(None, 3))
+        self.input_spec = input_spec.InputSpec(shape=(None, 3))
 
       def call(self, inputs):
         return inputs

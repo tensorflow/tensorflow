@@ -45,7 +45,7 @@ class HloPassFix : public Pass {
       ++iteration_count;
       if (iteration_count == limit) {
         LOG(ERROR)
-            << "Unexpectedly number of iterations in HLO passes ("
+            << "Unexpectedly high number of iterations in HLO passes ("
             << iteration_count
             << ")\nIf compilation hangs here, please file a bug with XLA.";
       }

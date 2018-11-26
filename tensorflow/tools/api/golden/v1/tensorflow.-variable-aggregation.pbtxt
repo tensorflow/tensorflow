@@ -10,6 +10,14 @@ tf_class {
     mtype: "<enum \'VariableAggregation\'>"
   }
   member {
+    name: "ONLY_FIRST_REPLICA"
+    mtype: "<enum \'VariableAggregation\'>"
+  }
+  member {
+    name: "ONLY_FIRST_TOWER"
+    mtype: "<enum \'VariableAggregation\'>"
+  }
+  member {
     name: "SUM"
     mtype: "<enum \'VariableAggregation\'>"
   }

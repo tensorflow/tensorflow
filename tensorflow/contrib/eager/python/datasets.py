@@ -18,7 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import prefetching_ops
+from tensorflow.python.data.experimental.ops import prefetching_ops
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -52,11 +53,16 @@ class Iterator(iterator_ops.EagerIterator):
       TypeError: If `dataset` is an unsupported type.
       RuntimeError: When invoked without eager execution enabled.
     """
-    if isinstance(dataset, prefetching_ops._PrefetchToDeviceDataset):  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    if (isinstance(dataset, prefetching_ops._PrefetchToDeviceDataset)
+        or (isinstance(dataset, dataset_ops.DatasetV1Adapter)
+            and isinstance(
+                dataset._dataset, prefetching_ops._PrefetchToDeviceDataset))):
       raise TypeError(
-          "`tf.contrib.data.prefetch_to_device()` is not compatible with "
+          "`tf.data.experimental.prefetch_to_device()` is not compatible with "
           "`tf.contrib.eager.Iterator`. Use `for ... in dataset:` to iterate "
           "over the dataset instead.")
+    # pylint: enable=protected-access
 
     if not context.context().device_spec.device_type:
       is_remote_device = False

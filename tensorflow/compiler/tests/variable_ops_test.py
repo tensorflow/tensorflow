@@ -40,6 +40,19 @@ from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
 class VariableOpsTest(xla_test.XLATestCase):
   """Test cases for resource variable operators."""
 
+  def testWriteEmptyShape(self):
+    # Verifies that we can pass an uninitialized variable with an empty shape,
+    # assign it a value, and successfully return it.
+    for dtype in self.numeric_types:
+      with self.test_session() as sess, self.test_scope():
+        zeros = np.zeros([3, 0], dtype=dtype)
+        v = resource_variable_ops.ResourceVariable(zeros)
+        p = array_ops.placeholder(dtype)
+        x = v.assign(p)
+        with ops.control_dependencies([x]):
+          y = v.read_value()
+        self.assertAllClose(zeros, sess.run(y, {p: zeros}))
+
   def testOneWriteOneOutput(self):
     # Regression test for a bug where computations with one non-constant
     # output and one variable update were mishandled.

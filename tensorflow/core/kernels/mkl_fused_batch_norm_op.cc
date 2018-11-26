@@ -21,8 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 using mkldnn::batch_normalization_backward;
 using mkldnn::batch_normalization_forward;
@@ -41,7 +40,7 @@ using mkldnn::use_scale_shift;
 namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 template <typename Device, typename T>
 class MklFusedBatchNormOp : public OpKernel {
@@ -684,7 +683,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
 };
 #endif
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 struct MklBatchNormFwdParams {
   memory::dims src_dims;
@@ -899,8 +898,8 @@ class MklFusedBatchNormFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   MklFusedBatchNormFwdPrimitiveFactory() {}
   ~MklFusedBatchNormFwdPrimitiveFactory() {}
 
-  static std::string CreateKey(const MklBatchNormFwdParams& fwdParams) {
-    std::string prefix = "bn_fwd";
+  static string CreateKey(const MklBatchNormFwdParams& fwdParams) {
+    string prefix = "bn_fwd";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(fwdParams.src_dims);
@@ -911,13 +910,13 @@ class MklFusedBatchNormFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 
   MklPrimitive* GetBatchNormFwd(const MklBatchNormFwdParams& fwdParams) {
-    std::string key = CreateKey(fwdParams);
+    string key = CreateKey(fwdParams);
     return this->GetOp(key);
   }
 
   void SetBatchNormFwd(const MklBatchNormFwdParams& fwdParams,
                        MklPrimitive* op) {
-    std::string key = CreateKey(fwdParams);
+    string key = CreateKey(fwdParams);
     this->SetOp(key, op);
   }
 };
@@ -1122,8 +1121,8 @@ class MklFusedBatchNormBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   MklFusedBatchNormBwdPrimitiveFactory() {}
   ~MklFusedBatchNormBwdPrimitiveFactory() {}
 
-  static std::string CreateKey(const MklBatchNormBwdParams& bwdParams) {
-    std::string prefix = "bn_bwd";
+  static string CreateKey(const MklBatchNormBwdParams& bwdParams) {
+    string prefix = "bn_bwd";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(bwdParams.src_dims);
@@ -1135,13 +1134,13 @@ class MklFusedBatchNormBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 
   MklPrimitive* GetBatchNormBwd(const MklBatchNormBwdParams& bwdParams) {
-    std::string key = CreateKey(bwdParams);
+    string key = CreateKey(bwdParams);
     return this->GetOp(key);
   }
 
   void SetBatchNormBwd(const MklBatchNormBwdParams& bwdParams,
                        MklPrimitive* op) {
-    std::string key = CreateKey(bwdParams);
+    string key = CreateKey(bwdParams);
     this->SetOp(key, op);
   }
 };

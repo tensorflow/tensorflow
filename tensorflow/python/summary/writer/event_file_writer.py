@@ -62,7 +62,7 @@ class EventFileWriter(object):
       filename_suffix: A string. Every event file's name is suffixed with
         `filename_suffix`.
     """
-    self._logdir = logdir
+    self._logdir = str(logdir)
     if not gfile.IsDirectory(self._logdir):
       gfile.MakeDirs(self._logdir)
     self._event_queue = six.moves.queue.Queue(max_queue)

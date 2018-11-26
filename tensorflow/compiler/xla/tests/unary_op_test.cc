@@ -100,9 +100,9 @@ void UnaryOpTest::AbsTestHelper<complex64>() {
                                               {-inf<float>(), 0}});
   Abs(arg);
 
-  std::unique_ptr<Literal> expected =
+  Literal expected =
       LiteralUtil::CreateR1<float>({2, 25, 0, 0.5, inf<float>(), inf<float>()});
-  ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
+  ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-6f));
 }
 
 template <>
@@ -113,9 +113,9 @@ void UnaryOpTest::SignTestHelper<complex64>() {
       {{-2, 0}, {0, 25}, {0, 0}, {static_cast<float>(-0.0), 0}, {-1, 1}});
   Sign(arg);
 
-  std::unique_ptr<Literal> expected = LiteralUtil::CreateR1<complex64>(
+  Literal expected = LiteralUtil::CreateR1<complex64>(
       {{-1, 0}, {0, 1}, {0, 0}, {0, 0}, {-std::sqrt(0.5f), std::sqrt(0.5f)}});
-  ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
+  ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-6f));
 }
 
 template <>
@@ -127,9 +127,8 @@ void UnaryOpTest::SignAbsTestHelper<complex64>() {
   auto abs = Abs(arg);
   Sub(Mul(sign, ConvertElementType(abs, C64)), arg);
 
-  std::unique_ptr<Literal> expected =
-      LiteralUtil::CreateR1<complex64>({0, 0, 0, 0});
-  ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
+  Literal expected = LiteralUtil::CreateR1<complex64>({0, 0, 0, 0});
+  ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-6f));
 }
 
 XLA_TEST_F(UnaryOpTest, AbsTestR1Size0) {
@@ -172,9 +171,8 @@ XLA_TEST_F(UnaryOpTest, SignTestR0) {
   Add(sgnc, ConvertElementType(
                 Add(Add(sgnf0, sgnf), ConvertElementType(sgni, F32)), C64));
 
-  std::unique_ptr<Literal> expected =
-      LiteralUtil::CreateR0<complex64>({-2.6f, 0.8f});
-  ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
+  Literal expected = LiteralUtil::CreateR0<complex64>({-2.6f, 0.8f});
+  ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-6f));
 }
 
 XLA_TEST_F(UnaryOpTest, SignTestR1) {
@@ -188,25 +186,6 @@ XLA_TEST_F(UnaryOpTest, SignAbsTestR1) {
   SignAbsTestHelper<int>();
   SignAbsTestHelper<float>();
   SignAbsTestHelper<complex64>();
-}
-
-XLA_TEST_F(UnaryOpTest, UnsignedAbsTestR1) {
-  XlaBuilder builder(TestName());
-  auto arg = ConstantR1<unsigned int>(
-      &builder, {2, 25, 0, 123, std::numeric_limits<unsigned int>::max()});
-  Abs(arg);
-
-  ComputeAndCompareR1<unsigned int>(
-      &builder, {2, 25, 0, 123, std::numeric_limits<unsigned int>::max()}, {});
-}
-
-XLA_TEST_F(UnaryOpTest, UnsignedSignTestR1) {
-  XlaBuilder builder(TestName());
-  auto arg = ConstantR1<unsigned int>(
-      &builder, {2, 25, 0, 123, std::numeric_limits<unsigned int>::max()});
-  Sign(arg);
-
-  ComputeAndCompareR1<unsigned int>(&builder, {1, 1, 0, 1, 1}, {});
 }
 
 XLA_TEST_F(UnaryOpTest, SignAbsTestR2) {

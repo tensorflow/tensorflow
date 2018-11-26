@@ -37,9 +37,9 @@ class SoftplusTest(test.TestCase):
 
   def _testSoftplus(self, np_features, use_gpu=False):
     np_softplus = self._npSoftplus(np_features)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       softplus = nn_ops.softplus(np_features)
-      tf_softplus = softplus.eval()
+      tf_softplus = self.evaluate(softplus)
     self.assertAllCloseAccordingToType(np_softplus, tf_softplus)
     self.assertTrue(np.all(tf_softplus > 0))
     self.assertShapeEqual(np_softplus, softplus)
@@ -71,7 +71,7 @@ class SoftplusTest(test.TestCase):
           use_gpu=True)
 
   def testGradient(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -87,7 +87,7 @@ class SoftplusTest(test.TestCase):
     self.assertLess(err, 1e-4)
 
   def testGradGrad(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -104,7 +104,7 @@ class SoftplusTest(test.TestCase):
     self.assertLess(err, 5e-5)
 
   def testGradGradGrad(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -121,9 +121,12 @@ class SoftplusTest(test.TestCase):
     print("softplus (float) third-order gradient err = ", err)
     self.assertLess(err, 5e-5)
 
-  def testWarnInts(self):
-    # Running the op triggers address sanitizer errors, so we just make it
-    nn_ops.softplus(constant_op.constant(7))
+  def testNoInts(self):
+    with self.cached_session():
+      with self.assertRaisesRegexp(
+          TypeError,
+          "'features' has DataType int32 not in list of allowed values"):
+        nn_ops.softplus(constant_op.constant(42)).eval()
 
 
 if __name__ == "__main__":

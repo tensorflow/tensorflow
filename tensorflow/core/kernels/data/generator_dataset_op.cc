@@ -19,21 +19,23 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
+namespace data {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class GeneratorDatasetOp::Dataset : public GraphDatasetBase {
+class GeneratorDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, std::unique_ptr<CapturedFunction> init_func,
           std::unique_ptr<CapturedFunction> next_func,
           std::unique_ptr<CapturedFunction> finalize_func,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
-      : GraphDatasetBase(ctx),
+      : DatasetBase(DatasetContext(ctx)),
         init_func_(std::move(init_func)),
         next_func_(std::move(next_func)),
         finalize_func_(std::move(finalize_func)),
@@ -47,11 +49,20 @@ class GeneratorDatasetOp::Dataset : public GraphDatasetBase {
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
+
   const std::vector<PartialTensorShape>& output_shapes() const override {
     return output_shapes_;
   }
 
   string DebugString() const override { return "GeneratorDatasetOp::Dataset"; }
+
+ protected:
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
+                            Node** output) const override {
+    return errors::Unimplemented("%s does not support serialization",
+                                 DebugString());
+  }
 
  private:
   class Iterator : public DatasetIterator<Dataset> {
@@ -71,6 +82,13 @@ class GeneratorDatasetOp::Dataset : public GraphDatasetBase {
       }
     }
 
+    Status Initialize(IteratorContext* ctx) override {
+      TF_RETURN_IF_ERROR(dataset()->init_func_->Instantiate(ctx));
+      TF_RETURN_IF_ERROR(dataset()->next_func_->Instantiate(ctx));
+      TF_RETURN_IF_ERROR(dataset()->finalize_func_->Instantiate(ctx));
+      return Status::OK();
+    }
+
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
@@ -79,9 +97,6 @@ class GeneratorDatasetOp::Dataset : public GraphDatasetBase {
       if (!initialized_) {
         TF_RETURN_IF_ERROR(
             dataset()->init_func_->RunWithBorrowedArgs(ctx, {}, &state_));
-        // Explicitly instantiate the finalize function here so that
-        // we can invoke it in the destructor.
-        TF_RETURN_IF_ERROR(dataset()->finalize_func_->Instantiate(ctx));
         initialized_ = true;
       }
 
@@ -110,6 +125,12 @@ class GeneratorDatasetOp::Dataset : public GraphDatasetBase {
       return s;
     }
 
+   protected:
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeSourceNode(std::move(args));
+    }
+
    private:
     mutex mu_;
     bool initialized_ GUARDED_BY(mu_) = false;
@@ -135,54 +156,31 @@ GeneratorDatasetOp::GeneratorDatasetOp(OpKernelConstruction* ctx)
 
 void GeneratorDatasetOp::MakeDataset(OpKernelContext* ctx,
                                      DatasetBase** output) {
-  OpInputList init_func_other_args_input;
-  OP_REQUIRES_OK(ctx, ctx->input_list("init_func_other_args",
-                                      &init_func_other_args_input));
-  std::vector<Tensor> init_func_other_args;
-  init_func_other_args.reserve(init_func_other_args_input.size());
-  for (const Tensor& t : init_func_other_args_input) {
-    init_func_other_args.push_back(t);
-  }
   std::unique_ptr<CapturedFunction> init_func;
-  OP_REQUIRES_OK(
-      ctx, CapturedFunction::Create(init_func_, std::move(init_func_other_args),
-                                    &init_func));
-
-  OpInputList next_func_other_args_input;
-  OP_REQUIRES_OK(ctx, ctx->input_list("next_func_other_args",
-                                      &next_func_other_args_input));
-  std::vector<Tensor> next_func_other_args;
-  next_func_other_args.reserve(next_func_other_args_input.size());
-  for (const Tensor& t : next_func_other_args_input) {
-    next_func_other_args.push_back(t);
-  }
-  std::unique_ptr<CapturedFunction> next_func;
-  OP_REQUIRES_OK(
-      ctx, CapturedFunction::Create(next_func_, std::move(next_func_other_args),
-                                    &next_func));
-
-  OpInputList finalize_func_other_args_input;
-  OP_REQUIRES_OK(ctx, ctx->input_list("finalize_func_other_args",
-                                      &finalize_func_other_args_input));
-  std::vector<Tensor> finalize_func_other_args;
-  finalize_func_other_args.reserve(finalize_func_other_args_input.size());
-  for (const Tensor& t : finalize_func_other_args_input) {
-    finalize_func_other_args.push_back(t);
-  }
-  std::unique_ptr<CapturedFunction> finalize_func;
   OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                          finalize_func_, std::move(finalize_func_other_args),
-                          &finalize_func));
+                          init_func_, ctx, "init_func_other_args", &init_func));
+
+  std::unique_ptr<CapturedFunction> next_func;
+  OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                          next_func_, ctx, "next_func_other_args", &next_func));
+
+  std::unique_ptr<CapturedFunction> finalize_func;
+  OP_REQUIRES_OK(ctx, CapturedFunction::Create(finalize_func_, ctx,
+                                               "finalize_func_other_args",
+                                               &finalize_func));
 
   *output =
       new Dataset(ctx, std::move(init_func), std::move(next_func),
                   std::move(finalize_func), output_types_, output_shapes_);
 }
 
+namespace {
 REGISTER_KERNEL_BUILDER(Name("GeneratorDataset").Device(DEVICE_CPU),
                         GeneratorDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("GeneratorDataset").Device(DEVICE_GPU).HostMemory("handle"),
     GeneratorDatasetOp);
+}  // namespace
 
+}  // namespace data
 }  // namespace tensorflow

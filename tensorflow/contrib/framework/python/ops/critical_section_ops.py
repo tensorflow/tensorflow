@@ -325,6 +325,8 @@ class CriticalSection(object):
 
   def _is_self_handle(self, x):
     """Check if the tensor `x` is the same Mutex as `self._handle`."""
+    if isinstance(x, ops.EagerTensor):
+      return x is self._handle
     return (x.op.type == "MutexV2"
             # blank shared_name means the op will create a unique one.
             and x.op.get_attr("shared_name")
@@ -365,8 +367,7 @@ class CriticalSection(object):
             "(CriticalSection: %s) requested exclusive resource access "
             "of this resource.  Did you mean to call execute with keyword "
             "argument exclusive_resource_access=False?" %
-            (list(resource_intersection), self._handle.name,
-             sg.op.name, sg.handle.name))
+            (list(resource_intersection), self._handle, sg, sg.handle))
 
   # TODO(ebrevdo): Re-enable once CriticalSection is in core.
 

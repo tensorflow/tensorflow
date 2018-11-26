@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
 
 namespace tensorflow {

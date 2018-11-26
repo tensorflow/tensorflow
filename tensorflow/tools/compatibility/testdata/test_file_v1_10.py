@@ -26,7 +26,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
   """Test various APIs that have been changed in 2.0."""
 
   def testRenames(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(1.04719755, tf.acos(0.5).eval())
       self.assertAllClose(0.5, tf.rsqrt(4.0).eval())
 

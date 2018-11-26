@@ -22,6 +22,8 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+from tensorflow.python.keras import metrics as metrics_module
+
 
 def build_model_fn_optimizer():
   """Simple model_fn with optimizer."""
@@ -45,7 +47,10 @@ def build_model_fn_optimizer():
       return y * y
 
     if mode == tf.estimator.ModeKeys.EVAL:
-      return tf.estimator.EstimatorSpec(mode, loss=loss_fn())
+      acc_obj = metrics_module.BinaryAccuracy()
+      acc_obj.update_state(labels, labels)
+      return tf.estimator.EstimatorSpec(
+          mode, loss=loss_fn(), eval_metric_ops={"Accuracy": acc_obj})
 
     assert mode == tf.estimator.ModeKeys.TRAIN
 
@@ -61,18 +66,26 @@ def main(_):
       ["/device:GPU:0", "/device:GPU:1"])
   config = tf.estimator.RunConfig(train_distribute=distribution,
                                   eval_distribute=distribution)
+  # Since there are 2 devices and 10 samples, we set steps=5.
+  steps = 5
 
-  def input_fn():
+  def train_input_fn():
     features = tf.data.Dataset.from_tensors([[1.]]).repeat(10)
     labels = tf.data.Dataset.from_tensors([1.]).repeat(10)
     return tf.data.Dataset.zip((features, labels))
 
   estimator = tf.estimator.Estimator(
       model_fn=build_model_fn_optimizer(), config=config)
-  estimator.train(input_fn=input_fn, steps=10)
+  estimator.train(input_fn=train_input_fn, steps=steps)
 
-  eval_result = estimator.evaluate(input_fn=input_fn, steps=10)
+  def eval_input_fn():
+    features = tf.data.Dataset.from_tensors([[1.]]).repeat(10)
+    labels = tf.data.Dataset.from_tensors([1.]).repeat(10)
+    return tf.data.Dataset.zip((features, labels))
+
+  eval_result = estimator.evaluate(input_fn=eval_input_fn, steps=steps)
   print("Eval result: {}".format(eval_result))
+  assert eval_result["Accuracy"] == 1.0
 
   def predict_input_fn():
     predict_features = tf.data.Dataset.from_tensors([[1.]]).repeat(10)

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 static const size_t kSyncMarkerSize = 16;
@@ -204,11 +205,11 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const std::vector<string>& filenames,
             const DataTypeVector& output_types)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           filenames_(filenames),
           output_types_(output_types) {}
 
@@ -233,7 +234,8 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* filenames = nullptr;
       TF_RETURN_IF_ERROR(b->AddVector(filenames_, &filenames));
@@ -331,9 +333,10 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
   };
   DataTypeVector output_types_;
 };
-}  // namespace
 
 REGISTER_KERNEL_BUILDER(Name("SequenceFileDataset").Device(DEVICE_CPU),
                         SequenceFileDatasetOp);
 
+}  // namespace
+}  // namespace data
 }  // namespace tensorflow

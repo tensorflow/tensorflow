@@ -16,8 +16,8 @@ limitations under the License.
 // The utility to read checkpoints for google brain tensor ops and v3
 // checkpoints for dist_belief.
 
-#ifndef TENSORFLOW_UTIL_TENSOR_SLICE_READER_CACHE_H_
-#define TENSORFLOW_UTIL_TENSOR_SLICE_READER_CACHE_H_
+#ifndef TENSORFLOW_CORE_UTIL_TENSOR_SLICE_READER_CACHE_H_
+#define TENSORFLOW_CORE_UTIL_TENSOR_SLICE_READER_CACHE_H_
 
 #include <unordered_map>
 
@@ -85,4 +85,4 @@ class TensorSliceReaderCache {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_TENSOR_SLICE_READER_CACHE_H_
+#endif  // TENSORFLOW_CORE_UTIL_TENSOR_SLICE_READER_CACHE_H_

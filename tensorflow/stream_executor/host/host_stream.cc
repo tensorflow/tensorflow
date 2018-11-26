@@ -28,18 +28,28 @@ HostStream::HostStream()
 HostStream::~HostStream() {}
 
 bool HostStream::EnqueueTask(std::function<void()> task) {
+  struct NotifiedTask {
+    HostStream* stream;
+    std::function<void()> task;
+
+    void operator()() {
+      task();
+      // Destroy the task before unblocking its waiters, as BlockHostUntilDone()
+      // should guarantee that all tasks are destroyed.
+      task = std::function<void()>();
+      {
+        mutex_lock lock(stream->mu_);
+        --stream->pending_tasks_;
+      }
+      stream->completion_condition_.notify_all();
+    }
+  };
+
   {
     mutex_lock lock(mu_);
     ++pending_tasks_;
   }
-  host_executor_->Schedule([this, task]() {
-    task();
-    {
-      mutex_lock lock(mu_);
-      --pending_tasks_;
-    }
-    completion_condition_.notify_all();
-  });
+  host_executor_->Schedule(NotifiedTask{this, std::move(task)});
   return true;
 }
 

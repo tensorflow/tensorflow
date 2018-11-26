@@ -31,8 +31,5 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
-    tags = [
-        "no_windows",
-        "notap",  # TODO(b/80546574): test is flaky
-    ],
+    tags = ["notap"],  # TODO(b/80546574): test is flaky
 )

@@ -26,7 +26,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -41,8 +41,10 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import momentum
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base
@@ -196,6 +198,17 @@ class InterfaceTests(test.TestCase):
         x=CallsFunctionalStuffOtherMRO())
     with self.assertRaises(NotImplementedError):
       checkpoint_reversed.save(prefix)
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def test_object_graph_no_attributes(self):
+    root = tracking.Checkpointable()
+    root.v = resource_variable_ops.ResourceVariable(1.)
+    root.opt = momentum.MomentumOptimizer(0.01, 0.5)
+    root.opt.minimize(root.v.read_value)
+    object_graph = checkpointable_utils.make_object_graph_without_attributes(
+        root)
+    # Four objects: Root, v, opt, and a slot variable for v
+    self.assertEqual(4, len(object_graph.nodes))
 
 
 class _MirroringSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
@@ -384,8 +397,8 @@ class CheckpointingTests(test.TestCase):
     saver = saver_lib.Saver(var_list=[v])
     test_dir = self.get_temp_dir()
     prefix = os.path.join(test_dir, "ckpt")
-    self.evaluate(v.non_dep_variable.assign(42.))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
+      self.evaluate(v.non_dep_variable.assign(42.))
       save_path = saver.save(sess, prefix)
       self.evaluate(v.non_dep_variable.assign(43.))
       self.evaluate(v.mirrored.assign(44.))
@@ -437,6 +450,10 @@ class CheckpointingTests(test.TestCase):
         optimizer=on_create_optimizer, model=on_create_model)
     # Deferred restoration
     status = on_create_root.restore(save_path=save_path)
+    status.assert_nontrivial_match()
+    status.assert_existing_objects_matched()
+    with self.assertRaises(AssertionError):
+      status.assert_consumed()
     on_create_model(constant_op.constant([[3.]]))  # create variables
     self.assertAllEqual(1, self.evaluate(on_create_root.save_counter))
     self.assertAllEqual([42.],
@@ -444,6 +461,9 @@ class CheckpointingTests(test.TestCase):
                             on_create_model._named_dense.variables[1]))
     on_create_m_bias_slot = on_create_optimizer.get_slot(
         on_create_model._named_dense.variables[1], "m")
+    status.assert_existing_objects_matched()
+    with self.assertRaises(AssertionError):
+      status.assert_consumed()
     # Optimizer slot variables are created when the original variable is
     # restored.
     self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
@@ -451,6 +471,7 @@ class CheckpointingTests(test.TestCase):
                         self.evaluate(on_create_optimizer.variables()))
     dummy_var = resource_variable_ops.ResourceVariable([1.])
     on_create_optimizer.minimize(loss=dummy_var.read_value)
+    status.assert_existing_objects_matched()
     status.assert_consumed()
     beta1_power, beta2_power = on_create_optimizer._get_beta_accumulators()
     self.assertAllEqual(optimizer_variables[0], self.evaluate(beta1_power))
@@ -499,15 +520,18 @@ class CheckpointingTests(test.TestCase):
               global_step=root.global_step)
           checkpoint_path = checkpoint_management.latest_checkpoint(
               checkpoint_directory)
-          with self.test_session(graph=ops.get_default_graph()) as session:
+          with self.session(graph=ops.get_default_graph()) as session:
             status = root.restore(save_path=checkpoint_path)
             status.initialize_or_restore(session=session)
             if checkpoint_path is None:
               self.assertEqual(0, training_continuation)
               with self.assertRaises(AssertionError):
                 status.assert_consumed()
+              with self.assertRaises(AssertionError):
+                status.assert_existing_objects_matched()
             else:
               status.assert_consumed()
+              status.assert_existing_objects_matched()
             for _ in range(num_training_steps):
               session.run(train_op)
             root.save(file_prefix=checkpoint_prefix, session=session)
@@ -522,18 +546,16 @@ class CheckpointingTests(test.TestCase):
     # Does create garbage when executing eagerly due to ops.Graph() creation.
     num_training_steps = 10
     checkpoint_directory = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     for training_continuation in range(3):
-      with ops.Graph().as_default(), self.test_session(
-          graph=ops.get_default_graph()), test_util.device(use_gpu=True):
+      with test_util.device(use_gpu=True):
         model = MyModel()
         optimizer = adam.AdamOptimizer(0.001)
         root = checkpointable_utils.Checkpoint(
             optimizer=optimizer, model=model,
             global_step=training_util.get_or_create_global_step())
-        checkpoint_path = checkpoint_management.latest_checkpoint(
-            checkpoint_directory)
-        status = root.restore(save_path=checkpoint_path)
+        manager = checkpoint_management.CheckpointManager(
+            root, checkpoint_directory, max_to_keep=1)
+        status = root.restore(save_path=manager.latest_checkpoint)
         input_value = constant_op.constant([[3.]])
         train_fn = functools.partial(
             optimizer.minimize,
@@ -544,11 +566,51 @@ class CheckpointingTests(test.TestCase):
         status.initialize_or_restore()
         for _ in range(num_training_steps):
           train_fn()
-        root.save(file_prefix=checkpoint_prefix)
+        manager.save()
         self.assertEqual((training_continuation + 1) * num_training_steps,
                          self.evaluate(root.global_step))
         self.assertEqual(training_continuation + 1,
                          self.evaluate(root.save_counter))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFreezing(self):
+    with self.cached_session(use_gpu=True) as session:
+      # Save an object-based checkpoint using a frozen saver
+      directory = self.get_temp_dir()
+      prefix = os.path.join(directory, "ckpt")
+      v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
+      checkpoint = checkpointable_utils.Checkpoint(v=v)
+      self.evaluate(v.assign(3))
+      # Create the save counter so assert_consumed doesn't complain about it not
+      # existing in the checkpoint on restore.
+      self.evaluate(checkpoint.save_counter.assign(12))
+      saver = checkpointable_utils.frozen_saver(checkpoint)
+      save_path = saver.save(session, prefix)
+      self.evaluate(v.assign(10))
+      # Use the frozen saver to restore the same object graph
+      saver.restore(session, save_path)
+      self.assertEqual(3, self.evaluate(v))
+
+      # Restore using another frozen saver on an identical object graph
+      del v, checkpoint, saver
+      v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
+      checkpoint = checkpointable_utils.Checkpoint(v=v)
+      saver = checkpointable_utils.frozen_saver(checkpoint)
+      saver.restore(session, save_path)
+      self.assertEqual(3, self.evaluate(v))
+
+      # Restore as an object-based checkpoint
+      del v, checkpoint, saver
+      checkpoint = checkpointable_utils.Checkpoint()
+      status = checkpoint.restore(save_path)
+      v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
+      if context.executing_eagerly():
+        self.assertEqual(12, self.evaluate(checkpoint.save_counter))
+        self.assertEqual(0, self.evaluate(v))
+      checkpoint.v = v
+      status.assert_consumed().run_restore_ops()
+      self.assertEqual(3, self.evaluate(v))
+      self.assertEqual(12, self.evaluate(checkpoint.save_counter))
 
   @test_util.run_in_graph_and_eager_modes
   def testCustomNumbering(self):
@@ -571,8 +633,7 @@ class CheckpointingTests(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     for training_continuation in range(3):
-      with ops.Graph().as_default(), self.test_session(
-          graph=ops.get_default_graph()), test_util.device(use_gpu=True):
+      with test_util.device(use_gpu=True):
         model = MyModel()
         # Don't actually train so we can test variable values
         optimizer = adam.AdamOptimizer(0.)
@@ -583,7 +644,7 @@ class CheckpointingTests(test.TestCase):
             checkpoint_directory)
         status = root.restore(save_path=checkpoint_path)
         def train_fn():
-          @function.defun
+          @def_function.function
           def _call_model(x):
             return model(x)
           with backprop.GradientTape() as tape:
@@ -705,11 +766,12 @@ class CheckpointingTests(test.TestCase):
     load_into = LateDependencies()
     status = checkpointable_utils.CheckpointableSaver(
         load_into).restore(save_path)
+    status.assert_existing_objects_matched()
     with self.assertRaises(AssertionError):
       status.assert_consumed()
     load_into.add_dep()
     status.assert_consumed()
-    status.run_restore_ops()
+    status.assert_existing_objects_matched().run_restore_ops()
     self.assertEqual(123., self.evaluate(load_into.dep.var))
 
   @test_util.run_in_graph_and_eager_modes
@@ -786,6 +848,7 @@ class CheckpointingTests(test.TestCase):
     no_slot_status.run_restore_ops()
     self.assertEqual(12., self.evaluate(new_root.var))
     new_root.optimizer = adam.AdamOptimizer(0.1)
+    slot_status.assert_existing_objects_matched()
     with self.assertRaisesRegexp(AssertionError, "beta1_power"):
       slot_status.assert_consumed()
     self.assertEqual(12., self.evaluate(new_root.var))
@@ -885,6 +948,8 @@ class CheckpointingTests(test.TestCase):
         load_root.dep_one.dep_three, name="var", initializer=0.)
     with self.assertRaises(AssertionError):
       status.assert_consumed()
+    with self.assertRaises(AssertionError):
+      status.assert_existing_objects_matched()
 
   @test_util.run_in_graph_and_eager_modes
   def testObjectsCombined(self):
@@ -908,7 +973,7 @@ class CheckpointingTests(test.TestCase):
     v2 = checkpointable_utils.add_variable(
         load_root.dep_one, name="var2", shape=[], dtype=dtypes.float64)
     status = checkpointable_utils.CheckpointableSaver(load_root).restore(
-        save_path).assert_consumed()
+        save_path).assert_consumed().assert_existing_objects_matched()
     status.run_restore_ops()
     self.assertEqual(32., self.evaluate(v1))
     self.assertEqual(64., self.evaluate(v2))
@@ -963,39 +1028,32 @@ class CheckpointingTests(test.TestCase):
   def testRestoreOnAssign(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-    save_graph = ops.Graph()
-    with save_graph.as_default(), self.test_session(save_graph):
-      first = tracking.Checkpointable()
-      first.var1 = variable_scope.get_variable(
-          name="outside_var", initializer=0.)
-      first.var2 = variable_scope.get_variable(
-          name="blah", initializer=0.)
-      self.evaluate(first.var1.assign(4.))
-      self.evaluate(first.var2.assign(8.))
-      save_path = checkpointable_utils.CheckpointableSaver(first).save(
-          checkpoint_prefix)
-    restore_graph = ops.Graph()
-    with restore_graph.as_default(), self.test_session(restore_graph):
-      second = tracking.Checkpointable()
-      second.var2 = variable_scope.get_variable(
-          name="blah", initializer=0.)
-      status = checkpointable_utils.CheckpointableSaver(
-          second).restore(save_path)
-      recreated_var1 = variable_scope.get_variable(
-          name="outside_var", initializer=0.)
-      status.run_restore_ops()
-      self.assertEqual(8., self.evaluate(second.var2))
-      self.evaluate(recreated_var1.assign(-2.))
-      self.assertEqual(-2., self.evaluate(recreated_var1))
-      second.var1 = recreated_var1
-      status.run_restore_ops()
-      self.assertEqual(4., self.evaluate(recreated_var1))
+    first = tracking.Checkpointable()
+    first.var1 = variables.Variable(0., name="outside_var")
+    first.var2 = variables.Variable(0., name="blah")
+    self.evaluate(first.var1.assign(4.))
+    self.evaluate(first.var2.assign(8.))
+    save_path = checkpointable_utils.CheckpointableSaver(first).save(
+        checkpoint_prefix)
+
+    second = tracking.Checkpointable()
+    second.var2 = variables.Variable(0., name="blah")
+    status = checkpointable_utils.CheckpointableSaver(
+        second).restore(save_path)
+    recreated_var1 = variables.Variable(0., name="outside_var")
+    status.run_restore_ops()
+    self.assertEqual(8., self.evaluate(second.var2))
+    self.evaluate(recreated_var1.assign(-2.))
+    self.assertEqual(-2., self.evaluate(recreated_var1))
+    second.var1 = recreated_var1
+    status.run_restore_ops()
+    self.assertEqual(4., self.evaluate(recreated_var1))
 
   def testManySavesGraph(self):
     """Saves after the first should not modify the graph."""
     with context.graph_mode():
       graph = ops.Graph()
-      with graph.as_default(), self.test_session(graph):
+      with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
         obj = tracking.Checkpointable()
@@ -1074,22 +1132,17 @@ class CheckpointingTests(test.TestCase):
     self.assertEqual(5, self.evaluate(checkpoint.var_5))
     self.assertEqual(1, self.evaluate(checkpoint.var_1))
     self.assertEqual(0, self.evaluate(checkpoint.var_0))
-    if context.executing_eagerly():
-      checkpoint.restore(checkpoint_prefix + "-10").run_restore_ops()
-      self.assertEqual(9, self.evaluate(checkpoint.var_9))
-      self.assertEqual(8, self.evaluate(checkpoint.var_8))
-      self.assertEqual(1, self.evaluate(checkpoint.var_1))
-      self.assertEqual(0, self.evaluate(checkpoint.var_0))
-    else:
-      # Restoring into modified graphs is an error while graph building.
-      with self.assertRaises(NotImplementedError):
-        checkpoint.restore(checkpoint_prefix + "-10").run_restore_ops()
+    checkpoint.restore(checkpoint_prefix + "-10").run_restore_ops()
+    self.assertEqual(9, self.evaluate(checkpoint.var_9))
+    self.assertEqual(8, self.evaluate(checkpoint.var_8))
+    self.assertEqual(1, self.evaluate(checkpoint.var_1))
+    self.assertEqual(0, self.evaluate(checkpoint.var_0))
 
   def testManyRestoresGraph(self):
     """Restores after the first should not modify the graph."""
     with context.graph_mode():
       graph = ops.Graph()
-      with graph.as_default(), self.test_session(graph):
+      with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
         obj = tracking.Checkpointable()
@@ -1199,8 +1252,7 @@ class CheckpointingTests(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     optimizer_only_prefix = os.path.join(checkpoint_directory, "opt")
-    with ops.Graph().as_default(), self.test_session(
-        graph=ops.get_default_graph()), test_util.device(use_gpu=True):
+    with test_util.device(use_gpu=True):
       model = MyModel()
       optimizer = adam.AdamOptimizer(0.001)
       root = checkpointable_utils.Checkpoint(
@@ -1227,8 +1279,7 @@ class CheckpointingTests(test.TestCase):
       optimizer_save_path = optimizer_checkpoint.save(optimizer_only_prefix)
 
     # Restore into a graph with the optimizer
-    with ops.Graph().as_default(), self.test_session(
-        graph=ops.get_default_graph()), test_util.device(use_gpu=True):
+    with test_util.device(use_gpu=True):
       model = MyModel()
       optimizer = adam.AdamOptimizer(0.001)
       root = checkpointable_utils.Checkpoint(
@@ -1245,11 +1296,12 @@ class CheckpointingTests(test.TestCase):
       status.initialize_or_restore()
       train_fn()
       with self.assertRaises(AssertionError):
+        status.assert_existing_objects_matched()
+      with self.assertRaises(AssertionError):
         status.assert_consumed()
 
     # Make sure initialization doesn't clobber later restores
-    with ops.Graph().as_default(), self.test_session(
-        graph=ops.get_default_graph()), test_util.device(use_gpu=True):
+    with test_util.device(use_gpu=True):
       model = MyModel()
       optimizer = adam.AdamOptimizer(0.001, beta1=1.0)
       root = checkpointable_utils.Checkpoint(
@@ -1272,6 +1324,24 @@ class CheckpointingTests(test.TestCase):
       init_only_optimizer_status.initialize_or_restore()
       train_fn()
       self.assertEqual(42., self.evaluate(optimizer.variables()[0]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_restore_after_adding_empty_checkpointable_data_structure(self):
+    model = NonLayerCheckpointable()
+    checkpoint = checkpointable_utils.Checkpoint(model=model)
+    checkpoint.restore(None).initialize_or_restore()
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = checkpoint.save(checkpoint_prefix)
+
+    del model, checkpoint
+
+    model = NonLayerCheckpointable()
+    model.dict = {"a": 1}
+    model.list = {"b": 1}
+    checkpoint = checkpointable_utils.Checkpoint(model=model)
+    load_status = checkpoint.restore(save_path)
+    load_status.assert_existing_objects_matched().run_restore_ops()
 
 
 class _ManualScope(tracking.Checkpointable):
@@ -1432,7 +1502,7 @@ class CheckpointCompatibilityTests(test.TestCase):
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     with context.graph_mode():
       save_graph = ops.Graph()
-      with save_graph.as_default(), self.test_session(
+      with save_graph.as_default(), self.session(
           graph=save_graph) as session:
         root = self._initialized_model()
         name_saver = saver_lib.Saver()
@@ -1457,24 +1527,38 @@ class CheckpointCompatibilityTests(test.TestCase):
       if context.executing_eagerly():
         with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
           status.assert_consumed()
+        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
+          status.assert_existing_objects_matched()
+        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
+          status.assert_nontrivial_match()
       else:
         # When graph building, we haven't read any keys, so we don't know
         # whether the restore will be complete.
         with self.assertRaisesRegexp(AssertionError, "not restored"):
           status.assert_consumed()
+        with self.assertRaisesRegexp(AssertionError, "not restored"):
+          status.assert_existing_objects_matched()
+        with self.assertRaisesRegexp(AssertionError, "not restored"):
+          status.assert_nontrivial_match()
       status.run_restore_ops()
       self._check_sentinels(root)
       self._set_sentinels(root)
       status = object_saver.restore(save_path)
       status.initialize_or_restore()
       self._check_sentinels(root)
+      # Check that there is no error when keys are missing from the name-based
+      # checkpoint.
+      root.not_in_name_checkpoint = resource_variable_ops.ResourceVariable([1.])
+      status = object_saver.restore(save_path)
+      with self.assertRaises(AssertionError):
+        status.assert_existing_objects_matched()
 
   def testSaveGraphLoadEager(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     with context.graph_mode():
       save_graph = ops.Graph()
-      with save_graph.as_default(), self.test_session(
+      with save_graph.as_default(), self.session(
           graph=save_graph) as session:
         root = self._initialized_model()
         save_path = root.save(session=session, file_prefix=checkpoint_prefix)
@@ -1492,7 +1576,7 @@ class CheckpointCompatibilityTests(test.TestCase):
       save_path = root.save(file_prefix=checkpoint_prefix)
     with context.graph_mode():
       save_graph = ops.Graph()
-      with save_graph.as_default(), self.test_session(
+      with save_graph.as_default(), self.session(
           graph=save_graph):
         root = self._initialized_model()
         self._set_sentinels(root)

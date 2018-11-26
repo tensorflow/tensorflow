@@ -62,7 +62,7 @@ class ZlibOutputBuffer : public WritableFile {
   // to file when the buffer is full.
   //
   // To immediately write contents to file call `Flush()`.
-  Status Append(const StringPiece& data) override;
+  Status Append(StringPiece data) override;
 
   // Deflates any cached input and writes all output to file.
   Status Flush() override;

@@ -58,7 +58,8 @@ class PywrapQuantizeTrainingTest(test.TestCase):
     g = ops.Graph()
     with session.Session(graph=g) as sess:
       a = constant_op.constant(6.0, shape=[1, 1], name='a')
-      b = variables.Variable(constant_op.constant(7.0, shape=[1, 1]), name='b')
+      b = variables.VariableV1(
+          constant_op.constant(7.0, shape=[1, 1]), name='b')
       c = math_ops.matmul(a, b, name='matmul')
 
       init_op = variables.global_variables_initializer()

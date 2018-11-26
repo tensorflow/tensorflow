@@ -18,9 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
+import os
+import weakref
+
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
+from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.training.adam import AdamOptimizer
@@ -83,23 +92,23 @@ def _test_optimizer(optimizer, target=0.75):
 class KerasOptimizersTest(test.TestCase):
 
   def test_sgd(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.SGD(lr=0.01,
                                            momentum=0.9,
                                            nesterov=True))
 
   def test_rmsprop(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.RMSprop())
       _test_optimizer(keras.optimizers.RMSprop(decay=1e-3))
 
   def test_adagrad(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.Adagrad())
       _test_optimizer(keras.optimizers.Adagrad(decay=1e-3))
 
   def test_adadelta(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.Adadelta(), target=0.6)
       # Accuracy seems dependent on the initialization. Even adding tf.Print
       # nodes in the graph seemed to affect the initialization seed, and hence
@@ -107,28 +116,28 @@ class KerasOptimizersTest(test.TestCase):
       _test_optimizer(keras.optimizers.Adadelta(decay=1e-3), target=0.4)
 
   def test_adam(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.Adam())
       _test_optimizer(keras.optimizers.Adam(decay=1e-3))
       _test_optimizer(keras.optimizers.Adam(amsgrad=True))
 
   def test_adamax(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.Adamax())
       _test_optimizer(keras.optimizers.Adamax(decay=1e-3))
 
   def test_nadam(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.Nadam())
 
   def test_clipnorm(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.SGD(lr=0.01,
                                            momentum=0.9,
                                            clipnorm=0.5))
 
   def test_clipvalue(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.SGD(lr=0.01,
                                            momentum=0.9,
                                            clipvalue=0.5))
@@ -140,6 +149,7 @@ class KerasOptimizersTest(test.TestCase):
         2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
     # This is possible
     model.compile(loss='mean_squared_error', optimizer=optimizer)
+    keras.backend.track_tf_optimizer(optimizer)
     model.fit(np.random.random((5, 3)),
               np.random.random((5, 2)),
               epochs=1,
@@ -153,13 +163,28 @@ class KerasOptimizersTest(test.TestCase):
     with self.assertRaises(NotImplementedError):
       optimizer.from_config(None)
 
+  def test_optimizer_garbage_collection(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
+      keras.backend.track_tf_optimizer(optimizer)
+      optimizer_weak = weakref.ref(optimizer)
+    graph_weak = weakref.ref(graph)
+    del graph, optimizer
+    gc.collect()
+    # Check that the weak references are dead now.
+    self.assertIs(graph_weak(), None)
+    self.assertIs(optimizer_weak(), None)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_tfoptimizer_iterations(self):
-    with self.test_session():
+    with self.cached_session():
       optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(
           2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
       model.compile(loss='mean_squared_error', optimizer=optimizer)
+      keras.backend.track_tf_optimizer(optimizer)
       self.assertEqual(keras.backend.get_value(model.optimizer.iterations), 0)
 
       model.fit(np.random.random((55, 3)),
@@ -169,17 +194,56 @@ class KerasOptimizersTest(test.TestCase):
                 verbose=0)
       self.assertEqual(keras.backend.get_value(model.optimizer.iterations), 11)
 
-      model.fit(np.random.random((20, 3)),
-                np.random.random((20, 2)),
-                steps_per_epoch=8,
-                verbose=0)
-      self.assertEqual(keras.backend.get_value(model.optimizer.iterations), 19)
+      if not context.executing_eagerly():
+        # TODO(kathywu): investigate why training with an array input and
+        # setting the argument steps_per_epoch does not work in eager mode.
+        model.fit(np.random.random((20, 3)),
+                  np.random.random((20, 2)),
+                  steps_per_epoch=8,
+                  verbose=0)
+        self.assertEqual(
+            keras.backend.get_value(model.optimizer.iterations), 19)
 
   def test_negative_clipvalue_or_clipnorm(self):
     with self.assertRaises(ValueError):
       _ = keras.optimizers.SGD(lr=0.01, clipvalue=-0.5)
     with self.assertRaises(ValueError):
       _ = keras.optimizers.Adam(clipnorm=-2.0)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class KerasV2OptimizersTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('adadelta_tf2', 'adadelta', True), ('adadelta_tf1', 'adadelta', False),
+      ('adagrad_tf2', 'adagrad', True), ('adagrad_tf1', 'adagrad', False),
+      ('adam_tf2', 'adam', True), ('adam_tf1', 'adam', False),
+      ('adamax_tf2', 'adamax', True), ('adamax_tf1', 'adamax', False),
+      ('sgd_tf2', 'sgd', True), ('sgd_tf1', 'sgd', False),
+      ('nadam_tf2', 'nadam', True), ('nadam_tf1', 'nadam', False),
+      ('rmsprop_tf2', 'rmsprop', True), ('rmsprop_tf1', 'rmsprop', False))
+  def test_load_from_string(self, optimizer_string, tf2mode):
+    old_mode = os.environ.get('TF2_BEHAVIOR', None)
+    if tf2mode:
+      os.environ['TF2_BEHAVIOR'] = 'enabled'
+    else:
+      if 'TF2_BEHAVIOR' in os.environ:
+        del os.environ['TF2_BEHAVIOR']
+
+    # Sanity check.
+    self.assertEqual(tf2.enabled(), tf2mode)
+
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1, input_shape=(10,)))
+    model.compile(optimizer_string, 'binary_crossentropy')
+
+    self.assertEqual(optimizer_string,
+                     model.optimizer.__class__.__name__.lower())
+
+    model.fit(np.ones((10, 10), 'float32'), np.ones((10, 1), 'float32'))
+
+    if old_mode is not None:
+      os.environ['TF2_BEHAVIOR'] = old_mode
 
 
 if __name__ == '__main__':

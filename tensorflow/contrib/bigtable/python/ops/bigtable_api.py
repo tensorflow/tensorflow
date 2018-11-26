@@ -31,8 +31,8 @@ from six import iteritems
 from six import string_types
 
 from tensorflow.contrib.bigtable.ops import gen_bigtable_ops
-from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.contrib.util import loader
+from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
@@ -228,7 +228,7 @@ class BigtableTable(object):
     """Retrieves a sampling of row keys from the Bigtable table.
 
     This dataset is most often used in conjunction with
-    `tf.contrib.data.parallel_interleave` to construct a set of ranges for
+    `tf.data.experimental.parallel_interleave` to construct a set of ranges for
     scanning in parallel.
 
     Returns:
@@ -575,7 +575,7 @@ def _normalize_columns(columns, provided_kwargs):
   return normalized
 
 
-class _BigtableKeyDataset(dataset_ops.Dataset):
+class _BigtableKeyDataset(dataset_ops.DatasetSource):
   """_BigtableKeyDataset is an abstract class representing the keys of a table.
   """
 
@@ -645,7 +645,7 @@ class _BigtableSampleKeysDataset(_BigtableKeyDataset):
         table=self._table._resource)  # pylint: disable=protected-access
 
 
-class _BigtableLookupDataset(dataset_ops.Dataset):
+class _BigtableLookupDataset(dataset_ops.DatasetSource):
   """_BigtableLookupDataset represents a dataset that retrieves values for keys.
   """
 
@@ -678,7 +678,7 @@ class _BigtableLookupDataset(dataset_ops.Dataset):
         columns=self._columns)
 
 
-class _BigtableScanDataset(dataset_ops.Dataset):
+class _BigtableScanDataset(dataset_ops.DatasetSource):
   """_BigtableScanDataset represents a dataset that retrieves keys and values.
   """
 
@@ -715,7 +715,7 @@ class _BigtableScanDataset(dataset_ops.Dataset):
         probability=self._probability)
 
 
-class _BigtableSampleKeyPairsDataset(dataset_ops.Dataset):
+class _BigtableSampleKeyPairsDataset(dataset_ops.DatasetSource):
   """_BigtableSampleKeyPairsDataset returns key pairs from a Bigtable table.
   """
 

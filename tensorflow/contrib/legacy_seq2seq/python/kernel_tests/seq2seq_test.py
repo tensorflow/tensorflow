@@ -47,7 +47,7 @@ from tensorflow.python.training import adam
 class Seq2SeqTest(test.TestCase):
 
   def testRNNDecoder(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         inp = [constant_op.constant(0.5, shape=[2, 2])] * 2
@@ -65,7 +65,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertEqual((2, 2), res[0].shape)
 
   def testBasicRNNSeq2Seq(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         inp = [constant_op.constant(0.5, shape=[2, 2])] * 2
@@ -81,7 +81,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertEqual((2, 2), res[0].shape)
 
   def testTiedRNNSeq2Seq(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         inp = [constant_op.constant(0.5, shape=[2, 2])] * 2
@@ -98,7 +98,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertEqual((2, 2), res[0].shape)
 
   def testEmbeddingRNNDecoder(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         inp = [constant_op.constant(0.5, shape=[2, 2])] * 2
@@ -124,7 +124,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertEqual((2, 2), res[0].h.shape)
 
   def testEmbeddingRNNSeq2Seq(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         enc_inp = [
@@ -228,7 +228,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertAllClose(res1, res3)
 
   def testEmbeddingTiedRNNSeq2Seq(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         enc_inp = [
@@ -316,7 +316,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertAllClose(res1, res3)
 
   def testAttentionDecoder1(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         cell_fn = lambda: rnn_cell.GRUCell(2)
@@ -341,7 +341,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertEqual((2, 2), res[0].shape)
 
   def testAttentionDecoder2(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         cell_fn = lambda: rnn_cell.GRUCell(2)
@@ -367,7 +367,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertEqual((2, 2), res[0].shape)
 
   def testDynamicAttentionDecoder1(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         cell_fn = lambda: rnn_cell.GRUCell(2)
@@ -391,7 +391,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertEqual((2, 2), res[0].shape)
 
   def testDynamicAttentionDecoder2(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         cell_fn = lambda: rnn_cell.GRUCell(2)
@@ -416,7 +416,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertEqual((2, 2), res[0].shape)
 
   def testAttentionDecoderStateIsTuple(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         single_cell = lambda: rnn_cell.BasicLSTMCell(  # pylint: disable=g-long-lambda
@@ -448,7 +448,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertEqual((2, 2), res[0][1].h.shape)
 
   def testDynamicAttentionDecoderStateIsTuple(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         cell_fn = lambda: rnn_cell.MultiRNNCell(  # pylint: disable=g-long-lambda
@@ -479,7 +479,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertEqual((2, 2), res[0][1].h.shape)
 
   def testEmbeddingAttentionDecoder(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         inp = [constant_op.constant(0.5, shape=[2, 2])] * 2
@@ -513,7 +513,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertEqual((2, 2), res[0].shape)
 
   def testEmbeddingAttentionSeq2Seq(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         enc_inp = [
@@ -622,7 +622,7 @@ class Seq2SeqTest(test.TestCase):
         # self.assertAllClose(res1, res3)
 
   def testOne2ManyRNNSeq2Seq(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         enc_inp = [
@@ -712,7 +712,7 @@ class Seq2SeqTest(test.TestCase):
         self.assertAllClose(res1, res3)
 
   def testSequenceLoss(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       logits = [constant_op.constant(i + 0.5, shape=[2, 5]) for i in range(3)]
       targets = [
           constant_op.constant(
@@ -748,7 +748,7 @@ class Seq2SeqTest(test.TestCase):
       self.assertAllClose(9.656628, res)
 
   def testSequenceLossByExample(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output_classes = 5
       logits = [
           constant_op.constant(
@@ -778,7 +778,7 @@ class Seq2SeqTest(test.TestCase):
   #   classes = 10
   #   buckets = [(4, 4), (8, 8)]
 
-  #   with self.test_session():
+  #   with self.cached_session():
   #     # Here comes a sample Seq2Seq model using GRU cells.
   #     def SampleGRUSeq2Seq(enc_inp, dec_inp, weights, per_example_loss):
   #       """Example sequence-to-sequence model that uses GRU cells."""
@@ -839,7 +839,7 @@ class Seq2SeqTest(test.TestCase):
     random.seed(111)
     np.random.seed(111)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # We use sampled softmax so we keep output projection separate.
       w = variable_scope.get_variable("proj_w", [24, classes])
       w_t = array_ops.transpose(w)
@@ -950,7 +950,7 @@ class Seq2SeqTest(test.TestCase):
     num_dec_timesteps = 3
 
     def TestModel(seq2seq):
-      with self.test_session(graph=ops.Graph()) as sess:
+      with self.session(graph=ops.Graph()) as sess:
         random_seed.set_random_seed(111)
         random.seed(111)
         np.random.seed(111)

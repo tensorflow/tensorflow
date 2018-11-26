@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_PARAMETERIZED_TRUNCATED_NORMAL_OP_H_
-#define TENSORFLOW_KERNELS_PARAMETERIZED_TRUNCATED_NORMAL_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_PARAMETERIZED_TRUNCATED_NORMAL_OP_H_
+#define TENSORFLOW_CORE_KERNELS_PARAMETERIZED_TRUNCATED_NORMAL_OP_H_
 
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -27,11 +27,11 @@ namespace functor {
 
 // Sample a truncated normal random variable, with mean, stddev, minval, and
 // maxval parameters for each batch. Uses two rejection sampling algorithms
-// described in http://rd.springer.com/article/10.1007/BF00143942.
+// described in http://rd.springer.com/article/10.1007/BF00143942 and a randn
+// rejection sampler when most of the normal is inside the bounds.
 //
 // Either minval may be -infinity, or maxval may be +infinity. If the interval
-// (minval, maxval) is empty, the result is NaN. Large intervals which include
-// both tails may have reduced accuracy.
+// (minval, maxval) is empty, the result is NaN.
 template <typename Device, typename T>
 struct TruncatedNormalFunctor {
   void operator()(OpKernelContext* ctx, const Device& d, int64 num_batches,
@@ -42,11 +42,9 @@ struct TruncatedNormalFunctor {
                   typename TTypes<T>::ConstFlat maxvals,
                   const random::PhiloxRandom& gen,
                   typename TTypes<T>::Flat output);
-
-  static const int kMaxIterations = 100;
 };
 
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_PARAMETERIZED_TRUNCATED_NORMAL_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_PARAMETERIZED_TRUNCATED_NORMAL_OP_H_

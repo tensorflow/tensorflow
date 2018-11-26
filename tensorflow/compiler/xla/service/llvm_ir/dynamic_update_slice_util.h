@@ -27,6 +27,9 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 
+using GeneratorForOperandIrArrays =
+    std::function<std::vector<llvm_ir::IrArray>()>;
+
 // Checks if we can emit code for the given DynamicUpdateSlice node that updates
 // its input in place.  Returns true if the dynamic-update-slice's
 // array-to-be-updated and output share the same BufferAllocation::Slice.
@@ -63,10 +66,10 @@ inline bool CanEmitFusedDynamicUpdateSliceInPlace(
 // Emits IR for running the given dynamic-update-slice op in-place -- that is,
 // where the input and output buffers share the same slice, so we can simply
 // modify the input/output buffer without touching any of the other elements.
-Status EmitDynamicUpdateSliceInPlace(
-    tensorflow::gtl::ArraySlice<IrArray> operand_arrays,
-    const IrArray& output_array, tensorflow::StringPiece name,
-    llvm::IRBuilder<>* b);
+Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
+                                     const IrArray& output_array,
+                                     absl::string_view name,
+                                     llvm::IRBuilder<>* b);
 
 // Given a loop-fusion node whose root is a dynamic-update-slice op whose
 // array-to-be-updated and output share the same buffer slice, emits
@@ -74,7 +77,7 @@ Status EmitDynamicUpdateSliceInPlace(
 // place.
 Status EmitFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion,
-    tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
+    GeneratorForOperandIrArrays operand_arrays_generator,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
     llvm::IRBuilder<>* b);
 
@@ -82,7 +85,7 @@ Status EmitFusedDynamicUpdateSliceInPlace(
 // the given launch dimensions.
 Status EmitParallelFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion,
-    tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
+    GeneratorForOperandIrArrays operand_arrays_generator,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
     const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b);
 

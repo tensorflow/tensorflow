@@ -1,9 +1,13 @@
 licenses(["notice"])  # Apache 2.0
 
+package_group(
+    name = "friends",
+    includes = ["//tensorflow:internal"],
+)
+
 package(
     default_visibility = [
-        "//learning/tfx:__subpackages__",
-        "//tensorflow:internal",
+        ":friends",
     ],
 )
 
@@ -28,5 +32,6 @@ py_library(
     srcs = ["xla.py"],
     deps = [
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
+        "//tensorflow/compiler/xla:xla_data_proto_py",
     ],
 )

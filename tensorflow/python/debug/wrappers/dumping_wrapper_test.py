@@ -46,7 +46,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def setUp(self):
     self.session_root = tempfile.mkdtemp()
 
-    self.v = variables.Variable(10.0, dtype=dtypes.float32, name="v")
+    self.v = variables.VariableV1(10.0, dtype=dtypes.float32, name="v")
     self.delta = constant_op.constant(1.0, dtype=dtypes.float32, name="delta")
     self.eta = constant_op.constant(-1.4, dtype=dtypes.float32, name="eta")
     self.inc_v = state_ops.assign_add(self.v, self.delta, name="inc_v")

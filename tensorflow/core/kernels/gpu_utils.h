@@ -123,8 +123,7 @@ class AutoTuneMap {
   string GetActionSummary(StringPiece action, const Parameters& params,
                           const Config& config) {
     return strings::Printf("autotune_map %s %s: %s -> (%s)", name_.c_str(),
-                           std::string(action).c_str(),
-                           params.ToString().c_str(),
+                           string(action).c_str(), params.ToString().c_str(),
                            config.ToString().c_str());
   }
 

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -60,6 +60,9 @@ class GPUDeviceContext : public DeviceContext {
   void MaintainLifetimeOnStream(const Tensor* t,
                                 se::Stream* stream) const override {}
 
+  Status ThenExecute(Device* device, se::Stream* stream,
+                     std::function<void()> func) override;
+
  private:
   int stream_id_;
   // The default primary stream to use for this context.
@@ -75,4 +78,4 @@ class GPUDeviceContext : public DeviceContext {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_

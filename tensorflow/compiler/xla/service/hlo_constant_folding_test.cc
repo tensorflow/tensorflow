@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -45,7 +46,7 @@ TEST_F(HloConstantFoldingTest, ConvertF32ToS64) {
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(S64, {}), input));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
@@ -66,7 +67,7 @@ TEST_F(HloConstantFoldingTest, ConvertS64ToF32) {
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(F32, {}), input));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
@@ -87,7 +88,7 @@ TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(S64, {2}), input));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
@@ -104,8 +105,8 @@ TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
 TEST_F(HloConstantFoldingTest, Concatenate) {
   const struct TestConfig {
     int concat_dimension;
-    tensorflow::gtl::ArraySlice<int64> dimensions;
-    tensorflow::gtl::ArraySlice<int64> concat_sizes;
+    absl::Span<const int64> dimensions;
+    absl::Span<const int64> concat_sizes;
   } test_configs[] = {
       {1, {11, 0, 7, 5, 9}, {2, 5, 7, 11}},
       {3, {1, 4, 17, 0, 8}, {1, 3, 9, 12}},
@@ -129,7 +130,7 @@ TEST_F(HloConstantFoldingTest, Concatenate) {
     Shape shape = ShapeUtil::MakeShape(F32, dimensions);
     builder.AddInstruction(HloInstruction::CreateConcatenate(
         shape, operands, test_config.concat_dimension));
-    auto module = CreateNewModule();
+    auto module = CreateNewVerifiedModule();
     auto computation = module->AddEntryComputation(builder.Build());
 
     HloConstantFolding const_folder;
@@ -156,7 +157,7 @@ TEST_F(HloConstantFoldingTest, Slice) {
   Shape shape = ShapeUtil::MakeShape(F32, {6, 6, 3, 4, 4});
   builder.AddInstruction(HloInstruction::CreateSlice(
       shape, literal_instruction, slice_start, slice_limits, slice_strides));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   HloConstantFolding const_folder;
@@ -174,14 +175,14 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   TF_ASSERT_OK_AND_ASSIGN(auto literal,
                           LiteralUtil::CreateRandomLiteral<F32>(
                               ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
-  auto literal_clone = literal->Literal::CloneToUnique();
+  auto literal_clone = literal.Clone();
   HloInstruction* literal_instruction = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
   Shape shape = ShapeUtil::MakeShape(F32, {8, 7, 11, 9, 5});
   const int64 permutation[] = {1, 2, 0, 4, 3};
   builder.AddInstruction(
       HloInstruction::CreateTranspose(shape, literal_instruction, permutation));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   HloConstantFolding const_folder;
@@ -195,11 +196,71 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   bool matched = true;
   root->literal().EachCell<NativeT>(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT value) {
+      [&](absl::Span<const int64> indices, NativeT value) {
         std::vector<int64> rindexes = Permute(permutation, indices);
-        matched = matched && (value == literal_clone->Get<NativeT>(rindexes));
+        matched = matched && (value == literal_clone.Get<NativeT>(rindexes));
       });
   EXPECT_TRUE(matched);
+}
+
+const char* const kConstantFoldReduce = R"(
+  HloModule ConstantFoldReduce
+
+  add {
+    a = s32[] parameter(0)
+    b = s32[] parameter(1)
+    ROOT add = s32[] add(a, b)
+  }
+
+  ENTRY r {
+    x = s32[3] constant({1, 2, 3})
+    init = s32[] constant(0)
+    ROOT reduce = s32[] reduce(x, init), dimensions={0}, to_apply=add
+  })";
+
+TEST_F(HloConstantFoldingTest, ConstantFoldReduce) {
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnVerifiedModule(kConstantFoldReduce));
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(m.get()));
+  EXPECT_TRUE(result);
+
+  EXPECT_EQ(6, m->entry_computation()
+                   ->root_instruction()
+                   ->literal()
+                   .GetFirstElement<int32>());
+}
+
+TEST_F(HloConstantFoldingTest, ConstantFoldReduceNoLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnVerifiedModule(kConstantFoldReduce));
+  HloInstruction* add = m->computations().begin()->root_instruction();
+  LayoutUtil::ClearLayout(add->mutable_shape());
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(m.get()));
+  EXPECT_FALSE(result);
+
+  EXPECT_THAT(m->entry_computation()->root_instruction(), op::Reduce());
+}
+
+const char* const kConstantFoldLargePad = R"(
+  HloModule ConstantFoldLargePad
+
+  ENTRY r {
+    a = f32[1,1,1] constant(f32[1,1,1]{{{7}}})
+    b = f32[] constant(42)
+    ROOT pad = f32[2048,2048,128] pad(a, b), padding=1024_1023x1024_1023x64_63
+  })";
+
+TEST_F(HloConstantFoldingTest, DoesNotFoldLargePad) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kConstantFoldLargePad));
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  EXPECT_FALSE(result);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Pad(op::Constant(), op::Constant()));
 }
 
 }  // namespace

@@ -45,13 +45,11 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.distributions import distribution as ds
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
-
 
 __all__ = [
     'gan_model',
@@ -61,6 +59,7 @@ __all__ = [
     'stargan_model',
     'gan_loss',
     'cyclegan_loss',
+    'stargan_loss',
     'gan_train_ops',
     'gan_train',
     'get_sequential_train_hooks',
@@ -115,7 +114,7 @@ def gan_model(
     discriminator_gen_outputs = discriminator_fn(generated_data,
                                                  generator_inputs)
   with variable_scope.variable_scope(dis_scope, reuse=True):
-    real_data = ops.convert_to_tensor(real_data)
+    real_data = _convert_tensor_or_l_or_d(real_data)
     discriminator_real_outputs = discriminator_fn(real_data, generator_inputs)
 
   if check_shapes:
@@ -646,8 +645,9 @@ def gan_loss(
         type(model))
 
   # Optionally create pooled model.
-  pooled_model = (_tensor_pool_adjusted_model(model, tensor_pool_fn) if
-                  tensor_pool_fn else model)
+  pooled_model = (
+      _tensor_pool_adjusted_model(model, tensor_pool_fn)
+      if tensor_pool_fn else model)
 
   # Create standard losses.
   gen_loss = generator_loss_fn(model, add_summaries=add_summaries)
@@ -665,9 +665,10 @@ def gan_loss(
   if _use_aux_loss(mutual_information_penalty_weight):
     gen_info_loss = tfgan_losses.mutual_information_penalty(
         model, add_summaries=add_summaries)
-    dis_info_loss = (gen_info_loss if tensor_pool_fn is None else
-                     tfgan_losses.mutual_information_penalty(
-                         pooled_model, add_summaries=add_summaries))
+    dis_info_loss = (
+        gen_info_loss
+        if tensor_pool_fn is None else tfgan_losses.mutual_information_penalty(
+            pooled_model, add_summaries=add_summaries))
     gen_loss += mutual_information_penalty_weight * gen_info_loss
     dis_loss += mutual_information_penalty_weight * dis_info_loss
   if _use_aux_loss(aux_cond_generator_weight):
@@ -1070,8 +1071,19 @@ def get_sequential_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
   return get_hooks
 
 
+def _num_joint_steps(train_steps):
+  g_steps = train_steps.generator_train_steps
+  d_steps = train_steps.discriminator_train_steps
+  # Get the number of each type of step that should be run.
+  num_d_and_g_steps = min(g_steps, d_steps)
+  num_g_steps = g_steps - num_d_and_g_steps
+  num_d_steps = d_steps - num_d_and_g_steps
+
+  return num_d_and_g_steps, num_g_steps, num_d_steps
+
+
 def get_joint_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
-  """Returns a hooks function for sequential GAN training.
+  """Returns a hooks function for joint GAN training.
 
   When using these train hooks, IT IS RECOMMENDED TO USE `use_locking=True` ON
   ALL OPTIMIZERS TO AVOID RACE CONDITIONS.
@@ -1104,12 +1116,7 @@ def get_joint_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
   Returns:
     A function that takes a GANTrainOps tuple and returns a list of hooks.
   """
-  g_steps = train_steps.generator_train_steps
-  d_steps = train_steps.discriminator_train_steps
-  # Get the number of each type of step that should be run.
-  num_d_and_g_steps = min(g_steps, d_steps)
-  num_g_steps = g_steps - num_d_and_g_steps
-  num_d_steps = d_steps - num_d_and_g_steps
+  num_d_and_g_steps, num_g_steps, num_d_steps = _num_joint_steps(train_steps)
 
   def get_hooks(train_ops):
     g_op = train_ops.generator_train_op
@@ -1262,10 +1269,6 @@ def _validate_distributions(distributions_l, noise_l):
   if not isinstance(distributions_l, (tuple, list)):
     raise ValueError('`predicted_distributions` must be a list. Instead, found '
                      '%s.' % type(distributions_l))
-  for dist in distributions_l:
-    if not isinstance(dist, ds.Distribution):
-      raise ValueError('Every element in `predicted_distributions` must be a '
-                       '`tf.Distribution`. Instead, found %s.' % type(dist))
   if len(distributions_l) != len(noise_l):
     raise ValueError('Length of `predicted_distributions` %i must be the same '
                      'as the length of structured noise %i.' %

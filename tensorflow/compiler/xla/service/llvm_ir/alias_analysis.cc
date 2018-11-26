@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
 
-#include <unordered_set>
+#include <map>
 
 #include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -164,9 +164,7 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
     add_buffers_to_worklist(operand);
   }
 
-  tensorflow::gtl::FlatSet<BufferAllocation::Slice,
-                           BufferAllocation::Slice::Hasher>
-      buffers;
+  std::set<BufferAllocation::Slice> buffers;
   for (const LogicalBuffer* buffer : worklist) {
     // Skip buffers which cannot be added to the noalias set.
     if (!assignment.HasAllocation(*buffer) ||

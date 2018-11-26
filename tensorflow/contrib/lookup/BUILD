@@ -34,6 +34,7 @@ tf_py_test(
         ":lookup_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
+        "//tensorflow/contrib/data",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",

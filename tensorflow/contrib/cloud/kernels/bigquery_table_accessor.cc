@@ -33,7 +33,7 @@ bool IsPartitionEmpty(const BigQueryTablePartition& partition) {
 
 Status ParseJson(StringPiece json, Json::Value* result) {
   Json::Reader reader;
-  if (!reader.parse(json.ToString(), *result)) {
+  if (!reader.parse(string(json), *result)) {
     return errors::Internal("Couldn't parse JSON response from BigQuery.");
   }
   return Status::OK();

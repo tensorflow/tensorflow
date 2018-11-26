@@ -114,7 +114,7 @@ class DepthwiseConv2DTest(test.TestCase):
     # Initializes the input and filter tensor with numbers incrementing from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       with sess.graph._kernel_label_map({"DepthwiseConv2dNative": "neon"}):
         t1 = constant_op.constant(x1, shape=tensor_in_sizes)
         t1.set_shape(tensor_in_sizes)
@@ -204,7 +204,7 @@ class DepthwiseConv2DTest(test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       with sess.graph._kernel_label_map({"DepthwiseConv2dNative": "neon"}):
         t1 = constant_op.constant(x1, shape=tensor_in_sizes)
         t1.set_shape(tensor_in_sizes)

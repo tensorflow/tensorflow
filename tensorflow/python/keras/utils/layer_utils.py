@@ -26,6 +26,7 @@ from tensorflow.python.keras.utils.conv_utils import convert_kernel
 from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.utils.get_source_inputs')
 def get_source_inputs(tensor, layer=None, node_index=None):
   """Returns the list of input tensors necessary to compute `tensor`.
 
@@ -76,7 +77,7 @@ def count_params(weights):
   Returns:
       The total number of scalars composing the weights
   """
-  return int(np.sum([np.prod(p.get_shape().as_list()) for p in set(weights)]))
+  return int(sum(np.prod(p.get_shape().as_list()) for p in set(weights)))
 
 
 def print_summary(model, line_length=None, positions=None, print_fn=None):

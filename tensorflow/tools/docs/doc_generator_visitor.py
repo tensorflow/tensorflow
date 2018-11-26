@@ -269,7 +269,6 @@ class DocGeneratorVisitor(object):
         # Choose the master name with a lexical sort on the tuples returned by
         # by _score_name.
         master_name = min(names, key=self._score_name)
-        print(names, master_name)
 
       duplicates[master_name] = names
       for name in names:

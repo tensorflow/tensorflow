@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 include (ExternalProject)
+include (GNUInstallDirs)
 
 set(png_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/png_archive)
 set(png_URL https://mirror.bazel.build/github.com/glennrp/libpng/archive/v1.6.34.tar.gz)
@@ -35,7 +36,7 @@ if(WIN32)
     endif()
   endif()
 else()
-  set(png_STATIC_LIBRARIES ${CMAKE_BINARY_DIR}/png/install/lib/libpng16.a)
+  set(png_STATIC_LIBRARIES ${CMAKE_BINARY_DIR}/png/install/${CMAKE_INSTALL_LIBDIR}/libpng16.a)
 endif()
 
 set(png_HEADERS

@@ -45,6 +45,7 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
   def _no_rewrite_session_config(self):
     rewriter_config = rewriter_config_pb2.RewriterConfig(
         dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+        pin_to_host_optimization=rewriter_config_pb2.RewriterConfig.OFF,
         min_graph_nodes=-1)
     graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
     return config_pb2.ConfigProto(graph_options=graph_options)
@@ -156,7 +157,7 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
           sess, cond, expected_output=21.0)
 
   def testReconstructGraphWithWhileLoop(self):
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       loop_body = lambda i: math_ops.add(i, 2)
       loop_cond = lambda i: math_ops.less(i, 16)
       i = constant_op.constant(10, name="i")

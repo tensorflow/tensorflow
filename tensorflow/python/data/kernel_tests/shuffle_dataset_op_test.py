@@ -19,18 +19,22 @@ from __future__ import print_function
 
 import collections
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ShuffleDatasetTest(test.TestCase):
+class ShuffleDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testShuffleDataset(self):
     components = (
@@ -60,7 +64,7 @@ class ShuffleDatasetTest(test.TestCase):
 
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # First run without shuffling to collect the "ground truth".
       sess.run(init_fifo_op)
       unshuffled_elements = []
@@ -140,7 +144,7 @@ class ShuffleDatasetTest(test.TestCase):
     get_next = iterator.get_next()
 
     elems = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(10):
         elems.append(sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
@@ -152,7 +156,7 @@ class ShuffleDatasetTest(test.TestCase):
         .make_initializable_iterator())
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer, feed_dict={seed_placeholder: 0})
       for elem in elems:
         self.assertEqual(elem, sess.run(get_next))
@@ -166,7 +170,7 @@ class ShuffleDatasetTest(test.TestCase):
 
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       counts = collections.defaultdict(lambda: 0)
       for _ in range(10):
         for _ in range(5):
@@ -183,7 +187,7 @@ class ShuffleDatasetTest(test.TestCase):
                 .make_one_shot_iterator())
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       initial_permutation = sess.run(next_element)
       self.assertAllEqual(initial_permutation, sess.run(next_element))
       self.assertAllEqual(initial_permutation, sess.run(next_element))
@@ -198,7 +202,7 @@ class ShuffleDatasetTest(test.TestCase):
                 .make_one_shot_iterator())
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       initial_permutation = list(sess.run(next_element))
       for _ in range(2):
         next_permutation = list(sess.run(next_element))
@@ -207,6 +211,68 @@ class ShuffleDatasetTest(test.TestCase):
             sorted(initial_permutation), sorted(next_permutation))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
+
+  @parameterized.named_parameters(
+      ("ReshuffleGraphLevelSeed", True, 38, None),
+      ("ReshuffleOpLevelSeed", True, None, 42),
+      ("ReshuffleGraphAndOpLevelSeed", True, 38, 42),
+      ("NoReshuffleGraphLevelSeed", False, 38, None),
+      ("NoReshuffleOpLevelSeed", False, None, 42),
+      ("NoReshuffleGraphAndOpLevelSeed", False, 38, 42),
+  )
+  def testShuffleSeed(self, reshuffle, graph_level_seed, op_level_seed):
+    results = []
+    for _ in range(2):
+      with ops.Graph().as_default() as g:
+        random_seed.set_random_seed(graph_level_seed)
+        dataset = dataset_ops.Dataset.range(10).shuffle(
+            10, seed=op_level_seed, reshuffle_each_iteration=reshuffle).repeat(
+                3)
+        iterator = dataset.make_one_shot_iterator()
+        next_element = iterator.get_next()
+
+        run_results = []
+        with self.session(graph=g) as sess:
+          for _ in range(30):
+            run_results.append(sess.run(next_element))
+          with self.assertRaises(errors.OutOfRangeError):
+            sess.run(next_element)
+        results.append(run_results)
+
+    self.assertAllEqual(results[0], results[1])
+
+  @parameterized.named_parameters(
+      ("ReshuffleOneShot", True, False),
+      ("ReshuffleInitializable", True, True),
+      ("NoReshuffleOneShot", False, False),
+      ("NoReshuffleInitializable", False, True),
+  )
+  def testMultipleIterators(self, reshuffle, initializable):
+    with ops.Graph().as_default() as g:
+      dataset = dataset_ops.Dataset.range(100).shuffle(
+          10, reshuffle_each_iteration=reshuffle).repeat(3)
+
+      if initializable:
+        iterators = [dataset.make_initializable_iterator() for _ in range(2)]
+      else:
+        iterators = [dataset.make_one_shot_iterator() for _ in range(2)]
+
+      results = []
+      with self.session(graph=g) as sess:
+        for iterator in iterators:
+          if initializable:
+            sess.run(iterator.initializer)
+          next_element = iterator.get_next()
+          run_results = []
+          for _ in range(300):
+            run_results.append(sess.run(next_element))
+          with self.assertRaises(errors.OutOfRangeError):
+            sess.run(next_element)
+
+          results.append(run_results)
+
+        self.assertNotEqual(results[0], results[1])
+
 
 if __name__ == "__main__":
   test.main()

@@ -31,6 +31,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 TOLERANCE = 1e-3
+RIDGE_EPSILON = 1e-4
 
 
 def np_power(mat_g, alpha):
@@ -52,10 +53,10 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     grad_np = np.random.rand(size)
     grad_np_2 = np.random.rand(size)
 
-    with self.test_session() as sess:
-      global_step = variables.Variable(
+    with self.cached_session() as sess:
+      global_step = variables.VariableV1(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
-      var = variables.Variable(
+      var = variables.VariableV1(
           init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = constant_op.constant(grad_np, dtype=dtypes.float32)
       grad_2 = constant_op.constant(grad_np_2, dtype=dtypes.float32)
@@ -77,8 +78,8 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       # let up compute this in numpy
       # Update rule is var = var - lr * mat_g^{-0.5} * grad
       # lr = 1
-      mat_g = np.outer(grad_np, grad_np)
-      mat_h = np_power(mat_g + 0.1 * np.eye(size), -0.5)
+      mat_g = np.outer(grad_np, grad_np) / grad_np.shape[0]
+      mat_h = np_power(mat_g + RIDGE_EPSILON * np.eye(size), -0.5)
       new_val_np = init_var_np - np.dot(mat_h, grad_np)
 
       self.assertAllCloseAccordingToType(new_val_np, new_val,
@@ -88,8 +89,8 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       update_2.run()
       new_val = sess.run(var)
 
-      mat_g += np.outer(grad_np_2, grad_np_2)
-      mat_h = np_power(mat_g + 0.1 * np.eye(size), -0.5)
+      mat_g += np.outer(grad_np_2, grad_np_2) / grad_np.shape[0]
+      mat_h = np_power(mat_g + RIDGE_EPSILON * np.eye(size), -0.5)
       new_val_np -= np.dot(mat_h, grad_np_2)
 
       self.assertAllCloseAccordingToType(new_val_np, new_val,
@@ -103,10 +104,10 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     grad_np = np.random.rand(size[0], size[1])
     grad_np_2 = np.random.rand(size[0], size[1])
 
-    with self.test_session() as sess:
-      global_step = variables.Variable(
+    with self.cached_session() as sess:
+      global_step = variables.VariableV1(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
-      var = variables.Variable(
+      var = variables.VariableV1(
           init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = constant_op.constant(grad_np, dtype=dtypes.float32)
       grad_2 = constant_op.constant(grad_np_2, dtype=dtypes.float32)
@@ -128,10 +129,10 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       # let up compute this in numpy
       # Update rule is var = var - lr * mat_g1^{-0.25} * grad * mat_g2^{-0.25}
       # lr = 1
-      mat_g1 = np.dot(grad_np, grad_np.transpose())
-      mat_left = np_power(mat_g1 + 0.1 * np.eye(size[0]), -0.25)
-      mat_g2 = np.dot(grad_np.transpose(), grad_np)
-      mat_right = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.25)
+      mat_g1 = np.dot(grad_np, grad_np.transpose()) / grad_np.shape[0]
+      mat_left = np_power(mat_g1 + RIDGE_EPSILON * np.eye(size[0]), -0.25)
+      mat_g2 = np.dot(grad_np.transpose(), grad_np) / grad_np.shape[1]
+      mat_right = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.25)
       new_val_np = init_var_np - np.dot(np.dot(mat_left, grad_np), mat_right)
 
       self.assertAllCloseAccordingToType(new_val_np, new_val,
@@ -141,10 +142,10 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       update_2.run()
       new_val = sess.run(var)
 
-      mat_g1 += np.dot(grad_np_2, grad_np_2.transpose())
-      mat_left = np_power(mat_g1 + 0.1 * np.eye(size[0]), -0.25)
-      mat_g2 += np.dot(grad_np_2.transpose(), grad_np_2)
-      mat_right = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.25)
+      mat_g1 += np.dot(grad_np_2, grad_np_2.transpose()) / grad_np_2.shape[0]
+      mat_left = np_power(mat_g1 + RIDGE_EPSILON * np.eye(size[0]), -0.25)
+      mat_g2 += np.dot(grad_np_2.transpose(), grad_np_2) / grad_np_2.shape[1]
+      mat_right = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.25)
       new_val_np -= np.dot(np.dot(mat_left, grad_np_2), mat_right)
 
       self.assertAllCloseAccordingToType(new_val_np, new_val,
@@ -162,10 +163,10 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     grad_np = np.random.rand(size[0], size[1], size[2])
     grad_np_2 = np.random.rand(size[0], size[1], size[2])
 
-    with self.test_session() as sess:
-      global_step = variables.Variable(
+    with self.cached_session() as sess:
+      global_step = variables.VariableV1(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
-      var = variables.Variable(
+      var = variables.VariableV1(
           init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = constant_op.constant(grad_np, dtype=dtypes.float32)
       grad_2 = constant_op.constant(grad_np_2, dtype=dtypes.float32)
@@ -188,12 +189,18 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       # let up compute this in numpy
       # Update rule is var = var - lr * Prod_i mat_g_i^{-0.5/3} grad
       # lr = 1
-      mat_g1 = np.tensordot(grad_np, grad_np, axes=([1, 2], [1, 2]))
-      mat_g1_a = np_power(mat_g1 + 0.1 * np.eye(size[0]), -0.5/3.0)
-      mat_g2 = np.tensordot(grad_np, grad_np, axes=([0, 2], [0, 2]))
-      mat_g2_a = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.5/3.0)
-      mat_g3 = np.tensordot(grad_np, grad_np, axes=([0, 1], [0, 1]))
-      mat_g3_a = np_power(mat_g3 + 0.1 * np.eye(size[2]), -0.5/3.0)
+      mat_g1 = (
+          np.tensordot(grad_np, grad_np, axes=([1, 2], [1, 2])) /
+          grad_np.shape[0])
+      mat_g1_a = np_power(mat_g1 + RIDGE_EPSILON * np.eye(size[0]), -0.5 / 3.0)
+      mat_g2 = (
+          np.tensordot(grad_np, grad_np, axes=([0, 2], [0, 2])) /
+          grad_np.shape[1])
+      mat_g2_a = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.5 / 3.0)
+      mat_g3 = (
+          np.tensordot(grad_np, grad_np, axes=([0, 1], [0, 1])) /
+          grad_np.shape[2])
+      mat_g3_a = np_power(mat_g3 + RIDGE_EPSILON * np.eye(size[2]), -0.5 / 3.0)
 
       precond_grad = np.tensordot(grad_np, mat_g1_a, axes=([0], [0]))
       precond_grad = np.tensordot(precond_grad, mat_g2_a, axes=([0], [0]))
@@ -207,12 +214,18 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       update_2.run()
       new_val = sess.run(var)
 
-      mat_g1 += np.tensordot(grad_np_2, grad_np_2, axes=([1, 2], [1, 2]))
-      mat_g1_a = np_power(mat_g1 + 0.1 * np.eye(size[0]), -0.5/3.0)
-      mat_g2 += np.tensordot(grad_np_2, grad_np_2, axes=([0, 2], [0, 2]))
-      mat_g2_a = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.5/3.0)
-      mat_g3 += np.tensordot(grad_np_2, grad_np_2, axes=([0, 1], [0, 1]))
-      mat_g3_a = np_power(mat_g3 + 0.1 * np.eye(size[2]), -0.5/3.0)
+      mat_g1 += (
+          np.tensordot(grad_np_2, grad_np_2, axes=([1, 2], [1, 2])) /
+          grad_np_2.shape[0])
+      mat_g1_a = np_power(mat_g1 + RIDGE_EPSILON * np.eye(size[0]), -0.5 / 3.0)
+      mat_g2 += (
+          np.tensordot(grad_np_2, grad_np_2, axes=([0, 2], [0, 2])) /
+          grad_np_2.shape[1])
+      mat_g2_a = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.5 / 3.0)
+      mat_g3 += (
+          np.tensordot(grad_np_2, grad_np_2, axes=([0, 1], [0, 1])) /
+          grad_np_2.shape[2])
+      mat_g3_a = np_power(mat_g3 + RIDGE_EPSILON * np.eye(size[2]), -0.5 / 3.0)
 
       precond_grad = np.tensordot(grad_np_2, mat_g1_a, axes=([0], [0]))
       precond_grad = np.tensordot(precond_grad, mat_g2_a, axes=([0], [0]))
@@ -240,10 +253,10 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     grad_np = np.random.rand(size)
     grad_np_2 = np.random.rand(size)
 
-    with self.test_session() as sess:
-      global_step = variables.Variable(
+    with self.cached_session() as sess:
+      global_step = variables.VariableV1(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
-      var = variables.Variable(
+      var = variables.VariableV1(
           init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = constant_op.constant(grad_np, dtype=dtypes.float32)
       grad_2 = constant_op.constant(grad_np_2, dtype=dtypes.float32)
@@ -265,19 +278,21 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       # let up compute this in numpy
       # Update rule is var = var - lr * gg^{-0.5} * grad
       # lr = 1
-      mat_g = grad_np * grad_np + 0.1
+      mat_g = (grad_np * grad_np)
       new_val_np = init_var_np - np.power(mat_g, -0.5) * grad_np
 
-      self.assertAllCloseAccordingToType(new_val_np, new_val)
-
+      self.assertAllCloseAccordingToType(
+          new_val_np, new_val, atol=TOLERANCE, rtol=TOLERANCE)
       # Run another step of Shampoo
       update_2.run()
       new_val = sess.run(var)
 
-      mat_g += grad_np_2 * grad_np_2
+      mat_g += (grad_np_2 * grad_np_2)
       new_val_np -= np.power(mat_g, -0.5) * grad_np_2
 
-      self.assertAllCloseAccordingToType(new_val_np, new_val)
+      self.assertAllCloseAccordingToType(
+          new_val_np, new_val, atol=TOLERANCE, rtol=TOLERANCE)
+
 
   @parameterized.named_parameters(('Var', False), ('ResourceVar', True))
   def testLargeMatrix(self, use_resource_var):
@@ -294,10 +309,10 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     grad_np = np.random.rand(size[0], size[1])
     grad_np_2 = np.random.rand(size[0], size[1])
 
-    with self.test_session() as sess:
-      global_step = variables.Variable(
+    with self.cached_session() as sess:
+      global_step = variables.VariableV1(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
-      var = variables.Variable(
+      var = variables.VariableV1(
           init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = constant_op.constant(grad_np, dtype=dtypes.float32)
       grad_2 = constant_op.constant(grad_np_2, dtype=dtypes.float32)
@@ -322,10 +337,11 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       # with broadcasting
       # lr = 1
 
-      mat_g1 = np.sum(grad_np * grad_np, axis=1, keepdims=True)
-      mat_left = np.power(mat_g1 + 0.1, -0.25)
-      mat_g2 = np.dot(grad_np.transpose(), grad_np)
-      mat_right = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.25)
+      mat_g1 = np.sum(
+          grad_np * grad_np, axis=1, keepdims=True) / grad_np.shape[0]
+      mat_left = np.power(mat_g1, -0.25)
+      mat_g2 = np.dot(grad_np.transpose(), grad_np) / grad_np.shape[1]
+      mat_right = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.25)
       new_val_np = init_var_np - np.dot(grad_np * mat_left, mat_right)
 
       self.assertAllCloseAccordingToType(new_val_np, new_val,
@@ -335,10 +351,11 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       update_2.run()
       new_val = sess.run(var)
 
-      mat_g1 += np.sum(grad_np_2 * grad_np_2, axis=1, keepdims=True)
-      mat_left = np.power(mat_g1 + 0.1, -0.25)
-      mat_g2 += np.dot(grad_np_2.transpose(), grad_np_2)
-      mat_right = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.25)
+      mat_g1 += np.sum(
+          grad_np_2 * grad_np_2, axis=1, keepdims=True) / grad_np_2.shape[0]
+      mat_left = np.power(mat_g1, -0.25)
+      mat_g2 += np.dot(grad_np_2.transpose(), grad_np_2) / grad_np_2.shape[1]
+      mat_right = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.25)
       new_val_np -= np.dot(grad_np_2 * mat_left, mat_right)
 
       self.assertAllCloseAccordingToType(new_val_np, new_val,
@@ -365,10 +382,10 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
                                               replace=False))
     grad_np_2 = np.random.rand(sample_size_2, size[1])
 
-    with self.test_session() as sess:
-      global_step = variables.Variable(
+    with self.cached_session() as sess:
+      global_step = variables.VariableV1(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
-      var = variables.Variable(
+      var = variables.VariableV1(
           init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = ops.IndexedSlices(
           constant_op.constant(grad_np, dtype=dtypes.float32),
@@ -405,9 +422,9 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       mat_g1 = np.sum(grad_np * grad_np, axis=1, keepdims=True)
       mat_g1_acc = np.zeros((size[0], 1))
       mat_g1_acc[grad_indices] += mat_g1
-      mat_left = np.power(mat_g1 + 0.1, -0.25)
-      mat_g2 = np.dot(grad_np.transpose(), grad_np)
-      mat_right = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.25)
+      mat_left = np.power(mat_g1 + RIDGE_EPSILON, -0.25)
+      mat_g2 = np.dot(grad_np.transpose(), grad_np) / grad_np.shape[1]
+      mat_right = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.25)
       new_val_np = init_var_np
       new_val_np[grad_indices, :] -= np.dot(grad_np * mat_left, mat_right)
 
@@ -420,9 +437,9 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
 
       mat_g1 = np.sum(grad_np_2 * grad_np_2, axis=1, keepdims=True)
       mat_g1_acc[grad_indices_2] += mat_g1
-      mat_left = np.power(mat_g1_acc[grad_indices_2] + 0.1, -0.25)
-      mat_g2 += np.dot(grad_np_2.transpose(), grad_np_2)
-      mat_right = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.25)
+      mat_left = np.power(mat_g1_acc[grad_indices_2] + RIDGE_EPSILON, -0.25)
+      mat_g2 += np.dot(grad_np_2.transpose(), grad_np_2) / grad_np_2.shape[1]
+      mat_right = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.25)
       new_val_np[grad_indices_2, :] -= np.dot(grad_np_2 * mat_left, mat_right)
 
       self.assertAllCloseAccordingToType(new_val_np, new_val,
@@ -445,10 +462,10 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
                                             replace=False))
     grad_np = np.random.rand(sample_size, size[1], size[2])
 
-    with self.test_session() as sess:
-      global_step = variables.Variable(
+    with self.cached_session() as sess:
+      global_step = variables.VariableV1(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
-      var = variables.Variable(
+      var = variables.VariableV1(
           init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = ops.IndexedSlices(
           constant_op.constant(grad_np, dtype=dtypes.float32),
@@ -474,12 +491,15 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       grad_dense = np.zeros_like(init_var_np)
       grad_dense[grad_indices] = grad_np
 
-      mat_g1 = np.tensordot(grad_dense, grad_dense, axes=([1, 2], [1, 2]))
-      mat_g1_a = np_power(mat_g1 + 0.1 * np.eye(size[0]), -0.5/3.0)
-      mat_g2 = np.tensordot(grad_dense, grad_dense, axes=([0, 2], [0, 2]))
-      mat_g2_a = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.5/3.0)
-      mat_g3 = np.tensordot(grad_dense, grad_dense, axes=([0, 1], [0, 1]))
-      mat_g3_a = np_power(mat_g3 + 0.1 * np.eye(size[2]), -0.5/3.0)
+      mat_g1 = np.tensordot(
+          grad_dense, grad_dense, axes=([1, 2], [1, 2])) / grad_dense.shape[0]
+      mat_g1_a = np_power(mat_g1 + RIDGE_EPSILON * np.eye(size[0]), -0.5 / 3.0)
+      mat_g2 = np.tensordot(
+          grad_dense, grad_dense, axes=([0, 2], [0, 2])) / grad_dense.shape[1]
+      mat_g2_a = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.5 / 3.0)
+      mat_g3 = np.tensordot(
+          grad_dense, grad_dense, axes=([0, 1], [0, 1])) / grad_dense.shape[2]
+      mat_g3_a = np_power(mat_g3 + RIDGE_EPSILON * np.eye(size[2]), -0.5 / 3.0)
 
       precond_grad = np.tensordot(grad_dense, mat_g1_a, axes=([0], [0]))
       precond_grad = np.tensordot(precond_grad, mat_g2_a, axes=([0], [0]))
@@ -512,10 +532,10 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     gbar_decay = 0.9
     gbar_weight = 0.1
 
-    with self.test_session() as sess:
-      global_step = variables.Variable(
+    with self.cached_session() as sess:
+      global_step = variables.VariableV1(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
-      var = variables.Variable(
+      var = variables.VariableV1(
           init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = constant_op.constant(grad_np, dtype=dtypes.float32)
       grad_2 = constant_op.constant(grad_np_2, dtype=dtypes.float32)
@@ -536,12 +556,15 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       # let up compute this in numpy
       # Update rule is var = var - lr * Prod_i mat_g_i^{-0.5/3} grad
       # lr = 1
-      mat_g1 = np.tensordot(grad_np, grad_np, axes=([1, 2], [1, 2]))
-      mat_g1_a = np_power(mat_g1 + 0.1 * np.eye(size[0]), -0.5/3.0)
-      mat_g2 = np.tensordot(grad_np, grad_np, axes=([0, 2], [0, 2]))
-      mat_g2_a = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.5/3.0)
-      mat_g3 = np.tensordot(grad_np, grad_np, axes=([0, 1], [0, 1]))
-      mat_g3_a = np_power(mat_g3 + 0.1 * np.eye(size[2]), -0.5/3.0)
+      mat_g1 = np.tensordot(
+          grad_np, grad_np, axes=([1, 2], [1, 2])) / grad_np.shape[0]
+      mat_g1_a = np_power(mat_g1 + RIDGE_EPSILON * np.eye(size[0]), -0.5 / 3.0)
+      mat_g2 = np.tensordot(
+          grad_np, grad_np, axes=([0, 2], [0, 2])) / grad_np.shape[1]
+      mat_g2_a = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.5 / 3.0)
+      mat_g3 = np.tensordot(
+          grad_np, grad_np, axes=([0, 1], [0, 1])) / grad_np.shape[2]
+      mat_g3_a = np_power(mat_g3 + RIDGE_EPSILON * np.eye(size[2]), -0.5 / 3.0)
 
       gbar_np = gbar_weight * grad_np
       precond_grad = np.tensordot(gbar_np, mat_g1_a, axes=([0], [0]))
@@ -556,12 +579,15 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       update_2.run()
       new_val = sess.run(var)
 
-      mat_g1 += np.tensordot(grad_np_2, grad_np_2, axes=([1, 2], [1, 2]))
-      mat_g1_a = np_power(mat_g1 + 0.1 * np.eye(size[0]), -0.5/3.0)
-      mat_g2 += np.tensordot(grad_np_2, grad_np_2, axes=([0, 2], [0, 2]))
-      mat_g2_a = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.5/3.0)
-      mat_g3 += np.tensordot(grad_np_2, grad_np_2, axes=([0, 1], [0, 1]))
-      mat_g3_a = np_power(mat_g3 + 0.1 * np.eye(size[2]), -0.5/3.0)
+      mat_g1 += np.tensordot(
+          grad_np_2, grad_np_2, axes=([1, 2], [1, 2])) / grad_np_2.shape[0]
+      mat_g1_a = np_power(mat_g1 + RIDGE_EPSILON * np.eye(size[0]), -0.5 / 3.0)
+      mat_g2 += np.tensordot(
+          grad_np_2, grad_np_2, axes=([0, 2], [0, 2])) / grad_np_2.shape[1]
+      mat_g2_a = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.5 / 3.0)
+      mat_g3 += np.tensordot(
+          grad_np_2, grad_np_2, axes=([0, 1], [0, 1])) / grad_np_2.shape[2]
+      mat_g3_a = np_power(mat_g3 + RIDGE_EPSILON * np.eye(size[2]), -0.5 / 3.0)
 
       gbar_np_2 = gbar_decay * gbar_np + gbar_weight * grad_np_2
       precond_grad = np.tensordot(gbar_np_2, mat_g1_a, axes=([0], [0]))
@@ -601,10 +627,10 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     mat_g3_a = np.eye(size[2])
     mat_g3 = np.zeros_like(mat_g3_a)
 
-    with self.test_session() as sess:
-      global_step = variables.Variable(
+    with self.cached_session() as sess:
+      global_step = variables.VariableV1(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
-      var = variables.Variable(
+      var = variables.VariableV1(
           init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = array_ops.placeholder(dtypes.float32, shape=size)
 
@@ -626,13 +652,19 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
         # let up compute this in numpy
         # Update rule is var = var - lr * Prod_i mat_g_i^{-0.5/3} grad
         # lr = 1
-        mat_g1 += np.tensordot(grad_np[i], grad_np[i], axes=([1, 2], [1, 2]))
-        mat_g2 += np.tensordot(grad_np[i], grad_np[i], axes=([0, 2], [0, 2]))
-        mat_g3 += np.tensordot(grad_np[i], grad_np[i], axes=([0, 1], [0, 1]))
+        mat_g1 += np.tensordot(
+            grad_np[i], grad_np[i], axes=([1, 2], [1, 2])) / grad_np[i].shape[0]
+        mat_g2 += np.tensordot(
+            grad_np[i], grad_np[i], axes=([0, 2], [0, 2])) / grad_np[i].shape[1]
+        mat_g3 += np.tensordot(
+            grad_np[i], grad_np[i], axes=([0, 1], [0, 1])) / grad_np[i].shape[2]
         if (i + 1) % svd_interval == 0:
-          mat_g1_a = np_power(mat_g1 + 0.1 * np.eye(size[0]), -0.5/3.0)
-          mat_g2_a = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.5/3.0)
-          mat_g3_a = np_power(mat_g3 + 0.1 * np.eye(size[2]), -0.5/3.0)
+          mat_g1_a = np_power(mat_g1 + RIDGE_EPSILON * np.eye(size[0]),
+                              -0.5 / 3.0)
+          mat_g2_a = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]),
+                              -0.5 / 3.0)
+          mat_g3_a = np_power(mat_g3 + RIDGE_EPSILON * np.eye(size[2]),
+                              -0.5 / 3.0)
 
         precond_grad = np.tensordot(grad_np[i], mat_g1_a, axes=([0], [0]))
         precond_grad = np.tensordot(precond_grad, mat_g2_a, axes=([0], [0]))
@@ -672,10 +704,10 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     mat_g3_a = np.eye(size[2])
     mat_g3 = np.zeros_like(mat_g3_a)
 
-    with self.test_session() as sess:
-      global_step = variables.Variable(
+    with self.cached_session() as sess:
+      global_step = variables.VariableV1(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
-      var = variables.Variable(
+      var = variables.VariableV1(
           init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = array_ops.placeholder(dtypes.float32, shape=size)
 
@@ -700,17 +732,23 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
         # Update rule is var = var - lr * Prod_i mat_g_i^{-0.5/3} grad
         # lr = 1
         if (i + 1) % precond_update_interval == 0:
-          mat_g1 += (np.tensordot(grad_np[i], grad_np[i], axes=([1, 2], [1, 2]))
-                     * precond_update_interval)
-          mat_g2 += (np.tensordot(grad_np[i], grad_np[i], axes=([0, 2], [0, 2]))
-                     * precond_update_interval)
-          mat_g3 += (np.tensordot(grad_np[i], grad_np[i], axes=([0, 1], [0, 1]))
-                     * precond_update_interval)
+          mat_g1 += (
+              np.tensordot(grad_np[i], grad_np[i], axes=([1, 2], [1, 2])) /
+              grad_np[i].shape[0] * precond_update_interval)
+          mat_g2 += (
+              np.tensordot(grad_np[i], grad_np[i], axes=([0, 2], [0, 2])) /
+              grad_np[i].shape[1] * precond_update_interval)
+          mat_g3 += (
+              np.tensordot(grad_np[i], grad_np[i], axes=([0, 1], [0, 1])) /
+              grad_np[i].shape[2] * precond_update_interval)
 
         if (i + 1) % svd_interval == 0:
-          mat_g1_a = np_power(mat_g1 + 0.1 * np.eye(size[0]), -0.5/3.0)
-          mat_g2_a = np_power(mat_g2 + 0.1 * np.eye(size[1]), -0.5/3.0)
-          mat_g3_a = np_power(mat_g3 + 0.1 * np.eye(size[2]), -0.5/3.0)
+          mat_g1_a = np_power(mat_g1 + RIDGE_EPSILON * np.eye(size[0]),
+                              -0.5 / 3.0)
+          mat_g2_a = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]),
+                              -0.5 / 3.0)
+          mat_g3_a = np_power(mat_g3 + RIDGE_EPSILON * np.eye(size[2]),
+                              -0.5 / 3.0)
 
         precond_grad = np.tensordot(grad_np[i], mat_g1_a, axes=([0], [0]))
         precond_grad = np.tensordot(precond_grad, mat_g2_a, axes=([0], [0]))

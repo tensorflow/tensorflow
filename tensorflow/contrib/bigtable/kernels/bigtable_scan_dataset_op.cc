@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class BigtableScanDatasetOp : public DatasetOpKernel {
@@ -66,6 +67,7 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
     BigtableTableResource* resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    core::ScopedUnref scoped_unref(resource);
 
     const uint64 num_outputs = columns.size() + 1;
     std::vector<PartialTensorShape> output_shapes;
@@ -84,7 +86,7 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, BigtableTableResource* table,
                      string prefix, string start_key, string end_key,
@@ -92,7 +94,7 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
                      std::vector<string> columns, float probability,
                      const DataTypeVector& output_types,
                      std::vector<PartialTensorShape> output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           table_(table),
           prefix_(std::move(prefix)),
           start_key_(std::move(start_key)),
@@ -111,8 +113,8 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::BigtableScanDataset")}));
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::BigtableScan")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -128,6 +130,14 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
     }
 
     BigtableTableResource* table() const { return table_; }
+
+   protected:
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      return errors::Unimplemented("%s does not support serialization",
+                                   DebugString());
+    }
 
    private:
     class Iterator : public BigtableReaderDatasetIterator<Dataset> {
@@ -216,4 +226,5 @@ REGISTER_KERNEL_BUILDER(Name("BigtableScanDataset").Device(DEVICE_CPU),
                         BigtableScanDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -21,28 +23,25 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-
-using ::tensorflow::GraphDef;
-using ::tensorflow::NodeDef;
-using ::tensorflow::TensorShapeProto;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
-using ::tensorflow::str_util::Join;
 
 namespace xla {
 namespace hlo_graph_dumper {
 namespace {
 
+using absl::StrAppend;
+using absl::StrCat;
+using tensorflow::GraphDef;
+using tensorflow::NodeDef;
+using tensorflow::TensorShapeProto;
+
 string GetOpDefName(const HloInstruction* instruction) {
   string name = StrCat("hlo-", HloOpcodeString(instruction->opcode()));
-  tensorflow::str_util::TitlecaseString(&name, "-");
+  tensorflow::str_util::TitlecaseString(&name, "-");  // non-absl ok
   name.erase(std::remove(name.begin(), name.end(), '-'), name.end());
 
   if (instruction->opcode() == HloOpcode::kFusion) {
     string fusion_name = ToString(instruction->fusion_kind());
-    StrAppend(&name, tensorflow::StringPiece(fusion_name).substr(1));
+    StrAppend(&name, absl::string_view(fusion_name).substr(1));
   }
   return name;
 }
@@ -166,7 +165,9 @@ void HloTfGraphBuilder::SetNodeAttrs(const HloInstruction* instruction,
       layout_string = ShapeUtil::HumanStringWithLayout(instruction->shape());
     } else {
       layout_string = StrCat(
-          "{", Join(LayoutUtil::MinorToMajor(instruction->shape()), ","), "}");
+          "{",
+          absl::StrJoin(LayoutUtil::MinorToMajor(instruction->shape()), ","),
+          "}");
     }
     attrs["layout"].set_s(layout_string);
   }

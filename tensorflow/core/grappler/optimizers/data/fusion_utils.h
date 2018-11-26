@@ -48,14 +48,20 @@ using SetInputFn =
                          const StringCollection& second_function_inputs,
                          const StringCollection& parent_outputs, int arg_num)>;
 
-// This function is invoked with first function ret. It is used to set up
-// returns of fused function.  If you need to combine outputs
-// of first and second function, then this is a right place to create a new
-// nodes.
+// This function is invoked with first and second function ret. It is used to
+// set up returns of fused function.
 using SetOutputFn =
     std::function<void(const protobuf::Map<string, string>& parent_ret,
                        const protobuf::Map<string, string>& second_function_ret,
-                       FunctionDef* fused_function)>;
+                       protobuf::Map<string, string>* fused_ret)>;
+
+using SetNodesFn = std::function<void(
+    const FunctionDef& first_function, const FunctionDef& second_function,
+    FunctionDef* fused_function, FunctionDefLibrary* library)>;
+
+void MergeNodes(const FunctionDef& first_function,
+                const FunctionDef& second_function, FunctionDef* fused_function,
+                FunctionDefLibrary* library);
 
 // Returns true if functions can be composed.
 bool CanCompose(const OpDef& first_signature, const OpDef& second_signature);
@@ -71,7 +77,7 @@ string ComposeInput(const StringCollection& first_inputs,
 // second_function(first_function(args...)).
 void ComposeOutput(const protobuf::Map<string, string>& first_ret,
                    const protobuf::Map<string, string>& second_ret,
-                   FunctionDef* fused_function);
+                   protobuf::Map<string, string>* fused_ret);
 
 // Set input signature to `first_function_signature` and output signature
 // to `first_function_signature` + `second_function_signature`
@@ -83,7 +89,32 @@ void CombineSignature(const OpDef& first_signature,
 // return *first_function(...), *second_function(...)
 void CombineOutput(const protobuf::Map<string, string>& first_ret,
                    const protobuf::Map<string, string>& second_ret,
-                   FunctionDef* fused_function);
+                   protobuf::Map<string, string>* fused_ret);
+
+// Returns true if both signatures have the same number of input and output
+// args.
+bool HasSameSignature(const OpDef& first_signature,
+                      const OpDef& second_signature);
+
+// Check if both signatures are same and copy it from `first_signature`.
+void SameSignature(const OpDef& first_signature, const OpDef& second_signature,
+                   OpDef* fused_signature);
+
+// Take the same input as first function.
+string SameInput(const StringCollection& first_inputs,
+                 const StringCollection& second_inputs,
+                 const StringCollection& first_outputs, int arg_num);
+
+// Create a fused function that computes the short-circuit logical AND of the
+// result of the first function and the result of the second function.
+void LazyConjunctionOutput(const protobuf::Map<string, string>& first_ret,
+                           const protobuf::Map<string, string>& second_ret,
+                           protobuf::Map<string, string>* fused_ret);
+
+void LazyConjunctionNodes(const FunctionDef& first_function,
+                          const FunctionDef& second_function,
+                          FunctionDef* fused_function,
+                          FunctionDefLibrary* library);
 
 // Fuse `first_function` with `second_function`, setting `fused_name_prefix` as
 // a name prefix.  The nodes from `first_function` are copied unmodified.  All
@@ -91,13 +122,11 @@ void CombineOutput(const protobuf::Map<string, string>& first_ret,
 // that are not conflicting with first function.  This means that copied nodes
 // from  second function can end up having different names.  For explanation of
 // set up functions see the documentation of the functions types.
-FunctionDef* FuseFunctions(const FunctionDef& first_function,
-                           const FunctionDef& second_function,
-                           StringPiece fused_name_prefix,
-                           const SetFunctionSignatureFn& set_signature,
-                           const SetInputFn& set_input,
-                           const SetOutputFn& set_output,
-                           FunctionDefLibrary* library);
+FunctionDef* FuseFunctions(
+    const FunctionDef& first_function, const FunctionDef& second_function,
+    StringPiece fused_name_prefix, const SetFunctionSignatureFn& set_signature,
+    const SetInputFn& set_input, const SetOutputFn& set_output,
+    const SetNodesFn& set_nodes, FunctionDefLibrary* library);
 
 }  // namespace fusion_utils
 }  // namespace grappler

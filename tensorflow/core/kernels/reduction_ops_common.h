@@ -18,8 +18,8 @@ limitations under the License.
 // is a header file because we split the various reduction ops into their
 // own compilation units to get more parallelism in compilation.
 
-#ifndef TENSORFLOW_KERNELS_REDUCTION_OPS_COMMON_H_
-#define TENSORFLOW_KERNELS_REDUCTION_OPS_COMMON_H_
+#ifndef TENSORFLOW_CORE_KERNELS_REDUCTION_OPS_COMMON_H_
+#define TENSORFLOW_CORE_KERNELS_REDUCTION_OPS_COMMON_H_
 
 #define EIGEN_USE_THREADS
 
@@ -256,7 +256,8 @@ struct ReduceFunctorBase {
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer) {
     const Device& d = ctx->eigen_device<Device>();
-    ReduceEigenImpl(d, out, in, reduction_axes, reducer);
+    ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes, Reducer> reducer_impl;
+    reducer_impl(d, out, in, reduction_axes, reducer);
   }
 
   template <typename OUT_T>
@@ -277,4 +278,4 @@ struct ReduceFunctor<SYCLDevice, Reducer>
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_REDUCTION_OPS_COMMON_H_
+#endif  // TENSORFLOW_CORE_KERNELS_REDUCTION_OPS_COMMON_H_

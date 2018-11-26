@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import quantize
 from tensorflow.python.framework import ops
@@ -26,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
@@ -470,6 +472,97 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       op_names = [op.name for op in graph.get_operations()]
       self.assertTrue(
           'part/test/test/weights_quant/FakeQuantWithMinMaxVars' in op_names)
+
+  def testSkipReshapeQuantization(self):
+    self._RunTestOverParameters(self._TestSkipReshapeQuantization)
+
+  def _TestSkipReshapeQuantization(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      conv = conv2d(
+          input1,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=nn_ops.relu6,
+          scope='test/test')
+
+      reshape = array_ops.reshape(
+          conv, (int(10), int(height / 2), int(width / 2), int(16)))
+
+      # Insert a fake quant node after the reshape. We will check that one isn't
+      # insert before.
+      array_ops.fake_quant_with_min_max_vars(reshape, -1, 1)
+
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+
+      # Ensure that there isn't a FakeQuant added before the reshape.
+      self.assertFalse(
+          'FakeQuantWithMinMaxVars' in [i.op.type for i in reshape.op.inputs])
+
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      conv = conv2d(
+          input1,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=nn_ops.relu6,
+          scope='test/test')
+
+      reshape = array_ops.reshape(
+          conv, (int(10), int(height / 2), int(width / 2), int(16)))
+
+      # If no fake quant is added after the reshape, a FakeQuant should be added
+      # before the reshape.
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+
+      # Ensure that there isn't a FakeQuant added before the reshape.
+      self.assertTrue(
+          'FakeQuantWithMinMaxVars' in [i.op.type for i in reshape.op.inputs])
+
+  def testSeparableConvWithResourceVar(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      with variable_scope.variable_scope('', use_resource=True):
+        batch_size, height, width, depth = 5, 128, 128, 3
+        input1 = array_ops.zeros((batch_size, height, width, depth))
+        kernel_size, depth_multiplier = 3, 1
+        depthwise_shape = [kernel_size, kernel_size, depth, depth_multiplier]
+        depthwise_weights = variables.model_variable(
+            'depthwise_weights', shape=depthwise_shape)
+        strides = [1, 1, 1, 1]
+        with variable_scope.variable_scope('depthwise_conv_1'):
+          conv1 = nn.depthwise_conv2d(
+              input1, depthwise_weights, strides, padding='SAME')
+        with variable_scope.variable_scope('depthwise_conv_2'):
+          conv2 = nn.depthwise_conv2d(
+              conv1, depthwise_weights, strides, padding='SAME')
+          math_ops.add(conv2, input1, name='add')
+
+    quantize.Quantize(graph, True)
+
+    # Test that the weights and activations of all convs have been quantized.
+    quant_node_name = 'FakeQuantWithMinMaxVars'
+    weights_quant = graph.get_operation_by_name(
+        'depthwise_conv_1/weights_quant/' + quant_node_name)
+    self.assertEqual(weights_quant.type, quant_node_name)
+    act_quant = graph.get_operation_by_name('depthwise_conv_1/act_quant/' +
+                                            quant_node_name)
+    self.assertEqual(act_quant.type, quant_node_name)
+
+    weights_quant = graph.get_operation_by_name(
+        'depthwise_conv_2/weights_quant/' + quant_node_name)
+    self.assertEqual(weights_quant.type, quant_node_name)
+    act_quant = graph.get_operation_by_name('depthwise_conv_2/act_quant/' +
+                                            quant_node_name)
+    self.assertEqual(act_quant.type, quant_node_name)
 
   def _WeightInit(self, stddev):
     """Returns truncated normal variable initializer.

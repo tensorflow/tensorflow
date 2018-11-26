@@ -24,6 +24,9 @@ import shutil
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 try:
@@ -63,7 +66,7 @@ class _MSEMAELoss(object):
 class KerasLossesTest(test.TestCase):
 
   def test_objective_shapes_3d(self):
-    with self.test_session():
+    with self.cached_session():
       y_a = keras.backend.variable(np.random.random((5, 6, 7)))
       y_b = keras.backend.variable(np.random.random((5, 6, 7)))
       for obj in ALL_LOSSES:
@@ -71,7 +74,7 @@ class KerasLossesTest(test.TestCase):
         self.assertListEqual(objective_output.get_shape().as_list(), [5, 6])
 
   def test_objective_shapes_2d(self):
-    with self.test_session():
+    with self.cached_session():
       y_a = keras.backend.variable(np.random.random((6, 7)))
       y_b = keras.backend.variable(np.random.random((6, 7)))
       for obj in ALL_LOSSES:
@@ -79,7 +82,7 @@ class KerasLossesTest(test.TestCase):
         self.assertListEqual(objective_output.get_shape().as_list(), [6,])
 
   def test_cce_one_hot(self):
-    with self.test_session():
+    with self.cached_session():
       y_a = keras.backend.variable(np.random.randint(0, 7, (5, 6)))
       y_b = keras.backend.variable(np.random.random((5, 6, 7)))
       objective_output = keras.losses.sparse_categorical_crossentropy(y_a, y_b)
@@ -119,7 +122,7 @@ class KerasLossesTest(test.TestCase):
     self.addCleanup(shutil.rmtree, tmpdir)
     model_filename = os.path.join(tmpdir, 'custom_loss.h5')
 
-    with self.test_session():
+    with self.cached_session():
       with keras.utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
         loss = _MSEMAELoss(0.3)
         inputs = keras.layers.Input((2,))
@@ -136,6 +139,99 @@ class KerasLossesTest(test.TestCase):
       with keras.utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
         loaded_model = keras.models.load_model(model_filename)
         loaded_model.predict(np.random.rand(128, 2))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class MeanSquaredErrorTest(test.TestCase):
+
+  def test_config(self):
+    mse_obj = keras.losses.MeanSquaredError(
+        reduction=keras.losses.ReductionV2.SUM, name='mse_1')
+    self.assertEqual(mse_obj.name, 'mse_1')
+    self.assertEqual(mse_obj.reduction, keras.losses.ReductionV2.SUM)
+
+  def test_all_correct_unweighted(self):
+    mse_obj = keras.losses.MeanSquaredError()
+    y_true = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3))
+    loss = mse_obj(y_true, y_true)
+    self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+
+  def test_unweighted(self):
+    mse_obj = keras.losses.MeanSquaredError()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = mse_obj(y_true, y_pred)
+    self.assertAlmostEqual(self.evaluate(loss), 49.5, 3)
+
+  def test_scalar_weighted(self):
+    mse_obj = keras.losses.MeanSquaredError()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = mse_obj(y_true, y_pred, sample_weight=2.3)
+    self.assertAlmostEqual(self.evaluate(loss), 113.85, 3)
+
+  def test_sample_weighted(self):
+    mse_obj = keras.losses.MeanSquaredError()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    loss = mse_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 767.8 / 6, 3)
+
+  def test_timestep_weighted(self):
+    mse_obj = keras.losses.MeanSquaredError()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3, 1),
+                                  dtype=dtypes.float32)
+    sample_weight = constant_op.constant([3, 6, 5, 0, 4, 2], shape=(2, 3))
+    loss = mse_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 587 / 6, 3)
+
+  def test_zero_weighted(self):
+    mse_obj = keras.losses.MeanSquaredError()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = mse_obj(y_true, y_pred, sample_weight=0)
+    self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+
+  def test_invalid_sample_weight(self):
+    mse_obj = keras.losses.MeanSquaredError()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3, 1))
+    sample_weight = constant_op.constant([3, 6, 5, 0], shape=(2, 2))
+    with self.assertRaisesRegexp(
+        ValueError, r'Shapes \(2, 2\) and \(2, 3\) are incompatible'):
+      mse_obj(y_true, y_pred, sample_weight=sample_weight)
+
+  def test_no_reduction(self):
+    mse_obj = keras.losses.MeanSquaredError(
+        reduction=keras.losses.ReductionV2.NONE)
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = mse_obj(y_true, y_pred, sample_weight=2.3)
+    loss = self.evaluate(loss)
+    self.assertArrayNear(loss, [84.3333, 143.3666], 1e-3)
+
+  def test_sum_reduction(self):
+    mse_obj = keras.losses.MeanSquaredError(
+        reduction=keras.losses.ReductionV2.SUM)
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = mse_obj(y_true, y_pred, sample_weight=2.3)
+    self.assertAlmostEqual(self.evaluate(loss), 227.69998, 3)
 
 
 if __name__ == '__main__':

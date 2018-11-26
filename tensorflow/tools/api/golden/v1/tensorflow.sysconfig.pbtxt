@@ -1,5 +1,13 @@
 path: "tensorflow.sysconfig"
 tf_module {
+  member {
+    name: "CXX11_ABI_FLAG"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "MONOLITHIC_BUILD"
+    mtype: "<type \'int\'>"
+  }
   member_method {
     name: "get_compile_flags"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"

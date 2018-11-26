@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -37,10 +38,9 @@ namespace gpu {
 
 namespace {
 
-// Return whether the given shape is a matrix with no padding.
-bool IsRank2WithNoPadding(const Shape& shape, int64 batch_dimensions_size) {
-  return ShapeUtil::Rank(shape) == batch_dimensions_size + 2 &&
-         !LayoutUtil::IsPadded(shape);
+// Return whether the given shape is rank 2 excluding the batch dimensions.
+bool IsRank2(const Shape& shape, int64 batch_dimensions_size) {
+  return ShapeUtil::Rank(shape) == batch_dimensions_size + 2;
 }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
@@ -55,10 +55,9 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   bool type_is_allowed =
       (output_primitive_type == F16 || output_primitive_type == F32 ||
        output_primitive_type == F64 || output_primitive_type == C64);
-  return type_is_allowed &&
-         IsRank2WithNoPadding(lhs_shape, batch_dimensions_size) &&
-         IsRank2WithNoPadding(rhs_shape, batch_dimensions_size) &&
-         IsRank2WithNoPadding(output_shape, batch_dimensions_size) &&
+  return type_is_allowed && IsRank2(lhs_shape, batch_dimensions_size) &&
+         IsRank2(rhs_shape, batch_dimensions_size) &&
+         IsRank2(output_shape, batch_dimensions_size) &&
          !ShapeUtil::IsZeroElementArray(lhs_shape) &&
          !ShapeUtil::IsZeroElementArray(rhs_shape);
 }
@@ -92,7 +91,8 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
 
   if (hlo.opcode() == HloOpcode::kFusion &&
       hlo.fusion_kind() == HloInstruction::FusionKind::kOutput &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply) {
+      (hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply ||
+       hlo.fused_expression_root()->opcode() == HloOpcode::kAdd)) {
     // Try to find the dot inside the output fusion node.
     const HloInstruction* dot = hlo.fused_expression_root()->operand(0);
     if (dot->opcode() != HloOpcode::kDot) {
@@ -128,6 +128,8 @@ const char* const kCudnnConvBackwardInputCallTarget =
     "__cudnn$convBackwardInput";
 const char* const kCudnnConvBackwardFilterCallTarget =
     "__cudnn$convBackwardFilter";
+const char* const kCudnnConvBiasActivationForwardCallTarget =
+    "__cudnn$convBiasActivationForward";
 
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
@@ -136,57 +138,13 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   const auto& target = hlo.custom_call_target();
   return target == kCudnnConvForwardCallTarget ||
          target == kCudnnConvBackwardInputCallTarget ||
-         target == kCudnnConvBackwardFilterCallTarget;
+         target == kCudnnConvBackwardFilterCallTarget ||
+         target == kCudnnConvBiasActivationForwardCallTarget;
 }
 
 bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
   return ImplementedAsGemm(hlo) || IsCustomCallToDnnBatchNorm(hlo) ||
          IsCustomCallToDnnConvolution(hlo);
-}
-
-static HloInstruction* CreateCudnnConv(
-    const char* call_target, const Shape& shape, HloInstruction* lhs,
-    HloInstruction* rhs, const Window& window,
-    const ConvolutionDimensionNumbers& dnums) {
-  HloComputation* computation = lhs->parent();
-
-  // This call returns a tuple of (conv_result, scratch_memory), where
-  // conv_result is the actual result of the convolution, and scratch_memory is
-  // temporary memory used by cudnn.
-  //
-  // At the moment, we don't know how much scratch memory this conv is going to
-  // use, so we put u8[0] in this place.  Later on another pass will choose
-  // which conv algorithm to use, and at that point we'll modify the shape of
-  // this second tuple element.
-  Shape call_shape =
-      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U8, {0})});
-
-  HloInstruction* custom_call = computation->AddInstruction(
-      HloInstruction::CreateCustomCall(call_shape, {lhs, rhs}, call_target));
-  custom_call->set_window(window);
-  custom_call->set_convolution_dimension_numbers(dnums);
-  return custom_call;
-}
-
-HloInstruction* CreateCudnnConvForward(
-    const Shape& shape, HloInstruction* input, HloInstruction* kernel,
-    const Window& window, const ConvolutionDimensionNumbers& dnums) {
-  return CreateCudnnConv(kCudnnConvForwardCallTarget, shape, input, kernel,
-                         window, dnums);
-}
-
-HloInstruction* CreateCudnnConvBackwardInput(
-    const Shape& shape, HloInstruction* output, HloInstruction* reverse_filter,
-    const Window& window, const ConvolutionDimensionNumbers& dnums) {
-  return CreateCudnnConv(kCudnnConvBackwardInputCallTarget, shape, output,
-                         reverse_filter, window, dnums);
-}
-
-HloInstruction* CreateCudnnConvBackwardFilter(
-    const Shape& shape, HloInstruction* input, HloInstruction* output,
-    const Window& window, const ConvolutionDimensionNumbers& dnums) {
-  return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, shape, input,
-                         output, window, dnums);
 }
 
 bool IsReductionToVector(const HloInstruction& reduce) {
@@ -215,8 +173,8 @@ bool IsReductionToVector(const HloInstruction& reduce) {
 // This emits a device-side call to
 // "i32 vprintf(i8* fmt, arguments_type* arguments)" in the driver; see
 // http://docs.nvidia.com/cuda/ptx-writers-guide-to-interoperability/index.html#system-calls
-llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
-                        tensorflow::gtl::ArraySlice<llvm::Value*> arguments,
+llvm::Value* EmitPrintf(absl::string_view fmt,
+                        absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder) {
   std::vector<llvm::Type*> argument_types;
   for (auto argument : arguments) {
@@ -277,6 +235,37 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
           builder->CreateBitCast(x, builder->getIntNTy(32 * num_segments)),
           builder->getIntNTy(bit_width)),
       value->getType());
+}
+
+StatusOr<CudnnConvKind> GetCudnnConvKind(
+    const HloCustomCallInstruction* instr) {
+  absl::string_view target = instr->custom_call_target();
+  if (target == kCudnnConvForwardCallTarget) {
+    return CudnnConvKind::kForward;
+  }
+  if (target == kCudnnConvBackwardInputCallTarget) {
+    return CudnnConvKind::kBackwardInput;
+  }
+  if (target == kCudnnConvBackwardFilterCallTarget) {
+    return CudnnConvKind::kBackwardFilter;
+  }
+  if (target == kCudnnConvBiasActivationForwardCallTarget) {
+    return CudnnConvKind::kForwardActivation;
+  }
+  return InternalError("Unexpected call target: %s", target);
+}
+
+string CudnnConvKindToString(CudnnConvKind kind) {
+  switch (kind) {
+    case CudnnConvKind::kForward:
+      return "forward";
+    case CudnnConvKind::kBackwardFilter:
+      return "backward_filter";
+    case CudnnConvKind::kBackwardInput:
+      return "backward_input";
+    case CudnnConvKind::kForwardActivation:
+      return "forward with activation";
+  }
 }
 
 }  // namespace gpu

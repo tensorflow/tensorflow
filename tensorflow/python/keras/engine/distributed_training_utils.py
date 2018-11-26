@@ -17,9 +17,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
+from tensorflow.python.client import session as session_module
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras import backend
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
@@ -46,7 +56,7 @@ def set_weights(distribution_strategy, dist_model, weights):
       assign_ops.append(distribution_strategy.unwrap(sw.assign(w)))
 
     weights = weights[num_param:]
-  backend.get_session().run(assign_ops)
+  K.get_session().run(assign_ops)
 
 
 def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
@@ -180,18 +190,24 @@ def validate_callbacks(input_callbacks):
                            'supported when using DistributionStrategy.')
 
 
-def validate_distributed_dataset_inputs(distribution_strategy, x, y):
+def validate_distributed_dataset_inputs(distribution_strategy, x, y,
+                                        sample_weights=None):
   """Validate all the components of a DistributedValue Dataset input.
 
   Args:
-    distribution_strategy: The current DistributionStrategy using to call
+    distribution_strategy: The current DistributionStrategy used to call
         `fit`/`evaluate`.
     x: Input Dataset DistributedValue object. For example, when we use
         `MirroredStrategy` this is a PerDevice object with a tensor for each
-        device set in the dict.
+        device set in the dict. x can also be a tuple or dict. The keys of the
+        dict should match the names of the input layers of the model.
     y: Target Dataset DistributedValue object. For example, when we use
         `MirroredStrategy` this is a PerDevice object with a tensor for each
-        device set in the dict.
+        device set in the dict. y can also be a tuple or dict. The keys of the
+        dict should match the names of the output layers of the model.
+    sample_weights: Sample weights Dataset DistributedValue object. For example,
+        when we use `MirroredStrategy` this is a PerDevice object with a tensor
+        for each device set in the dict.
 
   Returns:
     The unwrapped values list of the x and y DistributedValues inputs.
@@ -206,30 +222,59 @@ def validate_distributed_dataset_inputs(distribution_strategy, x, y):
   # and targets to a model should be from a `tf.data.Dataset`.
 
   # If each element of x and y are not tensors, we cannot standardize and
-  # validate the input and targets.`
-  if not tensor_util.is_tensor(x):
-    raise ValueError('Dataset input to the model should be tensors instead they'
-                     ' are of type {}'.format(type(x)))
+  # validate the input and targets.
+  x_values_list = validate_per_device_inputs(distribution_strategy, x)
 
-  if not tensor_util.is_tensor(y):
-    raise ValueError('Dataset input to the model should be tensors instead they'
-                     ' are of type {}'.format(type(y)))
+  if y is not None:
+    y_values_list = validate_per_device_inputs(distribution_strategy, y)
+  else:
+    y_values_list = None
 
-  # At this point both x and y contain tensors in the `DistributedValues`
-  # structure.
-  x_values = distribution_strategy.unwrap(x)
-  y_values = distribution_strategy.unwrap(y)
-
-  # Validate that the shape and dtype of all the elements in x are the same.
-  validate_all_tensor_shapes(x, x_values)
-  validate_all_tensor_types(x, x_values)
-
-  # Similarly for y, we perform the same validation
-  validate_all_tensor_shapes(y, y_values)
-  validate_all_tensor_types(y, y_values)
+  if sample_weights is not None:
+    sample_weights_list = validate_per_device_inputs(distribution_strategy,
+                                                     sample_weights)
+  else:
+    sample_weights_list = None
 
   # Return the unwrapped values to avoid calling `unwrap` a second time.
-  return x_values, y_values
+  return x_values_list, y_values_list, sample_weights_list
+
+
+def validate_per_device_inputs(distribution_strategy, x):
+  """Validates PerDevice dataset input list.
+
+  Args:
+    distribution_strategy: The current DistributionStrategy used to call
+      `fit`, `evaluate` and `predict`.
+    x: A list of PerDevice objects that represent the input or
+      target values.
+
+  Returns:
+    List containing the first element of each of the PerDevice objects in
+    the input list.
+
+  Raises:
+    ValueError: If any of the objects in the `per_device_list` is not a tensor.
+
+  """
+  # Convert the inputs and targets into a list of PerDevice objects.
+  per_device_list = nest.flatten(x)
+  x_values_list = []
+  for x in per_device_list:
+    if not tensor_util.is_tensor(x):
+      raise ValueError('Dataset input to the model should be tensors instead '
+                       'they are of type {}'.format(type(x)))
+
+    # At this point both x and y contain tensors in the `DistributedValues`
+    # structure.
+    x_values = distribution_strategy.unwrap(x)
+
+    # Validate that the shape and dtype of all the elements in x are the same.
+    validate_all_tensor_shapes(x, x_values)
+    validate_all_tensor_types(x, x_values)
+
+    x_values_list.append(x_values[0])
+  return x_values_list
 
 
 def validate_all_tensor_types(x, x_values):
@@ -247,3 +292,302 @@ def validate_all_tensor_shapes(x, x_values):
     if x_shape != x_values[i].get_shape().as_list():
       raise ValueError('Input tensor shapes do not match for distributed tensor'
                        ' inputs {}'.format(x))
+
+
+def _wait_for_variable_initialization(session):
+  """Utility to wait for variables to be initialized."""
+  all_variables = K._get_variables(K.get_graph())  # pylint: disable=protected-access
+  candidate_vars = []
+  for v in all_variables:
+    if not getattr(v, '_keras_initialized', False):
+      candidate_vars.append(v)
+
+  if not candidate_vars:
+    return
+
+  while True:
+    is_initialized = session.run(
+        [variables.is_variable_initialized(v) for v in candidate_vars])
+    uninitialized_vars = []
+    for flag, v in zip(is_initialized, candidate_vars):
+      if not flag:
+        uninitialized_vars.append(v)
+      v._keras_initialized = True  # pylint: disable=protected-access
+    if not uninitialized_vars:
+      break
+
+
+def init_restore_or_wait_for_variables():
+  """Initialize or restore variables or wait for variables to be initialized."""
+  session = K._get_session()  # pylint: disable=protected-access
+  worker_context = dc_context.get_current_worker_context()
+  if not worker_context or worker_context.should_init:
+    # TODO(yuefengz): if checkpoints exit, restore from checkpoint.
+    K._initialize_variables(session)  # pylint: disable=protected-access
+  else:
+    _wait_for_variable_initialization(session)
+
+
+def configure_and_create_session(distribution_strategy):
+  """Configure session config and create a session with it."""
+  # TODO(priyag): Throw error if a session already exists.
+  session_config = K.get_default_session_config()
+
+  if is_tpu_strategy(distribution_strategy):
+    # TODO(priyag, yuefengz): Remove this workaround when Distribute
+    # Coordinator is integrated with keras and we can create a session from
+    # there.
+    distribution_strategy.configure(session_config)
+    master = distribution_strategy.extended._tpu_cluster_resolver.master()  # pylint: disable=protected-access
+    session = session_module.Session(config=session_config, target=master)
+  else:
+    worker_context = dc_context.get_current_worker_context()
+    if worker_context:
+      dc_session_config = worker_context.session_config
+      # Merge the default session config to the one from distribute coordinator,
+      # which is fine for now since they don't have conflicting configurations.
+      dc_session_config.MergeFrom(session_config)
+      session = session_module.Session(
+          config=dc_session_config, target=worker_context.master_target)
+    else:
+      distribution_strategy.configure(session_config)
+      session = session_module.Session(config=session_config)
+
+  K.set_session(session)
+
+
+def validate_inputs(x, y, distribution_strategy):
+  """Validate inputs when using DistributionStrategy.
+
+  Args:
+    x: Model Inputs.
+    y: Model Targets.
+    distribution_strategy: The DistributionStrategy with which the model is
+      compiled.
+
+  Raises:
+    ValueError: if input is not a Dataset or a numpy array(when we use
+      MirroredStrategy).
+  """
+  if isinstance(x, dict) or isinstance(y, dict):
+    raise ValueError('`DistributionStrategy` does not support inputs of type '
+                     'dict. You must pass a `tf.data.Dataset` object or a '
+                     'numpy array as input.')
+
+  if (isinstance(x, iterator_ops.Iterator) or
+      isinstance(y, iterator_ops.Iterator)):
+    raise ValueError('`DistributionStrategy` does not support inputs of type '
+                     'Iterator. You must pass a `tf.data.Dataset` object or a '
+                     'numpy array as input.')
+
+  if is_tpu_strategy(distribution_strategy):
+    for i in [x, y]:
+      if isinstance(i, dataset_ops.DatasetV2):
+        shapes = nest.flatten(i.output_shapes)
+        try:
+          s = next(s for s in shapes if not s.is_fully_defined())
+        except StopIteration:
+          continue
+        else:
+          raise ValueError(
+              'Using TPUs currently requires fully defined shapes. Either use '
+              'set_shape() on the input tensors or use '
+              'dataset.batch(..., drop_remainder=True).'
+              'Found unknown shape {} in input {}.'.format(s, i))
+
+
+# TODO(b/118776054): Currently we support global batch size for TPUStrategy and
+# core MirroredStrategy only. Remove this check when contrib MirroredStrategy is
+# no longer needed.
+def global_batch_size_supported(distribution_strategy):
+  return distribution_strategy.extended._global_batch_size  # pylint: disable=protected-access
+
+
+# TODO(sourabhbajaj): Remove this once we use the same API for all strategies.
+def is_tpu_strategy(strategy):
+  """We're executing TPU Strategy."""
+  return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
+
+
+def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
+                     is_training=False):
+  """Calculate the number of batches and steps/steps_per_epoch.
+
+  Args:
+    distribution_strategy: The DistributionStrategy used to compile the model.
+    first_x_value: This is the first input numpy array that is passed in as the
+      model input.
+    steps:  The specified number of steps.
+    batch_size: The specified batch_size.
+    is_training: Boolean to relax the constraints on consuming all the training
+      samples to keep compatibility till we support partial batches.
+
+  Returns:
+    steps: The steps or steps_per_epoch argument depending on if a user is
+        calling `fit`, `evaluate` or `predict`. If the is_training flag is set
+        we don't require the number of samples to be used completely.
+    batch_size: The batch size to be used in model iterations.
+
+  Raises:
+    ValueError: If the number of batches or steps evaluates to 0.
+
+  """
+  num_samples = first_x_value.shape[0]
+  # TODO(b/118776054): Use global batch size for Keras/DS support.
+  # Currently this is only supported in TPUStrategy and CoreMirroredStrategy.
+  use_per_replica_batch = not global_batch_size_supported(
+      distribution_strategy)
+
+  if steps is None:
+    if batch_size is None:
+      # If neither the batch size or number of steps are set. We choose the
+      # global batch size as the minimum of number of samples and 32. 32 is
+      # chosen to provide backward compatibility.
+      global_batch_size = min(num_samples, 32)
+    else:
+      # If the user provided the batch size we need to handle the case
+      # between different strategies that use the global/per-replica batch size
+      global_batch_size = batch_size
+      if use_per_replica_batch:
+        global_batch_size *= distribution_strategy.num_replicas_in_sync
+    if not is_training and num_samples % global_batch_size:
+      raise ValueError('The number of samples %s is not divisible by '
+                       'batch size %s.' % (num_samples, global_batch_size))
+    steps = num_samples // global_batch_size
+  else:
+    if batch_size is None:
+      # We calculate the batch size based on the number of steps specified
+      if num_samples % steps:
+        raise ValueError('The number of samples %s is not divisible by '
+                         'steps %s. Please change the number of steps to a '
+                         'value that can consume all the samples' % (
+                             num_samples, steps))
+      global_batch_size = num_samples // steps
+    else:
+      # If the user provided the batch size we need to handle the case
+      # between different strategies that use the global/per-replica batch size
+      global_batch_size = batch_size
+      if use_per_replica_batch:
+        global_batch_size *= distribution_strategy.num_replicas_in_sync
+
+      if num_samples < (global_batch_size * steps):
+        raise ValueError('Number of samples %s is less than samples required '
+                         'for specified batch_size %s and steps %s' % (
+                             num_samples, global_batch_size, steps))
+
+  # We need to return the per replica or global batch size based on the strategy
+  if use_per_replica_batch:
+    if global_batch_size % distribution_strategy.num_replicas_in_sync:
+      raise ValueError(
+          'The batch size (%s) could not be sharded evenly across the sync '
+          'replicas (%s) in the distribution strategy.' % (
+              global_batch_size, distribution_strategy.num_replicas_in_sync))
+    batch_size = global_batch_size // distribution_strategy.num_replicas_in_sync
+  else:
+    batch_size = global_batch_size
+
+  return steps, batch_size
+
+
+def get_batch_dimension(iterator):
+  shapes = nest.flatten(iterator.output_shapes)
+  # Take the batch size from the first element, as it should be the same for
+  # all.
+  dims = shapes[0].dims
+  return dims[0] if dims else None
+
+
+def get_cpu_device(distribution_strategy):
+  """Returns the CPU device of the TPU host or the default CPU device string.
+
+  Args:
+    distribution_strategy: The DistributionStrategy used to compile the model.
+
+  Returns:
+    A device string which is the TPU host's CPU device in case of
+    TPUDistributionStrategy or the default CPU device string in all other
+    cases.
+
+  Raises:
+    NotImplementedError: We currently don't support copying numpy data to
+    multiple hosts in the case of Cloud TPU pods.
+  """
+  if is_tpu_strategy(distribution_strategy):
+    if distribution_strategy.extended.num_hosts > 1:
+      raise NotImplementedError('TPUDistributionStrategy does not '
+                                'support numpy inputs when running on Cloud'
+                                'TPU pods.')
+    return distribution_strategy.extended.get_host_cpu_device(0)
+  else:
+    # For all strategies except TPUDistributionStrategy
+    # TODO(anjalisridhar): We may need to modify this when we add support for
+    # multi-worker strategy.
+    return '/CPU:0'
+
+
+def get_var_for_numpy(distribution_strategy, x):
+  if isinstance(x, list):
+    var_x = tuple([_get_var_for_numpy(distribution_strategy, single_input)
+                   for single_input in x])
+  else:
+    var_x = _get_var_for_numpy(distribution_strategy, x)
+  return var_x
+
+
+def _get_var_for_numpy(distribution_strategy, input_array):
+  """Creates a variable and assigns the value of the numpy array to it.
+
+  Args:
+    distribution_strategy: The DistributionStrategy used to compile the model.
+    input_array: The input numpy array whose value will be assigned to the
+      variable we create.
+
+  Returns:
+    The variable to which we will copy the value of the input numpy array.
+
+  """
+  with ops.device(get_cpu_device(distribution_strategy)):
+    # Create and initialize a variable on the CPU device. This is the CPU
+    # device of the host in the case of TPUDistributionStrategy.
+    input_var = variables.VariableV1(array_ops.zeros(input_array.shape,
+                                                     input_array.dtype),
+                                     trainable=False, use_resource=True)
+  K.get_session().run(input_var.initializer)
+
+  # Create a placeholder for the numpy array input slices. We copy the value
+  # of the input numpy array to the variable in slices of size 64 MB to avoid
+  # running into memory issues or RPC message limits.
+  start_placeholder = array_ops.placeholder(dtypes.int64, ())
+  end_placeholder = array_ops.placeholder(dtypes.int64, ())
+  slice_placeholder = array_ops.placeholder(input_var.dtype)
+  assign_slice_op = input_var[start_placeholder:end_placeholder].assign(
+      slice_placeholder)
+
+  # If each batch element is > 64 MB, then we copy each batch element
+  # individually. Otherwise, the slices will be < 128 MB. There might be padding
+  # which might mean that the slices are 128 MB even if the size of the
+  # tensor allocated is less than 128 MB.
+  # This formula gives slices with size:
+  # ceil(64 MB / byte size per batch element) bytes.
+  # Using ceil() guarantees we get a number >= 1.
+
+  # Calculate the size of each batch element.
+  byte_size_per_batch_element = np.prod(input_array.shape[1:]) * \
+                                input_var.dtype.size
+
+  # Calculate number of elements we want to copy per slice.
+  batch_size_per_slice = int(np.ceil((64 << 20) / byte_size_per_batch_element))
+
+  # Copy slices of the above size starting at 0, except the last slice will be
+  # smaller.
+  start = 0
+  limit = input_array.shape[0]
+  while start < limit:
+    end = min(start + batch_size_per_slice, limit)
+    K.get_session().run(assign_slice_op, feed_dict={
+        start_placeholder: start,
+        end_placeholder: end,
+        slice_placeholder: input_array[start:end]})
+    start = end
+
+  return input_var

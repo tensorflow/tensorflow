@@ -93,7 +93,7 @@ class CallGraphTest : public HloTestBase {
 
 TEST_F(CallGraphTest, SingletonComputation) {
   // Test the call graph of a module with a single computation.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* computation =
       module->AddEntryComputation(MakeScalarComputation());
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
@@ -112,7 +112,7 @@ TEST_F(CallGraphTest, SingletonComputation) {
 TEST_F(CallGraphTest, UnreachableComputation) {
   // Test the call graph of a module with an entry computation and an
   // unreachable computation.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(MakeScalarComputation());
   HloComputation* unreachable_computation =
@@ -134,7 +134,7 @@ TEST_F(CallGraphTest, UnreachableComputation) {
 TEST_F(CallGraphTest, ParallelComputation) {
   // Test a call graph of a module with an entry computation which calls another
   // computation in a parallel context via kMap.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* map_computation =
       module->AddEmbeddedComputation(MakeScalarComputation());
   HloComputation* entry_computation = module->AddEntryComputation(
@@ -163,7 +163,7 @@ TEST_F(CallGraphTest, ParallelComputation) {
 TEST_F(CallGraphTest, SequentialComputations) {
   // Test a call graph of a module with an entry computation which calls another
   // computation in a sequential context via kCall.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* called_computation =
       module->AddEmbeddedComputation(MakeScalarComputation());
   HloComputation* entry_computation = module->AddEntryComputation(
@@ -196,7 +196,7 @@ TEST_F(CallGraphTest, SequentialComputations) {
 TEST_F(CallGraphTest, ContextBothComputations) {
   // Test a call graph of a module with an entry computation which calls another
   // computation in both a parallel and sequential context.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* subcomputation =
       module->AddEmbeddedComputation(MakeScalarComputation());
 
@@ -239,7 +239,7 @@ TEST_F(CallGraphTest, ContextBothComputations) {
 
 TEST_F(CallGraphTest, ComputationWithConditional) {
   // Test a call graph of a module with a conditional.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* true_computation =
       module->AddEmbeddedComputation(MakeScalarComputation(HloOpcode::kCeil));
   HloComputation* false_computation =
@@ -298,7 +298,7 @@ TEST_F(CallGraphTest, ComplexGraph) {
   //    c
   //
   // Calls are made via kCall, kWhile, and kMap instructions.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* cond_computation =
       module->AddEmbeddedComputation(MakeConditionComputation());
   HloComputation* c_computation =
@@ -418,7 +418,7 @@ TEST_F(CallGraphTest, ComplexGraphNearestAncestors) {
   //    c
   //
   // Calls are made via kCall, kWhile, and kMap instructions.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* cond_computation =
       module->AddEmbeddedComputation(MakeConditionComputation());
   HloComputation* c_computation =
@@ -479,7 +479,7 @@ TEST_F(CallGraphTest, ComplexGraphNearestAncestors) {
 
 TEST_F(CallGraphTest, VisitSingletonComputation) {
   // Test the call graph visitor with a call graph with a single node.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* computation =
       module->AddEntryComputation(MakeScalarComputation());
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
@@ -494,7 +494,7 @@ TEST_F(CallGraphTest, VisitSingletonComputation) {
 
 TEST_F(CallGraphTest, VisitUnreachableComputation) {
   // Test the call graph visitor with a call graph with an unreachable node.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(MakeScalarComputation());
   HloComputation* unreachable_computation =
@@ -531,7 +531,7 @@ TEST_F(CallGraphTest, VisitUnreachableComputation) {
 
 TEST_F(CallGraphTest, VisitWithError) {
   // Test that the call graph visitor properly propagates errors.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(MakeScalarComputation());
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
 

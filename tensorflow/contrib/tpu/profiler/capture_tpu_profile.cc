@@ -237,7 +237,8 @@ void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
     MonitorResponse response;
     TF_QCHECK_OK(FromGrpcStatus(stub->Monitor(&context, request, &response)));
 
-    std::cout << "Xprof Monitoring Results (Sample " << query + 1 << "):\n\n"
+    std::cout << "Cloud TPU Monitoring Results (Sample " << query + 1
+              << "):\n\n"
               << response.data() << std::flush;
   }
 }

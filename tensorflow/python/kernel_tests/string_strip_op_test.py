@@ -23,12 +23,12 @@ from tensorflow.python.platform import test
 
 
 class StringStripOpTest(test.TestCase):
-  """ Test cases for tf.string_strip."""
+  """ Test cases for tf.strings.strip."""
 
   def test_string_strip(self):
     strings = ["pigs on the wing", "animals"]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output = string_ops.string_strip(strings)
       output = sess.run(output)
       self.assertAllEqual(output, [b"pigs on the wing", b"animals"])
@@ -37,7 +37,7 @@ class StringStripOpTest(test.TestCase):
     strings = [["pigs on the wing", "animals"],
                [" hello ", "\n\tworld \r \n"]]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output = string_ops.string_strip(strings)
       output = sess.run(output)
       self.assertAllEqual(output, [[b"pigs on the wing", b"animals"],
@@ -46,7 +46,7 @@ class StringStripOpTest(test.TestCase):
   def test_string_strip_with_empty_strings(self):
     strings = [" hello ", "", "world ", " \t \r \n "]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output = string_ops.string_strip(strings)
       output = sess.run(output)
       self.assertAllEqual(output, [b"hello", b"", b"world", b""])

@@ -37,7 +37,7 @@ from tensorflow.python.util.tf_export import tf_export
 __all__ = ["make_template"]
 
 
-@tf_export("make_template")
+@tf_export(v1=["make_template"])
 def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
                   custom_getter_=None, **kwargs):
   """Given an arbitrary function, wrap it so that it does variable sharing.

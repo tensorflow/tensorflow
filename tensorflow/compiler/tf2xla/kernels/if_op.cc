@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/if_op.h"
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -33,6 +34,11 @@ XlaIfOp::XlaIfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tcond", &cond_type_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tin", &input_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tout", &output_types_));
+  if (!ctx->GetAttr(kXlaTokenInputNodesAttrName, &token_input_nodes_).ok()) {
+    has_token_input_output_ = false;
+  } else {
+    has_token_input_output_ = !token_input_nodes_.empty();
+  }
 }
 
 // TODO(b/35949885): There is duplication here with the handling of the
@@ -90,6 +96,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   options.resolve_compile_time_constants = false;
   options.return_updated_values_for_all_resources = true;
   options.is_entry_computation = false;
+  options.add_token_input_output = has_token_input_output_;
   XlaCompiler* compiler = ctx->compiler();
 
   XlaCompiler::CompilationResult then_result;
@@ -191,7 +198,16 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   std::vector<xla::XlaOp> inputs(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     int input_num = then_result.input_mapping[i] + 1;
-    if (ctx->input_type(input_num) == DT_RESOURCE) {
+    if (has_token_input_output_ && i == num_inputs - 1) {
+      // Set token input for this "if" op.
+      std::vector<xla::XlaOp> token_inputs;
+      for (const string& node_name : token_input_nodes_) {
+        auto token_or = compiler->GetNodeToken(node_name);
+        OP_REQUIRES_OK(ctx, token_or.status());
+        token_inputs.push_back(token_or.ValueOrDie());
+      }
+      inputs[i] = xla::AfterAll(b, token_inputs);
+    } else if (ctx->input_type(input_num) == DT_RESOURCE) {
       XlaResource* resource;
       OP_REQUIRES_OK(ctx, ctx->GetResourceInput(input_num, &resource));
       OP_REQUIRES_OK(ctx, resource->Pack(&inputs[i], b));
@@ -200,21 +216,10 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     }
   }
 
-  bool resource_variable_seen = false;
-  for (int i = 0; i < ctx->num_inputs(); ++i) {
-    if (ctx->input_type(i) == DT_RESOURCE) {
-      resource_variable_seen = true;
-    } else {
-      OP_REQUIRES(
-          ctx, !resource_variable_seen,
-          errors::FailedPrecondition(
-              "Resource variables and regular inputs cannot be interleaved."));
-    }
-  }
-
-  xla::XlaOp outputs = xla::Conditional(
-      ctx->Input(0), xla::Tuple(b, inputs), *then_result.computation,
-      xla::Tuple(b, inputs), *else_result.computation);
+  auto input_tuple = xla::Tuple(b, inputs);
+  xla::XlaOp outputs =
+      xla::Conditional(ctx->Input(0), input_tuple, *then_result.computation,
+                       input_tuple, *else_result.computation);
   // Sets non-variable outputs.
   for (int i = 0; i < output_types_.size(); ++i) {
     xla::XlaOp output_handle = xla::GetTupleElement(outputs, i);
@@ -229,6 +234,18 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       }
     }
     ctx->SetOutput(i, output_handle);
+  }
+  if (has_token_input_output_) {
+    // Set token output for this "if" op.
+    xla::XlaOp token_output =
+        xla::GetTupleElement(outputs, output_types_.size());
+    auto shape_or = b->GetShape(token_output);
+    OP_REQUIRES_OK(ctx, shape_or.status());
+    OP_REQUIRES(ctx, xla::ShapeUtil::IsToken(shape_or.ValueOrDie()),
+                errors::FailedPrecondition(
+                    "Token output is not token type: ",
+                    xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));
+    OP_REQUIRES_OK(ctx, compiler->SetNodeToken(name(), token_output));
   }
 
   // Updates the values of any resource variables modified by the conditional

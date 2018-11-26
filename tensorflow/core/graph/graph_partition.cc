@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -793,7 +794,7 @@ Status TopologicalSortNodesWithTimePriority(
   for (int n = 0; n < gdef->node_size(); ++n) {
     const NodeDef* ndef = &gdef->node(n);
     for (int i = 0; i < ndef->input_size(); ++i) {
-      node_to_output_nodes[std::string(ParseTensorName(ndef->input(i)).first)]
+      node_to_output_nodes[string(ParseTensorName(ndef->input(i)).first)]
           .push_back(ndef);
     }
     int64 start_time;
@@ -1186,7 +1187,8 @@ Status Partition(const PartitionOptions& opts, Graph* g,
   for (auto& it : *partitions) {
     GraphDef* gdef = &it.second;
     *gdef->mutable_versions() = g->versions();
-    *gdef->mutable_library() = flib_def->ToProto();
+    // Prune unreachable functions from `flib_def` before adding them to `gdef`.
+    *gdef->mutable_library() = flib_def->ReachableDefinitions(*gdef).ToProto();
 
     // Traverse the graph to fill every send/recv op's incarnation
     // information.

@@ -13,5 +13,5 @@ filegroup(
 
 filegroup(
     name = "api_golden_v2",
-    srcs = glob(["v1/*.pbtxt"]),
+    srcs = glob(["v2/*.pbtxt"]),
 )

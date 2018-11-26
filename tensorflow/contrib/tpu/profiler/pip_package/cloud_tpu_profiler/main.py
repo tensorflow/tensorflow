@@ -116,12 +116,13 @@ def main(unused_argv=None):
     elif tpu_cluster_resolver is not None:
       workers_list = get_workers_list(tpu_cluster_resolver)
 
-  if not FLAGS.logdir:
+  if not FLAGS.logdir and not FLAGS.monitoring_level:
     sys.exit('logdir must be provided.')
   executable_path = os.path.join(os.path.dirname(__file__), EXECUTABLE)
-  logdir = os.path.expandvars(os.path.expanduser(FLAGS.logdir))
   cmd = [executable_path]
-  cmd.append('--logdir=' + logdir)
+  if FLAGS.logdir is not None:
+    logdir = os.path.expandvars(os.path.expanduser(FLAGS.logdir))
+    cmd.append('--logdir=' + logdir)
   cmd.append('--service_addr=' + service_addr)
   cmd.append('--workers_list=' + workers_list)
   cmd.append('--duration_ms=' + str(FLAGS.duration_ms))

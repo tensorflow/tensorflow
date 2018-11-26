@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace cpu {
@@ -324,7 +324,7 @@ class TileVariable {
                std::vector<llvm::Value*> initial_value);
 
   std::vector<llvm::Value*> Get() const;
-  void Set(tensorflow::gtl::ArraySlice<llvm::Value*> value);
+  void Set(absl::Span<llvm::Value* const> value);
 
  private:
   std::vector<VectorVariable> storage_;

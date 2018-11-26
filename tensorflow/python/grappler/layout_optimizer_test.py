@@ -1443,11 +1443,13 @@ class LayoutOptimizerTest(test.TestCase):
 
   def testGradient(self):
     meta_graph = _simple_metagraph()
-    rewrite_options = rewriter_config_pb2.RewriterConfig(
-        layout_optimizer=rewriter_config_pb2.RewriterConfig.ON,
-        min_graph_nodes=-1)
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.CopyFrom(
+        rewriter_config_pb2.RewriterConfig(
+            layout_optimizer=rewriter_config_pb2.RewriterConfig.ON,
+            min_graph_nodes=-1))
     optimized_graph = tf_optimizer.OptimizeGraph(
-        rewrite_options, meta_graph, cluster=_get_cluster())
+        config, meta_graph, cluster=_get_cluster())
 
     found = 0
     for node in optimized_graph.node:
@@ -1458,11 +1460,13 @@ class LayoutOptimizerTest(test.TestCase):
 
   def testDepthwise(self):
     meta_graph = _simple_metagraph(depthwise=True)
-    rewrite_options = rewriter_config_pb2.RewriterConfig(
-        layout_optimizer=rewriter_config_pb2.RewriterConfig.ON,
-        min_graph_nodes=-1)
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.CopyFrom(
+        rewriter_config_pb2.RewriterConfig(
+            layout_optimizer=rewriter_config_pb2.RewriterConfig.ON,
+            min_graph_nodes=-1))
     optimized_graph = tf_optimizer.OptimizeGraph(
-        rewrite_options, meta_graph, cluster=_get_cluster())
+        config, meta_graph, cluster=_get_cluster())
 
     found = 0
     for node in optimized_graph.node:

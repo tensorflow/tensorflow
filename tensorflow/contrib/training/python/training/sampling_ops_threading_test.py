@@ -59,7 +59,7 @@ class SamplingOpsThreadingTest(test.TestCase):
     out_tensor = queue.dequeue()
 
     # Run the multi-threaded session.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Need to initialize variables that keep running total of classes seen.
       variables.global_variables_initializer().run()
 

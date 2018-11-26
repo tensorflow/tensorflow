@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 
 namespace tensorflow {
+namespace data {
 
 // Stores a DT_VARIANT value representing an Optional with the given value
 // in the `output_index`^th output of the given kernel execution context.
@@ -31,6 +32,7 @@ Status WriteOptionalWithValueToOutput(OpKernelContext* ctx, int output_index,
 // in the `output_index`^th output of the given kernel execution context.
 Status WriteOptionalNoneToOutput(OpKernelContext* ctx, int output_index);
 
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_OPTIONAL_OPS_H_

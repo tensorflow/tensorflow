@@ -367,5 +367,77 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElementSwizzled) {
                                                   "while.2", 1));
 }
 
+// Tests that a while whose body has outfeed operations is not DCE-ed.
+TEST_F(HloModuleDceTest, WhileWithOutfeed) {
+  auto module = ParseHloString(R"(
+  HloModule OutfeedLoop
+  WhileBody {
+    body_param = (s32[]) parameter(0)
+    token = token[] after-all()
+    constant.2 = s32[] constant(2)
+    outfeed_tuple = (s32[]) outfeed(constant.2, token)
+    get-tuple-element.1 = s32[] get-tuple-element(body_param), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    ROOT tuple = (s32[]) tuple(add)
+  }
+  WhileCondition {
+    cond_param = (s32[]) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(cond_param), index=0
+    constant.2 = s32[] constant(10)
+    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[] constant(0)
+    tuple.1 = (s32[]) tuple(constant.3)
+    while = (s32[]) while(tuple.1), condition=WhileCondition,
+      body=WhileBody
+    ROOT rtuple = () tuple()
+  })")
+                    .ValueOrDie();
+
+  HloModuleDCE dce;
+  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
+                                                   "while", 0));
+}
+
+// Tests that if a loop variable is not referenced outside of a kWhile, the loop
+// variable changes are not elided within the loop body, if the condition
+// computation uses them.
+TEST_F(HloModuleDceTest, WhileWithOnlyLoopVariableBumping) {
+  auto module = ParseHloString(R"(
+  HloModule InfiniteLoop
+  WhileBody {
+    body_param = (s32[], s32[]) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(body_param), index=0
+    get-tuple-element.2 = s32[] get-tuple-element(body_param), index=1
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    ROOT tuple = (s32[], s32[]) tuple(add, get-tuple-element.2)
+  }
+  WhileCondition {
+    cond_param = (s32[], s32[]) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(cond_param), index=0
+    constant.2 = s32[] constant(10)
+    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+  }
+  ENTRY SimpleLoop {
+    p0 = (s32[]) parameter(0)
+    get-tuple-element.5 = s32[] get-tuple-element(p0), index=0
+    constant.3 = s32[] constant(0)
+    tuple.1 = (s32[], s32[]) tuple(constant.3, get-tuple-element.5)
+    while = (s32[], s32[]) while(tuple.1), condition=WhileCondition,
+      body=WhileBody
+    ROOT get-tuple-element.4 = s32[] get-tuple-element(while), index=1
+  })")
+                    .ValueOrDie();
+
+  HloModuleDCE dce;
+  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
+                                                   "while", 0));
+}
+
 }  // namespace
 }  // namespace xla

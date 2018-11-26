@@ -25,17 +25,16 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using tensorflow::gtl::nullopt;
+using absl::nullopt;
 
 class GatherOperationTest : public HloTestBase {
  protected:
   void RunTest(const string& hlo_text, Literal* operand,
-               Literal* gather_indices) {
-    RunTest(hlo_text, {operand, gather_indices});
+               Literal* start_indices) {
+    RunTest(hlo_text, {operand, start_indices});
   }
 
-  void RunTest(const string& hlo_text,
-               tensorflow::gtl::ArraySlice<Literal*> args) {
+  void RunTest(const string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -52,18 +51,17 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[2,3] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1, 3}
+      slice_sizes={1, 3}
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({0, 2});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherV2) {
@@ -74,18 +72,17 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[3,2] gather(operand, indices),
-      output_window_dims={0},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({0, 2});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherMultipleBatchDims) {
@@ -96,18 +93,17 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2] parameter(1)
   ROOT gather = s32[2,3,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=2,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherNdMultipleBatchDims_0) {
@@ -118,18 +114,18 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2,2] parameter(1)
   ROOT gather = s32[2,2] gather(operand, indices),
-      output_window_dims={},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=2,
-      window_bounds={1, 1}
+      slice_sizes={1, 1}
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
+  Literal start_indices =
       LiteralUtil::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherNdMultipleBatchDims_1) {
@@ -140,18 +136,18 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2,2] parameter(1)
   ROOT gather = s32[2,1,1,2] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=2,
-      window_bounds={1, 1}
+      slice_sizes={1, 1}
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
+  Literal start_indices =
       LiteralUtil::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherNd) {
@@ -162,20 +158,19 @@ ENTRY main {
   operand = s32[3,3,2] parameter(0)
   indices = s32[2,2] parameter(1)
   ROOT gather = s32[2,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=1,
-      window_bounds={1,1,2}
+      slice_sizes={1,1,2}
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
                                     {{-4, 4}, {-5, 5}, {-6, 6}},  //
                                     {{-7, 7}, {-8, 8}, {-9, 9}}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, TensorFlowGatherNdNonDefaultIndexVectorDim) {
@@ -186,20 +181,19 @@ ENTRY main {
   operand = s32[3,3,2] parameter(0)
   indices = s32[2,2] parameter(1)
   ROOT gather = s32[2,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1,2}
+      slice_sizes={1,1,2}
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
                                     {{-4, 4}, {-5, 5}, {-6, 6}},  //
                                     {{-7, 7}, {-8, 8}, {-9, 9}}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, DynamicSlice) {
@@ -210,18 +204,17 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[1,1] gather(operand, indices),
-      output_window_dims={0,1},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={0,1},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1}
+      slice_sizes={1,1}
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({1, 1});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR1<int32>({1, 1});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, BatchDynamicSlice) {
@@ -232,18 +225,17 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2] parameter(1)
   ROOT gather = s32[2,1,1] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1}
+      slice_sizes={1,1}
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, ZeroDimBounds) {
@@ -254,17 +246,16 @@ ENTRY main {
   operand = s32[3,0] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[2,0] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1, 0}
+      slice_sizes={1, 0}
 }
 )";
-  std::unique_ptr<Literal> operand = LiteralUtil::CreateR2<int32>({{}, {}, {}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({0, 2});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal operand = LiteralUtil::CreateR2<int32>({{}, {}, {}});
+  Literal start_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, OutOfBoundsIndex) {
@@ -278,19 +269,19 @@ ENTRY main {
   operand = s32[3,3]{1,0} parameter(0)
   indices = s32[6,2]{1,0} parameter(1)
   gather = s32[6,1,1]{2,1,0} gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=1,
-      window_bounds={1,1}
+      slice_sizes={1,1}
   ROOT result = s32[6]{0} reshape(gather)
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR2<int32>(
+  Literal start_indices = LiteralUtil::CreateR2<int32>(
       {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {2147483647, 1}, {1, 2}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, OutOfBoundsUnsignedIndex) {
@@ -304,19 +295,19 @@ ENTRY main {
   operand = s32[3,3]{1,0} parameter(0)
   indices = u32[6,2]{1,0} parameter(1)
   gather = s32[6,1,1]{2,1,0} gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=1,
-      window_bounds={1,1}
+      slice_sizes={1,1}
   ROOT result = s32[6]{0} reshape(gather)
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR2<uint32>(
+  Literal start_indices = LiteralUtil::CreateR2<uint32>(
       {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {2147483648u, 1}, {1, 2}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, NegativeIndex) {
@@ -330,19 +321,19 @@ ENTRY main {
   operand = s32[3,3]{1,0} parameter(0)
   indices = s32[6,2]{1,0} parameter(1)
   gather = s32[6,1,1]{2,1,0} gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=1,
-      window_bounds={1,1}
+      slice_sizes={1,1}
   ROOT result = s32[6]{0} reshape(gather)
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR2<int32>(
+  Literal start_indices = LiteralUtil::CreateR2<int32>(
       {{2, -1}, {2, 1}, {1, 1}, {-500, 1}, {-2147483648, 1}, {1, 2}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, NegativeIndexIntoUnsignedOperand) {
@@ -356,19 +347,19 @@ ENTRY main {
   operand = u32[3,3]{1,0} parameter(0)
   indices = s32[6,2]{1,0} parameter(1)
   gather = u32[6,1,1]{2,1,0} gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=1,
-      window_bounds={1,1}
+      slice_sizes={1,1}
   ROOT result = u32[6]{0} reshape(gather)
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<uint32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR2<int32>(
+  Literal start_indices = LiteralUtil::CreateR2<int32>(
       {{2, -1}, {2, 1}, {1, 1}, {-500, 1}, {-2147483648, 1}, {1, 2}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, OneScalarIndex) {
@@ -379,17 +370,17 @@ ENTRY main {
   operand = s32[2,3,2]{2,1,0} parameter(0)
   index = s32[] parameter(1)
   ROOT gather = s32[1,3,2]{2,1,0} gather(operand, index),
-      output_window_dims={0,1,2},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0},
+      offset_dims={0,1,2},
+      collapsed_slice_dims={},
+      start_index_map={0},
       index_vector_dim=0,
-      window_bounds={1,3,2}
+      slice_sizes={1,3,2}
 }
 )";
-  std::unique_ptr<Literal> operand = LiteralUtil::CreateR3<int32>(
+  Literal operand = LiteralUtil::CreateR3<int32>(
       {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}});
-  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR0<int32>(1);
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR0<int32>(1);
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, ScalarResult) {
@@ -400,16 +391,16 @@ ENTRY main {
   operand = s32[4]{0} parameter(0)
   index = s32[] parameter(1)
   ROOT gather = s32[] gather(operand, index),
-      output_window_dims={},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=0,
-      window_bounds={1}
+      slice_sizes={1}
 }
 )";
-  std::unique_ptr<Literal> operand = LiteralUtil::CreateR1<int32>({1, 2, 3, 4});
-  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR0<int32>(1);
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal operand = LiteralUtil::CreateR1<int32>({1, 2, 3, 4});
+  Literal start_indices = LiteralUtil::CreateR0<int32>(1);
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, ZeroSizedResult) {
@@ -420,17 +411,17 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[0] parameter(1)
   ROOT gather = s32[0,3] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1, 3}
+      slice_sizes={1, 3}
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR1<int32>({});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR1<int32>({});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, FusedTensorFlowGatherV2) {
@@ -441,21 +432,20 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   gather = s32[3,2] gather(operand, indices),
-      output_window_dims={0},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
   one = s32[] constant(1)
   one_broadcasted = s32[3,2] broadcast(one), dimensions={}
   ROOT result = s32[3,2]{1,0} add(gather, one_broadcasted)
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({0, 2});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, FusedTensorFlowGatherMultipleBatchDims) {
@@ -466,21 +456,20 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2] parameter(1)
   gather = s32[2,3,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=2,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
   one = s32[] constant(1)
   one_broadcasted = s32[2,3,2] broadcast(one), dimensions={}
   ROOT result = s32[2,3,2]{2,1,0} add(gather, one_broadcasted)
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, FusedTensorFlowGatherNdMultipleBatchDims) {
@@ -491,21 +480,21 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2,2] parameter(1)
   gather = s32[2,2] gather(operand, indices),
-      output_window_dims={},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=2,
-      window_bounds={1, 1}
+      slice_sizes={1, 1}
   one = s32[] constant(1)
   one_broadcasted = s32[2,2] broadcast(one), dimensions={}
   ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
+  Literal start_indices =
       LiteralUtil::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, FusedTensorFlowGatherNd) {
@@ -516,23 +505,22 @@ ENTRY main {
   operand = s32[3,3,2] parameter(0)
   indices = s32[2,2] parameter(1)
   gather = s32[2,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=1,
-      window_bounds={1,1,2}
+      slice_sizes={1,1,2}
   one = s32[] constant(1)
   one_broadcasted = s32[2,2] broadcast(one), dimensions={}
   ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
                                     {{-4, 4}, {-5, 5}, {-6, 6}},  //
                                     {{-7, 7}, {-8, 8}, {-9, 9}}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest,
@@ -544,23 +532,22 @@ ENTRY main {
   operand = s32[3,3,2] parameter(0)
   indices = s32[2,2] parameter(1)
   gather = s32[2,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1,2}
+      slice_sizes={1,1,2}
   one = s32[] constant(1)
   one_broadcasted = s32[2,2] broadcast(one), dimensions={}
   ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
                                     {{-4, 4}, {-5, 5}, {-6, 6}},  //
                                     {{-7, 7}, {-8, 8}, {-9, 9}}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, FusedDynamicSlice) {
@@ -571,21 +558,20 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   gather = s32[1,1] gather(operand, indices),
-      output_window_dims={0,1},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={0,1},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1}
+      slice_sizes={1,1}
   one = s32[] constant(1)
   one_broadcasted = s32[1,1] broadcast(one), dimensions={}
   ROOT result = s32[1,1]{1,0} add(gather, one_broadcasted)
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({1, 1});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR1<int32>({1, 1});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 XLA_TEST_F(GatherOperationTest, FusedBatchDynamicSlice) {
@@ -596,21 +582,20 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2] parameter(1)
   gather = s32[2,1,1] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1}
+      slice_sizes={1,1}
   one = s32[] constant(1)
   one_broadcasted = s32[2,1,1] broadcast(one), dimensions={}
   ROOT result = s32[2,1,1]{2,1,0} add(gather, one_broadcasted)
 }
 )";
-  std::unique_ptr<Literal> operand =
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
-  RunTest(hlo_text, operand.get(), gather_indices.get());
+  Literal start_indices = LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
+  RunTest(hlo_text, &operand, &start_indices);
 }
 
 class GatherClientLibraryTest : public ClientLibraryTestBase {};
@@ -622,11 +607,11 @@ XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
   //   operand = s32[3,3] parameter(0)
   //   indices = s32[2] parameter(1)
   //   ROOT gather = s32[2,3] gather(operand, indices),
-  //       output_window_dims={1},
-  //       elided_window_dims={0},
-  //       gather_dims_to_operand_dims={0},
+  //       offset_dims={1},
+  //       collapsed_slice_dims={0},
+  //       start_index_map={0},
   //       index_vector_dim=1,
-  //       window_bounds={1, 3}
+  //       slice_sizes={1, 3}
   // }
 
   XlaBuilder builder("gather_basic");
@@ -637,9 +622,9 @@ XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
   auto operand = Parameter(&builder, 0, operand_shape, "operand");
   auto indices = Parameter(&builder, 1, indices_shape, "indices");
   GatherDimensionNumbers dim_numbers;
-  dim_numbers.add_output_window_dims(1);
-  dim_numbers.add_elided_window_dims(0);
-  dim_numbers.add_gather_dims_to_operand_dims(0);
+  dim_numbers.add_offset_dims(1);
+  dim_numbers.add_collapsed_slice_dims(0);
+  dim_numbers.add_start_index_map(0);
   dim_numbers.set_index_vector_dim(1);
   Gather(operand, indices, dim_numbers, {1, 3});
 
@@ -647,10 +632,10 @@ XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> operand_arg,
       client_->TransferToServer(
-          *LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
+          LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> indices_arg,
-      client_->TransferToServer(*LiteralUtil::CreateR1<int32>({0, 2})));
+      client_->TransferToServer(LiteralUtil::CreateR1<int32>({0, 2})));
   TF_ASSERT_OK_AND_ASSIGN(std::vector<xla::DeviceHandle> devices,
                           client_->GetDeviceHandles(1));
   xla::ExecutionOptions execution_options = CreateDefaultExecutionOptions();
@@ -664,10 +649,9 @@ XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<xla::GlobalData>> result_data,
       client_->ExecuteParallel(computation_instances));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result_literal,
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
                           client_->Transfer(*(result_data[0])));
-  LiteralTestUtil::ExpectR2Equal<int32>({{1, 2, 3}, {7, 8, 9}},
-                                        *result_literal);
+  LiteralTestUtil::ExpectR2Equal<int32>({{1, 2, 3}, {7, 8, 9}}, result_literal);
 }
 }  // namespace
 }  // namespace xla

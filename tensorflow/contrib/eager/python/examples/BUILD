@@ -6,6 +6,7 @@ package(default_visibility = ["//tensorflow:internal"])
 py_library(
     name = "examples_pip",
     deps = [
+        "//tensorflow/contrib/eager/python/examples/densenet",
         "//tensorflow/contrib/eager/python/examples/gan:mnist",
         "//tensorflow/contrib/eager/python/examples/l2hmc",
         "//tensorflow/contrib/eager/python/examples/l2hmc:neural_nets",

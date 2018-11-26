@@ -54,7 +54,7 @@ class KafkaDatasetTest(test.TestCase):
     init_batch_op = iterator.make_initializer(batch_dataset)
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Basic test: read from topic 0.
       sess.run(init_op, feed_dict={topics: ["test:0:0:4"], num_epochs: 1})
       for i in range(5):

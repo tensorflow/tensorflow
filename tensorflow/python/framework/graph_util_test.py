@@ -104,13 +104,13 @@ class DeviceFunctionsTest(test.TestCase):
 
   def testNestedDeviceFunctions(self):
     with ops.Graph().as_default():
-      var_0 = variables.Variable(0)
+      var_0 = variables.VariableV1(0)
       with ops.device(test_device_func_pin_variable_to_cpu):
-        var_1 = variables.Variable(1)
+        var_1 = variables.VariableV1(1)
         with ops.device(lambda op: "/device:GPU:0"):
-          var_2 = variables.Variable(2)
+          var_2 = variables.VariableV1(2)
         with ops.device("/device:GPU:0"):  # Implicit merging device function.
-          var_3 = variables.Variable(3)
+          var_3 = variables.VariableV1(3)
 
     self.assertDeviceEqual(var_0.device, None)
     self.assertDeviceEqual(var_1.device, "/device:CPU:0")

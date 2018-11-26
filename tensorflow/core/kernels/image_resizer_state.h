@@ -18,8 +18,8 @@ limitations under the License.
 // reduce code duplication and ensure consistency across the different
 // resizers, it performs the input validation.
 
-#ifndef TENSORFLOW_KERNELS_IMAGE_RESIZER_STATE_H_
-#define TENSORFLOW_KERNELS_IMAGE_RESIZER_STATE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_IMAGE_RESIZER_STATE_H_
+#define TENSORFLOW_CORE_KERNELS_IMAGE_RESIZER_STATE_H_
 
 #define EIGEN_USE_THREADS
 
@@ -191,4 +191,4 @@ struct ImageResizerGradientState {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_IMAGE_RESIZER_STATE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_IMAGE_RESIZER_STATE_H_

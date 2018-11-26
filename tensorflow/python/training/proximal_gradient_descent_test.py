@@ -36,7 +36,7 @@ class ProximalGradientDescentOptimizerTest(test.TestCase):
 
   def doTestProximalGradientDescentwithoutRegularization(
       self, use_resource=False):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if use_resource:
         var0 = resource_variable_ops.ResourceVariable([0.0, 0.0])
         var1 = resource_variable_ops.ResourceVariable([0.0, 0.0])
@@ -69,7 +69,7 @@ class ProximalGradientDescentOptimizerTest(test.TestCase):
     self.doTestProximalGradientDescentwithoutRegularization(use_resource=True)
 
   def testProximalGradientDescentwithoutRegularization2(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       var0 = variables.Variable([1.0, 2.0])
       var1 = variables.Variable([4.0, 3.0])
       grads0 = constant_op.constant([0.1, 0.2])
@@ -94,7 +94,7 @@ class ProximalGradientDescentOptimizerTest(test.TestCase):
 
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
@@ -103,15 +103,16 @@ class ProximalGradientDescentOptimizerTest(test.TestCase):
             1.0).minimize(loss)
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
         sgd_op.run()
         # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [[-111, -138]], var0.eval(), atol=0.01)
+        self.assertAllCloseAccordingToType([[-111, -138]],
+                                           self.evaluate(var0),
+                                           atol=0.01)
 
   def testProximalGradientDescentWithL1_L2(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       var0 = variables.Variable([1.0, 2.0])
       var1 = variables.Variable([4.0, 3.0])
       grads0 = constant_op.constant([0.1, 0.2])
@@ -174,7 +175,7 @@ class ProximalGradientDescentOptimizerTest(test.TestCase):
     return v0_val, v1_val
 
   def testEquivSparseGradientDescentwithoutRegularization(self):
-    with self.test_session():
+    with self.cached_session():
       val0, val1 = self.applyOptimizer(
           proximal_gradient_descent.ProximalGradientDescentOptimizer(
               3.0,
@@ -182,7 +183,7 @@ class ProximalGradientDescentOptimizerTest(test.TestCase):
               l2_regularization_strength=0.0),
           is_sparse=True)
 
-    with self.test_session():
+    with self.cached_session():
       val2, val3 = self.applyOptimizer(
           gradient_descent.GradientDescentOptimizer(3.0), is_sparse=True)
 
@@ -190,14 +191,14 @@ class ProximalGradientDescentOptimizerTest(test.TestCase):
     self.assertAllClose(val1, val3)
 
   def testEquivGradientDescentwithoutRegularization(self):
-    with self.test_session():
+    with self.cached_session():
       val0, val1 = self.applyOptimizer(
           proximal_gradient_descent.ProximalGradientDescentOptimizer(
               3.0,
               l1_regularization_strength=0.0,
               l2_regularization_strength=0.0))
 
-    with self.test_session():
+    with self.cached_session():
       val2, val3 = self.applyOptimizer(
           gradient_descent.GradientDescentOptimizer(3.0))
 

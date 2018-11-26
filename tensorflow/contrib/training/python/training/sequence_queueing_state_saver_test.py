@@ -36,7 +36,7 @@ from tensorflow.python.platform import test
 class SequenceQueueingStateSaverTest(test.TestCase):
 
   def testSequenceInputWrapper(self):
-    with self.test_session():
+    with self.cached_session():
       length = 3
       key = "key"
       padded_length = 4
@@ -54,7 +54,7 @@ class SequenceQueueingStateSaverTest(test.TestCase):
       self.assertTrue(isinstance(input_wrapper.context["context1"], ops.Tensor))
 
   def testStateSaverWithTwoSimpleSteps(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_size_value = 2
       batch_size = constant_op.constant(batch_size_value)
       num_unroll = 2
@@ -159,7 +159,7 @@ class SequenceQueueingStateSaverTest(test.TestCase):
       self.assertEqual(0, state_saver.barrier.ready_size().eval())
 
   def testStateSaverFailsIfPaddedLengthIsNotMultipleOfNumUnroll(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_size = constant_op.constant(32)
       num_unroll = 17
       bad_padded_length = 3
@@ -194,7 +194,7 @@ class SequenceQueueingStateSaverTest(test.TestCase):
                  })
 
   def _testStateSaverFailsIfCapacityTooSmall(self, batch_size):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       num_unroll = 2
       length = array_ops.placeholder(dtypes.int32)
       key = array_ops.placeholder(dtypes.string)
@@ -243,7 +243,7 @@ class SequenceQueueingStateSaverTest(test.TestCase):
       self._testStateSaverFailsIfCapacityTooSmall(batch_size)
 
   def testStateSaverFailsIfInconsistentPaddedLength(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_size = constant_op.constant(32)
       num_unroll = 17
       length = array_ops.placeholder(dtypes.int32)
@@ -282,7 +282,7 @@ class SequenceQueueingStateSaverTest(test.TestCase):
 
   def testStateSaverFailsIfInconsistentWriteState(self):
     # TODO(b/26910386): Identify why this infrequently causes timeouts.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_size = constant_op.constant(1)
       num_unroll = 17
       length = array_ops.placeholder(dtypes.int32)
@@ -326,7 +326,7 @@ class SequenceQueueingStateSaverTest(test.TestCase):
   def testStateSaverWithManyInputsReadWriteThread(self):
     batch_size_value = 32
     num_proc_threads = 100
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_size = constant_op.constant(batch_size_value)
       num_unroll = 17
       length = array_ops.placeholder(dtypes.int32)
@@ -490,7 +490,7 @@ class SequenceQueueingStateSaverTest(test.TestCase):
       self.assertGreater(processed_count[0], 2 * 20 * batch_size_value)
 
   def testStateSaverProcessesExamplesInOrder(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_size_value = 32
       batch_size = constant_op.constant(batch_size_value)
       num_unroll = 17
@@ -563,7 +563,7 @@ class SequenceQueueingStateSaverTest(test.TestCase):
       self.assertEqual(get_ready_size.eval(), 0)
 
   def testStateSaverCanHandleVariableBatchsize(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_size = array_ops.placeholder(dtypes.int32)
       num_unroll = 17
       length = array_ops.placeholder(dtypes.int32)

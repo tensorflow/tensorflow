@@ -1,3 +1,13 @@
+# WARNING: THESE IMAGES ARE DEPRECATED.
+
+TensorFlow's Dockerfiles are now located in
+[`tensorflow/tools/dockerfiles/`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles).
+However, these Dockerfiles are still used to build
+[TensorFlow's official Docker images](https://hub.docker.com/r/tensorflow/tensorflow)
+while the internal infrastructure for the newer Dockerfiles is being developed.
+
+This directory will eventually be removed.
+
 # Using TensorFlow via Docker
 
 This directory contains `Dockerfile`s to make it easy to get up and running with

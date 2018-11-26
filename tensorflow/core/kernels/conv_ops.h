@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CONV_OPS_H_
-#define TENSORFLOW_KERNELS_CONV_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CONV_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_CONV_OPS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -66,6 +66,50 @@ struct Im2ColBufferResource : public ResourceBase {
   string DebugString() { return "Im2ColBufferResource"; }
 };
 
+// Convolution parameters specified by Op attributes.
+struct Conv2DParameters {
+  std::vector<int32> dilations;
+  std::vector<int32> strides;
+  Padding padding;
+  TensorFormat data_format;
+};
+
+// Convolution dimensions inferred from parameters, input and filter tensors.
+struct Conv2DDimensions {
+  int batch;
+  int input_rows;
+  int input_cols;
+  int in_depth;
+
+  int filter_rows;
+  int filter_cols;
+  int patch_depth;
+  int out_depth;
+
+  int stride_rows;
+  int stride_cols;
+
+  int dilation_rows;
+  int dilation_cols;
+
+  int64 out_rows;
+  int64 out_cols;
+  int64 pad_rows;
+  int64 pad_cols;
+};
+
+// Initializes and validates Conv2D parameters configured by OpKernel
+// attributes.
+Status InitConv2DParameters(const OpKernelConstruction* context,
+                            Conv2DParameters* params);
+
+// Computes and validates convolutions dimensions from Conv2D parameters. If
+// parameters are valid, dimensions will be updated with derived convolution
+// dimensions, otherwise error will be returned.
+Status ComputeConv2DDimension(const Conv2DParameters& params,
+                              const Tensor& input, const Tensor& filter,
+                              Conv2DDimensions* dimensions);
+
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CONV_OPS_H
+#endif  // TENSORFLOW_CORE_KERNELS_CONV_OPS_H_

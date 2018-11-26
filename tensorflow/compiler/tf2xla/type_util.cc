@@ -26,21 +26,26 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
       *type = xla::PRED;
       return Status::OK();
     case tensorflow::DT_INT8:
+    case tensorflow::DT_QINT8:
       *type = xla::S8;
       return Status::OK();
     case tensorflow::DT_INT16:
+    case tensorflow::DT_QINT16:
       *type = xla::S16;
       return Status::OK();
     case tensorflow::DT_INT32:
+    case tensorflow::DT_QINT32:
       *type = xla::S32;
       return Status::OK();
     case tensorflow::DT_INT64:
       *type = xla::S64;
       return Status::OK();
     case tensorflow::DT_UINT8:
+    case tensorflow::DT_QUINT8:
       *type = xla::U8;
       return Status::OK();
     case tensorflow::DT_UINT16:
+    case tensorflow::DT_QUINT16:
       *type = xla::U16;
       return Status::OK();
     case tensorflow::DT_UINT32:
@@ -63,12 +68,6 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
       return Status::OK();
     case tensorflow::DT_COMPLEX64:
       *type = xla::C64;
-      return Status::OK();
-    case tensorflow::DT_QUINT8:
-      *type = xla::U8;
-      return Status::OK();
-    case tensorflow::DT_QINT32:
-      *type = xla::S32;
       return Status::OK();
     default:
       return errors::InvalidArgument(

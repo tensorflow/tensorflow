@@ -96,8 +96,8 @@ class CostAnalysisTest(test.TestCase):
     b_fc = variables.Variable(random_ops.truncated_normal([10], stddev=0.1))
     y_conv = nn_ops.softmax(math_ops.matmul(h_conv_flat, w_fc) + b_fc)
 
-    cross_entropy = math_ops.reduce_mean(-math_ops.reduce_sum(
-        label * math_ops.log(y_conv), reduction_indices=[1]))
+    cross_entropy = math_ops.reduce_mean(
+        -math_ops.reduce_sum(label * math_ops.log(y_conv), axis=[1]))
     _ = adam.AdamOptimizer(1e-4).minimize(cross_entropy)
 
     mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())

@@ -106,12 +106,12 @@ class TfShouldUseTest(test.TestCase):
     def return_const(value):
       return constant_op.constant(value, name='blah3')
     with reroute_error() as (error, _):
-      with self.test_session():
+      with self.cached_session():
         return_const(0.0)
         # Creating another op and executing it does not mark the
         # unused op as being "used".
         v = constant_op.constant(1.0, name='meh')
-        v.eval()
+        self.evaluate(v)
     msg = '\n'.join(error.call_args[0])
     self.assertIn('Object was never used', msg)
     self.assertIn('blah3:0', msg)
@@ -124,7 +124,8 @@ class TfShouldUseTest(test.TestCase):
     @tf_should_use.should_use_result
     def return_const(value):
       return constant_op.constant(value, name='blah3')
-    with self.test_session():
+
+    with self.cached_session():
       return_const(0.0).mark_used()
 
 if __name__ == '__main__':

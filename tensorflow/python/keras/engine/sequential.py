@@ -119,6 +119,10 @@ class Sequential(Model):
       return layers[1:]
     return layers[:]
 
+  @property
+  def _static_graph_friendly(self):
+    return all(layer._static_graph_friendly for layer in self.layers)
+
   @checkpointable.no_automatic_dependency_tracking
   def add(self, layer):
     """Adds a layer instance on top of the layer stack.
@@ -239,9 +243,9 @@ class Sequential(Model):
     x = inputs
     for layer in self.layers:
       kwargs = {}
-      if 'mask' in tf_inspect.getargspec(layer.call).args:
+      if 'mask' in tf_inspect.getfullargspec(layer.call).args:
         kwargs['mask'] = mask
-      if 'training' in tf_inspect.getargspec(layer.call).args:
+      if 'training' in tf_inspect.getfullargspec(layer.call).args:
         kwargs['training'] = training
 
       if isinstance(layer, Network) and layer._compute_output_and_mask_jointly:
@@ -308,6 +312,10 @@ class Sequential(Model):
     else:
       return (proba > 0.5).astype('int32')
 
+  def save(self, filepath, overwrite=True, include_optimizer=True):
+    from tensorflow.python.keras.models import save_model  # pylint: disable=g-import-not-at-top
+    save_model(self, filepath, overwrite, include_optimizer)
+
   def get_config(self):
     layer_configs = []
     for layer in self.layers:
@@ -332,6 +340,7 @@ class Sequential(Model):
     else:
       name = None
       build_input_shape = None
+      layer_configs = config
     model = cls(name=name)
     for layer_config in layer_configs:
       layer = layer_module.deserialize(layer_config,
@@ -339,7 +348,16 @@ class Sequential(Model):
       model.add(layer)
     if not model.inputs and build_input_shape:
       model.build(build_input_shape)
+    if not model._is_graph_network:
+      # Still needs to be built when passed input data.
+      model.built = False
     return model
+
+  @property
+  def input_spec(self):
+    if self.layers and hasattr(self.layers[0], 'input_spec'):
+      return self.layers[0].input_spec
+    return None
 
 
 def get_input_shape_and_dtype(layer):

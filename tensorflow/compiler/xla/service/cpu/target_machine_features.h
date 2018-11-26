@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TARGET_MACHINE_FEATURES_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TARGET_MACHINE_FEATURES_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 namespace cpu {
@@ -97,8 +97,7 @@ class LLVMTargetMachineFeatures : public TargetMachineFeatures {
   // This is mutated from within `GetTargetTransformInfoFor` which is
   // semantically a getter (and thus `const`); and is therefore declared
   // mutable.  Making this mutable is okay because it has cache semantics.
-  mutable tensorflow::gtl::FlatMap<const llvm::Function*,
-                                   llvm::TargetTransformInfo>
+  mutable absl::flat_hash_map<const llvm::Function*, llvm::TargetTransformInfo>
       target_transform_info_cache_;
   llvm::TargetMachine* target_machine_;
 };

@@ -30,7 +30,7 @@ class PowerTransformBijectorTest(test.TestCase):
   """Tests correctness of the power transformation."""
 
   def testBijector(self):
-    with self.test_session():
+    with self.cached_session():
       c = 0.2
       bijector = PowerTransform(power=c, validate_args=True)
       self.assertEqual("power_transform", bijector.name)
@@ -48,13 +48,13 @@ class PowerTransformBijectorTest(test.TestCase):
           atol=0.)
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = PowerTransform(power=0.2, validate_args=True)
       assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=1.5, rtol=0.05)
 
   def testBijectiveAndFinite(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = PowerTransform(power=0.2, validate_args=True)
       x = np.linspace(-4.999, 10, num=10).astype(np.float32)
       y = np.logspace(0.001, 10, num=10).astype(np.float32)

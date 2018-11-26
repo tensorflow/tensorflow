@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/saved_model/cc/saved_model/signature_def_utils.h"
 
+#include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -22,7 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-class SignatureDefUtilsTest : public ::testing::Test {
+class FindByKeyTest : public ::testing::Test {
  protected:
   MetaGraphDef MakeSampleMetaGraphDef() {
     MetaGraphDef result;
@@ -32,13 +33,23 @@ class SignatureDefUtilsTest : public ::testing::Test {
     return result;
   }
 
+  void SetInputNameForKey(const string& key, const string& name,
+                          SignatureDef* signature_def) {
+    (*signature_def->mutable_inputs())[key].set_name(name);
+  }
+
+  void SetOutputNameForKey(const string& key, const string& name,
+                           SignatureDef* signature_def) {
+    (*signature_def->mutable_outputs())[key].set_name(name);
+  }
+
   SignatureDef MakeSampleSignatureDef() {
     SignatureDef result;
     result.set_method_name(kMethodName);
-    (*result.mutable_inputs())[kInput1Key].set_name(kInput1Name);
-    (*result.mutable_inputs())[kInput2Key].set_name(kInput2Name);
-    (*result.mutable_outputs())[kOutput1Key].set_name(kOutput1Name);
-    (*result.mutable_outputs())[kOutput2Key].set_name(kOutput2Name);
+    SetInputNameForKey(kInput1Key, kInput1Name, &result);
+    SetInputNameForKey(kInput2Key, kInput2Name, &result);
+    SetOutputNameForKey(kOutput1Key, kOutput1Name, &result);
+    SetOutputNameForKey(kOutput2Key, kOutput2Name, &result);
     return result;
   }
 
@@ -54,7 +65,7 @@ class SignatureDefUtilsTest : public ::testing::Test {
   const string kOutput2Name = "output_two";
 };
 
-TEST_F(SignatureDefUtilsTest, FindSignatureDefByKey) {
+TEST_F(FindByKeyTest, FindSignatureDefByKey) {
   const MetaGraphDef meta_graph_def = MakeSampleMetaGraphDef();
   const SignatureDef* signature_def;
   // Succeeds for an existing signature.
@@ -67,7 +78,7 @@ TEST_F(SignatureDefUtilsTest, FindSignatureDefByKey) {
           .ok());
 }
 
-TEST_F(SignatureDefUtilsTest, FindInputTensorNameByKey) {
+TEST_F(FindByKeyTest, FindInputTensorNameByKey) {
   const SignatureDef signature_def = MakeSampleSignatureDef();
   string name;
   // Succeeds for an existing input.
@@ -78,7 +89,7 @@ TEST_F(SignatureDefUtilsTest, FindInputTensorNameByKey) {
       FindInputTensorNameByKey(signature_def, "nonexistent", &name).ok());
 }
 
-TEST_F(SignatureDefUtilsTest, FindOutputTensorNameByKey) {
+TEST_F(FindByKeyTest, FindOutputTensorNameByKey) {
   const SignatureDef signature_def = MakeSampleSignatureDef();
   string name;
   // Succeeds for an existing output.
@@ -87,6 +98,102 @@ TEST_F(SignatureDefUtilsTest, FindOutputTensorNameByKey) {
   // Fails for a missing output.
   EXPECT_FALSE(
       FindOutputTensorNameByKey(signature_def, "nonexistent", &name).ok());
+}
+
+class IsValidSignatureTest : public ::testing::Test {
+ protected:
+  void SetInputDataTypeForKey(const string& key, DataType dtype) {
+    (*signature_def_.mutable_inputs())[key].set_dtype(dtype);
+  }
+
+  void SetOutputDataTypeForKey(const string& key, DataType dtype) {
+    (*signature_def_.mutable_outputs())[key].set_dtype(dtype);
+  }
+
+  void EraseOutputKey(const string& key) {
+    (*signature_def_.mutable_outputs()).erase(key);
+  }
+
+  void ExpectInvalidSignature() {
+    EXPECT_FALSE(IsValidSignature(signature_def_));
+  }
+
+  void ExpectValidSignature() { EXPECT_TRUE(IsValidSignature(signature_def_)); }
+
+  SignatureDef signature_def_;
+};
+
+TEST_F(IsValidSignatureTest, IsValidPredictSignature) {
+  signature_def_.set_method_name("not_kPredictMethodName");
+  // Incorrect method name
+  ExpectInvalidSignature();
+
+  signature_def_.set_method_name(kPredictMethodName);
+  // No inputs
+  ExpectInvalidSignature();
+
+  SetInputDataTypeForKey(kPredictInputs, DT_STRING);
+  // No outputs
+  ExpectInvalidSignature();
+
+  SetOutputDataTypeForKey(kPredictOutputs, DT_STRING);
+  ExpectValidSignature();
+}
+
+TEST_F(IsValidSignatureTest, IsValidRegressionSignature) {
+  signature_def_.set_method_name("not_kRegressMethodName");
+  // Incorrect method name
+  ExpectInvalidSignature();
+
+  signature_def_.set_method_name(kRegressMethodName);
+  // No inputs
+  ExpectInvalidSignature();
+
+  SetInputDataTypeForKey(kRegressInputs, DT_STRING);
+  // No outputs
+  ExpectInvalidSignature();
+
+  SetOutputDataTypeForKey(kRegressOutputs, DT_STRING);
+  // Incorrect data type
+  ExpectInvalidSignature();
+
+  SetOutputDataTypeForKey(kRegressOutputs, DT_FLOAT);
+  ExpectValidSignature();
+}
+
+TEST_F(IsValidSignatureTest, IsValidClassificationSignature) {
+  signature_def_.set_method_name("not_kClassifyMethodName");
+  // Incorrect method name
+  ExpectInvalidSignature();
+
+  signature_def_.set_method_name(kClassifyMethodName);
+  // No inputs
+  ExpectInvalidSignature();
+
+  SetInputDataTypeForKey(kClassifyInputs, DT_STRING);
+  // No outputs
+  ExpectInvalidSignature();
+
+  SetOutputDataTypeForKey("invalidKey", DT_FLOAT);
+  // Invalid key
+  ExpectInvalidSignature();
+
+  EraseOutputKey("invalidKey");
+  SetOutputDataTypeForKey(kClassifyOutputClasses, DT_FLOAT);
+  // Invalid dtype for classes
+  ExpectInvalidSignature();
+
+  SetOutputDataTypeForKey(kClassifyOutputClasses, DT_STRING);
+  // Valid without scores
+  ExpectValidSignature();
+
+  SetOutputDataTypeForKey(kClassifyOutputScores, DT_STRING);
+  // Invalid dtype for scores
+  ExpectInvalidSignature();
+
+  SetOutputDataTypeForKey(kClassifyOutputScores, DT_FLOAT);
+  // Valid with both classes and scores
+  ExpectValidSignature();
 }
 
 }  // namespace tensorflow

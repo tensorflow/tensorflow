@@ -22,7 +22,7 @@ namespace xla {
 namespace gpu {
 
 // Multi-output fusion of sibling and producer-consumer instructions for the
-// Jellyfish backend.
+// GPU backend.
 class GpuMultiOutputFusion : public MultiOutputFusion {
  public:
   GpuMultiOutputFusion();

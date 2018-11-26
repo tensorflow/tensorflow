@@ -22,6 +22,7 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -33,7 +34,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class FilterDatasetTest(test.TestCase):
+class FilterDatasetTest(test_base.DatasetTestBase):
 
   def testFilterDataset(self):
     components = (
@@ -59,7 +60,7 @@ class FilterDatasetTest(test.TestCase):
     self.assertEqual([c.shape[1:] for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test that we can dynamically feed a different modulus value for each
       # iterator.
       def do_test(count_val, modulus_val):
@@ -84,7 +85,7 @@ class FilterDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(0, sess.run(get_next))
       self.assertEqual(1, sess.run(get_next))
       self.assertEqual(3, sess.run(get_next))
@@ -98,7 +99,7 @@ class FilterDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         if (i ** 2) % 2 == 0:
@@ -123,16 +124,11 @@ class FilterDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       self.assertAllEqual(input_data[0], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
-
-  def assertSparseValuesEqual(self, a, b):
-    self.assertAllEqual(a.indices, b.indices)
-    self.assertAllEqual(a.values, b.values)
-    self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testSparse(self):
 
@@ -151,7 +147,7 @@ class FilterDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(5):
         actual = sess.run(get_next)
@@ -160,7 +156,7 @@ class FilterDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  def testReturnComponent(self):
+  def testShortCircuit(self):
     iterator = (
         dataset_ops.Dataset.zip(
             (dataset_ops.Dataset.range(10),
@@ -169,7 +165,7 @@ class FilterDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         self.assertEqual((i, True), sess.run(get_next))
@@ -181,7 +177,7 @@ class FilterDatasetTest(test.TestCase):
         lambda x: math_ops.equal(x % 2, 0))
     iterators = [dataset.make_one_shot_iterator() for _ in range(10)]
     next_elements = [iterator.get_next() for iterator in iterators]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual([0 for _ in range(10)], sess.run(next_elements))
 
 

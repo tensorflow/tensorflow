@@ -20,13 +20,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -108,8 +108,7 @@ class HloValue : public BufferValue {
   // Sets the positions in the module at which the HloValue appears. Updates
   // uses. Should be called once and only once. The defining position should not
   // be included in 'positions' as this is set at construction time.
-  void SetPositionsAndComputeUses(
-      tensorflow::gtl::ArraySlice<HloPosition> positions);
+  void SetPositionsAndComputeUses(absl::Span<const HloPosition> positions);
 
   // Returns whether this value is a phi value.
   bool is_phi() const { return is_phi_; }
@@ -167,9 +166,6 @@ class HloValue : public BufferValue {
 
   // Whether this value is live out of the HLO module.
   bool live_out_of_module_ = false;
-
-  // Whether this value is live out of its computation.
-  bool live_out_of_computation_ = false;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloValue& hlo_value);
@@ -186,14 +182,14 @@ class HloValueSet {
  public:
   HloValueSet() = default;
 
-  explicit HloValueSet(tensorflow::gtl::ArraySlice<const HloValue*> values)
+  explicit HloValueSet(absl::Span<const HloValue* const> values)
       : values_(values.begin(), values.end()) {
     SortAndUniquifyValues();
   }
 
   // Sets this value set to the union of the given value sets. Returns whether
   // this value set changed.
-  bool AssignUnionOf(tensorflow::gtl::ArraySlice<const HloValueSet*> inputs);
+  bool AssignUnionOf(absl::Span<const HloValueSet* const> inputs);
 
   // Return the vector of HloValues in the set. Values in the vector are unique
   // and stably sorted by value id.
@@ -247,8 +243,7 @@ class InstructionValueSet : public ShapeTree<HloValueSet> {
 
   // Sets this value set to the union of the given value sets. Returns whether
   // this value set changed.
-  bool AssignUnionOf(
-      tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs);
+  bool AssignUnionOf(absl::Span<const InstructionValueSet* const> inputs);
 
   string ToString() const;
 };

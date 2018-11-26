@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/python/numpy_bridge.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -149,9 +151,7 @@ static int NumpyTypenum(PyObject* o) {
 //
 // NOTE: this is an internal helper for conversion to a C++, and so decrefs r.
 static string ExtractStringAndDecref(PyObject* r) {
-  auto error = [r] {
-    return tensorflow::strings::Printf("<failed conversion of %p>", r);
-  };
+  auto error = [r] { return absl::StrFormat("<failed conversion of %p>", r); };
   if (r == nullptr) {
     return error();
   }
@@ -191,8 +191,8 @@ StatusOr<Shape> XlaShapeFromPyShape(PyObject* o) {
     PyObject* result =
         PyObject_CallMethod(o, const_cast<char*>(method.c_str()), nullptr);
     if (result == nullptr) {
-      return error(tensorflow::strings::StrCat(
-          "Failed to call method of shape object:", method));
+      return error(
+          absl::StrCat("Failed to call method of shape object:", method));
     }
     return result;
   };
@@ -281,15 +281,15 @@ StatusOr<Shape> XlaShapeFromPyShape(PyObject* o) {
 
 // Helper that retrieves the member with attr_name, stringifies it if is not
 // None, and returns it as a C++ string.
-static tensorflow::gtl::optional<string> GetAttrAsString(
-    PyObject* o, const string& attr_name) {
+static absl::optional<string> GetAttrAsString(PyObject* o,
+                                              const string& attr_name) {
   if (!PyObject_HasAttrString(o, attr_name.c_str())) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   PyObject* attr = PyObject_GetAttrString(o, attr_name.c_str());
   if (attr == Py_None) {
     Py_DECREF(attr);
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   string result = PyObjectCppStr(attr);
   Py_DECREF(attr);
@@ -298,48 +298,46 @@ static tensorflow::gtl::optional<string> GetAttrAsString(
 
 // Helper that retrieves the member with attr_name, checks that it is an integer
 // if it is not None, and returns it as an int32 value.
-static tensorflow::gtl::optional<int32> GetAttrAsInt32(
-    PyObject* o, const string& attr_name) {
+static absl::optional<int32> GetAttrAsInt32(PyObject* o,
+                                            const string& attr_name) {
   if (!PyObject_HasAttrString(o, attr_name.c_str())) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   PyObject* attr = PyObject_GetAttrString(o, attr_name.c_str());
   if (attr == Py_None) {
     Py_DECREF(attr);
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   if (!CheckPyIntOrLong(attr)) {
     Py_DECREF(attr);
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   long value = PyIntOrPyLongToLong(attr);  // NOLINT
   Py_DECREF(attr);
   if (value == -1 && PyErr_Occurred() != nullptr) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   if (static_cast<int32>(value) != value) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   return value;
 }
 
 StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o) {
   OpMetadata result;
-  tensorflow::gtl::optional<string> op_type = GetAttrAsString(o, "op_type");
+  absl::optional<string> op_type = GetAttrAsString(o, "op_type");
   if (op_type.has_value()) {
     result.set_op_type(op_type.value());
   }
-  tensorflow::gtl::optional<string> op_name = GetAttrAsString(o, "op_name");
+  absl::optional<string> op_name = GetAttrAsString(o, "op_name");
   if (op_name.has_value()) {
     result.set_op_name(op_name.value());
   }
-  tensorflow::gtl::optional<string> source_file =
-      GetAttrAsString(o, "source_file");
+  absl::optional<string> source_file = GetAttrAsString(o, "source_file");
   if (source_file.has_value()) {
     result.set_source_file(source_file.value());
   }
-  tensorflow::gtl::optional<int32> source_line =
-      GetAttrAsInt32(o, "source_line");
+  absl::optional<int32> source_line = GetAttrAsInt32(o, "source_line");
   if (source_line.has_value()) {
     result.set_source_line(source_line.value());
   }
@@ -370,10 +368,10 @@ PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
   }
 }
 
-StatusOr<std::unique_ptr<Literal>> XlaLiteralFromPyObject(PyObject* o) {
+StatusOr<Literal> XlaLiteralFromPyObject(PyObject* o) {
   if (PyTuple_Check(o)) {
     int num_elements = PyTuple_Size(o);
-    std::vector<std::unique_ptr<Literal>> elements;
+    std::vector<Literal> elements;
     elements.reserve(num_elements);
     for (int i = 0; i < num_elements; i++) {
       PyObject* element = PyTuple_GetItem(o, i);
@@ -391,8 +389,7 @@ StatusOr<std::unique_ptr<Literal>> XlaLiteralFromPyObject(PyObject* o) {
     int np_type = PyArray_TYPE(py_array);
     auto literal = LiteralUtil::CreateFromDimensions(
         NumpyTypeToPrimitiveType(np_type), dimensions);
-    TF_RETURN_IF_ERROR(
-        CopyNumpyArrayToLiteral(np_type, py_array, literal.get()));
+    TF_RETURN_IF_ERROR(CopyNumpyArrayToLiteral(np_type, py_array, &literal));
     return std::move(literal);
   } else {
     return InvalidArgument(

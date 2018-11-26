@@ -38,6 +38,7 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
     dtype = dtypes.float32
     input_name = "input"
     input_dims = [12, 5, 8, 1, 1, 12]
+    output_name = "output"
     input2_name = "input_2"
     input2_dims = [12, 5, 8, 1, 12, 1, 1]
     g = ops.Graph()
@@ -95,18 +96,20 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
 
       q = a * b
       q = q / c
-      array_ops.squeeze(q, name=self.output_name)
+      array_ops.squeeze(q, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name, input2_name],
         input_dims=[input_dims, input2_dims],
-        expected_engines=[
-            "my_trt_op_0", "my_trt_op_1", "my_trt_op_2", "my_trt_op_3",
-            "my_trt_op_4"
-        ],
-        expected_output_dims=(12, 5, 8, 12),
-        allclose_atol=1.e-03,
-        allclose_rtol=1.e-03)
+        output_names=[output_name],
+        expected_output_dims=[(12, 5, 8, 12)])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return [
+        "my_trt_op_0", "my_trt_op_1", "my_trt_op_2", "my_trt_op_3",
+        "my_trt_op_4"
+    ]
 
 
 if __name__ == "__main__":

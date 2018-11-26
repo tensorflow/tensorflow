@@ -63,6 +63,58 @@ py_test(
 )
 
 py_library(
+    name = "structure",
+    srcs = ["structure.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":nest",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_test(
+    name = "structure_test",
+    size = "small",
+    srcs = ["structure_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":nest",
+        ":structure",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:variables",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "options",
+    srcs = ["options.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "options_test",
+    size = "small",
+    srcs = ["options_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":options",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
     name = "convert",
     srcs = ["convert.py"],
     srcs_version = "PY2AND3",

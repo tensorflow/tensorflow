@@ -94,43 +94,6 @@ class TestImage(test.TestCase):
         self.assertEqual(x.shape[1:], images.shape[1:])
         break
 
-  def test_image_data_generator_with_validation_split(self):
-    if PIL is None:
-      return  # Skip test if PIL is not available.
-
-    for test_images in _generate_test_images():
-      img_list = []
-      for im in test_images:
-        img_list.append(keras.preprocessing.image.img_to_array(im)[None, ...])
-
-      images = np.vstack(img_list)
-      generator = keras.preprocessing.image.ImageDataGenerator(
-          validation_split=0.5)
-      seq = generator.flow(
-          images,
-          np.arange(images.shape[0]),
-          shuffle=False,
-          batch_size=3,
-          subset='validation')
-      _, y = seq[0]
-      self.assertEqual(list(y), [0, 1, 2])
-      seq = generator.flow(
-          images,
-          np.arange(images.shape[0]),
-          shuffle=False,
-          batch_size=3,
-          subset='training')
-      _, y2 = seq[0]
-      self.assertEqual(list(y2), [4, 5, 6])
-
-      with self.assertRaises(ValueError):
-        generator.flow(
-            images,
-            np.arange(images.shape[0]),
-            shuffle=False,
-            batch_size=3,
-            subset='foo')
-
   def test_image_data_generator_with_split_value_error(self):
     with self.assertRaises(ValueError):
       keras.preprocessing.image.ImageDataGenerator(validation_split=5)

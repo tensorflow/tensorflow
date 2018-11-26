@@ -33,7 +33,7 @@ class AssignOpTest(test.TestCase):
   #   contain benign and deliberate data races when multiple threads update
   #   the same parameters without a lock.
   def testParallelUpdateWithoutLocking(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ones_t = array_ops.fill([1024, 1024], 1.0)
       p = variables.Variable(array_ops.zeros([1024, 1024]))
       adds = [
@@ -54,13 +54,13 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
       ones = np.ones((1024, 1024)).astype(np.float32)
       self.assertTrue((vals >= ones).all())
       self.assertTrue((vals <= ones * 20).all())
 
   def testParallelAssignWithoutLocking(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ones_t = array_ops.fill([1024, 1024], float(1))
       p = variables.Variable(array_ops.zeros([1024, 1024]))
       assigns = [
@@ -81,7 +81,7 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
 
       # Assert every element is taken from one of the assignments.
       self.assertTrue((vals > 0).all())
@@ -92,7 +92,7 @@ class AssignOpTest(test.TestCase):
   # returning the output tensors. This issue will be resolved with the new
   # resource variables.
   def testParallelUpdateWithLocking(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       zeros_t = array_ops.fill([1024, 1024], 0.0)
       ones_t = array_ops.fill([1024, 1024], 1.0)
       p = variables.Variable(zeros_t)
@@ -114,12 +114,12 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
       ones = np.ones((1024, 1024)).astype(np.float32)
       self.assertAllEqual(vals, ones * 20)
 
   def testParallelAssignWithLocking(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       zeros_t = array_ops.fill([1024, 1024], 0.0)
       ones_t = array_ops.fill([1024, 1024], 1.0)
       p = variables.Variable(zeros_t)
@@ -142,7 +142,7 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
 
       # Assert every element is the same, and taken from one of the assignments.
       self.assertTrue(vals[0, 0] > 0)

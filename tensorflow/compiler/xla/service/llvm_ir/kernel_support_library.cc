@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace xla {
 Status KernelSupportLibrary::For(
-    tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
+    absl::string_view name, llvm::Value* start, llvm::Value* end,
     llvm::Value* step,
     const std::function<Status(llvm::Value*, bool)>& for_body_generator) {
   return If(b_->CreateICmpSLT(start, end), [&]() -> Status {
@@ -30,7 +30,7 @@ Status KernelSupportLibrary::For(
 }
 
 Status KernelSupportLibrary::For(
-    tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
+    absl::string_view name, llvm::Value* start, llvm::Value* end,
     llvm::Value* step, bool peel_first_iteration,
     const std::function<Status(llvm::Value*, llvm::Value*)>&
         for_body_generator) {
@@ -56,7 +56,7 @@ Status KernelSupportLibrary::For(
 }
 
 Status KernelSupportLibrary::If(
-    tensorflow::StringPiece name, llvm::Value* condition,
+    absl::string_view name, llvm::Value* condition,
     const std::function<Status()>& true_block_generator,
     const std::function<Status()>& false_block_generator) {
   llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(condition, name, b_);
@@ -70,7 +70,7 @@ Status KernelSupportLibrary::If(
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(
     bool enable_fast_math, bool optimize_for_size, llvm::IRBuilder<>* b,
-    tensorflow::StringPiece kernel_name,
+    absl::string_view kernel_name,
     KernelSupportLibrary::ArgumentVector arguments,
     const std::function<void(KernelSupportLibrary::ArgumentVector)>&
         kernel_body_generator) {

@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_ANALYSIS_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 
@@ -25,9 +25,13 @@ namespace xla {
 // nullopt otherwise. max_value_returned limits the number of steps that are
 // evaluated while trying to brute force a loop trip count, trip counts larger
 // than max_value_returned result in nullopt.
-tensorflow::gtl::optional<int64> ComputeWhileLoopTripCount(
-    HloInstruction *while_op, int64 max_value_returned = 128);
+absl::optional<int64> ComputeWhileLoopTripCount(HloInstruction *while_op,
+                                                int64 max_value_returned = 128);
 
+// Returns an upper bound on the trip count of the loop if it's statically
+// known, nullopt otherwise.
+absl::optional<int64> ComputeWhileLoopTripCountUpperBound(
+    HloInstruction *while_op);
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_ANALYSIS_H_

@@ -34,15 +34,12 @@ class DynamicUpdateSliceOp : public XlaOpKernel {
       : XlaOpKernel(context) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    VLOG(3) << "DynamicUpdateSliceOp::Compile";
+    DataType index_type = ctx->InputType("indices");
+    CHECK(index_type == DT_INT32 || index_type == DT_INT64);
 
-    DataType index_type = input_type(2);
-    OP_REQUIRES(ctx, index_type == DT_INT32 || index_type == DT_INT64,
-                errors::InvalidArgument("index must be int32 or int64"));
-
-    const TensorShape input_shape = ctx->InputShape(0);
-    const TensorShape update_shape = ctx->InputShape(1);
-    const TensorShape index_shape = ctx->InputShape(2);
+    const TensorShape input_shape = ctx->InputShape("input");
+    const TensorShape update_shape = ctx->InputShape("update");
+    const TensorShape index_shape = ctx->InputShape("indices");
 
     OP_REQUIRES(
         ctx,
@@ -57,13 +54,57 @@ class DynamicUpdateSliceOp : public XlaOpKernel {
                                 input_shape.DebugString(), "; update shape is ",
                                 update_shape.DebugString()));
 
-    xla::XlaOp result =
-        xla::DynamicUpdateSlice(ctx->Input(0), ctx->Input(1), ctx->Input(2));
+    xla::XlaOp result = xla::DynamicUpdateSlice(
+        ctx->Input("input"), ctx->Input("update"), ctx->Input("indices"));
     ctx->SetOutput(0, result);
   }
 };
 
 REGISTER_XLA_OP(Name("XlaDynamicUpdateSlice"), DynamicUpdateSliceOp);
+
+class DynamicSliceOp : public XlaOpKernel {
+ public:
+  explicit DynamicSliceOp(OpKernelConstruction* context)
+      : XlaOpKernel(context) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    DataType index_type = ctx->InputType("start_indices");
+    CHECK(index_type == DT_INT32 || index_type == DT_INT64);
+    CHECK(index_type == ctx->InputType("size_indices"));
+
+    const TensorShape input_shape = ctx->InputShape("input");
+    const TensorShape start_indices_shape = ctx->InputShape("start_indices");
+    const TensorShape size_indices_shape = ctx->InputShape("size_indices");
+
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsVector(start_indices_shape) &&
+                    start_indices_shape.num_elements() == input_shape.dims(),
+                errors::InvalidArgument(
+                    "start_indices must be a vector with length equal to "
+                    "input rank, but input rank is ",
+                    input_shape.dims(), " and start_indices has shape ",
+                    start_indices_shape.DebugString()));
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsVector(size_indices_shape) &&
+                    size_indices_shape.num_elements() == input_shape.dims(),
+                errors::InvalidArgument(
+                    "size_indices must be a vector with length equal to "
+                    "input rank, but input rank is ",
+                    input_shape.dims(), " and size_indices has shape ",
+                    size_indices_shape.DebugString()));
+
+    std::vector<int64> size_indices;
+    OP_REQUIRES_OK(
+        ctx, ctx->ConstantInputAsIntVector("size_indices", &size_indices));
+    xla::XlaOp result = xla::DynamicSlice(
+        ctx->Input("input"), ctx->Input("start_indices"), size_indices);
+    ctx->SetOutput(0, result);
+  }
+};
+
+REGISTER_XLA_OP(
+    Name("XlaDynamicSlice").CompileTimeConstantInput("size_indices"),
+    DynamicSliceOp);
 
 }  // namespace
 }  // namespace tensorflow

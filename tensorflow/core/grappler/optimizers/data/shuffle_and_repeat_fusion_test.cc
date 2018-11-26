@@ -78,7 +78,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleAndRepeatNodesIntoOne) {
   EXPECT_TRUE(
       graph_utils::ContainsNodeWithOp("ShuffleAndRepeatDataset", output));
   NodeDef shuffle_and_repeat_node = output.node(
-      graph_utils::FindNodeWithOp("ShuffleAndRepeatDataset", output));
+      graph_utils::FindGraphNodeWithOp("ShuffleAndRepeatDataset", output));
   EXPECT_EQ(shuffle_and_repeat_node.input_size(), 5);
   EXPECT_EQ(shuffle_and_repeat_node.input(0), shuffle_node->input(0));
   EXPECT_EQ(shuffle_and_repeat_node.input(1), shuffle_node->input(1));
@@ -127,7 +127,7 @@ TEST(ShuffleAndRepeatFusionTest, NoChange) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  EXPECT_TRUE(graph_utils::Compare(*graph.GetGraph(), output));
+  EXPECT_TRUE(graph_utils::Compare(*graph.graph(), output));
 }
 
 }  // namespace

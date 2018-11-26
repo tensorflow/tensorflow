@@ -14,8 +14,6 @@
 # ==============================================================================
 """Linear-chain CRF layer.
 
-See the @{$python/contrib.crf} guide.
-
 @@crf_binary_score
 @@crf_decode
 @@crf_log_likelihood

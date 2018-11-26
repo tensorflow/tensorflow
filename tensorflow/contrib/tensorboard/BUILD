@@ -32,7 +32,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":projector",
-        ":trace",
     ],
 )
 
@@ -58,35 +57,5 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
-    ],
-)
-
-# API methods and protos in `tf.contrib.tensorboard.plugins.trace` package.
-py_library(
-    name = "trace",
-    srcs = glob(
-        ["plugins/trace/**/*.py"],
-        exclude = ["**/*test*"],
-    ),
-    srcs_version = "PY2AND3",
-    deps = [
-        ":protos_all_py",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
-    ],
-)
-
-py_test(
-    name = "trace_test",
-    size = "small",
-    srcs = ["plugins/trace/trace_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
-    deps = [
-        ":trace",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
     ],
 )
