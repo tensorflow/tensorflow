@@ -45,8 +45,8 @@ class DatasetTestBase(test.TestCase):
     ```python
     # In both graph and eager modes
     dataset = ...
-    nxt = self.getNext(dataset)
-    result = self.evaluate(nxt())
+    get_next = self.getNext(dataset)
+    result = self.evaluate(get_next())
     ```
 
     Args:
@@ -66,7 +66,8 @@ class DatasetTestBase(test.TestCase):
         self.evaluate(iterator.initializer)
       else:
         iterator = dataset.make_one_shot_iterator()
-      return iterator.get_next
+      get_next = iterator.get_next()
+      return lambda: get_next
 
   def _compareOutputToExpected(self, result_values, expected_values,
                                assert_items_equal):
