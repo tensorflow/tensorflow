@@ -550,6 +550,12 @@ class FusedConv2DOpTest : public OpsTestBase {
     tensorflow::GraphDef graph;
     TF_ASSERT_OK(root.ToGraphDef(&graph));
 
+    // `FusedConv2D` is available only on CPU, and in this test we don't want to
+    // compare GPU vs CPU numbers, so place all nodes on CPU.
+    for (NodeDef& mutable_node : *graph.mutable_node()) {
+      mutable_node.set_device("/device:CPU:0");
+    }
+
     // Disable Grappler constant folding for the test graphs.
     tensorflow::SessionOptions session_options;
     tensorflow::RewriterConfig* cfg =
