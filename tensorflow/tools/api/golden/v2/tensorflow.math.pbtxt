@@ -78,7 +78,7 @@ tf_module {
   }
   member_method {
     name: "bincount"
-    argspec: "args=[\'arr\', \'weights\', \'minlength\', \'maxlength\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'int32\'>\"], "
+    argspec: "args=[\'arr\', \'weights\', \'minlength\', \'maxlength\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "ceil"
@@ -86,7 +86,7 @@ tf_module {
   }
   member_method {
     name: "confusion_matrix"
-    argspec: "args=[\'labels\', \'predictions\', \'num_classes\', \'dtype\', \'name\', \'weights\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int32\'>\", \'None\', \'None\'], "
+    argspec: "args=[\'labels\', \'predictions\', \'num_classes\', \'weights\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "conj"
