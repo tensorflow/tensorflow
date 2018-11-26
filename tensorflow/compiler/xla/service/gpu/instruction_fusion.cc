@@ -181,7 +181,8 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
         return true;
       }
     } else if (consumer->operand_count() == 2 &&
-               consumer->opcode() == HloOpcode::kAdd) {
+               consumer->opcode() == HloOpcode::kAdd &&
+               consumer->operand(other_operand_index) != producer) {
       // Fuse a bias add into the output of the dot.
       return true;
     }

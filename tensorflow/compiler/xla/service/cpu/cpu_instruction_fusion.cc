@@ -48,10 +48,15 @@ bool IsMatrixVectorDot(const HloInstruction* hlo) {
          (hlo_shape.dimensions(0) == 1 || hlo_shape.dimensions(1) == 1);
 }
 
+bool HasExactlyOneUse(const HloInstruction& hlo_instr) {
+  return hlo_instr.user_count() == 1 &&
+         absl::c_count(hlo_instr.users().front()->operands(), &hlo_instr) == 1;
+}
+
 bool CanBeOutputFused(const HloInstruction* producer,
                       const HloInstruction* consumer) {
   return consumer->opcode() == HloOpcode::kAdd && IsMatrixVectorDot(producer) &&
-         producer->user_count() == 1;
+         HasExactlyOneUse(*producer) == 1;
 }
 
 bool CanBeOutputFusedIntoSomeOperand(const HloInstruction* consumer) {
