@@ -72,15 +72,11 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:session",
         "//tensorflow/python/data/experimental/ops:error_ops",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
     ],
 )
 

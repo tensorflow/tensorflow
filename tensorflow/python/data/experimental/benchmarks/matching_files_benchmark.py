@@ -91,7 +91,7 @@ class MatchingFilesBenchmark(test.Benchmark):
             (len(median_deltas) - 2):
                 np.average(median_deltas[2:])
         },
-        name='benchmark_matching_files_dataset_nesteddirectory(%d*%d)' %
+        name='dataset_nested_directory(%d*%d)' %
         (width, depth))
 
     shutil.rmtree(tmp_dir, ignore_errors=True)
