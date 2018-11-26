@@ -1676,7 +1676,8 @@ class Model(Network):
 
     # Validate and standardize user data.
     if self._distribution_strategy:
-      distributed_training_utils.validate_callbacks(callbacks)
+      distributed_training_utils.validate_callbacks(callbacks, self.optimizer,
+                                                    self._distribution_strategy)
 
       distributed_training_utils.validate_inputs(
           x, y, self._distribution_strategy)
@@ -2488,9 +2489,7 @@ class DistributedCallbackModel(Model):
 
   def __init__(self, model):
     super(DistributedCallbackModel, self).__init__()
-    # TODO(anjalisridhar): Right now the only attributes set are the layer and
-    # weights. We may need to set additional attributes as needed since we have
-    # not called compile on this model.
+    self.optimizer = model.optimizer
 
   def set_original_model(self, orig_model):
     self._original_model = orig_model

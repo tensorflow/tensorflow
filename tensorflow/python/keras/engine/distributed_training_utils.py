@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -145,11 +146,14 @@ def flatten_perdevice_values(distribution_strategy, perdevice_values):
           for e in distribution_strategy.unwrap(flattened)]
 
 
-def validate_callbacks(input_callbacks):
+def validate_callbacks(input_callbacks, optimizer, current_strategy):
   """Validate whether given callbacks are supported by DistributionStrategy.
 
   Args:
     input_callbacks: List of callbacks passed by the user to fit.
+    optimizer: Optimizer instance used to train the model.
+    current_strategy: The DistributionStrategy used to distribute training
+      and validation.
 
   Raises:
     ValueError: If `LearningRateScheduler` or `ReduceLROnPlateau` is one of the
@@ -171,12 +175,18 @@ def validate_callbacks(input_callbacks):
                         'these attributes are not set. You can access each of '
                         'the individual distributed models using the '
                         '`_grouped_model` attribute of your original model.')
-      if isinstance(callback, callbacks.LearningRateScheduler):
-        raise ValueError('LearningRateScheduler callback is not supported with '
-                         'DistributionStrategy.')
-      if isinstance(callback, callbacks.ReduceLROnPlateau):
-        raise ValueError('ReduceLROnPlateau callback is not supported with '
-                         'DistributionStrategy.')
+      if isinstance(callback, (callbacks.LearningRateScheduler,
+                               callbacks.ReduceLROnPlateau)):
+        strategy_name = current_strategy.__class__.__name__
+        # TODO(anjalisridhar): We might need to add a condition for multi
+        # worker strategy when we support it in Keras.
+        if is_tpu_strategy(current_strategy):
+          raise ValueError('%s callback is not supported with %s.' %
+                           (callback, strategy_name))
+
+        if not isinstance(optimizer, optimizer_v2.OptimizerV2):
+          raise ValueError('You must specify a Keras Optimizer V2 when using '
+                           '%s callback with DistributionStrategy.' % callback)
 
       # If users want to use the TensorBoard callback they cannot use certain
       # features of the callback that involve accessing model attributes and
