@@ -31,6 +31,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
+        "//tensorflow/core/kernels/tensor_forest:tensor_forest_proto_cc",
     ],
 )
 
@@ -43,6 +44,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:tensor_forest_ops_op_lib",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
+        "//tensorflow/core/kernels/tensor_forest:tensor_forest_proto_cc",
     ],
 )
 

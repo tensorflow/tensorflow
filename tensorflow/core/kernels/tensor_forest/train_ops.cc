@@ -52,7 +52,7 @@ class TensorForestTraverseTreeOp : public OpKernel {
                                                      &output_predictions));
     auto out = output_predictions->matrix<int32>();
 
-    if (decision_tree_resource->GetSize() <= 1) {
+    if (decision_tree_resource->get_size() <= 1) {
       out.setZero();
       return;
     }
@@ -272,7 +272,7 @@ class TensorForestGrowTreeOp : public OpKernel {
 
     for (int32 i = 0; i < batch_size; i++) {
       auto node = finished(i);
-      auto slot = fertile_stats_resource->GetSlot(node);
+      auto slot = fertile_stats_resource->get_slot(node);
       std::unique_ptr<tensor_forest::SplitCandidate> best_candidate(
           new tensor_forest::SplitCandidate);
       bool found =

@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/tensor_forest/resources.h"
 #include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
+#include "tensorflow/core/kernels/tensor_forest/tensor_forest.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
+
+#include <cfloat>
 
 namespace tensorflow {
 
@@ -68,7 +71,7 @@ void TensorForestTreeResource::Reset() {
   decision_tree_ = protobuf::Arena::CreateMessage<boosted_trees::Tree>(&arena_);
 }
 void TensorForestTreeResource::SplitNode(const int32 node,
-                                         tensor_forest::FertileSlot* slot,
+                                         tensor_forest::FertileSlot& slot,
                                          tensor_forest::SplitCandidate* best,
                                          std::vector<int32>* new_children) {
   using boosted_trees::Leaf;
@@ -83,9 +86,9 @@ void TensorForestTreeResource::SplitNode(const int32 node,
   new_children->push_back(decision_tree_->nodes_size());
   // add right leaf
   auto* new_right = decision_tree_->add_nodes();
-  for (int i = 0; i <= slot->leaf_stats().counts_or_sums().value_size(); i++) {
+  for (int i = 0; i <= slot.leaf_stats().counts_or_sums().value_size(); i++) {
     new_right->mutable_leaf()->mutable_vector()->add_value(
-        slot->leaf_stats().counts_or_sums().value(i) -
+        slot.leaf_stats().counts_or_sums().value(i) -
         best->left_leaf_stats().counts_or_sums().value(i));
   }
   new_children->push_back(decision_tree_->nodes_size());
@@ -108,7 +111,7 @@ const bool TensorForestFertileStatsResource::IsSlotInitialized(
   if (fertile_stats_->node_to_slot().count(node_id) > 0) {
     auto slot = fertile_stats_->node_to_slot().at(node_id);
     return slot.leaf_stats().weight_sum() > 0 &&
-           slot.candidate_size() > splits_to_consider;
+           slot.candidates_size() > splits_to_consider;
   } else {
     return false;
   }
@@ -135,7 +138,7 @@ void TensorForestFertileStatsResource::UpdateSlotStats(
   float old_total_weight = slot.leaf_stats().counts_or_sums().value(label);
 
   slot.mutable_leaf_stats()->set_weight_sum(incoming_weight +
-                                            slot->leaf_stats()->weight_sum());
+                                            slot.leaf_stats().weight_sum());
   slot.mutable_leaf_stats()->mutable_counts_or_sums()->set_value(
       label, old_total_weight + incoming_weight);
 
@@ -177,22 +180,24 @@ void TensorForestFertileStatsResource::UpdateSlotStats(
   }
 };
 
-const bool TensorForestFertileStatsResource::BestSplitFromSlot(
-    const int32 node_id, tensor_forest::FertileSlot* slot,
-    tensor_forest::SplitCandidate* best) {
-  auto slot = fertile_stats_->node_to_slot().at(node_id);
+bool TensorForestFertileStatsResource::BestSplitFromSlot(
+    tensor_forest::FertileSlot& slot, tensor_forest::SplitCandidate* best) {
   float min_score = FLT_MAX;
   for (auto candidate : slot.candidates()) {
     float left_gini =
         1 - candidate.left_split_stats().sum_of_square().value(0) /
-                (candidate.left_split_stats().sum() *
-                 candidate.left_split_stats().sum());
+                (candidate.left_split_stats().sum().value(0) *
+                 candidate.left_split_stats().sum().value(0));
     float right_gini =
         1 - candidate.right_split_stats().sum_of_square().value(0) /
-                (candidate.right_split_stats().sum() *
-                 candidate.right_split_stats().sum());
+                (candidate.right_split_stats().sum().value(0) *
+                 candidate.right_split_stats().sum().value(0));
 
-    if (left_sum > 0 && right_sum > 0 && left_gini + right_gini < min_score) {
+    if (candidate.left_leaf_stats().weight_sum() > 0 &&
+        slot.leaf_stats().weight_sum() -
+                candidate.left_leaf_stats().weight_sum() >
+            0 &&
+        left_gini + right_gini < min_score) {
       min_score = left_gini + right_gini;
       best = &candidate;
     }

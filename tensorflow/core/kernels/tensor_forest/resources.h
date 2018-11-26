@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/tensor_forest/tensor_forest.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -55,7 +56,7 @@ class TensorForestTreeResource : public ResourceBase {
   const int32 TraverseTree(const int32 example_id,
                            const TTypes<float>::ConstMatrix* dense_data) const;
 
-  void SplitNode(const int32 node, tensor_forest::FertileSlot* slot,
+  void SplitNode(const int32 node, tensor_forest::FertileSlot& slot,
                  tensor_forest::SplitCandidate* best,
                  std::vector<int32>* new_children);
 
@@ -106,9 +107,12 @@ class TensorForestFertileStatsResource : public ResourceBase {
                             const TTypes<float>::ConstMatrix* dense_feature,
                             const TTypes<float>::ConstMatrix* labels);
 
-  const bool BestSplitFromSlot(const int32 node_id,
-                               tensor_forest::FertileSlot* slot,
-                               tensor_forest::SplitCandidate* best);
+  bool BestSplitFromSlot(tensor_forest::FertileSlot& slot,
+                         tensor_forest::SplitCandidate* best);
+
+  const tensor_forest::FertileSlot& get_slot(const int32 node_id) {
+    return fertile_stats_->node_to_slot().at(node_id);
+  }
 
   void Allocate(const int32 node_id);
 
