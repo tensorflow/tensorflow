@@ -184,7 +184,7 @@ class CholeskyOpTest(test.TestCase):
       c1 = linalg_ops.cholesky(matrix1)
       c2 = linalg_ops.cholesky(matrix2)
       c1_val, c2_val = sess.run([c1, c2])
-      self.assertAllEqual(c1_val, c2_val)
+      self.assertAllClose(c1_val, c2_val)
 
 
 class CholeskyGradTest(test.TestCase):
