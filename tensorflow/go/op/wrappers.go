@@ -463,6 +463,14 @@ func QuantizeAndDequantizeV2RangeGiven(value bool) QuantizeAndDequantizeV2Attr {
 	}
 }
 
+// QuantizeAndDequantizeV2RoundMode sets the optional round_mode attribute to value.
+// If not specified, defaults to "HALF_TO_EVEN"
+func QuantizeAndDequantizeV2RoundMode(value string) QuantizeAndDequantizeV2Attr {
+	return func(m optionalAttr) {
+		m["round_mode"] = value
+	}
+}
+
 // Quantizes then dequantizes a tensor.
 //
 // This op simulates the precision loss from the quantized forward pass by:
