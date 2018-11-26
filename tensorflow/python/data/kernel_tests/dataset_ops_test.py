@@ -32,17 +32,18 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class DatasetOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testAsSerializedGraph(self):
     dataset = dataset_ops.Dataset.range(10)
-    with self.cached_session() as sess:
-      graph = graph_pb2.GraphDef().FromString(
-          sess.run(dataset._as_serialized_graph()))
-      self.assertTrue(any(node.op != "RangeDataset" for node in graph.node))
+    graph = graph_pb2.GraphDef().FromString(
+        self.evaluate(dataset._as_serialized_graph()))
+    self.assertTrue(any([node.op != "RangeDataset" for node in graph.node]))
 
   @staticmethod
   def make_apply_fn(dataset):
@@ -253,6 +254,7 @@ class DatasetOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertTrue(ds.options().experimental_autotune)
     self.assertTrue(ds.options().experimental_filter_fusion)
 
+  # TODO(b/119882922): use-after-free bug in eager mode.
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters(
       ("Tensor", lambda: constant_op.constant(37.0),
@@ -276,7 +278,8 @@ class DatasetOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
        optional_ops.OptionalStructure(
            structure.TensorStructure(dtypes.float32, []))),
   )
-  def testDatasetStructure(self, tf_value_fn, expected_element_structure):
+  def testSkipEagerDatasetStructure(self, tf_value_fn,
+                                    expected_element_structure):
     dataset = dataset_ops.Dataset.from_tensors(0).map(lambda _: tf_value_fn())
     dataset_structure = structure.Structure.from_value(dataset)
     self.assertIsInstance(dataset_structure, dataset_ops.DatasetStructure)

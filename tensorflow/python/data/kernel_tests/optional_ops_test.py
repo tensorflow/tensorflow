@@ -36,15 +36,14 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testFromValue(self):
     opt = optional_ops.Optional.from_value(constant_op.constant(37.0))
     self.assertTrue(self.evaluate(opt.has_value()))
     self.assertEqual(37.0, self.evaluate(opt.get_value()))
 
-  @test_util.run_in_graph_and_eager_modes
   def testFromStructuredValue(self):
     opt = optional_ops.Optional.from_value({
         "a": constant_op.constant(37.0),
@@ -56,7 +55,6 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
         "b": ([b"Foo"], b"Bar")
     }, self.evaluate(opt.get_value()))
 
-  @test_util.run_in_graph_and_eager_modes
   def testFromSparseTensor(self):
     st_0 = sparse_tensor.SparseTensorValue(
         indices=np.array([[0]]),
@@ -75,7 +73,6 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertAllEqual(expected.dense_shape,
                           self.evaluate(actual.dense_shape))
 
-  @test_util.run_in_graph_and_eager_modes
   def testFromNone(self):
     value_structure = structure.TensorStructure(dtypes.float32, [])
     opt = optional_ops.Optional.none_from_structure(value_structure)
@@ -90,7 +87,6 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(opt.get_value())
 
-  @test_util.run_in_graph_and_eager_modes
   def testCopyToGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -151,7 +147,8 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
        optional_ops.OptionalStructure(
            structure.TensorStructure(dtypes.float32, []))),
   )
-  def testOptionalStructure(self, tf_value_fn, expected_value_structure):
+  def testSkipEagerOptionalStructure(self, tf_value_fn,
+                                     expected_value_structure):
     tf_value = tf_value_fn()
     opt = optional_ops.Optional.from_value(tf_value)
 
@@ -205,7 +202,8 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
                     indices=[[0, 1], [1, 0]], values=[37.0, 42.0],
                     dense_shape=[2, 2])}, False),
   )
-  def testIteratorGetNextAsOptional(self, np_value, tf_value_fn, works_on_gpu):
+  def testSkipEagerIteratorGetNextAsOptional(self, np_value, tf_value_fn,
+                                             works_on_gpu):
     if not works_on_gpu and test.is_gpu_available():
       self.skipTest("Test case not yet supported on GPU.")
     ds = dataset_ops.Dataset.from_tensors(np_value).repeat(3)

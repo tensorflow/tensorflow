@@ -21,39 +21,24 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class PrefetchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.parameters((-1), (0), (5))
   def testBufferSize(self, buffer_size):
-    buffer_size_t = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = dataset_ops.Dataset.range(10).prefetch(
-        buffer_size=buffer_size_t).make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op, feed_dict={buffer_size_t: buffer_size})
-      for m in range(10):
-        self.assertEqual(m, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
+    self.assertDatasetProduces(dataset, expected_output=range(10))
 
   @parameterized.parameters((-2), (-42))
   def testInvalidBufferSize(self, buffer_size):
-    buffer_size_t = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = dataset_ops.Dataset.range(10).prefetch(
-        buffer_size=buffer_size_t).make_initializable_iterator()
-    init_op = iterator.initializer
-
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "buffer_size"):
-      with self.cached_session() as sess:
-        sess.run(init_op, feed_dict={buffer_size_t: buffer_size})
+    dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
+    self.assertDatasetProduces(
+        dataset, expected_error=(errors.InvalidArgumentError, "buffer_size"))
 
 
 if __name__ == "__main__":

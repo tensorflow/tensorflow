@@ -68,19 +68,29 @@ class DatasetTestBase(test.TestCase):
         iterator = dataset.make_one_shot_iterator()
       return iterator.get_next
 
-  def _compareOutputToExpected(self, result_values, expected_values):
+  def _compareOutputToExpected(self, result_values, expected_values,
+                               assert_items_equal):
+    if assert_items_equal:
+      # TODO(shivaniagrawal): add support for nested elements containing sparse
+      # tensors when needed.
+      self.assertItemsEqual(result_values, expected_values)
+      return
     for i in range(len(result_values)):
-      if sparse_tensor.is_sparse(result_values[i]):
-        self.assertSparseValuesEqual(result_values[i], expected_values[i])
-      else:
-        self.assertAllEqual(result_values[i], expected_values[i])
+      nest.assert_same_structure(result_values[i], expected_values[i])
+      for result_value, expected_value in zip(
+          nest.flatten(result_values[i]), nest.flatten(expected_values[i])):
+        if sparse_tensor.is_sparse(result_value):
+          self.assertSparseValuesEqual(result_value, expected_value)
+        else:
+          self.assertAllEqual(result_value, expected_value)
 
   def assertDatasetProduces(self,
                             dataset,
                             expected_output=None,
                             expected_error=None,
                             requires_initialization=False,
-                            num_test_iterations=2):
+                            num_test_iterations=1,
+                            assert_items_equal=False):
     """Asserts that a dataset produces the expected output / error.
 
     Args:
@@ -98,6 +108,8 @@ class DatasetTestBase(test.TestCase):
         dataset (e.g. when it contains stateful nodes). Defaults to False.
       num_test_iterations: Number of times `dataset` will be iterated. Defaults
         to 2.
+      assert_items_equal: Tests expected_output has (only) the same elements
+        regardless of order.
     """
     self.assertTrue(
         expected_error is not None or expected_output is not None,
@@ -120,7 +132,7 @@ class DatasetTestBase(test.TestCase):
       result = []
       for _ in range(len(expected_output)):
         result.append(self.evaluate(get_next()))
-      self._compareOutputToExpected(result, expected_output)
+      self._compareOutputToExpected(result, expected_output, assert_items_equal)
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(get_next())
       with self.assertRaises(errors.OutOfRangeError):

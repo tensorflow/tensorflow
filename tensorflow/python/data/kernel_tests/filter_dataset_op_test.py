@@ -24,16 +24,17 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class FilterDatasetTest(test_base.DatasetTestBase):
 
   def testFilterDataset(self):
@@ -43,69 +44,43 @@ class FilterDatasetTest(test_base.DatasetTestBase):
             7, dtype=np.int64)[:, np.newaxis],
         np.array(37.0, dtype=np.float64) * np.arange(7)
     )
-    count = array_ops.placeholder(dtypes.int64, shape=[])
-    modulus = array_ops.placeholder(dtypes.int64)
-
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
-        .repeat(count)
-        .filter(lambda x, _y, _z: math_ops.equal(math_ops.mod(x, modulus), 0))
-        .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    def do_test(count, modulus):
+      dataset = dataset_ops.Dataset.from_tensor_slices(components).map(
+          _map_fn).repeat(count).filter(
+              lambda x, _y, _z: math_ops.equal(math_ops.mod(x, modulus), 0))
+      self.assertEqual([c.shape[1:] for c in components],
+                       [shape for shape in dataset.output_shapes])
+      get_next = self.getNext(dataset)
+      for _ in range(count):
+        for i in [x for x in range(7) if x**2 % modulus == 0]:
+          result = self.evaluate(get_next())
+          for component, result_component in zip(components, result):
+            self.assertAllEqual(component[i]**2, result_component)
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
 
-    self.assertEqual([c.shape[1:] for c in components],
-                     [t.shape for t in get_next])
+    do_test(14, 2)
+    do_test(4, 18)
 
-    with self.cached_session() as sess:
-      # Test that we can dynamically feed a different modulus value for each
-      # iterator.
-      def do_test(count_val, modulus_val):
-        sess.run(init_op, feed_dict={count: count_val, modulus: modulus_val})
-        for _ in range(count_val):
-          for i in [x for x in range(7) if x**2 % modulus_val == 0]:
-            result = sess.run(get_next)
-            for component, result_component in zip(components, result):
-              self.assertAllEqual(component[i]**2, result_component)
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
-
-      do_test(14, 2)
-      do_test(4, 18)
-
-      # Test an empty dataset.
-      do_test(0, 1)
+    # Test an empty dataset.
+    do_test(0, 1)
 
   def testFilterRange(self):
-    dataset = dataset_ops.Dataset.range(100).filter(
+    dataset = dataset_ops.Dataset.range(4).filter(
         lambda x: math_ops.not_equal(math_ops.mod(x, 3), 2))
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      self.assertEqual(0, sess.run(get_next))
-      self.assertEqual(1, sess.run(get_next))
-      self.assertEqual(3, sess.run(get_next))
+    self.assertDatasetProduces(dataset, expected_output=[0, 1, 3])
 
   def testFilterDict(self):
-    iterator = (dataset_ops.Dataset.range(10)
-                .map(lambda x: {"foo": x * 2, "bar": x ** 2})
-                .filter(lambda d: math_ops.equal(d["bar"] % 2, 0))
-                .map(lambda d: d["foo"] + d["bar"])
-                .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(10):
-        if (i ** 2) % 2 == 0:
-          self.assertEqual(i * 2 + i ** 2, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.range(10).map(
+        lambda x: {"foo": x * 2, "bar": x ** 2}).filter(
+            lambda d: math_ops.equal(d["bar"] % 2, 0)).map(
+                lambda d: d["foo"] + d["bar"])
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[(i * 2 + i**2) for i in range(10) if not (i**2) % 2])
 
   def testUseStepContainerInFilter(self):
     input_data = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int64)
@@ -117,18 +92,9 @@ class FilterDatasetTest(test_base.DatasetTestBase):
       summed = math_ops.reduce_sum(squared_xs)
       return math_ops.equal(summed, 1 + 4 + 9)
 
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices([[1, 2, 3], [4, 5, 6]])
-        .filter(_predicate)
-        .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertAllEqual(input_data[0], sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[1, 2, 3], [4, 5, 6]]).filter(_predicate)
+    self.assertDatasetProduces(dataset, expected_output=[input_data[0]])
 
   def testSparse(self):
 
@@ -141,46 +107,29 @@ class FilterDatasetTest(test_base.DatasetTestBase):
     def _filter_fn(_, i):
       return math_ops.equal(i % 2, 0)
 
-    iterator = (
-        dataset_ops.Dataset.range(10).map(_map_fn).filter(_filter_fn).map(
-            lambda x, i: x).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(5):
-        actual = sess.run(get_next)
-        self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
-        self.assertSparseValuesEqual(actual, _map_fn(i * 2)[0])
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.range(10).map(_map_fn).filter(_filter_fn).map(
+        lambda x, i: x)
+    self.assertDatasetProduces(
+        dataset, expected_output=[_map_fn(i * 2)[0] for i in range(5)])
 
   def testShortCircuit(self):
-    iterator = (
-        dataset_ops.Dataset.zip(
-            (dataset_ops.Dataset.range(10),
-             dataset_ops.Dataset.from_tensors(True).repeat(None)))
-        .filter(lambda x, y: y).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(10):
-        self.assertEqual((i, True), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.zip(
+        (dataset_ops.Dataset.range(10),
+         dataset_ops.Dataset.from_tensors(True).repeat(None)
+        )).filter(lambda x, y: y)
+    self.assertDatasetProduces(
+        dataset, expected_output=[(i, True) for i in range(10)])
 
   def testParallelFilters(self):
     dataset = dataset_ops.Dataset.range(10).filter(
         lambda x: math_ops.equal(x % 2, 0))
-    iterators = [dataset.make_one_shot_iterator() for _ in range(10)]
-    next_elements = [iterator.get_next() for iterator in iterators]
-    with self.cached_session() as sess:
-      self.assertEqual([0 for _ in range(10)], sess.run(next_elements))
+    next_elements = [self.getNext(dataset) for _ in range(10)]
+    self.assertEqual([0 for _ in range(10)],
+                     self.evaluate(
+                         [next_element() for next_element in next_elements]))
 
 
+# TODO(b/119837791): Add eager benchmarks too.
 class FilterDatasetBenchmark(test.Benchmark):
 
   def _benchmark(self, predicate, name):
