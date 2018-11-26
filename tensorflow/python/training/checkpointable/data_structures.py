@@ -492,7 +492,10 @@ class Mapping(CheckpointableDataStructure, collections.Mapping):
   @property
   def _values(self):
     # Sort items deterministically by key
-    return list(zip(*sorted(self.items(), key=lambda it: it[0])))[1]
+    ordered = list(zip(*sorted(self.items(), key=lambda it: it[0])))
+    if ordered:
+      return ordered[1]
+    return []
 
   def _name_element(self, key):
     if not isinstance(key, six.string_types):
