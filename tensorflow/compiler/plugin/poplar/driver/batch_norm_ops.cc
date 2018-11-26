@@ -40,8 +40,16 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
   unsigned dimension = batch_inf_inst->feature_index();
   unsigned final_dim = operand.rank() - 1;
 
-  std::vector<std::size_t> non_broadcast_dims;
+  // Special case - zero sized array
+  if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
+    poplar::Tensor out = graph.addConstant(operand.elementType(), {1}, 0);
+    TF_ASSIGN_OR_RETURN(out,
+                        BroadcastTensor(out, inst->operand(0)->shape(), {}));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
+    return seq;
+  }
 
+  std::vector<std::size_t> non_broadcast_dims;
   poplar::Tensor operand_view;
 
   if (operand.rank() == 4) {
@@ -49,6 +57,7 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
   } else {
     operand_view = operand.dimShufflePartial({dimension}, {final_dim});
     non_broadcast_dims = operand_view.shape();
+    non_broadcast_dims.pop_back();
 
     std::size_t count = operand.numElements() / operand.dim(dimension);
     operand_view = operand_view.reshapePartial(0, final_dim, {count});
@@ -93,9 +102,23 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
                       FindInstructionInput(tensor_map, res, inst, 1, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor offset,
                       FindInstructionInput(tensor_map, res, inst, 2, seq));
+  const auto epsilon = batch_train_inst->epsilon();
+  const unsigned dimension = batch_train_inst->feature_index();
+  const unsigned final_dim = operand.rank() - 1;
 
-  unsigned dimension = batch_train_inst->feature_index();
-  unsigned final_dim = operand.rank() - 1;
+  // Special case - zero sized array
+  if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
+    poplar::Tensor out = graph.addConstant(operand.elementType(), {1}, 0);
+    TF_ASSIGN_OR_RETURN(out,
+                        BroadcastTensor(out, inst->operand(0)->shape(), {}));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
+    poplar::Tensor mean = graph.addConstant(operand.elementType(), {1}, NAN);
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, mean));
+    poplar::Tensor variance =
+        graph.addConstant(operand.elementType(), {1}, NAN);
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 2, variance));
+    return seq;
+  }
 
   std::vector<std::size_t> non_broadcast_dims;
 
@@ -105,25 +128,25 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
     operand_view = operand.dimShufflePartial({dimension}, {1});
   } else {
     operand_view = operand.dimShufflePartial({dimension}, {final_dim});
+
     non_broadcast_dims = operand_view.shape();
+    non_broadcast_dims.pop_back();
 
     std::size_t count = operand.numElements() / operand.dim(dimension);
     operand_view = operand_view.reshapePartial(0, final_dim, {count});
   }
 
   auto name = GetDebugName(inst);
+  poplar::Tensor mean, inv_sd;
 
-  auto est = popnn::bn::batchNormEstimates(graph, operand_view,
-                                           batch_train_inst->epsilon(), seq,
-                                           poplar::FLOAT, name);
-  poplar::Tensor mean = est.first;
-  poplar::Tensor inv_sd = est.second;
+  std::tie(mean, inv_sd) = popnn::bn::batchNormEstimates(
+      graph, operand_view, epsilon, seq, false, poplar::FLOAT, name);
 
   auto bn = popnn::bn::batchNormalise(graph, operand_view, scale, offset, mean,
                                       inv_sd, seq, name);
 
-  auto var_expression = pe::Sub(pe::Divide(pe::Const(1), pe::Square(pe::_1)),
-                                pe::Const(batch_train_inst->epsilon()));
+  auto var_expression =
+      pe::Sub(pe::Divide(pe::Const(1), pe::Square(pe::_1)), pe::Const(epsilon));
 
   auto variance = popops::map(graph, var_expression, {inv_sd}, seq, name);
 
