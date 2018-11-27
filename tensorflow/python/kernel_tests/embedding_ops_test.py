@@ -758,11 +758,13 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
     assert num_shards > 0
     assert num_shards <= vocab_size
 
-    embedding_weights = partitioned_variables.create_partitioned_variables(
+    initializer = init_ops.truncated_normal_initializer(
+        mean=0.0, stddev=1.0 / math.sqrt(vocab_size), dtype=dtypes.float32)
+    embedding_weights = list(variable_scope.get_variable(
+        name="embedding_weights",
         shape=[vocab_size, embed_dim],
-        slicing=[num_shards, 1],
-        initializer=init_ops.truncated_normal_initializer(
-            mean=0.0, stddev=1.0 / math.sqrt(vocab_size), dtype=dtypes.float32))
+        partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
+        initializer=initializer))
     for w in embedding_weights:
       w.initializer.run()
     embedding_weights = [w.eval() for w in embedding_weights]
