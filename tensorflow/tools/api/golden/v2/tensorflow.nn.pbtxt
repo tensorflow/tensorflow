@@ -122,7 +122,7 @@ tf_module {
   }
   member_method {
     name: "dilation2d"
-    argspec: "args=[\'input\', \'filter\', \'strides\', \'rates\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'filters\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "dropout"

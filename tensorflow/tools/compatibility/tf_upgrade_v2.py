@@ -91,6 +91,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.manip.batch_to_space_nd": {
             "block_size": "block_shape",
         },
+        "tf.nn.dilation2d": {
+            "filter": "filters",
+            "rates": "dilations",
+        },
         "tf.nn.conv3d": {
             "filter": "filters"
         },
