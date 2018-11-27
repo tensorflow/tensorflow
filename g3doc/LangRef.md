@@ -630,7 +630,7 @@ support them (like TPUs).
 Syntax:
 
 ``` {.ebnf}
-tensor-type ::= `tensor` `<` dimension-list vector-element-type `>`
+tensor-type ::= `tensor` `<` dimension-list tensor-memref-element-type `>`
 tensor-memref-element-type ::= vector-element-type | vector-type
 
 // memref requires a known rank, but tensor does not.
