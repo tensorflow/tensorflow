@@ -520,7 +520,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
         }
         if (!iter->second.has_tensor() ||
             iter->second.tensor().string_val_size() != 1) {
-          LOG(INFO) << "Unexected AttrValue proto: "
+          LOG(INFO) << "Unexpected AttrValue proto: "
                     << iter->second.DebugString();
           return nullptr;
         }
