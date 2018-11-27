@@ -23,14 +23,6 @@ tf_proto_library(
     protodeps = tf_additional_all_protos(),
 )
 
-tf_proto_library(
-    name = "logging_proto",
-    srcs = ["logging.proto"],
-    cc_api_version = 2,
-    default_header = True,
-    protodeps = tf_additional_all_protos(),
-)
-
 cc_library(
     name = "stream_executor_impl",
     srcs = glob(
@@ -54,9 +46,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":dnn_proto_cc_impl",
-        ":logging_proto_cc_impl",
         "//tensorflow/core:lib",
-        "//tensorflow/core:logger",
         "//tensorflow/core:ptr_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -73,7 +63,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":dnn_proto_cc",
-        ":logging_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
         "@com_google_absl//absl/strings",
