@@ -1968,9 +1968,8 @@ TEST_F(OpConverterTest, ConvertActivation) {
   {
     // Input list is empty, should fail.
     NodeDef node_def = MakeNodeDef("my_act", "Relu", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Relu expects one input, at my_act");
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Relu expects one input, at my_act");
   }
   {
     // Input is weights, should fail.

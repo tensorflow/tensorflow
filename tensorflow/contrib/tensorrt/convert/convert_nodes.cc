@@ -1985,7 +1985,8 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
   }
   if (!inputs.at(0).is_tensor()) {
     return tensorflow::errors::Unimplemented(
-        node_def.op(), " is only implemented for tensors, at ", node_def.name());
+        node_def.op(), " is only implemented for tensors, at ",
+        node_def.name());
   }
   static const std::unordered_map<string, nvinfer1::ActivationType> ops{
       {"Relu", nvinfer1::ActivationType::kRELU},
@@ -1994,9 +1995,9 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
   };
   auto op_pair = ops.find(node_def.op());
   if (op_pair == ops.end()) {
-    return tensorflow::errors::Unimplemented(
-        "Activation op: ", node_def.op(), " not supported at: ",
-        node_def.name());
+    return tensorflow::errors::Unimplemented("Activation op: ", node_def.op(),
+                                             " not supported at: ",
+                                             node_def.name());
   }
   if (params->validation_only) return tensorflow::Status::OK();
 
@@ -2004,8 +2005,7 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   nvinfer1::IActivationLayer* layer =
       params->converter->network()->addActivation(
-          *const_cast<nvinfer1::ITensor*>(tensor),
-          op_pair->second);
+          *const_cast<nvinfer1::ITensor*>(tensor), op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   // Set quantization range for output of Sigmoid, Tanh.
