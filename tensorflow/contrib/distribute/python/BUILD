@@ -416,6 +416,7 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_oss",  # http://b/119349471
         "no_pip",
+        "tf_integration_test",
     ],
 )
 
@@ -429,6 +430,7 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_oss",  # http://b/119349471
         "no_pip",
+        "tf_integration_test",
     ],
 )
 
