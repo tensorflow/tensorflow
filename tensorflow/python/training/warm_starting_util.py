@@ -434,7 +434,7 @@ def warm_start(ckpt_to_initialize_from,
     vocab_info = var_name_to_vocab_info.get(var_name)
     if vocab_info:
       vocab_info_used.add(var_name)
-      logging.info(
+      logging.debug(
           "Warm-starting variable: {}; current_vocab: {} current_vocab_size: {}"
           " prev_vocab: {} prev_vocab_size: {} current_oov: {} prev_tensor: {}"
           " initializer: {}".format(
@@ -462,7 +462,7 @@ def warm_start(ckpt_to_initialize_from,
       # For the special value of vars_to_warm_start = None,
       # we only warm-start variables with explicitly specified vocabularies.
       if vars_to_warm_start:
-        logging.info("Warm-starting variable: {}; prev_var_name: {}".format(
+        logging.debug("Warm-starting variable: {}; prev_var_name: {}".format(
             var_name, prev_var_name or "Unchanged"))
         # Because we use a default empty list in grouped_variables, single
         # unpartitioned variables will be lists here, which we rectify in order
