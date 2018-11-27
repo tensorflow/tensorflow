@@ -21090,6 +21090,19 @@ op {
       }
     }
   }
+  attr {
+    name: "round_mode"
+    type: "string"
+    default_value {
+      s: "HALF_TO_EVEN"
+    }
+    allowed_values {
+      list {
+        s: "HALF_TO_EVEN"
+        s: "HALF_UP"
+      }
+    }
+  }
 }
 op {
   name: "QuantizeAndDequantizeV3"
