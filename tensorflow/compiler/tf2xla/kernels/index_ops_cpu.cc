@@ -72,7 +72,7 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
 
     // Fall back to XLA ArgMax HLO when CustomCall is not allowed or when input
     // shape isn't supported.
-    if (!XlaContext::Get(ctx).allow_cpu_custom_calls() ||
+    if (!ctx->compiler()->options().allow_cpu_custom_calls ||
         (input_dims != 1 && input_dims != 2)) {
       xla::XlaOp output = XlaHelpers::ArgMax(ctx->Input(0), output_type, axis);
       ctx->SetOutput(0, output);

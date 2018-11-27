@@ -326,10 +326,10 @@ Status BuildComputation(
 
 bool XlaCompiler::Argument::operator==(
     const XlaCompiler::Argument& other) const {
-  if (std::tie(kind, resource_kind, type, name, initialized, tensor_array_size,
+  if (std::tie(kind, resource_kind, type, name, initialized, max_array_size,
                tensor_array_gradients) !=
       std::tie(other.kind, other.resource_kind, other.type, other.name,
-               other.initialized, other.tensor_array_size,
+               other.initialized, other.max_array_size,
                other.tensor_array_gradients)) {
     return false;
   }
@@ -359,8 +359,8 @@ string XlaCompiler::Argument::HumanString() const {
       string output = absl::StrCat("kind=resource", common, " resource_kind=",
                                    XlaResource::KindToString(resource_kind),
                                    " initialized=", initialized);
-      if (tensor_array_size >= 0) {
-        absl::StrAppend(&output, " tensor_array_size=", tensor_array_size);
+      if (max_array_size >= 0) {
+        absl::StrAppend(&output, " max_array_size=", max_array_size);
       }
       if (!tensor_array_gradients.empty()) {
         absl::StrAppend(&output, " tensor_array_gradients=",
@@ -567,12 +567,12 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
           return Status::OK();
         }
         case XlaResource::kTensorArray: {
-          if (arg.tensor_array_size < 0) {
+          if (arg.max_array_size < 0) {
             return errors::InvalidArgument(
-                "Negative tensor_array_size in XLAShapeForArgument");
+                "Negative max_array_size in XLAShapeForArgument");
           }
           TensorShape shape;
-          shape.AddDim(arg.tensor_array_size);
+          shape.AddDim(arg.max_array_size);
           shape.AppendShape(arg.shape);
           TF_RETURN_IF_ERROR(TensorShapeToXLAShape(arg.type, shape, xla_shape));
 
@@ -584,12 +584,12 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
           return Status::OK();
         }
         case XlaResource::kStack: {
-          if (arg.tensor_array_size < 0) {
+          if (arg.max_array_size < 0) {
             return errors::InvalidArgument(
-                "Negative tensor_array_size in XLAShapeForArgument");
+                "Negative max_array_size in XLAShapeForArgument");
           }
           TensorShape shape;
-          shape.AddDim(arg.tensor_array_size);
+          shape.AddDim(arg.max_array_size);
           shape.AppendShape(arg.shape);
           xla::Shape buffer_shape;
           TF_RETURN_IF_ERROR(
@@ -635,21 +635,23 @@ Status XlaCompiler::BuildArguments(
     const XlaCompiler::Argument& arg = args[i];
     XlaExpression& arg_expression = (*arg_expressions)[i];
     switch (arg.kind) {
-      case XlaCompiler::Argument::kResource:
+      case XlaCompiler::Argument::kResource: {
         TF_RET_CHECK(arg.resource_kind != XlaResource::kInvalid);
         // TODO(phawkins): this code assumes that resource arguments do not
         // alias.
-        XlaResource* resource;
-        TF_RETURN_IF_ERROR(context->CreateResource(
-            arg.resource_kind, i, arg.name, arg.type, arg.shape, xla::XlaOp(),
-            /*tensor_array_size=*/arg.tensor_array_size,
-            /*tensor_array_gradients=*/arg.tensor_array_gradients, &resource));
+        XlaResource* resource =
+            context->AddResource(absl::make_unique<XlaResource>(
+                arg.resource_kind, i, arg.name, arg.type, arg.shape,
+                xla::XlaOp(),
+                /*max_array_size=*/arg.max_array_size,
+                /*tensor_array_gradients=*/arg.tensor_array_gradients,
+                /*tensor_array_multiple_writes_aggregate=*/true));
         arg_expression = XlaExpression::Resource(resource);
         if (arg.initialized) {
           input_mapping->push_back(i);
         }
-
         break;
+      }
       case XlaCompiler::Argument::kParameter:
       case XlaCompiler::Argument::kToken: {
         input_mapping->push_back(i);
@@ -923,9 +925,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                    options_.device_type, name));
 
   xla::XlaBuilder builder(name);
-  XlaContext* context =
-      new XlaContext(this, &builder, options_.allow_cpu_custom_calls,
-                     &options_.shape_representation_fn);
+  XlaContext* context = new XlaContext(this, &builder);
   core::ScopedUnref context_unref(context);
 
   std::vector<XlaCompiler::Argument> real_args(args.begin(), args.end());

@@ -69,7 +69,7 @@ Status MaybeInitializeStack(xla::XlaBuilder* builder, XlaResource* resource,
   }
 
   TensorShape stack_shape;
-  stack_shape.AddDim(resource->tensor_array_size());
+  stack_shape.AddDim(resource->max_array_size());
   stack_shape.AppendShape(elem_shape);
 
   if (!resource->initialized()) {
@@ -97,10 +97,10 @@ class StackOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    int64 size;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &size));
+    int64 max_size;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &max_size));
     OP_REQUIRES(
-        ctx, size >= 0,
+        ctx, max_size >= 0,
         errors::InvalidArgument(
             "XLA compilation requires a fixed stack size upper bound. If "
             "you are using tf.while_loop, set the maximum_iterations parameter "
@@ -108,14 +108,9 @@ class StackOp : public XlaOpKernel {
 
     // We defer initializing the Stack resource until we see the first push.
     // Otherwise we do not know the shape of the stack elements.
-    xla::XlaOp value;
-    XlaContext& xc = XlaContext::Get(ctx);
-    XlaResource* resource;
-    string name = absl::StrCat("Stack: ", stack_name_);
-    OP_REQUIRES_OK(
-        ctx, xc.CreateResource(XlaResource::kStack, -1, std::move(name), dtype_,
-                               TensorShape(), value, /*tensor_array_size=*/size,
-                               /*tensor_array_gradients=*/{}, &resource));
+    XlaResource* resource =
+        ctx->xla_context()->AddResource(XlaResource::CreateStack(
+            /*name=*/absl::StrCat("Stack: ", stack_name_), dtype_, max_size));
     ctx->SetResourceOutput(0, resource);
   }
 
