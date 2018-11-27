@@ -548,7 +548,7 @@ class FalsePositivesTest(test.TestCase):
     update_op = fp_obj.update_state(y_true, y_pred)
     self.evaluate(update_op)
     result = fp_obj.result()
-    self.assertAllClose([7.], result)
+    self.assertAllClose(7., result)
 
   def test_weighted(self):
     fp_obj = metrics.FalsePositives()
@@ -559,7 +559,7 @@ class FalsePositivesTest(test.TestCase):
                                    (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
     sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
     result = fp_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAllClose([14.], self.evaluate(result))
+    self.assertAllClose(14., self.evaluate(result))
 
   def test_unweighted_with_thresholds(self):
     fp_obj = metrics.FalsePositives(thresholds=[0.15, 0.5, 0.85])
@@ -617,7 +617,7 @@ class FalseNegativesTest(test.TestCase):
     update_op = fn_obj.update_state(y_true, y_pred)
     self.evaluate(update_op)
     result = fn_obj.result()
-    self.assertAllClose([3.], result)
+    self.assertAllClose(3., result)
 
   def test_weighted(self):
     fn_obj = metrics.FalseNegatives()
@@ -628,7 +628,7 @@ class FalseNegativesTest(test.TestCase):
                                    (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
     sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
     result = fn_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAllClose([5.], self.evaluate(result))
+    self.assertAllClose(5., self.evaluate(result))
 
   def test_unweighted_with_thresholds(self):
     fn_obj = metrics.FalseNegatives(thresholds=[0.15, 0.5, 0.85])
@@ -679,7 +679,7 @@ class TrueNegativesTest(test.TestCase):
     update_op = tn_obj.update_state(y_true, y_pred)
     self.evaluate(update_op)
     result = tn_obj.result()
-    self.assertAllClose([3.], result)
+    self.assertAllClose(3., result)
 
   def test_weighted(self):
     tn_obj = metrics.TrueNegatives()
@@ -690,7 +690,7 @@ class TrueNegativesTest(test.TestCase):
                                    (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
     sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
     result = tn_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAllClose([4.], self.evaluate(result))
+    self.assertAllClose(4., self.evaluate(result))
 
   def test_unweighted_with_thresholds(self):
     tn_obj = metrics.TrueNegatives(thresholds=[0.15, 0.5, 0.85])
@@ -741,7 +741,7 @@ class TruePositivesTest(test.TestCase):
     update_op = tp_obj.update_state(y_true, y_pred)
     self.evaluate(update_op)
     result = tp_obj.result()
-    self.assertAllClose([7.], result)
+    self.assertAllClose(7., result)
 
   def test_weighted(self):
     tp_obj = metrics.TruePositives()
@@ -752,7 +752,7 @@ class TruePositivesTest(test.TestCase):
                                    (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
     sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
     result = tp_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAllClose([12.], self.evaluate(result))
+    self.assertAllClose(12., self.evaluate(result))
 
   def test_unweighted_with_thresholds(self):
     tp_obj = metrics.TruePositives(thresholds=[0.15, 0.5, 0.85])
@@ -857,7 +857,7 @@ class PrecisionTest(test.TestCase):
     self.assertArrayNear([0.5, 0.], self.evaluate(result), 0)
 
   def test_weighted_with_threshold(self):
-    p_obj = metrics.Precision(thresholds=[0.5, 1.1])
+    p_obj = metrics.Precision(thresholds=[0.5, 1.])
     y_true = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
     y_pred = constant_op.constant([[1, 0], [0.6, 0]],
                                   shape=(2, 2),
@@ -872,18 +872,8 @@ class PrecisionTest(test.TestCase):
     expected_precision = weighted_tp / weighted_positives
     self.assertArrayNear([expected_precision, 0], self.evaluate(result), 1e-3)
 
-  def test_extreme_thresholds(self):
-    p_obj = metrics.Precision(thresholds=[-1.0, 2.0])  # beyond values range
-    y_pred = math_ops.cast(
-        constant_op.constant([1, 0, 1, 0], shape=(1, 4)), dtype=dtypes.float32)
-    y_true = math_ops.cast(
-        constant_op.constant([0, 1, 1, 1], shape=(1, 4)), dtype=dtypes.float32)
-    self.evaluate(variables.variables_initializer(p_obj.variables))
-    result = p_obj(y_true, y_pred)
-    self.assertArrayNear([0.75, 0.], self.evaluate(result), 0)
-
   def test_multiple_updates(self):
-    p_obj = metrics.Precision(thresholds=[0.5, 1.1])
+    p_obj = metrics.Precision(thresholds=[0.5, 1.])
     y_true = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
     y_pred = constant_op.constant([[1, 0], [0.6, 0]],
                                   shape=(2, 2),
@@ -978,7 +968,7 @@ class RecallTest(test.TestCase):
     self.assertArrayNear([0.5, 0.], self.evaluate(result), 0)
 
   def test_weighted_with_threshold(self):
-    r_obj = metrics.Recall(thresholds=[0.5, 1.1])
+    r_obj = metrics.Recall(thresholds=[0.5, 1.])
     y_true = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
     y_pred = constant_op.constant([[1, 0], [0.6, 0]],
                                   shape=(2, 2),
@@ -993,18 +983,8 @@ class RecallTest(test.TestCase):
     expected_recall = weighted_tp / weighted_positives
     self.assertArrayNear([expected_recall, 0], self.evaluate(result), 1e-3)
 
-  def test_extreme_thresholds(self):
-    r_obj = metrics.Recall(thresholds=[-1.0, 2.0])  # beyond values range
-    y_pred = math_ops.cast(
-        constant_op.constant([1, 0, 1, 0], shape=(1, 4)), dtype=dtypes.float32)
-    y_true = math_ops.cast(
-        constant_op.constant([0, 1, 1, 1], shape=(1, 4)), dtype=dtypes.float32)
-    self.evaluate(variables.variables_initializer(r_obj.variables))
-    result = r_obj(y_true, y_pred)
-    self.assertArrayNear([1.0, 0.], self.evaluate(result), 0)
-
   def test_multiple_updates(self):
-    r_obj = metrics.Recall(thresholds=[0.5, 1.1])
+    r_obj = metrics.Recall(thresholds=[0.5, 1.])
     y_true = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
     y_pred = constant_op.constant([[1, 0], [0.6, 0]],
                                   shape=(2, 2),
