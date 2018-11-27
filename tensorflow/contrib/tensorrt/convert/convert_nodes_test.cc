@@ -1998,7 +1998,7 @@ TEST_F(OpConverterTest, ConvertActivation) {
       auto act = ops::Tanh(s.WithOpName("my_act"), input);
       return act.operation.node()->def();
     }
-    ASSERT_TRUE(false);
+    EXPECT_TRUE(false);
     return NodeDef();
   };
   // Get expected output for activation layer.
@@ -2010,7 +2010,7 @@ TEST_F(OpConverterTest, ConvertActivation) {
     } else if (op_name == "Tanh") {
       return std::tanh(input);
     }
-    ASSERT_TRUE(false);
+    EXPECT_TRUE(false);
     return 0;
   };
 
@@ -2027,7 +2027,7 @@ TEST_F(OpConverterTest, ConvertActivation) {
 
     const std::vector<float> input_data = {-100, -2, -1, 0, 1, 100};
     std::vector<float> output_data(6);
-    BuildAndRun("input", input_data, "my_act", &output_data);
+    BuildAndRun<float>({{"input", input_data}}, "my_act", &output_data);
     for (int i = 0; i < input_data.size(); i++) {
       const float expected_output = get_act_output(op_name, input_data[i]);
       EXPECT_FLOAT_EQ(output_data[i], expected_output);
