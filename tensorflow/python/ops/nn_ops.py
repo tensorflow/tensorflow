@@ -2237,6 +2237,8 @@ def softmax_v2(logits, axis=None, name=None):
     InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
       dimension of `logits`.
   """
+  if axis is None:
+    axis = -1
   return _softmax(logits, gen_nn_ops.softmax, axis, name)
 
 
@@ -2292,6 +2294,8 @@ def log_softmax_v2(logits, axis=None, name=None):
     InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
       dimension of `logits`.
   """
+  if axis is None:
+    axis = -1
   return _softmax(logits, gen_nn_ops.log_softmax, axis, name)
 
 
