@@ -64,7 +64,7 @@ class RaggedTensor(object):
   a 3-D `RaggedTensor` that stores the fixed-size word embedding for each
   word in a sentence, for each sentence in a batch, could be written as
   `[num_sentences, (num_words), embedding_size]`.  The parentheses around
-  `(num_words)` indicate that that dimension is ragged, and that the length
+  `(num_words)` indicate that dimension is ragged, and that the length
   of each element list in that dimension may vary for each item.
 
   ### Component Tensors
