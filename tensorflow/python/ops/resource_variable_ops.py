@@ -805,16 +805,6 @@ class ResourceVariable(variables.RefVariable):
     return ResourceVariable(
         variable_def=variable_def, import_scope=import_scope)
 
-  @staticmethod
-  def _OverloadAllOperators():  # pylint: disable=invalid-name
-    """Register overloads for all operators."""
-    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
-      ResourceVariable._OverloadOperator(operator)
-    # For slicing, bind getitem differently than a tensor (use SliceHelperVar
-    # instead)
-    # pylint: disable=protected-access
-    setattr(ResourceVariable, "__getitem__", array_ops._SliceHelperVar)
-
   def _AsTensor(self):
     return self.value()
 
@@ -825,30 +815,6 @@ class ResourceVariable(variables.RefVariable):
   def set_shape(self, shape):
     """Unsupported."""
     raise NotImplementedError("ResourceVariable does not implement set_shape()")
-
-  @staticmethod
-  def _OverloadOperator(operator):  # pylint: disable=invalid-name
-    """Defer an operator overload to `ops.Tensor`.
-
-    We pull the operator out of ops.Tensor dynamically to avoid ordering issues.
-
-    Args:
-      operator: string. The operator name.
-    """
-
-    tensor_oper = getattr(ops.Tensor, operator)
-    def _run_op(a, *args):
-      # pylint: disable=protected-access
-      value = a._AsTensor()
-      return tensor_oper(value, *args)
-
-    # Propagate __doc__ to wrapper
-    try:
-      _run_op.__doc__ = tensor_oper.__doc__
-    except AttributeError:
-      pass
-
-    setattr(ResourceVariable, operator, _run_op)
 
   __array_priority__ = 100
 
@@ -1435,7 +1401,6 @@ ops.register_tensor_conversion_function(
     variables.Variable, variables.Variable._TensorConversionFunction)  # pylint: disable=protected-access
 
 # pylint: disable=protected-access
-ResourceVariable._OverloadAllOperators()
 ops.register_dense_tensor_like_type(ResourceVariable)
 
 

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import operator
 
 import numpy as np
@@ -308,6 +309,12 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual([var_x, var_y], variables.trainable_variables())
       self.assertEqual([var_x], variables.trainable_variables("scope_1"))
       self.assertEqual([var_y], variables.trainable_variables("scope_2"))
+
+  def testOperatorWrapping(self):
+    for attr in functools.WRAPPER_ASSIGNMENTS:
+      self.assertEqual(
+          getattr(variables.Variable.__add__, attr),
+          getattr(ops.Tensor.__add__, attr))
 
   def testOperators(self):
     with self.cached_session():
