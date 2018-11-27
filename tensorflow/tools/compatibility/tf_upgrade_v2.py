@@ -559,7 +559,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     }
 
     # Specially handled functions.
-    self.function_handle = {}
+    self.function_handle = {
+        "tf.nn.dropout": self._dropout_handler,
+    }
 
     decay_function_comment = (
         "ERROR: <function name> has been changed to return a callable instead "
@@ -667,6 +669,29 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         for name, new_name in self.symbol_renames.items()
         if name not in self.function_warnings and name not in excluded_renames
     }
+
+  @staticmethod
+  def _dropout_handler(file_edit_recorder, node):
+    if len(node.args) < 2:
+      comment = ("ERROR: tf.nn.dropout did not take arguments, so automatic "
+                 "transformation was disabled. tf.nn.dropout has changed "
+                 "the semantics of the second argument.")
+      file_edit_recorder.add(
+          comment,
+          node.lineno,
+          node.col_offset,
+          "tf.nn.dropout",
+          "tf.nn.dropout",
+          error="tf.nn.dropout requires manual check.")
+    else:
+      comment = ("WARNING: tf.nn.dropout has changed the semantics of the "
+                 "second argument. Please check the transformation.\n")
+      file_edit_recorder.add(
+          comment,
+          node.args[1].lineno,
+          node.args[1].col_offset,
+          "",
+          "1 - ")
 
 
 if __name__ == "__main__":

@@ -2791,7 +2791,7 @@ def _get_noise_shape(x, noise_shape):
   return noise_shape
 
 
-@tf_export("nn.dropout")
+@tf_export(v1=["nn.dropout"])
 def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: disable=invalid-name
   """Computes dropout.
 
@@ -2850,8 +2850,74 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
       if tensor_util.constant_value(keep_prob) == 1:
         return x
 
+    rate = 1 - keep_prob
+
+  return dropout_v2(x, rate, noise_shape=noise_shape, seed=seed, name=name)
+
+
+@tf_export("nn.dropout", v1=[])
+def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):  # pylint: disable=invalid-name
+  """Computes dropout.
+
+  With probability `rate`, drops elements of `x`. Input that are kept are
+  scaled up by `1 / (1 - rate)`, otherwise outputs `0`.  The scaling is so that
+  the expected sum is unchanged.
+
+  By default, each element is kept or dropped independently.  If `noise_shape`
+  is specified, it must be
+  [broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  to the shape of `x`, and only dimensions with `noise_shape[i] == shape(x)[i]`
+  will make independent decisions.  For example, if `shape(x) = [k, l, m, n]`
+  and `noise_shape = [k, 1, 1, n]`, each batch and channel component will be
+  kept independently and each row and column will be kept or not kept together.
+
+  Args:
+    x: A floating point tensor.
+    rate: A scalar `Tensor` with the same type as x. The probability
+      that each element is dropped. For example, setting rate=0.1 would drop
+      10% of input elements.
+    noise_shape: A 1-D `Tensor` of type `int32`, representing the
+      shape for randomly generated keep/drop flags.
+    seed: A Python integer. Used to create random seeds. See
+      `tf.set_random_seed`
+      for behavior.
+    name: A name for this operation (optional).
+
+  Returns:
+    A Tensor of the same shape of `x`.
+
+  Raises:
+    ValueError: If `keep_prob` is not in `(0, 1]` or if `x` is not a floating
+      point tensor.
+  """
+  with ops.name_scope(name, "dropout", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    if not x.dtype.is_floating:
+      raise ValueError("x has to be a floating point tensor since it's going to"
+                       " be scaled. Got a %s tensor instead." % x.dtype)
+    if isinstance(rate, numbers.Real) and not 0 <= rate < 1:
+      raise ValueError("rate must be a scalar tensor or a float in the "
+                       "range [0, 1), got %g" % rate)
+
+    # Early return if nothing needs to be dropped.
+    if isinstance(rate, float) and rate == 0:
+      return x
+    if context.executing_eagerly():
+      if isinstance(rate, ops.EagerTensor):
+        if rate.numpy() == 0:
+          return x
+    else:
+      rate = ops.convert_to_tensor(
+          rate, dtype=x.dtype, name="rate")
+      rate.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+
+      # Do nothing if we know rate == 0
+      if tensor_util.constant_value(rate) == 0:
+        return x
+
     noise_shape = _get_noise_shape(x, noise_shape)
 
+    keep_prob = 1 - rate
     # uniform [keep_prob, 1.0 + keep_prob)
     random_tensor = keep_prob
     random_tensor += random_ops.random_uniform(
