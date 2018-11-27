@@ -658,7 +658,6 @@ class OptimizerV2(optimizer_v1.Optimizer):
                var_list=None,
                gate_gradients=GATE_OP,
                aggregation_method=None,
-               colocate_gradients_with_ops=False,
                name=None,
                grad_loss=None,
                stop_gradients=None,
@@ -681,8 +680,6 @@ class OptimizerV2(optimizer_v1.Optimizer):
         `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
       aggregation_method: Specifies the method used to combine gradient terms.
         Valid values are defined in the class `AggregationMethod`.
-      colocate_gradients_with_ops: If True, try colocating gradients with the
-        corresponding op.
       name: Optional name for the returned operation.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
       stop_gradients: Optional. A Tensor or list of tensors not to differentiate
@@ -705,8 +702,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Minimization (and gradient computation) is done with respect to the
     elements of `var_list` if not None, else with respect to any trainable
     variables created during the execution of the `loss` function.
-    `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
-    `grad_loss` are ignored when eager execution is enabled.
+    `gate_gradients`, `aggregation_method`, and `grad_loss` are ignored when
+    eager execution is enabled.
     @end_compatibility
     """
     grads_and_vars = self.compute_gradients(
@@ -714,7 +711,6 @@ class OptimizerV2(optimizer_v1.Optimizer):
         var_list=var_list,
         gate_gradients=gate_gradients,
         aggregation_method=aggregation_method,
-        colocate_gradients_with_ops=colocate_gradients_with_ops,
         grad_loss=grad_loss,
         stop_gradients=stop_gradients,
         scale_loss_by_num_replicas=scale_loss_by_num_replicas)
@@ -734,7 +730,6 @@ class OptimizerV2(optimizer_v1.Optimizer):
                         var_list=None,
                         gate_gradients=GATE_OP,
                         aggregation_method=None,
-                        colocate_gradients_with_ops=False,
                         grad_loss=None,
                         stop_gradients=None,
                         scale_loss_by_num_replicas=None):
@@ -757,8 +752,6 @@ class OptimizerV2(optimizer_v1.Optimizer):
         `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
       aggregation_method: Specifies the method used to combine gradient terms.
         Valid values are defined in the class `AggregationMethod`.
-      colocate_gradients_with_ops: If True, try colocating gradients with the
-        corresponding op.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
       stop_gradients: Optional. A Tensor or list of tensors not to differentiate
         through.
@@ -777,8 +770,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
         not callable.
 
     @compatibility(eager)
-    When eager execution is enabled, `gate_gradients`, `aggregation_method`,
-    and `colocate_gradients_with_ops` are ignored.
+    When eager execution is enabled, `gate_gradients`, and `aggregation_method`
+    are ignored.
     @end_compatibility
     """
     # TODO(josh11b): Test that we handle weight decay in a reasonable way.
@@ -833,7 +826,6 @@ class OptimizerV2(optimizer_v1.Optimizer):
         grad_ys=grad_loss,
         gate_gradients=(gate_gradients == optimizer_v1.Optimizer.GATE_OP),
         aggregation_method=aggregation_method,
-        colocate_gradients_with_ops=colocate_gradients_with_ops,
         stop_gradients=stop_gradients)
     if gate_gradients == optimizer_v1.Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
