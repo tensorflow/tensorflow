@@ -662,6 +662,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "matrix_square_root_op_test",
+    size = "medium",
+    srcs = ["matrix_square_root_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+    ],
+)
+
+cuda_py_test(
     name = "matrix_solve_op_test",
     size = "medium",
     srcs = ["matrix_solve_op_test.py"],
