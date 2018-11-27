@@ -1075,6 +1075,13 @@ class DeviceTest(test_util.TensorFlowTestCase):
       node { name: "FloatOutput" op: "FloatOutput" }
     """, gd)
 
+  def testEagerBackingDevice(self):
+    with context.eager_mode():
+      with ops.device("/device:CPU:0"):
+        t = constant_op.constant(1.0)
+        self.assertRegexpMatches(t.device, "/device:CPU:0")
+        self.assertRegexpMatches(t.backing_device, "/device:CPU:0")
+
   def testDevicePartialString(self):
     g = ops.Graph()
     with g.device("/job:worker/replica:2"):

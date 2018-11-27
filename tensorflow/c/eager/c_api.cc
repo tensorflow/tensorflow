@@ -411,6 +411,18 @@ const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
                         : d->name().c_str();
 }
 
+const char* TFE_TensorHandleBackingDeviceName(TFE_TensorHandle* h,
+                                              TF_Status* status) {
+  if (h == nullptr || h->handle == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "The passed in handle is a nullptr");
+    return nullptr;
+  }
+  tensorflow::Device* d = h->handle->device();
+  return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
+                        : d->name().c_str();
+}
+
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopySharingTensor(
     TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr || h->handle == nullptr) {

@@ -748,6 +748,18 @@ class _EagerTensorBase(Tensor):
   def _numpy(self):
     raise NotImplementedError()
 
+  @property
+  def backing_device(self):
+    """Returns the name of the device holding this tensor's memory.
+
+    `.backing_device` is usually the same as `.device`, which returns
+    the device on which the kernel of the operation that produced this tensor
+    ran. However, some operations can produce tensors on a different device
+    (e.g., an operation that executes on the GPU but produces output tensors
+    in host memory).
+    """
+    raise NotImplementedError()
+
   def __copy__(self):
     # Eager Tensors are immutable so it's safe to return themselves as a copy.
     return self
