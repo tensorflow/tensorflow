@@ -1046,9 +1046,9 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
       init_op = variables.global_variables_initializer()
 
       with self.cached_session() as sess:
-        sess.run(init_op)
+        self.evaluate(init_op)
         for grad, _ in gradients_to_variables:
-          np_grad = sess.run(grad)
+          np_grad = self.evaluate(grad)
           self.assertFalse(np.isnan(np_grad).any())
 
   def testNonZeroLossWithPythonScalarWeight(self):

@@ -161,8 +161,8 @@ class StatefulScatterNdTest(test.TestCase):
     init = variables.global_variables_initializer()
 
     with self.session(use_gpu=True) as sess:
-      sess.run(init)
-      result = sess.run(scatter)
+      self.evaluate(init)
+      result = self.evaluate(scatter)
       self.assertAllClose(result, expected)
 
   def testSimpleResource(self):
@@ -175,8 +175,8 @@ class StatefulScatterNdTest(test.TestCase):
     init = variables.global_variables_initializer()
 
     with self.session(use_gpu=True) as sess:
-      sess.run(init)
-      sess.run(scatter)
+      self.evaluate(init)
+      self.evaluate(scatter)
       self.assertAllClose(ref.eval(), expected)
 
   def testSimple2(self):
@@ -189,8 +189,8 @@ class StatefulScatterNdTest(test.TestCase):
     init = variables.global_variables_initializer()
 
     with self.session(use_gpu=True) as sess:
-      sess.run(init)
-      result = sess.run(scatter)
+      self.evaluate(init)
+      result = self.evaluate(scatter)
       self.assertAllClose(result, expected)
 
   def testSimple3(self):
@@ -203,8 +203,8 @@ class StatefulScatterNdTest(test.TestCase):
     init = variables.global_variables_initializer()
 
     with self.session(use_gpu=True) as sess:
-      sess.run(init)
-      result = sess.run(scatter)
+      self.evaluate(init)
+      result = self.evaluate(scatter)
       self.assertAllClose(result, expected)
 
   def testVariableRankUpdate(self):
@@ -341,8 +341,8 @@ class StatefulScatterNdTest(test.TestCase):
     init = variables.global_variables_initializer()
 
     with session.Session() as sess:
-      sess.run(init)
-      result = sess.run(scatter)
+      self.evaluate(init)
+      result = self.evaluate(scatter)
       assert np.allclose(result, expected_result)
 
   # TODO(fpmc): Re-enable this test when gpu_pip test actually runs on a GPU.
@@ -421,7 +421,7 @@ class ScatterNdTest(test.TestCase):
                          b"", b"", b"seven"])
     scatter = self.scatter_nd(indices, updates, shape=(8,))
     with self.cached_session() as sess:
-      result = sess.run(scatter)
+      result = self.evaluate(scatter)
       self.assertAllEqual(expected, result)
 
     # Same indice is updated twice by same value.
@@ -432,7 +432,7 @@ class ScatterNdTest(test.TestCase):
     expected = np.array([b"", b"", b"", b"bb", b"a", b"", b"", b"c"])
     scatter = self.scatter_nd(indices, updates, shape=(8,))
     with self.cached_session() as sess:
-      result = sess.run(scatter)
+      result = self.evaluate(scatter)
       self.assertAllEqual(expected, result)
 
     # Same indice is updated twice by different value.
@@ -444,7 +444,7 @@ class ScatterNdTest(test.TestCase):
                 np.array([b"", b"", b"", b"cb", b"a", b"", b"", b"d"])]
     scatter = self.scatter_nd(indices, updates, shape=(8,))
     with self.cached_session() as sess:
-      result = sess.run(scatter)
+      result = self.evaluate(scatter)
       self.assertTrue(np.array_equal(result, expected[0]) or
                       np.array_equal(result, expected[1]))
 

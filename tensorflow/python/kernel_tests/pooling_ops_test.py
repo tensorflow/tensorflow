@@ -826,7 +826,7 @@ class PoolingTest(test.TestCase):
           strides=[1, 1, 1, 1],
           Targmax=dtypes.int64,
           padding="VALID")
-      out, argmax = sess.run([out_op, argmax_op])
+      out, argmax = self.evaluate([out_op, argmax_op])
       self.assertShapeEqual(out, out_op)
       self.assertShapeEqual(argmax, argmax_op)
       self.assertAllClose(out.ravel(), [1.0, 1.0, 1.0, 1.0])

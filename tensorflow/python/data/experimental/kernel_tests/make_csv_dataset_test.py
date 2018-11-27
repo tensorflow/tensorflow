@@ -90,7 +90,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         batch_size,
         num_epochs,
     ):
-      actual_features = sess.run(nxt)
+      actual_features = self.evaluate(nxt)
 
       if label_name is not None:
         expected_labels = expected_features.pop(label_name)
@@ -102,7 +102,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         self.assertAllEqual(expected_features[k], actual_features[k])
 
     with self.assertRaises(errors.OutOfRangeError):
-      sess.run(nxt)
+      self.evaluate(nxt)
 
   def _test_dataset(self,
                     inputs,
@@ -607,8 +607,8 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           outputs1 = dataset1.make_one_shot_iterator().get_next()
           outputs2 = dataset2.make_one_shot_iterator().get_next()
           for _ in range(total_records // batch_size):
-            batch1 = nest.flatten(sess.run(outputs1))
-            batch2 = nest.flatten(sess.run(outputs2))
+            batch1 = nest.flatten(self.evaluate(outputs1))
+            batch2 = nest.flatten(self.evaluate(outputs2))
             for i in range(len(batch1)):
               self.assertAllEqual(batch1[i], batch2[i])
 
@@ -639,8 +639,8 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           outputs2 = dataset2.make_one_shot_iterator().get_next()
           all_equal = False
           for _ in range(total_records // batch_size):
-            batch1 = nest.flatten(sess.run(outputs1))
-            batch2 = nest.flatten(sess.run(outputs2))
+            batch1 = nest.flatten(self.evaluate(outputs1))
+            batch2 = nest.flatten(self.evaluate(outputs2))
             for i in range(len(batch1)):
               all_equal = all_equal and np.array_equal(batch1[i], batch2[i])
           self.assertFalse(all_equal)

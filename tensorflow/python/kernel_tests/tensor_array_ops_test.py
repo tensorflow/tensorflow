@@ -751,7 +751,7 @@ class TensorArrayTest(test.TestCase):
                 [-0.5, 1.5],  # read(0) gradient
                 [20.0, 30.0, 40.0, 50.0]
             ])  # concat gradient
-      grad_vals = sess.run(grad_r)  # 2 + 2 entries
+      grad_vals = self.evaluate(grad_r)  # 2 + 2 entries
 
       self.assertAllClose([2.0 - 0.5 + 20.0, 3.0 + 1.5 + 30.0], grad_vals[0])
       self.assertAllEqual([4.0 + 40.0, 5.0 + 50.0], grad_vals[1])
@@ -1286,7 +1286,7 @@ class TensorArrayTest(test.TestCase):
       r = w1.stack()
       self.assertAllEqual(np.array([1.0, 2.0, 3.0, 4.0]), self.evaluate(r))
       grad = gradients_impl.gradients(ys=[r], xs=[x])
-      self.assertAllEqual(np.array([1.0, 1.0, 1.0]), sess.run(grad)[0])
+      self.assertAllEqual(np.array([1.0, 1.0, 1.0]), self.evaluate(grad)[0])
 
   @test_util.disable_control_flow_v2("b/117943489")
   def testSkipEagerTensorArrayUnpackDynamic(self):
@@ -1303,7 +1303,7 @@ class TensorArrayTest(test.TestCase):
       r = w1.concat()
       self.assertAllEqual(np.array([1.0, 2.0, 3.0, 4.0]), self.evaluate(r))
       grad = gradients_impl.gradients(ys=[r], xs=[x])
-      self.assertAllEqual(np.array([1.0, 1.0, 1.0]), sess.run(grad)[0])
+      self.assertAllEqual(np.array([1.0, 1.0, 1.0]), self.evaluate(grad)[0])
 
   def _testTensorArrayEvalEmpty(self):
     with self.cached_session(use_gpu=True):
@@ -1583,7 +1583,7 @@ class TensorArrayTest(test.TestCase):
       # wrap it in the correct name scope.
       dx, = gradients_impl.gradients(ys=[y], xs=[x], grad_ys=[dy])
       with self.cached_session(use_gpu=True) as sess:
-        vdx, vdy = sess.run([dx, dy])
+        vdx, vdy = self.evaluate([dx, dy])
       self.assertAllClose(vdx, vdy)
 
   def testSkipEagerTensorArrayInt64GPU(self):

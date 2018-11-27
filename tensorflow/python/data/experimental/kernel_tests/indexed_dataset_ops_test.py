@@ -46,14 +46,14 @@ class IndexedDatasetOpsTest(test_base.DatasetTestBase):
         handle, index, output_types=[dtypes.uint64], output_shapes=[[]])
 
     with self.cached_session() as sess:
-      sess.run(materialize)
+      self.evaluate(materialize)
       self.assertEqual([3], sess.run(get_op, feed_dict={index: 3}))
 
   def testIdentityIndexedDataset(self):
     ds = indexed_dataset_ops.IdentityIndexedDataset(16)
     materialized = ds.materialize()
     with self.cached_session() as sess:
-      sess.run(materialized.initializer)
+      self.evaluate(materialized.initializer)
       placeholder = array_ops.placeholder(dtypes.uint64, shape=[])
       for i in range(16):
         output = sess.run(
@@ -68,12 +68,13 @@ class IndexedDatasetOpsTest(test_base.DatasetTestBase):
     itr = ds.make_initializable_iterator()
     n = itr.get_next()
     with self.cached_session() as sess:
-      sess.run(itr.initializer)
+      self.evaluate(itr.initializer)
       for i in range(16):
-        output = sess.run(n)
+        output = self.evaluate(n)
         self.assertEqual(i, output)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(n)
+        self.evaluate(n)
+
 
 if __name__ == "__main__":
   test.main()

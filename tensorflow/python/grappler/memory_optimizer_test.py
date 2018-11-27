@@ -231,10 +231,10 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
       train_op = graph.get_operation_by_name(train_op_name)
       loss_op = graph.get_tensor_by_name(loss_op_name)
       with session.Session(config=config, graph=graph) as sess:
-        sess.run(init_op)
-        sess.run(train_op)
-        sess.run(train_op)
-        return sess.run(loss_op)
+        self.evaluate(init_op)
+        self.evaluate(train_op)
+        self.evaluate(train_op)
+        return self.evaluate(loss_op)
 
   def testRecomputationRewritingNoErrors(self):
     """Tests that graph output is not significantly different with rewriting."""
@@ -295,8 +295,8 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
           rewrite_options=manual_memory_config)
       session_config = config_pb2.ConfigProto(graph_options=graph_options)
       with session.Session(config=session_config) as sess:
-        sess.run(init_op)
-        sess.run(train_op)
+        self.evaluate(init_op)
+        self.evaluate(train_op)
 
   def testHintDoesRewrite(self):
     graph = self._annotated_graph()[0]

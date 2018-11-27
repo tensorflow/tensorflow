@@ -62,7 +62,7 @@ class StatelessOpsTest(test.TestCase):
         for stateless_op, stateful_op in cases:
           stateful = stateful_op(seed=seed[1])
           pure = stateless_op(seed=preseed)
-          self.assertAllEqual(stateful.eval(), self.evaluate(pure))
+          self.assertAllEqual(self.evaluate(stateful), self.evaluate(pure))
 
   def _test_determinism(self, cases):
     # Stateless values should be equal iff the seeds are equal (roughly)

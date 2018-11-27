@@ -153,7 +153,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   def testCachedValueReadBeforeWrite(self):
     with self.cached_session() as sess:
       v = resource_variable_ops.ResourceVariable(0.0, caching_device="cpu:0")
-      sess.run(v.initializer)
+      self.evaluate(v.initializer)
       value, _ = sess.run([v, v.assign_add(1.0)])
       self.assertAllEqual(value, 0.0)
 
@@ -590,11 +590,11 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default(), self.cached_session() as sess:
       # v describes a VariableDef-based variable without an initial value.
       v = resource_variable_ops.ResourceVariable(variable_def=v_def)
-      self.assertEqual(3.0, sess.run(v.initialized_value()))
+      self.assertEqual(3.0, self.evaluate(v.initialized_value()))
 
       # initialized_value should not rerun the initializer_op if the variable
       # has already been initialized elsewhere.
-      sess.run(v.assign(1.0))
+      self.evaluate(v.assign(1.0))
       self.assertEqual(1.0, v.initialized_value().eval())
 
     v_def.ClearField("initial_value_name")
@@ -606,7 +606,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertProtoEquals(v_def, v.to_proto())
       # But attempts to use initialized_value will result in errors.
       with self.assertRaises(ValueError):
-        sess.run(v.initialized_value())
+        self.evaluate(v.initialized_value())
 
   def testTrainableInProto(self):
     with ops.Graph().as_default():

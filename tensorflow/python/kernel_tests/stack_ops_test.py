@@ -131,7 +131,7 @@ class StackOpTest(test.TestCase):
         pop1 = gen_data_flow_ops.stack_pop_v2(h1, dtypes.float32)
         pop2 = gen_data_flow_ops.stack_pop_v2(h2, dtypes.float32)
 
-      out1, out2 = sess.run([pop1, pop2])
+      out1, out2 = self.evaluate([pop1, pop2])
       self.assertAllClose(out1, 4.0)
       self.assertAllClose(out2, 5.0)
 
@@ -144,7 +144,7 @@ class StackOpTest(test.TestCase):
       h = gen_data_flow_ops.stack_v2(
           -1, elem_type=dtypes.float32, stack_name="foo")
       c1 = gen_data_flow_ops.stack_close_v2(h)
-      sess.run(c1)
+      self.evaluate(c1)
 
   def testCloseStack(self):
     self._testCloseStack(use_gpu=False)
@@ -157,7 +157,7 @@ class StackOpTest(test.TestCase):
       c = gen_data_flow_ops.stack_push_v2(h, [[4.0, 5.0]])
       with ops.control_dependencies([c]):
         c1 = gen_data_flow_ops.stack_close_v2(h)
-      sess.run(c1)
+      self.evaluate(c1)
 
   def testPushCloseStack(self):
     self._testPushCloseStack(use_gpu=False)
@@ -263,7 +263,7 @@ class StackOpRefTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu) as sess:
       h = gen_data_flow_ops._stack(dtypes.float32, stack_name="foo")
       c1 = gen_data_flow_ops.stack_close(h)
-      sess.run(c1)
+      self.evaluate(c1)
 
   def testCloseStack(self):
     self._testCloseStack(use_gpu=False)
@@ -275,7 +275,7 @@ class StackOpRefTest(test.TestCase):
       c = gen_data_flow_ops.stack_push(h, [[4.0, 5.0]])
       with ops.control_dependencies([c]):
         c1 = gen_data_flow_ops.stack_close(h)
-      sess.run(c1)
+      self.evaluate(c1)
 
   def testPushCloseStack(self):
     self._testPushCloseStack(use_gpu=False)

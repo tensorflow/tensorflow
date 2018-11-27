@@ -66,7 +66,7 @@ class SparseXentTest(test.TestCase):
     with self.cached_session(use_gpu=True) as sess:
       loss, backprop = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
           np_features, np_labels)
-      tf_loss, tf_backprop = sess.run([loss, backprop])
+      tf_loss, tf_backprop = self.evaluate([loss, backprop])
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
     self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
@@ -76,7 +76,7 @@ class SparseXentTest(test.TestCase):
         loss, backprop = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
             np.array([[1.], [-1.], [0.]]).astype(np.float32),
             np.array([0, 0, 0]).astype(label_dtype))
-        tf_loss, tf_backprop = sess.run([loss, backprop])
+        tf_loss, tf_backprop = self.evaluate([loss, backprop])
       self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
       self.assertAllClose([[0.0], [0.0], [0.0]], tf_backprop)
 
@@ -90,7 +90,7 @@ class SparseXentTest(test.TestCase):
         loss, backprop = (
             gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
                 features, labels))
-        tf_loss, tf_backprop = sess.run([loss, backprop])
+        tf_loss, tf_backprop = self.evaluate([loss, backprop])
         self.assertAllClose(
             [[np.nan] * 4, [0.25, 0.25, 0.25, -0.75],
              [-0.968, 0.087, 0.237, 0.6439], [np.nan] * 4],
@@ -104,7 +104,7 @@ class SparseXentTest(test.TestCase):
       loss, backprop = (
           gen_nn_ops.sparse_softmax_cross_entropy_with_logits(features, labels))
       with self.assertRaisesOpError("Received a label value of"):
-        sess.run([loss, backprop])
+        self.evaluate([loss, backprop])
 
   def testNpXent(self):
     # We create 2 batches of logits for testing.
@@ -226,7 +226,7 @@ class SparseXentTest(test.TestCase):
       loss = nn_ops.sparse_softmax_cross_entropy_with_logits(
           labels=labels, logits=features)
       backprop = loss.op.inputs[0].op.outputs[1]
-      tf_loss, tf_backprop = sess.run([loss, backprop])
+      tf_loss, tf_backprop = self.evaluate([loss, backprop])
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
     self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 

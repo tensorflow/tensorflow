@@ -147,7 +147,7 @@ class ReluTest(test.TestCase):
       # Repeat the experiment for 100 times. All tensor shapes and its tensor
       # values are randomly generated for each run.
       for _ in xrange(100):
-        dx_f32_v, dx_f16_v = sess.run([dx_f32, dx_f16])
+        dx_f32_v, dx_f16_v = self.evaluate([dx_f32, dx_f16])
         self.assertAllClose(dx_f32_v, dx_f16_v, atol=3e-4)
 
   def testGradientFloat64(self):

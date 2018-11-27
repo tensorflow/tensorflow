@@ -110,9 +110,9 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
       with self.cached_session() as sess:
         batches = []
         for _ in range(4):
-          batches.append(sess.run(batch))
+          batches.append(self.evaluate(batch))
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(batch)
+          self.evaluate(batch)
       batch_sizes_val = []
       lengths_val = []
       for batch in batches:
@@ -160,9 +160,9 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
     with self.cached_session() as sess:
       batches = []
       for _ in range(3):
-        batches.append(sess.run(batch))
+        batches.append(self.evaluate(batch))
       with self.assertRaisesOpError("bucket_boundaries"):
-        sess.run(batch)
+        self.evaluate(batch)
     batch_sizes_val = []
     lengths_val = []
     for batch in batches:
@@ -197,9 +197,9 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
     with self.cached_session() as sess:
       batches = []
       for _ in range(5):
-        batches.append(sess.run(batch))
+        batches.append(self.evaluate(batch))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(batch)
+        self.evaluate(batch)
 
     self.assertAllEqual(batches[0], [[1, 0],
                                      [1, 1]])
@@ -300,7 +300,7 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
       with self.cached_session() as sess:
         with self.assertRaises(errors.OutOfRangeError):
           while True:
-            output = sess.run(batch)
+            output = self.evaluate(batch)
             sprs_tensor = (tuple([tuple(idx) for idx in output.indices]),
                            tuple(output.values))
             all_sparse_tensors.add(sprs_tensor)

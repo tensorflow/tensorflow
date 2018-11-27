@@ -55,7 +55,7 @@ class RuntimeErrorsTest(test.TestCase):
     with self.assertRaises(errors.TfRuntimeError) as cm:
       with errors.improved_errors(zero_div_caller):
         with self.cached_session() as sess:
-          sess.run(ops)
+          self.evaluate(ops)
 
     for frame in cm.exception.custom_traceback:
       _, _, function_name, _ = frame
@@ -70,7 +70,7 @@ class RuntimeErrorsTest(test.TestCase):
     with self.assertRaises(errors.TfRuntimeError) as cm:
       with errors.improved_errors(zero_div_caller):
         with self.cached_session() as sess:
-          sess.run(ops)
+          self.evaluate(ops)
 
     all_function_names = set()
     for frame in cm.exception.custom_traceback:
@@ -87,7 +87,7 @@ class RuntimeErrorsTest(test.TestCase):
     with self.assertRaises(tf_errors.InvalidArgumentError):
       with errors.improved_errors(zero_div_caller):
         with self.cached_session() as sess:
-          sess.run(ops)
+          self.evaluate(ops)
 
   def test_improved_errors_validation(self):
     with self.assertRaisesRegexp(

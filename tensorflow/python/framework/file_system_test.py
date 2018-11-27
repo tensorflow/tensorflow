@@ -42,7 +42,7 @@ class FileSystemTest(test.TestCase):
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       queue.enqueue_many([["test://foo"]]).run()
       queue.close().run()
-      key, value = sess.run(reader.read(queue))
+      key, value = self.evaluate(reader.read(queue))
     self.assertEqual(key, compat.as_bytes("test://foo"))
     self.assertEqual(value, compat.as_bytes("AAAAAAAAAA"))
 

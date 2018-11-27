@@ -1027,7 +1027,7 @@ class CrossedColumnTest(test.TestCase):
     outputs = _transform_features(features, [price_cross_wire])
     output = outputs[price_cross_wire]
     with self.cached_session() as sess:
-      output_val = sess.run(output)
+      output_val = self.evaluate(output)
       self.assertAllEqual(
           [[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [1, 3]], output_val.indices)
       for val in output_val.values:
@@ -1886,7 +1886,8 @@ class LinearModelTest(test.TestCase):
       sess.run(body_style_var.assign([[-10.], [-100.], [-1000.]]))
       sess.run(bias.assign([5.]))
 
-      self.assertAllClose([[10 - 1000 + 5.], [1000 - 10 + 5.]], sess.run(net))
+      self.assertAllClose([[10 - 1000 + 5.], [1000 - 10 + 5.]],
+                          self.evaluate(net))
 
   def test_with_1d_unknown_shape_sparse_tensor(self):
     price = fc._numeric_column('price')
@@ -2525,7 +2526,8 @@ class _LinearModelTest(test.TestCase):
       sess.run(body_style_var.assign([[-10.], [-100.], [-1000.]]))
       sess.run(bias.assign([5.]))
 
-      self.assertAllClose([[10 - 1000 + 5.], [1000 - 10 + 5.]], sess.run(net))
+      self.assertAllClose([[10 - 1000 + 5.], [1000 - 10 + 5.]],
+                          self.evaluate(net))
 
   def test_with_1d_unknown_shape_sparse_tensor(self):
     price = fc._numeric_column('price')

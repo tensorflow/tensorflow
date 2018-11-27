@@ -117,7 +117,7 @@ class PartialRunTest(test_util.TensorFlowTestCase):
     a = constant_op.constant(2.0, dtypes.float32)
     b = a * 2
     c = b * 3
-    r1 = sess.run([b, c])
+    r1 = self.evaluate([b, c])
     h = sess.partial_run_setup([b, c], [])
     r2 = sess.partial_run(h, [b, c])
     self.assertEqual(r1, r2)

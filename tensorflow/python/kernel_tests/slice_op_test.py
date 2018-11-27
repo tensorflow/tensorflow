@@ -207,7 +207,7 @@ class SliceTest(test.TestCase):
           dtype=dtypes.float32)
       slice_t = array_ops.slice(a, [0, 0], [2, 2])
       slice2_t = a[:2, :2]
-      slice_val, slice2_val = sess.run([slice_t, slice2_t])
+      slice_val, slice2_val = self.evaluate([slice_t, slice2_t])
     self.assertAllEqual(slice_val, inp[:2, :2])
     self.assertAllEqual(slice2_val, inp[:2, :2])
     self.assertEqual(slice_val.shape, slice_t.get_shape())
@@ -247,7 +247,7 @@ class SliceTest(test.TestCase):
                    + sizes[3], indices[4]:indices[4] + sizes[4], indices[5]:
                    indices[5] + sizes[5]]
 
-      slice_val, slice2_val = sess.run([slice_t, slice2_t])
+      slice_val, slice2_val = self.evaluate([slice_t, slice2_t])
 
     expected_val = inp[indices[0]:indices[0] + sizes[0], indices[1]:indices[
         1] + sizes[1], indices[2]:indices[2] + sizes[2], indices[3]:indices[
@@ -313,7 +313,7 @@ class SliceTest(test.TestCase):
       g1 = gradients_impl.gradients(loss1, x)[0]
       g2 = gradients_impl.gradients(loss2, x)[0]
 
-      g1_val, g2_val = sess.run([g1, g2])
+      g1_val, g2_val = self.evaluate([g1, g2])
     self.assertAllEqual(g1_val, g2_val)
 
   def testGradientsAll(self):

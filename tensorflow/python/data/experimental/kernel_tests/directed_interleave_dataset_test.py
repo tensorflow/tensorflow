@@ -40,12 +40,12 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for _ in range(100):
         for i in range(10):
-          self.assertEqual(i, sess.run(next_element))
+          self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def _normalize(self, vec):
     return vec / vec.sum()
@@ -71,9 +71,9 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
     with self.cached_session() as sess:
       freqs = np.zeros([num_datasets])
       for _ in range(num_samples):
-        freqs[sess.run(next_element)] += 1
+        freqs[self.evaluate(next_element)] += 1
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
     return freqs
 
@@ -107,9 +107,9 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       for i in choice_array:
-        self.assertEqual(words[i], sess.run(next_element))
+        self.assertEqual(words[i], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testErrors(self):
     with self.assertRaisesRegexp(ValueError,

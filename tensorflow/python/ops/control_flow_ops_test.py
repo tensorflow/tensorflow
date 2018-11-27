@@ -209,9 +209,9 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       optimizer = momentum.MomentumOptimizer(0.1, 0.9)
       train_op = optimizer.minimize(cost)
       with self.cached_session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
-          sess.run([train_op])
+          self.evaluate([train_op])
 
   def testResourceReadInLoop(self):
     with ops.Graph().as_default():
@@ -232,7 +232,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
           cond, body, [constant_op.constant(0),
                        constant_op.constant(0.0)])
       with self.cached_session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         self.assertAllEqual(10.0, self.evaluate(cost))
 
   def doTestIndexedSlicesGradientInCondInWhileLoop(self, use_resource=False):
@@ -269,8 +269,8 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
                                           static_grads.indices)
 
       with self.cached_session() as sess:
-        sess.run(variables.global_variables_initializer())
-        self.assertAllEqual(*sess.run([static_grads, dynamic_grads]))
+        self.evaluate(variables.global_variables_initializer())
+        self.assertAllEqual(*self.evaluate([static_grads, dynamic_grads]))
 
   def testIndexedSlicesGradientInCondInWhileLoop(self):
     self.doTestIndexedSlicesGradientInCondInWhileLoop(use_resource=False)
@@ -398,9 +398,9 @@ class CondTest(test_util.TensorFlowTestCase):
             pred=bool_var,
             true_fn=lambda: state_ops.assign(bool_var, False),
             false_fn=lambda: True)
-        sess.run(bool_var.initializer)
-        self.assertEquals(sess.run(cond_on_bool_var), False)
-        self.assertEquals(sess.run(cond_on_bool_var), True)
+        self.evaluate(bool_var.initializer)
+        self.assertEquals(self.evaluate(cond_on_bool_var), False)
+        self.assertEquals(self.evaluate(cond_on_bool_var), True)
 
   def testCondMissingArg1(self):
     with ops.Graph().as_default():

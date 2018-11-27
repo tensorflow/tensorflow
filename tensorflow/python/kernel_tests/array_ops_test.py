@@ -833,7 +833,7 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
       index = constant_op.constant(1, dtype=dtypes.int64)
       b = 2. * a[index]
       grad, = gradients_impl.gradients(b, a)
-      self.assertAllEqual(sess.run(grad), [0., 2., 0.])
+      self.assertAllEqual(self.evaluate(grad), [0., 2., 0.])
 
 
 class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
@@ -846,7 +846,7 @@ class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
               math_ops.cast(math_ops.range(1, 5, 1), dtypes.float32),
               shape=(4, 1, 1)))
       varshape = variables.Variable([6, 4, 4], dtype=dtypes.int32)
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       begin = constant_op.constant([0, 0, 0])
       end = constant_op.constant([4, 1, 1])
       strides = constant_op.constant([1, 1, 1])
@@ -859,7 +859,7 @@ class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
           math_ops.cast(math_ops.range(1, 5, 1), dtypes.float32),
           shape=(4, 1, 1))
       original_shape = constant_op.constant([6, 4, 4], dtype=dtypes.int64)
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       begin = constant_op.constant([0, 0, 0], dtype=dtypes.int64)
       end = constant_op.constant([4, 1, 1], dtype=dtypes.int64)
       strides = constant_op.constant([1, 1, 1], dtype=dtypes.int64)
@@ -873,7 +873,7 @@ class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
           math_ops.cast(math_ops.range(1, 5, 1), dtypes.float32),
           shape=(4, 1, 1))
       original_shape = constant_op.constant([6, 4, 4], dtype=dtypes.int64)
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       begin = constant_op.constant([0, 0, 0], dtype=dtypes.int32)
       end = constant_op.constant([4, 1, 1], dtype=dtypes.int64)
       strides = constant_op.constant([1, 1, 1], dtype=dtypes.int64)
@@ -1042,7 +1042,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
     too_large_val = constant_op.constant([3, 4], dtype=dtypes.int64)
     v = resource_variable_ops.ResourceVariable(init_val)
     with self.cached_session() as sess:
-      sess.run(v.initializer)
+      self.evaluate(v.initializer)
       with self.assertRaises(ValueError):
         sess.run(v[:].assign(too_large_val))
       with self.assertRaises(ValueError):
@@ -1269,7 +1269,7 @@ class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
             initializer=init_ops.constant_initializer(10.0),
             use_resource=use_resource)
         guarantee_a = array_ops.guarantee_const(a)
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         self.assertEqual(10.0, guarantee_a.eval())
 
   def testResourceRejection(self):
@@ -1279,7 +1279,7 @@ class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
           initializer=init_ops.constant_initializer(10.0),
           use_resource=True)
       guarantee_a = array_ops.guarantee_const(a.handle)
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                                "cannot be a resource variable"):
         guarantee_a.eval()

@@ -55,11 +55,11 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       thread_ids = []
       try:
         while True:
-          thread_ids.append(sess.run(next_element))
+          thread_ids.append(self.evaluate(next_element))
       except errors.OutOfRangeError:
         pass
       self.assertLen(thread_ids, len(set(thread_ids)))

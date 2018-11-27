@@ -88,7 +88,7 @@ class SparseTensorsMapTest(test.TestCase):
       sp_out = take_many_sparse_from_tensors_map(
           sparse_map_op=handle0.op, sparse_handles=handles_concat)
 
-      combined_indices, combined_values, combined_shape = sess.run(sp_out)
+      combined_indices, combined_values, combined_shape = self.evaluate(sp_out)
 
       self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
       self.assertAllEqual(combined_indices[:6, 1:], sp_input0[0])
@@ -114,7 +114,8 @@ class SparseTensorsMapTest(test.TestCase):
       sp_roundtrip = take_many_sparse_from_tensors_map(
           sparse_map_op=handle.op, sparse_handles=sparse_handles)
 
-      combined_indices, combined_values, combined_shape = sess.run(sp_roundtrip)
+      combined_indices, combined_values, combined_shape = self.evaluate(
+          sp_roundtrip)
 
       self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
       self.assertAllEqual(combined_indices[:6, 1:], input0_val[0])
@@ -165,19 +166,19 @@ class SparseTensorsMapTest(test.TestCase):
       with self.assertRaisesOpError(
           r"Inconsistent rank across SparseTensors: rank prior to "
           r"SparseTensor\[1\] was: 3 but rank of SparseTensor\[1\] is: 4"):
-        sess.run(sp_roundtrip)
+        self.evaluate(sp_roundtrip)
 
   def testTakeManyFailsWrongInputOp(self):
     with self.session(use_gpu=False) as sess:
       input_val = self._SparseTensorValue_5x6(np.arange(6))
       handle = add_sparse_to_tensors_map(input_val)
-      handle_value = sess.run(handle)
+      handle_value = self.evaluate(handle)
       bad_handle = handle_value + 10
       sp_roundtrip = take_many_sparse_from_tensors_map(
           sparse_map_op=handle.op, sparse_handles=[handle_value, bad_handle])
 
       with self.assertRaisesOpError(r"Unable to find SparseTensor: 10"):
-        sess.run(sp_roundtrip)
+        self.evaluate(sp_roundtrip)
 
 
 class BenchmarkSparseTensorsMapVsSerialization(test.Benchmark):
@@ -212,8 +213,8 @@ class BenchmarkSparseTensorsMapVsSerialization(test.Benchmark):
 
         variables.global_variables_initializer().run()
 
-        st_roundtrip_values = sess.run(st_roundtrip)
-        st_deserialized_values = sess.run(st_deserialized)
+        st_roundtrip_values = self.evaluate(st_roundtrip)
+        st_deserialized_values = self.evaluate(st_deserialized)
         np.testing.assert_equal(st_roundtrip_values.values,
                                 st_deserialized_values.values)
         np.testing.assert_equal(st_roundtrip_values.indices,

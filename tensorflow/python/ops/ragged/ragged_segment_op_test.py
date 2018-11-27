@@ -119,7 +119,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
 
     segmented = segment_op(rt, segment_ids, num_segments)
     with self.test_session():
-      self.assertListEqual(segmented.eval().tolist(), expected)
+      self.assertListEqual(self.evaluate(segmented).tolist(), expected)
 
   @parameterized.parameters(
       (ragged.segment_sum, sum, [0, 0, 1, 1, 2, 2]),
@@ -173,7 +173,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
                  [[411, 412], [321, 322], [331]]    # row 2
                 ]  # pyformat: disable
     with self.test_session():
-      self.assertEqual(segmented1.eval().tolist(), expected1)
+      self.assertEqual(self.evaluate(segmented1).tolist(), expected1)
 
     segment_ids2 = [1, 2, 1, 1]
     segmented2 = ragged.segment_sum(rt, segment_ids2, 3)
@@ -181,7 +181,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
                  [[111+411, 112+412, 113, 114], [121+321, 322], [331]],
                  []]  # pyformat: disable
     with self.test_session():
-      self.assertEqual(segmented2.eval().tolist(), expected2)
+      self.assertEqual(self.evaluate(segmented2).tolist(), expected2)
 
   def testRaggedSegmentIds(self):
     rt = ragged.constant([
@@ -196,7 +196,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
                 [111+321, 112+322, 113, 114],
                 [121+331+411, 412]]  # pyformat: disable
     with self.test_session():
-      self.assertEqual(segmented.eval().tolist(), expected)
+      self.assertEqual(self.evaluate(segmented).tolist(), expected)
 
   def testShapeMismatchError1(self):
     dt = constant_op.constant([1, 2, 3, 4, 5, 6])

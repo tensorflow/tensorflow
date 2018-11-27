@@ -35,7 +35,7 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s + i,),
         init_state=(0,))
     with self.cached_session() as sess:
-      self.assertEqual((10,), sess.run(s))
+      self.assertEqual((10,), self.evaluate(s))
 
   def test_python(self):
     s = control_flow.for_stmt(
@@ -53,7 +53,7 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s + i,),
         init_state=(0,))
     with self.cached_session() as sess:
-      self.assertEqual((10,), sess.run(s))
+      self.assertEqual((10,), self.evaluate(s))
 
 
 class WhileLoopTest(test.TestCase):
@@ -66,7 +66,7 @@ class WhileLoopTest(test.TestCase):
         init_state=(0, 0),
         extra_deps=(n,))
     with self.cached_session() as sess:
-      self.assertEqual((5, 10), sess.run(results))
+      self.assertEqual((5, 10), self.evaluate(results))
 
   def test_python(self):
     n = 5
@@ -90,9 +90,9 @@ class IfStmtTest(test.TestCase):
   def test_tensor(self):
     with self.cached_session() as sess:
       t = self.single_return_if_stmt(constant_op.constant(True))
-      self.assertEqual(1, sess.run(t))
+      self.assertEqual(1, self.evaluate(t))
       t = self.single_return_if_stmt(constant_op.constant(False))
-      self.assertEqual(-1, sess.run(t))
+      self.assertEqual(-1, self.evaluate(t))
 
   def test_python(self):
     self.assertEqual(1, self.single_return_if_stmt(True))
@@ -101,9 +101,9 @@ class IfStmtTest(test.TestCase):
   def test_tensor_multiple_returns(self):
     with self.cached_session() as sess:
       t = self.multi_return_if_stmt(constant_op.constant(True))
-      self.assertAllEqual([1, 2], sess.run(t))
+      self.assertAllEqual([1, 2], self.evaluate(t))
       t = self.multi_return_if_stmt(constant_op.constant(False))
-      self.assertAllEqual([-1, -2], sess.run(t))
+      self.assertAllEqual([-1, -2], self.evaluate(t))
 
   def test_python_multiple_returns(self):
     self.assertEqual((1, 2), self.multi_return_if_stmt(True))

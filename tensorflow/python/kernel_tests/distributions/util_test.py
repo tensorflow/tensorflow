@@ -805,7 +805,7 @@ class ReduceWeightedLogSumExp(test.TestCase):
       w = constant_op.constant(w_)
       actual, actual_sgn = du.reduce_weighted_logsumexp(
           logx, w, axis=-1, return_sign=True)
-      [actual_, actual_sgn_] = sess.run([actual, actual_sgn])
+      [actual_, actual_sgn_] = self.evaluate([actual, actual_sgn])
     self.assertAllEqual(expected, actual_)
     self.assertAllEqual([-1., -1, 1], actual_sgn_)
 
@@ -823,7 +823,7 @@ class ReduceWeightedLogSumExp(test.TestCase):
       w = constant_op.constant(w_)
       actual, actual_sgn = du.reduce_weighted_logsumexp(
           logx, w, axis=-1, return_sign=True, keep_dims=True)
-      [actual_, actual_sgn_] = sess.run([actual, actual_sgn])
+      [actual_, actual_sgn_] = self.evaluate([actual, actual_sgn])
     self.assertAllEqual(expected, actual_)
     self.assertAllEqual([[-1.], [-1], [1]], actual_sgn_)
 

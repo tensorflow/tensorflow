@@ -70,7 +70,8 @@ class RGBToHSVTest(test_util.TensorFlowTestCase):
         split2 = list(map(image_ops.hsv_to_rgb, split1))
         join1 = array_ops.stack(split1)
         join2 = array_ops.stack(split2)
-        batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2])
+        batch1, batch2, join1, join2 = self.evaluate(
+            [batch1, batch2, join1, join2])
 
       # Verify that processing batch elements together is the same as separate
       self.assertAllClose(batch1, join1)
@@ -109,7 +110,8 @@ class RGBToYIQTest(test_util.TensorFlowTestCase):
         split2 = list(map(image_ops.yiq_to_rgb, split1))
         join1 = array_ops.stack(split1)
         join2 = array_ops.stack(split2)
-        batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2])
+        batch1, batch2, join1, join2 = self.evaluate(
+            [batch1, batch2, join1, join2])
 
       # Verify that processing batch elements together is the same as separate
       self.assertAllClose(batch1, join1, rtol=1e-4, atol=1e-4)
@@ -138,7 +140,8 @@ class RGBToYUVTest(test_util.TensorFlowTestCase):
         split2 = list(map(image_ops.yuv_to_rgb, split1))
         join1 = array_ops.stack(split1)
         join2 = array_ops.stack(split2)
-        batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2])
+        batch1, batch2, join1, join2 = self.evaluate(
+            [batch1, batch2, join1, join2])
 
       # Verify that processing batch elements together is the same as separate
       self.assertAllClose(batch1, join1, rtol=1e-4, atol=1e-4)
@@ -488,11 +491,11 @@ class FlipImageBenchmark(test.Benchmark):
             trainable=False,
             dtype=dtypes.float32)
         run_op = image_ops.flip_left_right(inputs)
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for i in xrange(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
-          sess.run(run_op)
+          self.evaluate(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -518,11 +521,11 @@ class FlipImageBenchmark(test.Benchmark):
             trainable=False,
             dtype=dtypes.float32)
         run_op = image_ops.random_flip_left_right(inputs)
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for i in xrange(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
-          sess.run(run_op)
+          self.evaluate(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -548,11 +551,11 @@ class FlipImageBenchmark(test.Benchmark):
             trainable=False,
             dtype=dtypes.float32)
         run_op = image_ops.random_flip_left_right(inputs)
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for i in xrange(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
-          sess.run(run_op)
+          self.evaluate(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -610,11 +613,11 @@ class AdjustHueBenchmark(test.Benchmark):
       delta = constant_op.constant(0.1, dtype=dtypes.float32)
       outputs = image_ops.adjust_hue(inputs, delta)
       run_op = control_flow_ops.group(outputs)
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       for i in xrange(warmup_rounds + benchmark_rounds):
         if i == warmup_rounds:
           start = time.time()
-        sess.run(run_op)
+        self.evaluate(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -653,12 +656,12 @@ class AdjustSaturationBenchmark(test.Benchmark):
       delta = constant_op.constant(0.1, dtype=dtypes.float32)
       outputs = image_ops.adjust_saturation(inputs, delta)
       run_op = control_flow_ops.group(outputs)
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       for _ in xrange(warmup_rounds):
-        sess.run(run_op)
+        self.evaluate(run_op)
       start = time.time()
       for _ in xrange(benchmark_rounds):
-        sess.run(run_op)
+        self.evaluate(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -698,7 +701,7 @@ class ResizeBilinearBenchmark(test.Benchmark):
       benchmark_op = control_flow_ops.group(*deps)
 
     with self.benchmark_session() as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       results = self.run_op_benchmark(
           sess,
           benchmark_op,
@@ -746,7 +749,7 @@ class ResizeBicubicBenchmark(test.Benchmark):
       benchmark_op = control_flow_ops.group(*deps)
 
     with self.benchmark_session() as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       results = self.run_op_benchmark(
           sess,
           benchmark_op,
@@ -803,7 +806,7 @@ class ResizeAreaBenchmark(test.Benchmark):
       benchmark_op = control_flow_ops.group(*deps)
 
     with self.benchmark_session() as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       results = self.run_op_benchmark(
           sess,
           benchmark_op,
@@ -2265,7 +2268,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
           image = constant_op.constant(img_np, shape=img_shape)
           y = image_ops.resize_images(image, [target_height, target_width], opt)
           yshape = array_ops.shape(y)
-          resized, newshape = sess.run([y, yshape])
+          resized, newshape = self.evaluate([y, yshape])
           self.assertAllEqual(img_shape, newshape)
           self.assertAllClose(resized, img_np, atol=1e-5)
 
@@ -2379,7 +2382,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
         image = constant_op.constant(img_np, shape=img_shape)
         y = image_ops.resize_images(image, [height, width], opt)
         yshape = array_ops.shape(y)
-        resized, newshape = sess.run([y, yshape])
+        resized, newshape = self.evaluate([y, yshape])
         self.assertAllEqual(img_shape, newshape)
         self.assertAllClose(resized, img_np, atol=1e-5)
 
@@ -3066,7 +3069,7 @@ class JpegTest(test_util.TensorFlowTestCase):
       jpeg0 = io_ops.read_file(path)
       image0 = image_ops.decode_jpeg(jpeg0)
       image1 = image_ops.decode_jpeg(image_ops.encode_jpeg(image0))
-      jpeg0, image0, image1 = sess.run([jpeg0, image0, image1])
+      jpeg0, image0, image1 = self.evaluate([jpeg0, image0, image1])
       self.assertEqual(len(jpeg0), 3771)
       self.assertEqual(image0.shape, (256, 128, 3))
       self.assertLess(self.averageError(image0, image1), 1.4)
@@ -3083,7 +3086,7 @@ class JpegTest(test_util.TensorFlowTestCase):
             io_ops.read_file(rgb_path), channels=channels)
         cmyk = image_ops.decode_jpeg(
             io_ops.read_file(cmyk_path), channels=channels)
-        rgb, cmyk = sess.run([rgb, cmyk])
+        rgb, cmyk = self.evaluate([rgb, cmyk])
         self.assertEqual(rgb.shape, shape)
         self.assertEqual(cmyk.shape, shape)
         error = self.averageError(rgb, cmyk)
@@ -3112,7 +3115,7 @@ class JpegTest(test_util.TensorFlowTestCase):
                             image2.get_shape().as_list())
 
         # CropAndDecode should be equal to DecodeJpeg+Crop.
-        image1_crop, image2 = sess.run([image1_crop, image2])
+        image1_crop, image2 = self.evaluate([image1_crop, image2])
         self.assertAllEqual(image1_crop, image2)
 
   def testCropAndDecodeJpegWithInvalidCropWindow(self):
@@ -3131,7 +3134,7 @@ class JpegTest(test_util.TensorFlowTestCase):
         with self.assertRaisesWithPredicateMatch(
             errors.InvalidArgumentError,
             lambda e: "Invalid JPEG data or crop window" in str(e)):
-          sess.run(result)
+          self.evaluate(result)
 
   def testSynthetic(self):
     with self.test_session(use_gpu=True) as sess:
@@ -3141,7 +3144,8 @@ class JpegTest(test_util.TensorFlowTestCase):
       image1 = image_ops.decode_jpeg(jpeg0, dct_method="INTEGER_ACCURATE")
       image2 = image_ops.decode_jpeg(
           image_ops.encode_jpeg(image1), dct_method="INTEGER_ACCURATE")
-      jpeg0, image0, image1, image2 = sess.run([jpeg0, image0, image1, image2])
+      jpeg0, image0, image1, image2 = self.evaluate(
+          [jpeg0, image0, image1, image2])
 
       # The decoded-encoded image should be similar to the input
       self.assertLess(self.averageError(image0, image1), 0.6)
@@ -3161,7 +3165,8 @@ class JpegTest(test_util.TensorFlowTestCase):
       image1 = image_ops.decode_jpeg(jpeg0, dct_method="INTEGER_FAST")
       image2 = image_ops.decode_jpeg(
           image_ops.encode_jpeg(image1), dct_method="INTEGER_FAST")
-      jpeg0, image0, image1, image2 = sess.run([jpeg0, image0, image1, image2])
+      jpeg0, image0, image1, image2 = self.evaluate(
+          [jpeg0, image0, image1, image2])
 
       # The decoded-encoded image should be similar to the input, but
       # note this is worse than the slower algorithm because it is
@@ -3184,7 +3189,7 @@ class JpegTest(test_util.TensorFlowTestCase):
       jpeg0 = image_ops.encode_jpeg(image0)
       image1 = image_ops.decode_jpeg(jpeg0, dct_method="INTEGER_FAST")
       image2 = image_ops.decode_jpeg(jpeg0)
-      image1, image2 = sess.run([image1, image2])
+      image1, image2 = self.evaluate([image1, image2])
 
       # The images should be the same.
       self.assertAllClose(image1, image2)
@@ -3230,7 +3235,7 @@ class PngTest(test_util.TensorFlowTestCase):
         with self.test_session(use_gpu=True) as sess:
           png0 = io_ops.read_file(prefix + filename)
           image0 = image_ops.decode_png(png0, channels=channels)
-          png0, image0 = sess.run([png0, image0])
+          png0, image0 = self.evaluate([png0, image0])
           self.assertEqual(image0.shape, (26, 51, channels or channels_in))
           if channels == channels_in:
             image1 = image_ops.decode_png(image_ops.encode_png(image0))
@@ -3242,7 +3247,7 @@ class PngTest(test_util.TensorFlowTestCase):
       image0 = constant_op.constant(_SimpleColorRamp())
       png0 = image_ops.encode_png(image0, compression=7)
       image1 = image_ops.decode_png(png0)
-      png0, image0, image1 = sess.run([png0, image0, image1])
+      png0, image0, image1 = self.evaluate([png0, image0, image1])
 
       # PNG is lossless
       self.assertAllEqual(image0, image1)
@@ -3257,7 +3262,7 @@ class PngTest(test_util.TensorFlowTestCase):
       image0 = constant_op.constant(_SimpleColorRamp(), dtype=dtypes.uint16)
       png0 = image_ops.encode_png(image0, compression=7)
       image1 = image_ops.decode_png(png0, dtype=dtypes.uint16)
-      png0, image0, image1 = sess.run([png0, image0, image1])
+      png0, image0, image1 = self.evaluate([png0, image0, image1])
 
       # PNG is lossless
       self.assertAllEqual(image0, image1)
@@ -3273,7 +3278,7 @@ class PngTest(test_util.TensorFlowTestCase):
       image0 = constant_op.constant(gray_alpha)
       png0 = image_ops.encode_png(image0, compression=7)
       image1 = image_ops.decode_png(png0)
-      png0, image0, image1 = sess.run([png0, image0, image1])
+      png0, image0, image1 = self.evaluate([png0, image0, image1])
       self.assertEqual(2, image0.shape[-1])
       self.assertAllEqual(image0, image1)
 
@@ -3284,7 +3289,7 @@ class PngTest(test_util.TensorFlowTestCase):
       image0 = constant_op.constant(gray_alpha, dtype=dtypes.uint16)
       png0 = image_ops.encode_png(image0, compression=7)
       image1 = image_ops.decode_png(png0, dtype=dtypes.uint16)
-      png0, image0, image1 = sess.run([png0, image0, image1])
+      png0, image0, image1 = self.evaluate([png0, image0, image1])
       self.assertEqual(2, image0.shape[-1])
       self.assertAllEqual(image0, image1)
 
@@ -3310,7 +3315,7 @@ class GifTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True) as sess:
       gif0 = io_ops.read_file(prefix + filename)
       image0 = image_ops.decode_gif(gif0)
-      gif0, image0 = sess.run([gif0, image0])
+      gif0, image0 = self.evaluate([gif0, image0])
 
       self.assertEqual(image0.shape, shape)
 
@@ -3829,7 +3834,7 @@ class PSNRTest(test_util.TensorFlowTestCase):
         "tensorflow/core/lib/psnr/testdata", filename))
     im = image_ops.decode_jpeg(content, dct_method="INTEGER_ACCURATE")
     im = image_ops.convert_image_dtype(im, dtypes.float32)
-    im, = sess.run([im])
+    im, = self.evaluate([im])
     return np.expand_dims(im, axis=0)
 
   def _LoadTestImages(self):
@@ -3936,7 +3941,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
         "tensorflow/core/lib/ssim/testdata", filename))
     im = image_ops.decode_png(content)
     im = image_ops.convert_image_dtype(im, dtypes.float32)
-    im, = sess.run([im])
+    im, = self.evaluate([im])
     return np.expand_dims(im, axis=0)
 
   def _LoadTestImages(self):
@@ -4028,7 +4033,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
         "tensorflow/core/lib/ssim/testdata", filename))
     im = image_ops.decode_png(content)
     im = image_ops.convert_image_dtype(im, dtypes.float32)
-    im, = sess.run([im])
+    im, = self.evaluate([im])
     return np.expand_dims(im, axis=0)
 
   def _LoadTestImages(self):
@@ -4110,7 +4115,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
       images = [ops.convert_to_tensor(x, dtype=dtypes.float32) for x in images]
       msssim_ops = [image_ops.ssim_multiscale(x, y, 1.0)
                     for x, y in itertools.combinations(images, 2)]
-      msssim = sess.run(msssim_ops)
+      msssim = self.evaluate(msssim_ops)
       msssim = np.squeeze(msssim)
 
     self.assertTrue(np.all(msssim >= 0.0))
@@ -4223,7 +4228,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       image0 = image_ops.decode_image(jpeg0, dtype=dtypes.uint16)
       image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
                                              dtypes.uint16)
-      image0, image1 = sess.run([image0, image1])
+      image0, image1 = self.evaluate([image0, image1])
       self.assertAllEqual(image0, image1)
 
   def testPngUint16(self):
@@ -4233,7 +4238,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       image0 = image_ops.decode_image(png0, dtype=dtypes.uint16)
       image1 = image_ops.convert_image_dtype(
           image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.uint16)
-      image0, image1 = sess.run([image0, image1])
+      image0, image1 = self.evaluate([image0, image1])
       self.assertAllEqual(image0, image1)
 
   def testGifUint16(self):
@@ -4243,7 +4248,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       image0 = image_ops.decode_image(gif0, dtype=dtypes.uint16)
       image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
                                              dtypes.uint16)
-      image0, image1 = sess.run([image0, image1])
+      image0, image1 = self.evaluate([image0, image1])
       self.assertAllEqual(image0, image1)
 
   def testBmpUint16(self):
@@ -4253,7 +4258,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       image0 = image_ops.decode_image(bmp0, dtype=dtypes.uint16)
       image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
                                              dtypes.uint16)
-      image0, image1 = sess.run([image0, image1])
+      image0, image1 = self.evaluate([image0, image1])
       self.assertAllEqual(image0, image1)
 
   def testJpegFloat32(self):
@@ -4263,7 +4268,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       image0 = image_ops.decode_image(jpeg0, dtype=dtypes.float32)
       image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
                                              dtypes.float32)
-      image0, image1 = sess.run([image0, image1])
+      image0, image1 = self.evaluate([image0, image1])
       self.assertAllEqual(image0, image1)
 
   def testPngFloat32(self):
@@ -4273,7 +4278,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       image0 = image_ops.decode_image(png0, dtype=dtypes.float32)
       image1 = image_ops.convert_image_dtype(
           image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.float32)
-      image0, image1 = sess.run([image0, image1])
+      image0, image1 = self.evaluate([image0, image1])
       self.assertAllEqual(image0, image1)
 
   def testGifFloat32(self):
@@ -4283,7 +4288,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       image0 = image_ops.decode_image(gif0, dtype=dtypes.float32)
       image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
                                              dtypes.float32)
-      image0, image1 = sess.run([image0, image1])
+      image0, image1 = self.evaluate([image0, image1])
       self.assertAllEqual(image0, image1)
 
   def testBmpFloat32(self):
@@ -4293,7 +4298,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       image0 = image_ops.decode_image(bmp0, dtype=dtypes.float32)
       image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
                                              dtypes.float32)
-      image0, image1 = sess.run([image0, image1])
+      image0, image1 = self.evaluate([image0, image1])
       self.assertAllEqual(image0, image1)
 
 

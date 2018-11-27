@@ -185,7 +185,7 @@ class SumReductionTest(BaseReductionTest):
     for dtype in [dtypes.int64, dtypes.int32]:
       with self.cached_session(use_gpu=True) as sess:
         v = math_ops.reduce_sum([0, 0], constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
   def testInfinity(self):
@@ -216,7 +216,7 @@ class SumReductionTest(BaseReductionTest):
       tf_arr = variables.Variable(arr)
       variables.global_variables_initializer().run()
       tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
-      tf_out_mean = sess.run(tf_mean)
+      tf_out_mean = self.evaluate(tf_mean)
     self.assertAllClose(tf_out_mean, 1.)
 
   def testFloat32(self):
@@ -238,7 +238,7 @@ class SumReductionTest(BaseReductionTest):
       with self.session(graph=ops.Graph(), use_gpu=True) as sess:
         tf_row_sum = self._tf_reduce(arr, 1, False)
         tf_col_sum = self._tf_reduce(arr, 0, False)
-        tf_out_row, tf_out_col = sess.run([tf_row_sum, tf_col_sum])
+        tf_out_row, tf_out_col = self.evaluate([tf_row_sum, tf_col_sum])
       self.assertAllClose(col_sum, tf_out_col)
       self.assertAllClose(row_sum, tf_out_row)
 
@@ -252,7 +252,7 @@ class SumReductionTest(BaseReductionTest):
           with self.session(graph=ops.Graph(), use_gpu=True) as sess:
             tf_sum_xz = self._tf_reduce(arr, [0, 2], False)
             tf_sum_y = self._tf_reduce(arr, 1, False)
-            tf_out_sum_xz, tf_out_sum_y = sess.run([tf_sum_xz, tf_sum_y])
+            tf_out_sum_xz, tf_out_sum_y = self.evaluate([tf_sum_xz, tf_sum_y])
           self.assertAllClose(sum_y, tf_out_sum_y)
           self.assertAllClose(sum_xz, tf_out_sum_xz)
 
@@ -400,7 +400,7 @@ class MeanReductionTest(BaseReductionTest):
     for dtype in [dtypes.int64, dtypes.int32]:
       with self.cached_session(use_gpu=True) as sess:
         v = math_ops.reduce_mean([0, 0], constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
   def testInfinity(self):
@@ -473,7 +473,7 @@ class ProdReductionTest(BaseReductionTest):
     for dtype in [dtypes.int64, dtypes.int32]:
       with self.cached_session(use_gpu=True) as sess:
         v = math_ops.reduce_prod([0, 0], constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
   def testInfinity(self):
@@ -576,7 +576,7 @@ class MinReductionTest(test.TestCase):
     for dtype in [dtypes.int64, dtypes.int32]:
       with self.cached_session(use_gpu=True) as sess:
         v = math_ops.reduce_min([0, 0], constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
   def testInfinity(self):
@@ -689,7 +689,7 @@ class MaxReductionTest(test.TestCase):
     for dtype in [dtypes.int64, dtypes.int32]:
       with self.cached_session(use_gpu=True) as sess:
         v = math_ops.reduce_max([0, 0], constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
   def testInfinity(self):
@@ -817,7 +817,7 @@ class AllReductionTest(test.TestCase):
       with self.session(use_gpu=True) as sess:
         v = math_ops.reduce_all([True, True],
                                 constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, True)
 
   def testAll3D(self):
@@ -866,7 +866,7 @@ class AnyReductionTest(test.TestCase):
       with self.session(use_gpu=True) as sess:
         v = math_ops.reduce_any([True, True],
                                 constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, True)
 
   def testAll3D(self):
@@ -962,7 +962,7 @@ class CountNonzeroReductionTest(test.TestCase):
     # Test case for GitHub issue 18712
     with self.cached_session() as sess:
       v = math_ops.count_nonzero(constant_op.constant(["test"]))
-      self.assertAllClose(sess.run(v), 1)
+      self.assertAllClose(self.evaluate(v), 1)
 
   def testStringReduce1D(self):
     # Create a 1D array of strings

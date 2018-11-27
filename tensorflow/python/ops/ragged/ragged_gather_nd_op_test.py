@@ -190,7 +190,7 @@ class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
     with self.test_session() as sess:
       if hasattr(expected, 'tolist'):
         expected = expected.tolist()
-      self.assertEqual(sess.run(result).tolist(), expected)
+      self.assertEqual(self.evaluate(result).tolist(), expected)
 
   def testRaggedGatherNdUnknownRankError(self):
     params = ragged.constant([['a', 'b'], ['c', 'd']])

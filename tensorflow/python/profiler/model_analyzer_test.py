@@ -93,10 +93,10 @@ class PrintModelAnalysisTest(test.TestCase):
           config=self._no_rewrite_session_config()) as sess, ops.device(dev):
         x = lib.BuildSmallModel()
 
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         pctx.trace_next_step()
         pctx.dump_next_step()
-        _ = sess.run(x)
+        _ = self.evaluate(x)
 
         pctx.profiler.profile_name_scope(options=opts)
 
@@ -160,7 +160,7 @@ class PrintModelAnalysisTest(test.TestCase):
                         ) as sess, ops.device('/device:CPU:0'):
       x = lib.BuildSmallModel()
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
       _ = sess.run(x,
                    options=config_pb2.RunOptions(
@@ -186,7 +186,7 @@ class PrintModelAnalysisTest(test.TestCase):
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildSmallModel()
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
       _ = sess.run(x,
                    options=config_pb2.RunOptions(
@@ -220,9 +220,9 @@ class PrintModelAnalysisTest(test.TestCase):
       with session.Session(config=self._no_rewrite_session_config()) as sess:
         x = lib.BuildFullModel()
 
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         pctx.trace_next_step()
-        _ = sess.run(x)
+        _ = self.evaluate(x)
         tfprof_node = pctx.profiler.profile_python(options=opts)
 
         # pylint: disable=line-too-long
@@ -281,7 +281,7 @@ class PrintModelAnalysisTest(test.TestCase):
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildSmallModel()
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
       _ = sess.run(x,
                    options=config_pb2.RunOptions(
@@ -309,7 +309,7 @@ class PrintModelAnalysisTest(test.TestCase):
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildFullModel()
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
       _ = sess.run(
           x,
@@ -345,7 +345,7 @@ class PrintModelAnalysisTest(test.TestCase):
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildFullModel()
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
       _ = sess.run(x,
                    options=config_pb2.RunOptions(
@@ -391,7 +391,7 @@ class PrintModelAnalysisTest(test.TestCase):
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildFullModel()
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
       _ = sess.run(
           x,
@@ -424,7 +424,7 @@ class PrintModelAnalysisTest(test.TestCase):
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildFullModel()
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
       _ = sess.run(
           x,
@@ -490,7 +490,7 @@ class PrintModelAnalysisTest(test.TestCase):
 
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildSmallModel()
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
       _ = sess.run(x,
                    options=config_pb2.RunOptions(
@@ -555,7 +555,7 @@ class PrintModelAnalysisTest(test.TestCase):
 
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildSmallModel()
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
       _ = sess.run(x,
                    options=config_pb2.RunOptions(
@@ -587,10 +587,10 @@ class PrintModelAnalysisTest(test.TestCase):
   def _trainLoop(self, train_op, train_steps, time_dir, time_step,
                  memory_dir, memory_step, profile_dir, dump_step):
     with session.Session(config=self._no_rewrite_session_config()) as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       # start from 1 because variable_initializer took one step.
       for i in range(1, train_steps + 1):
-        _ = sess.run(train_op)
+        _ = self.evaluate(train_op)
         if i in time_step:
           ret = gfile.ListDirectory(time_dir)
           self.assertEqual(len(ret), 1)

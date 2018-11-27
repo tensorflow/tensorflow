@@ -73,7 +73,7 @@ class SerializeSparseTest(test.TestCase):
       serialized = serialize_fn(sp_input, out_type=out_type)
       sp_deserialized = deserialize_fn(serialized, dtype=dtypes.int32)
 
-      indices, values, shape = sess.run(sp_deserialized)
+      indices, values, shape = self.evaluate(sp_deserialized)
 
       self.assertAllEqual(indices, sp_input[0])
       self.assertAllEqual(values, sp_input[1])

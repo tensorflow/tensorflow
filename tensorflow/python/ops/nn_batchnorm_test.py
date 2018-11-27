@@ -235,10 +235,11 @@ class BatchNormalizationTest(test.TestCase):
           odx, odm, odv, odb, odg = gradients_impl.gradients(
               [on], [x, m, v, beta, gamma], [backprop])
           if scale_after_normalization:
-            all_grads = sess.run([dx, dm, dv, db, dg, odx, odm, odv, odb, odg])
+            all_grads = self.evaluate(
+                [dx, dm, dv, db, dg, odx, odm, odv, odb, odg])
             to_check = ["dx", "dm", "dv", "db", "dg"]
           else:
-            all_grads = sess.run([dx, dm, dv, db, odx, odm, odv, odb])
+            all_grads = self.evaluate([dx, dm, dv, db, odx, odm, odv, odb])
             to_check = ["dx", "dm", "dv", "db"]
           for i, _ in enumerate(to_check):
             self.assertAllClose(
@@ -318,7 +319,7 @@ class BatchNormalizationTest(test.TestCase):
                                               gamma_val, epsilon,
                                               scale_after_normalization,
                                               shift_after_normalization)
-            [tf_batch_norm] = sess.run([bn])
+            [tf_batch_norm] = self.evaluate([bn])
             self.assertEquals(x_shape, np_batch_norm.shape)
             self.assertEquals(x_shape, tf_batch_norm.shape)
             self.assertAllClose(np_batch_norm, tf_batch_norm, atol=atol)
@@ -371,9 +372,9 @@ class SufficientStatisticsTest(test.TestCase):
           x.set_shape(x_shape)
           op_c, op_m, op_v, op_s = self._opSuffStats(x, axes, shift, keep_dims)
           if shift:
-            tf_c, tf_m, tf_v, tf_s = sess.run([op_c, op_m, op_v, op_s])
+            tf_c, tf_m, tf_v, tf_s = self.evaluate([op_c, op_m, op_v, op_s])
           else:
-            tf_c, tf_m, tf_v = sess.run([op_c, op_m, op_v])
+            tf_c, tf_m, tf_v = self.evaluate([op_c, op_m, op_v])
         else:
           x = array_ops.placeholder(
               dtype=dtypes.float32, shape=[None] * len(x_shape), name="x")
@@ -432,7 +433,7 @@ class NormalizeMomentsTest(test.TestCase):
           tf_shift_v = None
         opm, opv = self._opNormalizeMoments(tf_counts, tf_mean_ss,
                                             tf_variance_ss, tf_shift_v)
-        tfm, tfv = sess.run([opm, opv])
+        tfm, tfv = self.evaluate([opm, opv])
         self.assertAllClose(npm, tfm, atol=0.000001)
         self.assertAllClose(npv, tfv, atol=0.000001)
 

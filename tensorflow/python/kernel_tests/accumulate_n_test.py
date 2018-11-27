@@ -65,7 +65,7 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
             for _ in range(0, num_inputs)
         ]
         accum_n = math_ops.accumulate_n(input_vars)
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         accum_n_grad = gradients.gradients(accum_n, input_vars)
         self.assertAllEqual(
             np.repeat(1.0, num_inputs),  # d/dx (x + y + ...) = 1

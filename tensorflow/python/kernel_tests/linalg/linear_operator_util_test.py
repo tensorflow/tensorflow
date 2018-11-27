@@ -119,7 +119,7 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
     with self.cached_session() as sess:
       self.assertAllEqual(x_bc_expected.shape, x_bc.get_shape())
       self.assertAllEqual(y_bc_expected.shape, y_bc.get_shape())
-      x_bc_, y_bc_ = sess.run([x_bc, y_bc])
+      x_bc_, y_bc_ = self.evaluate([x_bc, y_bc])
       self.assertAllClose(x_bc_expected, x_bc_)
       self.assertAllClose(y_bc_expected, y_bc_)
 
@@ -138,7 +138,7 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
     with self.cached_session() as sess:
       self.assertAllEqual(x_bc_expected.shape, x_bc.get_shape())
       self.assertAllEqual(y_bc_expected.shape, y_bc.get_shape())
-      x_bc_, y_bc_ = sess.run([x_bc, y_bc])
+      x_bc_, y_bc_ = self.evaluate([x_bc, y_bc])
       self.assertAllClose(x_bc_expected, x_bc_)
       self.assertAllClose(y_bc_expected, y_bc_)
 

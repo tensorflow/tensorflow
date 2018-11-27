@@ -68,7 +68,7 @@ class SvdOpTest(test.TestCase):
             s2 = linalg_ops.svd(
                 matrix2, compute_uv=compute_uv_, full_matrices=full_matrices_)
             all_ops += [s1, s2]
-      val = sess.run(all_ops)
+      val = self.evaluate(all_ops)
       for i in range(2):
         s = 6 * i
         self.assertAllEqual(val[s], val[s + 3])  # s1 == s2
@@ -150,7 +150,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         s_tf, u_tf, v_tf = linalg_ops.svd(
             x_tf, compute_uv=compute_uv_, full_matrices=full_matrices_)
         if use_static_shape_:
-          s_tf_val, u_tf_val, v_tf_val = sess.run([s_tf, u_tf, v_tf])
+          s_tf_val, u_tf_val, v_tf_val = self.evaluate([s_tf, u_tf, v_tf])
         else:
           s_tf_val, u_tf_val, v_tf_val = sess.run(
               [s_tf, u_tf, v_tf], feed_dict={x_tf: x_np})
@@ -158,7 +158,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         s_tf = linalg_ops.svd(
             x_tf, compute_uv=compute_uv_, full_matrices=full_matrices_)
         if use_static_shape_:
-          s_tf_val = sess.run(s_tf)
+          s_tf_val = self.evaluate(s_tf)
         else:
           s_tf_val = sess.run(s_tf, feed_dict={x_tf: x_np})
 

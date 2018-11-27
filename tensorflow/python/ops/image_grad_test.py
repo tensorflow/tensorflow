@@ -44,7 +44,7 @@ class ResizeNearestNeighborOpTest(test.TestCase):
                                                        out_shape[1:3])
         self.assertEqual(out_shape, list(resize_out.get_shape()))
 
-        resize_out = sess.run(resize_out)
+        resize_out = self.evaluate(resize_out)
       self.assertEqual(out_shape, list(resize_out.shape))
 
   def testGradFromResizeToLargerInBothDims(self):
@@ -113,7 +113,7 @@ class ResizeBilinearOpTest(test.TestCase):
       resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
       self.assertEqual(out_shape, list(resize_out.get_shape()))
 
-      resize_out = sess.run(resize_out)
+      resize_out = self.evaluate(resize_out)
       self.assertEqual(out_shape, list(resize_out.shape))
 
   def testGradFromResizeToLargerInBothDims(self):
@@ -196,7 +196,7 @@ class ResizeBicubicOpTest(test.TestCase):
                                               align_corners=align_corners)
         self.assertEqual(out_shape, list(resize_out.get_shape()))
 
-        resize_out = sess.run(resize_out)
+        resize_out = self.evaluate(resize_out)
         self.assertEqual(out_shape, list(resize_out.shape))
 
   def testGradFromResizeToLargerInBothDims(self):
@@ -273,7 +273,7 @@ class CropAndResizeOpTest(test.TestCase):
           constant_op.constant(
               crop_size, shape=[2]))
       self.assertEqual(crops_shape, list(crops.get_shape()))
-      crops = sess.run(crops)
+      crops = self.evaluate(crops)
       self.assertEqual(crops_shape, list(crops.shape))
 
   def _randomUniformAvoidAnchors(self, low, high, anchors, radius, num_samples):

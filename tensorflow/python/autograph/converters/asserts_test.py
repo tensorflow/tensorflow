@@ -41,7 +41,7 @@ class AssertsTest(converter_testing.TestCase):
         op = result.test_fn(constant_op.constant(False))
         with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                      'test message'):
-          sess.run(op)
+          self.evaluate(op)
 
 
 if __name__ == '__main__':

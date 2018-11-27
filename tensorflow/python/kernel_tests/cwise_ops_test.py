@@ -572,7 +572,7 @@ class MinMaxOpTest(test.TestCase):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       omin, omax = math_ops.minimum(inx, iny), math_ops.maximum(inx, iny)
-      tf_min, tf_max = sess.run([omin, omax])
+      tf_min, tf_max = self.evaluate([omin, omax])
     self.assertAllEqual(np_min, tf_min)
     self.assertAllEqual(np_max, tf_max)
 
@@ -662,8 +662,8 @@ class MathOpsOverloadTest(test.TestCase):
   def _compareUnary(self, x, dtype, np_func, tf_func):
     np_ans = np_func(x).astype(dtype.as_numpy_dtype)
     with self.test_session(use_gpu=False):
-      self.assertAllClose(np_ans,
-                          tf_func(ops.convert_to_tensor(x, dtype=dtype)).eval())
+      self.assertAllClose(
+          np_ans, self.evaluate(tf_func(ops.convert_to_tensor(x, dtype=dtype))))
 
   def testOverload(self):
     dtypes = [
@@ -736,7 +736,7 @@ class IsFiniteInfNanTest(test.TestCase):
       inx = ops.convert_to_tensor(x)
       ofinite, oinf, onan = math_ops.is_finite(inx), math_ops.is_inf(
           inx), math_ops.is_nan(inx)
-      tf_finite, tf_inf, tf_nan = sess.run([ofinite, oinf, onan])
+      tf_finite, tf_inf, tf_nan = self.evaluate([ofinite, oinf, onan])
     self.assertAllEqual(np_inf, tf_inf)
     self.assertAllEqual(np_nan, tf_nan)
     self.assertAllEqual(np_finite, tf_finite)
@@ -788,7 +788,7 @@ class RoundingTest(test.TestCase):
     y = np.rint(x) if y is None else np.asarray(y)
     with self.cached_session() as sess:
       tf_rint = math_ops.rint(x)
-      np_rint = sess.run(tf_rint)
+      np_rint = self.evaluate(tf_rint)
     self.assertAllEqual(y, np_rint)
     self.assertShapeEqual(y, tf_rint)
 
@@ -797,7 +797,7 @@ class RoundingTest(test.TestCase):
     with self.cached_session() as sess:
       inx = ops.convert_to_tensor(x)
       ofloor, oceil = math_ops.floor(inx), math_ops.ceil(inx)
-      tf_floor, tf_ceil = sess.run([ofloor, oceil])
+      tf_floor, tf_ceil = self.evaluate([ofloor, oceil])
     self.assertAllEqual(np_floor, tf_floor)
     self.assertAllEqual(np_ceil, tf_ceil)
     self.assertShapeEqual(np_floor, ofloor)
@@ -881,7 +881,7 @@ class ComplexMakeRealImagTest(test.TestCase):
         force_gpu=use_gpu and test_util.is_gpu_available()) as sess:
       inx = ops.convert_to_tensor(cplx)
       tf_angle = math_ops.angle(inx)
-      tf_angle_val = sess.run(tf_angle)
+      tf_angle_val = self.evaluate(tf_angle)
     self.assertAllEqual(np_angle, tf_angle_val)
     self.assertShapeEqual(np_angle, tf_angle)
 

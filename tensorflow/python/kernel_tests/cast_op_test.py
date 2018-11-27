@@ -187,7 +187,7 @@ class CastOpTest(test.TestCase):
       y = variables.Variable(True, dtype=dtypes.bool)
       cast = math_ops.cast(y, x.dtype)
       variables.global_variables_initializer().run()
-      self.assertEqual(1.0, sess.run(cast))
+      self.assertEqual(1.0, self.evaluate(cast))
 
   def testGradients(self):
     t = [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
@@ -229,7 +229,7 @@ class SaturateCastTest(test.TestCase):
               [lo, lo + 1, lo // 2, hi // 2, hi - 1, hi], dtype=in_type)
           y = math_ops.saturate_cast(x, dtype=out_type)
           self.assertEqual(y.dtype, out_type)
-          x, y = sess.run([x, y])
+          x, y = self.evaluate([x, y])
           correct = np.maximum(out_type.min, np.minimum(out_type.max, x))
           self.assertAllEqual(correct, y)
 

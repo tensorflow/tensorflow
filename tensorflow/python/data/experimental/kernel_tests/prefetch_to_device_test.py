@@ -57,9 +57,9 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testPrefetchToSameDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)
@@ -87,9 +87,9 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testPrefetchDictToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10).map(lambda x: {"a": x})
@@ -117,9 +117,9 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        self.assertEqual({"a": i}, sess.run(next_element))
+        self.assertEqual({"a": i}, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testPrefetchSparseTensorsToDevice(self):
     def make_tensor(i):
@@ -150,12 +150,12 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        actual = sess.run(next_element)
+        actual = self.evaluate(next_element)
         self.assertAllEqual([i], actual.values)
         self.assertAllEqual([[0, 0]], actual.indices)
         self.assertAllEqual([2, 2], actual.dense_shape)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testPrefetchToDeviceGpu(self):
     if not test_util.is_gpu_available():
@@ -170,9 +170,9 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testPrefetchToDeviceWithReInit(self):
     host_dataset = dataset_ops.Dataset.range(10)
@@ -199,14 +199,14 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for i in range(5):
-        self.assertEqual(i, sess.run(next_element))
-      sess.run(iterator.initializer)
+        self.assertEqual(i, self.evaluate(next_element))
+      self.evaluate(iterator.initializer)
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testPrefetchToDeviceGpuWithReInit(self):
     if not test_util.is_gpu_available():
@@ -220,14 +220,14 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for i in range(5):
-        self.assertEqual(i, sess.run(next_element))
-      sess.run(iterator.initializer)
+        self.assertEqual(i, self.evaluate(next_element))
+      self.evaluate(iterator.initializer)
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
 
 if __name__ == "__main__":

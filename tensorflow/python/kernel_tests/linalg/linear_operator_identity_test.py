@@ -170,7 +170,7 @@ class LinearOperatorIdentityTest(
       expected = x
 
       self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_matmul, expected]))
+      self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
   def test_default_batch_shape_broadcasts_with_everything_dynamic(self):
     # These cannot be done in the automated (base test class) tests since they
@@ -207,7 +207,7 @@ class LinearOperatorIdentityTest(
 
       operator_matmul = operator.matmul(x)
       self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_matmul, expected]))
+      self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
   def test_broadcast_matmul_dynamic_shapes(self):
     # These cannot be done in the automated (base test class) tests since they
@@ -403,13 +403,13 @@ class LinearOperatorScaledIdentityTest(
       expected = x * 2.2 + zeros
       operator_matmul = operator.matmul(x)
       self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_matmul, expected]))
+      self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
       # Test solve
       expected = x / 2.2 + zeros
       operator_solve = operator.solve(x)
       self.assertAllEqual(operator_solve.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_solve, expected]))
+      self.assertAllClose(*self.evaluate([operator_solve, expected]))
 
   def test_broadcast_matmul_and_solve_scalar_scale_multiplier(self):
     # These cannot be done in the automated (base test class) tests since they
@@ -429,13 +429,13 @@ class LinearOperatorScaledIdentityTest(
       expected = x * 2.2
       operator_matmul = operator.matmul(x)
       self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_matmul, expected]))
+      self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
       # Test solve
       expected = x / 2.2
       operator_solve = operator.solve(x)
       self.assertAllEqual(operator_solve.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_solve, expected]))
+      self.assertAllClose(*self.evaluate([operator_solve, expected]))
 
   def test_is_x_flags(self):
     operator = linalg_lib.LinearOperatorScaledIdentity(

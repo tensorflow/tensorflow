@@ -92,9 +92,9 @@ class AutoShardDatasetTest(test.TestCase):
     with self.cached_session() as sess:
       for f in range(self._shard_index, self._num_files, self._num_shards):
         for r in range(self._num_records):
-          self.assertAllEqual(record_fn(r, f), sess.run(next_element))
+          self.assertAllEqual(record_fn(r, f), self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testTFRecordDataset(self):
     dataset = readers.TFRecordDataset(self._createTFRecordFiles())
@@ -138,10 +138,10 @@ class AutoShardDatasetTest(test.TestCase):
       actual, expected = [], []
       for f in range(self._shard_index, self._num_files, self._num_shards):
         for r in range(self._num_records):
-          actual.append(sess.run(next_element))
+          actual.append(self.evaluate(next_element))
           expected.append(self._record(r, f))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
       self.assertAllEqual(expected, actual)
 
   def testComplexPipeline(self):
@@ -171,9 +171,9 @@ class AutoShardDatasetTest(test.TestCase):
       num_iterations = (self._num_files * self._num_records * num_epochs) // (
           self._num_shards * batch_size)
       for _ in range(num_iterations):
-        actual.extend(sess.run(next_element))
+        actual.extend(self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
       expected = []
       for f in range(0, self._num_files, self._num_shards):
@@ -205,12 +205,13 @@ class AutoShardDatasetTest(test.TestCase):
     with self.cached_session() as sess:
       for f in range(self._shard_index, self._num_files, self._num_shards):
         for r in range(self._num_records):
-          self.assertAllEqual(self._record(r, f), sess.run(next_element))
+          self.assertAllEqual(self._record(r, f), self.evaluate(next_element))
       for f in range(self._shard_index, self._num_files, self._num_shards):
         for r in range(self._num_records):
-          self.assertAllEqual(self._text_line(r, f), sess.run(next_element))
+          self.assertAllEqual(
+              self._text_line(r, f), self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testTextLineReader(self):
     dataset = readers.TextLineDataset(self._createTextFiles())

@@ -60,7 +60,7 @@ class QrOpTest(test.TestCase):
             q1, r1 = linalg_ops.qr(matrix1, full_matrices=full_matrices_)
             q2, r2 = linalg_ops.qr(matrix2, full_matrices=full_matrices_)
             all_ops += [q1, r1, q2, r2]
-      val = sess.run(all_ops)
+      val = self.evaluate(all_ops)
       for i in range(8):
         q = 4 * i
         self.assertAllEqual(val[q], val[q + 2])  # q1 == q2
@@ -129,7 +129,7 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
       q_tf, r_tf = linalg_ops.qr(x_tf, full_matrices=full_matrices_)
 
       if use_static_shape_:
-        q_tf_val, r_tf_val = sess.run([q_tf, r_tf])
+        q_tf_val, r_tf_val = self.evaluate([q_tf, r_tf])
       else:
         q_tf_val, r_tf_val = sess.run([q_tf, r_tf], feed_dict={x_tf: x_np})
 

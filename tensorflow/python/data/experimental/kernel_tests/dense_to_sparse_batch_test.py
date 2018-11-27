@@ -41,10 +41,10 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
 
       for start in range(0, len(components), 4):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual([[i, j]
                              for i, c in enumerate(components[start:start + 4])
                              for j in range(c)], results.indices)
@@ -56,7 +56,7 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
                             results.dense_shape)
 
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
   def testDenseToSparseBatchDatasetWithUnknownShape(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
@@ -69,10 +69,10 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
 
       for start in range(0, len(components), 4):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual([[i, j, z]
                              for i, c in enumerate(components[start:start + 4])
                              for j in range(c)
@@ -89,7 +89,7 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
         ], results.dense_shape)
 
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
   def testDenseToSparseBatchDatasetWithInvalidShape(self):
     input_tensor = array_ops.constant([[1]])
@@ -111,13 +111,13 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
       sess.run(init_op, feed_dict={input_tensor: [[1]]})
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "incompatible with the row shape"):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
       # Initialize with an input tensor that is larger than `row_shape`.
       sess.run(init_op, feed_dict={input_tensor: range(13)})
       with self.assertRaisesRegexp(errors.DataLossError,
                                    "larger than the row shape"):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
 
 if __name__ == "__main__":

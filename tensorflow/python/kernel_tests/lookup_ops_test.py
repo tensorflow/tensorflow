@@ -137,7 +137,7 @@ class HashTableOpTest(test.TestCase):
       output2 = table2.lookup(input_string)
       output3 = table3.lookup(input_string)
 
-      out1, out2, out3 = sess.run([output1, output2, output3])
+      out1, out2, out3 = self.evaluate([output1, output2, output3])
       self.assertAllEqual([0, 1, -1], out1)
       self.assertAllEqual([0, 1, -1], out2)
       self.assertAllEqual([0, 1, -1], out3)
@@ -174,7 +174,7 @@ class HashTableOpTest(test.TestCase):
           constant_op.constant(sp_shape, dtypes.int64))
       output = table.lookup(input_tensor)
 
-      out_indices, out_values, out_shape = sess.run(output)
+      out_indices, out_values, out_shape = self.evaluate(output)
 
       self.assertAllEqual([0, 1, -1], out_values)
       self.assertAllEqual(sp_indices, out_indices)
@@ -995,7 +995,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       output2 = table2.lookup(input_string)
       output3 = table3.lookup(input_string)
 
-      out1, out2, out3 = sess.run([output1, output2, output3])
+      out1, out2, out3 = self.evaluate([output1, output2, output3])
       self.assertAllEqual([0, 1, -1], out1)
       self.assertAllEqual([0, 1, -1], out2)
       self.assertAllEqual([0, 1, -1], out3)
@@ -1313,7 +1313,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       out1 = table1.lookup(input_string)
       out2 = table2.lookup(input_string)
 
-      out1, out2 = sess.run([out1, out2])
+      out1, out2 = self.evaluate([out1, out2])
       self.assertAllEqual([5, 0, 1, 2, 5], out1)
       self.assertAllEqual([5, 0, 1, 2, 3], out2)
       self.assertEquals(vocab_size + oov_buckets, table1.size().eval())
@@ -1396,7 +1396,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       out1 = table1.lookup(input_string_1)
       out2 = table2.lookup(input_string_2)
 
-      out1, out2 = sess.run([out1, out2])
+      out1, out2 = self.evaluate([out1, out2])
       self.assertAllEqual([0, 1, 2, -1], out1)
       self.assertAllEqual([-2, 1, -2], out2)
       self.assertEquals(vocab_size + oov_buckets, table1.size().eval())
