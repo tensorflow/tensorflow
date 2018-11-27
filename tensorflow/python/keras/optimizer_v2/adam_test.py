@@ -38,16 +38,16 @@ def adam_update_numpy(param,
                       t,
                       m,
                       v,
-                      alpha=0.001,
+                      lr=0.001,
                       beta1=0.9,
                       beta2=0.999,
                       epsilon=1e-7):
-  alpha_t = alpha * np.sqrt(1 - beta2**t) / (1 - beta1**t)
+  lr_t = lr * np.sqrt(1 - beta2**(t + 1)) / (1 - beta1**(t + 1))
 
   m_t = beta1 * m + (1 - beta1) * g_t
   v_t = beta2 * v + (1 - beta2) * g_t * g_t
 
-  param_t = param - alpha_t * m_t / (np.sqrt(v_t) + epsilon)
+  param_t = param - lr_t * m_t / (np.sqrt(v_t) + epsilon)
   return param_t, m_t, v_t
 
 
@@ -90,13 +90,13 @@ class AdamOptimizerTest(test.TestCase):
         self.assertAllClose([1.0, 1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([3.0, 3.0, 4.0], self.evaluate(var1))
 
-        beta1_power, beta2_power = get_beta_accumulators(opt, dtype)
-
+        beta_1_power, beta_2_power = get_beta_accumulators(opt, dtype)
         # Run 3 steps of Adam
-        for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, self.evaluate(beta1_power))
-          self.assertAllCloseAccordingToType(0.999**t,
-                                             self.evaluate(beta2_power))
+        for t in range(3):
+          self.assertAllCloseAccordingToType(0.9**(t + 1),
+                                             self.evaluate(beta_1_power))
+          self.assertAllCloseAccordingToType(0.999**(t + 1),
+                                             self.evaluate(beta_2_power))
           update.run()
 
           var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
@@ -177,21 +177,21 @@ class AdamOptimizerTest(test.TestCase):
           epsilon = epsilon()
 
         opt = adam.Adam(learning_rate=learning_rate)
-        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        if not context.executing_eagerly():
+          update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
 
         self.evaluate(variables.global_variables_initializer())
         # Run 3 steps of Adam
-        for t in range(1, 4):
-          if not context.executing_eagerly():
-            self.evaluate(update)
-          elif t > 1:
-            opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-
+        for t in range(3):
           beta_1_power, beta_2_power = get_beta_accumulators(opt, dtype)
           self.assertAllCloseAccordingToType(0.9**(t + 1),
                                              self.evaluate(beta_1_power))
           self.assertAllCloseAccordingToType(0.999**(t + 1),
                                              self.evaluate(beta_2_power))
+          if not context.executing_eagerly():
+            self.evaluate(update)
+          else:
+            opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
 
           var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
           var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
@@ -207,6 +207,52 @@ class AdamOptimizerTest(test.TestCase):
   def testBasicCallableParams(self):
     with context.eager_mode():
       self.doTestBasic(use_callable_params=True)
+
+  def testBasicWithLearningRateDecay(self):
+    for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
+      with self.session(graph=ops.Graph()):
+        # Initialize variables for numpy implementation.
+        m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
+
+        var0 = resource_variable_ops.ResourceVariable(
+            var0_np, name="var0_%d" % i)
+        var1 = resource_variable_ops.ResourceVariable(
+            var1_np, name="var1_%d" % i)
+        grads0 = constant_op.constant(grads0_np)
+        grads1 = constant_op.constant(grads1_np)
+
+        learning_rate = 0.001
+        beta_1 = 0.9
+        beta_2 = 0.999
+        epsilon = 1e-7
+        decay = 0.5
+
+        opt = adam.Adam(
+            learning_rate=learning_rate,
+            beta_1=beta_1,
+            beta_2=beta_2,
+            epsilon=epsilon,
+            decay=decay)
+        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+
+        self.evaluate(variables.global_variables_initializer())
+        # Run 3 steps of Adam
+        for t in range(3):
+          self.evaluate(update)
+          lr_np = learning_rate / (1 + decay * t)
+
+          var0_np, m0, v0 = adam_update_numpy(
+              var0_np, grads0_np, t, m0, v0, lr=lr_np)
+          var1_np, m1, v1 = adam_update_numpy(
+              var1_np, grads1_np, t, m1, v1, lr=lr_np)
+
+          # Validate updated params
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -230,13 +276,13 @@ class AdamOptimizerTest(test.TestCase):
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
-        beta1_power, beta2_power = get_beta_accumulators(opt, dtype)
-
+        beta_1_power, beta_2_power = get_beta_accumulators(opt, dtype)
         # Run 3 steps of Adam
-        for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, self.evaluate(beta1_power))
-          self.assertAllCloseAccordingToType(0.999**t,
-                                             self.evaluate(beta2_power))
+        for t in range(3):
+          self.assertAllCloseAccordingToType(0.9**(t + 1),
+                                             self.evaluate(beta_1_power))
+          self.assertAllCloseAccordingToType(0.999**(t + 1),
+                                             self.evaluate(beta_2_power))
           update.run()
 
           var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
@@ -265,17 +311,18 @@ class AdamOptimizerTest(test.TestCase):
         update2 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
-        beta1_power, beta2_power = get_beta_accumulators(opt, dtype)
+        beta_1_power, beta_2_power = get_beta_accumulators(opt, dtype)
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         # Run 3 steps of intertwined Adam1 and Adam2.
-        for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, self.evaluate(beta1_power))
-          self.assertAllCloseAccordingToType(0.999**t,
-                                             self.evaluate(beta2_power))
+        for t in range(3):
+          self.assertAllCloseAccordingToType(0.9**(t + 1),
+                                             self.evaluate(beta_1_power))
+          self.assertAllCloseAccordingToType(0.999**(t + 1),
+                                             self.evaluate(beta_2_power))
           if t % 2 == 0:
             update1.run()
           else:
@@ -296,7 +343,7 @@ class AdamOptimizerTest(test.TestCase):
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
       # There should be iteration, hyper variables, and two unique slot
       # variables for v1 and v2 respectively.
-      self.assertEqual(9, len(set(opt.variables())))
+      self.assertEqual(10, len(set(opt.variables())))
 
   def testAmsgradWithError(self):
     with self.assertRaisesRegexp(ValueError,

@@ -50,7 +50,8 @@ class Adam(optimizer_v2.OptimizerV2):
                beta_2=0.999,
                epsilon=1e-7,
                amsgrad=False,
-               name='Adam'):
+               name='Adam',
+               **kwargs):
     r"""Construct a new Adam optimizer.
 
     If amsgrad = False:
@@ -122,10 +123,12 @@ class Adam(optimizer_v2.OptimizerV2):
         a callable that takes no arguments and returns the actual value to use.
         This can be useful for changing these values across different
         invocations of optimizer functions. @end_compatibility
+      **kwargs: keyword arguments. Allowed to be {`decay`}
     """
 
-    super(Adam, self).__init__(name)
+    super(Adam, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', learning_rate)
+    self._set_hyper('decay', self._initial_decay)
     self._set_hyper('beta_1', beta_1)
     self._set_hyper('beta_2', beta_2)
     self._set_hyper('epsilon', epsilon)
@@ -141,12 +144,13 @@ class Adam(optimizer_v2.OptimizerV2):
       self.add_slot(var, 'v')
 
   def _resource_apply_dense(self, grad, var):
-    grad_dtype = grad.dtype.base_dtype
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
     m = self.get_slot(var, 'm')
     v = self.get_slot(var, 'v')
-    local_step = math_ops.cast(self.iterations + 1, grad_dtype)
-    beta_1_t = math_ops.cast(self._get_hyper('beta_1'), grad_dtype)
-    beta_2_t = math_ops.cast(self._get_hyper('beta_2'), grad_dtype)
+    beta_1_t = self._get_hyper('beta_1', var_dtype)
+    beta_2_t = self._get_hyper('beta_2', var_dtype)
+    local_step = math_ops.cast(self.iterations + 1, var_dtype)
     beta_1_power = math_ops.pow(beta_1_t, local_step)
     beta_2_power = math_ops.pow(beta_2_t, local_step)
     return training_ops.resource_apply_adam(
@@ -155,22 +159,22 @@ class Adam(optimizer_v2.OptimizerV2):
         v.handle,
         beta_1_power,
         beta_2_power,
-        math_ops.cast(self._get_hyper('learning_rate'), grad_dtype),
+        lr_t,
         beta_1_t,
         beta_2_t,
-        math_ops.cast(self._get_hyper('epsilon'), grad_dtype),
+        self._get_hyper('epsilon', var_dtype),
         grad,
         use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices):
     var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
+    beta_1_t = self._get_hyper('beta_1', var_dtype)
+    beta_2_t = self._get_hyper('beta_2', var_dtype)
     local_step = math_ops.cast(self.iterations + 1, var_dtype)
-    beta_1_t = math_ops.cast(self._get_hyper('beta_1'), var_dtype)
-    beta_2_t = math_ops.cast(self._get_hyper('beta_2'), var_dtype)
     beta_1_power = math_ops.pow(beta_1_t, local_step)
     beta_2_power = math_ops.pow(beta_2_t, local_step)
-    lr_t = math_ops.cast(self._get_hyper('learning_rate'), var_dtype)
-    epsilon_t = math_ops.cast(self._get_hyper('epsilon'), var_dtype)
+    epsilon_t = self._get_hyper('epsilon', var_dtype)
     lr = (lr_t * math_ops.sqrt(1 - beta_2_power) / (1 - beta_1_power))
 
     # m_t = beta1 * m + (1 - beta1) * g_t
@@ -201,6 +205,7 @@ class Adam(optimizer_v2.OptimizerV2):
     config = super(Adam, self).get_config()
     config.update({
         'learning_rate': self._serialize_hyperparameter('learning_rate'),
+        'decay': self._serialize_hyperparameter('decay'),
         'beta_1': self._serialize_hyperparameter('beta_1'),
         'beta_2': self._serialize_hyperparameter('beta_2'),
         'epsilon': self._serialize_hyperparameter('epsilon'),

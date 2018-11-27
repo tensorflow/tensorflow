@@ -33,6 +33,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribution_strategy_context
@@ -114,7 +115,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   """
 
-  def __init__(self, name):
+  def __init__(self, name, **kwargs):
     """Create a new Optimizer.
 
     This must be called by the constructors of subclasses.
@@ -128,6 +129,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Args:
       name: A non-empty string.  The name to use for accumulators created
         for the optimizer.
+      **kwargs: keyword arguments. Allowed to be {`decay`}
 
     Raises:
       ValueError: If name is malformed.
@@ -140,6 +142,12 @@ class OptimizerV2(optimizer_v1.Optimizer):
     # dict: {variable name : {slot name : variable}}
     self._slots = {}
     self._weights = []
+
+    decay = kwargs.pop("decay", 0.0)
+    if decay < 0.:
+      raise ValueError("decay cannot be less than 0: {}".format(decay))
+    self._initial_decay = decay
+
     self._prepared = False
 
   def minimize(self,
@@ -345,9 +353,14 @@ class OptimizerV2(optimizer_v1.Optimizer):
       else:
         backend.set_value(self._hyper[name], value)
 
-  def _get_hyper(self, name):
+  def _get_hyper(self, name, dtype=None):
     value = self._hyper[name]
-    return self._call_if_callable(value)
+    if callable(value):
+      value = value()
+    if dtype:
+      return math_ops.cast(value, dtype)
+    else:
+      return value
 
   def __getattribute__(self, name):
     """Overridden to support hyperparameter access."""
@@ -421,6 +434,15 @@ class OptimizerV2(optimizer_v1.Optimizer):
     if not self._prepared:
       self._prepare()
     return self._iterations
+
+  def _decayed_lr(self, var_dtype):
+    """Get decayed learning rate as a Tensor with dtype=var_dtype."""
+    lr_t = self._get_hyper("learning_rate", var_dtype)
+    if self._initial_decay > 0.:
+      local_step = math_ops.cast(self.iterations, var_dtype)
+      decay_t = self._get_hyper("decay", var_dtype)
+      lr_t = lr_t / (1. + decay_t * local_step)
+    return lr_t
 
   @abc.abstractmethod
   def get_config(self):

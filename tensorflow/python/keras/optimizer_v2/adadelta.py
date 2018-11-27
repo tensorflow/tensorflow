@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.python.ops import math_ops
 from tensorflow.python.training import training_ops
 
 
@@ -55,7 +54,8 @@ class Adadelta(optimizer_v2.OptimizerV2):
                learning_rate=0.001,
                rho=0.95,
                epsilon=1e-7,
-               name='Adadelta'):
+               name='Adadelta',
+               **kwargs):
     """Construct a new Adadelta optimizer.
 
     Adadelta is a more robust extension of Adagrad that adapts learning rates
@@ -73,6 +73,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
                to better conditioning the grad update.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adadelta".
+      **kwargs: keyword arguments. Allowed to be {`decay`}
 
     @compatibility(eager)
     When eager execution is enabled, `learning_rate`, `rho`, and `epsilon` can
@@ -81,8 +82,9 @@ class Adadelta(optimizer_v2.OptimizerV2):
     invocations of optimizer functions.
     @end_compatibility
     """
-    super(Adadelta, self).__init__(name)
+    super(Adadelta, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', learning_rate)
+    self._set_hyper('decay', self._initial_decay)
     self._set_hyper('rho', rho)
     self._set_hyper('epsilon', epsilon)
 
@@ -92,28 +94,32 @@ class Adadelta(optimizer_v2.OptimizerV2):
       self.add_slot(v, 'accum_var')
 
   def _resource_apply_dense(self, grad, var):
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
     accum_grad = self.get_slot(var, 'accum_grad')
     accum_var = self.get_slot(var, 'accum_var')
     return training_ops.resource_apply_adadelta(
         var.handle,
         accum_grad.handle,
         accum_var.handle,
-        math_ops.cast(self._get_hyper('learning_rate'), grad.dtype.base_dtype),
-        math_ops.cast(self._get_hyper('rho'), grad.dtype.base_dtype),
-        math_ops.cast(self._get_hyper('epsilon'), grad.dtype.base_dtype),
+        lr_t,
+        self._get_hyper('rho', var_dtype),
+        self._get_hyper('epsilon', var_dtype),
         grad,
         use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices):
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
     accum_grad = self.get_slot(var, 'accum_grad')
     accum_var = self.get_slot(var, 'accum_var')
     return training_ops.resource_sparse_apply_adadelta(
         var.handle,
         accum_grad.handle,
         accum_var.handle,
-        math_ops.cast(self._get_hyper('learning_rate'), grad.dtype.base_dtype),
-        math_ops.cast(self._get_hyper('rho'), grad.dtype.base_dtype),
-        math_ops.cast(self._get_hyper('epsilon'), grad.dtype.base_dtype),
+        lr_t,
+        self._get_hyper('rho', var_dtype),
+        self._get_hyper('epsilon', var_dtype),
         grad,
         indices,
         use_locking=self._use_locking)
@@ -122,6 +128,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
     config = super(Adadelta, self).get_config()
     config.update({
         'learning_rate': self._serialize_hyperparameter('learning_rate'),
+        'decay': self._serialize_hyperparameter('decay'),
         'rho': self._serialize_hyperparameter('rho'),
         'epsilon': self._serialize_hyperparameter('epsilon'),
     })

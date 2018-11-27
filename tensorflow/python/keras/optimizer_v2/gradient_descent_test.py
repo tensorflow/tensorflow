@@ -47,7 +47,6 @@ class GradientDescentOptimizerTest(test.TestCase):
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         sgd = gradient_descent.SGD(3.0)
-        # self.assertFalse(sgd._initial_decay)
         sgd_op = sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
         self.evaluate(variables.global_variables_initializer())
         # Run 1 step of sgd
@@ -57,6 +56,43 @@ class GradientDescentOptimizerTest(test.TestCase):
                                            self.evaluate(var0))
         self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
                                            self.evaluate(var1))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBasicWithLearningRateDecay(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
+        grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
+        learning_rate = 3.0
+        decay = 0.5
+        sgd = gradient_descent.SGD(learning_rate=learning_rate, decay=decay)
+        if not context.executing_eagerly():
+          sgd_op = sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        self.evaluate(variables.global_variables_initializer())
+        # Run 2 steps of sgd
+        if not context.executing_eagerly():
+          self.evaluate(sgd_op)
+        else:
+          sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        # Validate updated params
+        self.assertAllCloseAccordingToType([1.0 - 3.0 * 0.1, 2.0 - 3.0 * 0.1],
+                                           self.evaluate(var0))
+        self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
+                                           self.evaluate(var1))
+
+        if not context.executing_eagerly():
+          self.evaluate(sgd_op)
+        else:
+          sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        # Validate updated params
+        self.assertAllCloseAccordingToType(
+            [1.0 - 3.0 * 0.1 - 2.0 * 0.1, 2.0 - 3.0 * 0.1 - 2.0 * 0.1],
+            self.evaluate(var0))
+        self.assertAllCloseAccordingToType(
+            [3.0 - 3.0 * 0.01 - 2.0 * 0.01, 4.0 - 3.0 * 0.01 - 2.0 * 0.01],
+            self.evaluate(var1))
 
   @test_util.run_in_graph_and_eager_modes
   def testBasicCallableParams(self):
@@ -169,6 +205,36 @@ class GradientDescentOptimizerTest(test.TestCase):
                                            self.evaluate(var0))
         self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
                                            self.evaluate(var1))
+
+  def testSparseBasicWithLearningRateDecay(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
+        var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
+        grads0 = ops.IndexedSlices(
+            constant_op.constant([0.1], shape=[1, 1], dtype=dtype),
+            constant_op.constant([0]), constant_op.constant([2, 1]))
+        grads1 = ops.IndexedSlices(
+            constant_op.constant([0.01], shape=[1, 1], dtype=dtype),
+            constant_op.constant([1]), constant_op.constant([2, 1]))
+        sgd_op = gradient_descent.SGD(
+            3.0, decay=0.5).apply_gradients(
+                zip([grads0, grads1], [var0, var1]))
+        self.evaluate(variables.global_variables_initializer())
+        # Run 2 steps of sgd
+        self.evaluate(sgd_op)
+        # Validate updated params
+        self.assertAllCloseAccordingToType([[1.0 - 3.0 * 0.1], [2.0]],
+                                           self.evaluate(var0))
+        self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
+                                           self.evaluate(var1))
+
+        self.evaluate(sgd_op)
+        # Validate updated params
+        self.assertAllCloseAccordingToType(
+            [[1.0 - 3.0 * 0.1 - 2.0 * 0.1], [2.0]], self.evaluate(var0))
+        self.assertAllCloseAccordingToType(
+            [[3.0], [4.0 - 3.0 * 0.01 - 2.0 * 0.01]], self.evaluate(var1))
 
   def testCapturingInDefunWhileExecutingEagerly(self):
     with context.eager_mode():
