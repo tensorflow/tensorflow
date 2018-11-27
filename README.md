@@ -29,7 +29,7 @@ subscribing to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 
 **Tensorflow ROCm port**
-This project is based on TensorFlow 1.11.0. It has been verified to work with the latest ROCm1.9.1 release.
+This project is based on TensorFlow 1.12.0. It has been verified to work with the latest ROCm1.9.2 release.
 Please follow the instructions [here](https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/quick-start.md) to set up your ROCm stack.
 A docker container: **rocm/tensorflow:latest(https://hub.docker.com/r/rocm/tensorflow/)** is readily available to be used:
 ```
