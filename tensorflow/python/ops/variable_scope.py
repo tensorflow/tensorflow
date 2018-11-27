@@ -907,7 +907,7 @@ class _VariableStore(object):
         variable_dtype = None
       else:
         # Instantiate initializer if provided initializer is a type object.
-        if isinstance(initializer, type(init_ops.Initializer)):
+        if tf_inspect.isclass(initializer):
           initializer = initializer(dtype=dtype)
         spec = tf_inspect.getargspec(initializer)
         if shape is not None and shape.is_fully_defined():
