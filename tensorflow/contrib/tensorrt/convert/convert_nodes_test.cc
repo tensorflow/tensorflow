@@ -151,6 +151,27 @@ void ExpectTrtDimsEqualsArray(const std::vector<int>& lhs,
       << "  actual: " << DebugString(rhs);
 }
 
+template <typename T>
+void ExpectArrayNear(const std::vector<T>& lhs,
+                     const std::vector<T>& rhs) {
+  ASSERT_EQ(lhs.size(), rhs.size());
+  for (int i = 0; i < lhs.size(); i++) {
+    EXPECT_FLOAT_EQ(lhs[i], rhs[i]);
+  }
+}
+
+// Eigen::half cannot implicitly convert to float which is required for
+// EXPECT_FLOAT_EQ.
+template <>
+void ExpectArrayNear(const std::vector<Eigen::half>& lhs,
+                     const std::vector<Eigen::half>& rhs) {
+  ASSERT_EQ(lhs.size(), rhs.size());
+  for (int i = 0; i < lhs.size(); i++) {
+    EXPECT_FLOAT_EQ(Eigen::half_impl::half_to_float(lhs[i]),
+                    Eigen::half_impl::half_to_float(rhs[i]));
+  }
+}
+
 bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
                             const TRT_ShapedWeights& rhs) {
   return TrtDimsEquals(lhs.shape_, rhs.shape_) && lhs.type_ == rhs.type_ &&
@@ -1964,6 +1985,38 @@ TEST_F(OpConverterTest, ConvertRelu6) {
   }
 }
 
+template <DataType dtype>
+void TestConvertSquare(OpConverterTest* test) {
+  test->Reset();
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), dtype);
+  auto square = ops::Square(s.WithOpName("my_square"), input);
+  NodeDef node_def = square.operation.node()->def();
+
+  test->AddTestTensor("input", {1, 20});
+  test->RunValidationAndConversion(node_def);
+  TRT_TensorOrWeights output;
+  TF_EXPECT_OK(test->GetTensorOrWeights("my_square", &output));
+  EXPECT_TRUE(output.is_tensor());
+  ExpectTrtDimsEqualsArray({1, 20}, output.tensor()->getDimensions());
+
+  const int num_inputs = 20;
+  std::vector<CType> input_data(num_inputs);
+  std::vector<CType> expected_output_data(num_inputs);
+  for (int i = 0; i < 20; i++) {
+    const CType value = CType(i - 9);
+    input_data[i] = value;
+    expected_output_data[i] = value * value;
+  }
+  std::vector<CType> output_data(num_inputs);
+  test->BuildAndRun<CType>(
+          {{"input", input_data}}, "my_square",
+          &output_data);
+  ExpectArrayNear(expected_output_data, output_data);
+}
+
 TEST_F(OpConverterTest, ConvertSquare) {
   {
     // Input list is empty, should fail.
@@ -1972,38 +2025,22 @@ TEST_F(OpConverterTest, ConvertSquare) {
         node_def, error::INVALID_ARGUMENT,
         "Square expects one input, at my_square");
   }
-
-  // Get the NodeDef for Square.
-  Scope s = Scope::NewRootScope();
-  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-  auto square = ops::Square(s.WithOpName("my_square"), input);
-  const NodeDef& node_def = square.operation.node()->def();
-
   {
     // Input is weights, should fail.
     Reset();
-    AddTestWeights<int32>("input", {1, 2, 3}, {1, 2, 3, 4, -5, 6});
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto square = ops::Square(s.WithOpName("my_square"), input);
+    NodeDef node_def = square.operation.node()->def();
+    AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, -5, 6});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
         "Square is only implemented for tensors, at my_square");
   }
-  {
-    // Input is tensor, Ok.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    RunValidationAndConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_square", &output));
-    EXPECT_TRUE(output.is_tensor());
-    EXPECT_TRUE(TrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions()))
-        << output.DebugString();
 
-    std::vector<float> output_data(6);
-    std::vector<float> expected_output_data = {1, 4, 9, 16, 25, 36};
-    BuildAndRun("input", {1, 2, 3, 4, -5, 6}, "my_square", &output_data);
-    for (int i = 0; i < output_data.size(); i++) {
-      EXPECT_FLOAT_EQ(output_data[i], expected_output_data[i]);
-    }
-  }
+  // OK. Note that kINT32 is not supported by IElementWiseLayer, so we don't
+  // test DT_INT32 type here.
+  TestConvertSquare<DT_FLOAT>(this);
+  TestConvertSquare<DT_HALF>(this);
 }
 
 }  // namespace convert
