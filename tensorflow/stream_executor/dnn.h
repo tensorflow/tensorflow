@@ -906,10 +906,9 @@ class VersionInfo {
  public:
   VersionInfo(int major = 0, int minor = 0, int patch = 0)
       : major_(major), minor_(minor), patch_(patch) {}
-  int major_version() const { return major_; }
-  int minor_version() const { return minor_; }
-  int patch() const { return patch_; }
-
+  int major_version() { return major_; }
+  int minor_version() { return minor_; }
+  int patch() { return patch_; }
  private:
   int major_;
   int minor_;
