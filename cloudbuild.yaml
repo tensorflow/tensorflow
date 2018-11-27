@@ -1,0 +1,26 @@
+# In this directory, run the following command to build this builder.
+# $ gcloud builds submit . --config=cloudbuild.yaml
+
+steps:
+# Build the Bazel builder and output the version we built with.
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '--tag=gcr.io/$PROJECT_ID/bazel', '.']
+- name: 'gcr.io/$PROJECT_ID/bazel'
+  args: ['version']
+
+# Build the example.
+- name: 'gcr.io/$PROJECT_ID/bazel'
+  args: ['test', '-c', 'opt', '--', '//tensorflow/...', '-//tensorflow/compiler/...', '-//tensorflow/lite/...']
+  dir: 'examples'
+- name: 'gcr.io/$PROJECT_ID/bazel'
+  entrypoint: '/bin/bash'
+  args: ['./configure']
+  - name: 'gcr.io/$PROJECT_ID/bazel'
+  args: ['build', '--config=opt', '//tensorflow/tools/pip_package:build_pip_package']
+  dir: 'examples'
+
+
+
+# TODO(mattmoor): Test docker_push as well.
+
+images: ['gcr.io/$PROJECT_ID/bazel']
