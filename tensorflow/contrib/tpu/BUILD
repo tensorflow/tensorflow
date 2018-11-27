@@ -14,6 +14,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
+        "//knowledge/cerebra/sense/im2query:__subpackages__",
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
         "//medical/pathology:__subpackages__",
