@@ -125,6 +125,16 @@ genrule(
 )
 
 py_test(
+    name = "test_file_v1_10",
+    size = "small",
+    srcs = ["testdata/test_file_v1_10.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
     name = "test_file_v2_0",
     size = "small",
     srcs = ["test_file_v2_0.py"],
