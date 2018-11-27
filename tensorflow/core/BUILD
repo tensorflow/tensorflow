@@ -3429,7 +3429,6 @@ tf_cc_tests(
         "platform/stacktrace_handler_test.cc",
         "platform/subprocess_test.cc",
         "platform/vmodule_benchmark_test.cc",
-        "platform/vmodule_test.cc",
     ],
     deps = [
         ":lib",
@@ -3440,6 +3439,20 @@ tf_cc_tests(
         ":test_main",
         "//third_party/eigen3",
         "@zlib_archive//:zlib",
+    ],
+)
+
+tf_cc_test(
+    name = "vmodule_test",
+    srcs = ["platform/vmodule_test.cc"],
+    tags = ["optonly"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        "//third_party/eigen3",
     ],
 )
 
