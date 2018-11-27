@@ -1266,6 +1266,201 @@ class Recall(Metric):
         array_ops.zeros_like(self.thresholds))
 
 
+@six.add_metaclass(abc.ABCMeta)
+class SensitivitySpecificityBase(Metric):
+  """Abstract base class for computing sensitivity and specificity.
+
+  For additional information about specificity and sensitivity, see the
+  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+  """
+
+  def __init__(self, value, num_thresholds=200, name=None, dtype=None):
+    super(SensitivitySpecificityBase, self).__init__(name=name, dtype=dtype)
+    if num_thresholds <= 0:
+      raise ValueError('`num_thresholds` must be > 0.')
+    self.value = value
+    self.tp = self.add_weight(
+        'true_positives',
+        shape=(num_thresholds,),
+        initializer=init_ops.zeros_initializer)
+    self.tn = self.add_weight(
+        'true_negatives',
+        shape=(num_thresholds,),
+        initializer=init_ops.zeros_initializer)
+    self.fp = self.add_weight(
+        'false_positives',
+        shape=(num_thresholds,),
+        initializer=init_ops.zeros_initializer)
+    self.fn = self.add_weight(
+        'false_negatives',
+        shape=(num_thresholds,),
+        initializer=init_ops.zeros_initializer)
+
+    # Compute `num_thresholds` thresholds in [0, 1]
+    if num_thresholds == 1:
+      self.thresholds = [0.5]
+    else:
+      thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
+                    for i in range(num_thresholds - 2)]
+      self.thresholds = [0.0] + thresholds + [1.0]
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    """Accumulates confusion matrix statistics.
+
+    Args:
+      y_true: The ground truth values.
+      y_pred: The predicted values.
+      sample_weight: Optional weighting of each example. Defaults to 1. Can be a
+        `Tensor` whose rank is either 0, or the same rank as `y_true`, and must
+        be broadcastable to `y_true`.
+
+    Returns:
+      Update op.
+    """
+    return _update_confusion_matrix_variables({
+        _ConfusionMatrix.TRUE_POSITIVES: self.tp,
+        _ConfusionMatrix.TRUE_NEGATIVES: self.tn,
+        _ConfusionMatrix.FALSE_POSITIVES: self.fp,
+        _ConfusionMatrix.FALSE_NEGATIVES: self.fn,
+    }, y_true, y_pred, self.thresholds, sample_weight)
+
+
+class SensitivityAtSpecificity(SensitivitySpecificityBase):
+  """Computes the sensitivity at a given specificity.
+
+  `Sensitivity` measures the proportion of actual positives that are correctly
+  identified as such (tp / (tp + fn)).
+  `Specificity` measures the proportion of actual negatives that are correctly
+  identified as such (tn / (tn + fp)).
+
+  This metric creates four local variables, `true_positives`, `true_negatives`,
+  `false_positives` and `false_negatives` that are used to compute the
+  sensitivity at the given specificity. The threshold for the given specificity
+  value is computed and used to evaluate the corresponding sensitivity.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+
+  For additional information about specificity and sensitivity, see the
+  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+
+  Usage:
+
+  ```python
+  m = tf.metrics.SensitivityAtSpecificity(0.4, num_thresholds=1)
+  m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  print('Final result: ', m.result().numpy())  # Final result: 0.5
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.metrics.SensitivityAtSpecificity()])
+  ```
+  """
+
+  def __init__(self, specificity, num_thresholds=200, name=None, dtype=None):
+    """Creates a `SensitivityAtSpecificity` instance.
+
+    Args:
+      specificity: A scalar value in range `[0, 1]`.
+      num_thresholds: (Optional) Defaults to 200. The number of thresholds to
+        use for matching the given specificity.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    if specificity < 0 or specificity > 1:
+      raise ValueError('`specificity` must be in the range [0, 1].')
+    super(SensitivityAtSpecificity, self).__init__(
+        specificity, num_thresholds=num_thresholds, name=name, dtype=dtype)
+
+  def result(self):
+    # Calculate specificities at all the thresholds.
+    specificities = math_ops.div_no_nan(self.tn, self.tn + self.fp)
+
+    # Find the index of the threshold where the specificity is closest to the
+    # given specificity.
+    min_index = math_ops.argmin(
+        math_ops.abs(specificities - self.value), axis=0)
+    min_index = math_ops.cast(min_index, dtypes.int32)
+
+    # Compute sensitivity at that index.
+    return math_ops.div_no_nan(self.tp[min_index],
+                               self.tp[min_index] + self.fn[min_index])
+
+
+class SpecificityAtSensitivity(SensitivitySpecificityBase):
+  """Computes the specificity at a given sensitivity.
+
+  `Sensitivity` measures the proportion of actual positives that are correctly
+  identified as such (tp / (tp + fn)).
+  `Specificity` measures the proportion of actual negatives that are correctly
+  identified as such (tn / (tn + fp)).
+
+  This metric creates four local variables, `true_positives`, `true_negatives`,
+  `false_positives` and `false_negatives` that are used to compute the
+  specificity at the given sensitivity. The threshold for the given sensitivity
+  value is computed and used to evaluate the corresponding specificity.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+
+  For additional information about specificity and sensitivity, see the
+  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+
+  Usage:
+
+  ```python
+  m = tf.metrics.SpecificityAtSensitivity(0.8, num_thresholds=1)
+  m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  print('Final result: ', m.result().numpy())  # Final result: 1.0
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.metrics.SpecificityAtSensitivity()])
+  ```
+  """
+
+  def __init__(self, sensitivity, num_thresholds=200, name=None, dtype=None):
+    """Creates a `SpecificityAtSensitivity` instance.
+
+    Args:
+      sensitivity: A scalar value in range `[0, 1]`.
+      num_thresholds: (Optional) Defaults to 200. The number of thresholds to
+        use for matching the given specificity.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    if sensitivity < 0 or sensitivity > 1:
+      raise ValueError('`sensitivity` must be in the range [0, 1].')
+    super(SpecificityAtSensitivity, self).__init__(
+        sensitivity, num_thresholds=num_thresholds, name=name, dtype=dtype)
+
+  def result(self):
+    # Calculate sensitivities at all the thresholds.
+    sensitivities = math_ops.div_no_nan(self.tp, self.tp + self.fn)
+
+    # Find the index of the threshold where the sensitivity is closest to the
+    # given specificity.
+    min_index = math_ops.argmin(
+        math_ops.abs(sensitivities - self.value), axis=0)
+    min_index = math_ops.cast(min_index, dtypes.int32)
+
+    # Compute specificity at that index.
+    return math_ops.div_no_nan(self.tn[min_index],
+                               self.tn[min_index] + self.fp[min_index])
+
+
 def accuracy(y_true, y_pred):
   y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:
