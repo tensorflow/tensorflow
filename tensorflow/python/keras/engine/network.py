@@ -36,6 +36,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
@@ -162,7 +163,8 @@ class Network(base_layer.Layer):
 
   @checkpointable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs, name=None):
-    self._call_convention = base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT
+    self._call_convention = (base_layer_utils
+                             .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
     # Normalize and set self.inputs, self.outputs.
     if isinstance(inputs, (list, tuple)):
       self.inputs = list(inputs)  # Tensor or list of tensors.
@@ -305,7 +307,7 @@ class Network(base_layer.Layer):
     return self._call_is_graph_friendly
 
   def _determine_call_convention(self, call_argspec):
-    """Decides how `self.call()` is invoked. See base_layer.CallConvention."""
+    """Decides how `self.call()` is invoked. See `CallConvention`."""
     if call_argspec.varargs:
       may_take_single_argument = False
     else:
@@ -337,11 +339,11 @@ class Network(base_layer.Layer):
               "Model.call() takes a single positional argument (to which "
               "inputs are passed by convention) and a separate 'inputs' "
               "argument. Unable to determine which arguments are inputs.")
-        return base_layer.CallConvention.SINGLE_POSITIONAL_ARGUMENT
+        return base_layer_utils.CallConvention.SINGLE_POSITIONAL_ARGUMENT
     if 'inputs' in call_argspec.args:
-      return base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT
+      return base_layer_utils.CallConvention.EXPLICIT_INPUTS_ARGUMENT
     else:
-      return base_layer.CallConvention.POSITIONAL_ARGUMENTS_ARE_INPUTS
+      return base_layer_utils.CallConvention.POSITIONAL_ARGUMENTS_ARE_INPUTS
 
   def _track_layers(self, layers):
     """Add Checkpointable dependencies on a list of Layers."""
@@ -807,10 +809,10 @@ class Network(base_layer.Layer):
         graph = func_graph.FuncGraph('graph')
         with graph.as_default():
           if isinstance(input_shape, list):
-            x = [base_layer.generate_placeholders_from_shape(shape)
+            x = [base_layer_utils.generate_placeholders_from_shape(shape)
                  for shape in input_shape]
           else:
-            x = base_layer.generate_placeholders_from_shape(input_shape)
+            x = base_layer_utils.generate_placeholders_from_shape(input_shape)
 
           kwargs = {}
           num_call_args = len(tf_inspect.getfullargspec(self.call).args)

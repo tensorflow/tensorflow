@@ -31,7 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
-from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
@@ -550,7 +550,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     variable = self._add_variable_with_custom_getter(
         name=name,
         shape=shape,
-        getter=base_layer.make_variable,
+        getter=base_layer_utils.make_variable,
         overwrite=True,
         initializer=initializer,
         dtype=dtype,

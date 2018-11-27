@@ -122,6 +122,7 @@ py_library(
         "constraints.py",
         "engine/__init__.py",
         "engine/base_layer.py",
+        "engine/base_layer_utils.py",
         "engine/distributed_training_utils.py",
         "engine/input_layer.py",
         "engine/input_spec.py",
