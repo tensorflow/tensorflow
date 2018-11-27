@@ -115,8 +115,28 @@ class Loss(object):
     NotImplementedError('Must be implemented in subclasses.')
 
 
+@tf_export('losses.MeanSquaredError', 'keras.losses.MeanSquaredError')
 class MeanSquaredError(Loss):
-  """Computes the mean of squares of errors between labels and predictions."""
+  """Computes the mean of squares of errors between labels and predictions.
+
+  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
+  then the mean squared error value is 3/4 (0.75).
+
+  Usage:
+
+  ```python
+  mse = tf.losses.MeanSquaredError()
+  loss = mse([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Loss: ', loss.numpy())  # Loss: 0.75
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.MeanSquaredError())
+  ```
+  """
 
   def call(self, y_true, y_pred):
     """Invokes the `MeanSquaredError` instance.
