@@ -1,6 +1,6 @@
 op {
   graph_op_name: "Conv3DBackpropInput"
   endpoint {
-    name: "nn.Conv3DBackpropInput"
+    name: "nn.Conv3dBackpropInput"
   }
 }

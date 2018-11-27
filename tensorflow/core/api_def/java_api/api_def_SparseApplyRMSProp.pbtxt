@@ -1,6 +1,6 @@
 op {
   graph_op_name: "SparseApplyRMSProp"
   endpoint {
-    name: "train.SparseApplyRMSProp"
+    name: "train.SparseApplyRmsProp"
   }
 }

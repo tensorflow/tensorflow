@@ -1,6 +1,6 @@
 op {
   graph_op_name: "IRFFT"
   endpoint {
-    name: "signal.IRFFT"
+    name: "signal.Irfft"
   }
 }

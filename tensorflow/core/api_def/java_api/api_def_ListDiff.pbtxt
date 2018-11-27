@@ -1,3 +1,6 @@
 op {
   graph_op_name: "ListDiff"
+  endpoint {
+    name: "SetDiff1d"
+  }
 }
