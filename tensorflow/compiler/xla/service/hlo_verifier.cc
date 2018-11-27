@@ -1379,9 +1379,8 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           const Layout& operand_layout = operand_shape.layout();
           TF_RET_CHECK(LayoutUtil::Equal(result_layout, operand_layout))
               << "Instruction shouldn't change layouts "
-              << instruction->ToString() << " From "
-              << ShapeUtil::HumanString(result_shape) << " To "
-              << ShapeUtil::HumanString(operand_shape);
+              << instruction->ToString() << " From " << result_shape << " To "
+              << operand_shape;
         }
       }
     }
