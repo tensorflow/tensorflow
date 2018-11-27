@@ -25,10 +25,47 @@ from tensorflow.python.platform import test as test_lib
 class TestUpgrade(test_util.TensorFlowTestCase):
   """Test various APIs that have been changed in 2.0."""
 
+  def setUp(self):
+    tf.enable_eager_execution()
+
   def testRenames(self):
     with self.cached_session():
-      self.assertAllClose(1.04719755, tf.acos(0.5).eval())
-      self.assertAllClose(0.5, tf.rsqrt(4.0).eval())
+      self.assertAllClose(1.04719755, tf.acos(0.5))
+      self.assertAllClose(0.5, tf.rsqrt(4.0))
+
+  def testSerializeSparseTensor(self):
+    sp_input = tf.SparseTensor(
+        indices=tf.constant([[1]], dtype=tf.int64),
+        values=tf.constant([2], dtype=tf.int64),
+        dense_shape=[2])
+
+    with self.cached_session():
+      serialized_sp = tf.serialize_sparse(sp_input, 'serialize_name', tf.string)
+      self.assertEqual((3,), serialized_sp.shape)
+      self.assertTrue(serialized_sp[0].numpy())  # check non-empty
+
+  def testSerializeManySparse(self):
+    sp_input = tf.SparseTensor(
+        indices=tf.constant([[0, 1]], dtype=tf.int64),
+        values=tf.constant([2], dtype=tf.int64),
+        dense_shape=[1, 2])
+
+    with self.cached_session():
+      serialized_sp = tf.serialize_many_sparse(
+          sp_input, 'serialize_name', tf.string)
+      self.assertEqual((1, 3), serialized_sp.shape)
+
+  def testArgMaxMin(self):
+    self.assertAllClose(
+        [1],
+        tf.argmax([[1, 3, 2]], name='abc', dimension=1))
+    self.assertAllClose(
+        [0, 0, 0],
+        tf.argmax([[1, 3, 2]], dimension=0))
+    self.assertAllClose(
+        [0],
+        tf.argmin([[1, 3, 2]], name='abc', dimension=1))
+
 
 if __name__ == "__main__":
   test_lib.main()

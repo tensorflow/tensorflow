@@ -219,6 +219,28 @@ class TestUpgrade(test_util.TensorFlowTestCase):
         "rename the function export_savedmodel() to export_saved_model()",
         report)
 
+  def testArgmin(self):
+    text = "tf.argmin(input, name=n, dimension=1, output_type=type)"
+    expected_text = "tf.argmin(input=input, name=n, axis=1, output_type=type)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.argmin(input, 0)"
+    expected_text = "tf.argmin(input=input, axis=0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testArgmax(self):
+    text = "tf.argmax(input, name=n, dimension=1, output_type=type)"
+    expected_text = "tf.argmax(input=input, name=n, axis=1, output_type=type)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.argmax(input, 0)"
+    expected_text = "tf.argmax(input=input, axis=0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 
