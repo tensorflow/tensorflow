@@ -8,6 +8,21 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_test(
+    name = "autotune_benchmark",
+    srcs = ["autotune_benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "csv_dataset_benchmark",
     srcs = ["csv_dataset_benchmark.py"],
     srcs_version = "PY2AND3",
@@ -63,15 +78,17 @@ py_test(
 )
 
 py_test(
-    name = "autotune_benchmark",
-    srcs = ["autotune_benchmark.py"],
+    name = "matching_files_benchmark",
+    size = "small",
+    srcs = ["matching_files_benchmark.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python/data/experimental/ops:batching",
-        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:matching_files",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -92,17 +109,16 @@ py_test(
 )
 
 py_test(
-    name = "matching_files_benchmark",
-    size = "small",
-    srcs = ["matching_files_benchmark.py"],
+    name = "unbatch_benchmark",
+    srcs = ["unbatch_benchmark.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/experimental/ops:matching_files",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
