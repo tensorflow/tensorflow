@@ -1069,17 +1069,14 @@ def _create_partitioned_variables(name,
                      'As TPU embedding is not optimized for small tables, '
                      'please consider other ways for this embedding lookup.')
 
-  slicing = [num_hosts, 1]
-
-  # TODO(shizhiw): deprecated, use tf.get_variable()?
-  return partitioned_variables.create_partitioned_variables(
-      name=name,
-      slicing=slicing,
+  return list(variable_scope.get_variable(
+      name,
       shape=(vocabulary_size, embedding_dimension),
+      partitioner=partitioned_variables.fixed_size_partitioner(num_hosts),
       dtype=dtypes.float32,
       initializer=initializer,
       collections=collections,
-      trainable=False)
+      trainable=False))
 
 
 @ops.RegisterGradient('TPUEmbeddingActivations')

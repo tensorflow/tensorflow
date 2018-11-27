@@ -998,19 +998,12 @@ class SaveRestoreShardedTest(test.TestCase):
 
     call_saver_with_dict = False  # updated by test loop below
 
-    def _save(slices=None, partitioner=None):
+    def _save(partitioner=None):
       with self.session(graph=ops_lib.Graph()) as sess:
         # Calls .eval() to return the ndarray that makes up the full variable.
         rnd = random_ops.random_uniform(var_full_shape).eval()
 
-        if slices:
-          assert not partitioner
-          # TODO(apassos): make create_partitioned_variables take use_resource
-          # option to make this test passable without creating a named
-          # variable_scope.
-          vs = partitioned_variables.create_partitioned_variables(
-              var_full_shape, slices, rnd, name=var_name)
-        elif partitioner:
+        if partitioner:
           vs = [
               variable_scope.get_variable(
                   var_name,
@@ -1027,7 +1020,7 @@ class SaveRestoreShardedTest(test.TestCase):
 
         variables.global_variables_initializer().run()
         if call_saver_with_dict:
-          saver = saver_module.Saver({var_name: (vs if slices else vs[0])})
+          saver = saver_module.Saver({var_name: vs[0]})
         else:
           saver = saver_module.Saver(vs)
         actual_path = saver.save(sess, saved_path)
@@ -1035,16 +1028,9 @@ class SaveRestoreShardedTest(test.TestCase):
 
         return rnd
 
-    def _restore(slices=None, partitioner=None):
+    def _restore(partitioner=None):
       with self.session(graph=ops_lib.Graph()) as sess:
-        if slices:
-          assert not partitioner
-          new_vs = partitioned_variables.create_partitioned_variables(
-              var_full_shape,
-              slices,
-              array_ops.zeros(var_full_shape),  # != original contents.
-              name=var_name)
-        elif partitioner:
+        if partitioner:
           new_vs = [
               variable_scope.get_variable(
                   var_name,
@@ -1063,7 +1049,7 @@ class SaveRestoreShardedTest(test.TestCase):
         variables.global_variables_initializer().run()
         if call_saver_with_dict:
           saver = saver_module.Saver({
-              var_name: (new_vs if slices else new_vs[0])
+              var_name: new_vs[0]
           })
         else:
           saver = saver_module.Saver(new_vs)
@@ -1071,11 +1057,7 @@ class SaveRestoreShardedTest(test.TestCase):
 
         if partitioner:
           return new_vs[0].as_tensor().eval()
-        elif slices and slices[0] != 1:
-          return array_ops.concat(new_vs, 0).eval()
-        elif slices and slices[1] != 1:
-          return array_ops.concat(new_vs, 1).eval()
-        else:  # Non-sliced.
+        else:
           return new_vs[0].eval()
 
     for call_saver_with_dict in {False, True}:
@@ -1086,27 +1068,23 @@ class SaveRestoreShardedTest(test.TestCase):
       restored_full = _restore()
       self.assertAllEqual(saved_full, restored_full)
 
-      # Saves 10 horizontal parts of a partitioned variable.
-      # Restores into a full variable, non-sliced.
-      saved_full = _save(slices=[10, 1])
-      restored_full = _restore()
-      self.assertAllEqual(saved_full, restored_full)
-
-      # Restores into a different number/orientation of slices.
-      restored_full = _restore(slices=[2, 1])  # 2 horizon parts.
-      self.assertAllEqual(saved_full, restored_full)
-      restored_full = _restore(slices=[1, 3])  # 3 vertical parts.
-      self.assertAllEqual(saved_full, restored_full)
-
-      # Restores into a PartitionedVariable
+      # Restores into the same number of partitions.
       restored_full = _restore(
           partitioner=partitioned_variables.fixed_size_partitioner(
               num_shards=2))
       self.assertAllEqual(saved_full, restored_full)
 
-      # Now, saves a full variable and restores in slices.
+      # Restores into a different number of partitions.
+      restored_full = _restore(
+          partitioner=partitioned_variables.fixed_size_partitioner(
+              num_shards=3))
+      self.assertAllEqual(saved_full, restored_full)
+
+      # Now, saves a full variable and restores PartitionedVariable.
       saved_full = _save()
-      restored_full = _restore(slices=[1, 3])
+      restored_full = _restore(
+          partitioner=partitioned_variables.fixed_size_partitioner(
+              num_shards=3))
       self.assertAllEqual(saved_full, restored_full)
 
   def testPartitionedVariable(self):
