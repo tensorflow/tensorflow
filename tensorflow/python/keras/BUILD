@@ -185,7 +185,6 @@ py_library(
         ":engine",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:cudnn_rnn_ops_gen",
-        "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
@@ -199,6 +198,7 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute:distribute_lib",
     ],
 )
 

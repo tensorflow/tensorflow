@@ -23,6 +23,7 @@ from tensorflow.python.client import session as session_module
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -32,7 +33,6 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
 
 
