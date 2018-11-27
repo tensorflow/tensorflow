@@ -3428,6 +3428,8 @@ tf_cc_tests(
         "platform/profile_utils/cpu_utils_test.cc",
         "platform/stacktrace_handler_test.cc",
         "platform/subprocess_test.cc",
+        "platform/vmodule_benchmark_test.cc",
+        "platform/vmodule_test.cc",
     ],
     deps = [
         ":lib",
