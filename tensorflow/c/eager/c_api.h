@@ -169,8 +169,31 @@ TF_CAPI_EXPORT extern int64_t TFE_TensorHandleNumElements(TFE_TensorHandle* h,
 TF_CAPI_EXPORT extern int64_t TFE_TensorHandleDim(TFE_TensorHandle* h,
                                                   int dim_index,
                                                   TF_Status* status);
+
+// Returns the device of the operation that produced `h`.
+// If `h` was produced by a copy, returns the destination device of
+// the copy. Note that returned device name is not always the device
+// holding the tensor handle's memory. If you want the latter, use
+// TFE_TensorHandleBackingDeviceName.
+// This function will block till the operation that produces `h` has completed.
+//
+// Device on which the kernel of the operation that produced `h` ran.
+//
+// If `h` was produced by a copy, returns the destination device of
+// the copy.
+//
+// Note that returned device name is not always the device that owns the memory
+// that backs the tensor handle. For the latter see
+// TFE_TensorHandleBackingDeviceName.
+//
 // This function will block till the operation that produces `h` has completed.
 TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceName(
+    TFE_TensorHandle* h, TF_Status* status);
+
+// Returns the name of the device in whose memory `h` resides.
+//
+// This function will block till the operation that produces `h` has completed.
+TF_CAPI_EXPORT extern const char* TFE_TensorHandleBackingDeviceName(
     TFE_TensorHandle* h, TF_Status* status);
 
 // Return a pointer to a new TFE_TensorHandle that shares the underlying tensor
