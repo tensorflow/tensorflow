@@ -736,7 +736,10 @@ tf_custom_op_py_library(
     visibility = [
         ":friends",
     ],
-    deps = ["//tensorflow/compiler/jit/ops:xla_ops_wrapper_py"],
+    deps = [
+        "//tensorflow/compiler/jit/ops:xla_ops_grad",
+        "//tensorflow/compiler/jit/ops:xla_ops_wrapper_py",
+    ],
 )
 
 # This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.
