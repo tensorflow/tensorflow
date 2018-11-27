@@ -1,5 +1,6 @@
 #include <algorithm>
 
+#include "tensorflow/compiler/plugin/poplar/driver/batch_norm_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
@@ -16,47 +17,6 @@ namespace pe = popops::expr;
 
 namespace xla {
 namespace poplarplugin {
-namespace {
-poplar::Tensor convertVarianceToInvStdDev(poplar::Graph& graph,
-                                          const poplar::Tensor& variance,
-                                          const float epsilon,
-                                          poplar::program::Sequence& seq,
-                                          const std::string& debug_name) {
-  auto expression =
-      pe::Divide(pe::Const(1), pe::Sqrt(pe::Add(pe::_1, pe::Const(epsilon))));
-
-  return popops::map(graph, expression, {variance}, seq,
-                     debug_name + "/VarToInvStdDev");
-}
-
-poplar::Tensor convertInvStdDevToVariance(poplar::Graph& graph,
-                                          const poplar::Tensor& inv_sd,
-                                          const float epsilon,
-                                          poplar::program::Sequence& seq,
-                                          const std::string& debug_name) {
-  auto expression =
-      pe::Sub(pe::Divide(pe::Const(1), pe::Square(pe::_1)), pe::Const(epsilon));
-
-  return popops::map(graph, expression, {inv_sd}, seq,
-                     debug_name + "/InvStdDevToVar");
-}
-
-poplar::Tensor batchNormalise(
-    poplar::Graph& graph, const poplar::Tensor& operand,
-    const poplar::Tensor& scale, const poplar::Tensor& offset,
-    const poplar::Tensor& mean, const poplar::Tensor& inv_sd,
-    poplar::program::Sequence& seq, const std::string& debug_name) {
-  auto multiplicand_expression = pe::Mul(pe::_1, pe::_2);
-  poplar::Tensor multiplicand =
-      popops::map(graph, multiplicand_expression, {scale, inv_sd}, seq,
-                  debug_name + "/Multiplicand");
-  auto addend_expression = pe::Sub(pe::_1, pe::Mul(pe::_2, pe::_3));
-  poplar::Tensor addend =
-      popops::map(graph, addend_expression, {offset, multiplicand, mean}, seq,
-                  debug_name + "/Addend");
-  return popnn::bn::batchNormalise(graph, operand, multiplicand, addend, seq,
-                                   debug_name);
-}
 
 std::pair<poplar::Tensor, std::vector<std::size_t>>
 ShuffleBatchNormInputToPoplar(const poplar::Tensor& input,
@@ -91,7 +51,6 @@ poplar::Tensor ShuffleBatchNormOutputToTensorflow(
   }
   return output_shuffled;
 }
-}
 
 StatusOr<poplar::program::Program> CreateBatchNormInf(
     CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map) {
@@ -115,7 +74,6 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
 
   const auto epsilon = batch_inf_inst->epsilon();
   const unsigned dimension = batch_inf_inst->feature_index();
-  const unsigned final_dim = operand.rank() - 1;
 
   // Special case - zero sized array
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
@@ -133,10 +91,9 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
 
   auto name = GetDebugName(inst);
 
-  auto inv_sd = convertVarianceToInvStdDev(graph, variance, epsilon, seq, name);
-
-  poplar::Tensor out = batchNormalise(graph, operand_view, scale, offset, mean,
-                                      inv_sd, seq, name);
+  auto out = batch_norm_graph_caching::DoCachedBatchNormInference(
+      graph, res, operand_view, scale, offset, mean, variance, epsilon, seq,
+      name);
 
   out = ShuffleBatchNormOutputToTensorflow(out, dimension, non_broadcast_dims);
 
@@ -162,7 +119,6 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
                       FindInstructionInput(tensor_map, res, inst, 2, seq));
   const auto epsilon = batch_train_inst->epsilon();
   const unsigned dimension = batch_train_inst->feature_index();
-  const unsigned final_dim = operand.rank() - 1;
 
   // Special case - zero sized array
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
@@ -185,15 +141,11 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
       ShuffleBatchNormInputToPoplar(operand, dimension);
 
   auto name = GetDebugName(inst);
-  poplar::Tensor mean, inv_sd;
+  poplar::Tensor out, mean, variance;
 
-  std::tie(mean, inv_sd) = popnn::bn::batchNormEstimates(
-      graph, operand_view, epsilon, seq, false, poplar::FLOAT, name);
-
-  poplar::Tensor out = batchNormalise(graph, operand_view, scale, offset, mean,
-                                      inv_sd, seq, name);
-
-  auto variance = convertInvStdDevToVariance(graph, inv_sd, epsilon, seq, name);
+  std::tie(out, mean, variance) =
+      batch_norm_graph_caching::DoCachedBatchNormTraining(
+          graph, res, operand_view, scale, offset, epsilon, seq, name);
 
   out = ShuffleBatchNormOutputToTensorflow(out, dimension, non_broadcast_dims);
 
@@ -225,7 +177,6 @@ StatusOr<poplar::program::Program> CreateBatchNormGrad(
                       FindInstructionInput(tensor_map, res, inst, 4, seq));
   const auto epsilon = batch_grad_inst->epsilon();
   const unsigned dimension = batch_grad_inst->feature_index();
-  const unsigned final_dim = operand.rank() - 1;
 
   // Special case - zero sized array
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
@@ -255,21 +206,12 @@ StatusOr<poplar::program::Program> CreateBatchNormGrad(
   std::tie(grad_output_view, non_broadcast_dims) =
       ShuffleBatchNormInputToPoplar(grad_output, dimension);
 
-  auto inv_sd = convertVarianceToInvStdDev(graph, variance, epsilon, seq, name);
+  poplar::Tensor operand_grad, scale_grad, offset_grad;
 
-  // Compute the whitened activations.
-  poplar::Tensor operand_whitened = popnn::bn::batchNormWhiten(
-      graph, operand_view, mean, inv_sd, seq, name + "/WhitenedActs");
-
-  // Compute the deltas for scaled and offset
-  poplar::Tensor scale_grad, offset_grad;
-  std::tie(scale_grad, offset_grad) =
-      popnn::bn::batchNormDeltas(graph, operand_whitened, grad_output_view, seq,
-                                 poplar::FLOAT, name + "/Deltas");
-  // Compute the delta for the operand grad
-  poplar::Tensor operand_grad = popnn::bn::batchNormGradients(
-      graph, operand_whitened, grad_output_view, scale_grad, offset_grad,
-      inv_sd, scale, seq, poplar::FLOAT, name + "/Grad");
+  std::tie(operand_grad, scale_grad, offset_grad) =
+      batch_norm_graph_caching::DoCachedBatchNormGrad(
+          graph, res, operand_view, scale, mean, variance, grad_output_view,
+          epsilon, seq, name);
 
   operand_grad = ShuffleBatchNormOutputToTensorflow(operand_grad, dimension,
                                                     non_broadcast_dims);

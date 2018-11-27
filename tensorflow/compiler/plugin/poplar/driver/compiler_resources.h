@@ -19,9 +19,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 
+#include "tensorflow/compiler/plugin/poplar/driver/batch_norm_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/conv_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
-#include "tensorflow/compiler/plugin/poplar/driver/graph_caching_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
 #include <poplar/OptionFlags.hpp>
@@ -58,11 +59,17 @@ struct CompilerResources {
 
   std::map<std::string, TensorMap> tensor_maps;
 
-  graph_caching_util::ConvolutionGraphCache conv_graph_cache;
+  conv_graph_caching::ConvolutionGraphCache conv_graph_cache;
 
-  graph_caching_util::BwdWeightGraphCache bwd_weight_graph_cache;
+  conv_graph_caching::BwdWeightGraphCache bwd_weight_graph_cache;
 
-  graph_caching_util::WeightUpdateConvolutionGraphCache wu_graph_cache;
+  conv_graph_caching::WeightUpdateConvolutionGraphCache wu_graph_cache;
+
+  batch_norm_graph_caching::BatchNormInferenceGraphCache bn_inf_graph_cache;
+
+  batch_norm_graph_caching::BatchNormTrainingGraphCache bn_tr_graph_cache;
+
+  batch_norm_graph_caching::BatchNormGradGraphCache bn_grad_graph_cache;
 
   CompilerResources(const poplar::Device& dev, uint64 seed,
                     poprand::RandomGenMode mode,

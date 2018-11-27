@@ -151,6 +151,8 @@ cc_library(
         "driver/executable.cc",
         "driver/executor.cc",
         "driver/graph_caching_util.cc",
+        "driver/batch_norm_graph_caching.cc",
+        "driver/conv_graph_caching.cc",
         "driver/map_ops.cc",
         "driver/math_ops.cc",
         "driver/platform.cc",
@@ -181,6 +183,8 @@ cc_library(
         "driver/executable.h",
         "driver/executor.h",
         "driver/graph_caching_util.h",
+        "driver/batch_norm_graph_caching.h",
+        "driver/conv_graph_caching.h",
         "driver/ops.h",
         "driver/platform.h",
         "driver/platform_id.h",
@@ -839,9 +843,25 @@ py_test(
 )
 
 py_test(
-    name = "cache_graph_test",
+    name = "batch_norm_graph_caching_test",
     size = "medium",
-    srcs = ["tests/cache_graph_test.py"],
+    srcs = ["tests/batch_norm_graph_caching_test.py"],
+    deps = [
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "conv_graph_caching_test",
+    size = "medium",
+    srcs = ["tests/conv_graph_caching_test.py"],
     deps = [
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
@@ -921,7 +941,8 @@ test_suite(
         "casts_elimination_test",
         "update_op_dependencies_test",
         "fuse_wide_const_test",
-        "cache_graph_test",
+        "batch_norm_graph_caching_test",
+        "conv_graph_caching_test",
         "scheduler_test",
         "dynamic_slice_layout_test",
         "sort_op_test",

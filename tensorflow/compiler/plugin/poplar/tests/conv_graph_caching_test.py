@@ -21,7 +21,7 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
 
-class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
+class ConvGraphCachingTest(test_util.TensorFlowTestCase):
 
   def testConvolutionsMatch(self):
     with ops.device("/device:IPU:0"):
