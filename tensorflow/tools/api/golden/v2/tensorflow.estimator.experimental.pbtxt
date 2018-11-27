@@ -1,6 +1,10 @@
 path: "tensorflow.estimator.experimental"
 tf_module {
   member {
+    name: "InMemoryEvaluatorHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearSDCA"
     mtype: "<type \'type\'>"
   }
