@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -40,8 +41,8 @@ from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('keras.layers.BatchNormalization')
-class BatchNormalization(Layer):
+@tf_export('keras.layers.BatchNormalization', v1=[])
+class BatchNormalizationV2(Layer):
   """Batch normalization layer (Ioffe and Szegedy, 2014).
 
   Normalize the activations of the previous layer at each batch,
@@ -84,8 +85,10 @@ class BatchNormalization(Layer):
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `momentum` is still applied
       to get the means and variances for inference.
-    fused: if `None` or `True`, use a faster, fused implementation if possible.
-      If `False`, use the system recommended implementation.
+    fused: if `True`, use a faster, fused implementation, or raise a ValueError
+      if the fused implementation cannot be used. If `None`, use the faster
+      implementation if possible. If False, do not used the fused
+      implementation.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     virtual_batch_size: An `int`. By default, `virtual_batch_size` is `None`,
@@ -120,6 +123,9 @@ class BatchNormalization(Layer):
         Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
   """
 
+  # The BatchNormalizationV1 subclass sets this to False to use the V1 behavior.
+  _USE_V2_BEHAVIOR = True
+
   def __init__(self,
                axis=-1,
                momentum=0.99,
@@ -143,12 +149,15 @@ class BatchNormalization(Layer):
                adjustment=None,
                name=None,
                **kwargs):
-    super(BatchNormalization, self).__init__(
+    super(BatchNormalizationV2, self).__init__(
         name=name, trainable=trainable, **kwargs)
     if isinstance(axis, list):
       self.axis = axis[:]
-    else:
+    elif isinstance(axis, int):
       self.axis = axis
+    else:
+      raise TypeError('axis must be int or list, type given: %s'
+                      % type(self.axis))
     self.momentum = momentum
     self.epsilon = epsilon
     self.center = center
@@ -165,7 +174,14 @@ class BatchNormalization(Layer):
     self.renorm = renorm
     self.virtual_batch_size = virtual_batch_size
     self.adjustment = adjustment
-    if fused is None:
+    if self._USE_V2_BEHAVIOR:
+      if fused:
+        self._raise_if_fused_cannot_be_used()
+      # We leave fused as None if self._fused_can_be_used()==True, since we
+      # still may set it to False in self.build() if the input rank is not 4.
+      elif fused is None and not self._fused_can_be_used():
+        fused = False
+    elif fused is None:
       fused = True
     self.supports_masking = True
 
@@ -181,6 +197,38 @@ class BatchNormalization(Layer):
       self.renorm_clipping = renorm_clipping
       self.renorm_momentum = renorm_momentum
 
+  def _raise_if_fused_cannot_be_used(self):
+    """Raises a ValueError if fused implementation cannot be used.
+
+    In addition to the checks done in this function, the input tensors rank must
+    be 4. The input rank check can only be done once the input shape is known.
+    """
+    # Currently fused batch norm doesn't support renorm. It also only supports a
+    # channel dimension on axis 1 or 3, when no virtual batch size or adjustment
+    # is used.
+    if self.renorm:
+      raise ValueError('Passing both fused=True and renorm=True is '
+                       'unsupported')
+    axis = [self.axis] if isinstance(self.axis, int) else self.axis
+    # Axis -3 is equivalent to 1, and axis -1 is equivalent to 3, because the
+    # input rank is required to be 4 (which is checked later).
+    if len(axis) > 1 or axis[0] not in (-3, -1, 1, 3):
+      raise ValueError('Passing fused=True is only supported when axis is 1 '
+                       'or 3')
+    if self.virtual_batch_size is not None:
+      raise ValueError('Passing fused=True is unsupported when '
+                       'virtual_batch_size is specified.')
+    if self.adjustment is not None:
+      raise ValueError('Passing fused=True is unsupported when '
+                       'adjustment is specified.')
+
+  def _fused_can_be_used(self):
+    try:
+      self._raise_if_fused_cannot_be_used()
+      return True
+    except ValueError:
+      return False
+
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     if not input_shape.ndims:
@@ -190,10 +238,6 @@ class BatchNormalization(Layer):
     # Convert axis to list and resolve negatives
     if isinstance(self.axis, int):
       self.axis = [self.axis]
-
-    if not isinstance(self.axis, list):
-      raise TypeError('axis must be int or list, type given: %s'
-                      % type(self.axis))
 
     for idx, x in enumerate(self.axis):
       if x < 0:
@@ -219,16 +263,18 @@ class BatchNormalization(Layer):
         raise ValueError('When using virtual_batch_size, adjustment cannot '
                          'be specified')
 
-    if self.fused:
-      # Currently fused batch norm doesn't support renorm. It also only supports
-      # an input tensor of rank 4 and a channel dimension on axis 1 or 3.
+    if self.fused in (None, True):
       # TODO(yaozhang): if input is not 4D, reshape it to 4D and reshape the
       # output back to its original shape accordingly.
-      self.fused = (not self.renorm and
-                    ndims == 4 and
-                    self.axis in [[1], [3]] and
-                    self.virtual_batch_size is None and
-                    self.adjustment is None)
+      if self._USE_V2_BEHAVIOR:
+        if self.fused is None:
+          self.fused = (ndims == 4)
+        elif self.fused and ndims != 4:
+          raise ValueError('Batch normalization layers with fused=True only '
+                           'support 4D input tensors.')
+      else:
+        assert self.fused is not None
+        self.fused = (ndims == 4 and self._fused_can_be_used())
       # TODO(chrisying): fused batch norm is currently not supported for
       # multi-axis batch norm and by extension virtual batches. In some cases,
       # it might be possible to use fused batch norm but would require reshaping
@@ -672,5 +718,36 @@ class BatchNormalization(Layer):
                       'layer cannot be serialized and has been omitted from '
                       'the layer config. It will not be included when '
                       're-creating the layer from the saved config.')
-    base_config = super(BatchNormalization, self).get_config()
+    base_config = super(BatchNormalizationV2, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+
+def _replace_in_v2_docstring(old, new):
+  string = BatchNormalizationV2.__doc__
+  if old not in string:
+    raise ValueError('Could not find following string in BatchNormalizationV2 '
+                     'docstring: "{}"'.format(old))
+  return string.replace(old, new)
+
+
+@tf_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
+class BatchNormalizationV1(BatchNormalizationV2):
+
+  __doc__ = _replace_in_v2_docstring(
+      '''
+    fused: if `True`, use a faster, fused implementation, or raise a ValueError
+      if the fused implementation cannot be used. If `None`, use the faster
+      implementation if possible. If False, do not used the fused
+      implementation.''',
+
+      '''
+    fused: if `None` or `True`, use a faster, fused implementation if possible.
+      If `False`, use the system recommended implementation.''')
+
+  _USE_V2_BEHAVIOR = False
+
+
+if tf2.enabled():
+  BatchNormalization = BatchNormalizationV2
+else:
+  BatchNormalization = BatchNormalizationV1
