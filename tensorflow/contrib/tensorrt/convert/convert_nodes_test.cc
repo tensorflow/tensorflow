@@ -2184,11 +2184,11 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_expanddims", &output));
     EXPECT_TRUE(output.is_tensor());
-    EXPECT_TRUE(TrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions()))
-        << output.DebugString();
+    ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
 
     std::vector<float> output_data(6);
-    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_expanddims", &output_data);
+    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_expanddims",
+                       &output_data);
     EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
   }
   {
@@ -2200,11 +2200,11 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_expanddims", &output));
     EXPECT_TRUE(output.is_tensor());
-    EXPECT_TRUE(TrtDimsEqualsArray({2, 3, 1}, output.tensor()->getDimensions()))
-        << output.DebugString();
+    ExpectTrtDimsEqualsArray({2, 3, 1}, output.tensor()->getDimensions());
 
     std::vector<float> output_data(6);
-    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_expanddims", &output_data);
+    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_expanddims",
+                       &output_data);
     EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
   }
   {
@@ -2216,11 +2216,11 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_expanddims", &output));
     EXPECT_TRUE(output.is_tensor());
-    EXPECT_TRUE(TrtDimsEqualsArray({2, 3, 1}, output.tensor()->getDimensions()))
-        << output.DebugString();
+    ExpectTrtDimsEqualsArray({2, 3, 1}, output.tensor()->getDimensions());
 
     std::vector<float> output_data(6);
-    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_expanddims", &output_data);
+    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_expanddims",
+                       &output_data);
     EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
   }
 }
@@ -2252,7 +2252,8 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     ops::Squeeze::Attrs squeeze_attrs;
     squeeze_attrs.axis_ = gtl::ArraySlice<int>(axis);
-    auto squeeze = ops::Squeeze(s.WithOpName("my_squeeze"), input, squeeze_attrs);
+    auto squeeze = ops::Squeeze(s.WithOpName("my_squeeze"), input,
+                                squeeze_attrs);
     return squeeze.operation.node()->def();
   };
 
@@ -2303,11 +2304,11 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
     EXPECT_TRUE(output.is_tensor());
-    EXPECT_TRUE(TrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions()))
-        << output.DebugString();
+    ExpectTrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions());
 
     std::vector<float> output_data(6);
-    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_squeeze", &output_data);
+    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_squeeze",
+                       &output_data);
     EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
   }
   {
@@ -2319,11 +2320,11 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
     EXPECT_TRUE(output.is_tensor());
-    EXPECT_TRUE(TrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions()))
-        << output.DebugString();
+    ExpectTrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions());
 
     std::vector<float> output_data(6);
-    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_squeeze", &output_data);
+    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_squeeze",
+                       &output_data);
     EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
   }
   {
@@ -2335,11 +2336,11 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
     EXPECT_TRUE(output.is_tensor());
-    EXPECT_TRUE(TrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions()))
-        << output.DebugString();
+    ExpectTrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions());
 
     std::vector<float> output_data(6);
-    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_squeeze", &output_data);
+    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_squeeze",
+                       &output_data);
     EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
   }
   {
@@ -2351,11 +2352,11 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
     EXPECT_TRUE(output.is_tensor());
-    EXPECT_TRUE(TrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions()))
-        << output.DebugString();
+    ExpectTrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions());
 
     std::vector<float> output_data(6);
-    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_squeeze", &output_data);
+    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_squeeze",
+                       &output_data);
     EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
   }
 }
