@@ -1525,3 +1525,6 @@ def copy_to_graph_uninitialized(var):
   new_variable._maybe_initialize_checkpointable()
   # pylint: enable=protected-access
   return new_variable
+
+ops.NotDifferentiable("VarIsInitializedOp")
+ops.NotDifferentiable("VariableShape")

@@ -31,6 +31,8 @@ from tensorflow.python.ops.gen_list_ops import *
 
 
 ops.NotDifferentiable("TensorListConcat")
+ops.NotDifferentiable("TensorListElementShape")
+ops.NotDifferentiable("TensorListLength")
 ops.NotDifferentiable("TensorListPushBackBatch")
 
 
