@@ -90,6 +90,9 @@ public:
   /// The source location the operation was defined or derived from.
   Location getLoc() const { return locationAndKind.getPointer(); }
 
+  /// Set the source location the operation was defined or derived from.
+  void setLoc(Location loc) { locationAndKind.setPointer(loc); }
+
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
 

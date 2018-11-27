@@ -77,6 +77,7 @@ class Instruction final
 public:
   using IROperandOwner::getContext;
   using IROperandOwner::getLoc;
+  using IROperandOwner::setLoc;
 
   //===--------------------------------------------------------------------===//
   // Operands

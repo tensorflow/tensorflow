@@ -87,6 +87,14 @@ Location Operation::getLoc() const {
   return llvm::cast<OperationStmt>(this)->getLoc();
 }
 
+/// Set the source location the operation was defined or derived from.
+void Operation::setLoc(Location loc) {
+  if (auto *inst = llvm::dyn_cast<Instruction>(this))
+    inst->setLoc(loc);
+  else
+    llvm::cast<OperationStmt>(this)->setLoc(loc);
+}
+
 /// Return the function this operation is defined in.
 Function *Operation::getOperationFunction() {
   if (auto *inst = llvm::dyn_cast<Instruction>(this))

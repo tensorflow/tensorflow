@@ -46,6 +46,9 @@ public:
   /// The source location the operation was defined or derived from.
   Location getLoc() const;
 
+  /// Set the source location the operation was defined or derived from.
+  void setLoc(Location loc);
+
   /// Return the function this operation is defined in.  This has a verbose
   /// name to avoid name lookup ambiguities.
   Function *getOperationFunction();

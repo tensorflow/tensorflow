@@ -58,6 +58,7 @@ public:
   using Statement::getLoc;
   using Statement::moveBefore;
   using Statement::print;
+  using Statement::setLoc;
 
   /// Check if this statement is a return statement.
   bool isReturn() const;
