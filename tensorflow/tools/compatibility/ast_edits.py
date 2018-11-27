@@ -40,6 +40,10 @@ class APIChangeSpec(object):
   * `function_reorders`: maps functions whose argument order has changed to the
     list of arguments in the new order
   * `function_handle`: maps function names to custom handlers for the function
+  * `function_warnings`: maps full names of functions to warnings that will be
+    printed out if the function is used. (e.g. tf.nn.convolution())
+  * `unrestricted_function_warnings`: maps names of functions to warnings that
+    will be printed out when the function is used (e.g. foo.convolution()).
 
   For an example, see `TFAPIChangeSpec`.
   """
@@ -195,6 +199,29 @@ class _ASTCallVisitor(ast.NodeVisitor):
     except KeyError:
       pass
 
+  def _print_warning_for_function_unrestricted(self, node):
+    """Print a warning when specific functions are called.
+
+    The function _print_warning_for_function matches the full name of the called
+    function, e.g., tf.foo.bar(). This function matches the function name that
+    is called, as long as the function is an attribute. For example,
+    `tf.foo.bar()` and `foo.bar()` are matched, but not `bar()`.
+
+    Args:
+      node: ast.Call object
+    """
+    function_warnings = getattr(
+        self._api_change_spec, "unrestricted_function_warnings", {})
+    if isinstance(node.func, ast.Attribute):
+      function_name = node.func.attr
+      try:
+        warning_message = function_warnings[function_name]
+        self._file_edit.add(warning_message,
+                            node.lineno, node.col_offset, "", "",
+                            error="%s requires manual check." % function_name)
+      except KeyError:
+        pass
+
   def _get_attribute_full_path(self, node):
     """Traverse an attribute to generate a full name e.g. tf.foo.bar.
 
@@ -276,6 +303,7 @@ class _ASTCallVisitor(ast.NodeVisitor):
     Args:
       node: Current Node
     """
+    self._print_warning_for_function_unrestricted(node)
 
     # Find a simple attribute name path e.g. "tf.foo.bar"
     full_name, name = self._get_attribute_full_path(node.func)

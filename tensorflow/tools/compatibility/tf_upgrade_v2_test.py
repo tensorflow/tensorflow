@@ -212,6 +212,13 @@ class TestUpgrade(test_util.TensorFlowTestCase):
                      ["test.py:1: Optimizer.compute_gradients "
                       "requires manual check."])
 
+  def testExportSavedModelRename(self):
+    text = "self.est.export_savedmodel(path)"
+    _, report, unused_errors, unused_new_text = self._upgrade(text)
+    self.assertIn(
+        "rename the function export_savedmodel() to export_saved_model()",
+        report)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 
