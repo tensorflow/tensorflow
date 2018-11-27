@@ -1,6 +1,6 @@
 op {
   graph_op_name: "ApplyAdagradDA"
   endpoint {
-    name: "train.ApplyAdagradDA"
+    name: "train.ApplyAdagradDa"
   }
 }

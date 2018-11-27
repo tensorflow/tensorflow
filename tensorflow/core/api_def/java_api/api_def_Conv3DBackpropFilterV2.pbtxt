@@ -1,6 +1,6 @@
 op {
   graph_op_name: "Conv3DBackpropFilterV2"
   endpoint {
-    name: "nn.Conv3dBackpropFilter"
+    name: "nn.Conv3dBackpropFilterV2"
   }
 }

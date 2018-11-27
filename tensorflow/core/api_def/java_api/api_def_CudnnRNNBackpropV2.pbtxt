@@ -1,6 +1,6 @@
 op {
   graph_op_name: "CudnnRNNBackpropV2"
   endpoint {
-    name: "nn.CudnnRNNBackpropV2"
+    name: "nn.CudnnRnnBackpropV2"
   }
 }

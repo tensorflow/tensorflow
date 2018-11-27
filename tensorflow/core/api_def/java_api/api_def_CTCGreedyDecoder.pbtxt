@@ -1,6 +1,6 @@
 op {
   graph_op_name: "CTCGreedyDecoder"
   endpoint {
-    name: "nn.CTCGreedyDecoder"
+    name: "nn.CtcGreedyDecoder"
   }
 }

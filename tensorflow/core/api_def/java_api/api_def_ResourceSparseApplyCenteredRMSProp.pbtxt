@@ -1,6 +1,6 @@
 op {
   graph_op_name: "ResourceSparseApplyCenteredRMSProp"
   endpoint {
-    name: "train.ResourceSparseApplyCenteredRMSProp"
+    name: "train.ResourceSparseApplyCenteredRmsProp"
   }
 }
