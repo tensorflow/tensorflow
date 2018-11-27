@@ -43,7 +43,7 @@ class ListTest(test.TestCase):
     l = data_structures.tf_tensor_list_new([3, 4, 5])
     t = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(t), [3, 4, 5])
+      self.assertAllEqual(self.evaluate(t), [3, 4, 5])
 
   def test_tf_tensor_list_new_empty(self):
     l = data_structures.tf_tensor_list_new([],
@@ -51,13 +51,13 @@ class ListTest(test.TestCase):
                                            element_shape=())
     t = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(t), [])
+      self.assertAllEqual(self.evaluate(t), [])
 
   def test_tf_tensor_list_new_from_tensor(self):
     l = data_structures.tf_tensor_list_new(constant_op.constant([3, 4, 5]))
     t = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(t), [3, 4, 5])
+      self.assertAllEqual(self.evaluate(t), [3, 4, 5])
 
   def test_tf_tensor_list_new_illegal_input(self):
     with self.assertRaises(ValueError):
@@ -77,7 +77,7 @@ class ListTest(test.TestCase):
     l = data_structures.tf_tensor_array_new([3, 4, 5])
     t = l.stack()
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(t), [3, 4, 5])
+      self.assertAllEqual(self.evaluate(t), [3, 4, 5])
 
   def test_tf_tensor_array_new_illegal_input(self):
     with self.assertRaises(ValueError):
@@ -102,15 +102,15 @@ class ListTest(test.TestCase):
 
     t = list_ops.tensor_list_stack(l, element_dtype=x.dtype)
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(t), [[1, 2, 3]])
+      self.assertAllEqual(self.evaluate(t), [[1, 2, 3]])
 
   def test_append_tensorarray(self):
     l = tensor_array_ops.TensorArray(dtypes.int32, size=0, dynamic_size=True)
     l1 = data_structures.list_append(l, 1)
     l2 = data_structures.list_append(l1, 2)
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(l1.stack()), [1])
-      self.assertAllEqual(sess.run(l2.stack()), [1, 2])
+      self.assertAllEqual(self.evaluate(l1.stack()), [1])
+      self.assertAllEqual(self.evaluate(l2.stack()), [1, 2])
 
   def test_append_python(self):
     l = []
@@ -131,10 +131,10 @@ class ListTest(test.TestCase):
 
     with self.cached_session() as sess:
       l, x = data_structures.list_pop(l, None, opts)
-      self.assertAllEqual(sess.run(x), [3, 4])
+      self.assertAllEqual(self.evaluate(x), [3, 4])
 
       t = list_ops.tensor_list_stack(l, element_dtype=initial_list.dtype)
-      self.assertAllEqual(sess.run(t), [[1, 2]])
+      self.assertAllEqual(self.evaluate(t), [[1, 2]])
 
   def test_pop_python(self):
     l = [1, 2, 3]
@@ -152,7 +152,7 @@ class ListTest(test.TestCase):
 
     with self.cached_session() as sess:
       t = data_structures.list_stack(l, opts)
-      self.assertAllEqual(sess.run(t), sess.run(initial_list))
+      self.assertAllEqual(self.evaluate(t), self.evaluate(initial_list))
 
   def test_stack_tensor_list_empty(self):
     l = list_ops.empty_tensor_list(

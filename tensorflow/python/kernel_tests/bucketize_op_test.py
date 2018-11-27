@@ -32,7 +32,7 @@ class BucketizationOpTest(test.TestCase):
         boundaries=[0, 3, 8, 11])
     expected_out = [0, 1, 1, 2, 2, 3, 3, 4, 4]
     with self.session(use_gpu=True) as sess:
-      self.assertAllEqual(expected_out, sess.run(op))
+      self.assertAllEqual(expected_out, self.evaluate(op))
 
   def testFloat(self):
     op = math_ops._bucketize(
@@ -40,7 +40,7 @@ class BucketizationOpTest(test.TestCase):
         boundaries=[0., 3., 8., 11.])
     expected_out = [0, 1, 1, 2, 2, 3, 3, 4, 4]
     with self.session(use_gpu=True) as sess:
-      self.assertAllEqual(expected_out, sess.run(op))
+      self.assertAllEqual(expected_out, self.evaluate(op))
 
   def test2DInput(self):
     op = math_ops._bucketize(
@@ -48,7 +48,7 @@ class BucketizationOpTest(test.TestCase):
         boundaries=[0, 3, 8, 11])
     expected_out = [[0, 1, 1, 2, 2], [3, 3, 4, 4, 1]]
     with self.session(use_gpu=True) as sess:
-      self.assertAllEqual(expected_out, sess.run(op))
+      self.assertAllEqual(expected_out, self.evaluate(op))
 
   def testInvalidBoundariesOrder(self):
     op = math_ops._bucketize(
@@ -56,7 +56,7 @@ class BucketizationOpTest(test.TestCase):
     with self.session(use_gpu=True) as sess:
       with self.assertRaisesRegexp(
           errors_impl.InvalidArgumentError, "Expected sorted boundaries"):
-        sess.run(op)
+        self.evaluate(op)
 
   def testBoundariesNotList(self):
     with self.assertRaisesRegexp(

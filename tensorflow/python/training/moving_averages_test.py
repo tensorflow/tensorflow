@@ -274,14 +274,14 @@ class ExponentialMovingAverageTest(test.TestCase):
       self.assertEqual([], v1_avg.value().op.control_inputs)
       self.assertEqual([], v1_avg.value().op.control_inputs)
       # We should be able to initialize v1_avg before v0.
-      sess.run(v1_avg.initializer)
-      sess.run(v0.initializer)
-      self.assertEqual([10.0], sess.run(v1_avg))
+      self.evaluate(v1_avg.initializer)
+      self.evaluate(v0.initializer)
+      self.assertEqual([10.0], self.evaluate(v1_avg))
       # running ema_op should add to v0 (in addition to updating v1_avg)
-      sess.run(assign_to_v1)
-      sess.run(ema_op)
-      self.assertEqual(1, sess.run(v0))
-      self.assertEqual([17.5], sess.run(v1_avg))
+      self.evaluate(assign_to_v1)
+      self.evaluate(ema_op)
+      self.assertEqual(1, self.evaluate(v0))
+      self.assertEqual([17.5], self.evaluate(v1_avg))
 
   @test_util.run_in_graph_and_eager_modes
   def testBasicEager(self):

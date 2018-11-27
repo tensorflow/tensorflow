@@ -61,7 +61,7 @@ class AddNTest(test.TestCase):
       for dtype in self._supported_types():
         for count in range(1, self._MAX_N + 1):
           data = [self._buildData((2, 2), dtype) for _ in range(count)]
-          actual = sess.run(math_ops.add_n(data))
+          actual = self.evaluate(math_ops.add_n(data))
           expected = np.sum(np.vstack(
               [np.expand_dims(d, 0) for d in data]), axis=0)
           tol = 5e-3 if dtype == dtypes.float16 else 5e-7

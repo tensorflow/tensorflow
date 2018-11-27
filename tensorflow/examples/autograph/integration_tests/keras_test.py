@@ -93,10 +93,10 @@ class KerasTest(tf.test.TestCase):
         init = tf.global_variables_initializer()
 
         with tf.Session() as sess:
-          sess.run(init)
+          self.evaluate(init)
           sample_input = tf.random_uniform((1, 10, 10, 1))
           output = model(sample_input)  # pylint: disable=not-callable
-          self.assertEqual(sess.run(output).shape, (1, 3))
+          self.assertEqual(self.evaluate(output).shape, (1, 3))
 
 
 if __name__ == '__main__':

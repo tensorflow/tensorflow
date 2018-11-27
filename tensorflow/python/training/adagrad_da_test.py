@@ -54,14 +54,14 @@ class AdagradDAOptimizerTest(test.TestCase):
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
         variables.global_variables_initializer().run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllClose([0.0, 0.0], v0_val)
         self.assertAllClose([0.0, 0.0], v1_val)
 
         # Run a step of AdagradDA
         update.run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         # Let g to be gradient accumulator, gg to be gradient squared
         # accumulator, T be the global step, lr is the learning rate, and k the
         # initial gradient squared accumulator value.
@@ -119,14 +119,14 @@ class AdagradDAOptimizerTest(test.TestCase):
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
         variables.global_variables_initializer().run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
         self.assertAllCloseAccordingToType([4.0, 3.0], v1_val)
 
         # Run a step of AdagradDA
         update.run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType(
             np.array([-0.904534, -1.603567]), v0_val)
         self.assertAllCloseAccordingToType(
@@ -151,14 +151,14 @@ class AdagradDAOptimizerTest(test.TestCase):
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
         variables.global_variables_initializer().run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
         self.assertAllCloseAccordingToType([4.0, 3.0], v1_val)
 
         # Run a step of AdagradDA
         update.run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType(
             np.array([-0.895489, -1.59555]), v0_val)
         self.assertAllCloseAccordingToType(
@@ -183,14 +183,14 @@ class AdagradDAOptimizerTest(test.TestCase):
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
         variables.global_variables_initializer().run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
         self.assertAllCloseAccordingToType([4.0, 3.0], v1_val)
 
         # Run a step of AdagradDA
         update.run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType(
             np.array([-0.046907, -0.093659]), v0_val)
         self.assertAllCloseAccordingToType(

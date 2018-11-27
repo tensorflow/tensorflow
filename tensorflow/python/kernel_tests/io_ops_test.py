@@ -53,7 +53,7 @@ class IoOpsTest(test.TestCase):
         pass
       with self.cached_session() as sess:
         w = io_ops.write_file(temp.name, contents)
-        sess.run(w)
+        self.evaluate(w)
         with open(temp.name, 'rb') as f:
           file_contents = f.read()
         self.assertEqual(file_contents, contents)
@@ -67,7 +67,7 @@ class IoOpsTest(test.TestCase):
       filepath = os.path.join(subdir, 'subdir2', 'filename')
       with self.cached_session() as sess:
         w = io_ops.write_file(filepath, contents)
-        sess.run(w)
+        self.evaluate(w)
         with open(filepath, 'rb') as f:
           file_contents = f.read()
         self.assertEqual(file_contents, contents)

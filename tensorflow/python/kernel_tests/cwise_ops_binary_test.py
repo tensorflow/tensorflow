@@ -83,17 +83,17 @@ class BinaryOpTest(test.TestCase):
       out = tf_func(inx, iny)
       tf_cpu = self.evaluate(out)
       # Test that the op takes precedence over numpy operators.
-      np_left = tf_func(x, iny).eval()
-      np_right = tf_func(inx, y).eval()
+      np_left = self.evaluate(tf_func(x, iny))
+      np_right = self.evaluate(tf_func(inx, y))
 
       if also_compare_variables:
         var_x = variables.Variable(x)
         var_y = variables.Variable(y)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         print(type(x), type(y), type(var_x), type(var_y))
         print(type(tf_func(x, var_y)), type(tf_func(var_x, y)))
-        np_var_left = tf_func(x, var_y).eval()
-        np_var_right = tf_func(var_x, y).eval()
+        np_var_left = self.evaluate(tf_func(x, var_y))
+        np_var_right = self.evaluate(tf_func(var_x, y))
 
     if np_ans.dtype != np.object:
       self.assertAllClose(np_ans, tf_cpu)
@@ -253,7 +253,7 @@ class BinaryOpTest(test.TestCase):
     var_x = variables.Variable(x)
     var_y = variables.Variable(y)
     with self.cached_session() as sess:
-      sess.run([var_x.initializer, var_y.initializer])
+      self.evaluate([var_x.initializer, var_y.initializer])
       left_result = (var_x * y).eval()
       right_result = (x * var_y).eval()
     np_result = x * y
@@ -385,7 +385,7 @@ class BinaryOpTest(test.TestCase):
     with self.test_session(use_gpu=False) as sess:
       cmp_eq = math_ops.equal(x, y)
       cmp_not_eq = math_ops.not_equal(x, y)
-      values = sess.run([cmp_eq, cmp_not_eq])
+      values = self.evaluate([cmp_eq, cmp_not_eq])
       self.assertAllEqual([[True, True], [False, False]], values[0])
       self.assertAllEqual([[False, False], [True, True]], values[1])
 

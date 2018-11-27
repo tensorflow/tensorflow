@@ -48,7 +48,7 @@ class TopKTest(test.TestCase):
     np_expected_indices = np.array(expected_indices)
     with self.cached_session(use_gpu=True) as sess:
       values_op, indices_op = nn_ops.top_k(inputs, k, sorted=sorted)
-      values, indices = sess.run([values_op, indices_op])
+      values, indices = self.evaluate([values_op, indices_op])
 
       self.assertShapeEqual(np_expected_values, values_op)
       self.assertShapeEqual(np_expected_indices, indices_op)

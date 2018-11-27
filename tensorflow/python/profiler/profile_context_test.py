@@ -48,10 +48,10 @@ class ProfilerContextTest(test.TestCase):
     with profile_context.ProfileContext(test.get_temp_dir()) as pctx:
       pctx.add_auto_profiling("op", options=opts, profile_steps=[15, 50, 100])
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         total_steps = 101
         for i in range(total_steps):
-          sess.run(x)
+          self.evaluate(x)
           if i == 14 or i == 49:
             self.assertTrue(gfile.Exists(outfile))
             gfile.Remove(outfile)
@@ -75,18 +75,18 @@ class ProfilerContextTest(test.TestCase):
 
     with profile_context.ProfileContext(test.get_temp_dir(), debug=True):
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
-          sess.run(x)
+          self.evaluate(x)
           for f in gfile.ListDirectory(test.get_temp_dir()):
             # Warm up, no tracing.
             self.assertFalse("run_meta" in f)
-        sess.run(x)
+        self.evaluate(x)
         self.assertTrue(
             gfile.Exists(os.path.join(test.get_temp_dir(), "run_meta_11")))
         gfile.Remove(os.path.join(test.get_temp_dir(), "run_meta_11"))
         # fetched already.
-        sess.run(x)
+        self.evaluate(x)
         for f in gfile.ListDirectory(test.get_temp_dir()):
           self.assertFalse("run_meta" in f)
 
@@ -96,18 +96,18 @@ class ProfilerContextTest(test.TestCase):
     with profile_context.ProfileContext(test.get_temp_dir(),
                                         enabled=False) as pctx:
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
-          sess.run(x)
+          self.evaluate(x)
       self.assertTrue(pctx.profiler is None)
       self.assertTrue(
           getattr(session.BaseSession, "profile_context", None) is None)
 
     with profile_context.ProfileContext(test.get_temp_dir()) as pctx:
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
-          sess.run(x)
+          self.evaluate(x)
       self.assertFalse(pctx.profiler is None)
       self.assertFalse(
           getattr(session.BaseSession, "profile_context", None) is None)

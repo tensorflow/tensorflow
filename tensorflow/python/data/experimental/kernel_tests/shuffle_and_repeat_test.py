@@ -38,10 +38,10 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase):
     outputs = []
     with self.cached_session() as sess:
       for _ in range(num_outputs):
-        outputs.append(sess.run(get_next))
+        outputs.append(self.evaluate(get_next))
       if verify_exhausted:
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+          self.evaluate(get_next)
     return outputs
 
   def testCorrectOutput(self):
@@ -108,7 +108,7 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase):
           shuffle_ops.shuffle_and_repeat(buffer_size=21))
       get_next_op = ds.make_one_shot_iterator().get_next()
       with self.session(graph=g) as sess:
-        sess.run(get_next_op)
+        self.evaluate(get_next_op)
 
 
 if __name__ == "__main__":

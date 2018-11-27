@@ -277,7 +277,7 @@ class DepthToSpaceTest(test.TestCase):
       actual = array_ops.depth_to_space(t, block_size, data_format=data_format)
 
     with self.session(use_gpu=use_gpu) as sess:
-      actual_vals, expected_vals = sess.run([actual, expected])
+      actual_vals, expected_vals = self.evaluate([actual, expected])
       self.assertTrue(np.array_equal(actual_vals, expected_vals))
 
   def testAgainstTranspose(self):

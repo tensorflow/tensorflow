@@ -47,11 +47,11 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for x in [1., 2., 3., 5.]:
-        self.assertEqual(x, sess.run(get_next))
+        self.assertEqual(x, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
   def testParallelMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
@@ -65,11 +65,11 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for x in [1., 2., 3., 5.]:
-        self.assertEqual(x, sess.run(get_next))
+        self.assertEqual(x, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
   def testReadFileIgnoreError(self):
 
@@ -93,22 +93,22 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       # All of the files are present.
-      sess.run(init_op)
+      self.evaluate(init_op)
       for filename in filenames:
-        self.assertEqual(compat.as_bytes(filename), sess.run(get_next))
+        self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
       # Delete one of the files.
       os.remove(filenames[0])
 
       # Attempting to read filenames[0] will fail, but ignore_errors()
       # will catch the error.
-      sess.run(init_op)
+      self.evaluate(init_op)
       for filename in filenames[1:]:
-        self.assertEqual(compat.as_bytes(filename), sess.run(get_next))
+        self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
 
 if __name__ == "__main__":

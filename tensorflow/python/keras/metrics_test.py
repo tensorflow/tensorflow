@@ -322,19 +322,19 @@ class KerasMetricsTest(test.TestCase):
       m = metrics.Mean()
       v = array_ops.placeholder(dtypes.float32)
       w = array_ops.placeholder(dtypes.float32)
-      sess.run(variables.variables_initializer(m.variables))
+      self.evaluate(variables.variables_initializer(m.variables))
 
       # check __call__()
       result_t = m(v, sample_weight=w)
       result = sess.run(result_t, feed_dict=({v: 100, w: 0.5}))
-      self.assertEqual(sess.run(m.total), 50)
-      self.assertEqual(sess.run(m.count), 0.5)
+      self.assertEqual(self.evaluate(m.total), 50)
+      self.assertEqual(self.evaluate(m.count), 0.5)
       self.assertEqual(result, 50 / 0.5)
 
       # check update_state() and result()
       result = sess.run(result_t, feed_dict=({v: [1, 5], w: [1, 0.2]}))
-      self.assertAlmostEqual(sess.run(m.total), 52, 2)  # 50 + 1 + 5 * 0.2
-      self.assertAlmostEqual(sess.run(m.count), 1.7, 2)  # 0.5 + 1.2
+      self.assertAlmostEqual(self.evaluate(m.total), 52, 2)  # 50 + 1 + 5 * 0.2
+      self.assertAlmostEqual(self.evaluate(m.count), 1.7, 2)  # 0.5 + 1.2
       self.assertAlmostEqual(result, 52 / 1.7, 2)
 
   @test_util.run_in_graph_and_eager_modes

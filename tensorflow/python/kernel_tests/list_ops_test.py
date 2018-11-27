@@ -806,7 +806,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     l_read2 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
     grad = gradients_impl.gradients([l_read1, l_read2], [x])
     with self.cached_session() as sess:
-      self.assertSequenceEqual(sess.run(grad), [2.])
+      self.assertSequenceEqual(self.evaluate(grad), [2.])
 
   def testSkipEagerBuildElementShape(self):
     fn = list_ops._build_element_shape

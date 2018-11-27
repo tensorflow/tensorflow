@@ -241,7 +241,7 @@ class LayoutOptimizerTest(test.TestCase):
       if restore:
         saver.restore(sess, checkpoint_path)
       else:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
 
       np.random.seed(0)
       for _ in range(2):
@@ -262,7 +262,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = _two_layer_model(x)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -365,7 +365,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(pad)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -396,7 +396,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(reduce_sum)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -425,7 +425,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(cast)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -456,7 +456,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(squeeze)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -486,7 +486,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(squeeze)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -516,7 +516,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(squeeze)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -545,7 +545,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(reduce_sum)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -574,7 +574,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(reduce_sum)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -603,7 +603,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(reduce_sum)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -632,7 +632,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(reduce_sum)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -662,7 +662,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(reduce_sum)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -691,7 +691,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(reduce_sum)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -724,7 +724,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(concat)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -835,7 +835,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(reverse)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -905,7 +905,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(select)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -966,7 +966,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(select)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -1179,7 +1179,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(s)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -1214,7 +1214,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(s)
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -1347,7 +1347,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = _loop()
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -1374,7 +1374,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = _loop_with_branch()
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -1398,7 +1398,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = _loop_with_vec_and_4d()
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
@@ -1422,7 +1422,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = _model_with_second_port()
 
       with session.Session(config=_get_config(False)) as sess:
-        output_val_ref = sess.run(output)
+        output_val_ref = self.evaluate(output)
 
       with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()

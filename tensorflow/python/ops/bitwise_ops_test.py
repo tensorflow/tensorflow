@@ -66,7 +66,8 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
         inputs = np.array(raw_inputs, dtype=dtype.as_numpy_dtype)
         truth = [count_bits(x) for x in inputs]
         input_tensor = constant_op.constant(inputs, dtype=dtype)
-        popcnt_result = sess.run(gen_bitwise_ops.population_count(input_tensor))
+        popcnt_result = self.evaluate(
+            gen_bitwise_ops.population_count(input_tensor))
         self.assertAllEqual(truth, popcnt_result)
 
   def testInvertOp(self):
@@ -89,7 +90,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(not_a_or_a, [not_0] * 4)
         # For unsigned dtypes let's also check the result directly.
         if dtype.is_unsigned:
-          inverted = sess.run(bitwise_ops.invert(input_tensor))
+          inverted = self.evaluate(bitwise_ops.invert(input_tensor))
           expected = [dtype.max - x for x in inputs]
           self.assertAllEqual(inverted, expected)
 

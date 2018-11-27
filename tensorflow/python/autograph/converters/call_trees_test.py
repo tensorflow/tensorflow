@@ -94,7 +94,7 @@ class CallTreesTest(converter_testing.TestCase):
                         dtypes.int64) as result:
       with self.cached_session() as sess:
         self.assertTrue(isinstance(result.test_fn(), ops.Tensor))
-        self.assertIn(sess.run(result.test_fn()), (0, 1, 2))
+        self.assertIn(self.evaluate(result.test_fn()), (0, 1, 2))
 
   def test_uncompiled_modules(self):
 
@@ -113,7 +113,7 @@ class CallTreesTest(converter_testing.TestCase):
     with self.compiled(node, ns) as result:
       with self.cached_session() as sess:
         result_tensor = result.test_fn(constant_op.constant(1))
-        self.assertEquals(sess.run(result_tensor), 3)
+        self.assertEquals(self.evaluate(result_tensor), 3)
 
   def test_call_to_decorated_function(self):
 

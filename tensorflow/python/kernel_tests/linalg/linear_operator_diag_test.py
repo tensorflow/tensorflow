@@ -147,12 +147,12 @@ class LinearOperatorDiagTest(
       operator_matmul = operator.matmul(x)
       mat_matmul = math_ops.matmul(mat, x)
       self.assertAllEqual(operator_matmul.get_shape(), mat_matmul.get_shape())
-      self.assertAllClose(*sess.run([operator_matmul, mat_matmul]))
+      self.assertAllClose(*self.evaluate([operator_matmul, mat_matmul]))
 
       operator_solve = operator.solve(x)
       mat_solve = linalg_ops.matrix_solve(mat, x)
       self.assertAllEqual(operator_solve.get_shape(), mat_solve.get_shape())
-      self.assertAllClose(*sess.run([operator_solve, mat_solve]))
+      self.assertAllClose(*self.evaluate([operator_solve, mat_solve]))
 
   def test_diag_matmul(self):
     operator1 = linalg_lib.LinearOperatorDiag([2., 3.])

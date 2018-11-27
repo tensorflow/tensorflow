@@ -564,7 +564,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       variables.global_variables_initializer().run()
       call = def_function.function(o.call)
       op = call()
-      self.assertAllEqual(sess.run(op), 2.0)
+      self.assertAllEqual(self.evaluate(op), 2.0)
 
   def testGraphModeManyFunctions(self):
     with ops.Graph().as_default(), self.cached_session():
@@ -1732,7 +1732,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       function.register(cpu_boost, x)
       y = gpu_boost(x)
-      y_value = sess.run(y)
+      y_value = self.evaluate(y)
 
       if test.is_gpu_available():
         self.assertEqual(y_value, 5.0)

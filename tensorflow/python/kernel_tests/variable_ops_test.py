@@ -220,7 +220,7 @@ class VariableOpTest(test.TestCase):
     with self.test_session(use_gpu=True):
       # The variable and an op to increment it are on the GPU.
       var = state_ops.variable_op([1], dtypes.float32)
-      state_ops.assign(var, [1.0]).eval()
+      self.evaluate(state_ops.assign(var, [1.0]))
       increment = state_ops.assign_add(var, [1.0])
       with ops.control_dependencies([increment]):
         with ops.device("/cpu:0"):

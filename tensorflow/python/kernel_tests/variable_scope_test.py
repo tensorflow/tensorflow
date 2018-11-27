@@ -434,19 +434,19 @@ class VariableScopeTest(test.TestCase):
         add = v1 + v0
       # v0 should be uninitialized.
       with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
-        sess.run(v0)
+        self.evaluate(v0)
       # We should be able to initialize and run v1 without initializing
       # v0, even if the variable was created with a control dep on v0.
-      sess.run(v1.initializer)
-      self.assertEqual(1, sess.run(v1))
+      self.evaluate(v1.initializer)
+      self.assertEqual(1, self.evaluate(v1))
       # v0 should still be uninitialized.
       with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
-        sess.run(v0)
+        self.evaluate(v0)
       with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
-        sess.run(add)
+        self.evaluate(add)
       # If we initialize v0 we should be able to run 'add'.
-      sess.run(v0.initializer)
-      sess.run(add)
+      self.evaluate(v0.initializer)
+      self.evaluate(add)
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # AssertionError: True is not false (last assertFalse)
@@ -489,19 +489,19 @@ class VariableScopeTest(test.TestCase):
       v2 = var_dict["v2"]
       # We should be able to initialize and run v1 and v2 without initializing
       # v0, even if the variable was created with a control dep on v0.
-      sess.run(v1.initializer)
-      self.assertEqual([1], sess.run(v1))
-      sess.run(v2.initializer)
-      self.assertEqual([2], sess.run(v2))
+      self.evaluate(v1.initializer)
+      self.assertEqual([1], self.evaluate(v1))
+      self.evaluate(v2.initializer)
+      self.assertEqual([2], self.evaluate(v2))
       # v0 should still be uninitialized.
       with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
-        sess.run(v0)
+        self.evaluate(v0)
       # We should not be able to run 'add' yet.
       with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
-        sess.run(add)
+        self.evaluate(add)
       # If we initialize v0 we should be able to run 'add'.
-      sess.run(v0.initializer)
-      sess.run(add)
+      self.evaluate(v0.initializer)
+      self.evaluate(add)
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # TypeError: Expected tf.group() expected Tensor arguments not 'None' with
@@ -1580,7 +1580,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
     self.assertEqual("custom_getter/add:0", v.name)
     with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
-      np_vars, np_v = sess.run([true_vars, v])
+      np_vars, np_v = self.evaluate([true_vars, v])
       self.assertAllClose(np_v, sum(np_vars))
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
@@ -1625,7 +1625,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
 
     with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
-      np_vars, np_v = sess.run([true_vars, v])
+      np_vars, np_v = self.evaluate([true_vars, v])
       # take products of sums of products
       self.assertAllClose(
           np_v, (((np_vars[0] * np_vars[1]) + (np_vars[2] * np_vars[3])) + (

@@ -98,12 +98,12 @@ class CTCLossTest(test.TestCase):
       self.assertShapeEqual(grad_truth, grad)
 
       if expected_err_re is None:
-        (tf_loss, tf_grad) = sess.run([loss, grad])
+        (tf_loss, tf_grad) = self.evaluate([loss, grad])
         self.assertAllClose(tf_loss, loss_truth, atol=1e-6)
         self.assertAllClose(tf_grad, grad_truth, atol=1e-6)
       else:
         with self.assertRaisesOpError(expected_err_re):
-          sess.run([loss, grad])
+          self.evaluate([loss, grad])
 
   def testBasic(self):
     """Test two batch entries."""
@@ -266,7 +266,7 @@ class CTCLossTest(test.TestCase):
           sequence_length=seq_lens,
           time_major=False)
 
-      (tf_loss, tf_loss_transposed) = sess.run([loss, loss_transposed])
+      (tf_loss, tf_loss_transposed) = self.evaluate([loss, loss_transposed])
       self.assertAllEqual(tf_loss, tf_loss_transposed)
 
   def testInvalidSecondGradient(self):
@@ -332,9 +332,10 @@ class CTCLossTestV2(test.TestCase):
 
     def assert_same_loss_and_grads(loss):
       with self.cached_session() as sess:
-        self.assertAllClose(*sess.run([loss, ref_loss]))
+        self.assertAllClose(*self.evaluate([loss, ref_loss]))
         grad = gradients_impl.gradients(loss, [logits])
-        self.assertAllClose(*sess.run([grad, ref_grad]), rtol=2e-06, atol=2e-06)
+        self.assertAllClose(
+            *self.evaluate([grad, ref_grad]), rtol=2e-06, atol=2e-06)
 
     assert_same_loss_and_grads(
         ctc_ops.ctc_loss_v2(
@@ -391,9 +392,11 @@ class CTCLossTestV2(test.TestCase):
 
       with self.cached_session() as sess:
         for _ in range(32):
-          self.assertAllClose(*sess.run([ctc_loss, tf_nn_ctc_loss]))
-          self.assertAllClose(*sess.run([ctc_loss_grads, tf_nn_ctc_grads]),
-                              rtol=2e-06, atol=2e-06)
+          self.assertAllClose(*self.evaluate([ctc_loss, tf_nn_ctc_loss]))
+          self.assertAllClose(
+              *self.evaluate([ctc_loss_grads, tf_nn_ctc_grads]),
+              rtol=2e-06,
+              atol=2e-06)
 
   def testCtcLossDenseUniqueFastPathIsSameAsCtcLoss(self):
     random_seed.set_random_seed(5)
@@ -442,9 +445,11 @@ class CTCLossTestV2(test.TestCase):
 
     with self.cached_session() as sess:
       for _ in range(32):
-        self.assertAllClose(*sess.run([ctc_loss, tf_nn_ctc_loss]))
-        self.assertAllClose(*sess.run([ctc_loss_grads, tf_nn_ctc_grads]),
-                            rtol=2e-06, atol=2e-06)
+        self.assertAllClose(*self.evaluate([ctc_loss, tf_nn_ctc_loss]))
+        self.assertAllClose(
+            *self.evaluate([ctc_loss_grads, tf_nn_ctc_grads]),
+            rtol=2e-06,
+            atol=2e-06)
 
   def testCtcLossDenseWithBlankIndexIsSameAsCtcLoss(self):
     random_seed.set_random_seed(5)
@@ -496,9 +501,11 @@ class CTCLossTestV2(test.TestCase):
 
     with self.cached_session() as sess:
       for _ in range(32):
-        self.assertAllClose(*sess.run([ctc_loss, tf_nn_ctc_loss]))
-        self.assertAllClose(*sess.run([ctc_loss_grads, tf_nn_ctc_grads]),
-                            rtol=2e-06, atol=2e-06)
+        self.assertAllClose(*self.evaluate([ctc_loss, tf_nn_ctc_loss]))
+        self.assertAllClose(
+            *self.evaluate([ctc_loss_grads, tf_nn_ctc_grads]),
+            rtol=2e-06,
+            atol=2e-06)
 
   def testCtcLossDenseWithNegativeBlankIndexIsSameAsCtcLoss(self):
     with ops.device("/GPU:0" if test.is_gpu_available() else "/CPU:0"):
@@ -542,9 +549,11 @@ class CTCLossTestV2(test.TestCase):
 
       with self.cached_session() as sess:
         for _ in range(32):
-          self.assertAllClose(*sess.run([ctc_loss, tf_nn_ctc_loss]))
-          self.assertAllClose(*sess.run([ctc_loss_grads, tf_nn_ctc_grads]),
-                              rtol=2e-06, atol=2e-06)
+          self.assertAllClose(*self.evaluate([ctc_loss, tf_nn_ctc_loss]))
+          self.assertAllClose(
+              *self.evaluate([ctc_loss_grads, tf_nn_ctc_grads]),
+              rtol=2e-06,
+              atol=2e-06)
 
   def testCollapseRepeated(self):
     collapsed, new_seq_lengths = ctc_ops.collapse_repeated(

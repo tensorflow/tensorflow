@@ -448,7 +448,7 @@ class LogCDFLaplaceTest(test.TestCase):
       actual = sm.log_cdf_laplace(grid)
       grad = gradients_impl.gradients(actual, grid)[0]
 
-      actual_, grad_ = sess.run([actual, grad])
+      actual_, grad_ = self.evaluate([actual, grad])
 
       # isfinite checks for NaN and Inf.
       self.assertAllTrue(np.isfinite(actual_))
@@ -467,7 +467,7 @@ class LogCDFLaplaceTest(test.TestCase):
       actual = sm.log_cdf_laplace(grid)
       grad = gradients_impl.gradients(actual, grid)[0]
 
-      actual_, grad_ = sess.run([actual, grad])
+      actual_, grad_ = self.evaluate([actual, grad])
 
       # isfinite checks for NaN and Inf.
       self.assertAllTrue(np.isfinite(actual_))

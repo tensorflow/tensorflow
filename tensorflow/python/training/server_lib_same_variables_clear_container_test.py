@@ -60,9 +60,9 @@ class SameVariablesClearContainerTest(test.TestCase):
     session.Session.reset(server0.target, ["local0"])
     sess = session.Session(server0.target)
     with self.assertRaises(errors_impl.FailedPreconditionError):
-      sess.run(v0)
+      self.evaluate(v0)
     # Reinitializes v0 for the following test.
-    sess.run(v0.initializer)
+    self.evaluate(v0.initializer)
 
     # Verifies that v1 is still valid.
     self.assertAllEqual(2.0, sess_1.run(v1))
@@ -71,10 +71,10 @@ class SameVariablesClearContainerTest(test.TestCase):
     session.Session.reset(server1.target, ["local1"])
     sess = session.Session(server1.target)
     with self.assertRaises(errors_impl.FailedPreconditionError):
-      sess.run(v1)
+      self.evaluate(v1)
     # Verifies that v0 is still valid.
     sess = session.Session(server0.target)
-    self.assertAllEqual(1.0, sess.run(v0))
+    self.assertAllEqual(1.0, self.evaluate(v0))
 
 
 if __name__ == "__main__":

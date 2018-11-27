@@ -557,7 +557,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
       self.assertEqual(matrix_tensor.dtype,
                        linear_operator_circulant._DTYPE_COMPLEX)
       matrix_h = linalg.adjoint(matrix_tensor)
-      matrix, matrix_h = sess.run([matrix_tensor, matrix_h])
+      matrix, matrix_h = self.evaluate([matrix_tensor, matrix_h])
       self.assertAllClose(matrix, matrix_h, atol=0)
 
   def test_assert_non_singular_fails_for_singular_operator(self):
@@ -631,7 +631,7 @@ class LinearOperatorCirculant3DTest(test.TestCase):
                        linear_operator_circulant._DTYPE_COMPLEX)
       matrix_h = linalg.adjoint(matrix_tensor)
 
-      matrix, matrix_h = sess.run([matrix_tensor, matrix_h])
+      matrix, matrix_h = self.evaluate([matrix_tensor, matrix_h])
       self.assertAllEqual((2, 2 * 3 * 5, 2 * 3 * 5), matrix.shape)
       self.assertAllClose(matrix, matrix_h)
 

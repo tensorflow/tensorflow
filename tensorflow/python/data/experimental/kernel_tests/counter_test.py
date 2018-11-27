@@ -38,13 +38,13 @@ class CounterTest(test_base.DatasetTestBase):
     negative_get_next = negative_iterator.get_next()
 
     with self.cached_session() as sess:
-      self.assertEqual(3, sess.run(get_next))
-      self.assertEqual(3 + 4, sess.run(get_next))
-      self.assertEqual(3 + 2 * 4, sess.run(get_next))
+      self.assertEqual(3, self.evaluate(get_next))
+      self.assertEqual(3 + 4, self.evaluate(get_next))
+      self.assertEqual(3 + 2 * 4, self.evaluate(get_next))
 
-      self.assertEqual(0, sess.run(negative_get_next))
-      self.assertEqual(-1, sess.run(negative_get_next))
-      self.assertEqual(-2, sess.run(negative_get_next))
+      self.assertEqual(0, self.evaluate(negative_get_next))
+      self.assertEqual(-1, self.evaluate(negative_get_next))
+      self.assertEqual(-2, self.evaluate(negative_get_next))
 
 
 if __name__ == "__main__":

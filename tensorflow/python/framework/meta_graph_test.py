@@ -492,8 +492,8 @@ class ScopedMetaGraphTest(test.TestCase):
       init_op = variables.global_variables_initializer()
       grad = gradients_impl.gradients([output], [var])
       with session.Session() as sess:
-        sess.run(init_op)
-        expected_grad_value = sess.run(grad)
+        self.evaluate(init_op)
+        expected_grad_value = self.evaluate(grad)
 
     # Restore the MetaGraphDef into a new Graph with an import scope.
     with ops.Graph().as_default():
@@ -518,8 +518,8 @@ class ScopedMetaGraphTest(test.TestCase):
       init_op = variables.global_variables_initializer()
 
       with session.Session() as sess:
-        sess.run(init_op)
-        actual_grad_value = sess.run(grad)
+        self.evaluate(init_op)
+        actual_grad_value = self.evaluate(grad)
         self.assertEqual(expected_grad_value, actual_grad_value)
 
   def testImportWhileLoopInWhileLoop(self):
@@ -544,8 +544,8 @@ class ScopedMetaGraphTest(test.TestCase):
       _, x = control_flow_ops.while_loop(lambda i, x: i < 2, body, [0, 0.0],
                                          name="")
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
-        sess.run(x)
+        self.evaluate(variables.global_variables_initializer())
+        self.evaluate(x)
 
   def testScopedImportUnderNameScope(self):
     graph = ops.Graph()
@@ -868,8 +868,8 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
       _, update_op = metrics.mean(values)
 
       initializer = variables.local_variables_initializer()
-      sess.run(initializer)
-      sess.run(update_op)
+      self.evaluate(initializer)
+      self.evaluate(update_op)
 
     meta_graph.export_scoped_meta_graph(
         filename=meta_graph_filename, graph=graph)
@@ -880,7 +880,7 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
     with self.session(graph=graph) as sess:
       meta_graph.import_scoped_meta_graph(meta_graph_filename)
       initializer = variables.local_variables_initializer()
-      sess.run(initializer)
+      self.evaluate(initializer)
 
     # Verifies that importing an old meta_graph where "local_variables"
     # collection is of node_list type works, but cannot build initializer

@@ -30,7 +30,7 @@ class ExceptionsTest(test.TestCase):
     with self.cached_session() as sess:
       t = exceptions.assert_stmt(
           constant_op.constant(True), lambda: constant_op.constant('ignored'))
-      sess.run(t)
+      self.evaluate(t)
 
   def test_assert_tf_triggered(self):
     with self.cached_session() as sess:
@@ -40,7 +40,7 @@ class ExceptionsTest(test.TestCase):
 
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    'test message'):
-        sess.run(t)
+        self.evaluate(t)
 
   def test_assert_tf_multiple_printed_values(self):
     two_tensors = [
@@ -53,7 +53,7 @@ class ExceptionsTest(test.TestCase):
 
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    'test message.*another message'):
-        sess.run(t)
+        self.evaluate(t)
 
   def test_assert_python_untriggered(self):
     side_effect_trace = []

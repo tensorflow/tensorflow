@@ -140,7 +140,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
           t = _indexedslice(mat_to_add)
           q.apply_indexed_slices_grad(t).run()
 
-        result = sess.run(q.take_indexed_slices_grad(1))
+        result = self.evaluate(q.take_indexed_slices_grad(1))
 
         self._assertEqual_nparray(sum_elems / len(elems), result, sess)
 
@@ -189,7 +189,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       accum_op.run()
 
       takeg_t = q.take_indexed_slices_grad(1)
-      val = sess.run(takeg_t)
+      val = self.evaluate(takeg_t)
       self.assertAllEqual([0, 1, 2], val.indices)
       self.assertAllEqual([[0.5, 0.5], [0, 2], [3, 0]], val.values)
       self.assertAllEqual([-1, 2], val.dense_shape)
@@ -209,7 +209,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       accum_op.run()
 
       takeg_t = q.take_indexed_slices_grad(1)
-      val = sess.run(takeg_t)
+      val = self.evaluate(takeg_t)
       self.assertAllEqual([0, 1, 2], val.indices)
       self.assertAllEqual([[1, 1], [0, 2], [3, 0]], val.values)
       self.assertAllEqual([-1, 2], val.dense_shape)
@@ -235,7 +235,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       accum_op.run()
 
       takeg_t = q.take_indexed_slices_grad(1)
-      val = sess.run(takeg_t)
+      val = self.evaluate(takeg_t)
       self.assertAllEqual(val.indices, [0, 1, 2])
       self.assertAllEqual(val.values, [[0.5, 0.5], [0, 2], [3, 0]])
       self.assertAllEqual(val.dense_shape, [-1, 2])
@@ -252,7 +252,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       accum_op.run()
 
       takeg_t = q.take_indexed_slices_grad(1)
-      val = sess.run(takeg_t)
+      val = self.evaluate(takeg_t)
       self.assertAllEqual(val.indices, [0, 1, 2])
       self.assertAllEqual(val.values, [[5, 5], [0, 20], [30, 0]])
       self.assertAllEqual(val.dense_shape, [-1, 2])
@@ -269,7 +269,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       takeg_t = q.take_indexed_slices_grad(1)
 
       def apply_indexed_slices_grad(accum_op):
-        sess.run(accum_op)
+        self.evaluate(accum_op)
 
       threads = [
           self.checkedThread(
@@ -281,7 +281,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       for thread in threads:
         thread.join()
 
-      val = sess.run(takeg_t)
+      val = self.evaluate(takeg_t)
 
       expected_val = sum(elems) / len(elems)
       self._assertEqual_nparray(
@@ -303,7 +303,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       takeg_t = q.take_indexed_slices_grad(1)
 
       def apply_indexed_slices_grad(accum_op):
-        sess.run(accum_op)
+        self.evaluate(accum_op)
 
       threads = [
           self.checkedThread(target=apply_indexed_slices_grad, args=(o,))
@@ -315,7 +315,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       for thread in threads:
         thread.join()
 
-      val = sess.run(takeg_t)
+      val = self.evaluate(takeg_t)
 
       expected_val = 550.0
       self._assertEqual_nparray(
@@ -338,13 +338,13 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       def apply_indexed_slices_grad():
         for accum_op in accum_ops:
           time.sleep(1.0)
-          sess.run(accum_op)
+          self.evaluate(accum_op)
 
       apply_indexed_slices_grad_thread = self.checkedThread(
           target=apply_indexed_slices_grad)
 
       def take_grad():
-        t = sess.run(takeg_t)
+        t = self.evaluate(takeg_t)
         results.append(t)
 
       threads = [self.checkedThread(target=take_grad) for _ in range(10)]
@@ -378,10 +378,10 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
 
       def apply_indexed_slices_grad():
         for accum_op in accum_ops:
-          sess.run(accum_op)
+          self.evaluate(accum_op)
 
       def take_grad():
-        results.append(sess.run(takeg_t))
+        results.append(self.evaluate(takeg_t))
 
       accum_thread = self.checkedThread(target=apply_indexed_slices_grad)
       takeg_thread = self.checkedThread(target=take_grad)
@@ -394,7 +394,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
 
   def _blocking_takeg(self, sess, takeg_op):
     with self.assertRaisesOpError("was cancelled"):
-      sess.run(takeg_op)
+      self.evaluate(takeg_op)
 
   def testAccumulatorCancel(self):
     with self.cached_session() as sess:
@@ -585,7 +585,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
                     np.float32)).run()
 
       # After take grad, constraints on accumulated gradient are removed
-      sess.run(q.take_grad(1))
+      self.evaluate(q.take_grad(1))
 
       # First successful gradient imposes new constraints.
       # Hereafter, shape will additionally constrained to [None,2,2,3]
@@ -615,7 +615,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
           grad_values=np.array(
               [[[[1, 2], [3, 4]], [[5, 6], [7, 8]]]]).astype(np.float32)).run()
 
-      val = sess.run(q.take_indexed_slices_grad(1))
+      val = self.evaluate(q.take_indexed_slices_grad(1))
       self.assertAllEqual(val.dense_shape, [2, 2, 2, 2])
 
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -627,7 +627,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
               [[[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]]).astype(
                   np.float32)).run()
 
-      val = sess.run(q.take_indexed_slices_grad(1))
+      val = self.evaluate(q.take_indexed_slices_grad(1))
       self.assertAllEqual(val.dense_shape, [-1, 2, 2, 3])
 
   def testApplyGradtInt32IndicesAndShape(self):
@@ -653,7 +653,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       accum_op.run()
       self.assertEqual(q.num_accumulated().eval(), 2)
 
-      val = sess.run(q.take_indexed_slices_grad(1))
+      val = self.evaluate(q.take_indexed_slices_grad(1))
       self.assertAllEqual(val.indices, [0, 2])
       self.assertAllEqual(val.values, [[0, 0, 1], [3, 0, 4]])
       self.assertAllEqual(val.dense_shape, [3, 3])

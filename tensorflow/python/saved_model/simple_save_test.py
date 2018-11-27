@@ -33,7 +33,7 @@ class SimpleSaveTest(test.TestCase):
 
   def _init_and_validate_variable(self, sess, variable_name, variable_value):
     v = variables.Variable(variable_value, name=variable_name)
-    sess.run(variables.global_variables_initializer())
+    self.evaluate(variables.global_variables_initializer())
     self.assertEqual(variable_value, self.evaluate(v))
     return v
 

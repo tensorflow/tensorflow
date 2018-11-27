@@ -49,13 +49,13 @@ class UniqueTest(test_base.DatasetTestBase):
     with self.cached_session() as sess:
       for test_case, expected in test_cases:
         current_test_case = test_case
-        sess.run(iterator.initializer)
+        self.evaluate(iterator.initializer)
         for element in expected:
           if dtype == dtypes.string:
             element = compat.as_bytes(element)
-          self.assertAllEqual(element, sess.run(next_element))
+          self.assertAllEqual(element, self.evaluate(next_element))
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(next_element)
+          self.evaluate(next_element)
 
   def testSimpleInt(self):
     for dtype in [dtypes.int32, dtypes.int64]:

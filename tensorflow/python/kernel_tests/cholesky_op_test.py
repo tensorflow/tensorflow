@@ -97,7 +97,7 @@ def TriAngInvCompositeGrad(l, grad):
 class CholeskyOpTest(test.TestCase):
 
   def _verifyCholeskyBase(self, sess, x, chol, verification):
-    chol_np, verification_np = sess.run([chol, verification])
+    chol_np, verification_np = self.evaluate([chol, verification])
     self.assertAllClose(x, verification_np)
     self.assertShapeEqual(x, chol)
     # Check that the cholesky is lower triangular, and has positive diagonal
@@ -183,7 +183,7 @@ class CholeskyOpTest(test.TestCase):
       matrix2 = math_ops.matmul(matrix2, matrix2, adjoint_a=True)
       c1 = linalg_ops.cholesky(matrix1)
       c2 = linalg_ops.cholesky(matrix2)
-      c1_val, c2_val = sess.run([c1, c2])
+      c1_val, c2_val = self.evaluate([c1, c2])
       self.assertAllClose(c1_val, c2_val)
 
 

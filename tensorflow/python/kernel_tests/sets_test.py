@@ -159,7 +159,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(None, op.get_shape().dims)
       self.assertEqual(dtypes.int32, op.dtype)
     with self.cached_session() as sess:
-      results = sess.run(ops)
+      results = self.evaluate(ops)
     self.assertAllEqual(results[0], results[1])
     return results[0]
 
@@ -534,7 +534,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
   def _set_intersection_count(self, a, b):
     op = sets.set_size(sets.set_intersection(a, b))
     with self.cached_session() as sess:
-      return sess.run(op)
+      return self.evaluate(op)
 
   def test_set_difference_multirow_2d(self):
     for dtype in _DTYPES:
@@ -972,7 +972,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
   def _set_difference_count(self, a, b, aminusb=True):
     op = sets.set_size(sets.set_difference(a, b, aminusb))
     with self.cached_session() as sess:
-      return sess.run(op)
+      return self.evaluate(op)
 
   def test_set_union_multirow_2d(self):
     for dtype in _DTYPES:
@@ -1221,7 +1221,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
   def _set_union_count(self, a, b):
     op = sets.set_size(sets.set_union(a, b))
     with self.cached_session() as sess:
-      return sess.run(op)
+      return self.evaluate(op)
 
   def _assert_set_operation(self, expected_indices, expected_values,
                             expected_shape, sparse_tensor_value, dtype):

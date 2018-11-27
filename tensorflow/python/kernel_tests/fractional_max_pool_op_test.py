@@ -133,7 +133,7 @@ class FractionalMaxPoolTest(test.TestCase):
           pseudo_random,
           overlapping,
           seed=self._SEED)
-      actual, row_seq, col_seq = sess.run([p, r, c])
+      actual, row_seq, col_seq = self.evaluate([p, r, c])
       expected = self._GetExpectedFractionalMaxPoolResult(input_tensor, row_seq,
                                                           col_seq, overlapping)
       self.assertShapeEqual(expected, p)
@@ -164,7 +164,7 @@ class FractionalMaxPoolTest(test.TestCase):
             pseudo_random,
             overlapping,
             seed=self._SEED)
-        tensor_output, row_seq, col_seq = sess.run([p, r, c])
+        tensor_output, row_seq, col_seq = self.evaluate([p, r, c])
         expected_result = self._GetExpectedFractionalMaxPoolResult(rand_mat,
                                                                    row_seq,
                                                                    col_seq,

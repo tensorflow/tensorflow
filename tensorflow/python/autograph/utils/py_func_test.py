@@ -34,13 +34,13 @@ class PyFuncTest(test.TestCase):
     with self.cached_session() as sess:
       result = py_func.wrap_py_func(test_fn, dtypes.int64,
                                     (1, constant_op.constant(1), 1))
-      self.assertEqual(3, sess.run(result))
+      self.assertEqual(3, self.evaluate(result))
       result = py_func.wrap_py_func(test_fn, dtypes.int64, (1, 1, 1))
-      self.assertEqual(3, sess.run(result))
+      self.assertEqual(3, self.evaluate(result))
       result = py_func.wrap_py_func(
           test_fn, dtypes.int64,
           (constant_op.constant(1), 1, constant_op.constant(1)))
-      self.assertEqual(3, sess.run(result))
+      self.assertEqual(3, self.evaluate(result))
 
   def test_wrap_py_func_complex_args(self):
 
@@ -54,10 +54,10 @@ class PyFuncTest(test.TestCase):
 
     with self.cached_session() as sess:
       result = py_func.wrap_py_func(test_fn, dtypes.int64, (7, TestClass()))
-      self.assertEqual(35, sess.run(result))
+      self.assertEqual(35, self.evaluate(result))
       result = py_func.wrap_py_func(test_fn, dtypes.int64,
                                     (constant_op.constant(7), TestClass()))
-      self.assertEqual(35, sess.run(result))
+      self.assertEqual(35, self.evaluate(result))
 
   def test_wrap_py_func_kwargs(self):
 
@@ -74,13 +74,13 @@ class PyFuncTest(test.TestCase):
           'c': 11,
           'd': TestClass(13)
       })
-      self.assertEqual(178, sess.run(result))
+      self.assertEqual(178, self.evaluate(result))
       result = py_func.wrap_py_func(test_fn, dtypes.int64,
                                     (constant_op.constant(7), TestClass(5)), {
                                         'c': constant_op.constant(11),
                                         'd': TestClass(13)
                                     })
-      self.assertEqual(178, sess.run(result))
+      self.assertEqual(178, self.evaluate(result))
 
   def test_wrap_py_func_dummy_return(self):
 
@@ -91,11 +91,11 @@ class PyFuncTest(test.TestCase):
 
     with self.cached_session() as sess:
       result = py_func.wrap_py_func(test_fn, None, (5,), use_dummy_return=True)
-      self.assertEqual(1, sess.run(result))
+      self.assertEqual(1, self.evaluate(result))
       self.assertEqual([1], side_counter)
       result = py_func.wrap_py_func(
           test_fn, None, (constant_op.constant(5),), use_dummy_return=True)
-      self.assertEqual(1, sess.run(result))
+      self.assertEqual(1, self.evaluate(result))
       self.assertEqual([2], side_counter)
 
 

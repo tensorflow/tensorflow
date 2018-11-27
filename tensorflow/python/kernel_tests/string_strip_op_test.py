@@ -30,7 +30,7 @@ class StringStripOpTest(test.TestCase):
 
     with self.cached_session() as sess:
       output = string_ops.string_strip(strings)
-      output = sess.run(output)
+      output = self.evaluate(output)
       self.assertAllEqual(output, [b"pigs on the wing", b"animals"])
 
   def test_string_strip_2d(self):
@@ -39,7 +39,7 @@ class StringStripOpTest(test.TestCase):
 
     with self.cached_session() as sess:
       output = string_ops.string_strip(strings)
-      output = sess.run(output)
+      output = self.evaluate(output)
       self.assertAllEqual(output, [[b"pigs on the wing", b"animals"],
                                    [b"hello", b"world"]])
 
@@ -48,7 +48,7 @@ class StringStripOpTest(test.TestCase):
 
     with self.cached_session() as sess:
       output = string_ops.string_strip(strings)
-      output = sess.run(output)
+      output = self.evaluate(output)
       self.assertAllEqual(output, [b"hello", b"", b"world", b""])
 
 

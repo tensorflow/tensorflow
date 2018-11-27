@@ -101,7 +101,7 @@ class ParseExampleTest(test.TestCase):
         out = parsing_ops.parse_example(**kwargs)
         result = flatten_values_tensors_or_sparse(out.values())
         # Check values.
-        tf_result = sess.run(result)
+        tf_result = self.evaluate(result)
         _compare_output_to_expected(self, out, expected_values, tf_result)
 
       # Check shapes; if serialized is a Tensor we need its size to
@@ -1614,7 +1614,7 @@ class DecodeJSONExampleTest(test.TestCase):
           shape=examples.shape,
           dtype=dtypes.string)
       binary_tensor = parsing_ops.decode_json_example(json_tensor)
-      binary_val = sess.run(binary_tensor)
+      binary_val = self.evaluate(binary_tensor)
 
       if examples.shape:
         self.assertShapeEqual(binary_val, json_tensor)
@@ -1700,7 +1700,7 @@ class DecodeJSONExampleTest(test.TestCase):
       json_tensor = constant_op.constant(["{]"])
       binary_tensor = parsing_ops.decode_json_example(json_tensor)
       with self.assertRaisesOpError("Error while parsing JSON"):
-        sess.run(binary_tensor)
+        self.evaluate(binary_tensor)
 
 
 class ParseTensorOpTest(test.TestCase):

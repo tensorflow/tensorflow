@@ -503,7 +503,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
           "Graph is invalid, contains a cycle with 2 nodes"):
-        sess.run(x)
+        self.evaluate(x)
 
   def testUpdateInput(self):
     g = ops.Graph()
@@ -517,21 +517,21 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEquals(x.consumers(), [])
     self.assertEquals(y.consumers(), [z.op, z.op])
     with session.Session(graph=g) as sess:
-      self.assertEquals(sess.run(z), 4)
+      self.assertEquals(self.evaluate(z), 4)
 
     z.op._update_input(0, x)  # pylint: disable=protected-access
     self.assertEquals(list(z.op.inputs), [x, y])
     self.assertEquals(x.consumers(), [z.op])
     self.assertEquals(y.consumers(), [z.op])
     with session.Session(graph=g) as sess:
-      self.assertEquals(sess.run(z), 3)
+      self.assertEquals(self.evaluate(z), 3)
 
     z.op._update_input(1, y)  # pylint: disable=protected-access
     self.assertEquals(list(z.op.inputs), [x, y])
     self.assertEquals(x.consumers(), [z.op])
     self.assertEquals(y.consumers(), [z.op])
     with session.Session(graph=g) as sess:
-      self.assertEquals(sess.run(z), 3)
+      self.assertEquals(self.evaluate(z), 3)
 
   def testUpdateInputGraphError(self):
     g_0 = ops.Graph()
@@ -557,7 +557,7 @@ class OperationTest(test_util.TensorFlowTestCase):
           errors.InvalidArgumentError,
           "Input 0 of node add was passed string from Const_1:0 incompatible "
           "with expected int32"):
-        sess.run(z)
+        self.evaluate(z)
 
   def testUpdateInputShapeError(self):
     g = ops.Graph()
@@ -2390,7 +2390,7 @@ class GraphTest(test_util.TensorFlowTestCase):
       c = math_ops.add(a, b)
     # Create a session we can delete
     with session.Session(graph=g) as sess:
-      sess.run(c)
+      self.evaluate(c)
     # Delete all references and trigger gc
     del g
     del a
@@ -2406,7 +2406,7 @@ class GraphTest(test_util.TensorFlowTestCase):
         math_ops.add([1, 2], [1, 2, 3])
       a = constant_op.constant(1)
       with session.Session() as sess:
-        sess.run(a)
+        self.evaluate(a)
 
   def testRunnableAfterInvalidShapeWithKernelLabelMap(self):
     g = ops.Graph()
@@ -2416,7 +2416,7 @@ class GraphTest(test_util.TensorFlowTestCase):
           test_ops.kernel_label_required(1)
       a = constant_op.constant(1)
       with session.Session() as sess:
-        sess.run(a)
+        self.evaluate(a)
 
 
 class AttrScopeTest(test_util.TensorFlowTestCase):

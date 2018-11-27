@@ -73,11 +73,11 @@ class PywrapQuantizeTrainingTest(test.TestCase):
       _ = importer.import_graph_def(result, name='')
 
       # Initialize the variable.
-      sess.run(g.get_operation_by_name(init_op.name))
+      self.evaluate(g.get_operation_by_name(init_op.name))
 
       # Run the graph for one step to assign values to the quantization min/max
       # variables.
-      sess.run(g.get_tensor_by_name(c.name))
+      self.evaluate(g.get_tensor_by_name(c.name))
 
       saver.save(sess, save_path)
 

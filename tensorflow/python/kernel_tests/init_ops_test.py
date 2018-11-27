@@ -704,12 +704,12 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
         ratio = outputs_2norm / inputs_2norm
         my_ops = variables.global_variables_initializer()
         with self.session(use_gpu=True) as sess:
-          sess.run(my_ops)
+          self.evaluate(my_ops)
           # Check the shape of the outputs
           t = self.evaluate(outputs)
           self.assertAllEqual(t.shape, outputs_shape)
           # Check isometry of the delta-orthogonal kernel.
-          self.assertAllClose(sess.run(ratio), gain, rtol=tol, atol=tol)
+          self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
 
   def testNonuniformity(self):
     value = 0
@@ -842,12 +842,12 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
       with self.session(use_gpu=True) as sess:
-        sess.run(my_ops)
+        self.evaluate(my_ops)
         # Check the shape of the outputs
         t = self.evaluate(outputs)
         self.assertAllEqual(t.shape, outputs_shape)
         # Check isometry of the orthogonal kernel.
-        self.assertAllClose(sess.run(ratio), gain, rtol=tol, atol=tol)
+        self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
 
 
 class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
@@ -937,12 +937,12 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
       with self.session(use_gpu=True) as sess:
-        sess.run(my_ops)
+        self.evaluate(my_ops)
         # Check the shape of the outputs
         t = self.evaluate(outputs)
         self.assertAllEqual(t.shape, outputs_shape)
         # Check isometry of the orthogonal kernel.
-        self.assertAllClose(sess.run(ratio), gain, rtol=tol, atol=tol)
+        self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
 
 
 class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
@@ -1062,12 +1062,12 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
       with self.cached_session(use_gpu=True) as sess:
-        sess.run(my_ops)
+        self.evaluate(my_ops)
         # Check the shape of the outputs
         t = self.evaluate(outputs)
         self.assertAllEqual(t.shape, outputs_shape)
         # Check isometry of the orthogonal kernel.
-        self.assertAllClose(sess.run(ratio), gain, rtol=tol, atol=tol)
+        self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
 
 
 class IdentityInitializerTest(test.TestCase):

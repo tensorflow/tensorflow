@@ -43,7 +43,7 @@ class AssignOpTest(test.TestCase):
       variables.global_variables_initializer().run()
 
       def run_add(add_op):
-        sess.run(add_op)
+        self.evaluate(add_op)
 
       threads = [
           self.checkedThread(
@@ -70,7 +70,7 @@ class AssignOpTest(test.TestCase):
       variables.global_variables_initializer().run()
 
       def run_assign(assign_op):
-        sess.run(assign_op)
+        self.evaluate(assign_op)
 
       threads = [
           self.checkedThread(
@@ -103,7 +103,7 @@ class AssignOpTest(test.TestCase):
       p.initializer.run()
 
       def run_add(add_op):
-        sess.run(add_op)
+        self.evaluate(add_op)
 
       threads = [
           self.checkedThread(
@@ -131,7 +131,7 @@ class AssignOpTest(test.TestCase):
       p.initializer.run()
 
       def run_assign(assign_op):
-        sess.run(assign_op)
+        self.evaluate(assign_op)
 
       threads = [
           self.checkedThread(

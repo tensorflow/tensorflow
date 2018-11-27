@@ -156,7 +156,7 @@ class DeterminantOpTest(test.TestCase):
       matrix2 = random_ops.random_normal([5, 5], seed=42)
       det1 = linalg_ops.matrix_determinant(matrix1)
       det2 = linalg_ops.matrix_determinant(matrix2)
-      det1_val, det2_val = sess.run([det1, det2])
+      det1_val, det2_val = self.evaluate([det1, det2])
       self.assertEqual(det1_val, det2_val)
 
 

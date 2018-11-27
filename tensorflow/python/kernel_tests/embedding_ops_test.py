@@ -294,7 +294,7 @@ class EmbeddingLookupTest(test.TestCase):
       variables.global_variables_initializer().run()
       params_values = [params[p_i.name] for p_i in p]
       # Test that the PartitionedVariable components equal the list in p
-      p_var_val = sess.run(list(p_variable))
+      p_var_val = self.evaluate(list(p_variable))
       # Actual test
       tf_result = embedding.eval(feed_dict=feed_dict)
     np_result, _, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
@@ -316,7 +316,7 @@ class EmbeddingLookupTest(test.TestCase):
       variables.global_variables_initializer().run()
       params_values = [params[p_i.name] for p_i in p]
       # Test that the PartitionedVariable components equal the list in p
-      p_var_val = sess.run(list(p_variable))
+      p_var_val = self.evaluate(list(p_variable))
       # Actual test
       print(ops.get_default_graph().as_graph_def())
       tf_result = self.evaluate(embedding)

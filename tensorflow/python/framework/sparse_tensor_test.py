@@ -50,7 +50,7 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(indices, value.indices)
         self.assertAllEqual(values, value.values)
         self.assertAllEqual(shape, value.dense_shape)
-        sess_run_value = sess.run(sp)
+        sess_run_value = self.evaluate(sp)
         self.assertAllEqual(sess_run_value.indices, value.indices)
         self.assertAllEqual(sess_run_value.values, value.values)
         self.assertAllEqual(sess_run_value.dense_shape, value.dense_shape)

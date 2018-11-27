@@ -66,9 +66,9 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertTrue(c.op in d.op.control_inputs)
 
     with self.cached_session() as sess:
-      c_out = sess.run([c])
-      n_out = sess.run([n])
-      d_out = sess.run([d])
+      c_out = self.evaluate([c])
+      n_out = self.evaluate([n])
+      d_out = self.evaluate([d])
 
     self.assertEqual(n_out, [-2])
     self.assertEqual(c_out, [2])
@@ -145,8 +145,8 @@ class SubscribeTest(test_util.TensorFlowTestCase):
                             lambda t: script_ops.py_func(sub, [t], [t.dtype]))
 
     with self.cached_session() as sess:
-      c_out = sess.run([c])
-      d_out = sess.run([d])
+      c_out = self.evaluate([c])
+      d_out = self.evaluate([d])
 
     self.assertEqual(c_out, [42])
     self.assertEqual(d_out, [11])
@@ -205,7 +205,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
 
     # Expect the three side effect graphs to have been evaluated.
     with self.cached_session() as sess:
-      sess.run([c_sub])
+      self.evaluate([c_sub])
     self.assertIn('graph1', shared)
     self.assertIn('graph2', shared)
     self.assertIn('graph3', shared)
@@ -229,20 +229,20 @@ class SubscribeTest(test_util.TensorFlowTestCase):
 
     with self.cached_session() as sess:
       # Initialize the variables first.
-      sess.run([v1.initializer])
-      sess.run([v2.initializer])
+      self.evaluate([v1.initializer])
+      self.evaluate([v2.initializer])
 
       # Expect the side effects to be triggered when evaluating the add op as
       # it will read the value of the variable.
-      sess.run([add])
+      self.evaluate([add])
       self.assertEqual(1, len(shared))
 
       # Expect the side effect not to be triggered when evaluating the assign
       # op as it will not access the 'read' output of the variable.
-      sess.run([assign_v1])
+      self.evaluate([assign_v1])
       self.assertEqual(1, len(shared))
 
-      sess.run([add])
+      self.evaluate([add])
       self.assertEqual(2, len(shared))
 
       # Make sure the values read from the variable match the expected ones.
@@ -273,7 +273,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertFalse(subscribe._is_subscribed_identity(tensor_array.handle))
 
     with self.cached_session() as sess:
-      sess.run([reader])
+      self.evaluate([reader])
     self.assertEqual(0, len(shared))
 
   def testMultipleOutputs(self):
@@ -304,7 +304,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
                         lambda t: script_ops.py_func(sub, [t], [t.dtype]))
 
     with self.cached_session() as sess:
-      sess.run([neg])
+      self.evaluate([neg])
 
     # All three ops have been processed.
     self.assertEqual(3, len(shared))
@@ -375,7 +375,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertIsNot(context(subscriptions[0]), context(subscriptions[1]))
 
     with self.cached_session() as sess:
-      sess.run(cond)
+      self.evaluate(cond)
 
     self.assertEqual(3, len(results))
 

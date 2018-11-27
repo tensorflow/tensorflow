@@ -56,7 +56,7 @@ class XentTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu) as sess:
       loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
           np_features, np_labels)
-      tf_loss, tf_backprop = sess.run([loss, backprop])
+      tf_loss, tf_backprop = self.evaluate([loss, backprop])
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
     self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
@@ -65,7 +65,7 @@ class XentTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu) as sess:
       loss = nn_ops.softmax_cross_entropy_with_logits(
           labels=np_labels, logits=np_features, dim=dim)
-      tf_loss = sess.run(loss)
+      tf_loss = self.evaluate(loss)
     print("np_loss:", np_loss)
     print("tf_loss:", tf_loss)
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
@@ -80,7 +80,7 @@ class XentTest(test.TestCase):
         loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
             np.array([[1.], [-1.], [0.]]).astype(dtype),
             np.array([[-1.], [0.], [1.]]).astype(dtype))
-        tf_loss, tf_backprop = sess.run([loss, backprop])
+        tf_loss, tf_backprop = self.evaluate([loss, backprop])
       self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
       self.assertAllClose([[2.0], [1.0], [0.0]], tf_backprop)
 
@@ -148,7 +148,7 @@ class XentTest(test.TestCase):
       with self.cached_session(use_gpu=use_gpu) as sess:
         loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
             tf_f, tf_l)
-        tf_loss, tf_backprop = sess.run([loss, backprop])
+        tf_loss, tf_backprop = self.evaluate([loss, backprop])
       self.assertAllCloseAccordingToType(np_loss, tf_loss)
       self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
@@ -280,7 +280,7 @@ class XentTest(test.TestCase):
     with self.session(use_gpu=True) as sess:
       loss = nn_ops.softmax_cross_entropy_with_logits(
           labels=labels, logits=features)
-      tf_loss = sess.run(loss)
+      tf_loss = self.evaluate(loss)
     self.assertAllEqual(np_loss, tf_loss)
 
 

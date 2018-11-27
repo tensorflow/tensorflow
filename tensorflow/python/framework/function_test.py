@@ -102,7 +102,7 @@ class FunctionTest(test.TestCase):
       call = MyIdentityFunc([18.0])
       self.assertEqual("MyIdentity", call.op.name)
       with session.Session() as sess:
-        self.assertAllEqual([18.0], sess.run(call))
+        self.assertAllEqual([18.0], self.evaluate(call))
 
   def testIdentityImplicitDeref(self):
 
@@ -116,8 +116,8 @@ class FunctionTest(test.TestCase):
       self.assertEqual("MyIdentity", call.op.name)
       for cfg in _OptimizerOptions():
         with session.Session(config=cfg) as sess:
-          sess.run(var.initializer)
-          self.assertAllEqual([18.0], sess.run(call))
+          self.evaluate(var.initializer)
+          self.assertAllEqual([18.0], self.evaluate(call))
 
   def testIdentityOutputName(self):
 
@@ -130,7 +130,7 @@ class FunctionTest(test.TestCase):
       call = MyIdentityFunc([18.0])
       self.assertEqual("MyIdentity", call.op.name)
       with session.Session() as sess:
-        self.assertAllEqual([18.0], sess.run(call))
+        self.assertAllEqual([18.0], self.evaluate(call))
 
   def testTooManyOutputNames(self):
 
@@ -158,7 +158,7 @@ class FunctionTest(test.TestCase):
       call = APlus2B([1.0], [2.0])
       self.assertEqual("APlus2B", call.op.name)
       with session.Session() as sess:
-        self.assertAllEqual([5.0], sess.run(call))
+        self.assertAllEqual([5.0], self.evaluate(call))
 
   def testFunctionWithNoOutput(self):
 
@@ -187,7 +187,7 @@ class FunctionTest(test.TestCase):
       call = APlus2B([1.0], [2.0])
       self.assertEqual("APlus2B", call.op.name)
       with session.Session() as sess:
-        self.assertAllEqual([5.0], sess.run(call))
+        self.assertAllEqual([5.0], self.evaluate(call))
 
   def testDefineFunctionDuplicateOutputs(self):
 
@@ -224,8 +224,8 @@ class FunctionTest(test.TestCase):
       call_g = XSquarePlusOneGrad([2.0], [0.1])
 
       with session.Session() as sess:
-        self.assertAllClose([5.0], sess.run(call_f))
-        self.assertAllClose([0.4], sess.run(call_g))
+        self.assertAllClose([5.0], self.evaluate(call_f))
+        self.assertAllClose([0.4], self.evaluate(call_g))
 
   def testTanhSymGrad(self):
 
@@ -365,7 +365,7 @@ class FunctionTest(test.TestCase):
       else:
         dx, dy = gradients_impl.gradients([z], [x, y])
       with session.Session() as sess:
-        dx_val, dy_val = sess.run([dx, dy])
+        dx_val, dy_val = self.evaluate([dx, dy])
         self.assertEqual([2.0], dx_val)
         self.assertEqual([0.0], dy_val)
 
@@ -387,7 +387,7 @@ class FunctionTest(test.TestCase):
       call = AConstant()
       self.assertEqual("AConstant", call.op.name)
       with session.Session() as sess:
-        self.assertAllEqual([42], sess.run(call))
+        self.assertAllEqual([42], self.evaluate(call))
 
   def testDefineFunctionNames(self):
 
@@ -468,7 +468,7 @@ class FunctionTest(test.TestCase):
 
       loop = control_flow_ops.while_loop(lambda x: x < 1e5, Body, [1.0])
 
-      ans = sess.run(loop)
+      ans = self.evaluate(loop)
       self.assertAllClose(ans, 131072.)
 
   def testControlFlowStrictness(self):
@@ -650,8 +650,8 @@ class FunctionTest(test.TestCase):
       # pylint: enable=unexpected-keyword-arg
       self.assertEqual("next", call2.op.name)
       with session.Session() as sess:
-        self.assertAllEqual([1], sess.run(call1))
-        self.assertAllEqual([0], sess.run(call2))
+        self.assertAllEqual([1], self.evaluate(call1))
+        self.assertAllEqual([0], self.evaluate(call2))
 
   def testNestedFunction(self):
 
@@ -794,7 +794,7 @@ class FunctionTest(test.TestCase):
       y = Foo()
 
     with self.session(graph=g) as sess:
-      self.assertEqual(sess.run(y), 10)
+      self.assertEqual(self.evaluate(y), 10)
 
   def testCaptureInCond(self):
     g = ops.Graph()
@@ -809,8 +809,8 @@ class FunctionTest(test.TestCase):
       z = Foo(False)
 
     with self.session(graph=g) as sess:
-      self.assertEqual(sess.run(y), 1)
-      self.assertEqual(sess.run(z), 2)
+      self.assertEqual(self.evaluate(y), 1)
+      self.assertEqual(self.evaluate(z), 2)
 
   def testStableName(self):
 
@@ -854,7 +854,7 @@ class FunctionTest(test.TestCase):
       z = Bar(x)
 
     with self.session(graph=g) as sess:
-      v0, v1 = sess.run([y, z])
+      v0, v1 = self.evaluate([y, z])
       self.assertAllEqual(v0, 20.)
       self.assertAllEqual(v1, 20.)
 
@@ -900,7 +900,7 @@ class FunctionTest(test.TestCase):
     self.assertEqual(global_vars[0].name, "linear/w:0")
 
     with session.Session() as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       output_val = sess.run(
           output_op, feed_dict={input_op: np.random.rand(32, 100)})
       self.assertEqual(output_val.shape, (32, 100))
@@ -928,7 +928,7 @@ class FunctionTest(test.TestCase):
     self.assertEqual(global_vars[0].name, "vs1/var:0")
 
     with session.Session() as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       out1, out2 = sess.run(
           [out1_op, out2_op], feed_dict={input_op: np.linspace(1, 10, 10)})
       self.assertAllEqual(out1, np.linspace(2, 11, 10))
@@ -991,8 +991,8 @@ class FunctionTest(test.TestCase):
     result_2 = Bar(constant_op.constant(100, dtype=dtypes.int64))
 
     with session.Session() as sess:
-      self.assertEqual(4.0, sess.run(result_1))
-      self.assertEqual(100, sess.run(result_2))
+      self.assertEqual(4.0, self.evaluate(result_1))
+      self.assertEqual(100, self.evaluate(result_2))
       self.assertEqual((4.0, 100), sess.run((result_1, result_2)))
 
   def testStatefulFunction(self):
@@ -1052,8 +1052,8 @@ class FunctionTest(test.TestCase):
     for config in _OptimizerOptions():
       config.device_count["CPU"] = 2
       with session.Session(config=config) as sess:
-        self.assertEqual(42.0, sess.run(f_0))
-        self.assertEqual(44.0, sess.run(f_1))
+        self.assertEqual(42.0, self.evaluate(f_0))
+        self.assertEqual(44.0, self.evaluate(f_1))
         self.assertEqual((42.0, 44.0), sess.run((f_0, f_1)))
 
   def testGuaranteedConstsAreCaptured(self):
@@ -1076,7 +1076,7 @@ class FunctionTest(test.TestCase):
       return output
 
     with self.session(use_gpu=False) as sess:
-      sess.run(var.initializer)
+      self.evaluate(var.initializer)
       _ = sess.run(CapturesGuaranteedConst(), {also_not_const: 1.0})
 
   def testSameFunctionDifferentGrads(self):
@@ -1127,7 +1127,7 @@ class FunctionTest(test.TestCase):
       dx2, = gradients_impl.gradients(ys=[y2], xs=[x2])
 
     with self.session(graph=g) as sess:
-      v0, v1, v2 = sess.run([dx0, dx1, dx2])
+      v0, v1, v2 = self.evaluate([dx0, dx1, dx2])
 
     self.assertAllEqual(v0, 2.)
     self.assertAllEqual(v1, 101.)
@@ -1532,7 +1532,7 @@ class UnrollLSTMTest(test.TestCase):
       tf_logging.info("time: %f txt size: %d gdef bin size: %d", finish - start,
                       len(str(gdef)), len(gdef.SerializeToString()))
       with g.as_default(), session.Session(config=cfg) as sess:
-        return sess.run(m)
+        return self.evaluate(m)
 
     mv0 = RunForward("complete")
     for cfg in _OptimizerOptions():
@@ -1561,7 +1561,7 @@ class UnrollLSTMTest(test.TestCase):
       tf_logging.info("time: %f txt size: %d gdef bin size: %d", finish - start,
                       len(str(gdef)), len(gdef.SerializeToString()))
       with g.as_default(), session.Session(config=cfg) as sess:
-        return sess.run(dw)
+        return self.evaluate(dw)
 
     d0 = RunForwardBackward("complete")
     for cfg in _OptimizerOptions():
@@ -1651,8 +1651,8 @@ class ModuleFunctionTest(test.TestCase):
       y = LinearWithCApi(a, b, c)
       z = Linear2WithCApi(a, b, c, d, e)
       with session.Session() as sess:
-        self.assertAllEqual([[1]], sess.run(y))
-        self.assertAllEqual([[5]], sess.run(z))
+        self.assertAllEqual([[1]], self.evaluate(y))
+        self.assertAllEqual([[5]], self.evaluate(z))
 
 
 class VariableHoistingTest(test.TestCase):
@@ -1704,8 +1704,8 @@ class VariableHoistingTest(test.TestCase):
     self.assertEqual("Foo/b", b.op.name)
 
     with self.session(graph=g) as sess:
-      sess.run(variables.global_variables_initializer())
-      w, b, x, y0, loss, dw, db = sess.run([w, b, x, y0, loss, dw, db])
+      self.evaluate(variables.global_variables_initializer())
+      w, b, x, y0, loss, dw, db = self.evaluate([w, b, x, y0, loss, dw, db])
 
     self.assertAllEqual(w.shape, (64, 64))
     self.assertAllClose(np.sum(w), 2050.44)

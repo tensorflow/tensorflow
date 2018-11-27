@@ -54,7 +54,7 @@ class FtrlOptimizerTest(test.TestCase):
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllClose([0.0, 0.0], v0_val)
         self.assertAllClose([0.0, 0.0], v1_val)
 
@@ -62,7 +62,7 @@ class FtrlOptimizerTest(test.TestCase):
         for _ in range(3):
           update.run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType(
             np.array([-2.60260963, -4.29698515]), v0_val)
         self.assertAllCloseAccordingToType(
@@ -90,14 +90,14 @@ class FtrlOptimizerTest(test.TestCase):
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
         self.assertAllCloseAccordingToType([4.0, 3.0], v1_val)
 
         # Run 3 steps FTRL
         for _ in range(3):
           update.run()
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType(
             np.array([-2.55607247, -3.98729396]), v0_val)
         self.assertAllCloseAccordingToType(
@@ -137,14 +137,14 @@ class FtrlOptimizerTest(test.TestCase):
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
         self.assertAllCloseAccordingToType([4.0, 3.0], v1_val)
 
         # Run 10 steps FTRL
         for _ in range(10):
           update.run()
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType(
             np.array([-7.66718769, -10.91273689]), v0_val)
         self.assertAllCloseAccordingToType(
@@ -166,7 +166,7 @@ class FtrlOptimizerTest(test.TestCase):
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
         self.assertAllCloseAccordingToType([4.0, 3.0], v1_val)
 
@@ -174,7 +174,7 @@ class FtrlOptimizerTest(test.TestCase):
         for _ in range(10):
           update.run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType(
             np.array([-0.24059935, -0.46829352]), v0_val)
         self.assertAllCloseAccordingToType(
@@ -203,7 +203,7 @@ class FtrlOptimizerTest(test.TestCase):
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
         self.assertAllCloseAccordingToType([4.0, 3.0], v1_val)
 
@@ -211,7 +211,7 @@ class FtrlOptimizerTest(test.TestCase):
         for _ in range(10):
           update.run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType(
             np.array([-0.22578995, -0.44345796]), v0_val)
         self.assertAllCloseAccordingToType(
@@ -239,7 +239,7 @@ class FtrlOptimizerTest(test.TestCase):
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([[1.0], [2.0]], v0_val)
         self.assertAllCloseAccordingToType([[4.0], [3.0]], v1_val)
 
@@ -247,7 +247,7 @@ class FtrlOptimizerTest(test.TestCase):
         for _ in range(10):
           update.run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([[-0.22578995], [2.]], v0_val)
         self.assertAllCloseAccordingToType([[4.], [-0.13229476]], v1_val)
 
@@ -275,7 +275,7 @@ class FtrlOptimizerTest(test.TestCase):
         update1 = opt1.apply_gradients([(grads1, var1)])
         variables.global_variables_initializer().run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
         self.assertAllCloseAccordingToType([1.0, 2.0], v1_val)
 
@@ -284,7 +284,7 @@ class FtrlOptimizerTest(test.TestCase):
           update0.run()
           update1.run()
 
-        v0_val, v1_val = sess.run([var0, var1])
+        v0_val, v1_val = self.evaluate([var0, var1])
         # var0 is experiencing L2 shrinkage so it should be smaller than var1
         # in magnitude.
         self.assertTrue((v0_val**2 < v1_val**2).all())
@@ -313,7 +313,7 @@ class FtrlOptimizerTest(test.TestCase):
     variables.global_variables_initializer().run()
 
     sess = ops.get_default_session()
-    v0_val, v1_val = sess.run([var0, var1])
+    v0_val, v1_val = self.evaluate([var0, var1])
     if is_sparse:
       self.assertAllCloseAccordingToType([[0.0], [0.0]], v0_val)
       self.assertAllCloseAccordingToType([[0.0], [0.0]], v1_val)
@@ -325,7 +325,7 @@ class FtrlOptimizerTest(test.TestCase):
     for _ in range(steps):
       update.run()
 
-    v0_val, v1_val = sess.run([var0, var1])
+    v0_val, v1_val = self.evaluate([var0, var1])
     return v0_val, v1_val
 
   # When variables are initialized with Zero, FTRL-Proximal has two properties:

@@ -227,7 +227,7 @@ class SaverTest(test.TestCase):
         w1 = resource_variable_ops.ResourceVariable(1.0, name="w1")
         w2 = resource_variable_ops.ResourceVariable(2.0, name="w2")
         graph_saver = saver_module.Saver([w1, w2])
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         graph_saver.save(sess, graph_ckpt_prefix)
 
     with context.eager_mode():
@@ -260,7 +260,7 @@ class SaverTest(test.TestCase):
         w3 = resource_variable_ops.ResourceVariable(0.0, name="w3")
         w4 = resource_variable_ops.ResourceVariable(0.0, name="w4")
         graph_saver = saver_module.Saver([w3, w4])
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         graph_saver.restore(sess, eager_ckpt_prefix)
         self.assertAllEqual(w3.eval(), 3.0)
         self.assertAllEqual(w4.eval(), 4.0)
@@ -326,7 +326,7 @@ class SaverTest(test.TestCase):
 
     with self.cached_session() as sess:
       # Initialize all variables
-      sess.run(init_all_op)
+      self.evaluate(init_all_op)
 
       # Check that the parameter nodes have been initialized.
       self.assertEqual(10.0, v0.eval())
@@ -376,7 +376,7 @@ class SaverTest(test.TestCase):
     with self.cached_session() as sess:
       tensor = sess.graph.get_tensor_by_name(
           save.saver_def.filename_tensor_name)
-      self.assertEqual(sess.run(tensor), filename)
+      self.assertEqual(self.evaluate(tensor), filename)
 
   def testInvalidPath(self):
     v0 = variables.VariableV1(0, name="v0")
@@ -407,7 +407,7 @@ class SaverTest(test.TestCase):
 
       with self.assertRaisesWithPredicateMatch(
           errors_impl.OpError, lambda e: "uninitialized value v" in e.message):
-        sess.run(v)
+        self.evaluate(v)
 
       # Restore the saved values in the parameter nodes.
       save.restore(sess, save_path)
@@ -497,10 +497,10 @@ class SaverTest(test.TestCase):
 
       with self.assertRaisesWithPredicateMatch(
           errors_impl.OpError, lambda e: "uninitialized value v0" in e.message):
-        sess.run(v0)
+        self.evaluate(v0)
       with self.assertRaisesWithPredicateMatch(
           errors_impl.OpError, lambda e: "uninitialized value v1" in e.message):
-        sess.run(v1)
+        self.evaluate(v1)
       self.assertEqual(0, len(v2.keys().eval()))
       self.assertEqual(0, len(v2.values().eval()))
 
@@ -742,7 +742,7 @@ class SaverTest(test.TestCase):
       try:
         with self.cached_session() as sess:
           # Initialize all variables
-          sess.run(init_all_op)
+          self.evaluate(init_all_op)
 
           # Check that the parameter nodes have been initialized.
           self.assertEqual(10.0, v0.eval())
@@ -777,7 +777,7 @@ class SaverTest(test.TestCase):
 
     with self.cached_session() as sess:
       # Initialize all variables
-      sess.run(init_all_op)
+      self.evaluate(init_all_op)
 
       # Check that the parameter nodes have been initialized.
       self.assertEqual(10.0, v0.eval())
@@ -824,11 +824,11 @@ class SaverTest(test.TestCase):
     save_graph = ops_lib.Graph()
     with save_graph.as_default(), self.session(graph=save_graph) as sess:
       orig_vars = _model()
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       save = saver_module.Saver(max_to_keep=1)
       variables.global_variables_initializer().run()
       save.save(sess, save_dir)
-      orig_vals = sess.run(orig_vars)
+      orig_vals = self.evaluate(orig_vars)
 
     restore_graph = ops_lib.Graph()
     with restore_graph.as_default(), self.session(
@@ -836,7 +836,7 @@ class SaverTest(test.TestCase):
       restored_vars = _model()
       save = saver_module.Saver(max_to_keep=1)
       save.restore(sess, save_dir)
-      restored_vals = sess.run(restored_vars)
+      restored_vals = self.evaluate(restored_vars)
 
     for orig, restored in zip(orig_vals, restored_vals):
       self.assertAllEqual(orig, restored)
@@ -1747,7 +1747,7 @@ class MetaGraphTest(test.TestCase):
       self.assertEqual([], v1.get_shape())
       with self.assertRaisesWithPredicateMatch(
           errors_impl.OpError, lambda e: "uninitialized value v1" in e.message):
-        sess.run(v1)
+        self.evaluate(v1)
       # Retrieves saver1. Verifies that new_saver1 can restore v1.
       new_saver1 = savers[1]
       new_saver1.restore(sess, saver1_ckpt)
@@ -1927,9 +1927,9 @@ class MetaGraphTest(test.TestCase):
 
     with self.cached_session() as sess:
       # Initializes all the variables.
-      sess.run(init_all_op)
+      self.evaluate(init_all_op)
       # Runs to logit.
-      sess.run(logits)
+      self.evaluate(logits)
       # Creates a saver.
       saver0 = saver_module.Saver()
       saver0.save(sess, saver0_ckpt)
@@ -1969,7 +1969,7 @@ class MetaGraphTest(test.TestCase):
       ops_lib.add_to_collection("train_op", train_op)
 
       # Runs train_op.
-      sess.run(train_op)
+      self.evaluate(train_op)
 
       # Generates MetaGraphDef.
       saver_module.export_meta_graph(train_filename)
@@ -1983,7 +1983,7 @@ class MetaGraphTest(test.TestCase):
       # Restores from checkpoint.
       new_saver.restore(sess, saver0_ckpt)
       train_op = ops_lib.get_collection("train_op")[0]
-      sess.run(train_op)
+      self.evaluate(train_op)
 
   def testGraphExtension(self):
     test_dir = self._get_test_dir("graph_extension")
@@ -2015,8 +2015,8 @@ class MetaGraphTest(test.TestCase):
 
       # Generate a MetaGraphDef containing the while loop.
       with session.Session() as sess:
-        sess.run(init_op)
-        sess.run(output)
+        self.evaluate(init_op)
+        self.evaluate(output)
         saver = saver_module.Saver()
         saver.save(sess, saver_ckpt)
         saver.export_meta_graph(filename)
@@ -2031,8 +2031,8 @@ class MetaGraphTest(test.TestCase):
       no_constfold_config.graph_options.rewrite_options.constant_folding = (
           rewriter_config_pb2.RewriterConfig.OFF)
       with session.Session(config=no_constfold_config) as sess:
-        sess.run(init_op)
-        expected_grad_value = sess.run(grad)
+        self.evaluate(init_op)
+        expected_grad_value = self.evaluate(grad)
 
     # Restore the MetaGraphDef into a new Graph.
     with ops_lib.Graph().as_default():
@@ -2048,8 +2048,8 @@ class MetaGraphTest(test.TestCase):
       init_op = variables.global_variables_initializer()
 
       with session.Session(config=no_constfold_config) as sess:
-        sess.run(init_op)
-        actual_grad_value = sess.run(grad)
+        self.evaluate(init_op)
+        actual_grad_value = self.evaluate(grad)
         self.assertEqual(expected_grad_value, actual_grad_value)
 
   def _testWhileLoopAndGradientSerDes(self, outer_body_fn):
@@ -2187,7 +2187,7 @@ class MetaGraphTest(test.TestCase):
                                                       logits=logit, name="cost")
       adam.AdamOptimizer().minimize(cost, name="optimize")
       saver = saver_module.Saver()
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       saver.save(sess, filename)
 
     graph = ops_lib.Graph()
@@ -2224,7 +2224,7 @@ class MetaGraphTest(test.TestCase):
 
       # Create a variable in graph_2 under scope "my_scope".
       variables.VariableV1(array_ops.zeros([10]), name="my_scope/my_var")
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       # Restore the checkpoint into a different scope "subgraph_2".
       new_saver_2 = saver_module.import_meta_graph(
           filename + ".meta", graph=graph_2, import_scope="subgraph_2")
@@ -2257,7 +2257,7 @@ class MetaGraphTest(test.TestCase):
                                                       logits=logit, name="cost")
       adam.AdamOptimizer().minimize(cost, name="optimize")
       saver = saver_module.Saver()
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       saver.save(sess, filename)
 
     graph = ops_lib.Graph()
@@ -2294,12 +2294,12 @@ class MetaGraphTest(test.TestCase):
           meta_graph_def, clear_devices=False, import_scope="new_model")
       # Device refers to GPU, which is not available here.
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
 
     with session.Session(graph=ops_lib.Graph()) as sess:
       saver_module.import_meta_graph(
           meta_graph_def, clear_devices=True, import_scope="new_model")
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       sess.run(["new_model/optimize"], {
           "new_model/image:0": np.random.random([1, 784]),
           "new_model/label:0": np.random.randint(
@@ -2326,7 +2326,7 @@ class MetaGraphTest(test.TestCase):
 
     with session.Session(graph=ops_lib.Graph()) as sess:
       saver_module.import_meta_graph(meta_graph_def, import_scope="new_model")
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       sess.run(["new_model/optimize"], {
           "new_model/image:0": np.random.random([1, 784]),
           "new_model/label:0": np.random.randint(
@@ -2352,7 +2352,7 @@ class MetaGraphTest(test.TestCase):
                            meta_graph_def_from_graph_def]:
       with session.Session(graph=ops_lib.Graph()) as sess:
         saver_module.import_meta_graph(meta_graph_def, import_scope="new_model")
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for i in range(10):
           self.assertEqual(i * i, sess.run("new_model/output:0"))
         with self.assertRaises(errors.OutOfRangeError):
@@ -2378,7 +2378,7 @@ class CheckpointReaderTest(test.TestCase):
     save_path = os.path.join(self.get_temp_dir(),
                              "ckpt_for_debug_string" + str(self._WRITE_VERSION))
     with self.cached_session() as sess:
-      sess.run(init_all_op)
+      self.evaluate(init_all_op)
       # Saves a checkpoint.
       save.save(sess, save_path)
 
@@ -2524,7 +2524,7 @@ class ScopedGraphTest(test.TestCase):
       self.assertEqual(["biases:0", "weights:0"], sorted(var_list.keys()))
 
     with self.session(graph=graph) as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       saver = saver_module.Saver(var_list=var_list, max_to_keep=1)
       saver.save(sess, os.path.join(test_dir, ckpt_filename), write_state=False)
 
@@ -2587,10 +2587,10 @@ class ScopedGraphTest(test.TestCase):
       saver = saver_module.Saver(var_list=var_list, max_to_keep=1)
       saver.restore(sess, os.path.join(test_dir, ckpt_filename))
       # Verify that we have restored weights1 and biases1.
-      sess.run([weights1, biases1])
+      self.evaluate([weights1, biases1])
       # Initialize the rest of the variables and run logits.
-      sess.run(init_rest_op)
-      sess.run(logits)
+      self.evaluate(init_rest_op)
+      self.evaluate(logits)
 
   # Verifies that we can save the subgraph under "hidden1" and restore it
   # into "new_hidden1" in the new graph.
@@ -2618,7 +2618,7 @@ class ScopedGraphTest(test.TestCase):
 
     # Run the graph and save scoped checkpoint.
     with self.session(graph=graph1) as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       _, var_list_1 = meta_graph.export_scoped_meta_graph(
           export_scope="hidden1")
       saver = saver_module.Saver(var_list=var_list_1, max_to_keep=1)
@@ -2674,7 +2674,7 @@ class ScopedGraphTest(test.TestCase):
 
     # Run the graph and save scoped checkpoint.
     with self.session(graph=graph1) as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       _, var_list_1 = meta_graph.export_scoped_meta_graph(
           graph_def=graph1.as_graph_def(), export_scope="hidden1")
       saver = saver_module.Saver(var_list=var_list_1, max_to_keep=1)
@@ -2942,7 +2942,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
     a_saver = saver_module.Saver([a])
     b_saver = saver_module.Saver([b])
     with self.cached_session() as sess:
-      sess.run(a.initializer)
+      self.evaluate(a.initializer)
       save_path = a_saver.save(sess=sess, save_path=checkpoint_prefix)
       with self.assertRaisesRegexp(
           errors.NotFoundError, "Key b not found in checkpoint"):
@@ -2964,7 +2964,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
       a_saver = saver_module.Saver([a])
 
       with self.session(graph=g) as sess:
-        sess.run(a.initializer)
+        self.evaluate(a.initializer)
         save_path = a_saver.save(sess=sess, save_path=checkpoint_prefix)
 
     with ops_lib.Graph().as_default() as g:

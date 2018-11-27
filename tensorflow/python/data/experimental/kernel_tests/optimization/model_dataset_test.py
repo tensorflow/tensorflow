@@ -41,9 +41,9 @@ class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      self.assertEqual(0, sess.run(get_next))
+      self.assertEqual(0, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
 
 if __name__ == "__main__":

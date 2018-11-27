@@ -229,7 +229,7 @@ class BarrierTest(test.TestCase):
       insert_ops = [b.insert_many(0, [k], [v]) for k, v in zip(keys, values)]
       take_t = b.take_many(10)
 
-      sess.run(insert_ops)
+      self.evaluate(insert_ops)
       self.assertEquals(size_t.eval(), [10])
 
       indices_val, keys_val, values_val = sess.run(
@@ -491,9 +491,9 @@ class BarrierTest(test.TestCase):
       b = data_flow_ops.Barrier(
           (dtypes.float32, dtypes.float32), shapes=((), ()), name="B")
       take_t = b.take_many(1, allow_small_batch=True)
-      sess.run(b.close(cancel))
+      self.evaluate(b.close(cancel))
       with self.assertRaisesOpError("is closed and has insufficient elements"):
-        sess.run(take_t)
+        self.evaluate(take_t)
 
   def testClosedEmptyBarrierTakeManyAllowSmallBatchRaises(self):
     self._testClosedEmptyBarrierTakeManyAllowSmallBatchRaises(cancel=False)

@@ -29,7 +29,7 @@ class StringLengthOpTest(test.TestCase):
 
     with self.cached_session() as sess:
       lengths = string_ops.string_length(strings)
-      values = sess.run(lengths)
+      values = self.evaluate(lengths)
       self.assertAllEqual(values, [[[1, 2], [3, 4], [5, 6]]])
 
   def testUnit(self):
@@ -43,9 +43,9 @@ class StringLengthOpTest(test.TestCase):
       utf8_char_lengths = string_ops.string_length(
           utf8_strings, unit="UTF8_CHAR")
       self.assertAllEqual(
-          sess.run(utf8_byte_lengths), expected_utf8_byte_lengths)
+          self.evaluate(utf8_byte_lengths), expected_utf8_byte_lengths)
       self.assertAllEqual(
-          sess.run(utf8_char_lengths), expected_utf8_char_lengths)
+          self.evaluate(utf8_char_lengths), expected_utf8_char_lengths)
       with self.assertRaisesRegexp(
           ValueError, "Attr 'unit' of 'StringLength' Op passed string 'XYZ' "
           'not in: "BYTE", "UTF8_CHAR"'):

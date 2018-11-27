@@ -458,7 +458,7 @@ class FunctionalOpsTest(test.TestCase):
     grad = gradients_impl.gradients(ys=[loss], xs=[a, b])
     with self.test_session(use_gpu=True) as sess:
       variables.global_variables_initializer().run()
-      sess.run(grad)
+      self.evaluate(grad)
 
   @test_util.run_in_graph_and_eager_modes
   def testFoldShape(self):
@@ -567,8 +567,8 @@ class FunctionalOpsTest(test.TestCase):
           target="/job:worker/replica:0/task:0/cpu:1")
 
     with session.Session(worker[0].target) as sess:
-      sess.run(variables.global_variables_initializer())
-      mul = sess.run(remote_op)
+      self.evaluate(variables.global_variables_initializer())
+      mul = self.evaluate(remote_op)
       self.assertEqual(mul, [6])
 
   def testRemoteFunctionDirectSession(self):
@@ -591,8 +591,8 @@ class FunctionalOpsTest(test.TestCase):
           target="/job:localhost/replica:0/task:0/cpu:1")
 
     with self.test_session(config=worker_config) as sess:
-      sess.run(variables.global_variables_initializer())
-      mul = sess.run(remote_op)
+      self.evaluate(variables.global_variables_initializer())
+      mul = self.evaluate(remote_op)
       self.assertEqual(mul, [6])
 
   def testRemoteFunctionSameDeviceDirectSession(self):
@@ -610,8 +610,8 @@ class FunctionalOpsTest(test.TestCase):
           args=[a, b], Tout=[dtypes.int32], f=_remote_fn, target="/cpu:0")
 
     with self.cached_session() as sess:
-      sess.run(variables.global_variables_initializer())
-      mul = sess.run(remote_op)
+      self.evaluate(variables.global_variables_initializer())
+      mul = self.evaluate(remote_op)
       self.assertEqual(mul, [6])
 
   def testRemoteFunctionCPUGPU(self):
@@ -634,8 +634,8 @@ class FunctionalOpsTest(test.TestCase):
           target="/job:localhost/replica:0/task:0/device:GPU:0")[0] + 3.0
 
     with self.cached_session() as sess:
-      sess.run(variables.global_variables_initializer())
-      mul = sess.run(remote_op)
+      self.evaluate(variables.global_variables_initializer())
+      mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9.0)
 
   def testRemoteFunctionGPUCPU(self):
@@ -658,8 +658,8 @@ class FunctionalOpsTest(test.TestCase):
           target="/job:localhost/replica:0/task:0/cpu:0")[0] + 3.0
 
     with self.cached_session() as sess:
-      sess.run(variables.global_variables_initializer())
-      mul = sess.run(remote_op)
+      self.evaluate(variables.global_variables_initializer())
+      mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9.0)
 
   def testRemoteFunctionGPUCPUStrings(self):
@@ -677,7 +677,7 @@ class FunctionalOpsTest(test.TestCase):
           args=[a], Tout=[dtypes.string], f=_remote_fn, target="/cpu:0")
 
     with self.cached_session() as sess:
-      ret = sess.run(remote_op)
+      ret = self.evaluate(remote_op)
       self.assertAllEqual(ret, [b"a"])
 
   def testRemoteFunctionCrossProcess(self):
@@ -699,8 +699,8 @@ class FunctionalOpsTest(test.TestCase):
           target="/job:worker/replica:0/task:1/cpu:0")[0] + 3.0
 
     with session.Session(workers[0].target) as sess:
-      sess.run(variables.global_variables_initializer())
-      mul = sess.run(remote_op)
+      self.evaluate(variables.global_variables_initializer())
+      mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9)
 
   def testIf(self):
@@ -769,7 +769,7 @@ class FunctionalOpsTest(test.TestCase):
           else:
             fetch = "my_while:1"
         with self.session(graph=g, use_gpu=use_gpu) as sess:
-          return sess.run(fetch)
+          return self.evaluate(fetch)
 
     self.assertAllEqual(Run(20., False), 210.)
     self.assertAllEqual(Run(20., True), 210.)
@@ -857,11 +857,11 @@ class FunctionalOpsTest(test.TestCase):
           result_binary = functional_ops.While(
               [1.0, 0., 0.],
               function.Defun(*[dtypes.float32] * 3)(TestCond), TestBinary)
-          sess.run(variables.global_variables_initializer())
+          self.evaluate(variables.global_variables_initializer())
           assert len(result_unary) == 2
-          self.assertEqual([10.0, 54.0], sess.run(result_unary))
+          self.assertEqual([10.0, 54.0], self.evaluate(result_unary))
           assert len(result_binary) == 3
-          self.assertEqual([10.0, 54.0, 9.0], sess.run(result_binary))
+          self.assertEqual([10.0, 54.0, 9.0], self.evaluate(result_binary))
 
           def TestCondCapture(n, *args):
             del args
@@ -892,7 +892,7 @@ class FunctionalOpsTest(test.TestCase):
                 100, 0, -1, [0.], Body, rewrite_with_while=rewrite_with_while)
             [0],
         ]
-        xvals = sess.run(xs)
+        xvals = self.evaluate(xs)
       self.assertAllEqual(210, xvals[0])
       self.assertAllEqual(5050, xvals[1])
 
@@ -949,16 +949,16 @@ class FunctionalOpsTest(test.TestCase):
         result_binary = functional_ops.For(
             1, 10, 1, [0., 0.], TestBinary,
             rewrite_with_while=rewrite_with_while)
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         assert not result_nullary
         # The nullary variant doesn't return anything so we can't easily run it.
         # As a total hack, fetch the operation by name and run it.
         sess.run(ops.get_default_graph().get_operation_by_name(
             "While" if rewrite_with_while else "For"))
         assert len(result_unary) == 1
-        self.assertEqual([54.0], sess.run(result_unary))
+        self.assertEqual([54.0], self.evaluate(result_unary))
         assert len(result_binary) == 2
-        self.assertEqual([54.0, 9.0], sess.run(result_binary))
+        self.assertEqual([54.0, 9.0], self.evaluate(result_binary))
 
   def _tfMLP(self, xval, wsval, bsval, rewrite_with_while):
     # On GPU, don't rewrite using a while loop.
@@ -1041,8 +1041,8 @@ class FunctionalOpsTest(test.TestCase):
       avals = [Poly(a), Grad(a)]
       b = constant_op.constant(1.)
       bvals = [Poly(b), Grad(b)]
-      self.assertAllEqual(sess.run(avals), [8., 4.])
-      self.assertAllEqual(sess.run(bvals), [17., 16.])
+      self.assertAllEqual(self.evaluate(avals), [8., 4.])
+      self.assertAllEqual(self.evaluate(bvals), [17., 16.])
 
 
 # TODO(akshayka): Replace `function.Defun` with tf.contrib.eager.defun` in the
@@ -1193,8 +1193,8 @@ class PartitionedCallTest(test.TestCase):
             allow_soft_placement=False,
             log_device_placement=True,
             device_count={"CPU": 2})) as sess:
-      sess.run(variables.global_variables_initializer())
-      expected = sess.run(sum_gather())
+      self.evaluate(variables.global_variables_initializer())
+      expected = self.evaluate(sum_gather())
       result = sess.run(
           functional_ops.partitioned_call(
               args=defined.captured_inputs, f=defined))
