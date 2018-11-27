@@ -424,7 +424,10 @@ class Function(object):
 
     if (tape.should_record(tensor_inputs) or
         tape.should_record(self._captured_inputs)):
-      return self._backprop_call(args)
+      if context.executing_eagerly():
+        return self._eager_backprop_call(args)
+      else:
+        return self._backprop_call_with_delayed_rewrite(args)
 
     # Only need to override the gradient in graph mode and when we have outputs.
     if context.executing_eagerly() or not self.outputs:
@@ -450,37 +453,40 @@ class Function(object):
       name: The name to register the gradient as.
     """
     @ops.RegisterGradient(name)
-    def grad_fn(op, *doutputs):  # pylint: disable=unused-variable
-      """Gradients of this function."""
-      if self._backward_graph_function is None:
-        self._construct_backprop_function()
+    def _registered_grad_fn(op, *doutputs):  # pylint: disable=unused-variable
+      return self._grad_fn(op, *doutputs)
 
-      # pylint: disable=protected-access
-      self._forward_function.add_to_graph(op.graph)
-      num_inference_outputs = self._inference_function._num_outputs
+  def _grad_fn(self, op, *doutputs):
+    """Gradients of this function."""
+    if self._backward_graph_function is None:
+      self._construct_backprop_function()
 
-      # Rewrite an inference call op to be a forward call op
-      if op.get_attr("f").name.encode() == self._inference_function.name:
-        func = attr_value_pb2.AttrValue(
-            func=attr_value_pb2.NameAttrList(
-                name=self._forward_function.name))
-        op._set_attr("f", func)
-        types = attr_value_pb2.AttrValue.ListValue(
-            type=self._forward_function._output_types)
-        op._set_attr("Tout", attr_value_pb2.AttrValue(list=types))
-        for i in range(
-            num_inference_outputs, len(self._forward_function._output_types)):
-          t = ops.Tensor(op, i, self._forward_function._output_types[i])
-          t.set_shape(self._forward_function._output_shapes[i])
-          func_graph_output = self._forward_function._func_graph_outputs[i]
-          custom_gradient.copy_handle_data(func_graph_output, t)
-          op._outputs.append(t)
-      # pylint: enable=protected-access
-      # Compute the gradients using the side outputs
-      side_outputs = op.outputs[num_inference_outputs:]
-      args = list(doutputs[:num_inference_outputs]) + list(side_outputs)
-      return self._backward_graph_function._call_flat(  # pylint: disable=protected-access
-          (a for a in args if a is not None))
+    # pylint: disable=protected-access
+    self._forward_function.add_to_graph(op.graph)
+    num_inference_outputs = self._inference_function._num_outputs
+
+    # Rewrite an inference call op to be a forward call op
+    if op.get_attr("f").name.encode() == self._inference_function.name:
+      func = attr_value_pb2.AttrValue(
+          func=attr_value_pb2.NameAttrList(
+              name=self._forward_function.name))
+      op._set_attr("f", func)
+      types = attr_value_pb2.AttrValue.ListValue(
+          type=self._forward_function._output_types)
+      op._set_attr("Tout", attr_value_pb2.AttrValue(list=types))
+      for i in range(
+          num_inference_outputs, len(self._forward_function._output_types)):
+        t = ops.Tensor(op, i, self._forward_function._output_types[i])
+        t.set_shape(self._forward_function._output_shapes[i])
+        func_graph_output = self._forward_function._func_graph_outputs[i]
+        custom_gradient.copy_handle_data(func_graph_output, t)
+        op._outputs.append(t)
+    # pylint: enable=protected-access
+    # Compute the gradients using the side outputs
+    side_outputs = op.outputs[num_inference_outputs:]
+    args = list(doutputs[:num_inference_outputs]) + list(side_outputs)
+    return self._backward_graph_function._call_flat(  # pylint: disable=protected-access
+        (a for a in args if a is not None))
 
   @property
   def name(self):
@@ -623,10 +629,13 @@ class Function(object):
         self._func_graph.outputs + backwards_graph_captures,
         forward_function_attr)
 
-  def _backprop_call(self, args):
+  def _eager_backprop_call(self, args):
     """Calls the forward function and records the result on a tape.
 
-    (Only records results on a tape if the function has outputs)
+    This method fully constructs the forward and backward functions before
+    calling the function and recording them on the tape.
+
+    (Only records results on a tape if the function has outputs).
 
     Args:
       args: All inputs to the function, including resolved captured inputs
@@ -667,6 +676,46 @@ class Function(object):
     tape.record_operation(self._forward_function.signature.name, real_outputs,
                           args, backward_function)
     return self._build_call_outputs(real_outputs)
+
+  def _backprop_call_with_delayed_rewrite(self, args):
+    """Calls the inference function and records the result on a tape.
+
+    The recorded backwards function will construct the backwards graph and
+    rewrite the inference function to the forward function. This only happens
+    if the recorded backwards function ends up being used to compute gradients.
+
+    This approach avoids constructing unnecessary graphs, but it only works if
+    we are calling this function when not executing eagerly.
+
+    (Only records results on a tape if the function has outputs)
+
+    Args:
+      args: All inputs to the function, including resolved captured inputs
+
+    Returns:
+      The call output.
+    """
+    ctx = context.context()
+
+    if not self._gradient_name:
+      self._gradient_name = "PartitionedCall-%s" % ops.uid()
+      self._register_gradient(self._gradient_name)
+    with ops.get_default_graph().gradient_override_map(
+        {"PartitionedCall": self._gradient_name,
+         "StatefulPartitionedCall": self._gradient_name}):
+      outputs = self._inference_function.call(ctx, args)
+
+    if isinstance(outputs, ops.Operation) or outputs is None:
+      return outputs
+
+    call_op = outputs[0].op
+
+    def backward_function(*args):
+      return self._grad_fn(call_op, *args)
+
+    tape.record_operation(self._inference_function.signature.name, outputs,
+                          args, backward_function)
+    return self._build_call_outputs(outputs)
 
   def _build_call_outputs(self, result):
     """Maps the fdef output list to actual output structure.
