@@ -552,17 +552,17 @@ class TensorContractionSubMapper<
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorContractionSubMapper(
       const ParentMapper& base_mapper, Index vert_offset, Index horiz_offset)
-      : m_base_mapper(base_mapper),
-        m_depth_offset(vert_offset),
-        m_col_offset(horiz_offset) {
+      : m_depth_offset(vert_offset),
+        m_col_offset(horiz_offset),
+        m_base_mapper(base_mapper) {
     m_base_mapper.computeBaseIndices(m_col_offset, m_rowIndex, m_colIndex,
                                      m_otherIndex);
   }
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorContractionSubMapper(
       const Self& base_mapper, Index vert_offset, Index horiz_offset)
-      : m_base_mapper(base_mapper.m_base_mapper),
-        m_depth_offset(vert_offset + base_mapper.m_depth_offset),
-        m_col_offset(horiz_offset + base_mapper.m_col_offset) {
+      : m_depth_offset(vert_offset + base_mapper.m_depth_offset),
+        m_col_offset(horiz_offset + base_mapper.m_col_offset),
+        m_base_mapper(base_mapper.m_base_mapper) {
     m_base_mapper.computeBaseIndices(m_col_offset, m_rowIndex, m_colIndex,
                                      m_otherIndex);
   }

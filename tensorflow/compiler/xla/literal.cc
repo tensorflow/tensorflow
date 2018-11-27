@@ -63,6 +63,14 @@ void ConvertEndianShort(char* bytes, int64 size) {
   }
 }
 
+// Since Eigen::half doesn't satisfy the absl::bit_cast contract, we need to be
+// able to transparently access the raw 16-bit value contained within.
+template <typename T>
+T GetRawValue(T val) {
+  return val;
+}
+uint16 GetRawValue(Eigen::half val) { return val.x; }
+
 }  // namespace
 
 LiteralBase::~LiteralBase() {}
@@ -1206,13 +1214,29 @@ Literal ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(sizeof(NativeSrcT) == sizeof(NativeDestT)),
+typename std::enable_if<(sizeof(NativeSrcT) == sizeof(NativeDestT) &&
+                         !std::is_same<NativeDestT, Eigen::half>::value),
                         Literal>::type
 BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
   auto converter = [](NativeSrcT src) {
-    return absl::bit_cast<NativeDestT>(src);
+    return absl::bit_cast<NativeDestT>(GetRawValue(src));
   };
   return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
+      src_literal, converter);
+}
+
+template <typename NativeSrcT, typename NativeDestT>
+typename std::enable_if<(sizeof(NativeSrcT) == sizeof(Eigen::half) &&
+                         std::is_same<NativeDestT, Eigen::half>::value),
+                        Literal>::type
+BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
+  // Eigen::half doesn't satisfy the absl::bit_cast contract, so explicitly
+  // cast to unsigned short and then use raw_uint16_to_half.
+  auto converter = [](NativeSrcT src) {
+    return Eigen::half_impl::raw_uint16_to_half(
+        absl::bit_cast<uint16>(GetRawValue(src)));
+  };
+  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, Eigen::half>(
       src_literal, converter);
 }
 
