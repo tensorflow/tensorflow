@@ -116,6 +116,22 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       self.assertEqual(errors, ["test.py:1: %s requires manual check." % ns])
       self.assertIn("loss_reduction has been changed", report)
 
+  def testDropout(self):
+    text = "tf.nn.dropout(x, keep_prob, name=\"foo\")\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.nn.dropout(x, 1 - keep_prob, name=\"foo\")\n",
+    )
+
+    text = "tf.nn.dropout(x)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, text)
+    self.assertEqual(
+        errors,
+        ["test.py:1: tf.nn.dropout requires manual check."]
+    )
+
   def testCountNonZeroChanges(self):
     text = (
         "tf.math.count_nonzero(input_tensor=input, dtype=dtype, name=name, "
