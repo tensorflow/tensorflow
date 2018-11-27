@@ -54,8 +54,7 @@ struct MaxPoolForwardNoMask_NCHW_VECT_C {
 template <typename T>
 struct MaxPoolBackwardWithArgmax {
   bool operator()(const int output_size, const int input_size,
-                  const T* top_diff, const int64* mask, const int top_offset,
-                  const int bottom_offset, T* bottom_diff,
+                  const T* top_diff, const int64* mask, T* bottom_diff,
                   const Eigen::GpuDevice& d);
 };
 
@@ -72,8 +71,7 @@ struct MaxPoolBackwardNoMask {
 template <typename T>
 struct MaxPoolGradBackwardWithArgmax {
   bool operator()(const int output_size, const int input_size,
-                  const T* top_diff, const int64* mask, const int top_offset,
-                  const int bottom_offset, T* bottom_diff,
+                  const T* top_diff, const int64* mask, T* bottom_diff,
                   const Eigen::GpuDevice& d);
 };
 

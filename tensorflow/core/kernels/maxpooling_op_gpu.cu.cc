@@ -82,13 +82,12 @@ __global__ void MaxPoolForwardNCHW(const int nthreads, const dtype* bottom_data,
     wstart = max(wstart, 0);
     dtype maxval = Eigen::NumTraits<dtype>::lowest();
     int maxidx = -1;
-    const dtype* bottom_data_n = bottom_data + n * channels * height * width;
     for (int h = hstart; h < hend; ++h) {
       for (int w = wstart; w < wend; ++w) {
-        int idx = c * height * width + h * width + w;
-        if (IsGreaterThan<propagate_nans>(bottom_data_n[idx], maxval)) {
+        int idx = ((n * channels + c) * height + h) * width + w;
+        if (IsGreaterThan<propagate_nans>(bottom_data[idx], maxval)) {
           maxidx = idx;
-          maxval = bottom_data_n[idx];
+          maxval = bottom_data[idx];
         }
       }
     }
@@ -158,13 +157,12 @@ __global__ void MaxPoolForwardNHWC(const int nthreads, const dtype* bottom_data,
     wstart = max(wstart, 0);
     dtype maxval = Eigen::NumTraits<dtype>::lowest();
     int maxidx = -1;
-    const dtype* bottom_data_n = bottom_data + n * height * width * channels;
     for (int h = hstart; h < hend; ++h) {
       for (int w = wstart; w < wend; ++w) {
-        int idx = (h * width + w) * channels + c;
-        if (IsGreaterThan<propagate_nans>(bottom_data_n[idx], maxval)) {
+        int idx = ((n * height + h) * width + w) * channels + c;
+        if (IsGreaterThan<propagate_nans>(bottom_data[idx], maxval)) {
           maxidx = idx;
-          maxval = bottom_data_n[idx];
+          maxval = bottom_data[idx];
         }
       }
     }
@@ -225,23 +223,15 @@ __global__ void MaxPoolBackwardNoMaskNHWC(
 //     mask: the output mask of the same size as top_data. It is stored in
 //         int form, keeping track of the flattened index of the input item that
 //         produces the max output.
-//     top_offset: the pre-computed per-image offset of the maxpool output. This
-//         is equal to Hout*Wout*C. We choose to pre-compute this so we do not
-//         need to compute it every time inside the kernel.
-//     bottom_offset: the pre-computed per-image offset of the maxpool input.
-//         This is equal to H*W*C.
 //     bottom_diff: the gradient with respect to the input.
 // This function relies on CudaAtomicAdd to avoid race conditions. Also, before
 // the kernel is run, you will need to make sure that bottom_diff is filled with
 // zero first.
 template <typename dtype>
 __global__ void MaxPoolBackward(const int nthreads, const dtype* top_diff,
-                                const int64* mask, const int top_offset,
-                                const int bottom_offset, dtype* bottom_diff) {
+                                const int64* mask, dtype* bottom_diff) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    int image_id = (index / top_offset);
-    CudaAtomicAdd(bottom_diff + image_id * bottom_offset + mask[index],
-                  top_diff[index]);
+    CudaAtomicAdd(bottom_diff + mask[index], top_diff[index]);
   }
 }
 
@@ -352,20 +342,12 @@ __global__ void MaxPoolGradBackwardNoMaskNHWC(
 //     mask: the output mask of the same size as top_data. It is stored in
 //         int form, keeping track of the flattened index of the input item that
 //         produces the max output.
-//     top_offset: the pre-computed per-image offset of the maxpool input
-//         gradient. This is equal to H*W*C. We choose to pre-compute this so we
-//         do not  need to compute it every time inside the kernel.
-//     bottom_offset: the pre-computed per-image offset of the maxpool output.
-//         This is equal to Hout*Wout*C.
 //     bottom_diff: the gradient of the gradient w.r.t. output.
 template <typename dtype>
 __global__ void MaxPoolGradBackward(const int nthreads, const dtype* top_diff,
-                                    const int64* mask, const int top_offset,
-                                    const int bottom_offset,
-                                    dtype* bottom_diff) {
+                                    const int64* mask, dtype* bottom_diff) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    int image_id = (index / bottom_offset);
-    bottom_diff[index] = top_diff[image_id * top_offset + mask[index]];
+    bottom_diff[index] = top_diff[mask[index]];
   }
 }
 
@@ -444,16 +426,17 @@ bool MaxPoolBackwardNoMask<T>::operator()(
 }
 
 template <typename T>
-bool MaxPoolBackwardWithArgmax<T>::operator()(
-    const int output_size, const int input_size, const T* top_diff,
-    const int64* mask, const int top_offset, const int bottom_offset,
-    T* bottom_diff, const Eigen::GpuDevice& d) {
+bool MaxPoolBackwardWithArgmax<T>::operator()(const int output_size,
+                                              const int input_size,
+                                              const T* top_diff,
+                                              const int64* mask, T* bottom_diff,
+                                              const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
   SetZero<<<(input_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
             kThreadsPerBlock, 0, d.stream()>>>(input_size, bottom_diff);
   MaxPoolBackward<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-                    kThreadsPerBlock, 0, d.stream()>>>(
-      output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff);
+                    kThreadsPerBlock, 0, d.stream()>>>(output_size, top_diff,
+                                                       mask, bottom_diff);
   return d.ok();
 }
 
@@ -487,12 +470,10 @@ bool MaxPoolGradBackwardNoMask<T>::operator()(
 template <typename T>
 bool MaxPoolGradBackwardWithArgmax<T>::operator()(
     const int output_size, const int input_size, const T* top_diff,
-    const int64* mask, const int top_offset, const int bottom_offset,
-    T* bottom_diff, const Eigen::GpuDevice& d) {
+    const int64* mask, T* bottom_diff, const Eigen::GpuDevice& d) {
   CudaLaunchConfig config = GetCudaLaunchConfig(output_size, d);
   MaxPoolGradBackward<<<config.block_count, config.thread_per_block, 0,
-                        d.stream()>>>(output_size, top_diff, mask, top_offset,
-                                      bottom_offset, bottom_diff);
+                        d.stream()>>>(output_size, top_diff, mask, bottom_diff);
   return d.ok();
 }
 
