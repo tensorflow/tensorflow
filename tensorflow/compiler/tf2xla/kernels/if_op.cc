@@ -72,7 +72,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       arg.shape = resource->shape();
       OP_REQUIRES(ctx, arg.initialized,
                   errors::Unimplemented("Uninitialized arguments: ", arg.name));
-      arg.tensor_array_size = resource->tensor_array_size();
+      arg.max_array_size = resource->max_array_size();
       for (const auto& gradient : resource->tensor_array_gradients()) {
         arg.tensor_array_gradients.insert(gradient.first);
       }
