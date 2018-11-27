@@ -116,6 +116,7 @@ cc_library(
     hdrs = ["delegate_data.h"],
     deps = [
         ":buffer_map",
+        "@com_google_absl//absl/memory",
         "//tensorflow/core/common_runtime/eager:context",
     ] + select({
         "//tensorflow:android": [
