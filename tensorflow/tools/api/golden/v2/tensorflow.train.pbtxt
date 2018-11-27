@@ -209,10 +209,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "VocabInfo"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "WorkerSessionCreator"
     mtype: "<type \'type\'>"
   }

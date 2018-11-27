@@ -588,6 +588,7 @@ renames = {
     'tf.train.Saver': 'tf.compat.v1.train.Saver',
     'tf.train.SaverDef': 'tf.compat.v1.train.SaverDef',
     'tf.train.SyncReplicasOptimizer': 'tf.compat.v1.train.SyncReplicasOptimizer',
+    'tf.train.VocabInfo': 'tf.compat.v1.train.VocabInfo',
     'tf.train.add_queue_runner': 'tf.compat.v1.train.add_queue_runner',
     'tf.train.assert_global_step': 'tf.compat.v1.train.assert_global_step',
     'tf.train.basic_train_loop': 'tf.compat.v1.train.basic_train_loop',
