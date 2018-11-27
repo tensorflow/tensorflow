@@ -212,8 +212,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32: {
       tflite::ConvParams op_params;
       op_params.padding_type = PaddingType::kSame;
-      op_params.padding_values.width = padding_size.width;
-      op_params.padding_values.height = padding_size.height;
+      op_params.padding_values.width = padding_size.height;
+      op_params.padding_values.height = padding_size.width;
       op_params.stride_width = stride_width;
       op_params.stride_height = stride_height;
       switch (kernel_type) {
