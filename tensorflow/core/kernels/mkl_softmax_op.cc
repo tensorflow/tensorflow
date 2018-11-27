@@ -17,7 +17,6 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -25,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::prop_kind;
 using mkldnn::softmax_forward;
@@ -65,9 +65,8 @@ class MklSoftmaxOp : public OpKernel {
       // In MKL, data format passed to mkl softmax op depends on dimension of
       // the input tensor. "x" data format in MKL is used for 1 dim tensor,
       // "nc" for 2 dim tensor, "tnc" for 3 dim tensor, "nchw" for 4 dim tensor,
-      // and "ncdhw" for 5 dim tensor.
-      // Each of the simbols has the following meaning:
-      // n = batch, c = channels, t = sequence lenght, h = height,
+      // and "ncdhw" for 5 dim tensor. Each of the simbols has the following
+      // meaning: n = batch, c = channels, t = sequence length, h = height,
       // w = width, d = depth
       switch (input_dims) {
         case 1:
@@ -86,8 +85,8 @@ class MklSoftmaxOp : public OpKernel {
           layout_type = memory::format::ncdhw;
           break;
         default:
-          OP_REQUIRES_OK(context, errors::Aborted(
-              "Input dims must be <= 5 and >=1"));
+          OP_REQUIRES_OK(context,
+                         errors::Aborted("Input dims must be <= 5 and >=1"));
           return;
       }
 
@@ -100,10 +99,9 @@ class MklSoftmaxOp : public OpKernel {
       // construct input Tf layout. For TF layout, although input shape
       // (src_dims) required is in MKL-DNN order, the layout is Tensorflow's
       // layout
-      auto src_md =
-          src_mkl_shape.IsMklTensor()
-              ? src_mkl_shape.GetMklLayout()
-              : memory::desc(src_dims, MklDnnType<T>(), layout_type);
+      auto src_md = src_mkl_shape.IsMklTensor()
+                        ? src_mkl_shape.GetMklLayout()
+                        : memory::desc(src_dims, MklDnnType<T>(), layout_type);
 
       // src: setting memory descriptor and op memory descriptor
       // Basically following two functions maps the TF "src_tensor" to mkl
@@ -160,9 +158,9 @@ class MklSoftmaxOp : public OpKernel {
       net.push_back(softmax_fwd);
       stream(stream::kind::eager).submit(net).wait();
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
