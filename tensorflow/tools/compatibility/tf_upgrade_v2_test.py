@@ -178,6 +178,40 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     )
     self.assertEqual(new_text, expected_text)
 
+  def testColocateGradientsWithOps(self):
+    text = "tf.gradients(a, foo=False)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+    self.assertEqual(errors, [])
+
+    text = "tf.gradients(a, colocate_gradients_with_ops=False)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+    self.assertEqual(errors, ["test.py:1: tf.gradients requires manual check."])
+
+    text = "optimizer.minimize(a, foo=False)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+    self.assertEqual(errors, [])
+
+    text = "optimizer.minimize(a, colocate_gradients_with_ops=False)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+    self.assertEqual(errors,
+                     ["test.py:1: Optimizer.minimize requires manual check."])
+
+    text = "optimizer.compute_gradients(a, foo=False)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+    self.assertEqual(errors, [])
+
+    text = "optimizer.compute_gradients(a, colocate_gradients_with_ops=False)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+    self.assertEqual(errors,
+                     ["test.py:1: Optimizer.compute_gradients "
+                      "requires manual check."])
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

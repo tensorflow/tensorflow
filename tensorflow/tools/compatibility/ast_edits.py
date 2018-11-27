@@ -209,11 +209,11 @@ class _ASTCallVisitor(ast.NodeVisitor):
     items = []
     while not isinstance(curr, ast.Name):
       if not isinstance(curr, ast.Attribute):
-        return None
+        return None, None
       items.append(curr.attr)
       curr = curr.value
     items.append(curr.id)
-    return ".".join(reversed(items))
+    return ".".join(reversed(items)), items[0]
 
   def _find_true_position(self, node):
     """Return correct line number and column offset for a given node.
@@ -278,7 +278,7 @@ class _ASTCallVisitor(ast.NodeVisitor):
     """
 
     # Find a simple attribute name path e.g. "tf.foo.bar"
-    full_name = self._get_attribute_full_path(node.func)
+    full_name, name = self._get_attribute_full_path(node.func)
 
     # Make sure the func is marked as being part of a call
     node.func.is_function_for_call = True
@@ -286,6 +286,9 @@ class _ASTCallVisitor(ast.NodeVisitor):
     if full_name:
       # Call special handlers
       function_handles = self._api_change_spec.function_handle
+      glob_name = "*.{}".format(name)
+      if glob_name in function_handles:
+        function_handles[glob_name](self._file_edit, node)
       if full_name in function_handles:
         function_handles[full_name](self._file_edit, node)
 
@@ -358,7 +361,7 @@ class _ASTCallVisitor(ast.NodeVisitor):
     Args:
       node: Node that is of type ast.Attribute
     """
-    full_name = self._get_attribute_full_path(node)
+    full_name, _ = self._get_attribute_full_path(node)
     if full_name:
       self._rename_functions(node, full_name)
       self._print_warning_for_function(node, full_name)

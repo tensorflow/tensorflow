@@ -561,6 +561,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Specially handled functions.
     self.function_handle = {
         "tf.nn.dropout": self._dropout_handler,
+        "tf.gradients": self._colocate_handler("tf.gradients"),
+        "*.minimize": self._colocate_handler("Optimizer.minimize"),
+        "*.compute_gradients":
+            self._colocate_handler("Optimizer.compute_gradients"),
     }
 
     decay_function_comment = (
@@ -692,6 +696,26 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
           node.args[1].col_offset,
           "",
           "1 - ")
+
+  @staticmethod
+  def _colocate_handler(name):
+    def _helper(file_edit_recorder, node):
+      for keyword in node.keywords:
+        if keyword.arg == "colocate_gradients_with_ops":
+          # TODO(jhseu): Since ast_edit.py does string replacement, there's no
+          # straightforward way to remove the argument. Try to fix before 2.0 is
+          # final.
+          comment = ("For tf.gradients and tf.Optimizer.minimize, "
+                     "colocate_gradients_with_op has been removed and now "
+                     "defaults to True.")
+          file_edit_recorder.add(
+              comment,
+              node.lineno,
+              node.col_offset,
+              "",
+              "",
+              error="{} requires manual check.".format(name))
+    return _helper
 
 
 if __name__ == "__main__":
