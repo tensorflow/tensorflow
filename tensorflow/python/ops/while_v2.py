@@ -839,6 +839,10 @@ def _is_tensor_array_handle(tensor):
   # TODO(b/118452219): add test coverage for this.
   tensor = func_graph_module.maybe_captured(tensor)
 
+  if isinstance(tensor, ops.EagerTensor):
+    # Eager execution doesn't quite support legacy tensorarray
+    return False
+
   return tensor.op.type in TENSOR_ARRAY_HANDLE_OPS
 
 

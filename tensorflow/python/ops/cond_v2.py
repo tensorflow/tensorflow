@@ -25,12 +25,14 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import gen_functional_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.util import nest
 
@@ -262,7 +264,11 @@ def _grad_fn(func_graph, grads):
   # both branches have zero gradient.
   for i in range(len(result)):
     if result[i] is None:
-      result[i] = array_ops.zeros_like(func_graph.inputs[i])
+      if func_graph.inputs[i].dtype == dtypes.resource:
+        result[i] = array_ops.zeros(
+            gen_resource_variable_ops.variable_shape(func_graph.inputs[i]))
+      else:
+        result[i] = array_ops.zeros_like(func_graph.inputs[i])
 
   return result
 
