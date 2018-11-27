@@ -677,6 +677,22 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         if name not in self.function_warnings and name not in excluded_renames
     }
 
+    export_saved_model_renamed = (
+        "(Manual edit required) Please rename the function export_savedmodel() "
+        "to export_saved_model(). Two things to note:\n\t(1) The argument "
+        "strip_default_attributes has been removed. The function will always "
+        "strip the default attributes from ops. If this breaks your code, "
+        "please switch to tf.compat.v1.estimator.Estimator.\n\t(2) This change "
+        "only effects core estimator. If you are using "
+        "tf.contrib.learn.Estimator, please switch to using core estimator.")
+
+    # Specify warnings for functions that aren't restricted to the tf.x.y.z
+    # format. This should only be used for methods with unique names, e.g.
+    # export_savedmodel, which is only defined in Estimator objects.
+    self.unrestricted_function_warnings = {
+        "export_savedmodel": export_saved_model_renamed,
+    }
+
   @staticmethod
   def _dropout_handler(file_edit_recorder, node):
     if len(node.args) < 2:
