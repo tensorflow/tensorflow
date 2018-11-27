@@ -3596,15 +3596,6 @@ py_library(
 )
 
 py_library(
-    name = "device_util",
-    srcs = ["training/device_util.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python/distribute:device_util",
-    ],
-)
-
-py_library(
     name = "distribute",
     srcs = [
         "training/distribute.py",
