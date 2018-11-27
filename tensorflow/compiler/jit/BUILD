@@ -23,7 +23,6 @@ package(
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
@@ -38,7 +37,7 @@ cc_library(
         ":xla_cpu_device",
         ":xla_cpu_jit",
         "//tensorflow/compiler/plugin",
-    ] + if_cuda_is_configured([
+    ] + if_cuda([
         ":xla_gpu_device",
         ":xla_gpu_jit",
     ]),
