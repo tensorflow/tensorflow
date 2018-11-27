@@ -968,7 +968,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
   @staticmethod
   def from_proto(variable_def, import_scope=None):
     """Returns a `Variable` object created from `variable_def`."""
-    raise NotImplementedError
+    return RefVariable(variable_def=variable_def,
+                       import_scope=import_scope)
 
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice.
@@ -2342,12 +2343,6 @@ class RefVariable(VariableV1):
       return var_def
     else:
       return None
-
-  @staticmethod
-  def from_proto(variable_def, import_scope=None):
-    """Returns a `Variable` object created from `variable_def`."""
-    return RefVariable(variable_def=variable_def,
-                       import_scope=import_scope)
 
   def __iadd__(self, other):
     logging.log_first_n(
