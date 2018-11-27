@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.python.ops import math_ops
 from tensorflow.python.training import training_ops
 
 
@@ -58,7 +57,8 @@ class RMSprop(optimizer_v2.OptimizerV2):
                momentum=0.0,
                epsilon=1e-7,
                centered=False,
-               name="RMSprop"):
+               name="RMSprop",
+               **kwargs):
     """Construct a new RMSprop optimizer.
 
     Note that in the dense implementation of this algorithm, variables and their
@@ -88,9 +88,11 @@ class RMSprop(optimizer_v2.OptimizerV2):
         `epsilon` can each be a callable that takes no arguments and returns the
         actual value to use. This can be useful for changing these values across
         different invocations of optimizer functions. @end_compatibility
+      **kwargs: keyword arguments. Allowed to be {`decay`}
     """
-    super(RMSprop, self).__init__(name)
+    super(RMSprop, self).__init__(name, **kwargs)
     self._set_hyper("learning_rate", learning_rate)
+    self._set_hyper("decay", self._initial_decay)
     self._set_hyper("rho", rho)
 
     self._momentum = False
@@ -111,13 +113,13 @@ class RMSprop(optimizer_v2.OptimizerV2):
         self.add_slot(var, "mg")
 
   def _resource_apply_dense(self, grad, var):
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
     rms = self.get_slot(var, "rms")
     mom = self.get_slot(var, "momentum")
-    learning_rate = math_ops.cast(
-        self._get_hyper("learning_rate"), grad.dtype.base_dtype)
-    rho = math_ops.cast(self._get_hyper("rho"), grad.dtype.base_dtype)
-    momentum = math_ops.cast(self._get_hyper("momentum"), grad.dtype.base_dtype)
-    epsilon = math_ops.cast(self._get_hyper("epsilon"), grad.dtype.base_dtype)
+    rho = self._get_hyper("rho", var_dtype)
+    momentum = self._get_hyper("momentum", var_dtype)
+    epsilon = self._get_hyper("epsilon", var_dtype)
     if self._centered:
       mg = self.get_slot(var, "mg")
       return training_ops.resource_apply_centered_rms_prop(
@@ -125,7 +127,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
           mg.handle,
           rms.handle,
           mom.handle,
-          learning_rate,
+          lr_t,
           rho,
           momentum,
           epsilon,
@@ -136,7 +138,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
           var.handle,
           rms.handle,
           mom.handle,
-          learning_rate,
+          lr_t,
           rho,
           momentum,
           epsilon,
@@ -144,13 +146,13 @@ class RMSprop(optimizer_v2.OptimizerV2):
           use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices):
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
     rms = self.get_slot(var, "rms")
     mom = self.get_slot(var, "momentum")
-    learning_rate = math_ops.cast(
-        self._get_hyper("learning_rate"), grad.dtype.base_dtype)
-    rho = math_ops.cast(self._get_hyper("rho"), grad.dtype.base_dtype)
-    momentum = math_ops.cast(self._get_hyper("momentum"), grad.dtype.base_dtype)
-    epsilon = math_ops.cast(self._get_hyper("epsilon"), grad.dtype.base_dtype)
+    rho = self._get_hyper("rho", var_dtype)
+    momentum = self._get_hyper("momentum", var_dtype)
+    epsilon = self._get_hyper("epsilon", var_dtype)
     if self._centered:
       mg = self.get_slot(var, "mg")
       return training_ops.resource_sparse_apply_centered_rms_prop(
@@ -158,7 +160,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
           mg.handle,
           rms.handle,
           mom.handle,
-          learning_rate,
+          lr_t,
           rho,
           momentum,
           epsilon,
@@ -170,7 +172,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
           var.handle,
           rms.handle,
           mom.handle,
-          learning_rate,
+          lr_t,
           rho,
           momentum,
           epsilon,
@@ -182,6 +184,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
     config = super(RMSprop, self).get_config()
     config.update({
         "learning_rate": self._serialize_hyperparameter("learning_rate"),
+        "decay": self._serialize_hyperparameter("decay"),
         "rho": self._serialize_hyperparameter("rho"),
         "momentum": self._serialize_hyperparameter("momentum"),
         "epsilon": self._serialize_hyperparameter("epsilon"),
