@@ -1671,6 +1671,27 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
         pad, HloInstruction::CreateBroadcast(pad->shape(),
                                              pad->mutable_operand(1), {}));
   }
+
+  // Interior padding on one sized dimensions have no effect. As a result it
+  // makes other simplifications possible if there is no interior padding.
+  if (HasInteriorPadding(pad->padding_config())) {
+    PaddingConfig padding_config = pad->padding_config();
+    bool cleared_interior_padding = false;
+    for (int64 i = 0; i < ShapeUtil::Rank(pad->shape()); ++i) {
+      if (padding_config.dimensions(i).interior_padding() > 0 &&
+          pad->operand(0)->shape().dimensions(i) == 1) {
+        cleared_interior_padding = true;
+        padding_config.mutable_dimensions(i)->set_interior_padding(0);
+      }
+    }
+    if (cleared_interior_padding) {
+      TF_ASSIGN_OR_RETURN(HloInstruction * pad_without_interior_pad,
+                          MakePadHlo(pad->mutable_operand(0),
+                                     pad->mutable_operand(1), padding_config));
+      return ReplaceInstruction(pad, pad_without_interior_pad);
+    }
+  }
+
   // Eliminate nop pads (padding all zero), and replace a pad with negative
   // padding with a pad with non-negative padding followed by a slice.
   bool all_zero = true;

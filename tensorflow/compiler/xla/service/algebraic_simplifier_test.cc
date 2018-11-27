@@ -2189,6 +2189,40 @@ TEST_F(AlgebraicSimplifierTest, NegativePadding) {
       has_negative_padding(computation->root_instruction()->operand(0)));
 }
 
+TEST_F(AlgebraicSimplifierTest, TrivialInteriorPadding) {
+  // Verify that a pad instruction with interior padding on one-sized
+  // dimensions, removes the interior padding.
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 1}), "param"));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  PaddingConfig padding;
+  for (int i = 0; i < 2; ++i) {
+    auto dimension = padding.add_dimensions();
+    dimension->set_edge_padding_low(3);
+    dimension->set_edge_padding_high(3);
+    dimension->set_interior_padding(i * 3);
+  }
+  HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {8, 7}), param, zero, padding));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(default_options_);
+
+  ASSERT_THAT(computation->root_instruction(), op::Pad(param, zero));
+  ASSERT_TRUE(HasInteriorPadding(pad->padding_config()));
+
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Pad(param, zero));
+  EXPECT_FALSE(
+      HasInteriorPadding(computation->root_instruction()->padding_config()));
+}
+
 TEST_F(AlgebraicSimplifierTest, RemoveNoopReshape) {
   HloComputation::Builder builder(TestName());
   HloInstruction* param =
