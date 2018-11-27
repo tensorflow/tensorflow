@@ -206,7 +206,7 @@ tf_module {
   }
   member_method {
     name: "max_pool_with_argmax"
-    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'Targmax\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'output_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \"<dtype: \'int64\'>\", \'None\'], "
   }
   member_method {
     name: "moments"

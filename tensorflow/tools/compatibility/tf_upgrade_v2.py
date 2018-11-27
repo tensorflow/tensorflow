@@ -77,6 +77,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.sparse.split": {
             "split_dim": "axis",
         },
+        "tf.max_pool_with_argmax": {
+            "Targmax": "output_dtype",
+        },
         "tf.multinomial": {
             "output_dtype": "dtype",
         },
