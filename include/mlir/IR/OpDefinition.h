@@ -537,6 +537,8 @@ public:
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType, NResults<N>::Impl> {
   public:
+    static unsigned getNumResults() { return N; }
+
     const SSAValue *getResult(unsigned i) const {
       return this->getOperation()->getResult(i);
     }
