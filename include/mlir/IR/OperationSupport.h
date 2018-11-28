@@ -187,6 +187,11 @@ inline bool operator!=(OperationName lhs, OperationName rhs) {
   return lhs.getAsOpaquePointer() != rhs.getAsOpaquePointer();
 }
 
+// Make operation names hashable.
+inline llvm::hash_code hash_value(OperationName arg) {
+  return llvm::hash_value(arg.getAsOpaquePointer());
+}
+
 /// This represents an operation in an abstracted form, suitable for use with
 /// the builder APIs.  This object is a large and heavy weight object meant to
 /// be used as a temporary object on the stack.  It is generally unwise to put
