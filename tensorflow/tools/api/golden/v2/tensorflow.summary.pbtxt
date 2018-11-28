@@ -44,12 +44,4 @@ tf_module {
     name: "import_event"
     argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
-  member_method {
-    name: "record_summaries"
-    argspec: "args=[\'boolean\'], varargs=None, keywords=None, defaults=[\'True\'], "
-  }
-  member_method {
-    name: "should_record_summaries"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
 }
