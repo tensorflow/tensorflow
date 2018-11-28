@@ -323,7 +323,7 @@ def sparse_concat(axis,
       gen_sparse_ops.sparse_concat(inds, vals, shapes, axis, name=name))
 
   shapes_value = [tensor_util.constant_value(shape) for shape in shapes]
-  if len(shapes_value) != 0 and all(shape is not None for shape in shapes_value):
+  if not shapes_value and all(shape is not None for shape in shapes_value):
     dim = sum(shape[axis] for shape in shapes_value)
     output_shape = shapes_value[0]
     output_shape[axis] = dim
