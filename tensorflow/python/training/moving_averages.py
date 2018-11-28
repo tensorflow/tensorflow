@@ -96,7 +96,8 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
       # In a replica context, we update variable using the mean of value across
       # replicas.
       def merge_fn(strategy, v, value):
-        value = strategy.reduce(ds_reduce_util.ReduceOp.MEAN, value, v)
+        value = strategy.extended.reduce_to(
+            ds_reduce_util.ReduceOp.MEAN, value, v)
         return strategy.update(v, update_fn, value)
 
       return replica_context.merge_call(merge_fn, args=(variable, value))

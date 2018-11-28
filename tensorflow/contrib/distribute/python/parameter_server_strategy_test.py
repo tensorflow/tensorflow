@@ -481,7 +481,7 @@ class ParameterServerStrategyTestBase(
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
             # TODO(yuefengz): support non-Mirrored variable as destinations.
-            g = d.reduce(
+            g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
                 d.update(v, update, g, grouped=False)):

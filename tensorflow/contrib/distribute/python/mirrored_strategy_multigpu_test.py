@@ -96,14 +96,9 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase,
   def testReduceToCpu(self, distribution):
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(_replica_id)
-      reduced = distribution.reduce(
-          reduce_util.ReduceOp.SUM,
-          result,
-          destinations="/device:CPU:0")
-      unwrapped = distribution.unwrap(reduced)
-      self.assertEqual(1, len(unwrapped))
+      reduced = distribution.reduce(reduce_util.ReduceOp.SUM, result)
       expected = sum(range(distribution.num_replicas_in_sync))
-      self.assertEqual(expected, self.evaluate(unwrapped[0]))
+      self.assertEqual(expected, self.evaluate(reduced))
 
   def testMakeInputFnIterator(self, distribution):
     dataset_fn = lambda: dataset_ops.Dataset.range(10)
@@ -135,29 +130,6 @@ def one_device_combinations():
 class MirroredOneDeviceDistributionTest(
     strategy_test_lib.DistributionTestBase,
     parameterized.TestCase):
-
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.NamedDistribution(
-              "Mirrored1CPU",
-              lambda: mirrored_strategy.MirroredStrategy(["/device:CPU:0"]),
-              required_gpus=1),
-          combinations.mirrored_strategy_with_one_gpu,
-          combinations.NamedDistribution(
-              "CoreMirrored1CPU",
-              lambda: mirrored_strategy.CoreMirroredStrategy(["/device:CPU:0"]),
-              required_gpus=1),
-          combinations.core_mirrored_strategy_with_one_gpu],
-      mode=["graph", "eager"]))
-  def testReduceToMultipleDestinations(self, distribution):
-    with distribution.scope():
-      reduced = distribution.extended.reduce_to(
-          reduce_util.ReduceOp.SUM,
-          1.0,
-          destinations=["/device:CPU:0", "/device:GPU:0"])
-      unwrapped = distribution.unwrap(reduced)
-      self.assertLen(unwrapped, 2)
-      self.assertEqual(1.0, self.evaluate(unwrapped[0]))
 
   @combinations.generate(one_device_combinations())
   def testMinimizeLoss(self, distribution):

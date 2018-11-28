@@ -489,10 +489,19 @@ class DistributionStrategy(object):
     kwargs.pop("run_concurrently", None)  # Ignore old option.
     return self._extended.call_for_each_replica(fn, args, kwargs)
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def reduce(self, aggregation, value, destinations):
-    """DEPRECATED: use extended.reduce_to() instead."""
-    return self._extended.reduce_to(aggregation, value, destinations)
+  def reduce(self, reduce_op, value):
+    """Reduce `value` across replicas.
+
+    Args:
+      reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
+        be combined.
+      value: A "per replica" value to be combined into a single tensor.
+
+    Returns:
+      A `Tensor`.
+    """
+    _require_cross_replica_context_extended(self._extended)
+    return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
 
   @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
   def batch_reduce(self, aggregation, value_destination_pairs):
@@ -1039,14 +1048,15 @@ class DistributionStrategyExtended(object):
 
     Args:
       tensor: A Tensor value to broadcast.
-      destinations: A mirrored variable, device string, or list of device
-        strings, specifying the destination devices to copy `tensor` to.
+      destinations: A mirrored variable or device string specifying the
+        destination devices to copy `tensor` to.
 
     Returns:
       A value mirrored to `destinations` devices.
     """
     # TODO(josh11b): More docstring
     _require_cross_replica_context_extended(self)
+    assert not isinstance(destinations, (list, tuple))
     return self._broadcast_to(tensor, destinations)
 
   def _broadcast_to(self, tensor, destinations):
@@ -1154,6 +1164,11 @@ class DistributionStrategyExtended(object):
   def _call_for_each_replica(self, fn, args, kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
+  def _reduce(self, reduce_op, value):
+    # Default implementation until we have an implementation for each strategy.
+    return self._unwrap(self._reduce_to(
+        reduce_op, value, device_util.current() or "/device:CPU:0"))[0]
+
   def reduce_to(self, reduce_op, value, destinations):
     """Combine (via e.g. sum or mean) values across replicas.
 
@@ -1163,26 +1178,27 @@ class DistributionStrategyExtended(object):
         `tf.VariableAggregation.SUM`,
         `tf.VariableAggregation.MEAN`,
       value: A per-replica value with one value per replica.
-      destinations: A mirrored variable, a per-replica tensor, a device string,
-        or list of device strings. The return value will be copied to all
-        destination devices (or all the devices where the `destinations` value
-        resides). To perform an all-reduction, pass `value` to `destinations`.
+      destinations: A mirrored variable, a per-replica tensor, or a device
+        string. The return value will be copied to all destination devices (or
+        all the devices where the `destinations` value resides). To perform an
+        all-reduction, pass `value` to `destinations`.
 
     Returns:
       A value mirrored to `destinations`.
     """
     # TODO(josh11b): More docstring
-    # TODO(josh11b): Return an unwrapped value if colocate_with is a
-    # single device.
     _require_cross_replica_context_extended(self)
+    assert not isinstance(destinations, (list, tuple))
 
     # TODO(priyag): Remove this when all callers have been updated.
     if isinstance(reduce_op, variable_scope.VariableAggregation):
-      assert reduce_op in [
+      assert reduce_op in (
           variable_scope.VariableAggregation.SUM,
           variable_scope.VariableAggregation.MEAN,
-      ]
+      )
       reduce_op = reduce_util.ReduceOp.from_variable_aggregation(reduce_op)
+    assert (reduce_op == reduce_util.ReduceOp.SUM or
+            reduce_op == reduce_util.ReduceOp.MEAN)
     return self._reduce_to(reduce_op, value, destinations)
 
   def _reduce_to(self, reduce_op, value, destinations):
