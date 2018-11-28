@@ -24,6 +24,8 @@ from __future__ import print_function
 import numpy as np
 import re
 
+from functools import reduce
+
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import ops
@@ -135,71 +137,56 @@ def bessel_i1(x, name=None):
 @tf_export('einsum', 'linalg.einsum')
 def einsum(equation, *inputs, **kwargs):
   """A generalized contraction between tensors of arbitrary dimension.
-
   This function returns a tensor whose elements are defined by `equation`,
   which is written in a shorthand form inspired by the Einstein summation
   convention.  As an example, consider multiplying two matrices
   A and B to form a matrix C.  The elements of C are given by:
-
   ```
     C[i,k] = sum_j A[i,j] * B[j,k]
   ```
-
   The corresponding `equation` is:
-
   ```
     ij,jk->ik
   ```
-
   In general, the `equation` is obtained from the more familiar element-wise
   equation by
     1. removing variable names, brackets, and commas,
     2. replacing "*" with ",",
     3. dropping summation signs, and
     4. moving the output to the right, and replacing "=" with "->".
-
   Many common operations can be expressed in this way.  For example:
-
   ```python
   # Matrix multiplication
   >>> einsum('ij,jk->ik', m0, m1)  # output[i,k] = sum_j m0[i,j] * m1[j, k]
-
   # Dot product
   >>> einsum('i,i->', u, v)  # output = sum_i u[i]*v[i]
-
   # Outer product
   >>> einsum('i,j->ij', u, v)  # output[i,j] = u[i]*v[j]
-
   # Transpose
   >>> einsum('ij->ji', m)  # output[j,i] = m[i,j]
-
   # Batch matrix multiplication
   >>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
   ```
-
   This function behaves like `numpy.einsum`, but does not support:
-
   * Ellipses (subscripts like `ij...,jk...->ik...`)
   * Subscripts where an axis appears more than once for a single input
     (e.g. `ijj,k->ik`).
-
   Args:
     equation: a `str` describing the contraction, in the same format as
       `numpy.einsum`.
     *inputs: the inputs to contract (each one a `Tensor`), whose shapes should
       be consistent with `equation`.
     name: A name for the operation (optional).
-    optimize: `{False, True, 'dfspairs'}`, optional
+    optimize: `{False, True, 'dp'}`, optional
       If not `False`, the contraction sequence will be optimized before 
       building the computation graph. Note that this will be ignored if the 
       function falls back to the exponential-space implementation.
       If `False`, tensors will be contracted from left to right. 
-      If `'dfspairs'`, which is the default value, a depth-first search for a 
-      sequence of pairwise tensor contractions will be performed.
-
+      If `'dp'` or `'True'`, a dynamic programming approach (inspired by 
+      arXiv:1304.6112) will be used to find an optimized contraction order.
+      The default value is `'True'`. 
   Returns:
     The contracted `Tensor`, with shape determined by `equation`.
-
   Raises:
     ValueError: If
       - the format of `equation` is incorrect,
@@ -266,12 +253,12 @@ def einsum(equation, *inputs, **kwargs):
     # them from inputs and prepend the new tensor to the list
     if not optimize:
       seq = [(0,1)]*(len(inputs)-1) # contract from left to right
-    elif optimize in {True, 'dfspairs'}:
-      seq = _einsum_optimize_dfspairs(
+    elif optimize in {True, 'dp'}:
+      seq = _einsum_optimize_dp(
         [t.shape.as_list() for t in inputs],
         input_axis_labels, 
         output_axis_labels
-      )[0]
+      )
     else:
       raise ValueError('invalid optimization strategy "{}"'.format(optimize))
     
@@ -476,51 +463,133 @@ def _total_size(shape_values):
 
 
 
-def _einsum_optimize_dfspairs(ishapes, ilabels, olabels,
-                              contraction=[], cost=0, min_cost=np.inf):
+def _einsum_optimize_dp(ishapes, ilabels, olabels, cost_limit=np.inf):
+  # decompose the contraction graph into connected subgraphs and optimise
+  # each subgraph using _einsum_optimize_dp_connected
+  c = [
+    _einsum_optimize_dp_connected(
+      [ishapes[j] for j in g], 
+      [ilabels[j] for j in g], 
+      olabels, cost_limit, g
+    ) for g in _find_subgraphs(ilabels, olabels)
+  ]
+  return _tree_to_sequence(reduce(lambda c1, c2: (c1, c2), c))
 
+
+def _find_subgraphs(ilabels, olabels):
+  subgraphs = []
+  unused = set(range(len(ilabels)))
+  
+  while len(unused) > 0:
+    g = []
+    q = [unused.pop()]
+    while len(q) > 0:
+      x = q.pop(0)
+      g.append(x)
+      n = {
+        y for y in unused 
+        if len((set(ilabels[x]) & set(ilabels[y])) - set(olabels)) > 0
+      }
+      q.extend(n)
+      unused -= n
+    
+    subgraphs.append(g)
+    
+  return subgraphs
+
+
+def _einsum_optimize_dp_connected(ishapes, ilabels, olabels, 
+                                  cost_limit=np.inf, tensor_indices=None):
+                                  
+  # find an optimal contraction using breadth-first search with dynamic 
+  # programming but ignoring solutions with intermediate outer products
+  # and solutions with contraction cost larger than cost_limit
+  
   n = len(ishapes)
+  if tensor_indices is None: 
+    tensor_indices = list(range(n))
+  x = [
+    None, # just ignore x[0]
+    {
+      frozenset([j]): (ishapes[j], ilabels[j], 0, tensor_indices[j]) 
+      for j in range(n)
+    }
+  ]
+  # x[n_tensors][set of tensors] = (shape, labels, cost, contraction)
+  
+  for m in range(2, n+1): # construct x[m]
+    x.append(dict())
+    
+    for k in range(1, m//2+1): # try to combine all x[m-k] and x[k]
+    
+      for s1 in x[m-k]:
+        d1, l1, c1, e1 = x[m-k][s1]
+        
+        for s2 in x[k]:
+          if len(s1 & s2) == 0:
+            d2, l2, c2, e2 = x[k][s2]
+            
+            s = s1 | s2
+            
+            common_indices = set(l1) & set(l2)
+            contraction_indices = common_indices - set(olabels)
+            
+            if len(contraction_indices) > 0: # ignore outer products
 
-  if cost > min_cost:
-    return None, None
+              # m1[l] <-- is l1[l] an index of the new tensor? (m2 for l2)
+              m1 = [l not in contraction_indices for l in l1]
+              m2 = [l not in common_indices      for l in l2]
 
-  if n == 1:
-    return contraction, cost
+              new_shape = tuple(
+                [d for d, f in zip(d1, m1) if f] + \
+                [d for d, f in zip(d2, m2) if f]
+              )
 
-  contraction_best = None
+              new_labels = \
+                ''.join([l for l, f in zip(l1, m1) if f]) + \
+                ''.join([l for l, f in zip(l2, m2) if f])
+              
+              contraction_cost = np.prod(d1) * \
+                                 np.prod([d for d, f in zip(d2, m2) if f])
+              total_cost = contraction_cost + c1 + c2
+              
+              if s not in x[m] or total_cost < min(x[m][s][2], cost_limit):
+                x[m][s] = (new_shape, new_labels, total_cost, (e1, e2))
 
-  for j in range(n-1):
-    for k in range(j+1, n):
+  return x[n][list(x[n].keys())[0]][3]
 
-      common_indices = set(ilabels[j]) & set(ilabels[k])
-      contraction_indices = common_indices - set(olabels)
 
-      # m1[l] <-- is ilabels[j][l] an index of the new tensor? (m2 for k)
-      m1 = [l not in contraction_indices for l in ilabels[j]]
-      m2 = [l not in common_indices      for l in ilabels[k]]
+def _tree_to_sequence(contraction):
+  
+  if type(contraction) == int:
+    return []
+  
+  # if type(contraction) != tuple or len(contraction) != 2:
+  #   raise ValueError("argument does not specify a valid contraction tree")
+  
+  t1 = [contraction]
+  t2 = []
+  seq = []
+  
+  while len(t1) > 0:
+    if type(t1[0]) != tuple or len(t1[0]) != 2:
+      raise ValueError("invalid contraction {}".format(t1[0]))
+    
+    x = t1.pop(0)
+    t1_new = [t for t in x if type(t) == tuple][::-1]
+    t2_new = [t for t in x if type(t) == int]
+    
+    t1 = t1_new + t1
+    seq_new = tuple(range(len(t1_new)))
+    
+    for t in sorted(t2_new):
+      p = max([0] + [j+1 for j,n in enumerate(t2) if n < t])
+      t2.insert(p, t)
+      seq_new += (p + len(t1),)
+    
+    seq.insert(0, seq_new)
 
-      new_shape = tuple(
-        [d for d, f in zip(ishapes[j], m1) if f] + \
-        [d for d, f in zip(ishapes[k], m2) if f]
-      )
-
-      new_labels = \
-        ''.join([l for l, f in zip(ilabels[j], m1) if f]) + \
-        ''.join([l for l, f in zip(ilabels[k], m2) if f])
-
-      contraction_cost = np.prod(ishapes[j]) * \
-                         np.prod([d for d, f in zip(ishapes[k], m2) if f])
-
-      res = _einsum_optimize_dfspairs(
-        [new_shape]  + ishapes[:j] + ishapes[j+1:k] + ishapes[k+1:],
-        [new_labels] + ilabels[:j] + ilabels[j+1:k] + ilabels[k+1:],
-        olabels, contraction + [(j,k)],
-        cost + contraction_cost, min_cost
-      )
-      if res[0] is not None and res[1] < min_cost:
-        contraction_best, min_cost = res
-
-  return contraction_best, min_cost
+  return seq
 
 
 def _exponential_space_einsum(equation, *inputs):
