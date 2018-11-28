@@ -35,13 +35,13 @@ XlaReductionOp::XlaReductionOp(OpKernelConstruction* ctx,
       ctx, DataTypeToPrimitiveType(reduction_type_, &xla_reduction_type_));
 }
 
-// Unless BuildFinalizer is overridden the reduction has no
-// finalizer.
+// The default finalizer converts the results back into the input type. This can
+// be overridden.
 xla::XlaOp XlaReductionOp::BuildFinalizer(
     xla::XlaBuilder* /*builder*/, const xla::XlaOp& /*input*/,
     const xla::XlaOp& reduce_output,
     const std::vector<int64>& /*dimensions_to_reduce*/) {
-  return reduce_output;
+  return XlaHelpers::ConvertElementType(reduce_output, input_type(0));
 }
 
 void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
@@ -117,8 +117,7 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   xla::XlaComputation reduction_computation = r.Build().ConsumeValueOrDie();
 
   auto reduce = xla::Reduce(data, initial, reduction_computation, xla_axes);
-  auto deconverted = XlaHelpers::ConvertElementType(reduce, input_type(0));
-  auto finalized = BuildFinalizer(b, data, deconverted, xla_axes);
+  auto finalized = BuildFinalizer(b, data, reduce, xla_axes);
   auto result = keep_dims_ ? xla::Reshape(finalized, final_shape) : finalized;
   ctx->SetOutput(0, result);
 }
