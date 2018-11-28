@@ -892,8 +892,8 @@ def run_all_in_graph_and_eager_modes(cls):
   """Execute all test methods in the given class with and without eager."""
   base_decorator = run_in_graph_and_eager_modes
   for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith(
-        "test") and not name.startswith("testSkipEager"):
+    if callable(value) and name.startswith("test") and not (
+        name.startswith("testSkipEager") or name.startswith("test_skip_eager")):
       setattr(cls, name, base_decorator(value))
   return cls
 
