@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/java/src/main/native/tensor_jni.h"
 #include <cstring>
 #include <memory>
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/exception_jni.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace {
 
@@ -48,7 +50,7 @@ TfLiteTensor* GetTensorFromHandle(JNIEnv* env, jlong handle) {
   return reinterpret_cast<TensorHandle*>(handle)->tensor();
 }
 
-size_t elementByteSize(TfLiteType data_type) {
+size_t ElementByteSize(TfLiteType data_type) {
   // The code in this file makes the assumption that the
   // TensorFlow TF_DataTypes and the Java primitive types
   // have the same byte sizes. Validate that:
@@ -77,11 +79,11 @@ size_t elementByteSize(TfLiteType data_type) {
   }
 }
 
-size_t writeOneDimensionalArray(JNIEnv* env, jobject object, TfLiteType type,
+size_t WriteOneDimensionalArray(JNIEnv* env, jobject object, TfLiteType type,
                                 void* dst, size_t dst_size) {
   jarray array = static_cast<jarray>(object);
   const int num_elements = env->GetArrayLength(array);
-  size_t to_copy = num_elements * elementByteSize(type);
+  size_t to_copy = num_elements * ElementByteSize(type);
   if (to_copy > dst_size) {
     throwException(env, kIllegalStateException,
                    "Internal error: cannot write Java array of %d bytes to "
@@ -126,10 +128,10 @@ size_t writeOneDimensionalArray(JNIEnv* env, jobject object, TfLiteType type,
   }
 }
 
-size_t readOneDimensionalArray(JNIEnv* env, TfLiteType data_type,
+size_t ReadOneDimensionalArray(JNIEnv* env, TfLiteType data_type,
                                const void* src, size_t src_size, jarray dst) {
   const int len = env->GetArrayLength(dst);
-  const size_t size = len * elementByteSize(data_type);
+  const size_t size = len * ElementByteSize(data_type);
   if (size > src_size) {
     throwException(
         env, kIllegalStateException,
@@ -170,17 +172,17 @@ size_t readOneDimensionalArray(JNIEnv* env, TfLiteType data_type,
   return 0;
 }
 
-size_t readMultiDimensionalArray(JNIEnv* env, TfLiteType data_type, char* src,
+size_t ReadMultiDimensionalArray(JNIEnv* env, TfLiteType data_type, char* src,
                                  size_t src_size, int dims_left, jarray dst) {
   if (dims_left == 1) {
-    return readOneDimensionalArray(env, data_type, src, src_size, dst);
+    return ReadOneDimensionalArray(env, data_type, src, src_size, dst);
   } else {
     jobjectArray ndarray = static_cast<jobjectArray>(dst);
     int len = env->GetArrayLength(ndarray);
     size_t size = 0;
     for (int i = 0; i < len; ++i) {
       jarray row = static_cast<jarray>(env->GetObjectArrayElement(ndarray, i));
-      size += readMultiDimensionalArray(env, data_type, src + size,
+      size += ReadMultiDimensionalArray(env, data_type, src + size,
                                         src_size - size, dims_left - 1, row);
       env->DeleteLocalRef(row);
       if (env->ExceptionCheck()) return size;
@@ -189,10 +191,43 @@ size_t readMultiDimensionalArray(JNIEnv* env, TfLiteType data_type, char* src,
   }
 }
 
-size_t writeMultiDimensionalArray(JNIEnv* env, jobject src, TfLiteType type,
+// Returns the total number of strings read.
+int ReadMultiDimensionalStringArray(JNIEnv* env, TfLiteTensor* tensor,
+                                    int dims_left, int start_str_index,
+                                    jarray dst) {
+  jobjectArray object_array = static_cast<jobjectArray>(dst);
+  int len = env->GetArrayLength(object_array);
+  int num_strings_read = 0;
+
+  // If dst is a 1-dimensional array, copy the strings into it. Else
+  // recursively call ReadMultiDimensionalStringArray over sub-dimensions.
+  if (dims_left == 1) {
+    for (int i = 0; i < len; ++i) {
+      const tflite::StringRef strref =
+          tflite::GetString(tensor, start_str_index + num_strings_read);
+      jstring string_dest = env->NewStringUTF(strref.str);
+      env->SetObjectArrayElement(object_array, i, string_dest);
+      env->DeleteLocalRef(string_dest);
+      ++num_strings_read;
+    }
+  } else {
+    for (int i = 0; i < len; ++i) {
+      jarray row =
+          static_cast<jarray>(env->GetObjectArrayElement(object_array, i));
+      num_strings_read += ReadMultiDimensionalStringArray(
+          env, tensor, dims_left - 1, start_str_index + num_strings_read, row);
+      env->DeleteLocalRef(row);
+      if (env->ExceptionCheck()) return num_strings_read;
+    }
+  }
+
+  return num_strings_read;
+}
+
+size_t WriteMultiDimensionalArray(JNIEnv* env, jobject src, TfLiteType type,
                                   int dims_left, char** dst, int dst_size) {
   if (dims_left <= 1) {
-    return writeOneDimensionalArray(env, src, type, *dst, dst_size);
+    return WriteOneDimensionalArray(env, src, type, *dst, dst_size);
   } else {
     jobjectArray ndarray = static_cast<jobjectArray>(src);
     int len = env->GetArrayLength(ndarray);
@@ -200,12 +235,50 @@ size_t writeMultiDimensionalArray(JNIEnv* env, jobject src, TfLiteType type,
     for (int i = 0; i < len; ++i) {
       jobject row = env->GetObjectArrayElement(ndarray, i);
       char* next_dst = *dst + sz;
-      sz += writeMultiDimensionalArray(env, row, type, dims_left - 1, &next_dst,
+      sz += WriteMultiDimensionalArray(env, row, type, dims_left - 1, &next_dst,
                                        dst_size - sz);
       env->DeleteLocalRef(row);
       if (env->ExceptionCheck()) return sz;
     }
     return sz;
+  }
+}
+
+void PopulateStringDynamicBuffer(JNIEnv* env, jobject src,
+                                 tflite::DynamicBuffer* dst_buffer,
+                                 int dims_left) {
+  jobjectArray object_array = static_cast<jobjectArray>(src);
+  const int num_elements = env->GetArrayLength(object_array);
+
+  // If src is a 1-dimensional array, add the strings into dst_buffer. Else
+  // recursively call populateStringDynamicBuffer over sub-dimensions.
+  if (dims_left <= 1) {
+    for (int i = 0; i < num_elements; ++i) {
+      jstring string_obj =
+          static_cast<jstring>(env->GetObjectArrayElement(object_array, i));
+      const char* chars = env->GetStringUTFChars(string_obj, nullptr);
+      // + 1 for terminating character.
+      const int byte_len = env->GetStringUTFLength(string_obj) + 1;
+      dst_buffer->AddString(chars, byte_len);
+      env->ReleaseStringUTFChars(string_obj, chars);
+      env->DeleteLocalRef(string_obj);
+    }
+  } else {
+    for (int i = 0; i < num_elements; ++i) {
+      jobject row = env->GetObjectArrayElement(object_array, i);
+      PopulateStringDynamicBuffer(env, row, dst_buffer, dims_left - 1);
+      env->DeleteLocalRef(row);
+      if (env->ExceptionCheck()) return;
+    }
+  }
+}
+
+void WriteMultiDimensionalStringArray(JNIEnv* env, jobject src,
+                                      TfLiteTensor* tensor) {
+  tflite::DynamicBuffer dst_buffer;
+  PopulateStringDynamicBuffer(env, src, &dst_buffer, tensor->dims->size);
+  if (!env->ExceptionCheck()) {
+    dst_buffer.WriteToTensor(tensor);
   }
 }
 
@@ -266,8 +339,14 @@ Java_org_tensorflow_lite_Tensor_readMultiDimensionalArray(JNIEnv* env,
                    "Internal error: Cannot copy empty/scalar Tensors.");
     return;
   }
-  readMultiDimensionalArray(env, tensor->type, tensor->data.raw, tensor->bytes,
-                            num_dims, static_cast<jarray>(value));
+  if (tensor->type == kTfLiteString) {
+    ReadMultiDimensionalStringArray(env, tensor, num_dims, 0,
+                                    static_cast<jarray>(value));
+  } else {
+    ReadMultiDimensionalArray(env, tensor->type, tensor->data.raw,
+                              tensor->bytes, num_dims,
+                              static_cast<jarray>(value));
+  }
 }
 
 JNIEXPORT void JNICALL
@@ -277,7 +356,7 @@ Java_org_tensorflow_lite_Tensor_writeMultiDimensionalArray(JNIEnv* env,
                                                            jobject src) {
   TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
   if (tensor == nullptr) return;
-  if (tensor->data.raw == nullptr) {
+  if (tensor->type != kTfLiteString && tensor->data.raw == nullptr) {
     throwException(env, kIllegalArgumentException,
                    "Internal error: Target Tensor hasn't been allocated.");
     return;
@@ -287,8 +366,12 @@ Java_org_tensorflow_lite_Tensor_writeMultiDimensionalArray(JNIEnv* env,
                    "Internal error: Cannot copy empty/scalar Tensors.");
     return;
   }
-  writeMultiDimensionalArray(env, src, tensor->type, tensor->dims->size,
-                             &tensor->data.raw, tensor->bytes);
+  if (tensor->type == kTfLiteString) {
+    WriteMultiDimensionalStringArray(env, src, tensor);
+  } else {
+    WriteMultiDimensionalArray(env, src, tensor->type, tensor->dims->size,
+                               &tensor->data.raw, tensor->bytes);
+  }
 }
 
 JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_dtype(JNIEnv* env,

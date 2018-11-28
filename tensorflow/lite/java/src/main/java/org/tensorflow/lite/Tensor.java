@@ -162,6 +162,8 @@ public final class Tensor {
         return DataType.UINT8;
       } else if (long.class.equals(c)) {
         return DataType.INT64;
+      } else if (String.class.equals(c)) {
+        return DataType.STRING;
       }
     }
     throw new IllegalArgumentException(
