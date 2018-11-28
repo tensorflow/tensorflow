@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.engine import training
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
@@ -991,6 +992,58 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     with self.assertRaisesRegexp(
         AssertionError, 'Nothing except the root object matched'):
       m.load_weights(save_path)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_directory_passed(self):
+    m = keras.Model()
+    v = m.add_weight(name='v', shape=[])
+    self.evaluate(v.assign(42.))
+    prefix = os.path.join(self.get_temp_dir(), '{}'.format(ops.uid()), 'ckpt/')
+    m.save_weights(prefix)
+    self.evaluate(v.assign(2.))
+    m.load_weights(prefix)
+    self.assertEqual(42., self.evaluate(v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_relative_path(self):
+    m = keras.Model()
+    v = m.add_weight(name='v', shape=[])
+    os.chdir(self.get_temp_dir())
+
+    prefix = 'ackpt'
+    self.evaluate(v.assign(42.))
+    m.save_weights(prefix)
+    self.assertTrue(file_io.file_exists('ackpt.index'))
+    self.evaluate(v.assign(1.))
+    m.load_weights(prefix)
+    self.assertEqual(42., self.evaluate(v))
+
+    prefix = 'subdir/ackpt'
+    self.evaluate(v.assign(43.))
+    m.save_weights(prefix)
+    self.assertTrue(file_io.file_exists('subdir/ackpt.index'))
+    self.evaluate(v.assign(2.))
+    m.load_weights(prefix)
+    self.assertEqual(43., self.evaluate(v))
+
+    prefix = 'ackpt/'
+    self.evaluate(v.assign(44.))
+    m.save_weights(prefix)
+    self.assertTrue(file_io.file_exists('ackpt/.index'))
+    self.evaluate(v.assign(3.))
+    m.load_weights(prefix)
+    self.assertEqual(44., self.evaluate(v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_nonexistant_prefix_directory(self):
+    m = keras.Model()
+    v = m.add_weight(name='v', shape=[])
+    self.evaluate(v.assign(42.))
+    prefix = os.path.join(self.get_temp_dir(), '{}'.format(ops.uid()), 'bckpt')
+    m.save_weights(prefix)
+    self.evaluate(v.assign(2.))
+    m.load_weights(prefix)
+    self.assertEqual(42., self.evaluate(v))
 
 if __name__ == '__main__':
   test.main()
