@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import values
 from tensorflow.python.framework import constant_op
@@ -68,7 +69,9 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
 
   def _make_dataset_iterator(self, dataset):
     """Make iterator from dataset without splitting the batch."""
-    return values.DatasetIterator(dataset, [("/job:localhost", [self._device])])
+    worker = device_util.canonicalize("/device:CPU:0")
+    worker_device_pairs = [(worker, [self._device])]
+    return values.DatasetIterator(dataset, worker_device_pairs)
 
   def _distribute_dataset(self, dataset_fn):
     return values.PerReplicaDataset(
@@ -78,8 +81,10 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
       self,
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    worker = device_util.canonicalize("/device:CPU:0")
+    worker_device_pairs = [(worker, [self._device])]
     return values.InputFunctionIterator(
-        input_fn, [("/job:localhost", [self._device])],
+        input_fn, worker_device_pairs,
         [distribute_lib.InputContext()])
 
   def _broadcast_to(self, tensor, destinations):
