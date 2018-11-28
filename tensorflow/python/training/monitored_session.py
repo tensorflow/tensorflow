@@ -54,7 +54,7 @@ _PREEMPTION_ERRORS = (errors.AbortedError, errors.UnavailableError)
 USE_DEFAULT = object()
 
 
-@tf_export('train.Scaffold')
+@tf_export(v1=['train.Scaffold'])
 class Scaffold(object):
   """Structure to create or gather pieces commonly needed to train a model.
 
