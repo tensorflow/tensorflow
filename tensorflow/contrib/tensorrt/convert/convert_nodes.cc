@@ -181,7 +181,7 @@ Status ValidateTensorProperties(const string& producer_node_type,
     if (shape.dim_size(d) < 0) {
       return errors::InvalidArgument(
           "Input tensor with shape ", shape.DebugString(),
-          " has an unknown non-batch dimemension at dim ", d);
+          " has an unknown non-batch dimension at dim ", d);
     }
   }
   return Status::OK();
