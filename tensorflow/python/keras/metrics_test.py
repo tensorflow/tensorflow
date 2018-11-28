@@ -366,48 +366,6 @@ class KerasMetricsTest(test.TestCase):
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
-  @test_util.run_in_graph_and_eager_modes
-  def test_invalid_result(self):
-
-    class InvalidResult(metrics.Metric):
-
-      def __init__(self, name='invalid-result', dtype=dtypes.float64):
-        super(InvalidResult, self).__init__(name=name, dtype=dtype)
-
-      def update_state(self, *args, **kwargs):
-        pass
-
-      def result(self):
-        return 1
-
-    invalid_result_obj = InvalidResult()
-    with self.assertRaisesRegexp(
-        TypeError,
-        'Metric invalid-result\'s result must be a Tensor or Operation, given:'
-    ):
-      invalid_result_obj.result()
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_invalid_update(self):
-
-    class InvalidUpdate(metrics.Metric):
-
-      def __init__(self, name='invalid-update', dtype=dtypes.float64):
-        super(InvalidUpdate, self).__init__(name=name, dtype=dtype)
-
-      def update_state(self, *args, **kwargs):
-        return [1]
-
-      def result(self):
-        pass
-
-    invalid_update_obj = InvalidUpdate()
-    with self.assertRaisesRegexp(
-        TypeError,
-        'Metric invalid-update\'s update must be a Tensor or Operation, given:'
-    ):
-      invalid_update_obj.update_state()
-
 
 @test_util.run_all_in_graph_and_eager_modes
 class FalsePositivesTest(test.TestCase):
