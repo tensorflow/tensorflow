@@ -5,6 +5,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/optional.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/classification_predicates.h"
@@ -154,13 +155,18 @@ static std::vector<HloInstPtr> shortest_path(const Graph<HloInstPtr>& graph,
 
 // TODO - this should probably be in a more central location
 static bool IsLayoutProducer(HloInstPtr inst) {
-  if (inst->opcode() == HloOpcode::kConvolution ||
-      inst->opcode() == HloOpcode::kDot) {
-    return true;
+  switch (inst->opcode()) {
+    case HloOpcode::kConvolution:
+    case HloOpcode::kDot:
+      return true;
+    default:
+      break;
   }
+
   if (IsPopOpsCall(inst, "depthwise_conv")) {
     return true;
   }
+
   if (IPUCustomKernelsUtil::IsPoplibsOp(inst)) {
     // For custom ops, they are layout producers if they have allocating
     // operands.
@@ -181,11 +187,13 @@ static bool IsLayoutProducer(HloInstPtr inst) {
 static bool IsPathOk(const std::vector<HloInstPtr>& path) {
   for (auto* inst : path) {
     switch (inst->opcode()) {
+      case HloOpcode::kBatchNormInference:
+      case HloOpcode::kBatchNormTraining:
       case HloOpcode::kReshape:
       case HloOpcode::kTranspose:
         break;
       case HloOpcode::kCall:
-        if (!IsPopOpsCall(inst, "biasadd")) {
+        if (!IsPopOpsBiasAdd(inst)) {
           return false;
         }
         break;
@@ -200,8 +208,37 @@ static bool IsPathOk(const std::vector<HloInstPtr>& path) {
 };
 
 // TODO - this should probably be in a more central location
-static bool IsLayoutSensitiveTarget(HloInstPtr inst) {
-  return IsPopOpsCall(inst, "biasadd");
+static bool IsLayoutSensitiveTarget(HloInstPtr target) {
+  switch (target->opcode()) {
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
+      return true;
+    default:
+      break;
+  }
+  return IsPopOpsBiasAdd(target);
+}
+
+// TODO - this should probably be in a more central location
+static absl::optional<int64> IsLayoutSensitiveOperand(HloInstPtr target,
+                                                      HloInstPtr operand) {
+  const auto op_idx = target->operand_index(operand);
+  if (IsPopOpsBiasAdd(target) && op_idx == 1) {
+    // Only layout sensitive target on operand index 1
+    return 1;
+  }
+  switch (target->opcode()) {
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
+      // Only a layout sensitive target on operands index 1 and 2.
+      if (op_idx == 1 || op_idx == 2) {
+        return op_idx;
+      }
+      return absl::nullopt;
+    default:
+      break;
+  }
+  return absl::nullopt;
 }
 
 ForwardAllocation::ForwardAllocation(CompilerAnnotations& annotations)
@@ -269,28 +306,34 @@ StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
 
           auto prefix = shortest_path(g, source, target);
           auto suffix = shortest_path(g, layout_producer, target);
+          // Only some operands are layout sensitive.
+          auto optional_op_idx =
+              IsLayoutSensitiveOperand(target, prefix.rbegin()[1]);
+          if (optional_op_idx) {
+            const auto op_idx = *optional_op_idx;
+            // The paths don't contain the source or target instructions
+            prefix.erase(prefix.begin());
+            prefix.pop_back();
+            suffix.erase(suffix.begin());
+            suffix.pop_back();
+            auto src = std::make_pair(source, 0);
+            auto t =
+                TensorTarget(target, op_idx, layout_producer, suffix, prefix);
 
-          // The paths don't contain the source or target instructions
-          prefix.erase(prefix.begin());
-          prefix.pop_back();
-          suffix.erase(suffix.begin());
-          suffix.pop_back();
+            if (IsPathOk(prefix) && IsPathOk(suffix)) {
+              if (!source_consumers[source].contains(layout_producer)) {
+                tensor_allocation_map[src] = t;
 
-          auto src = std::make_pair(source, 0);
-          auto t = TensorTarget(target, 1, layout_producer, suffix, prefix);
+                HloInstruction* s;
+                TF_ASSIGN_OR_RETURN(
+                    s, module->LaunderConstInstructionFromModule(source));
+                HloInstruction* p;
+                TF_ASSIGN_OR_RETURN(
+                    p,
+                    module->LaunderConstInstructionFromModule(layout_producer));
 
-          if (IsPathOk(prefix) && IsPathOk(suffix)) {
-            if (!source_consumers[source].contains(layout_producer)) {
-              tensor_allocation_map[src] = t;
-
-              HloInstruction* s;
-              TF_ASSIGN_OR_RETURN(
-                  s, module->LaunderConstInstructionFromModule(source));
-              HloInstruction* p;
-              TF_ASSIGN_OR_RETURN(p, module->LaunderConstInstructionFromModule(
-                                         layout_producer));
-
-              p->AddControlDependencyTo(s);
+                p->AddControlDependencyTo(s);
+              }
             }
           }
         }

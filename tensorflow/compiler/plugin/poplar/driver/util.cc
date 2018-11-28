@@ -102,6 +102,16 @@ bool IsPopOpsCall(const xla::HloInstruction* inst, const std::string& postfix) {
          IsPopOpsCall(inst->to_apply(), postfix);
 }
 
+bool IsPopOpsBiasAdd(const xla::HloComputation* comp) {
+  return IsPopOpsCall(comp, "matmul_biasadd") ||
+         IsPopOpsCall(comp, "conv_biasadd");
+}
+
+bool IsPopOpsBiasAdd(const xla::HloInstruction* inst) {
+  return IsPopOpsCall(inst, "matmul_biasadd") ||
+         IsPopOpsCall(inst, "conv_biasadd");
+}
+
 bool UseSyntheticData() {
   if (const char* env_c = std::getenv("TF_POPLAR_USE_SYNTHETIC_DATA")) {
     std::string env(env_c);

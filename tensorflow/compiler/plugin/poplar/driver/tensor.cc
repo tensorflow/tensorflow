@@ -26,10 +26,13 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
+
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -38,6 +41,7 @@ limitations under the License.
 
 #include <poplar/Engine.hpp>
 #include <poplar/OptionFlags.hpp>
+#include <popnn/BatchNorm.hpp>
 #include <poputil/TileMapping.hpp>
 
 #include <functional>
@@ -402,10 +406,9 @@ static StatusOr<poplar::Tensor> AddConvolutionWeights(
   return ShuffleConvolutionWeightsToTensorflow(conv_target, out);
 }
 
-static StatusOr<poplar::Tensor> AddBiasTensor(poplar::Graph& graph,
-                                              const std::string& debug_name,
-                                              const HloInstruction* conv,
-                                              const TensorMap& tensor_map) {
+static StatusOr<poplar::Tensor> AddConvAddBiasTensor(
+    poplar::Graph& graph, const std::string& debug_name,
+    const HloInstruction* conv, const TensorMap& tensor_map) {
   OutVector outputs = FindInstructionOutputs(tensor_map, conv);
 
   if (outputs.size() != 1) {
@@ -416,6 +419,21 @@ static StatusOr<poplar::Tensor> AddBiasTensor(poplar::Graph& graph,
   poplar::Tensor acts = outputs[0];
 
   acts = ShuffleConvolutionOutputToPoplar(conv, acts);
+
+  return poplin::createBiases(graph, acts, debug_name);
+}
+
+static StatusOr<poplar::Tensor> AddMatMulAddBiasTensor(
+    poplar::Graph& graph, const std::string& debug_name,
+    const HloInstruction* matmul, const TensorMap& tensor_map) {
+  OutVector outputs = FindInstructionOutputs(tensor_map, matmul);
+
+  if (outputs.size() != 1) {
+    return xla::FailedPrecondition("Matmul %s output not found for %s",
+                                   matmul->name(), debug_name);
+  }
+
+  poplar::Tensor acts = outputs[0];
 
   return poplin::createBiases(graph, acts, debug_name);
 }
@@ -448,6 +466,46 @@ static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
   poplar::OptionFlags opts;
   return poplin::createMatMulInputRHS(graph, type, aShape, bShape, name, opts,
                                       &resources.dot_cache);
+}
+
+static StatusOr<poplar::Tensor> AddBatchNormScale(
+    poplar::Graph& graph, const std::string& debug_name,
+    const HloInstruction* target, const HloInstruction* activations,
+    const TensorMap& tensor_map) {
+  OutVector outputs = FindInstructionOutputs(tensor_map, activations);
+
+  if (outputs.size() != 1) {
+    return xla::FailedPrecondition(
+        "Batch Norm %s activations input not found for %s", activations->name(),
+        debug_name);
+  }
+
+  const auto* bn = Cast<HloBatchNormInstruction>(target);
+
+  poplar::Tensor acts = outputs[0];
+  auto pair = ShuffleBatchNormInputToPoplar(acts, bn->feature_index());
+
+  return popnn::bn::createBatchNormGamma(graph, pair.first);
+}
+
+static StatusOr<poplar::Tensor> AddBatchNormOffset(
+    poplar::Graph& graph, const std::string& debug_name,
+    const HloInstruction* target, const HloInstruction* activations,
+    const TensorMap& tensor_map) {
+  OutVector outputs = FindInstructionOutputs(tensor_map, activations);
+
+  if (outputs.size() != 1) {
+    return xla::FailedPrecondition(
+        "Batch Norm %s activations input not found for %s", activations->name(),
+        debug_name);
+  }
+
+  const auto* bn = Cast<HloBatchNormInstruction>(target);
+
+  poplar::Tensor acts = outputs[0];
+  auto pair = ShuffleBatchNormInputToPoplar(acts, bn->feature_index());
+
+  return popnn::bn::createBatchNormBeta(graph, pair.first);
 }
 
 static StatusOr<poplar::Tensor> PathTransform(
@@ -498,6 +556,28 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
     const auto* tgt = target->second.tgt;
     auto tshape = tgt->operand(target->second.input_index)->shape();
     switch (tgt->opcode()) {
+      case HloOpcode::kBatchNormInference:
+      case HloOpcode::kBatchNormTraining: {
+        switch (target->second.input_index) {
+          case 1: {
+            const auto* acts = target->second.layout;
+            TF_ASSIGN_OR_RETURN(
+                out, AddBatchNormScale(graph, name, tgt, acts, tensor_map));
+            break;
+          }
+          case 2: {
+            const auto* acts = target->second.layout;
+            TF_ASSIGN_OR_RETURN(
+                out, AddBatchNormOffset(graph, name, tgt, acts, tensor_map));
+            break;
+          }
+          default:
+            return xla::FailedPrecondition(
+                "invalid operand for tensor allocation on %s",
+                src.first->name().c_str());
+        }
+        break;
+      }
       case HloOpcode::kConvolution: {
         switch (target->second.input_index) {
           case 0: {
@@ -559,9 +639,7 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
       case HloOpcode::kCall: {
         const HloComputation* comp = tgt->to_apply();
         if (IsPopOpsCall(comp)) {
-          auto end = comp->name().find('.');
-          std::string name = comp->name().substr(8, end - 8);
-          if (name == "depthwise_conv") {
+          if (IsPopOpsCall(comp, "depthwise_conv")) {
             const HloInstruction* conv_inst = comp->root_instruction();
             switch (target->second.input_index) {
               case 0: {
@@ -581,10 +659,14 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                     "invalid operand for tensor allocation on %s",
                     src.first->name().c_str());
             }
-          } else if (name == "biasadd") {
+          } else if (IsPopOpsCall(comp, "conv_biasadd")) {
             const auto* conv = target->second.layout;
-            TF_ASSIGN_OR_RETURN(out,
-                                AddBiasTensor(graph, name, conv, tensor_map));
+            TF_ASSIGN_OR_RETURN(
+                out, AddConvAddBiasTensor(graph, name, conv, tensor_map));
+          } else if (IsPopOpsCall(comp, "matmul_biasadd")) {
+            const auto* matmul = target->second.layout;
+            TF_ASSIGN_OR_RETURN(
+                out, AddMatMulAddBiasTensor(graph, name, matmul, tensor_map));
           } else {
             return xla::FailedPrecondition(
                 "Unknown poplibs fusion for tensor %s: %s",
