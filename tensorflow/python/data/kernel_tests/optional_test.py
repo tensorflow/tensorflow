@@ -33,6 +33,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -87,6 +88,90 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(opt.get_value())
 
+  def testAddN(self):
+    devices = ["/cpu:0"]
+    if test_util.is_gpu_available():
+      devices.append("/gpu:0")
+    for device in devices:
+      with ops.device(device):
+        # With value
+        opt1 = optional_ops.Optional.from_value((1.0, 2.0))
+        opt2 = optional_ops.Optional.from_value((3.0, 4.0))
+
+        add_tensor = math_ops.add_n([opt1._variant_tensor,
+                                     opt2._variant_tensor])
+        add_opt = optional_ops._OptionalImpl(add_tensor, opt1.value_structure)
+        self.assertAllEqual(self.evaluate(add_opt.get_value()), (4.0, 6.0))
+
+        # Without value
+        opt_none1 = optional_ops.Optional.none_from_structure(
+            opt1.value_structure)
+        opt_none2 = optional_ops.Optional.none_from_structure(
+            opt2.value_structure)
+        add_tensor = math_ops.add_n([opt_none1._variant_tensor,
+                                     opt_none2._variant_tensor])
+        add_opt = optional_ops._OptionalImpl(add_tensor,
+                                             opt_none1.value_structure)
+        self.assertFalse(self.evaluate(add_opt.has_value()))
+
+  def testNestedAddN(self):
+    devices = ["/cpu:0"]
+    if test_util.is_gpu_available():
+      devices.append("/gpu:0")
+    for device in devices:
+      with ops.device(device):
+        opt1 = optional_ops.Optional.from_value([1, 2.0])
+        opt2 = optional_ops.Optional.from_value([3, 4.0])
+        opt3 = optional_ops.Optional.from_value((5.0, opt1._variant_tensor))
+        opt4 = optional_ops.Optional.from_value((6.0, opt2._variant_tensor))
+
+        add_tensor = math_ops.add_n([opt3._variant_tensor,
+                                     opt4._variant_tensor])
+        add_opt = optional_ops._OptionalImpl(add_tensor, opt3.value_structure)
+        self.assertEqual(self.evaluate(add_opt.get_value()[0]), 11.0)
+
+        inner_add_opt = optional_ops._OptionalImpl(add_opt.get_value()[1],
+                                                   opt1.value_structure)
+        self.assertAllEqual(inner_add_opt.get_value(), [4, 6.0])
+
+  def testZerosLike(self):
+    devices = ["/cpu:0"]
+    if test_util.is_gpu_available():
+      devices.append("/gpu:0")
+    for device in devices:
+      with ops.device(device):
+        # With value
+        opt = optional_ops.Optional.from_value((1.0, 2.0))
+        zeros_tensor = array_ops.zeros_like(opt._variant_tensor)
+        zeros_opt = optional_ops._OptionalImpl(zeros_tensor,
+                                               opt.value_structure)
+        self.assertAllEqual(self.evaluate(zeros_opt.get_value()),
+                            (0.0, 0.0))
+
+        # Without value
+        opt_none = optional_ops.Optional.none_from_structure(
+            opt.value_structure)
+        zeros_tensor = array_ops.zeros_like(opt_none._variant_tensor)
+        zeros_opt = optional_ops._OptionalImpl(zeros_tensor,
+                                               opt_none.value_structure)
+        self.assertFalse(self.evaluate(zeros_opt.has_value()))
+
+  def testNestedZerosLike(self):
+    devices = ["/cpu:0"]
+    if test_util.is_gpu_available():
+      devices.append("/gpu:0")
+    for device in devices:
+      with ops.device(device):
+        opt1 = optional_ops.Optional.from_value(1.0)
+        opt2 = optional_ops.Optional.from_value(opt1._variant_tensor)
+
+        zeros_tensor = array_ops.zeros_like(opt2._variant_tensor)
+        zeros_opt = optional_ops._OptionalImpl(zeros_tensor,
+                                               opt2.value_structure)
+        inner_zeros_opt = optional_ops._OptionalImpl(zeros_opt.get_value(),
+                                                     opt1.value_structure)
+        self.assertEqual(self.evaluate(inner_zeros_opt.get_value()), 0.0)
+
   def testCopyToGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -115,6 +200,41 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual((37.0, b"Foo", 42),
                      self.evaluate(gpu_optional_with_value_values))
     self.assertFalse(self.evaluate(gpu_optional_none_has_value))
+
+  def testNestedCopyToGPU(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    with ops.device("/cpu:0"):
+      optional_with_value = optional_ops.Optional.from_value(
+          (constant_op.constant(37.0), constant_op.constant("Foo"),
+           constant_op.constant(42)))
+      optional_none = optional_ops.Optional.none_from_structure(
+          structure.TensorStructure(dtypes.float32, []))
+      nested_optional = optional_ops.Optional.from_value(
+          (optional_with_value._variant_tensor, optional_none._variant_tensor,
+           1.0))
+
+    with ops.device("/gpu:0"):
+      gpu_nested_optional = optional_ops._OptionalImpl(
+          array_ops.identity(nested_optional._variant_tensor),
+          nested_optional.value_structure)
+
+      gpu_nested_optional_has_value = gpu_nested_optional.has_value()
+      gpu_nested_optional_values = gpu_nested_optional.get_value()
+
+    self.assertTrue(self.evaluate(gpu_nested_optional_has_value))
+
+    inner_with_value = optional_ops._OptionalImpl(
+        gpu_nested_optional_values[0], optional_with_value.value_structure)
+
+    inner_none = optional_ops._OptionalImpl(
+        gpu_nested_optional_values[1], optional_none.value_structure)
+
+    self.assertEqual((37.0, b"Foo", 42),
+                     self.evaluate(inner_with_value.get_value()))
+    self.assertFalse(self.evaluate(inner_none.has_value()))
+    self.assertEqual(1.0, self.evaluate(gpu_nested_optional_values[2]))
 
   def _assertElementValueEqual(self, expected, actual):
     if isinstance(expected, dict):

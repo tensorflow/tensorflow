@@ -928,6 +928,7 @@ tf_cuda_library(
         "util/stream_executor_util.h",
         "util/strided_slice_op.h",
         "util/tensor_format.h",
+        "util/tensor_ops_util.h",
         "util/tensor_slice_reader.h",
         "util/tensor_slice_reader_cache.h",
         "util/tensor_slice_writer.h",
