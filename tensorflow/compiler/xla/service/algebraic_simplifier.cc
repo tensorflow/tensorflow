@@ -1685,10 +1685,10 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
       }
     }
     if (cleared_interior_padding) {
-      TF_ASSIGN_OR_RETURN(HloInstruction * pad_without_interior_pad,
-                          MakePadHlo(pad->mutable_operand(0),
-                                     pad->mutable_operand(1), padding_config));
-      return ReplaceInstruction(pad, pad_without_interior_pad);
+      return ReplaceWithNewInstruction(
+          pad,
+          HloInstruction::CreatePad(pad->shape(), pad->mutable_operand(0),
+                                    pad->mutable_operand(1), padding_config));
     }
   }
 
