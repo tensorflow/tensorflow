@@ -1015,12 +1015,8 @@ class GradientTape(object):
       target_size = array_ops.shape(target)[0]
 
     if experimental_use_pfor:
-      def f():
-        return pfor_ops.pfor(loop_fn, target_size)
-      if context.executing_eagerly():
-        f = function.defun(f)
       try:
-        output = f()
+        output = pfor_ops.pfor(loop_fn, target_size)
       except ValueError as err:
         six.reraise(
             ValueError,
@@ -1030,12 +1026,11 @@ class GradientTape(object):
                 " experimental_use_pfor to False."),
             sys.exc_info()[2])
     else:
-      if context.executing_eagerly():
-        if not self._persistent:
-          raise RuntimeError(
-              "GradientTape must be created with persistent=True"
-              " to compute the jacobian with eager execution enabled and with "
-              " experimental_use_pfor set to False.")
+      if context.executing_eagerly() and not self._persistent:
+        raise RuntimeError(
+            "GradientTape must be created with persistent=True"
+            " to compute the jacobian with eager execution enabled and with "
+            " experimental_use_pfor set to False.")
       output = pfor_ops.for_loop(
           loop_fn, [target.dtype] * len(flat_sources), target_size)
 
@@ -1131,12 +1126,8 @@ class GradientTape(object):
                            unconnected_gradients=unconnected_gradients)
 
     if experimental_use_pfor:
-      def f():
-        return pfor_ops.pfor(loop_fn, target_row_size)
-      if context.executing_eagerly():
-        f = function.defun(f)
       try:
-        output = f()
+        output = pfor_ops.pfor(loop_fn, target_row_size)
       except ValueError as err:
         six.reraise(
             ValueError,
@@ -1146,12 +1137,11 @@ class GradientTape(object):
                 "setting experimental_use_pfor to False."),
             sys.exc_info()[2])
     else:
-      if context.executing_eagerly():
-        if not self._persistent:
-          raise RuntimeError(
-              "GradientTape must be created with persistent=True"
-              " to compute the batch_jacobian with eager execution enabled and "
-              " with experimental_use_pfor set to False.")
+      if context.executing_eagerly() and not self._persistent:
+        raise RuntimeError(
+            "GradientTape must be created with persistent=True"
+            " to compute the batch_jacobian with eager execution enabled and "
+            " with experimental_use_pfor set to False.")
       output = pfor_ops.for_loop(loop_fn, target.dtype, target_row_size)
     if output is None:
       return None
