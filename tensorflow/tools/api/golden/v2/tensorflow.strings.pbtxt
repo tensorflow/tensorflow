@@ -38,7 +38,7 @@ tf_module {
   }
   member_method {
     name: "to_hash_bucket"
-    argspec: "args=[\'string_tensor\', \'num_buckets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'num_buckets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "to_hash_bucket_fast"
@@ -50,7 +50,7 @@ tf_module {
   }
   member_method {
     name: "to_number"
-    argspec: "args=[\'string_tensor\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+    argspec: "args=[\'input\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "unicode_script"

@@ -183,6 +183,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.random.stateless_multinomial": {
             "output_dtype": "dtype",
         },
+        "tf.string_to_number": {
+            "string_tensor": "input",
+        },
+        "tf.strings.to_number": {
+            "string_tensor": "input",
+        },
+        "tf.string_to_hash_bucket": {
+            "string_tensor": "input",
+        },
+        "tf.strings.to_hash_bucket": {
+            "string_tensor": "input",
+        },
         "tf.sparse.concat": [
             "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
         ],
@@ -393,6 +405,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.sparse.concat",
         "tf.sparse_split":
             "tf.sparse.split",
+        "tf.string_to_hash_bucket":
+            "tf.strings.to_hash_bucket",
+        "tf.string_to_number":
+            "tf.strings.to_number",
         "tf.multinomial":
             "tf.random.categorical",
         "tf.random.multinomial":
@@ -407,6 +423,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.math.confusion_matrix",
         "tf.train.confusion_matrix":
             "tf.math.confusion_matrix",
+        "tf.decode_csv":
+            "tf.io.decode_csv",
     })
     # pylint: enable=line-too-long
 
