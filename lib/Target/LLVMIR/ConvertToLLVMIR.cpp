@@ -506,6 +506,35 @@ bool ModuleLowerer::convertInstruction(const Instruction &inst) {
                         element);
     return false;
   }
+  if (auto dimOp = inst.dyn_cast<DimOp>()) {
+    const SSAValue *container = dimOp->getOperand();
+    MemRefType type = container->getType().dyn_cast<MemRefType>();
+    if (!type)
+      return dimOp->emitError("only memref types are supported"), true;
+
+    auto shape = type.getShape();
+    auto index = dimOp->getIndex();
+    assert(index < shape.size() && "out-of-bounds 'dim' operation");
+
+    // If the size is a constant, just define that constant.
+    if (shape[index] != -1) {
+      valueMapping[dimOp->getResult()] = getIndexConstant(shape[index]);
+      return false;
+    }
+
+    // Otherwise, compute the position of the requested index in the list of
+    // dynamic sizes stored in the MemRef descriptor and extract it from there.
+    unsigned numLeadingDynamicSizes = 0;
+    for (unsigned i = 0; i < index; ++i) {
+      if (shape[i] == -1)
+        ++numLeadingDynamicSizes;
+    }
+    llvm::Value *memRefDescriptor = valueMapping.lookup(container);
+    llvm::Value *dynamicSize = builder.CreateExtractValue(
+        memRefDescriptor, 1 + numLeadingDynamicSizes);
+    valueMapping[dimOp->getResult()] = dynamicSize;
+    return false;
+  }
 
   if (auto callOp = inst.dyn_cast<CallOp>()) {
     auto operands = functional::map(

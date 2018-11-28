@@ -536,3 +536,26 @@ bb0(%arg0: memref<10xf32>, %arg1: memref<?xf32>, %arg2: memref<10x?xf32>):
   return %3 : memref<10x?xf32>
 }
 
+
+// CHECK-LABEL: define i64 @memref_dim({ float*, i64, i64 })
+cfgfunc @memref_dim(memref<42x?x10x?xf32>) -> index {
+bb0(%arg0: memref<42x?x10x?xf32>):
+// Expecting this to create an LLVM constant.
+  %d0 = dim %arg0, 0 : memref<42x?x10x?xf32>
+// CHECK-NEXT: %2 = extractvalue { float*, i64, i64 } %0, 1
+  %d1 = dim %arg0, 1 : memref<42x?x10x?xf32>
+// Expecting this to create an LLVM constant.
+  %d2 = dim %arg0, 2 : memref<42x?x10x?xf32>
+// CHECK-NEXT: %3 = extractvalue { float*, i64, i64 } %0, 2
+  %d3 = dim %arg0, 3 : memref<42x?x10x?xf32>
+// Checking that the constant for d0 has been created.
+// CHECK-NEXT: %4 = add i64 42, %2
+  %d01 = addi %d0, %d1 : index
+// Checking that the constant for d2 has been created.
+// CHECK-NEXT: %5 = add i64 10, %3
+  %d23 = addi %d2, %d3 : index
+// CHECK-NEXT: %6 = add i64 %4, %5
+  %d0123 = addi %d01, %d23 : index
+// CHECK-NEXT: ret i64 %6
+  return %d0123 : index
+}
