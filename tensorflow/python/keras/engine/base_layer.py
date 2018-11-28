@@ -200,7 +200,19 @@ class Layer(checkpointable.CheckpointableBase):
       self._initial_weights = None
 
   def build(self, input_shape):
-    """Creates the variables of the layer."""
+    """Creates the variables of the layer (optional, for subclass implementers).
+
+    This is a method that implementers of subclasses of `Layer` or `Model`
+    can override if they need a state-creation step in-between
+    layer instantiation and layer call.
+
+    This is typically used to create the weights of `Layer` subclasses.
+
+    Arguments:
+      input_shape: Instance of `TensorShape`, or list of instances of
+        `TensorShape` if the layer expects a list of inputs
+        (one instance per input).
+    """
     self.built = True
 
   @doc_controls.for_subclass_implementers
@@ -517,25 +529,8 @@ class Layer(checkpointable.CheckpointableBase):
 
     with ops.name_scope(self._name_scope()):
       if not self.built:
-        # Check input assumptions set before layer building, e.g. input rank.
-        input_spec.assert_input_compatibility(
-            self.input_spec, inputs, self.name)
-        if input_list and self._dtype is None:
-          try:
-            self._dtype = input_list[0].dtype.base_dtype.name
-          except AttributeError:
-            pass
-
-        if all(hasattr(x, 'shape') for x in input_list):
-          input_shapes = nest.map_structure(lambda x: x.shape, inputs)
-
-        if (not hasattr(self, '_is_graph_network') or
-            self.__class__.__name__ == 'Sequential' or
-            not hasattr(self.build, '_is_default')):
-          # Only if self is a layer, an instance of a sequential model, or
-          # the user has manually overwritten the build method do we need to
-          # build it.
-          self.build(input_shapes)
+        # Build layer if applicable (if the `build` method has been overridden).
+        self._maybe_build(inputs)
         # We must set self.built since user defined build functions are not
         # constrained to set self.built.
         self.built = True
@@ -1579,6 +1574,23 @@ class Layer(checkpointable.CheckpointableBase):
       Boolean.
     """
     return self._call_is_graph_friendly
+
+  def _maybe_build(self, inputs):
+    # Check input assumptions set before layer building, e.g. input rank.
+    input_spec.assert_input_compatibility(
+        self.input_spec, inputs, self.name)
+    input_list = nest.flatten(inputs)
+    if input_list and self._dtype is None:
+      try:
+        self._dtype = input_list[0].dtype.base_dtype.name
+      except AttributeError:
+        pass
+    input_shapes = None
+    if all(hasattr(x, 'shape') for x in input_list):
+      input_shapes = nest.map_structure(lambda x: x.shape, inputs)
+    # Only call `build` if the user has manually overridden the build method.
+    if not hasattr(self.build, '_is_default'):
+      self.build(input_shapes)
 
 
 class Node(object):
