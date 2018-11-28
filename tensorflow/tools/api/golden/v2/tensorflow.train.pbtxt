@@ -17,10 +17,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CheckpointSaverListener"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "ClusterDef"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -85,23 +81,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "NanLossDuringTrainingError"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "NanTensorHook"
     mtype: "<type \'type\'>"
   }
   member {
     name: "ProximalGradientDescentOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "Scaffold"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SecondOrStepTimer"
     mtype: "<type \'type\'>"
   }
   member {
@@ -117,19 +101,7 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "SessionRunArgs"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionRunContext"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "SessionRunHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionRunValues"
     mtype: "<type \'type\'>"
   }
   member {
