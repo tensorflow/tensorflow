@@ -840,6 +840,14 @@ class _MonitoredSession(object):
     return self._coordinated_creator.tf_sess is None
 
   def _tf_sess(self):
+    """Return underlying tf.Session object.
+
+    Warning: accessing the returned object in user code is likely to cause races
+    or "flaky tests".
+
+    Returns:
+      A tf.Session object.
+    """
     return self._coordinated_creator.tf_sess
 
 
