@@ -132,11 +132,9 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
     destination_mirrored = _fake_mirrored(1., devices)
     destination_different = _fake_mirrored(1., _cpu_device)
     destination_str = _cpu_device
-    destination_list = devices
 
     all_destinations = [
         destination_mirrored, destination_different, destination_str,
-        destination_list
     ]
 
     # test reduce()
@@ -320,10 +318,10 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
 
     if batch_reduce:
       result = cross_device_ops_instance.batch_reduce(
-          reduce_op, [(per_replica, devices)])
+          reduce_op, [(per_replica, per_replica)])
     else:
       result = cross_device_ops_instance.reduce(
-          reduce_op, per_replica, devices)
+          reduce_op, per_replica, per_replica)
 
     total_indices_with_dups = [1, 1, 3]
     total_indices_without_dups = [1, 3]
@@ -510,11 +508,9 @@ class MultiWorkerCollectiveAllReduceTest(
       destination_mirrored = _fake_mirrored(1., devices)
       destination_different = _fake_mirrored(1., _cpu_device)
       destination_str = _cpu_device
-      destination_list = devices
 
       all_destinations = [
-          destination_different, destination_mirrored, destination_str,
-          destination_list
+          destination_different, destination_mirrored, destination_str
       ]
 
       # test reduce()

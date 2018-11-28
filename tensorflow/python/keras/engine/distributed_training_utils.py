@@ -94,11 +94,8 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
                                         grouped_inputs)
   if with_loss_tensor:
     # reduce loss tensor before adding it to the list of fetches
-    loss = distribution_strategy.unwrap(
-        distribution_strategy.reduce(distribute_lib.get_loss_reduction(),
-                                     grouped_outputs[0],
-                                     destinations='/device:CPU:0'))[0]
-
+    loss = distribution_strategy.reduce(distribute_lib.get_loss_reduction(),
+                                        grouped_outputs[0])
     all_outputs = flatten_perdevice_values(distribution_strategy,
                                            grouped_outputs[1:])
     all_outputs = [loss] + all_outputs

@@ -324,7 +324,7 @@ def _apply_aggregation(strategy, value, aggregation, destinations):
     return strategy.broadcast(strategy.unwrap(value)[0],
                               destinations=destinations)
   reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
-  return strategy.reduce(reduce_op, value=value, destinations=destinations)
+  return strategy.extended.reduce_to(reduce_op, value, destinations)
 
 
 class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
@@ -1672,13 +1672,11 @@ class MultiStepContext(object):
         self._last_step_outputs[name] = output
       else:
         distribution = distribution_strategy_context.get_distribution_strategy()
-        self._last_step_outputs[name] = distribution.reduce(
-            reduce_op, output, destinations="/device:CPU:0")
+        self._last_step_outputs[name] = distribution.reduce(reduce_op, output)
     else:
       assert reduce_op is not None
       def merge_fn(distribution, value):
-        self._last_step_outputs[name] = distribution.reduce(
-            reduce_op, value, destinations="/device:CPU:0")
+        self._last_step_outputs[name] = distribution.reduce(reduce_op, value)
         # Setting this inside the `merge_fn` because all replicas share the same
         # context object, so it's more robust to set it only once (even if all
         # the replicas are trying to set the same value).
