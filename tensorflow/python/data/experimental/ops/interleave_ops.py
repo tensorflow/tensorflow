@@ -64,7 +64,7 @@ def parallel_interleave(map_func,
   deterministic.
 
   Args:
-    map_func: A function mapping a nested structure of tensors to a `Dataset`.
+    map_func: A function maps a nested structure of tensors to a `Dataset`.
     cycle_length: The number of input `Dataset`s to interleave from in parallel.
     block_length: The number of consecutive elements to pull from an input
       `Dataset` before advancing to the next input `Dataset`.
