@@ -96,28 +96,8 @@ ExecutionOptions CreateExecutionOptions(
     const ExecutableBuildOptions& build_options,
     const ProgramShape* program_shape) {
   ExecutionOptions execution_options = CreateDefaultExecutionOptions();
-  if (build_options.hlo_profile().has_value()) {
-    execution_options.mutable_debug_options()->set_xla_hlo_profile(
-        *build_options.hlo_profile());
-  }
-  if (build_options.generate_hlo_graph().has_value()) {
-    execution_options.mutable_debug_options()->set_xla_generate_hlo_graph(
-        build_options.generate_hlo_graph().value());
-  }
-  if (build_options.dump_optimized_hlo_proto_to().has_value()) {
-    execution_options.mutable_debug_options()
-        ->set_xla_dump_optimized_hlo_proto_to(
-            build_options.dump_optimized_hlo_proto_to().value());
-  }
-  if (build_options.dump_unoptimized_hlo_proto_to().has_value()) {
-    execution_options.mutable_debug_options()
-        ->set_xla_dump_unoptimized_hlo_proto_to(
-            build_options.dump_unoptimized_hlo_proto_to().value());
-  }
-  if (build_options.dump_per_pass_hlo_proto_to().has_value()) {
-    execution_options.mutable_debug_options()
-        ->set_xla_dump_per_pass_hlo_proto_to(
-            build_options.dump_per_pass_hlo_proto_to().value());
+  if (build_options.has_debug_options()) {
+    *execution_options.mutable_debug_options() = build_options.debug_options();
   }
   if (build_options.result_layout() != nullptr) {
     *execution_options.mutable_shape_with_output_layout() =
@@ -128,12 +108,6 @@ ExecutionOptions CreateExecutionOptions(
     LayoutUtil::SetToDefaultLayout(
         execution_options.mutable_shape_with_output_layout());
   }
-
-  for (const std::string& disabled_pass : build_options.disabled_hlo_passes()) {
-    execution_options.mutable_debug_options()->add_xla_disable_hlo_passes(
-        disabled_pass);
-  }
-
   return execution_options;
 }
 

@@ -90,11 +90,12 @@ cc_library(
     srcs = ["executable_build_options.cc"],
     hdrs = ["executable_build_options.h"],
     deps = [
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
