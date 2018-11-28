@@ -909,12 +909,12 @@ class _VariableStore(object):
         # Instantiate initializer if provided initializer is a type object.
         if tf_inspect.isclass(initializer):
           initializer = initializer(dtype=dtype)
-        spec = tf_inspect.getargspec(initializer)
         if shape is not None and shape.is_fully_defined():
           init_val = lambda: initializer(  # pylint: disable=g-long-lambda
               shape.as_list(), dtype=dtype, partition_info=partition_info)
           variable_dtype = dtype.base_dtype
-        elif len(spec.args) == len(spec.defaults or []):
+        elif len(tf_inspect.getargspec(initializer).args) == len(
+            tf_inspect.getargspec(initializer).defaults or []):
           init_val = initializer
           variable_dtype = None
         else:
