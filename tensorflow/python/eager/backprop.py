@@ -955,6 +955,7 @@ class GradientTape(object):
                target,
                sources,
                unconnected_gradients=UnconnectedGradients.NONE,
+               parallel_iterations=None,
                experimental_use_pfor=True):
     """Computes the jacobian using operations recorded in context of this tape.
 
@@ -978,6 +979,8 @@ class GradientTape(object):
         alters the value which will be returned if the target and sources are
         unconnected. The possible values and effects are detailed in
         'UnconnectedGradients' and it defaults to 'none'.
+      parallel_iterations: A knob to control how many iterations are dispatched
+        in parallel. This knob can be used to control the total memory usage.
       experimental_use_pfor: If true, vectorizes the jacobian computation. Else
         falls back to a sequential while_loop. Vectorization can sometimes fail
         or lead to excessive memory usage. This option can be used to disable
@@ -1016,7 +1019,8 @@ class GradientTape(object):
 
     if experimental_use_pfor:
       try:
-        output = pfor_ops.pfor(loop_fn, target_size)
+        output = pfor_ops.pfor(loop_fn, target_size,
+                               parallel_iterations=parallel_iterations)
       except ValueError as err:
         six.reraise(
             ValueError,
@@ -1032,7 +1036,8 @@ class GradientTape(object):
             " to compute the jacobian with eager execution enabled and with "
             " experimental_use_pfor set to False.")
       output = pfor_ops.for_loop(
-          loop_fn, [target.dtype] * len(flat_sources), target_size)
+          loop_fn, [target.dtype] * len(flat_sources), target_size,
+          parallel_iterations=parallel_iterations)
 
     for i, out in enumerate(output):
       if out is not None:
@@ -1049,6 +1054,7 @@ class GradientTape(object):
                      target,
                      source,
                      unconnected_gradients=UnconnectedGradients.NONE,
+                     parallel_iterations=None,
                      experimental_use_pfor=True):
     """Computes and stacks per-example jacobians.
 
@@ -1081,6 +1087,8 @@ class GradientTape(object):
         alters the value which will be returned if the target and sources are
         unconnected. The possible values and effects are detailed in
         'UnconnectedGradients' and it defaults to 'none'.
+      parallel_iterations: A knob to control how many iterations are dispatched
+        in parallel. This knob can be used to control the total memory usage.
       experimental_use_pfor: If true, uses pfor for computing the Jacobian. Else
         uses a tf.while_loop.
 
@@ -1127,7 +1135,8 @@ class GradientTape(object):
 
     if experimental_use_pfor:
       try:
-        output = pfor_ops.pfor(loop_fn, target_row_size)
+        output = pfor_ops.pfor(loop_fn, target_row_size,
+                               parallel_iterations=parallel_iterations)
       except ValueError as err:
         six.reraise(
             ValueError,
@@ -1142,7 +1151,8 @@ class GradientTape(object):
             "GradientTape must be created with persistent=True"
             " to compute the batch_jacobian with eager execution enabled and "
             " with experimental_use_pfor set to False.")
-      output = pfor_ops.for_loop(loop_fn, target.dtype, target_row_size)
+      output = pfor_ops.for_loop(loop_fn, target.dtype, target_row_size,
+                                 parallel_iterations=parallel_iterations)
     if output is None:
       return None
     output = array_ops.reshape(output,

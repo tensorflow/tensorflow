@@ -1303,6 +1303,14 @@ class JacobianTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'No converter'):
       g.jacobian(y, x, experimental_use_pfor=True)
 
+  def test_parallel_iterations(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant([[1., 2], [3, 4]])
+      g.watch(x)
+      y = math_ops.matmul(x, x)
+    self.assertAllClose(g.jacobian(y, x, parallel_iterations=2),
+                        g.jacobian(y, x, parallel_iterations=3))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class BatchJacobianTest(test.TestCase):
@@ -1396,6 +1404,15 @@ class BatchJacobianTest(test.TestCase):
       y = op(x)
     with self.assertRaisesRegexp(ValueError, 'No converter'):
       g.batch_jacobian(y, x, experimental_use_pfor=True)
+
+  def test_parallel_iterations(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant([[1., 2], [3, 4]])
+      g.watch(x)
+      w = constant_op.constant([[1., 2, 3, 4], [5, 6, 7, 8]])
+      y = math_ops.matmul(x, w)
+    self.assertAllClose(g.batch_jacobian(y, x, parallel_iterations=2),
+                        g.batch_jacobian(y, x, parallel_iterations=3))
 
 if __name__ == '__main__':
   test.main()
