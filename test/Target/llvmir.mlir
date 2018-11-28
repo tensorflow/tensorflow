@@ -1,5 +1,18 @@
 // RUN: mlir-translate -mlir-to-llvmir %s | FileCheck %s
 
+//
+// Declarations of the allocation functions to be linked against.
+//
+
+// CHECK: declare i8* @__mlir_alloc(i64)
+// CHECK: declare void @__mlir_free(i8*)
+
+
+//
+// Basic functionality: function and basic block conversion, function calls,
+// phi nodes, scalar type conversion, arithmetic operations.
+//
+
 // CHECK-LABEL: define void @empty() {
 // CHECK-NEXT:    ret void
 // CHECK-NEXT:  }
@@ -304,5 +317,222 @@ bb11:	// pred: bb9
   br bb2(%8 : index)
 bb12:	// pred: bb2
   return
+}
+
+//
+// MemRef type conversion, allocation and communication with functions.
+//
+
+// CHECK-LABEL: define void @memref_alloc()
+cfgfunc @memref_alloc() {
+bb0:
+// CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 400)
+// CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
+// CHECK-NEXT: %{{[0-9]+}} = insertvalue { float* } undef, float* %{{[0-9]+}}, 0
+  %0 = alloc() : memref<10x10xf32>
+// CHECK-NEXT: ret void
+  return
+}
+
+// CHECK-LABEL: declare i64 @get_index()
+extfunc @get_index() -> index
+
+// CHECK-LABEL: define void @store_load_static()
+cfgfunc @store_load_static() {
+bb0:
+// CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 40)
+// CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
+// CHECK-NEXT: %{{[0-9]+}} = insertvalue { float* } undef, float* %{{[0-9]+}}, 0
+  %0 = alloc() : memref<10xf32>
+  %cst = constant 1.000000e+00 : f32
+  br bb1
+bb1:	// pred: bb0
+  %c0 = constant 0 : index
+  %c10 = constant 10 : index
+  br bb2(%c0 : index)
+// CHECK: %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %{{[0-9]+}} ], [ 0, %{{[0-9]+}} ]
+bb2(%1: index):	// 2 preds: bb1, bb3
+// CHECK-NEXT: %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, 10
+  %2 = cmpi "slt", %1, %c10 : index
+// CHECK-NEXT: br i1 %{{[0-9]+}}, label %{{[0-9]+}}, label %{{[0-9]+}}
+  cond_br %2, bb3, bb4
+bb3:	// pred: bb2
+// CHECK: %{{[0-9]+}} = extractvalue { float* } %{{[0-9]+}}, 0
+// CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
+// CHECK-NEXT: store float 1.000000e+00, float* %{{[0-9]+}}
+  store %cst, %0[%1] : memref<10xf32>
+  %c1 = constant 1 : index
+// CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
+  %3 = addi %1, %c1 : index
+// CHECK-NEXT: br label %{{[0-9]+}}
+  br bb2(%3 : index)
+bb4:	// pred: bb2
+  br bb5
+bb5:	// pred: bb4
+  %c0_0 = constant 0 : index
+  %c10_1 = constant 10 : index
+  br bb6(%c0_0 : index)
+// CHECK: %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %{{[0-9]+}} ], [ 0, %{{[0-9]+}} ]
+bb6(%4: index):	// 2 preds: bb5, bb7
+// CHECK-NEXT: %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, 10
+  %5 = cmpi "slt", %4, %c10_1 : index
+// CHECK-NEXT: br i1 %{{[0-9]+}}, label %{{[0-9]+}}, label %{{[0-9]+}}
+  cond_br %5, bb7, bb8
+bb7:	// pred: bb6
+// CHECK:      %{{[0-9]+}} = extractvalue { float* } %{{[0-9]+}}, 0
+// CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = load float, float* %{{[0-9]+}}
+  %6 = load %0[%4] : memref<10xf32>
+  %c1_2 = constant 1 : index
+// CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
+  %7 = addi %4, %c1_2 : index
+// CHECK-NEXT: br label %{{[0-9]+}}
+  br bb6(%7 : index)
+bb8:	// pred: bb6
+// CHECK: ret void
+  return
+}
+
+// CHECK-LABEL: define void @store_load_dynamic(i64)
+cfgfunc @store_load_dynamic(index) {
+bb0(%arg0: index):
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
+// CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 %{{[0-9]+}})
+// CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
+// CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64 } undef, float* %{{[0-9]+}}, 0
+// CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64 } %{{[0-9]+}}, i64 %{{[0-9]+}}, 1
+  %0 = alloc(%arg0) : memref<?xf32>
+  %cst = constant 1.000000e+00 : f32
+// CHECK-NEXT: br label %{{[0-9]+}}
+  br bb1
+bb1:	// pred: bb0
+  %c0 = constant 0 : index
+  br bb2(%c0 : index)
+// CHECK: %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %{{[0-9]+}} ], [ 0, %{{[0-9]+}} ]
+bb2(%1: index):	// 2 preds: bb1, bb3
+// CHECK-NEXT: %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, %{{[0-9]+}}
+  %2 = cmpi "slt", %1, %arg0 : index
+// CHECK-NEXT: br i1 %{{[0-9]+}}, label %{{[0-9]+}}, label %{{[0-9]+}}
+  cond_br %2, bb3, bb4
+bb3:	// pred: bb2
+// CHECK:      %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 1
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 0
+// CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
+// CHECK-NEXT: store float 1.000000e+00, float* %{{[0-9]+}}
+  store %cst, %0[%1] : memref<?xf32>
+  %c1 = constant 1 : index
+// CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
+  %3 = addi %1, %c1 : index
+// CHECK-NEXT: br label %{{[0-9]+}}
+  br bb2(%3 : index)
+bb4:	// pred: bb3
+  br bb5
+bb5:	// pred: bb4
+  %c0_0 = constant 0 : index
+  br bb6(%c0_0 : index)
+// CHECK: %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %{{[0-9]+}} ], [ 0, %{{[0-9]+}} ]
+bb6(%4: index):	// 2 preds: bb5, bb7
+// CHECK-NEXT: %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, %{{[0-9]+}}
+  %5 = cmpi "slt", %4, %arg0 : index
+// CHECK-NEXT: br i1 %{{[0-9]+}}, label %{{[0-9]+}}, label %{{[0-9]+}}
+  cond_br %5, bb7, bb8
+bb7:	// pred: bb6
+// CHECK:      %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 1
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 0
+// CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = load float, float* %{{[0-9]+}}
+  %6 = load %0[%4] : memref<?xf32>
+  %c1_1 = constant 1 : index
+// CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
+  %7 = addi %4, %c1_1 : index
+// CHECK-NEXT: br label %{{[0-9]+}}
+  br bb6(%7 : index)
+bb8:	// pred: bb6
+// CHECK: ret void
+  return
+}
+
+// CHECK-LABEL: define void @store_load_mixed(i64)
+cfgfunc @store_load_mixed(index) {
+bb0(%arg0: index):
+  %c10 = constant 10 : index
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 2, %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 10
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
+// CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 %{{[0-9]+}})
+// CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
+// CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64, i64 } undef, float* %{{[0-9]+}}, 0
+// CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64, i64 } %{{[0-9]+}}, i64 %{{[0-9]+}}, 1
+// CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64, i64 } %{{[0-9]+}}, i64 10, 2
+  %0 = alloc(%arg0, %c10) : memref<2x?x4x?xf32>
+  %c1 = constant 1 : index
+  %c2 = constant 2 : index
+
+// CHECK-NEXT: %{{[0-9]+}} = call i64 @get_index()
+// CHECK-NEXT: %{{[0-9]+}} = call i64 @get_index()
+  %1 = call @get_index() : () -> index
+  %2 = call @get_index() : () -> index
+  %cst = constant 4.200000e+01 : f32
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64, i64 } %{{[0-9]+}}, 1
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64, i64 } %{{[0-9]+}}, 2
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 1, %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 2
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
+// CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64, i64 } %{{[0-9]+}}, 0
+// CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
+// CHECK-NEXT: store float 4.200000e+01, float* %{{[0-9]+}}
+  store %cst, %0[%c1, %c2, %1, %2] : memref<2x?x4x?xf32>
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64, i64 } %{{[0-9]+}}, 1
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64, i64 } %{{[0-9]+}}, 2
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
+// CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 2
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64, i64 } %{{[0-9]+}}, 0
+// CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = load float, float* %{{[0-9]+}}
+  %3 = load %0[%2, %1, %c2, %c1] : memref<2x?x4x?xf32>
+// CHECK-NEXT: ret void
+  return
+}
+
+// CHECK-LABEL: define { float*, i64 } @memref_args_rets({ float* }, { float*, i64 }, { float*, i64 }) {
+cfgfunc @memref_args_rets(memref<10xf32>, memref<?xf32>, memref<10x?xf32>) -> memref<10x?xf32> {
+bb0(%arg0: memref<10xf32>, %arg1: memref<?xf32>, %arg2: memref<10x?xf32>):
+  %c7 = constant 7 : index
+// CHECK-NEXT: %{{[0-9]+}} = call i64 @get_index()
+  %0 = call @get_index() : () -> index
+  %cst = constant 4.200000e+01 : f32
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float* } %{{[0-9]+}}, 0
+// CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 7
+// CHECK-NEXT: store float 4.200000e+01, float* %{{[0-9]+}}
+  store %cst, %arg0[%c7] : memref<10xf32>
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 1
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 0
+// CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 7
+// CHECK-NEXT: store float 4.200000e+01, float* %{{[0-9]+}}
+  store %cst, %arg1[%c7] : memref<?xf32>
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 1
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 7, %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 0
+// CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
+// CHECK-NEXT: store float 4.200000e+01, float* %{{[0-9]+}}
+  store %cst, %arg2[%c7, %0] : memref<10x?xf32>
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 10, %{{[0-9]+}}
+// CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
+// CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 %{{[0-9]+}})
+// CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
+// CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64 } undef, float* %{{[0-9]+}}, 0
+// CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64 } %{{[0-9]+}}, i64 %{{[0-9]+}}, 1
+  %3 = alloc(%0) : memref<10x?xf32>
+// CHECK-NEXT: ret { float*, i64 } %{{[0-9]+}}
+  return %3 : memref<10x?xf32>
 }
 
