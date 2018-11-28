@@ -32,6 +32,7 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
+from tensorflow.tools.compatibility import tf_upgrade_v2
 
 
 _OUTPUT_FILE_PATH = 'third_party/tensorflow/tools/compatibility/renames_v2.py'
@@ -102,7 +103,7 @@ def collect_constant_renames():
   """Looks for constants that need to be renamed in TF 2.0.
 
   Returns:
-    List of tuples of the form (current name, new name).
+    Set of tuples of the form (current name, new name).
   """
   renames = set()
   for module in sys.modules.values():
@@ -135,7 +136,7 @@ def collect_function_renames():
   """Looks for functions/classes that need to be renamed in TF 2.0.
 
   Returns:
-    List of tuples of the form (current name, new name).
+    Set of tuples of the form (current name, new name).
   """
   # Set of rename lines to write to output file in the form:
   #   'tf.deprecated_name': 'tf.canonical_name'
@@ -181,12 +182,15 @@ def update_renames_v2(output_file_path):
   function_renames = collect_function_renames()
   constant_renames = collect_constant_renames()
   all_renames = function_renames.union(constant_renames)
+  manual_renames = set(
+      tf_upgrade_v2.TFAPIChangeSpec().manual_symbol_renames.keys())
 
   # List of rename lines to write to output file in the form:
   #   'tf.deprecated_name': 'tf.canonical_name'
   rename_lines = [
       get_rename_line(name, canonical_name)
-      for name, canonical_name in all_renames]
+      for name, canonical_name in all_renames
+      if 'tf.' + name not in manual_renames]
   renames_file_text = '%srenames = {\n%s\n}\n' % (
       _FILE_HEADER, ',\n'.join(sorted(rename_lines)))
   file_io.write_string_to_file(output_file_path, renames_file_text)
