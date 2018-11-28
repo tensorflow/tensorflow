@@ -2126,6 +2126,23 @@ class Operation(object):
     """Removes any control inputs to this operation."""
     c_api.RemoveAllControlInputs(self._graph._c_graph, self._c_op)  # pylint: disable=protected-access
 
+  def _add_outputs(self, types, shapes):
+    """Adds new Tensors to self.outputs.
+
+    Note: this is generally unsafe to use. This is used in certain situations in
+    conjunction with _set_type_list_attr.
+
+    Arguments:
+      types: list of DTypes
+      shapes: list of TensorShapes
+    """
+    assert len(types) == len(shapes)
+    orig_num_outputs = len(self.outputs)
+    for i in range(len(types)):
+      t = Tensor(self, orig_num_outputs + i, types[i])
+      self._outputs.append(t)
+      t.set_shape(shapes[i])
+
   def __str__(self):
     return str(self.node_def)
 
@@ -2337,6 +2354,25 @@ class Operation(object):
       # pylint: enable=protected-access
     finally:
       c_api.TF_DeleteBuffer(buf)
+
+  def _set_func_attr(self, attr_name, func_name):
+    """Private method used to set a function attribute in the node_def."""
+    func = attr_value_pb2.NameAttrList(name=func_name)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(func=func))
+
+  def _set_type_list_attr(self, attr_name, types):
+    """Private method used to set a function attribute in the node_def."""
+    if not types: return
+    if isinstance(types[0], dtypes.DType):
+      types = [dt.as_datatype_enum for dt in types]
+    types_list = attr_value_pb2.AttrValue.ListValue(type=types)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(list=types_list))
+
+  def _set_shape_list_attr(self, attr_name, shapes):
+    """Private method used to set a function attribute in the node_def."""
+    shapes = [s.as_proto() for s in shapes]
+    shapes_list = attr_value_pb2.AttrValue.ListValue(shape=shapes)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(list=shapes_list))
 
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
