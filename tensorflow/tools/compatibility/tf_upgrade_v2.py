@@ -58,10 +58,31 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
         },
+        "tf.linalg.l2_normalize": {
+            "dim": "axis",
+        },
         "tf.math.count_nonzero": {
             "input_tensor": "input",
             "keep_dims": "keepdims",
             "reduction_indices": "axis",
+        },
+        "tf.math.l2_normalize": {
+            "dim": "axis",
+        },
+        "tf.math.log_softmax": {
+            "dim": "axis",
+        },
+        "tf.math.softmax": {
+            "dim": "axis"
+        },
+        "tf.nn.l2_normalize": {
+            "dim": "axis",
+        },
+        "tf.nn.log_softmax": {
+            "dim": "axis",
+        },
+        "tf.nn.moments": {
+            "keep_dims": "keepdims",
         },
         "tf.nn.pool": {
             "dilation_rate": "dilations"
@@ -69,14 +90,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.separable_conv2d": {
             "rate": "dilations"
         },
+        "tf.nn.softmax": {
+            "dim": "axis"
+        },
         "tf.nn.sufficient_statistics": {
             "keep_dims": "keepdims"
-        },
-        "tf.nn.log_softmax": {
-            "dim": "axis",
-        },
-        "tf.nn.softmax": {
-            "dim": "axis",
         },
         "tf.debugging.assert_all_finite": {
             "t": "x",
@@ -164,15 +182,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.random.stateless_multinomial": {
             "output_dtype": "dtype",
-        },
-        "tf.linalg.l2_normalize": {
-            "dim": "axis",
-        },
-        "tf.math.l2_normalize": {
-            "dim": "axis",
-        },
-        "tf.nn.l2_normalize": {
-            "dim": "axis",
         },
         "tf.sparse.concat": [
             "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
@@ -422,6 +431,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.batch_to_space": ["input", "crops", "block_size", "name"],
         "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
         "tf.convert_to_tensor": ["value", "dtype", "name", "preferred_dtype"],
+        "tf.nn.moments": ["x", "axes", "shift", "keepdims", "name"],
         "tf.nn.convolution": [
             "input", "filter", "padding", "strides", "dilation_rate", "name",
             "data_format"
