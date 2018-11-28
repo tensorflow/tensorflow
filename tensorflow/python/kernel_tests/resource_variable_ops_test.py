@@ -456,7 +456,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   # TODO(alive): get this to work in Eager mode.
   def testGPU(self):
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       abc = variable_scope.get_variable(
           "abc",
           shape=[1],

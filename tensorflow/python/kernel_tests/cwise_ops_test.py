@@ -84,7 +84,7 @@ def _default_tolerance(dtype):
 class ComparisonOpTest(test.TestCase):
 
   def _compareScalar(self, func, x, y, dtype):
-    with self.test_session(force_gpu=test_util.is_gpu_available()):
+    with test_util.use_gpu():
       out = func(
           ops.convert_to_tensor(np.array([x]).astype(dtype)),
           ops.convert_to_tensor(np.array([y]).astype(dtype)))
@@ -117,7 +117,7 @@ class ComparisonOpTest(test.TestCase):
 
   def _compare(self, x, y, np_func, tf_func):
     np_ans = np_func(x, y)
-    with self.test_session(force_gpu=test_util.is_gpu_available()):
+    with test_util.use_gpu():
       out = tf_func(ops.convert_to_tensor(x), ops.convert_to_tensor(y))
       tf_ans = self.evaluate(out)
     self.assertAllEqual(np_ans, tf_ans)
@@ -218,8 +218,7 @@ class LogicalOpTest(test.TestCase):
 
   def _compareBinary(self, x, y, np_func, tf_func, use_gpu=False):
     np_ans = np_func(x, y)
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+    with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
@@ -230,8 +229,7 @@ class LogicalOpTest(test.TestCase):
 
   def _not(self, x, use_gpu=False):
     np_ans = np.logical_not(x)
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+    with test_util.device(use_gpu=use_gpu):
       out = math_ops.logical_not(ops.convert_to_tensor(x))
       tf_val = self.evaluate(out)
     self.assertEqual(out.dtype, dtypes_lib.bool)
@@ -316,8 +314,7 @@ class SelectOpTest(test.TestCase):
 
   def _compare(self, c, x, y, use_gpu):
     np_ans = np.where(c, x, y)
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+    with test_util.device(use_gpu=use_gpu):
       out = array_ops.where(c, x, y)
       tf_ans = self.evaluate(out)
     self.assertAllEqual(np_ans, tf_ans)
@@ -460,8 +457,7 @@ class BatchSelectOpTest(test.TestCase):
     np_ans = np.dstack(
         [x_i if c_i else y_i for c_i, x_i, y_i in zip(c, x, y)]).transpose(
             [2, 0, 1])
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+    with test_util.device(use_gpu=use_gpu):
       out = array_ops.where(c, x, y)
       tf_ans = self.evaluate(out)
     self.assertAllEqual(np_ans, tf_ans)
@@ -566,9 +562,7 @@ class MinMaxOpTest(test.TestCase):
 
   def _compare(self, x, y, use_gpu):
     np_min, np_max = np.minimum(x, y), np.maximum(x, y)
-    with self.test_session(
-        use_gpu=use_gpu,
-        force_gpu=use_gpu and test_util.is_gpu_available()) as sess:
+    with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       omin, omax = math_ops.minimum(inx, iny), math_ops.maximum(inx, iny)
@@ -641,13 +635,13 @@ class MinMaxOpTest(test.TestCase):
 class MathOpsOverloadTest(test.TestCase):
 
   def _computeTensorAndLiteral(self, x, y, dtype, func):
-    with self.test_session(use_gpu=False):
+    with test_util.force_cpu():
       inx = ops.convert_to_tensor(x, dtype=dtype)
       z = func(inx, y)  # Should use __add__, __sub__, etc.
       return self.evaluate(z)
 
   def _computeLiteralAndTensor(self, x, y, dtype, func):
-    with self.test_session(use_gpu=False):
+    with test_util.force_cpu():
       iny = ops.convert_to_tensor(y, dtype=dtype)
       z = func(x, iny)  # Should use __radd__, __rsub__, etc.
       return self.evaluate(z)
@@ -661,7 +655,7 @@ class MathOpsOverloadTest(test.TestCase):
 
   def _compareUnary(self, x, dtype, np_func, tf_func):
     np_ans = np_func(x).astype(dtype.as_numpy_dtype)
-    with self.test_session(use_gpu=False):
+    with test_util.force_cpu():
       self.assertAllClose(
           np_ans, self.evaluate(tf_func(ops.convert_to_tensor(x, dtype=dtype))))
 
@@ -730,9 +724,7 @@ class IsFiniteInfNanTest(test.TestCase):
 
   def _compare(self, x, use_gpu):
     np_finite, np_inf, np_nan = np.isfinite(x), np.isinf(x), np.isnan(x)
-    with self.test_session(
-        use_gpu=use_gpu,
-        force_gpu=use_gpu and test_util.is_gpu_available()) as sess:
+    with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(x)
       ofinite, oinf, onan = math_ops.is_finite(inx), math_ops.is_inf(
           inx), math_ops.is_nan(inx)
@@ -773,7 +765,7 @@ class IsFiniteInfNanTest(test.TestCase):
           x = np.full((size,), value, dtype=dtype)
           np_y = np.sqrt(x)
           np_nan = np.isnan(np_y)
-          with self.test_session(force_gpu=test_util.is_gpu_available()):
+          with test_util.use_gpu():
             tf_y = math_ops.sqrt(x)
             tf_nan = math_ops.is_nan(tf_y)
             if value < 0:
@@ -786,18 +778,20 @@ class RoundingTest(test.TestCase):
 
   def _compare_values(self, x, y=None):
     y = np.rint(x) if y is None else np.asarray(y)
-    with self.cached_session() as sess:
-      tf_rint = math_ops.rint(x)
-      np_rint = self.evaluate(tf_rint)
+
+    tf_rint = math_ops.rint(x)
+    np_rint = self.evaluate(tf_rint)
+
     self.assertAllEqual(y, np_rint)
     self.assertShapeEqual(y, tf_rint)
 
   def _compare(self, x):
     np_floor, np_ceil = np.floor(x), np.ceil(x)
-    with self.cached_session() as sess:
-      inx = ops.convert_to_tensor(x)
-      ofloor, oceil = math_ops.floor(inx), math_ops.ceil(inx)
-      tf_floor, tf_ceil = self.evaluate([ofloor, oceil])
+
+    inx = ops.convert_to_tensor(x)
+    ofloor, oceil = math_ops.floor(inx), math_ops.ceil(inx)
+    tf_floor, tf_ceil = self.evaluate([ofloor, oceil])
+
     self.assertAllEqual(np_floor, tf_floor)
     self.assertAllEqual(np_ceil, tf_ceil)
     self.assertShapeEqual(np_floor, ofloor)
@@ -828,12 +822,13 @@ class ComplexMakeRealImagTest(test.TestCase):
 
   def _compareMake(self, real, imag, use_gpu):
     np_ans = real + (1j) * imag
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+
+    with test_util.device(use_gpu=use_gpu):
       real = ops.convert_to_tensor(real)
       imag = ops.convert_to_tensor(imag)
       tf_ans = math_ops.complex(real, imag)
       out = self.evaluate(tf_ans)
+
     self.assertAllEqual(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
@@ -848,8 +843,8 @@ class ComplexMakeRealImagTest(test.TestCase):
   def _compareRealImag(self, cplx, use_gpu):
     np_real, np_imag = np.real(cplx), np.imag(cplx)
     np_zeros = np_real * 0
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+
+    with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(cplx)
       tf_real = math_ops.real(inx)
       tf_imag = math_ops.imag(inx)
@@ -876,12 +871,12 @@ class ComplexMakeRealImagTest(test.TestCase):
 
   def _compareAngle(self, cplx, use_gpu):
     np_angle = np.angle(cplx)
-    with self.test_session(
-        use_gpu=use_gpu,
-        force_gpu=use_gpu and test_util.is_gpu_available()) as sess:
+
+    with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(cplx)
       tf_angle = math_ops.angle(inx)
       tf_angle_val = self.evaluate(tf_angle)
+
     self.assertAllEqual(np_angle, tf_angle_val)
     self.assertShapeEqual(np_angle, tf_angle)
 
@@ -912,8 +907,7 @@ class ComplexMakeRealImagTest(test.TestCase):
 
   def _compareConj(self, cplx, use_gpu):
     np_ans = np.conj(cplx)
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+    with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(cplx)
       tf_conj = math_ops.conj(inx)
       tf_ans = self.evaluate(tf_conj)

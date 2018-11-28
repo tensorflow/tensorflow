@@ -77,7 +77,7 @@ class BinaryOpTest(test.TestCase):
 
   def _compareCpu(self, x, y, np_func, tf_func, also_compare_variables=False):
     np_ans = np_func(x, y)
-    with self.test_session(use_gpu=False):
+    with test_util.force_cpu():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
@@ -174,7 +174,7 @@ class BinaryOpTest(test.TestCase):
 
   def _compareGpu(self, x, y, np_func, tf_func):
     np_ans = np_func(x, y)
-    with self.test_session(force_gpu=test_util.is_gpu_available()):
+    with test_util.use_gpu():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
@@ -252,10 +252,12 @@ class BinaryOpTest(test.TestCase):
     y = np.array([1, 2]).reshape(2, 1).astype(np.int32)
     var_x = variables.Variable(x)
     var_y = variables.Variable(y)
+
     with self.cached_session() as sess:
       self.evaluate([var_x.initializer, var_y.initializer])
-      left_result = (var_x * y).eval()
-      right_result = (x * var_y).eval()
+      left_result = self.evaluate(var_x * y)
+      right_result = self.evaluate(x * var_y)
+
     np_result = x * y
     self.assertAllEqual(np_result, left_result)
     self.assertAllEqual(np_result, right_result)
@@ -382,7 +384,7 @@ class BinaryOpTest(test.TestCase):
   def testStringComparison(self):
     x = np.array([["abc", "bh"], ["c", ""]])
     y = np.array([["abc", "bh"], ["def", "hi"]])
-    with self.test_session(use_gpu=False) as sess:
+    with test_util.force_cpu():
       cmp_eq = math_ops.equal(x, y)
       cmp_not_eq = math_ops.not_equal(x, y)
       values = self.evaluate([cmp_eq, cmp_not_eq])
@@ -716,35 +718,35 @@ class BinaryOpTest(test.TestCase):
 
   def testPowNegativeExponent(self):
     for dtype in [np.int32, np.int64]:
-      with self.test_session(use_gpu=False) as sess:
+      with test_util.force_cpu():
         with self.assertRaisesRegexp(
             errors_impl.InvalidArgumentError,
             "Integers to negative integer powers are not allowed"):
           x = np.array([5, 2]).astype(dtype)
           y = np.array([-2, 3]).astype(dtype)
-          sess.run(math_ops.pow(x, y))
+          self.evaluate(math_ops.pow(x, y))
 
-      with self.test_session(use_gpu=False) as sess:
+      with test_util.force_cpu():
         with self.assertRaisesRegexp(
             errors_impl.InvalidArgumentError,
             "Integers to negative integer powers are not allowed"):
           x = np.array([5, 2]).astype(dtype)
           y = np.array([2, -3]).astype(dtype)
-          sess.run(math_ops.pow(x, y))
+          self.evaluate(math_ops.pow(x, y))
 
-      with self.test_session(use_gpu=False) as sess:
+      with test_util.force_cpu():
         with self.assertRaisesRegexp(
             errors_impl.InvalidArgumentError,
             "Integers to negative integer powers are not allowed"):
           x = np.array([5, 2]).astype(dtype)
           y = -3
-          sess.run(math_ops.pow(x, y))
+          self.evaluate(math_ops.pow(x, y))
 
 
 class ComparisonOpTest(test.TestCase):
 
   def _compareScalar(self, func, x, y, dtype):
-    with self.test_session(force_gpu=test_util.is_gpu_available()):
+    with test_util.use_gpu():
       out = func(
           ops.convert_to_tensor(np.array([x]).astype(dtype)),
           ops.convert_to_tensor(np.array([y]).astype(dtype)))
@@ -777,7 +779,7 @@ class ComparisonOpTest(test.TestCase):
 
   def _compare(self, x, y, np_func, tf_func):
     np_ans = np_func(x, y)
-    with self.test_session(force_gpu=test_util.is_gpu_available()):
+    with test_util.use_gpu():
       out = tf_func(ops.convert_to_tensor(x), ops.convert_to_tensor(y))
       tf_ans = self.evaluate(out)
     self.assertAllEqual(np_ans, tf_ans)

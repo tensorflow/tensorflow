@@ -76,7 +76,7 @@ class UnaryOpTest(test.TestCase):
     if grad_atol is None:
       grad_atol = _default_tolerance(x.dtype)
     np_ans = np_func(x)
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
       if x.dtype in (np.float32, np.float64,
                      dtypes_lib.bfloat16.as_numpy_dtype):
@@ -121,24 +121,22 @@ class UnaryOpTest(test.TestCase):
   def _check(self, result_tensor, result_np, input_sp_t, tol):
     self.assertTrue(isinstance(result_tensor, sparse_tensor.SparseTensor))
     self.assertTrue(isinstance(input_sp_t, sparse_tensor.SparseTensor))
-    self.assertAllEqual(input_sp_t.indices.eval(), result_tensor.indices.eval())
-    self.assertAllEqual(input_sp_t.dense_shape.eval(),
-                        result_tensor.dense_shape.eval())
+    self.assertAllEqual(input_sp_t.indices, result_tensor.indices)
+    self.assertAllEqual(input_sp_t.dense_shape, result_tensor.dense_shape)
     if tol is None:
-      self.assertAllClose(result_np, result_tensor.values.eval())
+      self.assertAllClose(result_np, result_tensor.values)
     else:
-      self.assertAllClose(
-          result_np, result_tensor.values.eval(), rtol=tol, atol=tol)
+      self.assertAllClose(result_np, result_tensor.values, rtol=tol, atol=tol)
 
   def _compareSparseCpu(self, x, np_func, tf_func, tol):
     x_sp, x_sp_vals = _sparsify(x)
     res_np = np_func(x_sp_vals)
-    with self.test_session(use_gpu=False):
+    with test_util.force_cpu():
       self._check(tf_func(x_sp), res_np, x_sp, tol)
 
   def _compareGpu(self, x, np_func, tf_func):
     np_ans = np_func(x)
-    with self.test_session(force_gpu=test_util.is_gpu_available()):
+    with test_util.use_gpu():
       result = tf_func(ops.convert_to_tensor(x))
       tf_gpu = self.evaluate(result)
     if x.dtype == np.float16:
@@ -150,7 +148,7 @@ class UnaryOpTest(test.TestCase):
   def _compareSparseGpu(self, x, np_func, tf_func, tol):
     x_sp, x_sp_vals = _sparsify(x)
     res_np = np_func(x_sp_vals)
-    with self.test_session(force_gpu=test_util.is_gpu_available()):
+    with test_util.use_gpu():
       self._check(tf_func(x_sp), res_np, x_sp, tol)
 
   def _compareBoth(self, x, np_func, tf_func):
