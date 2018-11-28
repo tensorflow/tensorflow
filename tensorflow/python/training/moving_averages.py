@@ -46,8 +46,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   `zero_debias` optionally enables scaling by the mathematically correct
   debiasing factor of
     1 - decay ** num_updates
-  See `ADAM: A Method for Stochastic Optimization` Section 3 for more details
-  (https://arxiv.org/abs/1412.6980).
+  See Section 3 of (Kingma et al., 2015) for more details.
 
   The names of the debias shadow variables, by default, include both the scope
   they were created in and the scope of the variables they debias. They are also
@@ -72,12 +71,17 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
     value: A tensor with the same shape as 'variable'.
     decay: A float Tensor or float value.  The moving average decay.
     zero_debias: A python bool. If true, assume the variable is 0-initialized
-      and unbias it, as in https://arxiv.org/abs/1412.6980. See docstring in
+      and unbias it, as in (Kingma et al., 2015). See docstring in
       `_zero_debias` for more details.
     name: Optional name of the returned operation.
 
   Returns:
     A tensor which if evaluated will compute and return the new moving average.
+
+  References:
+    A Method for Stochastic Optimization:
+      [Kingma et al., 2015](https://arxiv.org/abs/1412.6980)
+      ([pdf](https://arxiv.org/pdf/1412.6980.pdf))
   """
   def update_fn(v, value, decay=decay):
     decay = ops.convert_to_tensor(1.0 - decay, name="decay")
@@ -176,7 +180,7 @@ def _zero_debias(unbiased_var, value, decay):
   All exponential moving averages initialized with Tensors are initialized to 0,
   and therefore are biased to 0. Variables initialized to 0 and used as EMAs are
   similarly biased. This function creates the debias updated amount according to
-  a scale factor, as in https://arxiv.org/abs/1412.6980.
+  a scale factor, as in (Kingma et al., 2015).
 
   To demonstrate the bias the results from 0-initialization, take an EMA that
   was initialized to `0` with decay `b`. After `t` timesteps of seeing the
@@ -201,6 +205,11 @@ def _zero_debias(unbiased_var, value, decay):
   Returns:
     The amount that the unbiased variable should be updated. Computing this
     tensor will also update the shadow variables appropriately.
+
+  References:
+    A Method for Stochastic Optimization:
+      [Kingma et al., 2015](https://arxiv.org/abs/1412.6980)
+      ([pdf](https://arxiv.org/pdf/1412.6980.pdf))
   """
   with variable_scope.variable_scope(
       unbiased_var.name[:-len(":0")], values=[unbiased_var,

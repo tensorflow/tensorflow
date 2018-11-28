@@ -429,9 +429,6 @@ def inverse_time_decay(learning_rate,
 def cosine_decay(learning_rate, global_step, decay_steps, alpha=0.0, name=None):
   """Applies cosine decay to the learning rate.
 
-  See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
-  with Warm Restarts. https://arxiv.org/abs/1608.03983
-
   When training a model, it is often recommended to lower the learning rate as
   the training progresses.  This function applies a cosine decay function
   to a provided initial learning rate.  It requires a `global_step` value to
@@ -468,6 +465,11 @@ def cosine_decay(learning_rate, global_step, decay_steps, alpha=0.0, name=None):
   Raises:
     ValueError: if `global_step` is not supplied.
 
+  References:
+    Stochastic Gradient Descent with Warm Restarts:
+      [Loshchilov et al., 2017](https://openreview.net/forum?id=Skq89Scxx&noteId=Skq89Scxx)
+      ([pdf](https://openreview.net/pdf?id=Skq89Scxx))
+
   @compatibility(eager)
   When eager execution is enabled, this function returns a function which in
   turn returns the decayed learning rate Tensor. This can be useful for changing
@@ -493,9 +495,6 @@ def cosine_decay_restarts(learning_rate,
                           alpha=0.0,
                           name=None):
   """Applies cosine decay with restarts to the learning rate.
-
-  See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
-  with Warm Restarts. https://arxiv.org/abs/1608.03983
 
   When training a model, it is often recommended to lower the learning rate as
   the training progresses.  This function applies a cosine decay function with
@@ -536,6 +535,11 @@ def cosine_decay_restarts(learning_rate,
   Raises:
     ValueError: if `global_step` is not supplied.
 
+  References:
+    Stochastic Gradient Descent with Warm Restarts:
+      [Loshchilov et al., 2017](https://openreview.net/forum?id=Skq89Scxx&noteId=Skq89Scxx)
+      ([pdf](https://openreview.net/pdf?id=Skq89Scxx))
+
   @compatibility(eager)
   When eager execution is enabled, this function returns a function which in
   turn returns the decayed learning rate Tensor. This can be useful for changing
@@ -566,13 +570,6 @@ def linear_cosine_decay(learning_rate,
                         beta=0.001,
                         name=None):
   """Applies linear cosine decay to the learning rate.
-
-  See [Bello et al., ICML2017] Neural Optimizer Search with RL.
-  https://arxiv.org/abs/1709.07417
-
-  For the idea of warm starts here controlled by `num_periods`,
-  see [Loshchilov & Hutter, ICLR2016] SGDR: Stochastic Gradient Descent
-  with Warm Restarts. https://arxiv.org/abs/1608.03983
 
   Note that linear cosine decay is more aggressive than cosine decay and
   larger initial learning rates can typically be used.
@@ -618,6 +615,14 @@ def linear_cosine_decay(learning_rate,
   Raises:
     ValueError: if `global_step` is not supplied.
 
+  References:
+    Neural Optimizer Search with Reinforcement Learning:
+      [Bello et al., 2017](http://proceedings.mlr.press/v70/bello17a.html)
+      ([pdf](http://proceedings.mlr.press/v70/bello17a/bello17a.pdf))
+    Stochastic Gradient Descent with Warm Restarts:
+      [Loshchilov et al., 2017](https://openreview.net/forum?id=Skq89Scxx&noteId=Skq89Scxx)
+      ([pdf](https://openreview.net/pdf?id=Skq89Scxx))
+
   @compatibility(eager)
   When eager execution is enabled, this function returns a function which in
   turn returns the decayed learning rate Tensor. This can be useful for changing
@@ -650,13 +655,6 @@ def noisy_linear_cosine_decay(learning_rate,
                               beta=0.001,
                               name=None):
   """Applies noisy linear cosine decay to the learning rate.
-
-  See [Bello et al., ICML2017] Neural Optimizer Search with RL.
-  https://arxiv.org/abs/1709.07417
-
-  For the idea of warm starts here controlled by `num_periods`,
-  see [Loshchilov & Hutter, ICLR2016] SGDR: Stochastic Gradient Descent
-  with Warm Restarts. https://arxiv.org/abs/1608.03983
 
   Note that linear cosine decay is more aggressive than cosine decay and
   larger initial learning rates can typically be used.
@@ -707,6 +705,14 @@ def noisy_linear_cosine_decay(learning_rate,
     learning rate.
   Raises:
     ValueError: if `global_step` is not supplied.
+
+  References:
+    Neural Optimizer Search with Reinforcement Learning:
+      [Bello et al., 2017](http://proceedings.mlr.press/v70/bello17a.html)
+      ([pdf](http://proceedings.mlr.press/v70/bello17a/bello17a.pdf))
+    Stochastic Gradient Descent with Warm Restarts:
+      [Loshchilov et al., 2017](https://openreview.net/forum?id=Skq89Scxx&noteId=Skq89Scxx)
+      ([pdf](https://openreview.net/pdf?id=Skq89Scxx))
 
   @compatibility(eager)
   When eager execution is enabled, this function returns a function which in
