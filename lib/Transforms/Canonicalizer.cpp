@@ -45,7 +45,7 @@ char Canonicalizer::passID = 0;
 
 PassResult Canonicalizer::runOnFunction(Function *fn) {
   auto *context = fn->getContext();
-  OwningPatternList patterns;
+  OwningRewritePatternList patterns;
 
   // TODO: Instead of adding all known patterns from the whole system lazily add
   // and cache the canonicalization patterns for ops we see in practice when

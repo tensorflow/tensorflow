@@ -82,6 +82,10 @@ using PatternMatchResult = Optional<std::unique_ptr<PatternState>>;
 // Pattern class
 //===----------------------------------------------------------------------===//
 
+/// Instances of Pattern can be matched against SSA IR.  These matches get used
+/// in ways dependent on their subclasses and the driver doing the matching.
+/// For example, RewritePatterns implement a rewrite from one matched pattern
+/// to a replacement DAG tile.
 class Pattern {
 public:
   /// Return the benefit (the inverse of "cost") of matching this pattern.  The
@@ -106,21 +110,6 @@ public:
   /// function if this match is selected.
   virtual PatternMatchResult match(Operation *op) const = 0;
 
-  /// Rewrite the IR rooted at the specified operation with the result of
-  /// this pattern, generating any new operations with the specified
-  /// rewriter.  If an unexpected error is encountered (an internal
-  /// compiler error), it is emitted through the normal MLIR diagnostic
-  /// hooks and the IR is left in a valid state.
-  virtual void rewrite(Operation *op, std::unique_ptr<PatternState> state,
-                       PatternRewriter &rewriter) const;
-
-  /// Rewrite the IR rooted at the specified operation with the result of
-  /// this pattern, generating any new operations with the specified
-  /// builder.  If an unexpected error is encountered (an internal
-  /// compiler error), it is emitted through the normal MLIR diagnostic
-  /// hooks and the IR is left in a valid state.
-  virtual void rewrite(Operation *op, PatternRewriter &rewriter) const;
-
   virtual ~Pattern() {}
 
   //===--------------------------------------------------------------------===//
@@ -144,6 +133,37 @@ protected:
 private:
   const OperationName rootKind;
   const PatternBenefit benefit;
+
+  virtual void anchor();
+};
+
+/// RewritePattern is the common base class for all DAG to DAG replacements.
+/// After a RewritePattern is matched, its replacement is performed by invoking
+/// the "rewrite" method that the instance implements.
+///
+class RewritePattern : public Pattern {
+public:
+  /// Rewrite the IR rooted at the specified operation with the result of
+  /// this pattern, generating any new operations with the specified
+  /// rewriter.  If an unexpected error is encountered (an internal
+  /// compiler error), it is emitted through the normal MLIR diagnostic
+  /// hooks and the IR is left in a valid state.
+  virtual void rewrite(Operation *op, std::unique_ptr<PatternState> state,
+                       PatternRewriter &rewriter) const;
+
+  /// Rewrite the IR rooted at the specified operation with the result of
+  /// this pattern, generating any new operations with the specified
+  /// builder.  If an unexpected error is encountered (an internal
+  /// compiler error), it is emitted through the normal MLIR diagnostic
+  /// hooks and the IR is left in a valid state.
+  virtual void rewrite(Operation *op, PatternRewriter &rewriter) const;
+
+protected:
+  /// Patterns must specify the root operation name they match against, and can
+  /// also specify the benefit of the pattern matching.
+  RewritePattern(StringRef rootName, PatternBenefit benefit,
+                 MLIRContext *context)
+      : Pattern(rootName, benefit, context) {}
 };
 
 //===----------------------------------------------------------------------===//
@@ -284,6 +304,14 @@ public:
   explicit PatternMatcher(OwningPatternList &&patterns)
       : patterns(std::move(patterns)) {}
 
+  // Support matching from subclasses of Pattern.
+  template <typename T>
+  explicit PatternMatcher(std::vector<std::unique_ptr<T>> &&patternSubclasses) {
+    patterns.reserve(patternSubclasses.size());
+    for (auto &&elt : patternSubclasses)
+      patterns.emplace_back(std::move(elt));
+  }
+
   using MatchResult = std::pair<Pattern *, std::unique_ptr<PatternState>>;
 
   /// Find the highest benefit pattern available in the pattern set for the DAG
@@ -304,10 +332,13 @@ private:
 // Pattern-driven rewriters
 //===----------------------------------------------------------------------===//
 
+/// This is a vector that owns the patterns inside of it.
+using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
+
 /// Rewrite the specified function by repeatedly applying the highest benefit
 /// patterns in a greedy work-list driven manner.
 ///
-void applyPatternsGreedily(Function *fn, OwningPatternList &&patterns);
+void applyPatternsGreedily(Function *fn, OwningRewritePatternList &&patterns);
 
 } // end namespace mlir
 

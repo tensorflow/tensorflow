@@ -32,7 +32,7 @@ class WorklistRewriter;
 /// applies the locally optimal patterns in a roughly "bottom up" way.
 class GreedyPatternRewriteDriver {
 public:
-  explicit GreedyPatternRewriteDriver(OwningPatternList &&patterns)
+  explicit GreedyPatternRewriteDriver(OwningRewritePatternList &&patterns)
       : matcher(std::move(patterns)) {
     worklist.reserve(64);
   }
@@ -252,13 +252,17 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
 
     // Make sure that any new operations are inserted at this point.
     rewriter.setInsertionPoint(op);
-    match.first->rewrite(op, std::move(match.second), rewriter);
+    // We know that any pattern that matched is RewritePattern because we
+    // initialized the matcher with RewritePatterns.
+    auto *rewritePattern = static_cast<RewritePattern *>(match.first);
+    rewritePattern->rewrite(op, std::move(match.second), rewriter);
   }
 
   uniquedConstants.clear();
 }
 
-static void processMLFunction(MLFunction *fn, OwningPatternList &&patterns) {
+static void processMLFunction(MLFunction *fn,
+                              OwningRewritePatternList &&patterns) {
   class MLFuncRewriter : public WorklistRewriter {
   public:
     MLFuncRewriter(GreedyPatternRewriteDriver &driver, MLFuncBuilder &builder)
@@ -289,7 +293,8 @@ static void processMLFunction(MLFunction *fn, OwningPatternList &&patterns) {
   driver.simplifyFunction(fn, rewriter);
 }
 
-static void processCFGFunction(CFGFunction *fn, OwningPatternList &&patterns) {
+static void processCFGFunction(CFGFunction *fn,
+                               OwningRewritePatternList &&patterns) {
   class CFGFuncRewriter : public WorklistRewriter {
   public:
     CFGFuncRewriter(GreedyPatternRewriteDriver &driver, CFGFuncBuilder &builder)
@@ -325,7 +330,8 @@ static void processCFGFunction(CFGFunction *fn, OwningPatternList &&patterns) {
 /// Rewrite the specified function by repeatedly applying the highest benefit
 /// patterns in a greedy work-list driven manner.
 ///
-void mlir::applyPatternsGreedily(Function *fn, OwningPatternList &&patterns) {
+void mlir::applyPatternsGreedily(Function *fn,
+                                 OwningRewritePatternList &&patterns) {
   if (auto *cfg = dyn_cast<CFGFunction>(fn)) {
     processCFGFunction(cfg, std::move(patterns));
   } else {

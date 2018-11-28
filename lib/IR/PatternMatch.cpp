@@ -51,18 +51,21 @@ Pattern::Pattern(StringRef rootName, PatternBenefit benefit,
                  MLIRContext *context)
     : rootKind(OperationName(rootName, context)), benefit(benefit) {}
 
-void Pattern::rewrite(Operation *op, std::unique_ptr<PatternState> state,
-                      PatternRewriter &rewriter) const {
+// Out-of-line vtable anchor.
+void Pattern::anchor() {}
+
+//===----------------------------------------------------------------------===//
+// RewritePattern and PatternRewriter implementation
+//===----------------------------------------------------------------------===//
+
+void RewritePattern::rewrite(Operation *op, std::unique_ptr<PatternState> state,
+                             PatternRewriter &rewriter) const {
   rewrite(op, rewriter);
 }
 
-void Pattern::rewrite(Operation *op, PatternRewriter &rewriter) const {
+void RewritePattern::rewrite(Operation *op, PatternRewriter &rewriter) const {
   llvm_unreachable("need to implement one of the rewrite functions!");
 }
-
-//===----------------------------------------------------------------------===//
-// PatternRewriter implementation
-//===----------------------------------------------------------------------===//
 
 PatternRewriter::~PatternRewriter() {
   // Out of line to provide a vtable anchor for the class.

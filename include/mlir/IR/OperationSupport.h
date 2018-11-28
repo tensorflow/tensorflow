@@ -39,11 +39,13 @@ class OpAsmParser;
 class OpAsmParserResult;
 class OpAsmPrinter;
 class Pattern;
+class RewritePattern;
 class SSAValue;
 class Type;
 
 /// This is a vector that owns the patterns inside of it.
 using OwningPatternList = std::vector<std::unique_ptr<Pattern>>;
+using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
 
 enum class OperationProperty {
   /// This bit is set for an operation if it is a commutative operation: that
@@ -96,7 +98,7 @@ public:
 
   /// This hook returns any canonicalization pattern rewrites that the operation
   /// supports, for use by the canonicalization pass.
-  void (&getCanonicalizationPatterns)(OwningPatternList &results,
+  void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
                                       MLIRContext *context);
 
   /// Returns whether the operation has a particular property.
@@ -128,7 +130,7 @@ private:
       bool (&constantFoldHook)(const Operation *op,
                                ArrayRef<Attribute> operands,
                                SmallVectorImpl<Attribute> &results),
-      void (&getCanonicalizationPatterns)(OwningPatternList &results,
+      void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
                                           MLIRContext *context))
       : name(name), dialect(dialect), isClassFor(isClassFor),
         parseAssembly(parseAssembly), printAssembly(printAssembly),

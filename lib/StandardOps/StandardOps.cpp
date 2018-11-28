@@ -51,10 +51,10 @@ namespace {
 /// This is a common class used for patterns of the form
 /// "someop(memrefcast) -> someop".  It folds the source of any memref_cast
 /// into the root operation directly.
-struct MemRefCastFolder : public Pattern {
+struct MemRefCastFolder : public RewritePattern {
   /// The rootOpName is the name of the root operation to match against.
   MemRefCastFolder(StringRef rootOpName, MLIRContext *context)
-      : Pattern(rootOpName, 1, context) {}
+      : RewritePattern(rootOpName, 1, context) {}
 
   PatternMatchResult match(Operation *op) const override {
     for (auto *operand : op->getOperands())
@@ -111,9 +111,9 @@ Attribute AddIOp::constantFold(ArrayRef<Attribute> operands,
 namespace {
 /// addi(x, 0) -> x
 ///
-struct SimplifyAddX0 : public Pattern {
+struct SimplifyAddX0 : public RewritePattern {
   SimplifyAddX0(MLIRContext *context)
-      : Pattern(AddIOp::getOperationName(), 1, context) {}
+      : RewritePattern(AddIOp::getOperationName(), 1, context) {}
 
   PatternMatchResult match(Operation *op) const override {
     auto addi = op->cast<AddIOp>();
@@ -129,7 +129,7 @@ struct SimplifyAddX0 : public Pattern {
 };
 } // end anonymous namespace.
 
-void AddIOp::getCanonicalizationPatterns(OwningPatternList &results,
+void AddIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
   results.push_back(std::make_unique<SimplifyAddX0>(context));
 }
@@ -217,9 +217,9 @@ bool AllocOp::verify() const {
 
 namespace {
 /// Fold constant dimensions into an alloc instruction.
-struct SimplifyAllocConst : public Pattern {
+struct SimplifyAllocConst : public RewritePattern {
   SimplifyAllocConst(MLIRContext *context)
-      : Pattern(AllocOp::getOperationName(), 1, context) {}
+      : RewritePattern(AllocOp::getOperationName(), 1, context) {}
 
   PatternMatchResult match(Operation *op) const override {
     auto alloc = op->cast<AllocOp>();
@@ -284,7 +284,7 @@ struct SimplifyAllocConst : public Pattern {
 };
 } // end anonymous namespace.
 
-void AllocOp::getCanonicalizationPatterns(OwningPatternList &results,
+void AllocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.push_back(std::make_unique<SimplifyAllocConst>(context));
 }
@@ -597,7 +597,7 @@ bool DeallocOp::verify() const {
   return false;
 }
 
-void DeallocOp::getCanonicalizationPatterns(OwningPatternList &results,
+void DeallocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   /// dealloc(memrefcast) -> dealloc
   results.push_back(
@@ -776,7 +776,7 @@ bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-void DmaStartOp::getCanonicalizationPatterns(OwningPatternList &results,
+void DmaStartOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                              MLIRContext *context) {
   /// dma_start(memrefcast) -> dma_start
   results.push_back(
@@ -836,7 +836,7 @@ bool DmaWaitOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-void DmaWaitOp::getCanonicalizationPatterns(OwningPatternList &results,
+void DmaWaitOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   /// dma_wait(memrefcast) -> dma_wait
   results.push_back(
@@ -964,7 +964,7 @@ bool LoadOp::verify() const {
   return false;
 }
 
-void LoadOp::getCanonicalizationPatterns(OwningPatternList &results,
+void LoadOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
   /// load(memrefcast) -> load
   results.push_back(
@@ -1055,9 +1055,9 @@ Attribute MulIOp::constantFold(ArrayRef<Attribute> operands,
 namespace {
 /// muli(x, 1) -> x
 ///
-struct SimplifyMulX1 : public Pattern {
+struct SimplifyMulX1 : public RewritePattern {
   SimplifyMulX1(MLIRContext *context)
-      : Pattern(MulIOp::getOperationName(), 1, context) {}
+      : RewritePattern(MulIOp::getOperationName(), 1, context) {}
 
   PatternMatchResult match(Operation *op) const override {
     auto muli = op->cast<MulIOp>();
@@ -1073,7 +1073,7 @@ struct SimplifyMulX1 : public Pattern {
 };
 } // end anonymous namespace.
 
-void MulIOp::getCanonicalizationPatterns(OwningPatternList &results,
+void MulIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
   results.push_back(std::make_unique<SimplifyMulX1>(context));
 }
@@ -1081,6 +1081,7 @@ void MulIOp::getCanonicalizationPatterns(OwningPatternList &results,
 //===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
+
 void SelectOp::build(Builder *builder, OperationState *result,
                      SSAValue *condition, SSAValue *trueValue,
                      SSAValue *falseValue) {
@@ -1214,7 +1215,7 @@ bool StoreOp::verify() const {
   return false;
 }
 
-void StoreOp::getCanonicalizationPatterns(OwningPatternList &results,
+void StoreOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   /// store(memrefcast) -> store
   results.push_back(
@@ -1258,9 +1259,9 @@ Attribute SubIOp::constantFold(ArrayRef<Attribute> operands,
 namespace {
 /// subi(x,x) -> 0
 ///
-struct SimplifyXMinusX : public Pattern {
+struct SimplifyXMinusX : public RewritePattern {
   SimplifyXMinusX(MLIRContext *context)
-      : Pattern(SubIOp::getOperationName(), 1, context) {}
+      : RewritePattern(SubIOp::getOperationName(), 1, context) {}
 
   PatternMatchResult match(Operation *op) const override {
     auto subi = op->cast<SubIOp>();
@@ -1279,7 +1280,7 @@ struct SimplifyXMinusX : public Pattern {
 };
 } // end anonymous namespace.
 
-void SubIOp::getCanonicalizationPatterns(OwningPatternList &results,
+void SubIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
   results.push_back(std::make_unique<SimplifyXMinusX>(context));
 }

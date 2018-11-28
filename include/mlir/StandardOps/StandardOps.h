@@ -73,7 +73,7 @@ public:
   Attribute constantFold(ArrayRef<Attribute> operands,
                          MLIRContext *context) const;
 
-  static void getCanonicalizationPatterns(OwningPatternList &results,
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
 private:
@@ -116,7 +116,7 @@ public:
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
-  static void getCanonicalizationPatterns(OwningPatternList &results,
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
 private:
@@ -270,7 +270,7 @@ public:
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
-  static void getCanonicalizationPatterns(OwningPatternList &results,
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
 private:
@@ -417,7 +417,7 @@ public:
   static StringRef getOperationName() { return "dma_start"; }
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
-  static void getCanonicalizationPatterns(OwningPatternList &results,
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
 protected:
@@ -471,7 +471,7 @@ public:
 
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
-  static void getCanonicalizationPatterns(OwningPatternList &results,
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
 protected:
@@ -555,7 +555,7 @@ public:
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
-  static void getCanonicalizationPatterns(OwningPatternList &results,
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
 private:
@@ -631,7 +631,7 @@ public:
   Attribute constantFold(ArrayRef<Attribute> operands,
                          MLIRContext *context) const;
 
-  static void getCanonicalizationPatterns(OwningPatternList &results,
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
 private:
@@ -707,7 +707,7 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
-  static void getCanonicalizationPatterns(OwningPatternList &results,
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
 private:
@@ -750,7 +750,7 @@ public:
   Attribute constantFold(ArrayRef<Attribute> operands,
                          MLIRContext *context) const;
 
-  static void getCanonicalizationPatterns(OwningPatternList &results,
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
 private:
