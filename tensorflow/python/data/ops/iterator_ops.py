@@ -68,7 +68,7 @@ def _device_stack_is_empty():
   return not bool(device_stack)
 
 
-@tf_export("data.Iterator")
+@tf_export(v1=["data.Iterator"])
 class Iterator(checkpointable.CheckpointableBase):
   """Represents the state of iterating through a `Dataset`."""
 
