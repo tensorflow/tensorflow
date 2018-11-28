@@ -25,6 +25,7 @@ import sys
 import types
 import weakref
 from enum import Enum
+import numpy as np
 import six
 
 from tensorflow.python.eager import context
@@ -900,6 +901,11 @@ class _ConfusionMatrixConditionCount(Metric):
       result = self.accumulator[0]
     return ops.convert_to_tensor(result)
 
+  def reset_states(self):
+    num_thresholds = len(to_list(self.thresholds))
+    for v in self.variables:
+      K.set_value(v, np.zeros((num_thresholds,)))
+
 
 @tf_export('metrics.FalsePositives', 'keras.metrics.FalsePositives')
 class FalsePositives(_ConfusionMatrixConditionCount):
@@ -1180,6 +1186,11 @@ class Precision(Metric):
     result = math_ops.div_no_nan(self.tp, self.tp + self.fp)
     return result if isinstance(self.thresholds, (list, tuple)) else result[0]
 
+  def reset_states(self):
+    num_thresholds = len(to_list(self.thresholds))
+    for v in self.variables:
+      K.set_value(v, np.zeros((num_thresholds,)))
+
 
 @tf_export('metrics.Recall', 'keras.metrics.Recall')
 class Recall(Metric):
@@ -1260,6 +1271,11 @@ class Recall(Metric):
     result = math_ops.div_no_nan(self.tp, self.tp + self.fn)
     return result if isinstance(self.thresholds, (list, tuple)) else result[0]
 
+  def reset_states(self):
+    num_thresholds = len(to_list(self.thresholds))
+    for v in self.variables:
+      K.set_value(v, np.zeros((num_thresholds,)))
+
 
 @six.add_metaclass(abc.ABCMeta)
 class SensitivitySpecificityBase(Metric):
@@ -1318,6 +1334,11 @@ class SensitivitySpecificityBase(Metric):
         _ConfusionMatrix.FALSE_POSITIVES: self.fp,
         _ConfusionMatrix.FALSE_NEGATIVES: self.fn,
     }, y_true, y_pred, self.thresholds, sample_weight)
+
+  def reset_states(self):
+    num_thresholds = len(self.thresholds)
+    for v in self.variables:
+      K.set_value(v, np.zeros((num_thresholds,)))
 
 
 class SensitivityAtSpecificity(SensitivitySpecificityBase):

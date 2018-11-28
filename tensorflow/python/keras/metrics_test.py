@@ -28,13 +28,16 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
+from tensorflow.python.keras.models import Sequential
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 class KerasMetricsTest(test.TestCase):
@@ -367,6 +370,19 @@ class KerasMetricsTest(test.TestCase):
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
 
+def _get_simple_sequential_model(compile_metrics):
+  model = Sequential()
+  model.add(
+      layers.Dense(
+          3, activation='relu', input_dim=4, kernel_initializer='ones'))
+  model.add(layers.Dense(1, activation='sigmoid', kernel_initializer='ones'))
+  model.compile(
+      loss='mae',
+      metrics=compile_metrics,
+      optimizer=RMSPropOptimizer(learning_rate=0.001))
+  return model
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class FalsePositivesTest(test.TestCase):
 
@@ -435,6 +451,16 @@ class FalsePositivesTest(test.TestCase):
         r'Threshold values must be in \[0, 1\]. Invalid values: \[-1, 2\]'):
       metrics.FalsePositives(thresholds=[-1, 0.5, 2])
 
+  def test_reset_states(self):
+    fp_obj = metrics.FalsePositives()
+    model = _get_simple_sequential_model([fp_obj])
+    x = np.ones((100, 4))
+    y = np.zeros((100, 1))
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(fp_obj.accumulator), 100.)
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(fp_obj.accumulator), 100.)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class FalseNegativesTest(test.TestCase):
@@ -496,6 +522,16 @@ class FalseNegativesTest(test.TestCase):
 
     result = fn_obj(y_true, y_pred, sample_weight=sample_weight)
     self.assertAllClose([4., 16., 23.], self.evaluate(result))
+
+  def test_reset_states(self):
+    fn_obj = metrics.FalseNegatives()
+    model = _get_simple_sequential_model([fn_obj])
+    x = np.zeros((100, 4))
+    y = np.ones((100, 1))
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(fn_obj.accumulator), 100.)
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(fn_obj.accumulator), 100.)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -559,6 +595,16 @@ class TrueNegativesTest(test.TestCase):
     result = tn_obj(y_true, y_pred, sample_weight=sample_weight)
     self.assertAllClose([5., 15., 23.], self.evaluate(result))
 
+  def test_reset_states(self):
+    tn_obj = metrics.TrueNegatives()
+    model = _get_simple_sequential_model([tn_obj])
+    x = np.zeros((100, 4))
+    y = np.zeros((100, 1))
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(tn_obj.accumulator), 100.)
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(tn_obj.accumulator), 100.)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class TruePositivesTest(test.TestCase):
@@ -619,6 +665,16 @@ class TruePositivesTest(test.TestCase):
 
     result = tp_obj(y_true, y_pred, sample_weight=37.)
     self.assertAllClose([222., 111., 37.], self.evaluate(result))
+
+  def test_reset_states(self):
+    tp_obj = metrics.TruePositives()
+    model = _get_simple_sequential_model([tp_obj])
+    x = np.ones((100, 4))
+    y = np.ones((100, 1))
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(tp_obj.accumulator), 100.)
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(tp_obj.accumulator), 100.)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -732,6 +788,18 @@ class PrecisionTest(test.TestCase):
     self.assertArrayNear([expected_precision, 0], self.evaluate(p_obj.result()),
                          1e-3)
 
+  def test_reset_states(self):
+    p_obj = metrics.Precision()
+    model = _get_simple_sequential_model([p_obj])
+    x = np.concatenate((np.ones((50, 4)), np.ones((50, 4))))
+    y = np.concatenate((np.ones((50, 1)), np.zeros((50, 1))))
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(p_obj.tp), 50.)
+    self.assertEqual(self.evaluate(p_obj.fp), 50.)
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(p_obj.tp), 50.)
+    self.assertEqual(self.evaluate(p_obj.fp), 50.)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RecallTest(test.TestCase):
@@ -843,6 +911,18 @@ class RecallTest(test.TestCase):
     self.assertArrayNear([expected_recall, 0], self.evaluate(r_obj.result()),
                          1e-3)
 
+  def test_reset_states(self):
+    r_obj = metrics.Recall()
+    model = _get_simple_sequential_model([r_obj])
+    x = np.concatenate((np.ones((50, 4)), np.zeros((50, 4))))
+    y = np.concatenate((np.ones((50, 1)), np.ones((50, 1))))
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(r_obj.tp), 50.)
+    self.assertEqual(self.evaluate(r_obj.fn), 50.)
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(r_obj.tp), 50.)
+    self.assertEqual(self.evaluate(r_obj.fn), 50.)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class SensitivityAtSpecificityTest(test.TestCase, parameterized.TestCase):
@@ -932,6 +1012,24 @@ class SensitivityAtSpecificityTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
       metrics.SensitivityAtSpecificity(0.4, num_thresholds=-1)
 
+  def test_reset_states(self):
+    s_obj = metrics.SensitivityAtSpecificity(0.5, num_thresholds=1)
+    model = _get_simple_sequential_model([s_obj])
+    x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
+                        np.ones((25, 4))))
+    y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones((25, 1)),
+                        np.zeros((25, 1))))
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(s_obj.tp), 25.)
+    self.assertEqual(self.evaluate(s_obj.fp), 25.)
+    self.assertEqual(self.evaluate(s_obj.fn), 25.)
+    self.assertEqual(self.evaluate(s_obj.tn), 25.)
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(s_obj.tp), 25.)
+    self.assertEqual(self.evaluate(s_obj.fp), 25.)
+    self.assertEqual(self.evaluate(s_obj.fn), 25.)
+    self.assertEqual(self.evaluate(s_obj.tn), 25.)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
@@ -1020,6 +1118,24 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
   def test_invalid_num_thresholds(self):
     with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
       metrics.SpecificityAtSensitivity(0.4, num_thresholds=-1)
+
+  def test_reset_states(self):
+    s_obj = metrics.SpecificityAtSensitivity(0.5, num_thresholds=1)
+    model = _get_simple_sequential_model([s_obj])
+    x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
+                        np.ones((25, 4))))
+    y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones((25, 1)),
+                        np.zeros((25, 1))))
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(s_obj.tp), 25.)
+    self.assertEqual(self.evaluate(s_obj.fp), 25.)
+    self.assertEqual(self.evaluate(s_obj.fn), 25.)
+    self.assertEqual(self.evaluate(s_obj.tn), 25.)
+    model.evaluate(x, y)
+    self.assertEqual(self.evaluate(s_obj.tp), 25.)
+    self.assertEqual(self.evaluate(s_obj.fp), 25.)
+    self.assertEqual(self.evaluate(s_obj.fn), 25.)
+    self.assertEqual(self.evaluate(s_obj.tn), 25.)
 
 
 if __name__ == '__main__':
