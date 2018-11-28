@@ -3,6 +3,7 @@ syntax = "proto3";
 package xrt;
 
 import "tensorflow/compiler/tf2xla/host_compute_metadata.proto";
+import "tensorflow/compiler/xla/xla.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
 import "tensorflow/compiler/xla/service/hlo.proto";
 
@@ -46,6 +47,8 @@ message XLAComputationConfig {
   // sent and executed to the set of replica device numbers described in the
   // DeviceAssignment proto.
   DeviceAssignment device_assignment = 6;
+  // The debugging options to be passed to the XLA compilation process.
+  xla.DebugOptions debug_options = 7;
 }
 
 // Options and XLA computation for a compilation.

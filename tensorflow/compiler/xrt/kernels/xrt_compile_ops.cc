@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
+#include "tensorflow/compiler/xrt/xrt_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -117,6 +118,10 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
   build_options.set_device_ordinal(client->default_device_ordinal());
   build_options.set_result_layout(config.program_shape().result());
   build_options.set_device_allocator(device_ref.backend()->memory_allocator());
+  if (config.has_debug_options()) {
+    *build_options.mutable_debug_options() =
+        BuildXlaDebugOptions(config.debug_options());
+  }
 
   VLOG(1) << "Building executable";
   auto compile_result =
