@@ -177,13 +177,14 @@ def einsum(equation, *inputs, **kwargs):
     *inputs: the inputs to contract (each one a `Tensor`), whose shapes should
       be consistent with `equation`.
     name: A name for the operation (optional).
-    optimize: `{False, True, 'dp'}`, optional
+    optimize: `{False, True, 'dp', 'greedy'}`, optional
       If not `False`, the contraction sequence will be optimized before 
       building the computation graph. Note that this will be ignored if the 
       function falls back to the exponential-space implementation.
       If `False`, tensors will be contracted from left to right. 
       If `'dp'` or `'True'`, a dynamic programming approach (inspired by 
       arXiv:1304.6112) will be used to find an optimized contraction order.
+      If `'greedy'`, a greedy algorithm will be used to optimize the order.
       The default value is `'True'`. 
   Returns:
     The contracted `Tensor`, with shape determined by `equation`.
@@ -255,6 +256,12 @@ def einsum(equation, *inputs, **kwargs):
       seq = [(0,1)]*(len(inputs)-1) # contract from left to right
     elif optimize in {True, 'dp'}:
       seq = _einsum_optimize_dp(
+        [t.shape.as_list() for t in inputs],
+        input_axis_labels, 
+        output_axis_labels
+      )
+    elif optimize == 'greedy':
+      seq = _einsum_optimize_greedy(
         [t.shape.as_list() for t in inputs],
         input_axis_labels, 
         output_axis_labels
@@ -589,6 +596,60 @@ def _tree_to_sequence(contraction):
     
     seq.insert(0, seq_new)
 
+  return seq
+
+
+def _einsum_optimize_greedy(ishapes, ilabels, olabels):
+  
+  ishapes = list(ishapes)
+  ilabels = list(ilabels)
+  seq = []
+  
+  total_cost = 0
+  
+  while len(ishapes) > 1:
+    min_cost = np.inf
+    cheapest_contraction = None
+    
+    for j in range(len(ilabels)-1):
+      l1, d1 = ilabels[j], ishapes[j]
+      for k in range(j+1, len(ilabels)):
+        l2, d2 = ilabels[k], ishapes[k]
+        
+        common_indices = set(l1) & set(l2)
+        contraction_indices = common_indices - set(olabels)
+        
+        # m1[l] <-- is l1[l] an index of the new tensor? (m2 for l2)
+        m1 = [l not in contraction_indices for l in l1]
+        m2 = [l not in common_indices      for l in l2]
+        
+        new_shape = tuple(
+          [d for d, f in zip(d1, m1) if f] + \
+          [d for d, f in zip(d2, m2) if f]
+        )
+
+        new_labels = \
+          ''.join([l for l, f in zip(l1, m1) if f]) + \
+          ''.join([l for l, f in zip(l2, m2) if f])
+        
+        cost = np.prod(d1) * \
+               np.prod([d for d, f in zip(d2, m2) if f])
+        
+        if cost < min_cost:
+          min_cost = cost
+          cheapest_contraction = (j, k, new_shape, new_labels)
+    
+    j, k, d, l = cheapest_contraction
+    seq.append((j,k))
+    ishapes.pop(k)
+    ishapes.pop(j)
+    ishapes.insert(0, d)
+    ilabels.pop(k)
+    ilabels.pop(j)
+    ilabels.insert(0, l)
+    
+    total_cost += min_cost
+    
   return seq
 
 
