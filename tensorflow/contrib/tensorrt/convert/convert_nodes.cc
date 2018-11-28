@@ -2500,8 +2500,8 @@ tensorflow::Status ConvertSquare(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   if (inputs.size() != 1) {
-    return tensorflow::errors::InvalidArgument(
-        "Square expects one input, at ", node_def.name());
+    return tensorflow::errors::InvalidArgument("Square expects one input, at ",
+                                               node_def.name());
   }
   if (inputs.at(0).is_weights()) {
     return tensorflow::errors::Unimplemented(
@@ -2516,8 +2516,8 @@ tensorflow::Status ConvertSquare(OpConverterParams* params) {
   }
   TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
       tensorflow::DataType::DT_FLOAT, dims);
-  auto weights_ptr = static_cast<float*>(const_cast<void*>(
-      weights.GetValues()));
+  auto weights_ptr =
+      static_cast<float*>(const_cast<void*>(weights.GetValues()));
   weights_ptr[0] = 2.f;
   nvinfer1::IConstantLayer* const2_layer =
       params->converter->network()->addConstant(dims, weights.GetTrtWeights());

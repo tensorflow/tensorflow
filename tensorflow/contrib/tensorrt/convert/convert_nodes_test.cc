@@ -152,8 +152,7 @@ void ExpectTrtDimsEqualsArray(const std::vector<int>& lhs,
 }
 
 template <typename T>
-void ExpectArrayNear(const std::vector<T>& lhs,
-                     const std::vector<T>& rhs) {
+void ExpectArrayNear(const std::vector<T>& lhs, const std::vector<T>& rhs) {
   ASSERT_EQ(lhs.size(), rhs.size());
   for (int i = 0; i < lhs.size(); i++) {
     EXPECT_FLOAT_EQ(lhs[i], rhs[i]);
@@ -2011,9 +2010,7 @@ void TestConvertSquare(OpConverterTest* test) {
     expected_output_data[i] = value * value;
   }
   std::vector<CType> output_data(num_inputs);
-  test->BuildAndRun<CType>(
-          {{"input", input_data}}, "my_square",
-          &output_data);
+  test->BuildAndRun<CType>({{"input", input_data}}, "my_square", &output_data);
   ExpectArrayNear(expected_output_data, output_data);
 }
 
@@ -2021,9 +2018,8 @@ TEST_F(OpConverterTest, ConvertSquare) {
   {
     // Input list is empty, should fail.
     NodeDef node_def = MakeNodeDef("my_square", "Square", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Square expects one input, at my_square");
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Square expects one input, at my_square");
   }
   {
     // Input is weights, should fail.
@@ -2033,7 +2029,8 @@ TEST_F(OpConverterTest, ConvertSquare) {
     auto square = ops::Square(s.WithOpName("my_square"), input);
     NodeDef node_def = square.operation.node()->def();
     AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, -5, 6});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
         "Square is only implemented for tensors, at my_square");
   }
 
