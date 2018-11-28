@@ -38,6 +38,7 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"sigmoidgrad", 0},
     {"conv_biasadd", 0},
     {"conv_biasadd", 0},
+    {"conv_biasadd", 0},
     {"matmul_biasadd", 0},
     {"zero_pad", 0},
     {"norm_scale_add", 4},
@@ -149,19 +150,25 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
     // BiasAdd on convolution (w/ broadcast)
-    {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
+    {{HloOpcode::kAdd, true, 0, IsBiasAdd, {2, 1}},
      {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
      {HloOpcode::kCall, false, 0, IsPopOpsConvolution, {}},
      {HloOpcode::kParameter, false, 1, Is1DVector, {}}},
 
     // BiasAdd on convolution (w/ broadcast)
-    {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
+    {{HloOpcode::kAdd, true, 0, IsBiasAdd, {2, 1}},
      {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
      {HloOpcode::kConvolution, false, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 1, Is1DVector, {}}},
 
+    // BiasAdd on convolution (w/ reshape)
+    {{HloOpcode::kAdd, true, 0, IsBiasAdd, {2, 1}},
+     {HloOpcode::kReshape, true, 0, IsExpandingReshape, {3}},
+     {HloOpcode::kConvolution, false, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 1, Is1DVector, {}}},
+
     // BiasAdd on a MatMul (w/ broadcast)
-    {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
+    {{HloOpcode::kAdd, true, 0, IsBiasAdd, {2, 1}},
      {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
      {HloOpcode::kDot, false, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 1, Is1DVector, {}}},

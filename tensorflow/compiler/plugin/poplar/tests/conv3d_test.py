@@ -147,8 +147,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'host-exchange-local-copy-',
             'Copy_',
             'Conv3D/convolution.*/Conv_1x1',
-            'add/add.*/AddTo']
-# TODO = should be addToChannel T3170           'BiasAdd/call/addToChannel']
+            'add/call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def test3DConvBackpropInput(self):

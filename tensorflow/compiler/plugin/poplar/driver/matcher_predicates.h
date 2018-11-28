@@ -28,6 +28,7 @@ bool IsOutputFeed(const HloInstruction*);
 bool IsTfReluGradOp(const HloInstruction*);
 bool IsTrueParameter(const HloInstruction*);
 bool Is1DVector(const HloInstruction*);
+bool IsExpandingReshape(const HloInstruction*);
 bool IsF16(const HloInstruction*);
 bool IsF32(const HloInstruction*);
 bool IsF32ToF16Convert(const HloInstruction*);
@@ -39,6 +40,7 @@ bool IsOpWithWindowNoStride(const HloInstruction*);
 bool IsScalarConstantNegativeInfinity(const HloInstruction*);
 bool IsScalarConstantOne(const HloInstruction*);
 bool IsPaddingReduceWindow(const HloInstruction*);
+bool IsBiasAdd(const HloInstruction*);
 
 }  // namespace poplarplugin
 }  // namespace xla

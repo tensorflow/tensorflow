@@ -28,13 +28,12 @@ namespace poplarplugin {
 CommutativeInstructionReorderOperands::CommutativeInstructionReorderOperands() {
 }
 
-static bool IsNonElementwiseReshapingOp(const HloInstruction* inst) {
-  switch (inst->operand_count()) {
-    case 1:
-      return !inst->IsElementwise() &&
-             !ShapeUtil::Equal(inst->shape(), inst->operand(0)->shape());
-    case 2:
-      return inst->opcode() == HloOpcode::kPad;
+static bool IsReshaping(const HloInstruction* inst) {
+  switch (inst->opcode()) {
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kReshape:
+    case HloOpcode::kPad:
+      return true;
     default:
       return false;
   }
@@ -57,8 +56,7 @@ StatusOr<bool> CommutativeInstructionReorderOperands::Run(HloModule* module) {
   for (auto* comp : module->computations()) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
       if (IsElementwiseBinaryCommutative(inst) &&
-          IsNonElementwiseReshapingOp(inst->operand(0)) &&
-          !IsNonElementwiseReshapingOp(inst->operand(1))) {
+          IsReshaping(inst->operand(0)) && !IsReshaping(inst->operand(1))) {
         auto* op0 = inst->mutable_operand(0);
         auto* op1 = inst->mutable_operand(1);
         inst->ReplaceOperandWith(0, op1);

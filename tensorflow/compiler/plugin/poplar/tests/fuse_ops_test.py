@@ -12,6 +12,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
+from tensorflow.python.layers import normalization as layers_norm
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_math_ops
@@ -551,6 +552,41 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
             'xw_plus_b/MatMul/dot.*/Conv_1/Convolve',
             'xw_plus_b/call/addToChannel']
       self.assertTrue(tu.check_compute_sets_in_whitelist_entries(cs_list, ok))
+
+  def testConvWithBnAndRelu(self):
+    with ops.device("/device:IPU:0"):
+      x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+      with variable_scope.variable_scope("vs", use_resource=True):
+        y = convolutional.conv2d(x, 2, 1, use_bias=True,
+                                 kernel_initializer=init_ops.ones_initializer())
+        y = layers_norm.batch_normalization(y, fused=True)
+        y = nn_ops.relu(y)
+
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+
+      sess.run(variables.global_variables_initializer())
+
+      sess.run(report)
+
+      sess.run(y, {x: np.zeros([1,4,4,2])})
+
+      result = sess.run(report)
+      self.assertEqual(len(result), 6) # 2xcompile, 1xupload 1xload, 1xdownload, 1xexecute
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['progIdCopy',
+            'host-exchange-local-copy',
+            'Copy_',
+            'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
+            'vs/conv2d/BiasAdd',
+            'vs/batch_normalization/FusedBatchNorm/batch-norm-inference.*/',
+            'vs/Relu/call/Nonlinearity']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 if __name__ == "__main__":
     googletest.main()
