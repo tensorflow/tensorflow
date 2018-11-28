@@ -117,7 +117,7 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   xla::XlaComputation reduction_computation = r.Build().ConsumeValueOrDie();
 
   auto reduce = xla::Reduce(data, initial, reduction_computation, xla_axes);
-  auto deconverted = XlaHelpers::ConvertElementType(b, reduce, input_type(0));
+  auto deconverted = XlaHelpers::ConvertElementType(reduce, input_type(0));
   auto finalized = BuildFinalizer(b, data, deconverted, xla_axes);
   auto result = keep_dims_ ? xla::Reshape(finalized, final_shape) : finalized;
   ctx->SetOutput(0, result);
