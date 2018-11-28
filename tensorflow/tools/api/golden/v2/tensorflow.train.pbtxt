@@ -1,22 +1,6 @@
 path: "tensorflow.train"
 tf_module {
   member {
-    name: "AdadeltaOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "AdagradDAOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "AdagradOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "AdamOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "BytesList"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -89,15 +73,7 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "FtrlOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "GlobalStepWaiterHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "GradientDescentOptimizer"
     mtype: "<type \'type\'>"
   }
   member {
@@ -113,10 +89,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "MomentumOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "MonitoredSession"
     mtype: "<type \'type\'>"
   }
@@ -129,19 +101,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "Optimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "ProximalAdagradOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "ProximalGradientDescentOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "RMSPropOptimizer"
     mtype: "<type \'type\'>"
   }
   member {
