@@ -115,7 +115,7 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
   ```
 
   This hook should be used if the input pipeline state needs to be saved and
-  separates from the model checkpoint. Doing so may be useful for a few reasons:
+  separated from the model checkpoint. Doing so may be useful for a few reasons:
   1. The input pipeline checkpoint may be large, if there are large shuffle
      or prefetch buffers for instance, and may bloat the checkpoint size.
   2. If the input pipeline is shared between training and validation, restoring
