@@ -1172,6 +1172,17 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
   ragged_rank = rt_input.ragged_rank
   nested_splits = rt_input.nested_row_splits
 
+  # projected_splits[src_axis, dst_axis] contains the split points that divide
+  # the rows from src_axis in the list of dst_axis values.  E.g.,
+  # projected_splits[i, i] = nested_splits[i], and
+  # projected_splits[i, i+1] = gather(nested_splits[i+1], nested_splits[i]).
+  projected_splits = [{i: nested_splits[i]} for i in range(ragged_rank)]
+  for src_axis in range(ragged_rank):
+    for dst_axis in range(src_axis + 1, ragged_rank - 1):
+      projected_splits[src_axis][dst_axis] = array_ops.gather(
+          nested_splits[dst_axis],
+          projected_splits[src_axis][dst_axis - 1])
+
   # For each ragged dimension: nested_splits[axis] -> result_splits[axis].
   result_splits = []
   for axis in range(ragged_rank):
@@ -1188,7 +1199,7 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
     repeats = 1
     for d in range(axis - 1, -1, -1):
       if const_multiples is None or const_multiples[d + 1] != 1:
-        splits = nested_splits[d] * repeats
+        splits = projected_splits[d][axis - 1] * repeats
         output_lengths = _repeat_ranges(output_lengths, splits,
                                         multiples[d + 1])
       repeats *= multiples[d + 1]

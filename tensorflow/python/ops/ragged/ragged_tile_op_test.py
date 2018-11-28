@@ -170,6 +170,15 @@ class RaggedTileOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           rt_input=[[[[1], [2]], [[3]]], [[]], [[[4, 5]]]],
           multiples=[1, 1, 1, 0],
           expected=[[[[], []], [[]]], [[]], [[[]]]]),
+      #=========================================================================
+      # multiple=1
+      #=========================================================================
+      dict(
+          descr='rank=4, multiples=1 (no repeats)',
+          rt_input=[[[[1], [2]], [[3], [4]]], [[[5], [6]]]],
+          multiples=[1, 1, 1, 1],
+          expected=[[[[1], [2]], [[3], [4]]],
+                    [[[5], [6]]]]),
 
   ])  # pyformat: disable
   def testRaggedTile(self,
