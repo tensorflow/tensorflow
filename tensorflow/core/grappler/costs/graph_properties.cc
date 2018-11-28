@@ -679,6 +679,11 @@ class SymbolicShapeRefiner {
               "' was not previously added to SymbolicShapeRefiner.");
         }
 
+        if (src_output >= c->inference_context->num_outputs())
+          return errors::OutOfRange("src_output = ", src_output,
+                                    ", but num_outputs is only ",
+                                    c->inference_context->num_outputs());
+
         // Propagate input node's NodeContext info to the current node's
         // NodeContext:
         // output_tensor_protos to input_tensor_protos and input_tensors, and
