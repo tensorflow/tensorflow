@@ -931,12 +931,13 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     """Test a Sequential tf.keras model testing input shapes argument."""
     keras_file = self._getSequentialModel()
 
-    # Passing in shape of invalid input array has no impact as long as all input
-    # arrays have a shape.
-    converter = lite.TFLiteConverter.from_keras_model_file(
-        keras_file, input_shapes={'invalid-input': [2, 3]})
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # Passing in shape of invalid input array raises error.
+    with self.assertRaises(ValueError) as error:
+      converter = lite.TFLiteConverter.from_keras_model_file(
+          keras_file, input_shapes={'invalid-input': [2, 3]})
+    self.assertEqual(
+        "Invalid tensor 'invalid-input' found in tensor shapes map.",
+        str(error.exception))
 
     # Passing in shape of valid input array.
     converter = lite.TFLiteConverter.from_keras_model_file(
