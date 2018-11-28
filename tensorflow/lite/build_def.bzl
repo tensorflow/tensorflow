@@ -269,6 +269,7 @@ def generated_test_models():
         "pack",
         "pad",
         "padv2",
+        "placeholder_with_default",
         "prelu",
         "pow",
         "range",
