@@ -567,24 +567,22 @@ def _einsum_optimize_dp_connected(ishapes, ilabels, olabels,
 
 
 def _tree_to_sequence(contraction):
+  # converts a contraction tree to a contraction sequence, e.g.
+  # ((0,1),(2,(3,4))) --> [(0, 1), (2, 3), (0, 2), (0, 1)]
   
   if type(contraction) == int:
     return []
-  
-  # if type(contraction) != tuple or len(contraction) != 2:
-  #   raise ValueError("argument does not specify a valid contraction tree")
   
   t1 = [contraction]
   t2 = []
   seq = []
   
   while len(t1) > 0:
-    if type(t1[0]) != tuple or len(t1[0]) != 2:
-      raise ValueError("invalid contraction {}".format(t1[0]))
-    
     x = t1.pop(0)
+    assert type(x) == tuple and len(x) == 2
     t1_new = [t for t in x if type(t) == tuple][::-1]
     t2_new = [t for t in x if type(t) == int]
+    assert len(t1_new) + len(t2_new) == 2
     
     t1 = t1_new + t1
     seq_new = tuple(range(len(t1_new)))
