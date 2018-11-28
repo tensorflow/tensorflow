@@ -222,7 +222,7 @@ class MklDnnConvUtil {
       // and GOIHW for grouped/depthwise convolutions,
       // OIHW = (out_depth, in_depth, rows, cols)
       // GOIHW = (group, out_depth, in_depth, rows, cols)
-      // Specifically for depthwise G=filer_indepth, O=filter_outdepth, I=1
+      // Specifically for depthwise G=filter_indepth, O=filter_outdepth, I=1
       if (is_Depthwise) {
         std::vector<int> mkldnn_sizes(5, -1);
         mkldnn_sizes[MKL_GROUP_FILTER_DIM_G] = filter_in_depth;
@@ -373,9 +373,9 @@ class MklDnnConvUtil {
     // TODO add support for 3-D Depthwise
 
     // Output depth is same as last dimension for filters for regular
-    // convolutions.
-    // For depthwise it is in_depth * channel_multiplier. The channel_miltipler
-    // is the last dimension of TF filter for depthwise convolutions.
+    // convolutions. For depthwise it is in_depth * channel_multiplier.
+    // The channel_multiplier is the last dimension of TF filter for
+    // depthwise convolutions.
     if (is_Depthwise) {
       out_depth = (filter_shape.dim_size(TF_2DFILTER_DIM_I) *
                    filter_shape.dim_size(TF_2DFILTER_DIM_O));
