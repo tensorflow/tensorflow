@@ -65,13 +65,6 @@ from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
 
-def check_is_tensor_or_operation(x, name):
-  """Raises type error if the given input is not a tensor or operation."""
-  if not (isinstance(x, ops.Tensor) or isinstance(x, ops.Operation)):
-    raise TypeError('{0} must be a Tensor or Operation, given: {1}'.format(
-        name, x))
-
-
 def clone_metric(metric):
   """Returns a clone of the metric if stateful, otherwise returns it as is."""
   if isinstance(metric, Metric):
@@ -104,8 +97,6 @@ def update_state_wrapper(update_state_fn):
     update_op = update_state_fn(*args, **kwargs)
     if update_op is not None:  # update_op will be None in eager execution.
       metric_obj.add_update(update_op, inputs=True)
-      check_is_tensor_or_operation(
-          update_op, 'Metric {0}\'s update'.format(metric_obj.name))
     return update_op
 
   return tf_decorator.make_decorator(update_state_fn, decorated)
@@ -130,7 +121,7 @@ def result_wrapper(result_fn):
     `merge_call()`.
   """
 
-  def decorated(metric_obj, *args):
+  def decorated(_, *args):
     """Decorated function with merge_call."""
     replica_context = distribution_strategy_context.get_replica_context()
     if replica_context is None:  # if in cross replica context already
@@ -151,8 +142,6 @@ def result_wrapper(result_fn):
       # replica mode and compute a value in cross replica mode.
       result_t = replica_context.merge_call(
           merge_fn_wrapper, args=(result_fn,) + args)
-    check_is_tensor_or_operation(result_t,
-                                 'Metric {0}\'s result'.format(metric_obj.name))
     return result_t
 
   return tf_decorator.make_decorator(result_fn, decorated)
@@ -607,9 +596,7 @@ class Mean(Metric):
     # updated.
     update_total_op = state_ops.assign_add(self.total, values)
     with ops.control_dependencies([update_total_op]):
-      update_count_op = state_ops.assign_add(self.count, num_values)
-      with ops.control_dependencies([update_count_op]):
-        return control_flow_ops.no_op()
+      return state_ops.assign_add(self.count, num_values)
 
   def result(self):
     return math_ops.div_no_nan(self.total, self.count)
