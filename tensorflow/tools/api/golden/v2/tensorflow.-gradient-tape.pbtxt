@@ -7,6 +7,10 @@ tf_class {
     argspec: "args=[\'self\', \'persistent\', \'watch_accessed_variables\'], varargs=None, keywords=None, defaults=[\'False\', \'True\'], "
   }
   member_method {
+    name: "batch_jacobian"
+    argspec: "args=[\'self\', \'target\', \'source\', \'unconnected_gradients\', \'experimental_use_pfor\'], varargs=None, keywords=None, defaults=[\'UnconnectedGradients.NONE\', \'True\'], "
+  }
+  member_method {
     name: "gradient"
     argspec: "args=[\'self\', \'target\', \'sources\', \'output_gradients\', \'unconnected_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'UnconnectedGradients.NONE\'], "
   }
