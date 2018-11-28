@@ -558,7 +558,7 @@ tf_module {
   }
   member_method {
     name: "constant"
-    argspec: "args=[\'value\', \'dtype\', \'shape\', \'name\', \'verify_shape\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'Const\', \'False\'], "
+    argspec: "args=[\'value\', \'dtype\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'Const\'], "
   }
   member_method {
     name: "control_dependencies"

@@ -1482,7 +1482,7 @@ tf_module {
   }
   member_method {
     name: "make_tensor_proto"
-    argspec: "args=[\'values\', \'dtype\', \'shape\', \'verify_shape\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
+    argspec: "args=[\'values\', \'dtype\', \'shape\', \'verify_shape\', \'allow_broadcast\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\'], "
   }
   member_method {
     name: "map_fn"
