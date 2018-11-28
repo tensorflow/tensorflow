@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member_method {
+    name: "build_raw_supervised_input_receiver_fn"
+    argspec: "args=[\'features\', \'labels\', \'default_batch_size\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "call_logit_fn"
     argspec: "args=[\'logit_fn\', \'features\', \'mode\', \'params\', \'config\'], varargs=None, keywords=None, defaults=None"
   }

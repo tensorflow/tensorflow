@@ -54,7 +54,7 @@ tf_export(
             __name__, "MAIN_OP_KEY")
 
 # CollectionDef key for the SavedModel train op.
-# Not exported while export_all_saved_models is in contrib.
+# Not exported while export_all_saved_models is experimental.
 TRAIN_OP_KEY = "saved_model_train_op"
 
 # Schema version for SavedModel.
