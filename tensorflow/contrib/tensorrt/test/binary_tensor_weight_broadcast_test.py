@@ -56,10 +56,14 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
       ]:
         a = self._ConstOp(weights_shape)
         f = x + a
-        x = math_ops.sigmoid(f)
+        # sin is used to break the graph into separate segments since it is an
+        # unsupported op.
+        x = math_ops.sin(f)
         a = self._ConstOp(weights_shape)
         f = a + x
-        x = math_ops.sigmoid(f)
+        # sin is used to break the graph into separate segments since it is an
+        # unsupported op.
+        x = math_ops.sin(f)
       gen_array_ops.reshape(x, [5, -1], name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),

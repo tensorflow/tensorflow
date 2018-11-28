@@ -60,14 +60,20 @@ class MultiConnectionNeighborEngineTest(trt_test.TfTrtIntegrationTestBase):
       b = constant_op.constant(
           np.random.normal(5.0, 1.0, [1, 4, 1, 1]), name="bias", dtype=dtype)
       q = conv - b
-      edge = math_ops.sigmoid(q)
+      # sin is used to break the graph into separate segments since it is an
+      # unsupported op.
+      edge = math_ops.sin(q)
 
       b = constant_op.constant(
           np.random.normal(5.0, 1.0, [1, 4, 1, 1]), name="bias", dtype=dtype)
       d = b + conv
-      edge3 = math_ops.sigmoid(d)
+      # sin is used to break the graph into separate segments since it is an
+      # unsupported op.
+      edge3 = math_ops.sin(d)
 
-      edge1 = gen_math_ops.tan(conv)
+      # sin is used to break the graph into separate segments since it is an
+      # unsupported op.
+      edge1 = math_ops.sin(conv)
       t = t - edge1
       q = q + edge
       t = t + q
