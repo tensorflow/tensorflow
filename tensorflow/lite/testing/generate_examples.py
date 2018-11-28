@@ -105,6 +105,8 @@ KNOWN_BUGS = {
     r"div.*int32": "72051395",
     # No support for SplitV
     r"split.*num_or_size_splits=\[2,2\]": "73377559",
+    # Constant 1D gather crashes toco.
+    r"gather_buggy.*input_shape=\[3\].*": "120029508",
 }
 
 
@@ -1231,6 +1233,36 @@ def make_gather_tests(zip_path):
       build_graph,
       build_inputs,
       expected_tf_success=60)
+
+
+def make_gather_buggy_tests(zip_path):
+  """Make a set of tests to show gather crashes toco."""
+
+  test_parameters = [{
+      "input_shape": [[3]],
+      "reference_shape": [[2]],
+  }, {
+      "input_shape": [[2, 3]],
+      "reference_shape": [[2, 3]],
+  }]
+
+  def build_graph(parameters):
+    """Build a graph where the inputs to Gather are constants."""
+    reference = tf.placeholder(
+        dtype=tf.int32, shape=parameters["reference_shape"])
+    gather_input = tf.constant(
+        create_tensor_data(tf.int32, parameters["input_shape"]))
+    gather_indices = tf.constant([0, 1], tf.int32)
+    out = tf.equal(reference, tf.gather(gather_input, gather_indices))
+    return [reference], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    reference_values = np.zeros(parameters["reference_shape"], dtype=np.int32)
+    return [reference_values], sess.run(
+        outputs, feed_dict={inputs[0]: reference_values})
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs,
+                    expected_tf_success=2)
 
 
 def make_global_batch_norm_tests(zip_path):

@@ -242,6 +242,7 @@ def generated_test_models():
         "fully_connected",
         "fused_batch_norm",
         "gather",
+        "gather_buggy",
         "global_batch_norm",
         "greater",
         "greater_equal",
