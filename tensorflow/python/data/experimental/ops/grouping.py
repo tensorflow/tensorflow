@@ -79,16 +79,16 @@ def group_by_window(key_func,
   the key through `window_size_func`.
 
   Args:
-    key_func: A function mapping a nested structure of tensors
+    key_func: A function maps a nested structure of tensors
       (having shapes and types defined by `self.output_shapes` and
       `self.output_types`) to a scalar `tf.int64` tensor.
-    reduce_func: A function mapping a key and a dataset of up to `window_size`
+    reduce_func: A function maps a key and a dataset of up to `window_size`
       consecutive elements matching that key to another dataset.
     window_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
       consecutive elements matching the same key to combine in a single
       batch, which will be passed to `reduce_func`. Mutually exclusive with
       `window_size_func`.
-    window_size_func: A function mapping a key to a `tf.int64` scalar
+    window_size_func: A function maps a key to a `tf.int64` scalar
       `tf.Tensor`, representing the number of consecutive elements matching
       the same key to combine in a single batch, which will be passed to
       `reduce_func`. Mutually exclusive with `window_size`.
@@ -243,7 +243,7 @@ def _map_x_dataset(map_func):
   supporting dense and sparse tensor inputs, it also supports dataset inputs.
 
   Args:
-    map_func: A function mapping a nested structure of tensors and/or datasets
+    map_func: A function maps a nested structure of tensors and/or datasets
       (having shapes and types defined by `self.output_shapes` and
      `self.output_types`) to another nested structure of tensors and/or
      datasets.
