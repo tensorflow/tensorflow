@@ -1314,6 +1314,28 @@ class VariableScopeTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   @run_inside_wrap_function_in_eager_mode
+  def testGetVariableWithInitializerWhichTakesNoArgs(self):
+    v = variable_scope.get_variable("foo", initializer=lambda: [2])
+    self.assertEqual(v.name, "foo:0")
+
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
+  def testGetVariableWithInitializerWhichTakesOptionalArgs(self):
+    v = variable_scope.get_variable("foo", initializer=lambda x=True: [2])
+    self.assertEqual(v.name, "foo:0")
+
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
+  def testGetVariableWithInitializerWhichTakesUnprovidedArgsAndNoShape(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        "The initializer passed is not valid. It should be a callable with no "
+        "arguments and the shape should not be provided or an instance of "
+        "`tf.keras.initializers.*' and `shape` should be fully defined."):
+      variable_scope.get_variable("foo", initializer=lambda x: [2])
+
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testTwoGraphs(self):
 
     def f():
