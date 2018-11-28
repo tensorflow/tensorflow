@@ -52,6 +52,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.batch_to_space_nd": {
             "block_size": "block_shape",
         },
+        "tf.constant": {
+            "verify_shapes": "verify_shapes_is_now_always_true",
+        },
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
         },

@@ -216,7 +216,7 @@ class Constant(Initializer):
       dtype = self.dtype
     if verify_shape is None:
       verify_shape = self._verify_shape
-    return constant_op.constant(
+    return constant_op.constant_v1(
         self.value, dtype=dtype, shape=shape, verify_shape=verify_shape)
 
   def get_config(self):

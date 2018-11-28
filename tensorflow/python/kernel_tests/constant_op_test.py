@@ -219,16 +219,28 @@ class ConstantTest(test.TestCase):
 
   def testShapeInconsistent(self):
     with ops.Graph().as_default():
-      c = constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[10])
+      c = constant_op.constant_v1([1, 2, 3, 4, 5, 6, 7], shape=[10])
+    self.assertEqual(c.get_shape(), [10])
+
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(
+          TypeError, "Expected Tensor's shape"):
+        c = constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[10])
+
+  def testPromotionShapes(self):
+    with ops.Graph().as_default():
+      c = constant_op.constant([7], shape=[10])
+    self.assertEqual(c.get_shape(), [10])
+    with ops.Graph().as_default():
+      c = constant_op.constant(3, shape=[10])
     self.assertEqual(c.get_shape(), [10])
 
   # pylint: disable=g-long-lambda
   def testShapeWrong(self):
     with ops.Graph().as_default():
-      with self.assertRaisesWithPredicateMatch(
-          ValueError,
-          lambda e: ("Too many elements provided. Needed at most 5, "
-                     "but received 7" == str(e))):
+      with self.assertRaisesRegexp(ValueError, "Too many elements provided."):
+        constant_op.constant_v1([1, 2, 3, 4, 5, 6, 7], shape=[5])
+      with self.assertRaisesRegexp(TypeError, "Expected Tensor's shape"):
         constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[5])
 
   # pylint: enable=g-long-lambda
