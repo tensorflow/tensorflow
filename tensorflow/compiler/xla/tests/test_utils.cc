@@ -56,7 +56,8 @@ void PopulateWithIntNext<half>(Literal* literal) {
 template <>
 void PopulateWithIntNext<bfloat16>(Literal* literal) {
   // Duplicates may be generated if we don't have enough bits.
-  uint16 next_value = 0;
+  // Start at 0x80 rather than 0 to avoid denormals.
+  uint16 next_value = 0x80;
   for (bfloat16& value : literal->data<bfloat16>()) {
     // Zero-out the MSB of the exponent to avoid Infs and NaNs, and put it into
     // the sign bit. We could be less wasteful, but this is best-effort anyway.
