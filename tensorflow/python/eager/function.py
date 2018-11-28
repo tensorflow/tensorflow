@@ -467,20 +467,14 @@ class Function(object):
 
     # Rewrite an inference call op to be a forward call op
     if op.get_attr("f").name.encode() == self._inference_function.name:
-      func = attr_value_pb2.AttrValue(
-          func=attr_value_pb2.NameAttrList(
-              name=self._forward_function.name))
-      op._set_attr("f", func)
-      types = attr_value_pb2.AttrValue.ListValue(
-          type=self._forward_function._output_types)
-      op._set_attr("Tout", attr_value_pb2.AttrValue(list=types))
-      for i in range(
-          num_inference_outputs, len(self._forward_function._output_types)):
-        t = ops.Tensor(op, i, self._forward_function._output_types[i])
-        t.set_shape(self._forward_function._output_shapes[i])
+      op._set_func_attr("f", self._forward_function.name)
+      op._set_type_list_attr("Tout", self._forward_function._output_types)
+      op._add_outputs(
+          self._forward_function._output_types[num_inference_outputs:],
+          self._forward_function._output_shapes[num_inference_outputs:])
+      for i in range(num_inference_outputs, len(op.outputs)):
         func_graph_output = self._forward_function._func_graph_outputs[i]
-        custom_gradient.copy_handle_data(func_graph_output, t)
-        op._outputs.append(t)
+        custom_gradient.copy_handle_data(func_graph_output, op.outputs[i])
     # pylint: enable=protected-access
     # Compute the gradients using the side outputs
     side_outputs = op.outputs[num_inference_outputs:]
