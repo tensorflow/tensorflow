@@ -53,16 +53,19 @@ class MklAvgPoolingOp : public OpKernel {
 
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
+                errors::InvalidArgument(
+                    "Sliding window ksize field must "
+                    "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument("Sliding window stride field must "
-                                        "specify 4 dimensions"));
+                errors::InvalidArgument(
+                    "Sliding window stride field must "
+                    "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
-                errors::Unimplemented("Pooling is not yet supported on the "
-                                      "batch dimension."));
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the "
+                    "batch dimension."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -228,16 +231,19 @@ class MklAvgPoolingGradOp : public OpKernel {
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
+                errors::InvalidArgument(
+                    "Sliding window ksize field must "
+                    "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                errors::InvalidArgument(
+                    "Sliding window strides field must "
+                    "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
-                errors::Unimplemented("Pooling is not yet supported on the "
-                                      "batch dimension."));
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the "
+                    "batch dimension."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -357,22 +363,22 @@ class MklAvgPoolingGradOp : public OpKernel {
       if (!outbackprop_in_mkl_format) {
         // For avgpooling, tensor_in_shape should have 1 dimension, and 4
         // elements.
-        OP_REQUIRES(
-            context,
-            tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-            errors::InvalidArgument("original input shape must be "
-                                    "1-dimensional and 4 elements"));
+        OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
+                                 tensor_in_shape.NumElements() == 4,
+                    errors::InvalidArgument(
+                        "original input shape must be "
+                        "1-dimensional and 4 elements"));
 
         // For avgpooling, out_backprop should have 4 dimensions.
-        OP_REQUIRES(context, out_backprop.dims() == 4,
-                    errors::InvalidArgument("out_backprop must be "
-                                            "4-dimensional"));
+        OP_REQUIRES(
+            context, out_backprop.dims() == 4,
+            errors::InvalidArgument("out_backprop must be 4-dimensional"));
       } else {
         // Input in MKL format.
         // For avgpooling, out_backprop should have 4 dimensions.
-        OP_REQUIRES(context, out_backprop_shape.GetDimension() == 4,
-                    errors::InvalidArgument("out_backprop must be "
-                                            "4-dimensional"));
+        OP_REQUIRES(
+            context, out_backprop_shape.GetDimension() == 4,
+            errors::InvalidArgument("out_backprop must be 4-dimensional"));
       }
 
       // TODO(inteltf): Get outbackprop layout.
@@ -484,9 +490,9 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
           dnn_shape_input.IsMklTensor()
               ? dnn_shape_input.GetSizesAsMklDnnDims()
               : is_pool2d ? TFShapeToMklDnnDimsInNCHW(input_tensor.shape(),
-                                                     this->data_format_tf_)
-                         : TFShapeToMklDnnDimsInNCDHW(input_tensor.shape(),
-                                                      this->data_format_tf_);
+                                                      this->data_format_tf_)
+                          : TFShapeToMklDnnDimsInNCDHW(input_tensor.shape(),
+                                                       this->data_format_tf_);
       memory::desc input_md = dnn_shape_input.IsMklTensor()
                                   ? dnn_shape_input.GetMklLayout()
                                   : memory::desc(src_dims, MklDnnType<T>(),
@@ -494,9 +500,17 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
 
       // Get an average pooling primitive from the op pool
       MklPoolingFwdPrimitive<T>* pooling_fwd = nullptr;
+      prop_kind pooling_prop_kind;
+      bool int8_forward_inference =
+          std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
+      if (int8_forward_inference)
+        pooling_prop_kind = prop_kind::forward_inference;
+      else
+        pooling_prop_kind = prop_kind::forward_training;
       MklPoolingParams fwdParams(src_dims, output_dims_mkl_order, filter_dims,
                                  strides, padding_left, padding_right,
-                                 algorithm::pooling_avg_exclude_padding);
+                                 algorithm::pooling_avg_exclude_padding,
+                                 pooling_prop_kind);
       pooling_fwd = MklPoolingFwdPrimitiveFactory<T>::Get(fwdParams);
 
       // allocate output tensor
@@ -523,10 +537,31 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
 
       // execute pooling
       pooling_fwd->Execute(src_data, dst_data);
-    } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+
+      // Pass min, max from input to output
+      if (int8_forward_inference) {
+        const Tensor& min_input_t = MklGetInput(context, 1);
+        const Tensor& max_input_t = MklGetInput(context, 2);
+        const float min_input = min_input_t.flat<float>()(0);
+        const float max_input = max_input_t.flat<float>()(0);
+
+        Tensor* output_min = nullptr;
+        Tensor* output_max = nullptr;
+        MklDnnShape output_min_mkl_shape, output_max_mkl_shape;
+        output_min_mkl_shape.SetMklTensor(false);
+        output_max_mkl_shape.SetMklTensor(false);
+        AllocateOutputSetMklShape(context, 1, &output_min, {},
+                                  output_min_mkl_shape);
+        AllocateOutputSetMklShape(context, 2, &output_max, {},
+                                  output_max_mkl_shape);
+        output_min->flat<float>()(0) = min_input;
+        output_max->flat<float>()(0) = max_input;
+      }
+    }
+    catch (mkldnn::error& e) {
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -576,24 +611,26 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           orig_input_mkl_shape.IsMklTensor()
               ? orig_input_mkl_shape.GetSizesAsMklDnnDims()
               : is_pool2d ? TFShapeToMklDnnDimsInNCHW(orig_input_shape,
-                                                     this->data_format_tf_)
-                         : TFShapeToMklDnnDimsInNCDHW(orig_input_shape,
-                                                      this->data_format_tf_);
+                                                      this->data_format_tf_)
+                          : TFShapeToMklDnnDimsInNCDHW(orig_input_shape,
+                                                       this->data_format_tf_);
 
       memory::dims diff_dst_dims =
           grad_mkl_shape.IsMklTensor()
               ? grad_mkl_shape.GetSizesAsMklDnnDims()
               : is_pool2d ? TFShapeToMklDnnDimsInNCHW(grad_tensor.shape(),
-                                                     this->data_format_tf_)
-                         : TFShapeToMklDnnDimsInNCDHW(grad_tensor.shape(),
-                                                      this->data_format_tf_);
+                                                      this->data_format_tf_)
+                          : TFShapeToMklDnnDimsInNCDHW(grad_tensor.shape(),
+                                                       this->data_format_tf_);
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
-      MklPoolingParams bwdParams(orig_input_dims_mkl_order,
-                                 output_dims_mkl_order, filter_dims, strides,
-                                 padding_left, padding_right,
-                                 algorithm::pooling_avg_exclude_padding);
+      // Pass prop_kind::forward_training to create a forward primitive
+      // that is used in the backward pass
+      MklPoolingParams bwdParams(
+          orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
+          strides, padding_left, padding_right,
+          algorithm::pooling_avg_exclude_padding, prop_kind::forward_training);
       MklPoolingBwdPrimitive<T>* pooling_bwd =
           MklPoolingBwdPrimitiveFactory<T>::Get(bwdParams);
 
@@ -623,10 +660,11 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       // execute pooling op
       pooling_bwd->Execute(diff_dst_data, diff_src_data);
-    } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+    }
+    catch (mkldnn::error& e) {
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(context, errors::Aborted("Compute received an exception:",
                                               error_msg));
     }
@@ -645,28 +683,28 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                          const MklDnnShape& original_input_mkl_shape,
                          const MklDnnShape& input_gradient_mkl_shape) {
     if (!original_input_mkl_shape.IsMklTensor()) {
-      OP_REQUIRES(
-          context,
-          tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-          errors::InvalidArgument("original input shape must be "
-                                  "1-dimensional and 4 elements"));
+      OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
+                               tensor_in_shape.NumElements() == 4,
+                  errors::InvalidArgument(
+                      "original input shape must be "
+                      "1-dimensional and 4 elements"));
     } else {
-      OP_REQUIRES(context,
-                  original_input_mkl_shape.GetDimension() == 1 &&
-                      original_input_mkl_shape.DimSize(0) == 4,
-                  errors::InvalidArgument("original input shape must be "
-                                          "1-dimensional and 4 elements"));
+      OP_REQUIRES(context, original_input_mkl_shape.GetDimension() == 1 &&
+                               original_input_mkl_shape.DimSize(0) == 4,
+                  errors::InvalidArgument(
+                      "original input shape must be "
+                      "1-dimensional and 4 elements"));
     }
 
     if (!input_gradient_mkl_shape.IsMklTensor()) {
       // For avgpooling, input_gradient_diff_dst should have 4 dimensions.
-      OP_REQUIRES(context, input_gradient_tensor.dims() == 4,
-                  errors::InvalidArgument("Gradient shape must be "
-                                          "4-dimensional"));
+      OP_REQUIRES(
+          context, input_gradient_tensor.dims() == 4,
+          errors::InvalidArgument("Gradient shape must be 4-dimensional"));
     } else {
-      OP_REQUIRES(context, input_gradient_mkl_shape.GetDimension() == 4,
-                  errors::InvalidArgument("Gradient shape must be "
-                                          "4-dimensional"));
+      OP_REQUIRES(
+          context, input_gradient_mkl_shape.GetDimension() == 4,
+          errors::InvalidArgument("Gradient shape must be 4-dimensional"));
     }
   }
 };  // MklAvgPoolingGradOp
@@ -690,6 +728,18 @@ REGISTER_KERNEL_BUILDER(Name("_MklAvgPool")
                             .TypeConstraint<float>("T")
                             .Label(mkl_op_registry::kMklOpLabel),
                         MklAvgPoolingOp<CPUDevice, float>);
+
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedAvgPool")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("T")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklAvgPoolingOp<CPUDevice, quint8>);
+
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedAvgPool")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("T")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklAvgPoolingOp<CPUDevice, qint8>);
 
 REGISTER_KERNEL_BUILDER(Name("_MklAvgPoolGrad")
                             .Device(DEVICE_CPU)
