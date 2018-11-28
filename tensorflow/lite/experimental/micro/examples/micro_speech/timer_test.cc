@@ -26,10 +26,13 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(TestTimer) {
   // Make sure that the technically-undefined overflow behavior we rely on below
   // works on this platform. It's still not guaranteed, but at least this is a
-  // sanity check.
+  // sanity check.  Turn off when running with ASan, as it will complain about
+  // the following undefined behavior.
+#ifndef ADDRESS_SANITIZER
   int32_t overflow_value = std::numeric_limits<int32_t>::max();
   overflow_value += 1;
   TF_LITE_MICRO_EXPECT_EQ(std::numeric_limits<int32_t>::min(), overflow_value);
+#endif
 
   const int32_t first_time = TimeInMilliseconds();
   const int32_t second_time = TimeInMilliseconds();
