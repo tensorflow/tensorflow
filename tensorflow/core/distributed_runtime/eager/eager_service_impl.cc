@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -101,8 +102,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     *response->add_device_attributes() = d->attributes();
   }
 
-  std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
-      new tensorflow::DeviceMgr(std::move(devices)));
+  std::unique_ptr<tensorflow::DeviceMgr> device_mgr =
+      absl::make_unique<DeviceMgr>(std::move(devices));
 
   auto* r = env_->rendezvous_mgr->Find(request->rendezvous_id());
   auto session_name = strings::StrCat("eager_", request->rendezvous_id());
