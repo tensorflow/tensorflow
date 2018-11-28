@@ -21,10 +21,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "ChiefSessionCreator"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "ClusterDef"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -89,10 +85,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "MonitoredSession"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "NanLossDuringTrainingError"
     mtype: "<type \'type\'>"
   }
@@ -125,14 +117,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "SessionCreator"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionManager"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "SessionRunArgs"
     mtype: "<type \'type\'>"
   }
@@ -149,10 +133,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "SingularMonitoredSession"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "StepCounterHook"
     mtype: "<type \'type\'>"
   }
@@ -162,14 +142,6 @@ tf_module {
   }
   member {
     name: "SummarySaverHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "Supervisor"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "WorkerSessionCreator"
     mtype: "<type \'type\'>"
   }
   member_method {
