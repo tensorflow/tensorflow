@@ -17,13 +17,13 @@ limitations under the License.
 #ifdef INTEL_MKL
 #ifndef INTEL_MKL_ML_ONLY
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #include "tensorflow/core/util/mkl_util.h"
 
@@ -59,35 +59,35 @@ class MklSoftmaxOp : public OpKernel {
                               : src_tensor.shape();
       const int input_dims = src_tf_shape.dims();
       // src_dims is the dimenstion of src_tensor in MKL-DNN order
-      memory::dims src_dims; 
-      int axis = input_dims -1;
+      memory::dims src_dims;
+      int axis = input_dims - 1;
       if (input_dims == 4) {
         axis = 1;
         src_dims = TFShapeToMklDnnDimsInNCHW(src_tf_shape, FORMAT_NHWC);
-      }
-      else if (input_dims == 5) {
+      } else if (input_dims == 5) {
         axis = 1;
         src_dims = TFShapeToMklDnnDimsInNCDHW(src_tf_shape, FORMAT_NHWC);
-      } 
-      else {
+      } else {
         src_dims = TFShapeToMklDnnDims(src_tf_shape);
       }
 
       memory::dims output_dims;
       if (src_mkl_shape.IsMklTensor()) {
         output_dims = src_mkl_shape.GetSizesAsMklDnnDims();
-      }
-      else {
+      } else {
         output_dims = TFShapeToMklDnnDims(src_tf_shape);
       }
       memory::format layout_type;
-      // In MKL, data format passed to mkl softmax op depends on dimension of the input tensor.
-      // Here "x" data format in MKL is used for 1 dim tensor, "nc" for 2 dim tensor, 
-      // "tnc" for 3 dim tensor, "nhwc" for 4 dim tensor, and "ndhwc" for 5 dim tensor.
+      // In MKL, data format passed to mkl softmax op depends on dimension of
+      // the input tensor.
+      // Here "x" data format in MKL is used for 1 dim tensor, "nc" for 2 dim
+      // tensor,
+      // "tnc" for 3 dim tensor, "nhwc" for 4 dim tensor, and "ndhwc" for 5 dim
+      // tensor.
       // Each of the simbols has the following meaning:
       // n = batch, c = channels, t = sequence lenght, h = height,
-      // w = width, d = depth 
-      
+      // w = width, d = depth
+
       switch (input_dims) {
         case 1:
           layout_type = memory::format::x;
@@ -105,7 +105,8 @@ class MklSoftmaxOp : public OpKernel {
           layout_type = memory::format::ndhwc;
           break;
         default:
-          OP_REQUIRES_OK(context, errors::Aborted("Input dims must be <= 5 and >=1"));
+          OP_REQUIRES_OK(context,
+                         errors::Aborted("Input dims must be <= 5 and >=1"));
           return;
       }
       // Create softmax memory for src, dst: both are defined in mkl_util.h,
@@ -116,10 +117,9 @@ class MklSoftmaxOp : public OpKernel {
       // If input is in MKL layout, then simply grab input layout; otherwise,
       // construct input Tf layout. For TF layout, input shape
       // (src_dims) required is in MKL-DNN order
-      auto src_md =
-          src_mkl_shape.IsMklTensor()
-              ? src_mkl_shape.GetMklLayout()
-              : memory::desc(src_dims, MklDnnType<T>(), layout_type);
+      auto src_md = src_mkl_shape.IsMklTensor()
+                        ? src_mkl_shape.GetMklLayout()
+                        : memory::desc(src_dims, MklDnnType<T>(), layout_type);
 
       // src: setting memory descriptor
       // following functions are in mkl_util.h
@@ -169,9 +169,9 @@ class MklSoftmaxOp : public OpKernel {
       net.push_back(softmax_fwd);
       stream(stream::kind::eager).submit(net).wait();
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
