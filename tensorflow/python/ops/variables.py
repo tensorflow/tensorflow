@@ -1055,27 +1055,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
       else:
         return None
 
-  def __iadd__(self, other):
-    raise NotImplementedError
-
-  def __isub__(self, other):
-    raise NotImplementedError
-
-  def __imul__(self, other):
-    raise NotImplementedError
-
-  def __idiv__(self, other):
-    raise NotImplementedError
-
-  def __itruediv__(self, other):
-    raise NotImplementedError
-
-  def __irealdiv__(self, other):
-    raise NotImplementedError
-
-  def __ipow__(self, other):
-    raise NotImplementedError
-
 
 @tf_export(v1=["Variable"])
 class VariableV1(Variable):
