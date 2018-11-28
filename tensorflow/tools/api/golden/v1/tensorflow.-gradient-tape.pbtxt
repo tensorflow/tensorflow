@@ -8,7 +8,7 @@ tf_class {
   }
   member_method {
     name: "batch_jacobian"
-    argspec: "args=[\'self\', \'target\', \'source\', \'unconnected_gradients\', \'experimental_use_pfor\'], varargs=None, keywords=None, defaults=[\'UnconnectedGradients.NONE\', \'True\'], "
+    argspec: "args=[\'self\', \'target\', \'source\', \'unconnected_gradients\', \'parallel_iterations\', \'experimental_use_pfor\'], varargs=None, keywords=None, defaults=[\'UnconnectedGradients.NONE\', \'None\', \'True\'], "
   }
   member_method {
     name: "gradient"
@@ -16,7 +16,7 @@ tf_class {
   }
   member_method {
     name: "jacobian"
-    argspec: "args=[\'self\', \'target\', \'sources\', \'unconnected_gradients\', \'experimental_use_pfor\'], varargs=None, keywords=None, defaults=[\'UnconnectedGradients.NONE\', \'True\'], "
+    argspec: "args=[\'self\', \'target\', \'sources\', \'unconnected_gradients\', \'parallel_iterations\', \'experimental_use_pfor\'], varargs=None, keywords=None, defaults=[\'UnconnectedGradients.NONE\', \'None\', \'True\'], "
   }
   member_method {
     name: "reset"
