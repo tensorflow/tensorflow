@@ -197,12 +197,18 @@ def set_tensor_shapes(tensors, shapes):
     tensors: TensorFlow ops.Tensor.
     shapes: Dict of strings representing input tensor names to list of
       integers representing input shapes (e.g., {"foo": : [1, 16, 16, 3]}).
+
+  Raises:
+    ValueError: `shapes` contains an invalid tensor.
   """
   if shapes:
-    for tensor in tensors:
-      shape = shapes.get(tensor_name(tensor))
+    tensor_names_to_tensor = {tensor_name(tensor): tensor for tensor in tensors}
+    for name, shape in shapes.items():
+      if name not in tensor_names_to_tensor:
+        raise ValueError("Invalid tensor \'{}\' found in tensor shapes "
+                         "map.".format(name))
       if shape is not None:
-        tensor.set_shape(shape)
+        tensor_names_to_tensor[name].set_shape(shape)
 
 
 def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,

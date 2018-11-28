@@ -79,8 +79,12 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
     self.assertEqual([None, 3, 5], tensor.shape.as_list())
 
-    convert_saved_model.set_tensor_shapes([tensor],
-                                          {"invalid-input": [5, 3, 5]})
+    with self.assertRaises(ValueError) as error:
+      convert_saved_model.set_tensor_shapes([tensor],
+                                            {"invalid-input": [5, 3, 5]})
+    self.assertEqual(
+        "Invalid tensor 'invalid-input' found in tensor shapes map.",
+        str(error.exception))
     self.assertEqual([None, 3, 5], tensor.shape.as_list())
 
   def testSetTensorShapeEmpty(self):
