@@ -294,7 +294,6 @@ class TestSequential(test.TestCase, parameterized.TestCase):
 
     model.build((None, 10))
     self.assertTrue(model.built)
-    self.assertTrue(model.layers[-1].built)
     self.assertEqual(len(model.weights), 8)
 
   @tf_test_util.run_in_graph_and_eager_modes

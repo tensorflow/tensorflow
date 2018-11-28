@@ -769,6 +769,11 @@ class Network(base_layer.Layer):
     This is to be used for subclassed models, which do not know at instantiation
     time what their inputs look like.
 
+    This method only exists for users who want to call `model.build()` in a
+    standalone way (as a substitute for calling the model on real data to
+    build it). It will never be called by the framework (and thus it will
+    never throw unexpected errors in an unrelated workflow).
+
     Args:
      input_shape: Single tuple, TensorShape, or list of shapes, where shapes
          are tuples, integers, or TensorShapes.
@@ -805,48 +810,53 @@ class Network(base_layer.Layer):
       # in a Graph. Since tf.Variable is compatible with both eager execution
       # and graph building, the variables created after building the model in
       # a Graph are still valid when executing eagerly.
-      with context.graph_mode():
-        graph = func_graph.FuncGraph('graph')
-        with graph.as_default():
-          if isinstance(input_shape, list):
-            x = [base_layer_utils.generate_placeholders_from_shape(shape)
-                 for shape in input_shape]
+      if context.executing_eagerly():
+        graph = func_graph.FuncGraph('build_graph')
+      else:
+        graph = backend.get_graph()
+      with graph.as_default():
+        if isinstance(input_shape, list):
+          x = [base_layer_utils.generate_placeholders_from_shape(shape)
+               for shape in input_shape]
+        else:
+          x = base_layer_utils.generate_placeholders_from_shape(input_shape)
+
+        kwargs = {}
+        call_signature = tf_inspect.getfullargspec(self.call)
+        call_args = call_signature.args
+        # Exclude `self`, `inputs`, and any argument with a default value.
+        if len(call_args) > 2:
+          if call_signature.defaults:
+            call_args = call_args[2:-len(call_signature.defaults)]
           else:
-            x = base_layer_utils.generate_placeholders_from_shape(input_shape)
-
-          kwargs = {}
-          num_call_args = len(tf_inspect.getfullargspec(self.call).args)
-          if self._expects_training_arg and num_call_args == 3:
-            # Has call signature of call(self, input, training)
-            kwargs['training'] = False
-          elif num_call_args > 2:
-            # Has invalid call signature of call(self, input, *args, **kwargs)
-            raise ValueError('Currently, you cannot build your model if it has '
-                             'positional or keyword arguments that are not '
-                             'inputs to the model, but are required for its '
-                             '`call` method. Instead, in order to instantiate '
-                             'and build your model, `call` your model on real '
-                             'tensor data with all expected call arguments.')
-
-          try:
-            self.call(x, **kwargs)
-          except (errors.InvalidArgumentError, TypeError):
-            raise ValueError('You cannot build your model by calling `build` '
-                             'if your layers do not support float type inputs. '
-                             'Instead, in order to instantiate and build your '
-                             'model, `call` your model on real tensor data (of '
-                             'the correct dtype).')
-
+            call_args = call_args[2:]
+          for arg in call_args:
+            if arg == 'training':
+              # Case where `training` is a positional arg with no default.
+              kwargs['training'] = False
+            else:
+              # Has invalid call signature with unknown positional arguments.
+              raise ValueError(
+                  'Currently, you cannot build your model if it has '
+                  'positional or keyword arguments that are not '
+                  'inputs to the model, but are required for its '
+                  '`call` method. Instead, in order to instantiate '
+                  'and build your model, `call` your model on real '
+                  'tensor data with all expected call arguments.')
+        elif len(call_args) < 2:
+          # Signature without `inputs`.
+          raise ValueError('You can only call `build` on a model if its `call` '
+                           'method accepts an `inputs` argument.')
+        try:
+          self.call(x, **kwargs)
+        except (errors.InvalidArgumentError, TypeError):
+          raise ValueError('You cannot build your model by calling `build` '
+                           'if your layers do not support float type inputs. '
+                           'Instead, in order to instantiate and build your '
+                           'model, `call` your model on real tensor data (of '
+                           'the correct dtype).')
     if self._layers:
       self._track_layers(self._layers)
-    if self.layers:
-      for layer in self.layers:
-        if not layer.built:
-          raise ValueError('Layer: {} was not built in your model. Calling '
-                           '`build` manually on a subclassed model is only '
-                           'allowed for models with a static topology. '
-                           'In this case, you can build your model by '
-                           'calling it on real tensor data.'.format(layer))
     self.built = True
 
   def call(self, inputs, training=None, mask=None):

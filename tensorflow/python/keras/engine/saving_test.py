@@ -716,7 +716,6 @@ class TestWholeModelSaving(test.TestCase):
       os.close(fd)
       os.remove(fname)
 
-
   def test_saving_constant_initializer_with_numpy(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')

@@ -726,9 +726,40 @@ class ModelSubclassingTest(test.TestCase):
     _ = model.evaluate(x, y, verbose=0)
 
     self.assertEqual(len(model.weights), 16)
-    self.assertEqual(
-        len(model.non_trainable_weights), 4)
+    self.assertEqual(len(model.non_trainable_weights), 4)
     self.assertEqual(len(model.trainable_weights), 12)
+
+  def test_subclass_nested_in_sequential(self):
+    num_classes = 2
+    num_samples = 100
+    input_dim = 50
+
+    class Inner(keras.Model):
+
+      def __init__(self):
+        super(Inner, self).__init__()
+        self.dense1 = keras.layers.Dense(32, activation='relu')
+        self.dense2 = keras.layers.Dense(num_classes, activation='relu')
+        self.bn = keras.layers.BatchNormalization()
+
+      def call(self, inputs):
+        x = self.dense1(inputs)
+        x = self.dense2(x)
+        return self.bn(x)
+
+    model = keras.Sequential([Inner()])
+    model.compile(loss='mse',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001),
+                  metrics=['acc'])
+
+    x = np.ones((num_samples, input_dim))
+    y = np.zeros((num_samples, num_classes))
+    model.fit(x, y, epochs=2, batch_size=32, verbose=0)
+    _ = model.evaluate(x, y, verbose=0)
+
+    self.assertEqual(len(model.weights), 8)
+    self.assertEqual(len(model.non_trainable_weights), 2)
+    self.assertEqual(len(model.trainable_weights), 6)
 
   def test_support_for_manual_training_arg(self):
     # In most cases, the `training` argument is left unspecified, in which
@@ -1038,6 +1069,16 @@ class TrainingNoDefaultModel(keras.Model):
     return self.dense1(x)
 
 
+class TrainingMaskingModel(keras.Model):
+
+  def __init__(self):
+    super(TrainingMaskingModel, self).__init__()
+    self.dense1 = keras.layers.Dense(1)
+
+  def call(self, x, training=False, mask=None):
+    return self.dense1(x)
+
+
 class CustomCallSignatureTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -1059,6 +1100,19 @@ class CustomCallSignatureTests(test.TestCase):
     input_dim = 2
 
     model = TrainingNoDefaultModel()
+    self.assertFalse(model.built, 'Model should not have been built')
+    self.assertFalse(model.weights, ('Model should have no weights since it '
+                                     'has not been built.'))
+    model.build((None, input_dim))
+    self.assertTrue(model.weights, ('Model should have weights now that it '
+                                    'has been properly built.'))
+    self.assertTrue(model.built, 'Model should be built after calling `build`.')
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_training_and_mask_args_call_build(self):
+    input_dim = 2
+
+    model = TrainingMaskingModel()
     self.assertFalse(model.built, 'Model should not have been built')
     self.assertFalse(model.weights, ('Model should have no weights since it '
                                      'has not been built.'))
