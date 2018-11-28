@@ -17,12 +17,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import test
+
+
+class SaveTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRelativePath(self):
+    os.chdir(self.get_temp_dir())
+    self.evaluate(io_ops.save_v2(
+        "ckpt", ["x"], [""], [constant_op.constant(100.)]))
+    self.assertAllEqual([100.],
+                        self.evaluate(io_ops.restore_v2(
+                            "ckpt", ["x"], [""], [dtypes.float32])))
 
 
 class ShardedFileOpsTest(test.TestCase):
