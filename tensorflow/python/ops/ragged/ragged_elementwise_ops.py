@@ -348,7 +348,7 @@ _TF_ELEMENTWISE_OPS = [
     (string_ops.regex_replace, 'input'),
     (string_ops.string_join, '[inputs]'),
     (string_ops.string_strip, 'input'),
-    (string_ops.string_to_hash_bucket, 'string_tensor'),
+    (string_ops.string_to_hash_bucket, 'input'),
     (string_ops.string_to_hash_bucket_fast, 'input'),
     (string_ops.string_to_hash_bucket_strong, 'input'),
     (string_ops.substr, 'input'),
