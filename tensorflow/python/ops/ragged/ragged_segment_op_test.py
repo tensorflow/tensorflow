@@ -118,8 +118,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
                                    combiner)
 
     segmented = segment_op(rt, segment_ids, num_segments)
-    with self.test_session():
-      self.assertListEqual(self.evaluate(segmented).tolist(), expected)
+    self.assertListEqual(self.evaluate(segmented).tolist(), expected)
 
   @parameterized.parameters(
       (ragged.segment_sum, sum, [0, 0, 1, 1, 2, 2]),
@@ -155,9 +154,8 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
                                    combiner)
 
     segmented = segment_op(rt, segment_ids, num_segments)
-    with self.test_session():
-      self.assertNestedListAmostEqual(
-          self.evaluate(segmented).tolist(), expected, places=5)
+    self.assertNestedListAmostEqual(
+        self.evaluate(segmented).tolist(), expected, places=5)
 
   def testRaggedRankTwo(self):
     rt = ragged.constant([
@@ -172,16 +170,14 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
                  [],                                # row 1
                  [[411, 412], [321, 322], [331]]    # row 2
                 ]  # pyformat: disable
-    with self.test_session():
-      self.assertEqual(self.evaluate(segmented1).tolist(), expected1)
+    self.assertEqual(self.evaluate(segmented1).tolist(), expected1)
 
     segment_ids2 = [1, 2, 1, 1]
     segmented2 = ragged.segment_sum(rt, segment_ids2, 3)
     expected2 = [[],
                  [[111+411, 112+412, 113, 114], [121+321, 322], [331]],
                  []]  # pyformat: disable
-    with self.test_session():
-      self.assertEqual(self.evaluate(segmented2).tolist(), expected2)
+    self.assertEqual(self.evaluate(segmented2).tolist(), expected2)
 
   def testRaggedSegmentIds(self):
     rt = ragged.constant([
@@ -195,8 +191,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
     expected = [[],
                 [111+321, 112+322, 113, 114],
                 [121+331+411, 412]]  # pyformat: disable
-    with self.test_session():
-      self.assertEqual(self.evaluate(segmented).tolist(), expected)
+    self.assertEqual(self.evaluate(segmented).tolist(), expected)
 
   def testShapeMismatchError1(self):
     dt = constant_op.constant([1, 2, 3, 4, 5, 6])
@@ -226,7 +221,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
         array_ops.placeholder_with_default(segment_ids.values, None),
         array_ops.placeholder_with_default(segment_ids.row_splits, None))
     segmented2 = ragged.segment_sum(rt, segment_ids2, 3)
-    with self.test_session():
+    with self.cached_session():
       self.assertRaisesRegexp(
           errors.InvalidArgumentError,
           'segment_ids.shape must be a prefix of data.shape.*', segmented2.eval)
