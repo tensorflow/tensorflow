@@ -94,6 +94,15 @@ class StrAttr : Attr<String> {
  let returnType = [{ StringRef }];
 }
 
+// DerivedAttr are attributes whose value is computed from properties
+// of the operation. They do not require additional storage and are
+// materialized as needed.
+def DerivedAttrBody : Type;
+class DerivedAttr<code ReturnType, code Body> : Attr<DerivedAttrBody> {
+  let returnType = ReturnType;
+  code body = Body;
+}
+
 // Class representing a Trait (defined in a C++ file that needs to be included
 // before the generated op definitions).
 class Traits<list<string> Traits> {

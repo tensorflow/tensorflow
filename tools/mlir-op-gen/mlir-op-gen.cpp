@@ -157,9 +157,24 @@ void OpEmitter::getAttributes() {
 }
 
 void OpEmitter::emitAttrGetters() {
+  const auto &recordKeeper = def.getRecords();
+  const auto *derivedAttrType = recordKeeper.getClass("DerivedAttr")->getType();
   for (const auto &pair : attrs) {
     auto &val = *pair.first;
     auto &attr = *pair.second;
+
+    // Emit the derived attribute body.
+    if (auto defInit = dyn_cast<DefInit>(val.getValue())) {
+      if (defInit->getType()->typeIsA(derivedAttrType)) {
+        auto *def = defInit->getDef();
+        os << "  " << def->getValueAsString("returnType").trim() << ' '
+           << val.getName() << "() const {" << def->getValueAsString("body")
+           << " }\n";
+        continue;
+      }
+    }
+
+    // Emit normal emitter.
     os << "  " << attr.getValueAsString("returnType").trim() << ' '
        << val.getName() << "() const {\n";
 
@@ -217,9 +232,17 @@ void OpEmitter::emitVerifier() {
   if (!hasCustomVerify && attrs.empty())
     return;
 
+  const auto &recordKeeper = def.getRecords();
+  const auto *derivedAttrType = recordKeeper.getClass("DerivedAttr")->getType();
+
   os << "  bool verify() const {\n";
   // Verify the attributes have the correct type.
   for (const auto attr : attrs) {
+    // Skip verification for derived attributes.
+    if (auto defInit = dyn_cast<DefInit>(attr.first->getValue()))
+      if (defInit->getType()->typeIsA(derivedAttrType))
+        continue;
+
     auto name = attr.first->getName();
     os << "    if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
        << attr.second->getValueAsString("storageType").trim() << ">("
