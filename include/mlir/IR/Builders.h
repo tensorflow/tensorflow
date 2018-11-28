@@ -85,6 +85,7 @@ public:
   OtherType getTFComplex128Type();
   OtherType getTFF32REFType();
 
+  IntegerType getI1Type();
   IntegerType getIntegerType(unsigned width);
   FunctionType getFunctionType(ArrayRef<Type> inputs, ArrayRef<Type> results);
   MemRefType getMemRefType(ArrayRef<int> shape, Type elementType,

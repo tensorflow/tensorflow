@@ -426,7 +426,7 @@ bool CallIndirectOp::verify() const {
 
 // Return the type of the same shape (scalar, vector or tensor) containing i1.
 static Type getI1SameShape(Builder *build, Type type) {
-  auto i1Type = build->getIntegerType(1);
+  auto i1Type = build->getI1Type();
   if (type.isa<IntegerType>() || type.isa<FloatType>() || type.isa<IndexType>())
     return i1Type;
   if (auto tensorType = type.dyn_cast<RankedTensorType>())
@@ -532,8 +532,7 @@ bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
   attrs[0].second = builder.getIntegerAttr(static_cast<int64_t>(predicate));
   result->attributes = attrs;
 
-  // The result of comparison is formed from i1s in the same shape as type.
-  result->addTypes({getI1SameShape(&parser->getBuilder(), type)});
+  result->addTypes({getI1SameShape(&builder, type)});
   return false;
 }
 
@@ -567,12 +566,6 @@ bool CmpIOp::verify() const {
   if (predicate < (int64_t)CmpIPredicate::FirstValidValue ||
       predicate >= (int64_t)CmpIPredicate::NumPredicates)
     return emitOpError("'predicate' attribute value out of range");
-
-  if (getOperand(0)->getType() != getOperand(1)->getType())
-    return emitOpError("requires operands to have the same type");
-
-  if (checkI1SameShape(getOperand(0)->getType(), getResult()->getType()))
-    return emitOpError("result must have the same shape as inputs");
 
   return false;
 }

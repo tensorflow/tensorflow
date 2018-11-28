@@ -233,7 +233,7 @@ bool CondBranchOp::parse(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType condInfo;
 
   // Parse the condition.
-  Type int1Ty = parser->getBuilder().getIntegerType(1);
+  Type int1Ty = parser->getBuilder().getI1Type();
   if (parser->parseOperand(condInfo) || parser->parseComma() ||
       parser->resolveOperand(condInfo, int1Ty, result->operands)) {
     return parser->emitError(parser->getNameLoc(),

@@ -502,7 +502,51 @@ bool OpTrait::impl::verifyAtLeastNResults(const Operation *op,
   return false;
 }
 
-bool OpTrait::impl::verifySameOperandsAndResult(const Operation *op) {
+/// Returns false if the given two types have the same shape. That is,
+/// they are both scalars, or they are both vectors / ranked tensors with
+/// the same dimension specifications. The element type does not matter.
+static bool verifyShapeMatch(Type type1, Type type2) {
+  // Check scalar cases
+  if (type1.isa<IntegerType>() || type1.isa<FloatType>() ||
+      type1.isa<IndexType>())
+    return !(type2.isa<IntegerType>() || type2.isa<FloatType>() ||
+             type2.isa<IndexType>());
+
+  // Check unranked tensor cases
+  if (type1.isa<UnrankedTensorType>() || type2.isa<UnrankedTensorType>())
+    return true;
+
+  // Check normal vector/tensor cases
+  if (auto vtType1 = type1.dyn_cast<VectorOrTensorType>()) {
+    auto vtType2 = type2.dyn_cast<VectorOrTensorType>();
+    return !(vtType2 && vtType1.getShape() == vtType2.getShape());
+  }
+
+  return false;
+}
+
+bool OpTrait::impl::verifySameOperandsAndResultShape(const Operation *op) {
+  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+    return true;
+
+  auto type = op->getOperand(0)->getType();
+  for (unsigned i = 0, e = op->getNumResults(); i < e; ++i) {
+    if (verifyShapeMatch(op->getResult(i)->getType(), type))
+      return op->emitOpError(
+          "requires the same shape for all operands and results");
+  }
+  for (unsigned i = 1, e = op->getNumOperands(); i < e; ++i) {
+    if (verifyShapeMatch(op->getOperand(i)->getType(), type))
+      return op->emitOpError(
+          "requires the same shape for all operands and results");
+  }
+  return false;
+}
+
+bool OpTrait::impl::verifySameOperandsAndResultType(const Operation *op) {
+  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+    return true;
+
   auto type = op->getResult(0)->getType();
   for (unsigned i = 1, e = op->getNumResults(); i < e; ++i) {
     if (op->getResult(i)->getType() != type)
@@ -571,6 +615,18 @@ bool OpTrait::impl::verifyIsTerminator(const Operation *op) {
   // Verify the state of the successor blocks.
   if (op->getNumSuccessors() != 0 && verifyTerminatorSuccessors(op))
     return true;
+  return false;
+}
+
+bool OpTrait::impl::verifyResultsAreBoolLike(const Operation *op) {
+  for (auto *result : op->getResults()) {
+    auto elementType = getTensorOrVectorElementType(result->getType());
+    auto intType = elementType.dyn_cast<IntegerType>();
+    bool isBoolType = intType && intType.getWidth() == 1;
+    if (!isBoolType)
+      return op->emitOpError("requires a bool result type");
+  }
+
   return false;
 }
 

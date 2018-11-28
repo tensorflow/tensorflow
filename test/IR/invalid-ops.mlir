@@ -215,6 +215,14 @@ bb0(%a : f32, %b : f32):
 
 // -----
 
+// Result type must be boolean like.
+cfgfunc @cfgfunc_with_ops(i32, i32) {
+bb0(%a : i32, %b : i32):
+  %r = "cmpi"(%a, %b) {predicate: 0} : (i32, i32) -> i32 // expected-error {{op requires a bool result type}}
+}
+
+// -----
+
 cfgfunc @cfgfunc_with_ops(i32, i32) {
 bb0(%a : i32, %b : i32):
   // expected-error@+1 {{requires an integer attribute named 'predicate'}}
@@ -226,8 +234,8 @@ bb0(%a : i32, %b : i32):
 cfgfunc @cfgfunc_with_ops() {
 bb0:
   %c = constant splat<vector<42 x i32>, 0> : vector<42 x i32>
-  // expected-error@+1 {{op result must have the same shape as inputs}}
-  %r = "cmpi"(%c, %c) {predicate: 0} : (vector<42 x i32>, vector<42 x i32>) -> vector<42 x i32>
+  // expected-error@+1 {{op requires the same shape for all operands and results}}
+  %r = "cmpi"(%c, %c) {predicate: 0} : (vector<42 x i32>, vector<42 x i32>) -> vector<41 x i1>
 }
 
 // -----

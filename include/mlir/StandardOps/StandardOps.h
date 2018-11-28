@@ -220,9 +220,11 @@ enum class CmpIPredicate {
 ///   %r1 = cmpi "eq" %0, %1 : i32
 ///   %r2 = cmpi "slt" %0, %1 : tensor<42x42xi64>
 ///   %r3 = "cmpi"(%0, %1){predicate: 0} : (i8, i8) -> i1
-class CmpIOp : public Op<CmpIOp, OpTrait::OperandsAreIntegerLike,
-                         OpTrait::SameTypeOperands, OpTrait::NOperands<2>::Impl,
-                         OpTrait::OneResult, OpTrait::HasNoSideEffect> {
+class CmpIOp
+    : public Op<CmpIOp, OpTrait::OperandsAreIntegerLike,
+                OpTrait::SameTypeOperands, OpTrait::NOperands<2>::Impl,
+                OpTrait::OneResult, OpTrait::ResultsAreBoolLike,
+                OpTrait::SameOperandsAndResultShape, OpTrait::HasNoSideEffect> {
 public:
   CmpIPredicate getPredicate() const {
     return (CmpIPredicate)getAttrOfType<IntegerAttr>(getPredicateAttrName())

@@ -283,7 +283,9 @@ bool verifyZeroResult(const Operation *op);
 bool verifyOneResult(const Operation *op);
 bool verifyNResults(const Operation *op, unsigned numOperands);
 bool verifyAtLeastNResults(const Operation *op, unsigned numOperands);
-bool verifySameOperandsAndResult(const Operation *op);
+bool verifySameOperandsAndResultShape(const Operation *op);
+bool verifySameOperandsAndResultType(const Operation *op);
+bool verifyResultsAreBoolLike(const Operation *op);
 bool verifyResultsAreFloatLike(const Operation *op);
 bool verifyResultsAreIntegerLike(const Operation *op);
 bool verifyIsTerminator(const Operation *op);
@@ -624,13 +626,39 @@ public:
 };
 
 /// This class provides verification for ops that are known to have the same
+/// operand and result shape: both are scalars, vectors/tensors of the same
+/// shape.
+template <typename ConcreteType>
+class SameOperandsAndResultShape
+    : public TraitBase<ConcreteType, SameOperandsAndResultShape> {
+public:
+  static bool verifyTrait(const Operation *op) {
+    return impl::verifySameOperandsAndResultShape(op);
+  }
+};
+
+/// This class provides verification for ops that are known to have the same
 /// operand and result type.
+///
+/// Note: this trait subsumes the SameOperandsAndResultShape trait.
+/// Additionally, it requires all operands and results should also have
+/// the same element type.
 template <typename ConcreteType>
 class SameOperandsAndResultType
     : public TraitBase<ConcreteType, SameOperandsAndResultType> {
 public:
   static bool verifyTrait(const Operation *op) {
-    return impl::verifySameOperandsAndResult(op);
+    return impl::verifySameOperandsAndResultType(op);
+  }
+};
+
+/// This class verifies that any results of the specified op have a boolean
+/// type, a vector thereof, or a tensor thereof.
+template <typename ConcreteType>
+class ResultsAreBoolLike : public TraitBase<ConcreteType, ResultsAreBoolLike> {
+public:
+  static bool verifyTrait(const Operation *op) {
+    return impl::verifyResultsAreBoolLike(op);
   }
 };
 

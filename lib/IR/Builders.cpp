@@ -84,6 +84,8 @@ OtherType Builder::getTFF32REFType() { return Type::getTFF32REF(context); }
 
 OtherType Builder::getTFStringType() { return Type::getTFString(context); }
 
+IntegerType Builder::getI1Type() { return Type::getInteger(1, context); }
+
 IntegerType Builder::getIntegerType(unsigned width) {
   return Type::getInteger(width, context);
 }
