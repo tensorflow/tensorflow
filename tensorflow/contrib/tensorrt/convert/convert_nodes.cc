@@ -1978,7 +1978,6 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
     }
     // Convert negative axis to corresponding positive axis.
     if (axis < 0) axis += input_rank;
-    LOG(INFO) << axis;
     // Don't squeeze batch dim.
     if (axis == 0) {
       return tensorflow::errors::Unimplemented(
