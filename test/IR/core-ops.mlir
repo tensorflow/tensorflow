@@ -124,6 +124,21 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
   // CHECK: %{{[0-9]+}} = cmpi "eq", %cst_5, %cst_5 : vector<42xindex>
   %20 = cmpi "eq", %cidx, %cidx : vector<42 x index>
 
+  // CHECK: %{{[0-9]+}} = select %{{[0-9]+}}, %arg3, %arg3 : index
+  %21 = select %18, %idx, %idx : index
+
+  // CHECK: %{{[0-9]+}} = select %{{[0-9]+}}, %cst_4, %cst_4 : tensor<42xindex>
+  %22 = select %19, %tidx, %tidx : tensor<42 x index>
+
+  // CHECK: %{{[0-9]+}} = select %{{[0-9]+}}, %cst_5, %cst_5 : vector<42xindex>
+  %23 = select %20, %cidx, %cidx : vector<42 x index>
+
+  // CHECK: %{{[0-9]+}} = select %{{[0-9]+}}, %arg3, %arg3 : index
+  %24 = "select"(%18, %idx, %idx) : (i1, index, index) -> index
+
+  // CHECK: %{{[0-9]+}} = select %{{[0-9]+}}, %cst_4, %cst_4 : tensor<42xindex>
+  %25 = "select"(%19, %tidx, %tidx) : (tensor<42 x i1>, tensor<42 x index>, tensor<42 x index>) -> tensor<42 x index>
+
   return
 }
 

@@ -230,3 +230,51 @@ bb0:
   %r = "cmpi"(%c, %c) {predicate: 0} : (vector<42 x i32>, vector<42 x i32>) -> vector<42 x i32>
 }
 
+// -----
+
+cfgfunc @cfgfunc_with_ops(i32, i32, i32) {
+bb0(%cond : i32, %t : i32, %f : i32):
+  // expected-error@+2 {{different type than prior uses}}
+  // expected-error@-2 {{prior use here}}
+  %r = select %cond, %t, %f : i32
+}
+
+// -----
+
+cfgfunc @cfgfunc_with_ops(i32, i32, i32) {
+bb0(%cond : i32, %t : i32, %f : i32):
+  // expected-error@+1 {{elemental type i1}}
+  %r = "select"(%cond, %t, %f) : (i32, i32, i32) -> i32
+}
+
+// -----
+
+cfgfunc @cfgfunc_with_ops(i1, i32, i64) {
+bb0(%cond : i1, %t : i32, %f : i64):
+  // expected-error@+1 {{'true' and 'false' arguments to be of the same type}}
+  %r = "select"(%cond, %t, %f) : (i1, i32, i64) -> i32
+}
+
+// -----
+
+cfgfunc @cfgfunc_with_ops(i1, vector<42xi32>, vector<42xi32>) {
+bb0(%cond : i1, %t : vector<42xi32>, %f : vector<42xi32>):
+  // expected-error@+1 {{requires the condition to have the same shape as arguments}}
+  %r = "select"(%cond, %t, %f) : (i1, vector<42xi32>, vector<42xi32>) -> vector<42xi32>
+}
+
+// -----
+
+cfgfunc @cfgfunc_with_ops(i1, tensor<42xi32>, tensor<?xi32>) {
+bb0(%cond : i1, %t : tensor<42xi32>, %f : tensor<?xi32>):
+  // expected-error@+1 {{'true' and 'false' arguments to be of the same type}}
+  %r = "select"(%cond, %t, %f) : (i1, tensor<42xi32>, tensor<?xi32>) -> tensor<42xi32>
+}
+
+// -----
+
+cfgfunc @cfgfunc_with_ops(tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) {
+bb0(%cond : tensor<?xi1>, %t : tensor<42xi32>, %f : tensor<42xi32>):
+  // expected-error@+1 {{requires the condition to have the same shape as arguments}}
+  %r = "select"(%cond, %t, %f) : (tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) -> tensor<42xi32>
+}

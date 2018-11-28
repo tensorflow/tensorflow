@@ -26,7 +26,6 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
-#include "third_party/llvm/llvm/projects/google-mlir/include/mlir/IR/OpDefinition.h"
 
 namespace mlir {
 class Builder;
@@ -636,6 +635,32 @@ public:
 private:
   friend class Operation;
   explicit MulIOp(const Operation *state) : BinaryOp(state) {}
+};
+
+class SelectOp : public Op<SelectOp, OpTrait::NOperands<3>::Impl,
+                           OpTrait::OneResult, OpTrait::HasNoSideEffect> {
+public:
+  static StringRef getOperationName() { return "select"; }
+  static void build(Builder *builder, OperationState *result,
+                    SSAValue *condition, SSAValue *trueValue,
+                    SSAValue *falseValue);
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+  bool verify() const;
+
+  SSAValue *getCondition() { return getOperand(0); }
+  const SSAValue *getCondition() const { return getOperand(0); }
+  SSAValue *getTrueValue() { return getOperand(1); }
+  const SSAValue *getTrueValue() const { return getOperand(1); }
+  SSAValue *getFalseValue() { return getOperand(2); }
+  const SSAValue *getFalseValue() const { return getOperand(2); }
+
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const;
+
+private:
+  friend class Operation;
+  explicit SelectOp(const Operation *state) : Op(state) {}
 };
 
 /// The "store" op writes an element to a memref specified by an index list.

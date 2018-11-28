@@ -39,8 +39,8 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*opPrefix=*/"", context) {
   addOperations<AddFOp, AddIOp, AllocOp, CallOp, CallIndirectOp, CmpIOp,
                 DeallocOp, DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp,
-                LoadOp, MemRefCastOp, MulFOp, MulIOp, StoreOp, SubFOp, SubIOp,
-                TensorCastOp>();
+                LoadOp, MemRefCastOp, MulFOp, MulIOp, SelectOp, StoreOp, SubFOp,
+                SubIOp, TensorCastOp>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1083,6 +1083,75 @@ struct SimplifyMulX1 : public Pattern {
 void MulIOp::getCanonicalizationPatterns(OwningPatternList &results,
                                          MLIRContext *context) {
   results.push_back(std::make_unique<SimplifyMulX1>(context));
+}
+
+//===----------------------------------------------------------------------===//
+// SelectOp
+//===----------------------------------------------------------------------===//
+void SelectOp::build(Builder *builder, OperationState *result,
+                     SSAValue *condition, SSAValue *trueValue,
+                     SSAValue *falseValue) {
+  result->addOperands({condition, trueValue, falseValue});
+  result->addTypes(trueValue->getType());
+}
+
+bool SelectOp::parse(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 3> ops;
+  SmallVector<NamedAttribute, 4> attrs;
+  Type type;
+
+  if (parser->parseOperandList(ops, 3) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(type))
+    return true;
+
+  auto i1Type = getI1SameShape(&parser->getBuilder(), type);
+  SmallVector<Type, 3> types = {i1Type, type, type};
+  return parser->resolveOperands(ops, types, parser->getNameLoc(),
+                                 result->operands) ||
+         parser->addTypeToList(type, result->types);
+}
+
+void SelectOp::print(OpAsmPrinter *p) const {
+  *p << getOperationName() << ' ';
+  p->printOperands(getOperation()->getOperands());
+  *p << " : " << getTrueValue()->getType();
+  p->printOptionalAttrDict(getAttrs());
+}
+
+bool SelectOp::verify() const {
+  auto conditionType = getCondition()->getType();
+  auto trueType = getTrueValue()->getType();
+  auto falseType = getFalseValue()->getType();
+
+  if (trueType != falseType)
+    return emitOpError(
+        "requires 'true' and 'false' arguments to be of the same type");
+
+  if (checkI1SameShape(trueType, conditionType))
+    return emitOpError("requires the condition to have the same shape as "
+                       "arguments with elemental type i1");
+
+  return false;
+}
+
+Attribute SelectOp::constantFold(ArrayRef<Attribute> operands,
+                                 MLIRContext *context) const {
+  assert(operands.size() == 3 && "select takes three operands");
+
+  // select true, %0, %1 => %0
+  // select false, %0, %1 => %1
+  auto cond = operands[0].dyn_cast_or_null<IntegerAttr>();
+  if (!cond)
+    return {};
+
+  if (cond.getValue().isNullValue()) {
+    return operands[2];
+  } else if (cond.getValue().isOneValue()) {
+    return operands[1];
+  }
+
+  llvm_unreachable("first argument of select must be i1");
 }
 
 //===----------------------------------------------------------------------===//

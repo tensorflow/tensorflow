@@ -1900,11 +1900,45 @@ TODO: In the distant future, this will accept
 optional attributes for fast math, contraction, rounding mode, and other
 controls.
 
+#### 'select' operation {#'select'-operation}
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `select` ssa-use, ssa-use, ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Short-hand notation of scalar selection.
+%x = select %cond, %true, %false : i32
+
+// Long-hand notation of the same operation.
+%x = "select"(%cond, %true, %false) : (i1, i32, i32) -> i32
+
+// Vector selection is element-wise
+%vx = "select"(%vcond, %vtrue, %vfalse)
+    : (vector<42xi1>, vector<42xf32>, vector<42xf32>) -> vector<42xf32>
+```
+
+The `select` operation chooses one value based on a binary condition supplied as
+its first operand. If the value of the first operand is `1`, the second operand
+is chosen, otherwise the third operand is chosen. The second and the third
+operand must have the same type.
+
+The operation applies to vectors and tensors elementwise given the _shape_ of
+all operands is identical. The choice is made for each element individually
+based on the value at the same position as the element in the condition operand.
+
+The `select` operation combined with [`cmpi`](#'cmpi'-operation) can be used to
+implement `min` and `max` with signed or unsigned comparison semantics.
+
 #### 'tensor_cast' operation {#'tensor_cast'-operation}
 
 Syntax:
 
-```mlir {.mlir}
+``` {.ebnf}
 operation ::= ssa-id `=` `tensor_cast` ssa-use `:` type `to` type
 ```
 
