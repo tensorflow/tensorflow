@@ -67,9 +67,6 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
         opts, default_thread_pool, nullptr /* cluster_flr */));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
-    flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
-    flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
-    fdef_lib_ = lib_def_->ToProto();
   }
 
   Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
@@ -193,12 +190,9 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   FunctionLibraryRuntime* flr0_;
-  FunctionLibraryRuntime* flr1_;
-  FunctionLibraryRuntime* flr2_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
-  FunctionDefLibrary fdef_lib_;
 };
 
 TEST_F(FunctionLibraryRuntimeTest, DefaultThreadpool) {
