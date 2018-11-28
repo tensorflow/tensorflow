@@ -157,10 +157,6 @@ tf_module {
     argspec: "args=[\'value\', \'pooling_ratio\', \'pseudo_random\', \'overlapping\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'0\', \'None\'], "
   }
   member_method {
-    name: "fused_batch_norm"
-    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0.001\', \'NHWC\', \'True\', \'None\'], "
-  }
-  member_method {
     name: "in_top_k"
     argspec: "args=[\'predictions\', \'targets\', \'k\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -210,7 +206,7 @@ tf_module {
   }
   member_method {
     name: "moments"
-    argspec: "args=[\'x\', \'axes\', \'shift\', \'name\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
+    argspec: "args=[\'x\', \'axes\', \'shift\', \'keepdims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "nce_loss"

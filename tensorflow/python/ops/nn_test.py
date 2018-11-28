@@ -101,8 +101,8 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     x_np = np.random.randn(*x_shape).astype(np.float32)
     y_np = self._softmax(x_np)
     x_tf = constant_op.constant(x_np)
-    y_tf = nn_ops.softmax(x_tf)
-    y_tf_last_dim = nn_ops.softmax(x_tf, 1)
+    y_tf = nn_ops.softmax_v2(x_tf)
+    y_tf_last_dim = nn_ops.softmax_v2(x_tf, 1)
     y_tf_np = self.evaluate(y_tf)
     y_tf_last_dim_np = self.evaluate(y_tf_last_dim)
     eps = 1e-3
@@ -111,9 +111,9 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 
   def testSoftmaxAxes(self):
     arr = np.linspace(0., 1, 12).reshape(3, 4)
-    x_neg_axis = nn_ops.softmax(arr, axis=-2)
-    y_pos_axis = nn_ops.softmax(arr, axis=0)
-    z_gt_axis = nn_ops.softmax(arr, axis=0)
+    x_neg_axis = nn_ops.softmax_v2(arr, axis=-2)
+    y_pos_axis = nn_ops.softmax_v2(arr, axis=0)
+    z_gt_axis = nn_ops.softmax_v2(arr, axis=0)
     x_neg_axis_tf = self.evaluate(x_neg_axis)
     y_pos_axis_tf = self.evaluate(y_pos_axis)
     z_gt_axis_tf = self.evaluate(z_gt_axis)
@@ -126,7 +126,7 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     x_np = np.random.randn(*x_shape).astype(np.float64)
     with self.cached_session():
       x_tf = constant_op.constant(x_np)
-      y_tf = nn_ops.softmax(x_tf)
+      y_tf = nn_ops.softmax_v2(x_tf)
       err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
                                                     x_shape)
     eps = 2e-8
@@ -189,16 +189,16 @@ class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     x_np = np.random.randn(*x_shape).astype(np.float32)
     y_np = self._log_softmax(x_np)
     x_tf = constant_op.constant(x_np)
-    y_tf = nn_ops.log_softmax(x_tf)
+    y_tf = nn_ops.log_softmax_v2(x_tf)
     y_tf_np = self.evaluate(y_tf)
     eps = 1e-3
     self.assertAllClose(y_tf_np, y_np, eps)
 
   def testLogSoftmaxAxes(self):
     arr = np.linspace(0., 1, 12).reshape(3, 4)
-    x_neg_axis = nn_ops.log_softmax(arr, axis=-2)
-    y_pos_axis = nn_ops.log_softmax(arr, axis=0)
-    z_gt_axis = nn_ops.log_softmax(arr, axis=0)
+    x_neg_axis = nn_ops.log_softmax_v2(arr, axis=-2)
+    y_pos_axis = nn_ops.log_softmax_v2(arr, axis=0)
+    z_gt_axis = nn_ops.log_softmax_v2(arr, axis=0)
     x_neg_axis_tf = self.evaluate(x_neg_axis)
     y_pos_axis_tf = self.evaluate(y_pos_axis)
     z_gt_axis_tf = self.evaluate(z_gt_axis)
@@ -211,7 +211,7 @@ class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     x_np = np.random.randn(*x_shape).astype(np.float64)
     with self.cached_session():
       x_tf = constant_op.constant(x_np)
-      y_tf = nn_ops.log_softmax(x_tf)
+      y_tf = nn_ops.log_softmax_v2(x_tf)
       err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
                                                     x_shape)
     eps = 1e-7
@@ -262,7 +262,7 @@ class L2NormalizeTest(test_lib.TestCase):
     for dim in range(len(x_shape)):
       y_np = self._l2Normalize(x_np, dim)
       x_tf = constant_op.constant(x_np, name="x")
-      y_tf = nn_impl.l2_normalize(x_tf, dim)
+      y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
       self.assertAllClose(y_np, self.evaluate(y_tf))
 
   @test_util.run_in_graph_and_eager_modes
@@ -273,7 +273,7 @@ class L2NormalizeTest(test_lib.TestCase):
     dim = [1, 2]
     y_np = self._l2Normalize(x_np, dim)
     x_tf = constant_op.constant(x_np, name="x")
-    y_tf = nn_impl.l2_normalize(x_tf, dim)
+    y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
     self.assertAllClose(y_np, self.evaluate(y_tf))
 
   def testL2NormalizeGradient(self):
@@ -283,7 +283,7 @@ class L2NormalizeTest(test_lib.TestCase):
     for dim in range(len(x_shape)):
       with self.cached_session():
         x_tf = constant_op.constant(x_np, name="x")
-        y_tf = nn_impl.l2_normalize(x_tf, dim)
+        y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
         err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
                                                       x_shape)
       print("L2Normalize gradient err = %g " % err)
@@ -1034,8 +1034,8 @@ class MomentsTest(test_lib.TestCase):
             with self.session(graph=g) as sess:
               inputs = constant_op.constant(
                   input_values, shape=input_shape, dtype=dtypes.float32)
-              mean, variance = nn_impl.moments(
-                  inputs, moments_axes, keep_dims=keep_dims)
+              mean, variance = nn_impl.moments_v2(
+                  inputs, moments_axes, keepdims=keep_dims)
 
               if check_gradients:
                 err = gradient_checker.compute_gradient_error(
