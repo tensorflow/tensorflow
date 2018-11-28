@@ -286,29 +286,29 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.batch_to_space_nd":
             "tf.batch_to_space",
         "tf.gfile.Copy":
-            "tf.io.gfile.Copy",
+            "tf.io.gfile.copy",
         "tf.gfile.DeleteRecursively":
-            "tf.io.gfile.DeleteRecursively",
+            "tf.io.gfile.rmtree",
         "tf.gfile.Exists":
-            "tf.io.gfile.Exists",
+            "tf.io.gfile.exists",
         "tf.gfile.Glob":
-            "tf.io.gfile.Glob",
+            "tf.io.gfile.glob",
         "tf.gfile.IsDirectory":
-            "tf.io.gfile.IsDirectory",
+            "tf.io.gfile.isdir",
         "tf.gfile.ListDirectory":
-            "tf.io.gfile.ListDirectory",
+            "tf.io.gfile.listdir",
         "tf.gfile.MakeDirs":
-            "tf.io.gfile.MakeDirs",
+            "tf.io.gfile.makedirs",
         "tf.gfile.MkDir":
-            "tf.io.gfile.MkDir",
+            "tf.io.gfile.mkdir",
         "tf.gfile.Remove":
-            "tf.io.gfile.Remove",
+            "tf.io.gfile.remove",
         "tf.gfile.Rename":
-            "tf.io.gfile.Rename",
+            "tf.io.gfile.rename",
         "tf.gfile.Stat":
-            "tf.io.gfile.Stat",
+            "tf.io.gfile.stat",
         "tf.gfile.Walk":
-            "tf.io.gfile.Walk",
+            "tf.io.gfile.walk",
         "tf.contrib.data.AUTOTUNE":
             "tf.data.experimental.AUTOTUNE",
         "tf.contrib.data.Counter":

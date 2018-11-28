@@ -509,7 +509,7 @@ def rename(oldname, newname, overwrite=False):
 
 
 @tf_export("io.gfile.rename")
-def rename_v2(src, dst, overwrite):
+def rename_v2(src, dst, overwrite=False):
   """Rename or move a file / directory.
 
   Args:
