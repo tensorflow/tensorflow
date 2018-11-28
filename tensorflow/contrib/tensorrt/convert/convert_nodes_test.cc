@@ -2175,48 +2175,41 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
         "Axis for ExpandDims is invalid, must be in the range "
         "[-rank(input) - 1, rank(input)], at my_expanddims");
   }
-  {
-    // Add axis before, Ok.
-    Reset();
-    AddTestTensor("input", {2, 3});
-    AddTestWeights<int32>("weights", {1}, {1});
-    RunValidationAndConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_expanddims", &output));
-    EXPECT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
 
-    std::vector<float> output_data(6);
-    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_expanddims",
-                       &output_data);
-    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
-  }
-  {
-    // Add axis after, Ok.
-    Reset();
-    AddTestTensor("input", {2, 3});
-    AddTestWeights<int32>("weights", {1}, {3});
-    RunValidationAndConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_expanddims", &output));
-    EXPECT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({2, 3, 1}, output.tensor()->getDimensions());
+  struct TestParams {
+    TestParams(const std::vector<int>& input_dims,
+               int axis,
+               const std::vector<int>& expected_output_dims)
+        : input_dims(input_dims),
+          axis(axis),
+          expected_output_dims(expected_output_dims) {}
+    std::vector<int> input_dims;
+    int axis;
+    std::vector<int> expected_output_dims;
+  };
 
-    std::vector<float> output_data(6);
-    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_expanddims",
-                       &output_data);
-    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
-  }
-  {
-    // Add negative axis, Ok.
+  // Ok.
+  const int kExpandDimsOKCases = 8;
+  TestParams ok_params[kExpandDimsOKCases] = {
+      TestParams{{2, 3}, 1, {1, 2, 3}},
+      TestParams{{2, 3}, -3, {1, 2, 3}},
+      TestParams{{2, 3}, 3, {2, 3, 1}},
+      TestParams{{2, 3}, -1, {2, 3, 1}},
+      TestParams{{2, 3}, 2, {2, 1, 3}},
+      TestParams{{2, 3}, -2, {2, 1, 3}},
+      TestParams{{6}, 1, {1, 6}},
+      TestParams{{6}, -1, {6, 1}},
+  };
+  for (int i = 0; i < kExpandDimsOKCases; ++i) {
     Reset();
-    AddTestTensor("input", {2, 3});
-    AddTestWeights<int32>("weights", {1}, {-1});
+    AddTestTensor("input", ok_params[i].input_dims);
+    AddTestWeights<int32>("weights", {1}, {ok_params[i].axis});
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_expanddims", &output));
     EXPECT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({2, 3, 1}, output.tensor()->getDimensions());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
 
     std::vector<float> output_data(6);
     BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_expanddims",
@@ -2295,64 +2288,43 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
         "Axis for Squeeze is invalid, must be in the range "
         "[-rank(input), rank(input)), at my_squeeze");
   }
-  {
-    // Squeeze axis before, Ok.
-    Reset();
-    NodeDef node_def = get_squeeze_nodedef({1});
-    AddTestTensor("input", {1, 2, 3});
-    RunConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
-    EXPECT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions());
 
-    std::vector<float> output_data(6);
-    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_squeeze",
-                       &output_data);
-    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
-  }
-  {
-    // Squeeze axis after, Ok.
-    Reset();
-    NodeDef node_def = get_squeeze_nodedef({3});
-    AddTestTensor("input", {2, 3, 1});
-    RunConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
-    EXPECT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions());
+  struct TestParams {
+    TestParams(const std::vector<int>& input_dims,
+               const std::vector<int>& axis,
+               const std::vector<int>& expected_output_dims)
+        : input_dims(input_dims),
+          axis(axis),
+          expected_output_dims(expected_output_dims) {}
+    std::vector<int> input_dims;
+    std::vector<int> axis;
+    std::vector<int> expected_output_dims;
+  };
 
-    std::vector<float> output_data(6);
-    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_squeeze",
-                       &output_data);
-    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
-  }
-  {
-    // Squeeze multiple axis, Ok.
+  // Ok.
+  const int kSqueezeOKCases = 10;
+  TestParams ok_params[kSqueezeOKCases] = {
+      TestParams{{1, 2, 3}, {1}, {2, 3}},
+      TestParams{{1, 2, 3}, {-3}, {2, 3}},
+      TestParams{{2, 3, 1}, {3}, {2, 3}},
+      TestParams{{2, 3, 1}, {-1}, {2, 3}},
+      TestParams{{1, 2, 1, 3, 1}, {1, 3, 5}, {2, 3}},
+      TestParams{{1, 2, 1, 3, 1}, {3, 1, 5}, {2, 3}},
+      TestParams{{1, 2, 1, 3, 1}, {-1, -3, -5}, {2, 3}},
+      TestParams{{1, 2, 1, 3, 1}, {1, -3, 5}, {2, 3}},
+      TestParams{{1, 6}, {1}, {6}},
+      TestParams{{6, 1}, {2}, {6}},
+  };
+  for (int i = 0; i < kSqueezeOKCases; ++i) {
     Reset();
-    NodeDef node_def = get_squeeze_nodedef({1, 3, 5});
-    AddTestTensor("input", {1, 2, 1, 3, 1});
-    RunConversion(node_def);
+    NodeDef node_def = get_squeeze_nodedef(ok_params[i].axis);
+    AddTestTensor("input", ok_params[i].input_dims);
+    RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
     EXPECT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions());
-
-    std::vector<float> output_data(6);
-    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_squeeze",
-                       &output_data);
-    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
-  }
-  {
-    // Squeeze multiple axis negative, Ok.
-    Reset();
-    NodeDef node_def = get_squeeze_nodedef({-1, -3, -5});
-    AddTestTensor("input", {1, 2, 1, 3, 1});
-    RunConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
-    EXPECT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
 
     std::vector<float> output_data(6);
     BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_squeeze",
