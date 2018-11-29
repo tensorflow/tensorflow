@@ -1,6 +1,6 @@
 // RUN: mlir-opt %s -vectorize -virtual-vector-size 32 --test-fastest-varying=0 -materialize-vectors -vector-size=8 | FileCheck %s -check-prefix=VEC1DTO1D
 // RUN: mlir-opt %s -vectorize -virtual-vector-size 3 -virtual-vector-size 16 --test-fastest-varying=1 --test-fastest-varying=0 -materialize-vectors -vector-size=8 | FileCheck %s -check-prefix=VEC2DTO1D
-// RUN_: mlir-opt %s -vectorize -virtual-vector-size 3 -virtual-vector-size 32 --test-fastest-varying=1 --test-fastest-varying=0 -materialize-vectors -vector-size=3 -vector-size=16 | FileCheck %s -check-prefix=VEC2DTO2D
+// RUN: mlir-opt %s -vectorize -virtual-vector-size 3 -virtual-vector-size 32 --test-fastest-varying=1 --test-fastest-varying=0 -materialize-vectors -vector-size=3 -vector-size=16 | FileCheck %s -check-prefix=VEC2DTO2D
 
 // vector<32xf32> -> vector<8xf32>
 // VEC1DTO1D: [[MAP0:#.*]] = (d0, d1) -> (d0, d1)
