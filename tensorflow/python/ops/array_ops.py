@@ -2087,6 +2087,9 @@ def _normalize_sparse_shape(shape, name):
   if not isinstance(shape, ops.Tensor) and None in shape:
     if not isinstance(shape, (list, tuple)):
         return (None, rank)
+    # In case shape is a list or tuple, we will convert None into -1 (Unknwon dims)
+    # so that the shape is preserved when calling convert_to_tensor below.
+    # This will make sure tf.sparse.placeholder accepts `(None, 4)` like tf.placeholder.
     shape = [dim if dim is not None else -1 for dim in shape]
   return (ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name), rank)
 
