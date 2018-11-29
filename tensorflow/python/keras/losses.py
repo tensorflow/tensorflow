@@ -395,6 +395,40 @@ def cosine_proximity(y_true, y_pred):
   return -math_ops.reduce_sum(y_true * y_pred, axis=-1)
 
 
+class CosineProximity(Loss):
+  """Computes the cosine distance between `y_true` and `y_pred`.
+
+  Usage:
+
+  ```python
+  cosine_loss = tf.losses.CosineProximity()
+  loss = cosine_loss([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: -0.5
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.CosineProximity())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Calculates the cosine proximity loss.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Cosine distance loss.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return cosine_proximity(y_true, y_pred)
+
+
 # Aliases.
 
 mse = MSE = mean_squared_error
