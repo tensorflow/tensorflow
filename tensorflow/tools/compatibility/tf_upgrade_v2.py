@@ -437,6 +437,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.data.Iterator",
         "tf.nn.fused_batch_norm":
             "tf.compat.v1.nn.fused_batch_norm",
+        "tf.losses.Reduction.MEAN":
+            "tf.compat.v1.losses.Reduction.MEAN",
+        "tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS":
+            "tf.compat.v1.losses.Reduction.SUM_BY_NONZERO_WEIGHTS",
+        "tf.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS":
+            "tf.compat.v1.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS",
     }
     # pylint: enable=line-too-long
 

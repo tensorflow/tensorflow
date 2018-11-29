@@ -28,7 +28,6 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.losses_utils import compute_weighted_loss
-from tensorflow.python.keras.utils.losses_utils import ReductionV2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
@@ -56,7 +55,9 @@ class Loss(object):
     name: Optional name for the op.
   """
 
-  def __init__(self, reduction=ReductionV2.SUM_OVER_BATCH_SIZE, name=None):
+  def __init__(self,
+               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               name=None):
     self.reduction = reduction
     self.name = name
 
