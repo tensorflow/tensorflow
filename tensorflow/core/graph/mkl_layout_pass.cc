@@ -949,7 +949,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             e->dst_input() == kPermTensorIndex) {
           // we find the "perm" node, now try to retrieve its value.
           const TensorProto* proto = nullptr;
-          CHECK_EQ(GetNodeAttr(perm_node->def(), "value", &proto).ok(), true);
+          DCHECK(GetNodeAttr(perm_node->def(), "value", &proto).ok());
 
           DataType type;
           GetNodeAttr(perm_node->def(), "dtype", &type);
