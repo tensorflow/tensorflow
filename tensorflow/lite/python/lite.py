@@ -25,8 +25,6 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 @@convert_op_hints_to_stubs
 @@build_toco_convert_protos
 
-@@FLOAT
-@@QUANTIZED_UINT8
 @@TFLITE
 @@GRAPHVIZ_DOT
 
@@ -78,10 +76,10 @@ class TFLiteConverter(object):
   Attributes:
 
     inference_type: Target data type of real-number arrays in the output file.
-      Must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
+      Must be `{tf.float32, tf.uint8}`. (default tf.float32)
     inference_input_type: Target data type of real-number input arrays. Allows
       for a different type for input arrays in the case of quantization.
-      Must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
+      Must be `{tf.float32, tf.uint8}`. (default `inference_type`)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: Dict of strings representing input tensor names
