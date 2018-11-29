@@ -37,7 +37,7 @@ std::pair<EdgeSet::const_iterator, bool> EdgeSet::insert(value_type value) {
       }
     }
     // array is full. convert to set.
-    s = new gtl::FlatSet<const Edge*>;
+    s = new std::set<const Edge*>;
     for (int i = 0; i < kInline; i++) {
       s->insert(static_cast<const Edge*>(ptrs_[i]));
     }
