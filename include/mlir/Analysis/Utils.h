@@ -107,6 +107,10 @@ private:
 bool getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
                      MemRefRegion *region);
 
+/// Returns the size of memref data in bytes if it's statically shaped, None
+/// otherwise.
+Optional<uint64_t> getMemRefSizeInBytes(MemRefType memRefType);
+
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_UTILS_H

@@ -68,7 +68,8 @@ struct DmaGeneration : public FunctionPass, StmtWalker<DmaGeneration> {
   void runOnForStmt(ForStmt *forStmt);
 
   void visitOperationStmt(OperationStmt *opStmt);
-  bool generateDma(const MemRefRegion &region, ForStmt *forStmt);
+  bool generateDma(const MemRefRegion &region, ForStmt *forStmt,
+                   uint64_t *sizeInBytes);
 
   // List of memory regions to DMA for.
   std::vector<std::unique_ptr<MemRefRegion>> regions;
@@ -137,7 +138,8 @@ void DmaGeneration::visitOperationStmt(OperationStmt *opStmt) {
 // Creates a buffer in the faster memory space for the specified region;
 // generates a DMA from the lower memory space to this one, and replaces all
 // loads to load from that buffer. Returns true if DMAs are generated.
-bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt) {
+bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
+                                uint64_t *sizeInBytes) {
   // DMAs for read regions are going to be inserted just before the for loop.
   MLFuncBuilder prologue(forStmt);
   // DMAs for write regions are going to be inserted just after the for loop.
@@ -164,12 +166,14 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt) {
   // Compute the extents of the buffer.
   Optional<int64_t> numElements = region.getConstantSize();
   if (!numElements.hasValue()) {
-    LLVM_DEBUG(llvm::dbgs() << "Non-constant region size\n");
+    LLVM_DEBUG(llvm::dbgs() << "Non-constant region size not supported\n");
+    *sizeInBytes = 0;
     return false;
   }
 
   if (numElements.getValue() == 0) {
     LLVM_DEBUG(llvm::dbgs() << "Nothing to DMA\n");
+    *sizeInBytes = 0;
     return false;
   }
 
@@ -244,9 +248,18 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt) {
     fastMemRef = prologue.create<AllocOp>(loc, fastMemRefType)->getResult();
     // Record it.
     fastBufferMap[memref] = fastMemRef;
+    // fastMemRefType is a constant shaped memref.
+    *sizeInBytes = getMemRefSizeInBytes(fastMemRefType).getValue();
+    LLVM_DEBUG(llvm::dbgs() << "Creating a new buffer of type ";
+               fastMemRefType.dump();
+               llvm::dbgs()
+               << " and size " << Twine(llvm::divideCeil(*sizeInBytes, 1024))
+               << " KiB\n";);
+
   } else {
     // Reuse the one already created.
     fastMemRef = fastBufferMap[memref];
+    *sizeInBytes = 0;
   }
   // Create a tag (single element 1-d memref) for the DMA.
   auto tagMemRefType = top.getMemRefType({1}, top.getIntegerType(32));
@@ -336,9 +349,22 @@ void DmaGeneration::runOnForStmt(ForStmt *forStmt) {
   // Walk this 'for' statement to gather all memory regions.
   walk(forStmt);
 
+  uint64_t totalSizeInBytes = 0;
+
+  bool ret = false;
   for (const auto &region : regions) {
-    generateDma(*region, forStmt);
+    uint64_t sizeInBytes;
+    bool iRet = generateDma(*region, forStmt, &sizeInBytes);
+    if (iRet)
+      totalSizeInBytes += sizeInBytes;
+    ret = ret | iRet;
   }
+  if (!ret) {
+    LLVM_DEBUG(llvm::dbgs()
+                   << "DMA generation failed for one or more memref's\n";);
+  }
+  LLVM_DEBUG(llvm::dbgs() << Twine(llvm::divideCeil(totalSizeInBytes, 1024))
+                          << " KiB of DMA buffers in fast memory space\n";);
 }
 
 PassResult DmaGeneration::runOnMLFunction(MLFunction *f) {

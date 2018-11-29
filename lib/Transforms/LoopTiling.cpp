@@ -210,17 +210,14 @@ UtilResult mlir::tileCodeGen(ArrayRef<ForStmt *> band,
 // Returns all maximal outermost perfect loop nests to tile.
 static void getTileableBands(MLFunction *f,
                              std::vector<SmallVector<ForStmt *, 6>> *bands) {
+  // Get maximal perfect nest of 'for' stmts starting from root (inclusive).
   auto getMaximalPerfectLoopNest = [&](ForStmt *root) {
     SmallVector<ForStmt *, 6> band;
-    band.push_back(root);
-
     ForStmt *currStmt = root;
-    ForStmt *nestedFor;
-    while (currStmt->getStatements().size() == 1 &&
-           (nestedFor = dyn_cast<ForStmt>(&*currStmt->begin()))) {
-      band.push_back(nestedFor);
-      currStmt = nestedFor;
-    }
+    do {
+      band.push_back(currStmt);
+    } while (currStmt->getStatements().size() == 1 &&
+             (currStmt = dyn_cast<ForStmt>(&*currStmt->begin())));
     bands->push_back(band);
   };
 

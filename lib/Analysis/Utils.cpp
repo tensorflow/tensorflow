@@ -206,3 +206,15 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
   assert(regionCst->getNumDimIds() >= rank);
   return true;
 }
+
+/// Returns the size of memref data in bytes if it's statically shaped, None
+/// otherwise.
+Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
+  if (memRefType.getNumDynamicDims() > 0)
+    return None;
+  uint64_t sizeInBits = memRefType.getElementType().getBitWidth();
+  for (unsigned i = 0, e = memRefType.getRank(); i < e; i++) {
+    sizeInBits = sizeInBits * memRefType.getDimSize(i);
+  }
+  return llvm::divideCeil(sizeInBits, 8);
+}
