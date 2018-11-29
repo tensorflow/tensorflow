@@ -70,6 +70,7 @@ class ConstantTest(test.TestCase):
     with self.assertRaises(TypeError):
       constant_op.constant(dtypes_lib.string, "[,]")
 
+  @test_util.run_deprecated_v1
   def testBFloat16(self):
     bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(bfloat16))
@@ -77,36 +78,42 @@ class ConstantTest(test.TestCase):
         np.random.normal(size=30).reshape([2, 3, 5]).astype(bfloat16))
     self._testAll(np.empty((2, 0, 5)).astype(bfloat16))
 
+  @test_util.run_deprecated_v1
   def testHalf(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float16))
     self._testAll(
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.float16))
     self._testAll(np.empty((2, 0, 5)).astype(np.float16))
 
+  @test_util.run_deprecated_v1
   def testFloat(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float32))
     self._testAll(
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.float32))
     self._testAll(np.empty((2, 0, 5)).astype(np.float32))
 
+  @test_util.run_deprecated_v1
   def testDouble(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float64))
     self._testAll(
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.float64))
     self._testAll(np.empty((2, 0, 5)).astype(np.float64))
 
+  @test_util.run_deprecated_v1
   def testInt32(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.int32))
     self._testAll((100 * np.random.normal(size=30)).reshape([2, 3, 5]).astype(
         np.int32))
     self._testAll(np.empty((2, 0, 5)).astype(np.int32))
 
+  @test_util.run_deprecated_v1
   def testInt64(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.int64))
     self._testAll((100 * np.random.normal(size=30)).reshape([2, 3, 5]).astype(
         np.int64))
     self._testAll(np.empty((2, 0, 5)).astype(np.int64))
 
+  @test_util.run_deprecated_v1
   def testComplex64(self):
     self._testAll(
         np.complex(1, 2) *
@@ -116,6 +123,7 @@ class ConstantTest(test.TestCase):
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.complex64))
     self._testAll(np.empty((2, 0, 5)).astype(np.complex64))
 
+  @test_util.run_deprecated_v1
   def testComplex128(self):
     self._testAll(
         np.complex(1, 2) *
@@ -125,12 +133,14 @@ class ConstantTest(test.TestCase):
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.complex128))
     self._testAll(np.empty((2, 0, 5)).astype(np.complex128))
 
+  @test_util.run_deprecated_v1
   def testString(self):
     self._testCpu(
         np.array([compat.as_bytes(str(x)) for x in np.arange(-15, 15)]).reshape(
             [2, 3, 5]))
     self._testCpu(np.empty((2, 0, 5)).astype(np.str_))
 
+  @test_util.run_deprecated_v1
   def testVariant(self):
     # TODO(ebrevdo): Re-enable use_gpu=True once non-DMA Variant
     # copying between CPU and GPU is supported.
@@ -161,6 +171,7 @@ class ConstantTest(test.TestCase):
           message="Variant storing an int, decoded const value:").op
       logging_const_op.run()
 
+  @test_util.run_deprecated_v1
   def testStringWithNulls(self):
     with self.cached_session():
       val = ops.convert_to_tensor(b"\0\0\0\0").eval()
@@ -265,6 +276,7 @@ class ConstantTest(test.TestCase):
                                    "GraphDef cannot be larger than 2GB."):
         g.as_graph_def()
 
+  @test_util.run_deprecated_v1
   def testSparseValuesRaiseErrors(self):
     with self.assertRaisesRegexp(ValueError,
                                  "setting an array element with a sequence"):
@@ -342,6 +354,7 @@ class AsTensorTest(test.TestCase):
       ops.convert_to_tensor(
           tensor_shape.TensorShape([1, 2, 3]), dtype=dtypes_lib.float32)
 
+  @test_util.run_deprecated_v1
   def testAsTensorForDimensionInput(self):
     with self.cached_session():
       x = ops.convert_to_tensor(tensor_shape.TensorShape([1, 2, 3])[1])
@@ -409,6 +422,7 @@ class ZerosTest(test.TestCase):
     self.assertShapeEqual(np_ans, d)
     self.assertShapeEqual(np_ans, z)
 
+  @test_util.run_deprecated_v1
   def testDtype(self):
     with self.cached_session():
       d = array_ops.fill([2, 3], 12., name="fill")
@@ -477,6 +491,7 @@ class ZerosLikeTest(test.TestCase):
       self.assertFalse(np.any(z_value))
       self.assertEqual((2, 3), z_value.shape)
 
+  @test_util.run_deprecated_v1
   def testZerosLikeCPU(self):
     for dtype in [
         dtypes_lib.half, dtypes_lib.float32, dtypes_lib.float64,
@@ -487,6 +502,7 @@ class ZerosLikeTest(test.TestCase):
       self._compareZeros(dtype, fully_defined_shape=False, use_gpu=False)
       self._compareZeros(dtype, fully_defined_shape=True, use_gpu=False)
 
+  @test_util.run_deprecated_v1
   def testZerosLikeGPU(self):
     for dtype in [
         dtypes_lib.half, dtypes_lib.float32, dtypes_lib.float64,
@@ -496,11 +512,13 @@ class ZerosLikeTest(test.TestCase):
       self._compareZeros(dtype, fully_defined_shape=False, use_gpu=True)
       self._compareZeros(dtype, fully_defined_shape=True, use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testZerosLikePartialShape(self):
     d = array_ops.placeholder(dtypes_lib.float32, shape=[None, 4, None])
     z = array_ops.zeros_like(d)
     self.assertEqual(d.get_shape().as_list(), z.get_shape().as_list())
 
+  @test_util.run_deprecated_v1
   def testZerosLikeDtype(self):
     # Make sure zeros_like works even for dtypes that cannot be cast between
     with self.cached_session():
@@ -514,6 +532,7 @@ class ZerosLikeTest(test.TestCase):
           self.assertEqual(y.shape, shape)
           self.assertAllEqual(y, np.zeros(shape, dtype=out_type))
 
+  @test_util.run_deprecated_v1
   def testZerosLikeVariant(self):
     # TODO(ebrevdo): Re-enable use_gpu=True once non-DMA Variant
     # copying between CPU and GPU is supported AND we register a
@@ -574,6 +593,7 @@ class OnesTest(test.TestCase):
     self.assertShapeEqual(np_ans, d)
     self.assertShapeEqual(np_ans, z)
 
+  @test_util.run_deprecated_v1
   def testAutoPack(self):
     with self.cached_session():
       h = array_ops.placeholder(dtypes_lib.int32, shape=[])
@@ -582,6 +602,7 @@ class OnesTest(test.TestCase):
       out = z.eval(feed_dict={h: 4, w: 16})
     self.assertAllEqual(out, np.array([[1] * 16] * 4))
 
+  @test_util.run_deprecated_v1
   def testDtype(self):
     with self.cached_session():
       d = array_ops.fill([2, 3], 12., name="fill")
@@ -635,6 +656,7 @@ class OnesLikeTest(test.TestCase):
       self.assertTrue(np.array_equal(z_value, np.array([[1] * 3] * 2)))
       self.assertEqual([2, 3], z_var.get_shape())
 
+  @test_util.run_deprecated_v1
   def testOnesLikePartialShape(self):
     d = array_ops.placeholder(dtypes_lib.float32, shape=[None, 4, None])
     z = array_ops.ones_like(d)
@@ -679,12 +701,14 @@ class FillTest(test.TestCase):
     np_ans = np.array([[0.15 + 0.3j] * 3] * 2).astype(np.complex128)
     self._compareAll([2, 3], np_ans[0][0], np_ans)
 
+  @test_util.run_deprecated_v1
   def testFillString(self):
     np_ans = np.array([[b"yolo"] * 3] * 2)
     with self.session(use_gpu=False):
       tf_ans = array_ops.fill([2, 3], np_ans[0][0], name="fill").eval()
     self.assertAllEqual(np_ans, tf_ans)
 
+  @test_util.run_deprecated_v1
   def testFillNegative(self):
     with self.cached_session():
       for shape in (-1,), (2, -1), (-1, 2), (-2), (-3):
@@ -698,6 +722,7 @@ class FillTest(test.TestCase):
         with self.assertRaises(errors_impl.InvalidArgumentError):
           fill_t.eval({dims: shape})
 
+  @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
     # Non-vector dimensions.
     with self.assertRaises(ValueError):
@@ -716,6 +741,7 @@ class FillTest(test.TestCase):
             dtypes_lib.int32, shape=()), 17], 1.0)
     self.assertEqual([None, 17], f.get_shape().as_list())
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     with self.cached_session():
       in_v = constant_op.constant(5.0)
@@ -728,6 +754,7 @@ class FillTest(test.TestCase):
 
 class PlaceholderTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testDtype(self):
     with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=(10, 10), name="p")
@@ -740,6 +767,7 @@ class PlaceholderTest(test.TestCase):
           "must feed a value for placeholder tensor 'p' with dtype float"):
         self.evaluate(p_identity)
 
+  @test_util.run_deprecated_v1
   def testShape(self):
     with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=(10, 10), name="p")
@@ -757,6 +785,7 @@ class PlaceholderTest(test.TestCase):
           ValueError, lambda e: "Cannot feed value of shape" in str(e)):
         p_identity.eval(feed_dict={p: feed_array[:5, :5]})
 
+  @test_util.run_deprecated_v1
   def testUnknownShape(self):
     with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=None, name="p")
@@ -769,12 +798,14 @@ class PlaceholderTest(test.TestCase):
       self.assertAllClose(
           p_identity.eval(feed_dict={p: feed_array}), feed_array)
 
+  @test_util.run_deprecated_v1
   def testScalarShape(self):
     with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=[], name="p")
       p_identity = array_ops.identity(p)
       self.assertAllClose(p_identity.eval(feed_dict={p: 5}), 5)
 
+  @test_util.run_deprecated_v1
   def testPartialShape(self):
     with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=[None, 3], name="p")
@@ -787,6 +818,7 @@ class PlaceholderTest(test.TestCase):
           ValueError, lambda e: "Cannot feed value of shape" in str(e)):
         p_identity.eval(feed_dict={p: feed_array[:5, :2]})
 
+  @test_util.run_deprecated_v1
   def testPartialShapeWhenNotFed(self):
     with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=[None, 3], name="p")
@@ -797,6 +829,7 @@ class PlaceholderTest(test.TestCase):
           "must feed a value for placeholder tensor 'p' with dtype float"):
         self.evaluate(p_identity)
 
+  @test_util.run_deprecated_v1
   def testControlDependency(self):
     with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.int32, shape=[], name="p")
@@ -806,10 +839,12 @@ class PlaceholderTest(test.TestCase):
       val = np.array(2).astype(np.int)
       self.assertEqual(10, d.eval(feed_dict={p: val}))
 
+  @test_util.run_deprecated_v1
   def testBadShape(self):
     with self.assertRaises(ValueError):
       array_ops.placeholder(dtypes_lib.float32, shape=(-1, 10))
 
+  @test_util.run_deprecated_v1
   def testTensorStr(self):
     a = array_ops.placeholder(dtypes_lib.float32, shape=None, name="a")
     self.assertEqual("<tf.Tensor 'a:0' shape=<unknown> dtype=float32>", repr(a))
@@ -825,6 +860,7 @@ class PlaceholderTest(test.TestCase):
       self.assertEqual(
           "<tf.Tensor 'c:0' shape=(32, ?, 2) dtype=qint32>", repr(c))
 
+  @test_util.run_deprecated_v1
   def testOldGraph(self):
     # Load graph generated from earlier version of TF where
     # placeholder shape was not set.
@@ -904,6 +940,7 @@ versions {
 
 class PlaceholderWithDefaultTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testFullShape(self):
     with self.session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([[2, 2], [2, 2]], shape=[2, 2])
@@ -915,6 +952,7 @@ class PlaceholderWithDefaultTest(test.TestCase):
       with self.assertRaises(ValueError):
         a.eval(feed_dict={p: [[6, 6, 6], [6, 6, 6]]})
 
+  @test_util.run_deprecated_v1
   def testPartialShape(self):
     with self.session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([1, 2, 3], shape=[None])
@@ -925,6 +963,7 @@ class PlaceholderWithDefaultTest(test.TestCase):
       with self.assertRaises(ValueError):
         a.eval(feed_dict={p: [[2, 2], [2, 2]]})
 
+  @test_util.run_deprecated_v1
   def testNoShape(self):
     with self.session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([17], shape=None)
@@ -934,6 +973,7 @@ class PlaceholderWithDefaultTest(test.TestCase):
       self.assertAllEqual(
           [[3, 3], [3, 3]], a.eval(feed_dict={p: [[3, 3], [3, 3]]}))
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     with self.session(force_gpu=test_util.is_gpu_available()):
       x = array_ops.placeholder(dtypes_lib.float32, [5, 7])

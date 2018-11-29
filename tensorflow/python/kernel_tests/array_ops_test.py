@@ -143,36 +143,43 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
 
       self.assertAllClose(masked_arr, masked_tensor.eval())
 
+  @test_util.run_deprecated_v1
   def testMaskDim1ArrDim2Axis1(self):
     ndims_mask = 1
     for arr_shape in [(1, 1), (2, 2), (2, 5)]:
       self.CheckVersusNumpy(ndims_mask, arr_shape, axis=1)
 
+  @test_util.run_deprecated_v1
   def testMaskDim2ArrDim2Axis1(self):
     ndims_mask = 2
     for arr_shape in [(1, 1), (2, 2), (2, 5)]:
       self.CheckVersusNumpy(ndims_mask, arr_shape, axis=1)
 
+  @test_util.run_deprecated_v1
   def testMaskDim1ArrDim1(self):
     ndims_mask = 1
     for arr_shape in [(1,), (2,), (3,), (10,)]:
       self.CheckVersusNumpy(ndims_mask, arr_shape)
 
+  @test_util.run_deprecated_v1
   def testMaskDim1ArrDim2(self):
     ndims_mask = 1
     for arr_shape in [(1, 1), (2, 2), (2, 5)]:
       self.CheckVersusNumpy(ndims_mask, arr_shape)
 
+  @test_util.run_deprecated_v1
   def testMaskDim2ArrDim2(self):
     ndims_mask = 2
     for arr_shape in [(1, 1), (2, 2), (2, 5)]:
       self.CheckVersusNumpy(ndims_mask, arr_shape)
 
+  @test_util.run_deprecated_v1
   def testMaskDim2ArrDim3(self):
     ndims_mask = 2
     for arr_shape in [(1, 1, 1), (1, 2, 2), (2, 2, 1)]:
       self.CheckVersusNumpy(ndims_mask, arr_shape)
 
+  @test_util.run_deprecated_v1
   def testEmptyInput2D(self):
     mask = np.array([True, False])
     arr = np.array([[], []]).astype(np.float32)
@@ -191,6 +198,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       self.assertAllClose(numpy_result, tf_result.eval())
 
+  @test_util.run_deprecated_v1
   def testEmptyOutput(self):
     make_mask = lambda shape: np.zeros(shape, dtype=bool)
     for ndims_mask in range(1, 4):
@@ -199,6 +207,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
           arr_shape = np.random.randint(1, 5, size=ndims_arr)
           self.CheckVersusNumpy(ndims_mask, arr_shape, make_mask=make_mask)
 
+  @test_util.run_deprecated_v1
   def testWorksWithDimensionsEqualToNoneDuringGraphBuild(self):
     # The rank of the mask tensor must be specified. This is explained
     # in the docstring as well.
@@ -217,6 +226,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
           })
       np.testing.assert_allclose(masked_tensor, arr[mask])
 
+  @test_util.run_deprecated_v1
   def testMaskDimensionsSetToNoneRaises(self):
     # The rank of the mask tensor must be specified. This is explained
     # in the docstring as well.
@@ -283,6 +293,7 @@ class OperatorShapeTest(test_util.TensorFlowTestCase):
 
 class ReverseV2Test(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testReverse0DimAuto(self):
     x_np = 4
     for use_gpu in [False, True]:
@@ -327,6 +338,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
 
   # This test covers the axis validation in the shape function
   # (no eval())
+  @test_util.run_deprecated_v1
   def testInvalidAxis(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
     with self.assertRaisesRegexp(ValueError,
@@ -345,6 +357,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
   #
   # Note: this test passes placeholder as constant axis is validated
   # in shape function (see testInvalidAxis)
+  @test_util.run_deprecated_v1
   def testInvalid(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
     axis = array_ops.placeholder(dtypes.int32)
@@ -359,6 +372,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
                                    "axis 0 specified more than once"):
         array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [0, -2]})
 
+  @test_util.run_deprecated_v1
   def testReverse1DimAuto(self):
     for dtype in [
         np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64, np.bool,
@@ -367,6 +381,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     ]:
       self._reverse1DimAuto(dtype)
 
+  @test_util.run_deprecated_v1
   def testReverse2DimAuto(self):
     for dtype in [
         np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64, np.bool,
@@ -375,6 +390,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     ]:
       self._reverse2DimAuto(dtype)
 
+  @test_util.run_deprecated_v1
   def testUnknownDims(self):
     reverse_v2 = array_ops.reverse_v2
     data_t = array_ops.placeholder(dtypes.float32)
@@ -392,6 +408,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     reverse_2d_t = reverse_v2(data_2d_t, axis_2d_t)
     self.assertEqual(2, reverse_2d_t.get_shape().ndims)
 
+  @test_util.run_deprecated_v1
   def testReverseRowsOf3Channels(self):
     """Tests optimized code for reversing rows with last dim size = 3."""
     with self.session(use_gpu=True):
@@ -405,6 +422,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
             np_answer = x_np[:, ::-1, :]
             self.assertAllEqual(x_tf, np_answer)
 
+  @test_util.run_deprecated_v1
   def testReverseRowsOf4Channels(self):
     with self.session(use_gpu=True):
       for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
@@ -454,6 +472,7 @@ class MeshgridTest(test_util.TensorFlowTestCase):
         for x_np, x_tf in zip(numpy_out, tf_out):
           self.assertAllEqual(x_np, x_tf.eval())
 
+  @test_util.run_deprecated_v1
   def testCompare(self):
     for t in (np.float16, np.float32, np.float64, np.int32, np.int64,
               np.complex64, np.complex128):
@@ -526,6 +545,7 @@ STRIDED_SLICE_TYPES = [
 class StridedSliceTest(test_util.TensorFlowTestCase):
   """Test the strided slice operation with variants of slices."""
 
+  @test_util.run_deprecated_v1
   def test_basic_slice(self):
     for tensor_type in STRIDED_SLICE_TYPES:
       with self.cached_session(use_gpu=True):
@@ -581,6 +601,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       v = variables.Variable([1., 2.])
       v[0]  # pylint: disable=pointless-statement
 
+  @test_util.run_deprecated_v1
   def testDegenerateSlices(self):
     with self.session(use_gpu=True):
       checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
@@ -591,6 +612,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       # empty interval in every dimension
       _ = checker[-1:0, 2:2, 2:3:-1]
 
+  @test_util.run_deprecated_v1
   def testEllipsis(self):
     with self.session(use_gpu=True):
       raw = [[[[[1, 2], [3, 4], [5, 6]]], [[[7, 8], [9, 10], [11, 12]]]]]
@@ -611,6 +633,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, "Multiple ellipses"):
         _ = checker[..., :, ...].eval()
 
+  @test_util.run_deprecated_v1
   def testShrink(self):
     with self.session(use_gpu=True):
       raw = [[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
@@ -621,6 +644,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker[:, 0]
       _ = checker[:, :, 0]
 
+  @test_util.run_deprecated_v1
   def testBothNewAxisAndShrink(self):
     with self.session(use_gpu=True):
       ones = array_ops.placeholder(shape=[2, 2], dtype=dtypes.int16)
@@ -629,6 +653,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
               feed_dict={ones: [[1, 1], [1, 1]]}),
           [[1, 1]])
 
+  @test_util.run_deprecated_v1
   def testTensorIndexing(self):
     with self.session(use_gpu=True):
       raw = [[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
@@ -654,6 +679,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(TypeError, expected):
         _ = checker[constant_op.constant(0.0)]
 
+  @test_util.run_deprecated_v1
   def testExpand(self):
     with self.session(use_gpu=True):
       raw = [[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
@@ -671,6 +697,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       # Ellipsis in middle of two newaxis
       _ = checker[np.newaxis, ..., np.newaxis]
 
+  @test_util.run_deprecated_v1
   def testExpandVariable(self):
     with self.session(use_gpu=True):
       x = variables.Variable(7, dtype=dtypes.int32)
@@ -679,6 +706,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       self.assertEqual(y.shape, (1,))
       self.assertAllEqual(y, (7,))
 
+  @test_util.run_deprecated_v1
   def testOptimizedCases(self):
     with self.session(use_gpu=True):
       checker = StridedSliceChecker(self,
@@ -708,6 +736,7 @@ class StridedSliceShapeChecker(object):
 class StridedSliceShapeTest(test_util.TensorFlowTestCase):
   """Test the shape inference of StridedSliceShapes."""
 
+  @test_util.run_deprecated_v1
   def testUnknown(self):
     with self.session(use_gpu=True):
       uncertain_tensor = array_ops.placeholder(dtypes.float32)
@@ -719,6 +748,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
     self.assertTrue(x is not None and y is not None or x is None and y is None)
     self.assertEqual(x.as_list(), y.as_list())
 
+  @test_util.run_deprecated_v1
   def testTensorShapeUncertain(self):
     with self.session(use_gpu=True):
       uncertain_tensor = array_ops.placeholder(
@@ -742,6 +772,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
       self.tensorShapeEqual(a[::-1, :, array_ops.newaxis, ::-2],
                             tensor_shape.TensorShape([5, None, 1, 4]))
 
+  @test_util.run_deprecated_v1
   def testTensorValuedIndexShape(self):
     with self.session(use_gpu=True):
       defined_shape_tensor = array_ops.placeholder(
@@ -798,6 +829,7 @@ class GradSliceChecker(object):
 class StridedSliceGradTest(test_util.TensorFlowTestCase):
   """Test that strided slice's custom gradient produces correct gradients."""
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     with self.session(use_gpu=True) as sess:
       var = variables.Variable(
@@ -827,6 +859,7 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
       grad = GradSliceChecker(self, sess, var, np.array(8))
       _ = grad[tuple()]
 
+  @test_util.run_deprecated_v1
   def testInt64Indices(self):
     with self.session(use_gpu=True) as sess:
       a = math_ops.range(3, dtype=dtypes.float32)
@@ -839,6 +872,7 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
 class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
   """Test varied index types and host located memory."""
 
+  @test_util.run_deprecated_v1
   def testHostVsDevice(self):
     with self.session(use_gpu=True) as sess:
       var2 = variables.Variable(
@@ -853,6 +887,7 @@ class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
       foo = array_ops.strided_slice_grad(varshape, begin, end, strides, var2)
       sess.run(foo)
 
+  @test_util.run_deprecated_v1
   def testInt64Shape(self):
     with self.session(use_gpu=True) as sess:
       original_dy = array_ops.reshape(
@@ -867,6 +902,7 @@ class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
                                         original_dy)
       sess.run(dx)
 
+  @test_util.run_deprecated_v1
   def testMixedIndexTypes(self):
     with self.session(use_gpu=True) as sess:
       original_dy = array_ops.reshape(
@@ -975,6 +1011,7 @@ class StridedSliceAssignChecker(object):
 
 class SliceAssignTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testInvalidSlice(self):
     with self.cached_session() as sess:
       foo = constant_op.constant([1, 2, 3])
@@ -1012,12 +1049,15 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
     checker2[...] = 6  # ellipsis
     checker2[None] = [6]  # new axis
 
+  @test_util.run_deprecated_v1
   def testSliceAssign(self):
     self.doTestSliceAssign(use_resource=False)
 
+  @test_util.run_deprecated_v1
   def testSliceAssignResource(self):
     self.doTestSliceAssign(use_resource=True)
 
+  @test_util.run_deprecated_v1
   def testUninitialized(self):
     with self.assertRaisesRegexp(
         errors.FailedPreconditionError,
@@ -1036,6 +1076,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError):
       v[:].assign(too_large_val)
 
+  @test_util.run_deprecated_v1
   def testTypeErrorResource(self):
     init_val = constant_op.constant([1, 2], dtype=dtypes.int32)
     too_small_val = constant_op.constant([3, 4], dtype=dtypes.int8)
@@ -1092,6 +1133,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, "maxlen must be scalar"):
         array_ops.sequence_mask([10, 20], [10, 20])
 
+  @test_util.run_deprecated_v1
   def testOneDimensionalWithMaxlen(self):
     with self.cached_session():
       res = array_ops.sequence_mask(constant_op.constant([1, 3, 2]), 5)
@@ -1101,6 +1143,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           [[True, False, False, False, False], [True, True, True, False, False],
            [True, True, False, False, False]])
 
+  @test_util.run_deprecated_v1
   def testOneDimensionalDtypeWithoutMaxlen(self):
     with self.cached_session():
       # test dtype and default maxlen:
@@ -1111,6 +1154,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           res.eval(),
           [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]])
 
+  @test_util.run_deprecated_v1
   def testOneDimensionalWithoutMaxlen(self):
     with self.cached_session():
       res = array_ops.sequence_mask(
@@ -1139,11 +1183,13 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           [[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]],
            [[1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0], [1.0, 1.0, 1.0, 0.0]]])
 
+  @test_util.run_deprecated_v1
   def testUnknownShape(self):
     lengths = array_ops.placeholder(dtype=dtypes.int32)
     res = array_ops.sequence_mask(lengths)
     self.assertEqual(res.shape, None)
 
+  @test_util.run_deprecated_v1
   def testDtypes(self):
 
     def check_dtypes(lengths_dtype, maxlen_dtype):
@@ -1166,6 +1212,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def testConcatSlice(self):
     r1 = test_ops.stub_resource_handle_op(container="a", shared_name="b")
     r2 = test_ops.stub_resource_handle_op(container="a", shared_name="c")
@@ -1221,6 +1268,7 @@ class PadTest(test_util.TensorFlowTestCase):
 
 class InvertPermutationTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testInvertPermutation(self):
     for dtype in [dtypes.int32, dtypes.int64]:
       with self.cached_session(use_gpu=True):
@@ -1255,12 +1303,14 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
 
 class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testSimple(self):
     with self.cached_session():
       a = array_ops.constant(10)
       guarantee_a = array_ops.guarantee_const(a)
       self.assertEqual(10, guarantee_a.eval())
 
+  @test_util.run_deprecated_v1
   def testVariables(self):
     with self.cached_session() as sess:
       for use_resource in [False, True]:
@@ -1272,6 +1322,7 @@ class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
         self.evaluate(variables.global_variables_initializer())
         self.assertEqual(10.0, guarantee_a.eval())
 
+  @test_util.run_deprecated_v1
   def testResourceRejection(self):
     with self.cached_session() as sess:
       a = variable_scope.get_variable(
@@ -1287,6 +1338,7 @@ class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
 
 class SnapshotOpTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testInvertPermutation(self):
     for dtype in [dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64]:
       with self.cached_session(use_gpu=True):

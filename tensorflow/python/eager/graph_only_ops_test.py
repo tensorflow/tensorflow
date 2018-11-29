@@ -29,12 +29,14 @@ from tensorflow.python.platform import test
 
 class GraphOnlyOpsTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testGraphZerosLike(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     z_tf = graph_only_ops.graph_zeros_like(x)
     with self.cached_session():
       self.assertAllClose(np.zeros((2, 3)), self.evaluate(z_tf))
 
+  @test_util.run_deprecated_v1
   def testGraphPlaceholder(self):
     x_tf = graph_only_ops.graph_placeholder(dtypes.int32, shape=(1,))
     y_tf = math_ops.square(x_tf)

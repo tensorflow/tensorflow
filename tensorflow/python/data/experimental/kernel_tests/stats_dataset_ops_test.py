@@ -30,6 +30,7 @@ from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -59,6 +60,7 @@ def function_apply_options(dataset, aggregator, prefix="", counter_prefix=""):
 )
 class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testBytesProduced(self, dataset_transformation):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).map(
@@ -85,6 +87,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasCount(summary_str, "bytes_produced", 100.0)
       self._assertSummaryHasSum(summary_str, "bytes_produced", expected_sum)
 
+  @test_util.run_deprecated_v1
   def testLatencyStats(self, dataset_transformation):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
@@ -105,6 +108,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasCount(
           self.evaluate(summary_t), "record_latency", 100.0)
 
+  @test_util.run_deprecated_v1
   def testPrefetchBufferUtilization(self, dataset_transformation):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).map(
@@ -132,6 +136,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasCount(summary_str, "Prefetch::buffer_utilization",
                                   100)
 
+  @test_util.run_deprecated_v1
   def testPrefetchBufferScalars(self, dataset_transformation):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(10).map(
@@ -154,6 +159,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testFilteredElementsStats(self, dataset_transformation):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(101).filter(
@@ -180,6 +186,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasScalarValue(
           self.evaluate(summary_t), "Filter::filtered_elements", 34.0)
 
+  @test_util.run_deprecated_v1
   def testMapBufferUtilization(self, dataset_transformation):
 
     def dataset_fn():
@@ -194,6 +201,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         dataset_transformation,
         function_processing_time=True)
 
+  @test_util.run_deprecated_v1
   def testMapAutoTuneBufferUtilization(self, dataset_transformation):
 
     def dataset_fn():
@@ -211,6 +219,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         dataset_transformation,
         function_processing_time=True)
 
+  @test_util.run_deprecated_v1
   def testInterleaveAutoTuneBufferUtilization(self, dataset_transformation):
 
     def dataset_fn():
@@ -227,6 +236,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     self._testParallelCallsStats(dataset_fn, "ParallelInterleaveV2", 10,
                                  dataset_transformation)
 
+  @test_util.run_deprecated_v1
   def testMapAndBatchAutoTuneBufferUtilization(self, dataset_transformation):
 
     def dataset_fn():
@@ -248,6 +258,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         check_elements=False,
         function_processing_time=True)
 
+  @test_util.run_deprecated_v1
   def testReinitialize(self, dataset_transformation):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
@@ -270,6 +281,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         self._assertSummaryHasCount(
             self.evaluate(summary_t), "record_latency", (j + 1) * 100.0)
 
+  @test_util.run_deprecated_v1
   def testNoAggregatorRegistered(self, dataset_transformation):
     dataset = dataset_ops.Dataset.range(100).apply(
         stats_ops.latency_stats("record_latency"))
@@ -283,6 +295,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testMultipleTags(self, dataset_transformation):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
@@ -308,6 +321,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasCount(
           self.evaluate(summary_t), "record_latency_2", 100.0)
 
+  @test_util.run_deprecated_v1
   def testRepeatedTags(self, dataset_transformation):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
@@ -329,6 +343,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasCount(
           self.evaluate(summary_t), "record_latency", 200.0)
 
+  @test_util.run_deprecated_v1
   def testMultipleIteratorsSameAggregator(self, dataset_transformation):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
@@ -350,6 +365,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasCount(
           self.evaluate(summary_t), "record_latency", 200.0)
 
+  @test_util.run_deprecated_v1
   def testMultipleDatasetWithPrefixes(self, dataset_transformation):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
@@ -390,6 +406,7 @@ class FeatureStatsDatasetTest(
     stats_dataset_test_base.StatsDatasetTestBase,
     reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testFeaturesStats(self, dataset_transformation):
     num_epochs = 5
     total_records = num_epochs * self._num_records

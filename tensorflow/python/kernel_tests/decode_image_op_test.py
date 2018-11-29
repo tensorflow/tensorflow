@@ -23,6 +23,7 @@ import os.path
 import numpy as np
 
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -44,6 +45,7 @@ class DecodeImageOpTest(test.TestCase):
       self.assertEqual(len(bmp0), 4194)
       self.assertAllEqual(image0, image1)
 
+  @test_util.run_deprecated_v1
   def testGif(self):
     # Read some real GIFs
     path = os.path.join(prefix_path, "gif", "testdata", "scan.gif")
@@ -78,6 +80,7 @@ class DecodeImageOpTest(test.TestCase):
         with self.assertRaises(errors_impl.InvalidArgumentError):
           self.evaluate(bad_channels)
 
+  @test_util.run_deprecated_v1
   def testJpeg(self):
     # Read a real jpeg and verify shape
     path = os.path.join(prefix_path, "jpeg", "testdata", "jpeg_merge_test1.jpg")
@@ -108,6 +111,7 @@ class DecodeImageOpTest(test.TestCase):
           self.assertEqual(image0.shape, (26, 51, channels or channels_in))
           self.assertAllEqual(image0, image1)
 
+  @test_util.run_deprecated_v1
   def testInvalidBytes(self):
     image_bytes = b"ThisIsNotAnImage!"
     decode = image_ops.decode_image(image_bytes)

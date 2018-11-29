@@ -1283,6 +1283,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
 
+  @test_util.run_deprecated_v1
   def testInputSignatureForFunctionWithNonTensorInputsNotAllowed(self):
 
     def foo(a, training=True):

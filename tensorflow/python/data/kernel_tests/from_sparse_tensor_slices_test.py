@@ -32,6 +32,7 @@ from tensorflow.python.platform import test
 @test_util.run_all_in_graph_and_eager_modes
 class FromSparseTensorSlicesTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testSkipEagerFromSparseTensorSlices(self):
     """Test a dataset based on slices of a `tf.SparseTensor`."""
     st = array_ops.sparse_placeholder(dtypes.float64)

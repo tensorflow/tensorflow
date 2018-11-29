@@ -24,12 +24,14 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class DenseToSparseBatchTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testDenseToSparseBatchDataset(self):
     components = np.random.randint(12, size=(100,)).astype(np.int32)
     iterator = (
@@ -58,6 +60,7 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(get_next)
 
+  @test_util.run_deprecated_v1
   def testDenseToSparseBatchDatasetWithUnknownShape(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
     iterator = (
@@ -91,12 +94,14 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(get_next)
 
+  @test_util.run_deprecated_v1
   def testDenseToSparseBatchDatasetWithInvalidShape(self):
     input_tensor = array_ops.constant([[1]])
     with self.assertRaisesRegexp(ValueError, "Dimension -2 must be >= 0"):
       dataset_ops.Dataset.from_tensors(input_tensor).apply(
           batching.dense_to_sparse_batch(4, [-2])).make_initializable_iterator()
 
+  @test_util.run_deprecated_v1
   def testDenseToSparseBatchDatasetShapeErrors(self):
     input_tensor = array_ops.placeholder(dtypes.int32)
     iterator = (

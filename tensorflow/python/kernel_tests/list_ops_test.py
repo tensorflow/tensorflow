@@ -66,6 +66,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with context.device("gpu:0"):
       self._testPushPop(max_num_elements)
 
+  @test_util.run_deprecated_v1
   def testPushInFullListFails(self):
     l = list_ops.empty_tensor_list(
         element_dtype=dtypes.float32, element_shape=[], max_num_elements=1)
@@ -77,6 +78,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
+  @test_util.run_deprecated_v1
   def testPopFromEmptyTensorListFails(self, max_num_elements):
     l = list_ops.empty_tensor_list(
         element_dtype=dtypes.float32,
@@ -114,6 +116,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 3))
+  @test_util.run_deprecated_v1
   def testStackWithUnknownElementShape(self, max_num_elements):
     l = list_ops.empty_tensor_list(
         element_dtype=dtypes.float32,
@@ -134,6 +137,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 3))
+  @test_util.run_deprecated_v1
   def testStackWithPartiallyDefinedElementShape(self, max_num_elements):
     l = list_ops.empty_tensor_list(
         element_dtype=dtypes.float32,
@@ -154,6 +158,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
+  @test_util.run_deprecated_v1
   def testStackEmptyList(self, max_num_elements):
     # Should be able to stack empty lists with fully defined element_shape.
     l = list_ops.empty_tensor_list(
@@ -204,6 +209,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 3))
+  @test_util.run_deprecated_v1
   def testGatherWithUnknownElementShape(self, max_num_elements):
     l = list_ops.empty_tensor_list(
         element_dtype=dtypes.float32,
@@ -227,6 +233,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 3))
+  @test_util.run_deprecated_v1
   def testGatherWithPartiallyDefinedElementShape(self, max_num_elements):
     l = list_ops.empty_tensor_list(
         element_dtype=dtypes.float32,
@@ -250,6 +257,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 3))
+  @test_util.run_deprecated_v1
   def testGatherEmptyList(self, max_num_elements):
     # Should be able to gather from empty lists with fully defined
     # element_shape.
@@ -337,6 +345,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(self.evaluate(e), 10.0)
     self.assertAllEqual(self.evaluate(tape.gradient(e, t)), 2.0)
 
+  @test_util.run_deprecated_v1
   def testSetOnEmptyListWithMaxNumElementsFails(self):
     l = list_ops.empty_tensor_list(
         element_dtype=dtypes.float32, element_shape=[], max_num_elements=3)
@@ -572,12 +581,14 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(self.evaluate(grad_c), [0.0, 4.0])
     self.assertAllEqual(self.evaluate(grad_c2), 6.0)
 
+  @test_util.run_deprecated_v1
   def testSetOutOfBounds(self):
     c = constant_op.constant([1.0, 2.0])
     l = list_ops.tensor_list_from_tensor(c, element_shape=[])
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(list_ops.tensor_list_set_item(l, 20, 3.0))
 
+  @test_util.run_deprecated_v1
   def testSkipEagerSetItemWithMismatchedShapeFails(self):
     with self.cached_session() as sess:
       ph = array_ops.placeholder(dtypes.float32)
@@ -612,6 +623,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                 [[1.0, 2.0]] * 4)
     self.assertAllEqual(self.evaluate(updated_v_stacked), expected)
 
+  @test_util.run_deprecated_v1
   def testConcat(self):
     c = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
     l0 = list_ops.tensor_list_from_tensor(c, element_shape=[])
@@ -670,6 +682,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           list_ops.tensor_list_concat_lists(l_batch_0, l_batch_of_int_tls,
                                             element_dtype=dtypes.float32))
 
+  @test_util.run_deprecated_v1
   def testPushBackBatch(self):
     c = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
     l0 = list_ops.tensor_list_from_tensor(c, element_shape=[])
@@ -797,6 +810,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(self.evaluate(res_1), [0.])
     self.assertAllEqual(self.evaluate(res_2), [0., 0.])
 
+  @test_util.run_deprecated_v1
   def testSkipEagerTensorListGetItemGradAggregation(self):
     l = list_ops.tensor_list_reserve(
         element_shape=[], num_elements=1, element_dtype=dtypes.float32)
@@ -808,6 +822,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       self.assertSequenceEqual(self.evaluate(grad), [2.])
 
+  @test_util.run_deprecated_v1
   def testSkipEagerBuildElementShape(self):
     fn = list_ops._build_element_shape
     # Unknown shape -> -1.

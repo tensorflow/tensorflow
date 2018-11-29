@@ -21,6 +21,7 @@ import os
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -35,6 +36,7 @@ builder = option_builder.ProfileOptionBuilder
 
 class ProfilerContextTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasics(self):
     ops.reset_default_graph()
     outfile = os.path.join(test.get_temp_dir(), "dump")
@@ -69,6 +71,7 @@ class ProfilerContextTest(test.TestCase):
       with gfile.Open(outfile, "r") as f:
         self.assertEqual(profile_str, f.read())
 
+  @test_util.run_deprecated_v1
   def testAutoTracingInDeubMode(self):
     ops.reset_default_graph()
     x = lib.BuildFullModel()
@@ -90,6 +93,7 @@ class ProfilerContextTest(test.TestCase):
         for f in gfile.ListDirectory(test.get_temp_dir()):
           self.assertFalse("run_meta" in f)
 
+  @test_util.run_deprecated_v1
   def testDisabled(self):
     ops.reset_default_graph()
     x = lib.BuildFullModel()

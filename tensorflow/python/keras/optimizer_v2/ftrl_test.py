@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.optimizer_v2 import ftrl
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
@@ -68,12 +69,15 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([-0.28432083, -0.56694895]), v1_val)
 
+  @test_util.run_deprecated_v1
   def testFtrlWithoutRegularization(self):
     self.doTestFtrlwithoutRegularization(use_resource=False)
 
+  @test_util.run_deprecated_v1
   def testResourceFtrlWithoutRegularization(self):
     self.doTestFtrlwithoutRegularization(use_resource=True)
 
+  @test_util.run_deprecated_v1
   def testFtrlwithoutRegularization2(self):
     for dtype in [dtypes.half, dtypes.float32]:
       with self.cached_session() as sess:
@@ -103,6 +107,7 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([-0.28232238, -0.56096673]), v1_val)
 
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -121,6 +126,7 @@ class FtrlOptimizerTest(test.TestCase):
                                            self.evaluate(var0),
                                            atol=0.01)
 
+  @test_util.run_deprecated_v1
   def testFtrlWithL1(self):
     for dtype in [dtypes.half, dtypes.float32]:
       with self.cached_session() as sess:
@@ -150,6 +156,7 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([-0.93460727, -1.86147261]), v1_val)
 
+  @test_util.run_deprecated_v1
   def testFtrlWithL1_L2(self):
     for dtype in [dtypes.half, dtypes.float32]:
       with self.cached_session() as sess:
@@ -180,6 +187,7 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([-0.02406147, -0.04830509]), v1_val)
 
+  @test_util.run_deprecated_v1
   def testFtrlWithL1_L2_L2Shrinkage(self):
     """Test the new FTRL op with support for l2 shrinkage.
 
@@ -217,6 +225,7 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([-0.14378493, -0.13229476]), v1_val)
 
+  @test_util.run_deprecated_v1
   def testFtrlWithL1_L2_L2ShrinkageSparse(self):
     """Tests the new FTRL op with support for l2 shrinkage on sparse grads."""
     for dtype in [dtypes.half, dtypes.float32]:
@@ -251,6 +260,7 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType([[-0.22578995], [2.]], v0_val)
         self.assertAllCloseAccordingToType([[4.], [-0.13229476]], v1_val)
 
+  @test_util.run_deprecated_v1
   def testFtrlWithL2ShrinkageDoesNotChangeLrSchedule(self):
     """Verifies that l2 shrinkage in FTRL does not change lr schedule."""
     for dtype in [dtypes.half, dtypes.float32]:
@@ -335,6 +345,7 @@ class FtrlOptimizerTest(test.TestCase):
   # with Adagrad.
   # So, basing on these two properties, we test if our implementation of
   # FTRL-Proximal performs same updates as Adagrad or GradientDescent.
+  @test_util.run_deprecated_v1
   def testEquivAdagradwithoutRegularization(self):
     for dtype in [dtypes.half, dtypes.float32]:
       with self.cached_session():
@@ -355,6 +366,7 @@ class FtrlOptimizerTest(test.TestCase):
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
+  @test_util.run_deprecated_v1
   def testEquivSparseAdagradwithoutRegularization(self):
     for dtype in [dtypes.half, dtypes.float32]:
       with self.cached_session():
@@ -378,6 +390,7 @@ class FtrlOptimizerTest(test.TestCase):
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
+  @test_util.run_deprecated_v1
   def testEquivSparseGradientDescentwithoutRegularization(self):
     for dtype in [dtypes.half, dtypes.float32]:
       with self.cached_session():
@@ -401,6 +414,7 @@ class FtrlOptimizerTest(test.TestCase):
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
+  @test_util.run_deprecated_v1
   def testEquivGradientDescentwithoutRegularization(self):
     for dtype in [dtypes.half, dtypes.float32]:
       with self.cached_session():

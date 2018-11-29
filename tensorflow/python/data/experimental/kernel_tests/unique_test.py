@@ -22,6 +22,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -57,6 +58,7 @@ class UniqueTest(test_base.DatasetTestBase):
         with self.assertRaises(errors.OutOfRangeError):
           self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testSimpleInt(self):
     for dtype in [dtypes.int32, dtypes.int64]:
       self._testSimpleHelper(dtype, [
@@ -69,6 +71,7 @@ class UniqueTest(test_base.DatasetTestBase):
           ([[1, 1], [1, 1], [2, 2], [3, 3], [1, 1]], [[1, 1], [2, 2], [3, 3]]),
       ])
 
+  @test_util.run_deprecated_v1
   def testSimpleString(self):
     self._testSimpleHelper(dtypes.string, [
         ([], []),

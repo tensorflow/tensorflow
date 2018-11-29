@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -80,6 +81,7 @@ class LinearOperatorDiagTest(
       with self.assertRaisesOpError("non-positive real.*not positive definite"):
         operator.assert_positive_definite().run()
 
+  @test_util.run_deprecated_v1
   def test_assert_positive_definite_does_not_raise_if_pd_and_complex(self):
     with self.cached_session():
       x = [1., 2.]
@@ -96,6 +98,7 @@ class LinearOperatorDiagTest(
       with self.assertRaisesOpError("Singular operator"):
         operator.assert_non_singular().run()
 
+  @test_util.run_deprecated_v1
   def test_assert_non_singular_does_not_raise_for_complex_nonsingular(self):
     with self.cached_session():
       x = [1., 0.]
@@ -113,6 +116,7 @@ class LinearOperatorDiagTest(
       with self.assertRaisesOpError("imaginary.*not self-adjoint"):
         operator.assert_self_adjoint().run()
 
+  @test_util.run_deprecated_v1
   def test_assert_self_adjoint_does_not_raise_for_diag_with_zero_imag(self):
     with self.cached_session():
       x = [1., 0.]

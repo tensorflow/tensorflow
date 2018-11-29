@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_impl
@@ -53,6 +54,7 @@ class SigmoidCrossEntropyWithLogitsTest(test.TestCase):
     losses = np.array(self._SigmoidCrossEntropyWithLogits(x, y)).reshape(*sizes)
     return logits, targets, losses
 
+  @test_util.run_deprecated_v1
   def testConstructionNamed(self):
     with self.cached_session():
       logits, targets, _ = self._Inputs()
@@ -82,6 +84,7 @@ class SigmoidCrossEntropyWithLogitsTest(test.TestCase):
           tf_loss = self.evaluate(loss)
         self.assertAllClose(np_loss, tf_loss, atol=0.001)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     sizes = [4, 2]
     with self.cached_session():
@@ -92,6 +95,7 @@ class SigmoidCrossEntropyWithLogitsTest(test.TestCase):
     print("logistic loss gradient err = ", err)
     self.assertLess(err, 1e-7)
 
+  @test_util.run_deprecated_v1
   def testGradientAtZero(self):
     with self.cached_session():
       logits = constant_op.constant([0.0, 0.0], dtype=dtypes.float64)
@@ -129,6 +133,7 @@ class WeightedCrossEntropyTest(test.TestCase):
     losses = np.array(self._WeightedCrossEntropy(x, y, q)).reshape(*sizes)
     return logits, targets, q, losses
 
+  @test_util.run_deprecated_v1
   def testConstructionNamed(self):
     with self.cached_session():
       logits, targets, pos_weight, _ = self._Inputs()
@@ -157,6 +162,7 @@ class WeightedCrossEntropyTest(test.TestCase):
         tf_loss = self.evaluate(loss)
       self.assertAllClose(np_loss, tf_loss, atol=0.001)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     sizes = [4, 2]
     with self.cached_session():

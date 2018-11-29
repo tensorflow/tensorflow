@@ -394,6 +394,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
         result_flat_values = array_ops.reshape(result, [-1])
       self.assertAllEqual(expected_flat_values, result_flat_values)
 
+  @test_util.run_deprecated_v1
   def testUnknownRankError(self):
     x = ragged.constant([[1, 2], [3]])
     y = ragged.from_row_splits(

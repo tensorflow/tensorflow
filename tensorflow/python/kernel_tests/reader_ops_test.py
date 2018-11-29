@@ -28,6 +28,7 @@ import zlib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
@@ -145,6 +146,7 @@ class IdentityReaderTest(test.TestCase):
     self.assertAllEqual(expected, k)
     self.assertAllEqual(expected, v)
 
+  @test_util.run_deprecated_v1
   def testOneEpoch(self):
     reader = io_ops.IdentityReader("test_reader")
     work_completed = reader.num_work_units_completed()
@@ -178,6 +180,7 @@ class IdentityReaderTest(test.TestCase):
     self.assertAllEqual(3, self.evaluate(produced))
     self.assertAllEqual(0, self.evaluate(queued_length))
 
+  @test_util.run_deprecated_v1
   def testMultipleEpochs(self):
     reader = io_ops.IdentityReader("test_reader")
     queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
@@ -198,6 +201,7 @@ class IdentityReaderTest(test.TestCase):
                                   "\\(requested 1, current size 0\\)"):
       self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testSerializeRestore(self):
     reader = io_ops.IdentityReader("test_reader")
     produced = reader.num_records_produced()
@@ -252,6 +256,7 @@ class IdentityReaderTest(test.TestCase):
         "Could not parse state for IdentityReader 'test_reader'"):
       self.evaluate(reader.restore_state(b"BOGUS" + state[5:]))
 
+  @test_util.run_deprecated_v1
   def testReset(self):
     reader = io_ops.IdentityReader("test_reader")
     work_completed = reader.num_work_units_completed()
@@ -302,6 +307,7 @@ class WholeFileReaderTest(test.TestCase):
     self.assertAllEqual(compat.as_bytes(self._filenames[index]), k)
     self.assertAllEqual(self._content[index], v)
 
+  @test_util.run_deprecated_v1
   def testOneEpoch(self):
     reader = io_ops.WholeFileReader("test_reader")
     queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
@@ -317,6 +323,7 @@ class WholeFileReaderTest(test.TestCase):
                                   "\\(requested 1, current size 0\\)"):
       self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testInfiniteEpochs(self):
     reader = io_ops.WholeFileReader("test_reader")
     queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
@@ -376,12 +383,15 @@ class TextLineReaderTest(test.TestCase):
                                   "\\(requested 1, current size 0\\)"):
       k, v = self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testOneEpochLF(self):
     self._testOneEpoch(self._CreateFiles(crlf=False))
 
+  @test_util.run_deprecated_v1
   def testOneEpochCRLF(self):
     self._testOneEpoch(self._CreateFiles(crlf=True))
 
+  @test_util.run_deprecated_v1
   def testSkipHeaderLines(self):
     files = self._CreateFiles()
     reader = io_ops.TextLineReader(skip_header_lines=1, name="test_reader")
@@ -562,6 +572,7 @@ class FixedLengthRecordReaderTest(TFCompressionTestCase):
                                   "\\(requested 1, current size 0\\)"):
       k, v = self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testOneEpoch(self):
     for num_records in [0, 7]:
       # gap_bytes=0: hop_bytes=0
@@ -570,6 +581,7 @@ class FixedLengthRecordReaderTest(TFCompressionTestCase):
         files = self._CreateFiles(num_records, gap_bytes)
         self._TestOneEpoch(files, num_records, gap_bytes)
 
+  @test_util.run_deprecated_v1
   def testGzipOneEpoch(self):
     for num_records in [0, 7]:
       # gap_bytes=0: hop_bytes=0
@@ -578,6 +590,7 @@ class FixedLengthRecordReaderTest(TFCompressionTestCase):
         files = self._CreateGzipFiles(num_records, gap_bytes)
         self._TestOneEpoch(files, num_records, gap_bytes, encoding="GZIP")
 
+  @test_util.run_deprecated_v1
   def testZlibOneEpoch(self):
     for num_records in [0, 7]:
       # gap_bytes=0: hop_bytes=0
@@ -586,17 +599,20 @@ class FixedLengthRecordReaderTest(TFCompressionTestCase):
         files = self._CreateZlibFiles(num_records, gap_bytes)
         self._TestOneEpoch(files, num_records, gap_bytes, encoding="ZLIB")
 
+  @test_util.run_deprecated_v1
   def testOneEpochWithHopBytes(self):
     for num_overlapped_records in [0, 2]:
       files = self._CreateOverlappedRecordFiles(num_overlapped_records)
       self._TestOneEpochWithHopBytes(files, num_overlapped_records)
 
+  @test_util.run_deprecated_v1
   def testGzipOneEpochWithHopBytes(self):
     for num_overlapped_records in [0, 2]:
       files = self._CreateGzipOverlappedRecordFiles(num_overlapped_records,)
       self._TestOneEpochWithHopBytes(
           files, num_overlapped_records, encoding="GZIP")
 
+  @test_util.run_deprecated_v1
   def testZlibOneEpochWithHopBytes(self):
     for num_overlapped_records in [0, 2]:
       files = self._CreateZlibOverlappedRecordFiles(num_overlapped_records)
@@ -609,6 +625,7 @@ class TFRecordReaderTest(TFCompressionTestCase):
   def setUp(self):
     super(TFRecordReaderTest, self).setUp()
 
+  @test_util.run_deprecated_v1
   def testOneEpoch(self):
     files = self._CreateFiles()
     reader = io_ops.TFRecordReader(name="test_reader")
@@ -627,6 +644,7 @@ class TFRecordReaderTest(TFCompressionTestCase):
                                   "\\(requested 1, current size 0\\)"):
       k, v = self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testReadUpTo(self):
     files = self._CreateFiles()
     reader = io_ops.TFRecordReader(name="test_reader")
@@ -654,6 +672,7 @@ class TFRecordReaderTest(TFCompressionTestCase):
     self.assertEqual(self._num_files * self._num_records, num_k)
     self.assertEqual(self._num_files * self._num_records, num_v)
 
+  @test_util.run_deprecated_v1
   def testReadZlibFiles(self):
     options = tf_record.TFRecordOptions(TFRecordCompressionType.ZLIB)
     files = self._CreateFiles(options)
@@ -670,6 +689,7 @@ class TFRecordReaderTest(TFCompressionTestCase):
         self.assertTrue(compat.as_text(k).startswith("%s:" % files[i]))
         self.assertAllEqual(self._Record(i, j), v)
 
+  @test_util.run_deprecated_v1
   def testReadGzipFiles(self):
     options = tf_record.TFRecordOptions(TFRecordCompressionType.GZIP)
     files = self._CreateFiles(options)
@@ -689,6 +709,7 @@ class TFRecordReaderTest(TFCompressionTestCase):
 
 class AsyncReaderTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testNoDeadlockFromQueue(self):
     """Tests that reading does not block main execution threads."""
     config = config_pb2.ConfigProto(
@@ -737,6 +758,7 @@ class LMDBReaderTest(test.TestCase):
     self.db_path = os.path.join(self.get_temp_dir(), "data.mdb")
     shutil.copy(path, self.db_path)
 
+  @test_util.run_deprecated_v1
   def testReadFromFile(self):
     reader = io_ops.LMDBReader(name="test_read_from_file")
     queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
@@ -754,6 +776,7 @@ class LMDBReaderTest(test.TestCase):
                                   "\\(requested 1, current size 0\\)"):
       k, v = self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testReadFromSameFile(self):
     with self.cached_session() as sess:
       reader1 = io_ops.LMDBReader(name="test_read_from_same_file1")
@@ -773,6 +796,7 @@ class LMDBReaderTest(test.TestCase):
       coord.request_stop()
       coord.join(threads)
 
+  @test_util.run_deprecated_v1
   def testReadFromFolder(self):
     reader = io_ops.LMDBReader(name="test_read_from_folder")
     queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
@@ -790,6 +814,7 @@ class LMDBReaderTest(test.TestCase):
                                   "\\(requested 1, current size 0\\)"):
       k, v = self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testReadFromFileRepeatedly(self):
     with self.cached_session() as sess:
       reader = io_ops.LMDBReader(name="test_read_from_file_repeated")

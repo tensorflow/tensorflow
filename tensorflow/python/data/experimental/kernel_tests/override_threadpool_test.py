@@ -29,6 +29,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
@@ -81,6 +82,7 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
       ("8", 4, 1),
       ("9", 4, 4),
   )
+  @test_util.run_deprecated_v1
   def testNumThreadsDeprecated(self, num_threads, max_intra_op_parallelism):
 
     def override_threadpool_fn(dataset):
@@ -107,6 +109,7 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
       ("11", 4, 4),
       ("12", None, None),
   )
+  @test_util.run_deprecated_v1
   def testNumThreads(self, num_threads, max_intra_op_parallelism):
 
     def override_threadpool_fn(dataset):

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import numerics
 from tensorflow.python.platform import test
@@ -57,6 +58,7 @@ class ClipOpsTest(test.TestCase):
       result, expected = self.evaluate([clipped, dense_clipped])
     self.assertAllClose(result, expected)
 
+  @test_util.run_deprecated_v1
   def testClipTensorByNorm(self):
     # Simple example
     self._testClipTensorByNorm([[-3.0, 0.0, 0.0], [4.0, 0.0, 0.0]], 4.0,

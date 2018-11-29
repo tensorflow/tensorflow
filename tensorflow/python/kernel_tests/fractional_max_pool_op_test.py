@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
@@ -278,6 +279,7 @@ class FractionalMaxPoolTest(test.TestCase):
     self._ValidateFractionalMaxPoolResult(rand_mat, [1, 2, 2, 1], pseudo_random,
                                           overlapping)
 
+  @test_util.run_deprecated_v1
   def testDifferentInputTensorShape(self):
     """Runs the operation in one session with different input tensor shapes."""
     with self.cached_session() as sess:
@@ -430,6 +432,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
               self.assertShapeEqual(input_backprop, fmp_input_backprop_tensor)
               self.assertAllClose(input_backprop, fmp_input_backprop)
 
+  @test_util.run_deprecated_v1
   def testAllInputOptionsThroughGradientError(self):
     input_shape = (1, 7, 13, 1)
     input_data = self._GenerateUniqueRandomInputTensor(input_shape)
@@ -460,6 +463,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
               delta=1e-2)
           self.assertLess(gradient_error, error_margin)
 
+  @test_util.run_deprecated_v1
   def testDifferentTensorShapesThroughGradientError(self):
     pseudo_random = True
     overlapping = True
@@ -493,6 +497,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
                   delta=1e-2)
               self.assertLess(gradient_error, error_margin)
 
+  @test_util.run_deprecated_v1
   def testLargePoolingRatioThroughGradientError(self):
     input_shape = (1, 17, 23, 1)
     input_data = self._GenerateUniqueRandomInputTensor(input_shape)

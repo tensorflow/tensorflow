@@ -90,6 +90,7 @@ class RaggedConvertToTensorOrRaggedTensorTest(test_util.TensorFlowTestCase,
           preferred_dtype=dtypes.string,
           expected_dtype=dtypes.int32),
   ])
+  @test_util.run_deprecated_v1
   def testConvertRaggedTensorValue(self,
                                    value,
                                    dtype=None,
@@ -145,6 +146,7 @@ class RaggedConvertToTensorOrRaggedTensorTest(test_util.TensorFlowTestCase,
           message=('Tensor conversion requested dtype string for '
                    'Tensor with dtype int32')),
   ])
+  @test_util.run_deprecated_v1
   def testConvertTensorError(self,
                              pylist,
                              message,

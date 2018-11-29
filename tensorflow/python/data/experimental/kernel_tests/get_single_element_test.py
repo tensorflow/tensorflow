@@ -25,6 +25,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -39,6 +40,7 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("MoreThanOne", 0, 2, errors.InvalidArgumentError,
        "Dataset had more than one element."),
   )
+  @test_util.run_deprecated_v1
   def testGetSingleElement(self, skip, take, error=None, error_msg=None):
     skip_t = array_ops.placeholder(dtypes.int64, shape=[])
     take_t = array_ops.placeholder(dtypes.int64, shape=[])

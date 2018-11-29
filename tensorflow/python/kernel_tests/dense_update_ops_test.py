@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -81,9 +82,11 @@ class AssignOpTest(test.TestCase):
         self.assertAllEqual(x - y, var_value)
         self.assertAllEqual(x - y, op_value)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     self._testTypes(np.arange(0, 20).reshape([4, 5]))
 
+  @test_util.run_deprecated_v1
   def testAssignNonStrictShapeChecking(self):
     with self.cached_session():
       data = array_ops.fill([1024, 1024], 0)
@@ -98,6 +101,7 @@ class AssignOpTest(test.TestCase):
       a2.op.run()
       self.assertAllEqual(p.eval(), self.evaluate(data2))
 
+  @test_util.run_deprecated_v1
   def testInitRequiredAssignAdd(self):
     with self.cached_session():
       p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
@@ -105,6 +109,7 @@ class AssignOpTest(test.TestCase):
       with self.assertRaisesOpError("use uninitialized"):
         a.op.run()
 
+  @test_util.run_deprecated_v1
   def testInitRequiredAssignSub(self):
     with self.cached_session():
       p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)

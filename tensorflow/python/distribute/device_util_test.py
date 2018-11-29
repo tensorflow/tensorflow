@@ -21,11 +21,13 @@ from __future__ import print_function
 from tensorflow.python.distribute import device_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class DeviceUtilTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testCurrentDeviceWithGlobalGraph(self):
     with ops.device("/cpu:0"):
       self.assertEqual(device_util.current(), "/device:CPU:0")
@@ -49,6 +51,7 @@ class DeviceUtilTest(test.TestCase):
         self.assertEqual(device_util.current(),
                          "/job:localhost/replica:0/task:0/device:CPU:0")
 
+  @test_util.run_deprecated_v1
   def testCanonicalizeWithoutDefaultDevice(self):
     self.assertEqual(
         device_util.canonicalize("/cpu:0"),

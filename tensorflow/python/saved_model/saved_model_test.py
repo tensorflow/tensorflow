@@ -199,6 +199,7 @@ class SavedModelTest(SavedModelTestBase):
                                    constants.SAVED_MODEL_FILENAME_PBTXT):
         loader.load(sess, ["foo"], export_dir)
 
+  @test_util.run_deprecated_v1
   def testVerifySessionGraphUsage(self):
     export_dir = self._get_export_dir("test_verify_session_graph_usage")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -219,6 +220,7 @@ class SavedModelTest(SavedModelTestBase):
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
+  @test_util.run_deprecated_v1
   def testSequence(self):
     export_dir = self._get_export_dir("test_sequence")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -236,6 +238,7 @@ class SavedModelTest(SavedModelTestBase):
       self.assertRaises(AssertionError, builder.add_meta_graph_and_variables,
                         sess, ["baz"])
 
+  @test_util.run_deprecated_v1
   def testTags(self):
     export_dir = self._get_export_dir("test_tags")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -325,6 +328,7 @@ class SavedModelTest(SavedModelTestBase):
       self.assertRaises(RuntimeError, loader.load, sess, ["foo", "baz"],
                         export_dir)
 
+  @test_util.run_deprecated_v1
   def testVariables(self):
     export_dir = self._get_export_dir("test_variables")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -377,6 +381,7 @@ class SavedModelTest(SavedModelTestBase):
       self.assertRaises(errors.NotFoundError, loader.load, sess, ["baz"],
                         export_dir)
 
+  @test_util.run_deprecated_v1
   def testGraphWithoutVariables(self):
     export_dir = self._get_export_dir("test_graph_has_variables")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -412,6 +417,7 @@ class SavedModelTest(SavedModelTestBase):
       c = a * b
       self.assertEqual(30.0, self.evaluate(c))
 
+  @test_util.run_deprecated_v1
   def testNoOverwrite(self):
     export_dir = self._get_export_dir("test_no_overwrite")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -436,6 +442,7 @@ class SavedModelTest(SavedModelTestBase):
     self.assertRaises(AssertionError, saved_model_builder._SavedModelBuilder,
                       export_dir)
 
+  @test_util.run_deprecated_v1
   def testSaveAsText(self):
     export_dir = self._get_export_dir("test_astext")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -467,6 +474,7 @@ class SavedModelTest(SavedModelTestBase):
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
+  @test_util.run_deprecated_v1
   def testCollections(self):
     export_dir = self._get_export_dir("test_collections")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -517,6 +525,7 @@ class SavedModelTest(SavedModelTestBase):
 
       self.assertEqual(len(ops.get_collection("foo_vars")), 0)
 
+  @test_util.run_deprecated_v1
   def testSignatureDefs(self):
     export_dir = self._get_export_dir("test_signature_defs")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -604,6 +613,7 @@ class SavedModelTest(SavedModelTestBase):
     self._validate_sig_def_keys(builder, valid_tensor_info,
                                 constants.TRAIN_OP_SIGNATURE_KEY)
 
+  @test_util.run_deprecated_v1
   def testSignatureDefValidationSucceedsWithName(self):
     tensor_with_name = meta_graph_pb2.TensorInfo()
     tensor_with_name.name = "foo"
@@ -617,6 +627,7 @@ class SavedModelTest(SavedModelTestBase):
     builder = saved_model_builder._SavedModelBuilder(export_dir)
     self._validate_outputs_tensor_info_accept(builder, tensor_with_name)
 
+  @test_util.run_deprecated_v1
   def testSignatureDefValidationSucceedsWithCoo(self):
     tensor_with_coo = meta_graph_pb2.TensorInfo()
     # TODO(soergel) test validation of each of the fields of coo_sparse
@@ -631,6 +642,7 @@ class SavedModelTest(SavedModelTestBase):
     builder = saved_model_builder._SavedModelBuilder(export_dir)
     self._validate_outputs_tensor_info_accept(builder, tensor_with_coo)
 
+  @test_util.run_deprecated_v1
   def testAssets(self):
     export_dir = self._get_export_dir("test_assets")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -662,6 +674,7 @@ class SavedModelTest(SavedModelTestBase):
           compat.as_bytes("ignored.txt"))
       self.assertFalse(file_io.file_exists(ignored_asset_path))
 
+  @test_util.run_deprecated_v1
   def testAssetsNameCollisionDiffFile(self):
     export_dir = self._get_export_dir("test_assets_name_collision_diff_file")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -693,6 +706,7 @@ class SavedModelTest(SavedModelTestBase):
           "asset_file_tensor_1:0",
           asset_id=1)
 
+  @test_util.run_deprecated_v1
   def testAssetsNameCollisionSameFilepath(self):
     export_dir = self._get_export_dir("test_assets_name_collision_same_path")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -730,6 +744,7 @@ class SavedModelTest(SavedModelTestBase):
           compat.as_bytes("hello42.txt_1"))
       self.assertFalse(file_io.file_exists(ignored_asset_path))
 
+  @test_util.run_deprecated_v1
   def testAssetsNameCollisionSameFile(self):
     export_dir = self._get_export_dir("test_assets_name_collision_same_file")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -767,6 +782,7 @@ class SavedModelTest(SavedModelTestBase):
           compat.as_bytes("hello42.txt_1"))
       self.assertFalse(file_io.file_exists(ignored_asset_path))
 
+  @test_util.run_deprecated_v1
   def testAssetsNameCollisionManyFiles(self):
     export_dir = self._get_export_dir("test_assets_name_collision_many_files")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -838,6 +854,7 @@ class SavedModelTest(SavedModelTestBase):
       # the main_op, following a restore.
       self.assertEqual(3, ops.get_collection("v")[2].eval())
 
+  @test_util.run_deprecated_v1
   def testTrainOp(self):
     export_dir = self._get_export_dir("test_train_op")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -865,6 +882,7 @@ class SavedModelTest(SavedModelTestBase):
       self.assertIsInstance(
           loader_impl.get_train_op(meta_graph_def), ops.Tensor)
 
+  @test_util.run_deprecated_v1
   def testTrainOpGroup(self):
     export_dir = self._get_export_dir("test_train_op_group")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -892,6 +910,7 @@ class SavedModelTest(SavedModelTestBase):
       self.assertIsInstance(
           loader_impl.get_train_op(meta_graph_def), ops.Operation)
 
+  @test_util.run_deprecated_v1
   def testTrainOpAfterVariables(self):
     export_dir = self._get_export_dir("test_train_op_after_variables")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -922,6 +941,7 @@ class SavedModelTest(SavedModelTestBase):
       loader.load(sess, ["pre_foo"], export_dir)
       self.assertFalse(ops.get_collection(constants.TRAIN_OP_KEY))
 
+  @test_util.run_deprecated_v1
   def testMultipleAssets(self):
     export_dir = self._get_export_dir("test_multiple_assets")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -962,6 +982,7 @@ class SavedModelTest(SavedModelTestBase):
       self._validate_assets(export_dir, bar_graph.asset_file_def, "bar.txt",
                             "content_bar", "asset_file_tensor:0")
 
+  @test_util.run_deprecated_v1
   def testDuplicateAssets(self):
     export_dir = self._get_export_dir("test_duplicate_assets")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -1008,6 +1029,7 @@ class SavedModelTest(SavedModelTestBase):
       self._validate_assets(export_dir, bar_graph.asset_file_def, "foo.txt",
                             "content_foo", "asset_file_tensor:0")
 
+  @test_util.run_deprecated_v1
   def testOp(self):
     export_dir = self._get_export_dir("test_op")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -1080,6 +1102,7 @@ class SavedModelTest(SavedModelTestBase):
       self.assertEqual(b"k1", v1.keys().eval())
       self.assertEqual(3.0, v1.values().eval())
 
+  @test_util.run_deprecated_v1
   def testCustomSaver(self):
     export_dir = self._get_export_dir("test_custom_saver")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -1102,6 +1125,7 @@ class SavedModelTest(SavedModelTestBase):
         self.assertEqual(
             saved_graph.saver_def.restore_op_name, "my_saver/restore_all")
 
+  @test_util.run_deprecated_v1
   def testNoCustomSaver(self):
     export_dir = self._get_export_dir("test_no_custom_saver")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -1124,6 +1148,7 @@ class SavedModelTest(SavedModelTestBase):
         self.assertEqual(
             saved_graph.saver_def.restore_op_name, "save/restore_all")
 
+  @test_util.run_deprecated_v1
   def testMultipleCustomSavers(self):
     export_dir = self._get_export_dir("test_multiple_custom_savers")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -1154,6 +1179,7 @@ class SavedModelTest(SavedModelTestBase):
     _validate_custom_saver("tag_1", "save_1/restore_all")
     _validate_custom_saver("tag_2", "save_2/restore_all")
 
+  @test_util.run_deprecated_v1
   def testImportScope(self):
     export_dir = self._get_export_dir("test_scoped_assets")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -1205,6 +1231,7 @@ class SavedModelTest(SavedModelTestBase):
           ops.get_default_graph().get_tensor_by_name(
               "scope_name/constant_tensor_name:0").eval())
 
+  @test_util.run_deprecated_v1
   def testClearDevices(self):
     export_dir = self._get_export_dir("test_clear_devices")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -1323,6 +1350,7 @@ class SavedModelV1Test(SavedModelTestBase):
     self.assertEqual(expected_asset_file_name, asset.filename)
     self.assertEqual(expected_asset_tensor_name, asset.tensor_info.name)
 
+  @test_util.run_deprecated_v1
   def testWritingAssetsToCollection(self):
     export_dir = self._get_export_dir("test_writing_assets_to_collection")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
@@ -1355,12 +1383,14 @@ class SavedModelV1Test(SavedModelTestBase):
           compat.as_bytes("ignored.txt"))
       self.assertFalse(file_io.file_exists(ignored_asset_path))
 
+  @test_util.run_deprecated_v1
   def testLegacyInitOpWithNonEmptyCollection(self):
     export_dir = self._get_export_dir(
         "test_legacy_init_op_with_non_empty_collection")
     self._testInitOpsWithNonEmptyCollection(export_dir,
                                             constants.LEGACY_INIT_OP_KEY)
 
+  @test_util.run_deprecated_v1
   def testMainOpWithNonEmptyCollection(self):
     export_dir = self._get_export_dir("test_main_op_with_non_empty_collection")
     self._testInitOpsWithNonEmptyCollection(export_dir, constants.MAIN_OP_KEY)
@@ -1464,6 +1494,7 @@ class SavedModelV1Test(SavedModelTestBase):
     self.assertIn("T", node_def.attr)
     self.assertIn("Tout", node_def.attr)
 
+  @test_util.run_deprecated_v1
   def testLegacyInitOp(self):
     export_dir = self._get_export_dir("test_legacy_init_op")
     builder = saved_model_builder.SavedModelBuilder(export_dir)

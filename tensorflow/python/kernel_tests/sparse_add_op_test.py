@@ -140,6 +140,7 @@ class SparseAddTest(test.TestCase):
       self.assertAllClose(sum_out.values, [2, 6, -.2])
       self.assertAllEqual(sum_out.dense_shape, [3, 3])
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     np.random.seed(1618)  # Make it reproducible.
     with self.session(use_gpu=False):
@@ -176,6 +177,7 @@ class SparseAddTest(test.TestCase):
           self.assertAllEqual(dense_np + rand_vals_np, s)
           self.assertTrue(s.dtype == dtype)
 
+  @test_util.run_deprecated_v1
   def testSparseTensorDenseAddGradients(self):
     np.random.seed(1618)  # Make it reproducible.
     n, m = np.random.randint(30, size=2)
@@ -191,6 +193,7 @@ class SparseAddTest(test.TestCase):
                                                     [(nnz,), (n, m)], s, (n, m))
       self.assertLess(err, 1e-3)
 
+  @test_util.run_deprecated_v1
   def testInvalidSparseTensor(self):
     with test_util.force_cpu():
       shape = [2, 2]

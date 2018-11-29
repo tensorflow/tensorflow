@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
 from tensorflow.python.ops import math_ops
@@ -37,6 +38,7 @@ class RangeSamplerOpsTest(test.TestCase):
 
   TRUE_LABELS = [[1, 2], [0, 4], [3, 3]]
 
+  @test_util.run_deprecated_v1
   def testTrueCandidates(self):
     with self.cached_session() as sess:
       indices = constant_op.constant([0, 0, 1, 1, 2, 2])
@@ -106,6 +108,7 @@ class RangeSamplerOpsTest(test.TestCase):
       self.assertTrue(id_ in self.TRUE_LABELS[index])
       self.assertLess(weight, -1.0e37)
 
+  @test_util.run_deprecated_v1
   def testSeed(self):
 
     def draw(seed):

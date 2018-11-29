@@ -143,6 +143,7 @@ class BaseLayerTest(test.TestCase):
           synchronization=variable_scope.VariableSynchronization.ON_READ,
           trainable=True)
 
+  @test_util.run_deprecated_v1
   def testReusePartitionedVaraiblesAndRegularizers(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     partitioner = partitioned_variables.fixed_size_partitioner(3)
@@ -445,6 +446,7 @@ class BaseLayerTest(test.TestCase):
       self.assertTrue(isinstance(result, dict))
       self.assertEqual(set(['label', 'logits']), set(result.keys()))
 
+  @test_util.run_deprecated_v1
   def testActivityRegularizer(self):
     regularizer = math_ops.reduce_sum
     layer = base_layers.Layer(activity_regularizer=regularizer)
@@ -533,6 +535,7 @@ class BaseLayerTest(test.TestCase):
         self.assertEqual(len(layer.trainable_variables), 1)
         self.assertEqual(layer.variables[0].graph, outer_graph)
 
+  @test_util.run_deprecated_v1
   def testGetUpdateFor(self):
 
     class MyLayer(base_layers.Layer):
@@ -577,6 +580,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
     self.assertEqual(len(layer.get_updates_for([outputs])), 0)
 
+  @test_util.run_deprecated_v1
   def testGetLossesFor(self):
 
     class MyLayer(base_layers.Layer):

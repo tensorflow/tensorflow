@@ -61,6 +61,7 @@ class LRDecayTestV2(test_util.TensorFlowTestCase):
       self.evaluate(step.assign(100))
       self.assertAllClose(self.evaluate(decayed_lr()), expected, 1e-6)
 
+  @test_util.run_deprecated_v1
   def testVariables(self):
     step = variables.Variable(1)
     assign_1 = step.assign(1)

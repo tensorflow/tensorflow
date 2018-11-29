@@ -23,6 +23,7 @@ from tensorflow.python.data.experimental.ops import sleep
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 _NUMPY_RANDOM_SEED = 42
@@ -30,6 +31,7 @@ _NUMPY_RANDOM_SEED = 42
 
 class SleepTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testSleep(self):
     sleep_microseconds = 100
     dataset = dataset_ops.Dataset.range(10).apply(

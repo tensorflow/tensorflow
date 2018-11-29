@@ -24,6 +24,7 @@ from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
@@ -67,6 +68,7 @@ class AddNTest(test.TestCase):
           tol = 5e-3 if dtype == dtypes.float16 else 5e-7
           self.assertAllClose(expected, actual, rtol=tol, atol=tol)
 
+  @test_util.run_deprecated_v1
   def testUnknownShapes(self):
     np.random.seed(12345)
     with self.session(use_gpu=True) as sess:
@@ -80,6 +82,7 @@ class AddNTest(test.TestCase):
           tol = 5e-3 if dtype == dtypes.float16 else 5e-7
           self.assertAllClose(expected, actual, rtol=tol, atol=tol)
 
+  @test_util.run_deprecated_v1
   def testVariant(self):
 
     def create_constant_variant(value):

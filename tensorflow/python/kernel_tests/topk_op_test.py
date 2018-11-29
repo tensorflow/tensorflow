@@ -27,6 +27,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
@@ -181,6 +182,7 @@ class TopKTest(test.TestCase):
     k = constant_op.constant(3)
     self._validateTopK(inputs, k, [19, 18, 17], [11, 3, 7])
 
+  @test_util.run_deprecated_v1
   def testKNegative(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
     with self.session(use_gpu=True):
@@ -189,12 +191,14 @@ class TopKTest(test.TestCase):
       with self.assertRaisesOpError("Need k >= 0, got -7"):
         values.eval(feed_dict={k: -7})
 
+  @test_util.run_deprecated_v1
   def testKTooLarge(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
     with self.assertRaisesRegexp(ValueError,
                                  r"must have last dimension >= k = 4"):
       nn_ops.top_k(inputs, 4)
 
+  @test_util.run_deprecated_v1
   def testTopKGradients(self):
     with self.session(use_gpu=True) as sess:
       inputs = array_ops.placeholder(dtypes.float32, shape=[2, 5])

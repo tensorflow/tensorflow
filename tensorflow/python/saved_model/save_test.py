@@ -282,6 +282,7 @@ class SaveTest(test.TestCase):
         {"out": model(array_ops.ones([1, 4]))},
         self._import_and_infer(save_dir, {"x": [[1., 1., 1., 1.]]}))
 
+  @test_util.run_deprecated_v1
   def test_export_functional_keras_model_after_fit(self):
     x = input_layer.Input((1,))
     y = core.Dense(1, name="y")(x)
