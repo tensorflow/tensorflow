@@ -1,4 +1,6 @@
 op {
   graph_op_name: "Add"
-  visibility: SKIP
+  endpoint {
+    name: "math.Add"
+  }
 }
