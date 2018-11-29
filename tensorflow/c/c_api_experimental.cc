@@ -8870,3 +8870,13 @@ void TF_InitMain(const char* usage, int* argc, char*** argv) {
 int TF_PickUnusedPortOrDie() {
   return tensorflow::internal::PickUnusedPortOrDie();
 }
+
+TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType dtype_arg,
+                                                void* data, size_t len) {
+  auto dtype = static_cast<tensorflow::DataType>(dtype_arg);
+  DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
+
+  tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
+  std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
+  return new TFE_TensorHandle(tensor, nullptr, nullptr);
+}
