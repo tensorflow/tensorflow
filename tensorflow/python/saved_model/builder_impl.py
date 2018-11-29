@@ -33,6 +33,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
@@ -40,6 +41,8 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
+# Base class for the SavedModelBuilder that is only used by Tensorflow
+# internally. Please use tf.compat.v1.saved_model.SavedModelBuilder instead.
 class _SavedModelBuilder(object):
   """Builds the `SavedModel` protocol buffer and saves variables and assets.
 
@@ -144,52 +147,6 @@ class _SavedModelBuilder(object):
     # Copy assets from source path to destination path.
     self._copy_assets_to_destination_dir(asset_filename_map)
 
-  def _maybe_add_main_op(self, main_op):
-    """Adds main op to the SavedModel.
-
-    Args:
-      main_op: Main op to run as part of graph initialization. If None, no
-        main op will be added to the graph.
-
-    Raises:
-      TypeError: if main op is provided but is not of type `Operation`.
-      ValueError: if the Graph already contains an init op.
-    """
-    if main_op is None:
-      return
-
-    if not isinstance(main_op, ops.Operation):
-      raise TypeError("main_op needs to be an Operation: %r" % main_op)
-
-    # Validate that no other init ops have been added to this graph already.
-    # We check main_op and legacy_init_op for thoroughness and explicitness.
-    for init_op_key in (constants.MAIN_OP_KEY, constants.LEGACY_INIT_OP_KEY):
-      if ops.get_collection(init_op_key):
-        raise ValueError(
-            "Graph already contains one or more main ops under the "
-            "collection {}.".format(init_op_key))
-
-    ops.add_to_collection(constants.MAIN_OP_KEY, main_op)
-
-  def _add_train_op(self, train_op):
-    """Add train op to the SavedModel.
-
-    Note that this functionality is in development, and liable to be
-    moved elsewhere.
-
-    Args:
-      train_op: Op or group of ops that are used for training. These are
-        stored as a collection with key TRAIN_OP_KEY, but not executed.
-
-    Raises:
-      TypeError if Train op is not of type `Operation`.
-    """
-    if train_op is not None:
-      if (not isinstance(train_op, ops.Tensor) and
-          not isinstance(train_op, ops.Operation)):
-        raise TypeError("train_op needs to be a Tensor or Op: %r" % train_op)
-      ops.add_to_collection(constants.TRAIN_OP_KEY, train_op)
-
   def _tag_and_add_meta_graph(self, meta_graph_def, tags, signature_def_map):
     """Tags the meta graph def and adds it to the SavedModel.
 
@@ -245,26 +202,32 @@ class _SavedModelBuilder(object):
 
     Validation of entries in the signature def map includes ensuring that the
     `name` and `dtype` fields of the TensorInfo protos of the `inputs` and
-    `outputs` of each `SignatureDef` are populated.
+    `outputs` of each `SignatureDef` are populated. Also ensures that reserved
+    SigantureDef keys for the initialization and train ops are not used.
 
     Args:
       signature_def_map: The map of signature defs to be validated.
+
+    Raises:
+      AssertionError: If a TensorInfo is not valid.
+      KeyError: If a reserved signature key is used in the map.
     """
-    if signature_def_map is not None:
-      for signature_def_key in signature_def_map:
-        signature_def = signature_def_map[signature_def_key]
-        inputs = signature_def.inputs
-        outputs = signature_def.outputs
-        for inputs_key in inputs:
-          self._validate_tensor_info(inputs[inputs_key])
-        for outputs_key in outputs:
-          self._validate_tensor_info(outputs[outputs_key])
-
-  def _add_collections(self, main_op, train_op):
-    """Add asset and op collections to be saved."""
-    self._maybe_add_main_op(main_op)
-
-    self._add_train_op(train_op)
+    for signature_def_key in signature_def_map:
+      signature_def = signature_def_map[signature_def_key]
+      inputs = signature_def.inputs
+      outputs = signature_def.outputs
+      for inputs_key in inputs:
+        self._validate_tensor_info(inputs[inputs_key])
+      for outputs_key in outputs:
+        self._validate_tensor_info(outputs[outputs_key])
+    if constants.INIT_OP_SIGNATURE_KEY in signature_def_map:
+      raise KeyError(
+          "SignatureDef map key \"{}\" is reserved for initialization. Please "
+          "use a different key.".format(constants.INIT_OP_SIGNATURE_KEY))
+    if constants.TRAIN_OP_SIGNATURE_KEY in signature_def_map:
+      raise KeyError(
+          "SignatureDef map key \"{}\" is reserved for the train op. Please "
+          "use a different key.".format(constants.TRAIN_OP_SIGNATURE_KEY))
 
   def _maybe_create_saver(self, saver=None):
     """Creates a sharded saver if one does not already exist."""
@@ -278,19 +241,14 @@ class _SavedModelBuilder(object):
           allow_empty=True)
     return saver
 
-  @deprecated_args(None,
-                   "Pass your op to the equivalent parameter main_op instead.",
-                   "legacy_init_op")
   def add_meta_graph(self,
                      tags,
                      signature_def_map=None,
                      assets_list=None,
-                     legacy_init_op=None,
                      clear_devices=False,
-                     main_op=None,
-                     strip_default_attrs=False,
+                     init_op=None,
+                     train_op=None,
                      saver=None):
-    # pylint: disable=line-too-long
     """Adds the current meta graph to the SavedModel.
 
     Creates a Saver in the current scope and uses the Saver to export the meta
@@ -304,16 +262,14 @@ class _SavedModelBuilder(object):
       assets_list: Assets to be saved with SavedModel. Note
           that this list should be a subset of the assets saved as part of
           the first meta graph in the SavedModel.
-      legacy_init_op: Legacy support for op or group of ops to execute after the
-          restore op upon a load. Deprecated; please use main_op instead.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
-      main_op: Op or group of ops to execute when the graph is loaded. Note
-          that when the main_op is specified it is run after the restore op at
+      init_op: Op or group of ops to execute when the graph is loaded. Note
+          that when the init_op is specified it is run after the restore op at
           load-time.
-      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      train_op: Op or group of opts that trains the model when run. This will
+        not be run automatically when the graph is loaded, instead saved in
+        a SignatureDef accessible through the exported MetaGraph.
       saver: An instance of tf.train.Saver that will be used to export the
         metagraph. If None, a sharded Saver that restores all variables will
         be used.
@@ -322,7 +278,6 @@ class _SavedModelBuilder(object):
       AssertionError: If the variables for the SavedModel have not been saved
           yet, or if the graph already contains one or more legacy init ops.
     """
-    # pylint: enable=line-too-long
     if not self._has_saved_variables:
       raise AssertionError(
           "Graph state including variables and assets has not been saved yet. "
@@ -330,14 +285,15 @@ class _SavedModelBuilder(object):
 
     # Validate the signature def map to ensure all included TensorInfos are
     # properly populated.
+    signature_def_map = signature_def_map or {}
     self._validate_signature_def_map(signature_def_map)
 
-    # legacy_init_op is deprecated, and going away in TF 2.0.
-    # Re-mapping to main_op, as treatment is identical regardless.
-    main_op = main_op or legacy_init_op
-
-    # Add ops to collection.
-    self._add_collections(main_op=main_op, train_op=None)
+    # Create a SignatureDef pointing to the graph initialization op, which will
+    # be added to the MetaGraphDef.
+    _add_op_to_signature_def_map(signature_def_map, init_op,
+                                 constants.INIT_OP_SIGNATURE_KEY)
+    _add_op_to_signature_def_map(signature_def_map, train_op,
+                                 constants.TRAIN_OP_SIGNATURE_KEY)
 
     saver = self._maybe_create_saver(saver)
 
@@ -349,7 +305,7 @@ class _SavedModelBuilder(object):
     # resolved, we just leave the option set to False for now.
     # TODO(soergel): Reinstate clear_extraneous_savers=True when possible.
     meta_graph_def = saver.export_meta_graph(
-        clear_devices=clear_devices, strip_default_attrs=strip_default_attrs)
+        clear_devices=clear_devices, strip_default_attrs=True)
 
     # Save asset files and write them to disk, if any.
     self._save_and_write_assets(meta_graph_def, assets_list)
@@ -357,17 +313,14 @@ class _SavedModelBuilder(object):
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
 
-  @deprecated_args(None,
-                   "Pass your op to the equivalent parameter main_op instead.",
-                   "legacy_init_op")
   def add_meta_graph_and_variables(self,
                                    sess,
                                    tags,
                                    signature_def_map=None,
                                    assets_list=None,
-                                   legacy_init_op=None,
                                    clear_devices=False,
-                                   main_op=None,
+                                   init_op=None,
+                                   train_op=None,
                                    strip_default_attrs=False,
                                    saver=None):
     # pylint: disable=line-too-long
@@ -386,13 +339,14 @@ class _SavedModelBuilder(object):
       signature_def_map: The map of signature def map to add to the meta graph
         def.
       assets_list: Assets to be saved with SavedModel.
-      legacy_init_op: Legacy support for op or group of ops to execute after the
-          restore op upon a load. Deprecated; please use main_op instead.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
-      main_op: Op or group of ops to execute when the graph is loaded. Note
-          that when the main_op is specified it is run after the restore op at
+      init_op: Op or group of ops to execute when the graph is loaded. Note
+          that when the init_op is specified it is run after the restore op at
           load-time.
+      train_op: Op or group of ops that trains the model when run. This will
+        not be run automatically when the graph is loaded, instead saved in
+        a SignatureDef accessible through the exported MetaGraph.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
@@ -409,14 +363,15 @@ class _SavedModelBuilder(object):
 
     # Validate the signature def map to ensure all included TensorInfos are
     # properly populated.
+    signature_def_map = signature_def_map or {}
     self._validate_signature_def_map(signature_def_map)
 
-    # legacy_init_op is deprecated, and going away in TF 2.0.
-    # Re-mapping to main_op, as treatment is identical regardless.
-    main_op = main_op or legacy_init_op
-
-    # Add ops to collection.
-    self._add_collections(main_op=main_op, train_op=None)
+    # Create a SignatureDef pointing to the graph initialization op, which will
+    # be added to the MetaGraphDef.
+    _add_op_to_signature_def_map(signature_def_map, init_op,
+                                 constants.INIT_OP_SIGNATURE_KEY)
+    _add_op_to_signature_def_map(signature_def_map, train_op,
+                                 constants.TRAIN_OP_SIGNATURE_KEY)
 
     saved_model_utils.get_or_create_variables_dir(self._export_dir)
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
@@ -517,6 +472,52 @@ class SavedModelBuilder(_SavedModelBuilder):
     # Copy assets from source path to destination path.
     self._copy_assets_to_destination_dir(asset_filename_map)
 
+  def _maybe_add_main_op(self, main_op):
+    """Adds main op to the SavedModel.
+
+    Args:
+      main_op: Main op to run as part of graph initialization. If None, no main
+        op will be added to the graph.
+
+    Raises:
+      TypeError: if main op is provided but is not of type `Operation`.
+      ValueError: if the Graph already contains an init op.
+    """
+    if main_op is None:
+      return
+
+    if not isinstance(main_op, ops.Operation):
+      raise TypeError("main_op needs to be an Operation: %r" % main_op)
+
+    # Validate that no other init ops have been added to this graph already.
+    # We check main_op and legacy_init_op for thoroughness and explicitness.
+    for init_op_key in (constants.MAIN_OP_KEY, constants.LEGACY_INIT_OP_KEY):
+      if ops.get_collection(init_op_key):
+        raise ValueError(
+            "Graph already contains one or more main ops under the "
+            "collection {}.".format(init_op_key))
+
+    ops.add_to_collection(constants.MAIN_OP_KEY, main_op)
+
+  def _add_train_op(self, train_op):
+    """Add train op to the SavedModel.
+
+    Note that this functionality is in development, and liable to be
+    moved elsewhere.
+
+    Args:
+      train_op: Op or group of ops that are used for training. These are stored
+        as a collection with key TRAIN_OP_KEY, but not executed.
+
+    Raises:
+      TypeError if Train op is not of type `Operation`.
+    """
+    if train_op is not None:
+      if (not isinstance(train_op, ops.Tensor) and
+          not isinstance(train_op, ops.Operation)):
+        raise TypeError("train_op needs to be a Tensor or Op: %r" % train_op)
+      ops.add_to_collection(constants.TRAIN_OP_KEY, train_op)
+
   @deprecated_args(None,
                    "Pass your op to the equivalent parameter main_op instead.",
                    "legacy_init_op")
@@ -536,6 +537,7 @@ class SavedModelBuilder(_SavedModelBuilder):
 
     # Validate the signature def map to ensure all included TensorInfos are
     # properly populated.
+    signature_def_map = signature_def_map or {}
     self._validate_signature_def_map(signature_def_map)
 
     # legacy_init_op is deprecated, and going away in TF 2.0.
@@ -580,6 +582,7 @@ class SavedModelBuilder(_SavedModelBuilder):
 
     # Validate the signature def map to ensure all included TensorInfos are
     # properly populated.
+    signature_def_map = signature_def_map or {}
     self._validate_signature_def_map(signature_def_map)
 
     # legacy_init_op is deprecated, and going away in TF 2.0.
@@ -774,3 +777,8 @@ def _add_asset_to_collection(asset_filename, asset_tensor):
   asset_any_proto = Any()
   asset_any_proto.Pack(asset_proto)
   ops.add_to_collection(constants.ASSETS_KEY, asset_any_proto)
+
+
+def _add_op_to_signature_def_map(signature_def_map, op, key):
+  if op is not None:
+    signature_def_map[key] = signature_def_utils.op_signature_def(op, key)
