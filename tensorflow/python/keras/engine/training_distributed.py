@@ -485,7 +485,17 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
   ]
 
 
-def _clone_and_build_model(model, inputs=None, targets=None):
+def _custom_compile_for_predict(model):
+  """Custom compile for TPU predict mode."""
+  model.total_loss = None
+  model._fit_function = None
+  model._eval_function = None
+  model.train_function = None
+  model.test_function = None
+  model.predict_function = None
+
+
+def _clone_and_build_model(model, inputs=None, targets=None, mode=None):
   """Clone and build the given keras_model."""
   # We need to set the import here since we run into a circular dependency
   # error.
@@ -512,15 +522,18 @@ def _clone_and_build_model(model, inputs=None, targets=None):
 
   if isinstance(targets, tuple):
     targets = nest.flatten(targets)
-  cloned_model.compile(
-      optimizer,
-      model.loss,
-      metrics=metrics_module.clone_metrics(model._compile_metrics),
-      loss_weights=model.loss_weights,
-      sample_weight_mode=model.sample_weight_mode,
-      weighted_metrics=metrics_module.clone_metrics(
-          model._compile_weighted_metrics),
-      target_tensors=targets)
+  if mode == _Mode.PREDICT:
+    _custom_compile_for_predict(cloned_model)
+  else:
+    cloned_model.compile(
+        optimizer,
+        model.loss,
+        metrics=metrics_module.clone_metrics(model._compile_metrics),
+        loss_weights=model.loss_weights,
+        sample_weight_mode=model.sample_weight_mode,
+        weighted_metrics=metrics_module.clone_metrics(
+            model._compile_weighted_metrics),
+        target_tensors=targets)
   return cloned_model
 
 
@@ -529,7 +542,7 @@ def clone_model_on_replicas(model, strategy, make_callback_model=False,
   """Create a cloned model on each replica."""
   with strategy.scope():
     grouped_model = strategy.extended.call_for_each_replica(
-        _clone_and_build_model, args=(model, inputs, targets))
+        _clone_and_build_model, args=(model, inputs, targets, mode))
     if mode is _Mode.TRAIN:
       model._grouped_model_train = grouped_model
     elif mode is _Mode.TEST:
