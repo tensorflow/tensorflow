@@ -175,9 +175,13 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.float64, t.dtype)
 
   def testBool(self):
-    t = _create_tensor(False)
-    if t:
-      self.assertFalse(True)
+    self.assertFalse(bool(_create_tensor(False)))
+    self.assertFalse(bool(_create_tensor([False])))
+    self.assertFalse(bool(_create_tensor([[False]])))
+    self.assertFalse(bool(_create_tensor([0])))
+    self.assertFalse(bool(_create_tensor([0.])))
+    self.assertTrue(bool(_create_tensor([1])))
+    self.assertTrue(bool(_create_tensor([1.])))
 
   def testIntDowncast(self):
     t = _create_tensor(3)
