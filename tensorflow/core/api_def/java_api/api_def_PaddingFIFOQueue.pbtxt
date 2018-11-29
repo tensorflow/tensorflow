@@ -1,6 +1,4 @@
 op {
   graph_op_name: "PaddingFIFOQueue"
-  endpoint {
-    name: "io.PaddingFifoQueue"
-  }
+  visibility: SKIP
 }

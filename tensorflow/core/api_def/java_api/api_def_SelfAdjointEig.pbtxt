@@ -1,6 +1,4 @@
 op {
   graph_op_name: "SelfAdjointEig"
-  endpoint {
-    name: "linalg.SelfAdjointEig"
-  }
+  visibility: SKIP
 }

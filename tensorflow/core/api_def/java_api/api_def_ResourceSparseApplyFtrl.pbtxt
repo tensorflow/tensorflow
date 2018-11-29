@@ -1,6 +1,4 @@
 op {
   graph_op_name: "ResourceSparseApplyFtrl"
-  endpoint {
-    name: "train.ResourceSparseApplyFtrl"
-  }
+  visibility: SKIP
 }

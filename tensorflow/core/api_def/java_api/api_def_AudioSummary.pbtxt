@@ -1,6 +1,4 @@
 op {
   graph_op_name: "AudioSummary"
-  endpoint {
-    name: "summary.AudioSummary"
-  }
+  visibility: SKIP
 }

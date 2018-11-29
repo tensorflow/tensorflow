@@ -1,6 +1,4 @@
 op {
   graph_op_name: "BiasAddV1"
-  endpoint {
-    name: "nn.BiasAddV1"
-  }
+  visibility: SKIP
 }

@@ -1,3 +1,6 @@
 op {
   graph_op_name: "VariableV2"
+  endpoint {
+    name: "Variable"
+  }
 }

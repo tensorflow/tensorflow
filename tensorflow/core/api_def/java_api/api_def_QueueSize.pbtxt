@@ -1,6 +1,4 @@
 op {
   graph_op_name: "QueueSize"
-  endpoint {
-    name: "io.QueueSize"
-  }
+  visibility: SKIP
 }

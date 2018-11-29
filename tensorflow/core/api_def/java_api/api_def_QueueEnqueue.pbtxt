@@ -1,6 +1,4 @@
 op {
   graph_op_name: "QueueEnqueue"
-  endpoint {
-    name: "io.QueueEnqueue"
-  }
+  visibility: SKIP
 }

@@ -1,6 +1,6 @@
 op {
   graph_op_name: "AudioSummaryV2"
   endpoint {
-    name: "summary.AudioSummaryV2"
+    name: "summary.AudioSummary"
   }
 }

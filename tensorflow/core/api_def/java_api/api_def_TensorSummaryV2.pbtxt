@@ -1,6 +1,6 @@
 op {
   graph_op_name: "TensorSummaryV2"
   endpoint {
-    name: "summary.TensorSummaryV2"
+    name: "summary.TensorSummary"
   }
 }

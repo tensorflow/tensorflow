@@ -1,6 +1,4 @@
 op {
   graph_op_name: "TFRecordReader"
-  endpoint {
-    name: "io.TfRecordReader"
-  }
+  visibility: SKIP
 }

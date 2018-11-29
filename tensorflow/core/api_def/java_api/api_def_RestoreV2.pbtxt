@@ -1,6 +1,6 @@
 op {
   graph_op_name: "RestoreV2"
   endpoint {
-    name: "train.RestoreV2"
+    name: "train.Restore"
   }
 }

@@ -1,6 +1,4 @@
 op {
   graph_op_name: "FixedLengthRecordReader"
-  endpoint {
-    name: "io.FixedLengthRecordReader"
-  }
+  visibility: SKIP
 }

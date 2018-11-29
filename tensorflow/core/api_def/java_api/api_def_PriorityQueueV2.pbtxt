@@ -1,6 +1,6 @@
 op {
   graph_op_name: "PriorityQueueV2"
   endpoint {
-    name: "io.PriorityQueueV2"
+    name: "io.PriorityQueue"
   }
 }

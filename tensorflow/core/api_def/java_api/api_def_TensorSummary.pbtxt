@@ -1,6 +1,4 @@
 op {
   graph_op_name: "TensorSummary"
-  endpoint {
-    name: "summary.TensorSummary"
-  }
+  visibility: SKIP
 }

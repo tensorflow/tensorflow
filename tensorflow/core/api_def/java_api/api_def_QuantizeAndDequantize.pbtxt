@@ -1,6 +1,4 @@
 op {
   graph_op_name: "QuantizeAndDequantize"
-  endpoint {
-    name: "quantization.QuantizeAndDequantize"
-  }
+  visibility: SKIP
 }

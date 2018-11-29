@@ -1,6 +1,6 @@
 op {
   graph_op_name: "SdcaOptimizerV2"
   endpoint {
-    name: "train.SdcaOptimizerV2"
+    name: "train.SdcaOptimizer"
   }
 }

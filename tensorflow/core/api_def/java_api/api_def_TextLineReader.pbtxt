@@ -1,6 +1,4 @@
 op {
   graph_op_name: "TextLineReader"
-  endpoint {
-    name: "io.TextLineReader"
-  }
+  visibility: SKIP
 }

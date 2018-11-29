@@ -1,6 +1,4 @@
 op {
   graph_op_name: "Iterator"
-  endpoint {
-    name: "data.Iterator"
-  }
+  visibility: SKIP
 }

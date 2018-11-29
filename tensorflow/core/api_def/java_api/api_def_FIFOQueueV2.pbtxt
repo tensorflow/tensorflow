@@ -1,6 +1,6 @@
 op {
   graph_op_name: "FIFOQueueV2"
   endpoint {
-    name: "io.FifoQueueV2"
+    name: "io.FifoQueue"
   }
 }

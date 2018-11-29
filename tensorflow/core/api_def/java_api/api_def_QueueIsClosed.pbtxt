@@ -1,6 +1,4 @@
 op {
   graph_op_name: "QueueIsClosed"
-  endpoint {
-    name: "io.QueueIsClosed"
-  }
+  visibility: SKIP
 }

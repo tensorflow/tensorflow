@@ -1,6 +1,6 @@
 op {
   graph_op_name: "PaddedBatchDatasetV2"
   endpoint {
-    name: "data.PaddedBatchDatasetV2"
+    name: "data.PaddedBatchDataset"
   }
 }

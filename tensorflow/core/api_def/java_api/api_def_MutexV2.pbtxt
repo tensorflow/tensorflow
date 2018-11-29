@@ -1,3 +1,6 @@
 op {
   graph_op_name: "MutexV2"
+  endpoint {
+    name: "Mutex"
+  }
 }

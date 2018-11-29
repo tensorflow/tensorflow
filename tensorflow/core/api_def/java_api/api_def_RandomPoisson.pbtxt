@@ -1,6 +1,4 @@
 op {
   graph_op_name: "RandomPoisson"
-  endpoint {
-    name: "random.RandomPoisson"
-  }
+  visibility: SKIP
 }

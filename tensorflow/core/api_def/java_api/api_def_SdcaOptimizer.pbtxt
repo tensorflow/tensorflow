@@ -1,6 +1,4 @@
 op {
   graph_op_name: "SdcaOptimizer"
-  endpoint {
-    name: "train.SdcaOptimizer"
-  }
+  visibility: SKIP
 }

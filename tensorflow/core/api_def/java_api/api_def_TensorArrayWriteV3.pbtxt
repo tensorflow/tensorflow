@@ -1,3 +1,6 @@
 op {
   graph_op_name: "TensorArrayWriteV3"
+  endpoint {
+    name: "TensorArrayWrite"
+  }
 }

@@ -1,6 +1,6 @@
 op {
   graph_op_name: "StringSplitV2"
   endpoint {
-    name: "strings.StringSplitV2"
+    name: "strings.StringSplit"
   }
 }

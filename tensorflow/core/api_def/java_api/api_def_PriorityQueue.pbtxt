@@ -1,6 +1,4 @@
 op {
   graph_op_name: "PriorityQueue"
-  endpoint {
-    name: "io.PriorityQueue"
-  }
+  visibility: SKIP
 }

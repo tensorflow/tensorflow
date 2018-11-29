@@ -1,6 +1,4 @@
 op {
   graph_op_name: "NonMaxSuppressionV2"
-  endpoint {
-    name: "image.NonMaxSuppressionV2"
-  }
+  visibility: SKIP
 }

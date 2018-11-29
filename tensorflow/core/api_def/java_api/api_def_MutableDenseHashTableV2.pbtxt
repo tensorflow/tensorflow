@@ -1,3 +1,6 @@
 op {
   graph_op_name: "MutableDenseHashTableV2"
+  endpoint {
+    name: "MutableDenseHashTable"
+  }
 }

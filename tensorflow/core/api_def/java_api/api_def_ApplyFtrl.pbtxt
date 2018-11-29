@@ -1,6 +1,4 @@
 op {
   graph_op_name: "ApplyFtrl"
-  endpoint {
-    name: "train.ApplyFtrl"
-  }
+  visibility: SKIP
 }

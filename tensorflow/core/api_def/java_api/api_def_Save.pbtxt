@@ -1,6 +1,4 @@
 op {
   graph_op_name: "Save"
-  endpoint {
-    name: "train.Save"
-  }
+  visibility: SKIP
 }

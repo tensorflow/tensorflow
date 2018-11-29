@@ -1,6 +1,6 @@
 op {
   graph_op_name: "QuantizeV2"
   endpoint {
-    name: "quantization.QuantizeV2"
+    name: "quantization.Quantize"
   }
 }

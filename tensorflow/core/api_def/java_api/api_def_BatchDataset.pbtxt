@@ -1,6 +1,4 @@
 op {
   graph_op_name: "BatchDataset"
-  endpoint {
-    name: "data.BatchDataset"
-  }
+  visibility: SKIP
 }
