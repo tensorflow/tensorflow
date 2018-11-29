@@ -79,7 +79,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
     A tensor which if evaluated will compute and return the new moving average.
 
   References:
-    A Method for Stochastic Optimization:
+    Adam - A Method for Stochastic Optimization:
       [Kingma et al., 2015](https://arxiv.org/abs/1412.6980)
       ([pdf](https://arxiv.org/pdf/1412.6980.pdf))
   """
@@ -207,7 +207,7 @@ def _zero_debias(unbiased_var, value, decay):
     tensor will also update the shadow variables appropriately.
 
   References:
-    A Method for Stochastic Optimization:
+    Adam - A Method for Stochastic Optimization:
       [Kingma et al., 2015](https://arxiv.org/abs/1412.6980)
       ([pdf](https://arxiv.org/pdf/1412.6980.pdf))
   """
