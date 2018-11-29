@@ -240,7 +240,6 @@ class ShapeUtil {
   //
   // (param_name: f32[42x12], ...) -> f32[24x42]
   static string HumanString(const ProgramShape& program_shape);
-  static string HumanString(const ProgramShapeProto& program_shape_proto);
 
   // Parses a ShapeUtil::HumanString-format shape string back into a shape
   // object.
@@ -468,6 +467,9 @@ class ShapeUtil {
   // Returns whether the shape is an array.  Note that scalars are considered
   // arrays.
   static bool IsArray(const Shape& shape);
+
+  // Returns whether the given primitive type corresponds to an array shape.
+  static bool IsArrayPrimitiveType(PrimitiveType primitive_type);
 
   // Returns whether the shape is a tuple with at least one element which is
   // also a tuple.
@@ -795,8 +797,6 @@ class ShapeUtil {
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeUtil);
 };
-
-std::ostream& operator<<(std::ostream& out, const Shape& shape);
 
 }  // namespace xla
 

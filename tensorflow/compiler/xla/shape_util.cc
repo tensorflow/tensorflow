@@ -79,13 +79,13 @@ bool ShapeIndexView::StartsWith(ShapeIndexView prefix) const {
          indices_.subspan(0, prefix.size()) == prefix.indices_;
 }
 
-namespace {
-
-// Returns whether the given primitive type corresponds to an array shape.
-bool IsArrayPrimitiveType(PrimitiveType primitive_type) {
+/* static */ bool ShapeUtil::IsArrayPrimitiveType(
+    PrimitiveType primitive_type) {
   return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
          primitive_type != OPAQUE && primitive_type != TOKEN;
 }
+
+namespace {
 
 // Recursive helper for comparing the equality of two shapes. Returns true if
 // the shapes are the same. If compare_layouts is true, then layouts must also
@@ -203,7 +203,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 /* static */ ProgramShape ShapeUtil::MakeProgramShape(
     std::initializer_list<Shape> parameters, Shape result) {
   ProgramShape program_shape;
-  for (const auto& shape : parameters) {
+  for (const Shape& shape : parameters) {
     *program_shape.add_parameters() = shape;
   }
   *program_shape.mutable_result() = std::move(result);
@@ -272,7 +272,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ Shape ShapeUtil::MakeTupleShape(absl::Span<const Shape> shapes) {
   Shape result;
   result.set_element_type(TUPLE);
-  result.mutable_tuple_shapes()->Reserve(shapes.size());
+  result.mutable_tuple_shapes()->reserve(shapes.size());
   for (const auto& shape : shapes) {
     AppendShapeToTuple(shape, &result);
   }
@@ -561,20 +561,6 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
   }
   return StrCat("(", absl::StrJoin(parameters, ", "), ") -> ",
                 HumanString(program_shape.result()));
-}
-
-/* static */ string ShapeUtil::HumanString(
-    const ProgramShapeProto& program_shape_proto) {
-  std::vector<string> parameters;
-  for (auto& shape : program_shape_proto.parameters()) {
-    const int i = parameters.size();
-    parameters.push_back(StrCat(i < program_shape_proto.parameter_names_size()
-                                    ? program_shape_proto.parameter_names(i)
-                                    : "(unknown)",
-                                ": ", HumanString(shape)));
-  }
-  return StrCat("(", absl::StrJoin(parameters, ", "), ") -> ",
-                HumanString(program_shape_proto.result()));
 }
 
 namespace {
@@ -1610,7 +1596,8 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 /* static */ Shape ShapeUtil::DeleteDimension(int64 dim_to_delete,
                                               Shape shape) {
   CHECK(IsArray(shape));
-  shape.mutable_dimensions()->erase(shape.dimensions().begin() + dim_to_delete);
+  shape.mutable_dimensions()->erase(shape.mutable_dimensions()->begin() +
+                                    dim_to_delete);
   if (LayoutUtil::HasLayout(shape)) {
     Layout* layout = shape.mutable_layout();
     layout->set_format(DENSE);
@@ -1642,11 +1629,6 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     shape = DeleteDimension(dim, shape);
   }
   return shape;
-}
-
-std::ostream& operator<<(std::ostream& out, const Shape& shape) {
-  out << ShapeUtil::HumanStringWithLayout(shape);
-  return out;
 }
 
 /*static*/ size_t ShapeUtil::Hash(const Shape& shape) {
