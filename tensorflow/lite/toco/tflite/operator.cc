@@ -1484,6 +1484,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                     OperatorType::kMaxPool));
   ops.push_back(
       MakeUnique<Mul>(::tflite::BuiltinOperator_MUL, OperatorType::kMul));
+
   ops.push_back(
       MakeUnique<Pad>(::tflite::BuiltinOperator_PAD, OperatorType::kPad));
   ops.push_back(
@@ -1642,7 +1643,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "SQUARE", OperatorType::kSquare));
   ops.push_back(MakeUnique<SimpleOperator<TensorFlowZerosLikeOperator>>(
       "ZEROS_LIKE", OperatorType::kZerosLike));
-
+  ops.push_back(
+      MakeUnique<SimpleOperator<AbsOperator>>("ABS", OperatorType::kAbs));
   return ops;
 }
 }  // namespace

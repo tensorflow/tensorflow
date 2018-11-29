@@ -626,6 +626,30 @@ def make_max_pool_tests(zip_path):
   make_pool_tests(tf.nn.max_pool)(zip_path)
 
 
+def make_abs_tests(zip_path):
+  """Make a set of tests to do relu."""
+
+  # Chose a set of parameters
+  test_parameters = [{
+      "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
+                      [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    out = tf.abs(input_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(
+        np.float32, parameters["input_shape"], min_value=-10, max_value=10)
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_relu_tests(zip_path):
   """Make a set of tests to do relu."""
 

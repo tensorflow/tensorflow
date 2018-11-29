@@ -221,6 +221,7 @@ def json_to_tflite(name, src, out):
 # generated_test_models_failing().
 def generated_test_models():
     return [
+        "abs",
         "add",
         "arg_min_max",
         "avg_pool",

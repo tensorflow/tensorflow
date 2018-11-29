@@ -1707,6 +1707,7 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
   }
 
   switch (op->type) {
+    case OperatorType::kAbs:
     case OperatorType::kBatchNormalization:
     case OperatorType::kL2Normalization:
     case OperatorType::kDequantize:

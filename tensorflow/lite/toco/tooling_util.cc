@@ -308,6 +308,7 @@ const char* OperatorTypeName(OperatorType type) {
 #define HANDLE_OPERATORTYPENAME_CASE(c) \
   case OperatorType::k##c:              \
     return #c;
+    HANDLE_OPERATORTYPENAME_CASE(Abs)
     HANDLE_OPERATORTYPENAME_CASE(Add)
     HANDLE_OPERATORTYPENAME_CASE(AddN)
     HANDLE_OPERATORTYPENAME_CASE(AveragePool)

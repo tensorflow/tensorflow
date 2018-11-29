@@ -139,6 +139,17 @@ following common ops are not supported at the moment:
 The following TensorFlow Lite operations are fully supported and used in place
 of the TensorFlow operations listed above:
 
+**ABS**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: elementwise abs of the input
+}
+```
+
 **ADD**
 
 ```
