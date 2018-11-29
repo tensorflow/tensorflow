@@ -28,7 +28,11 @@ tf_oss_fuzz_corpus("string_to_number")
 
 tf_ops_fuzz_target_lib("string_split")
 
+tf_oss_fuzz_corpus("string_split")
+
 tf_ops_fuzz_target_lib("string_split_v2")
+
+tf_oss_fuzz_corpus("string_split_v2")
 
 tf_ops_fuzz_target_lib("encode_base64")
 
