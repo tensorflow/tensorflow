@@ -569,6 +569,37 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_ReduceFusions) {
 }
 
 TEST_F(GpuFusibleTest,
+       ShapesCompatibleForMultiOutputFusion_DifferentReduceDimensions) {
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+    fused_reduce_1 {
+      p0.1 = f32[2,2,2]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      ROOT reduce = f32[2,2]{1,0} reduce(f32[2,2,2]{2,1,0} p0.1, f32[] c0), dimensions={0}, to_apply=scalar_add
+    }
+
+    fused_reduce_2 {
+      p0.2 = f32[2,2,2]{2,1,0} parameter(0)
+      mul = f32[2,2,2]{2,1,0} multiply(f32[2,2,2]{2,1,0} p0.2, f32[2,2,2]{2,1,0} p0.2)
+      c1 = f32[] constant(0)
+      ROOT reduce = f32[2,2]{1,0} reduce(f32[2,2,2]{2,1,0} mul, f32[] c1), dimensions={2}, to_apply=scalar_add
+    }
+
+    ENTRY reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      p1 = f32[2,2,2]{2,1,0} parameter(1)
+      reduce_1 = f32[2,2]{1,0} fusion(p0), kind=kLoop, calls=fused_reduce_1
+      reduce_2 = f32[2,2]{1,0} fusion(p1), kind=kLoop, calls=fused_reduce_2
+      ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(reduce_1, reduce_2)
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* fusion_1 =
+      module->entry_computation()->root_instruction()->operand(0);
+  const HloInstruction* fusion_2 =
+      module->entry_computation()->root_instruction()->operand(1);
+  EXPECT_FALSE(ShapesCompatibleForMultiOutputFusion(*fusion_1, *fusion_2));
+}
+
+TEST_F(GpuFusibleTest,
        ShapesCompatibleForMultiOutputFusion_NoReductionToVector) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_element_wise {

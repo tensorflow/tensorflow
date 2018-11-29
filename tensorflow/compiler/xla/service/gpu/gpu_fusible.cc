@@ -118,12 +118,13 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   // All shapes of the root tuple of multi-output fusions should agree, i.e. all
   // root ops should have equal output shapes. An exception are
   // reduction-to-vector ops. Here the input shapes of the reduction (first
-  // operand shape) need to be considered.
+  // operand shape) and the reduction dimensions need to match.
   auto* instr_1 = get_real_hero(&instr1);
   auto* instr_2 = get_real_hero(&instr2);
   // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
   if (IsReductionToVector(*instr_1) && IsReductionToVector(*instr_2) &&
-      !ShapeUtil::Equal(instr_1->shape(), instr_2->shape())) {
+      (!ShapeUtil::Equal(instr_1->shape(), instr_2->shape()) ||
+       instr_1->dimensions() != instr_2->dimensions())) {
     return false;
   }
   // The elementwise output shapes must be the same (including layout).
