@@ -129,10 +129,9 @@ poplar::Tensor DoCachedBatchNormInference(
 
   using namespace poputil::graphfn;
   auto f = TensorFunction(
-      graph,
-      {input(operand, "operand"), input(scale, "scale"),
-       input(offset, "offset"), input(mean, "mean"),
-       input(variance, "variance")},
+      graph, {input(operand, "operand"), input(scale, "scale"),
+              input(offset, "offset"), input(mean, "mean"),
+              input(variance, "variance")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         poplar::Tensor inv_sd = convertVarianceToInvStdDev(
             graph, args[4], epsilon, seq, debug_prefix);
@@ -159,15 +158,14 @@ DoCachedBatchNormTraining(poplar::Graph& graph, CompilerResources& res,
       !res.disable_graph_convolution_caching) {
     auto& f = it->second;
     f(args, prog);
-    return {args[3], args[4], args[5]};
+    return std::make_tuple(args[3], args[4], args[5]);
   }
 
   using namespace poputil::graphfn;
   auto f = VoidFunction(
-      graph,
-      {input(operand, "operand"), input(scale, "scale"),
-       input(offset, "offset"), created("output"), created("mean"),
-       created("variance")},
+      graph, {input(operand, "operand"), input(scale, "scale"),
+              input(offset, "offset"), created("output"), created("mean"),
+              created("variance")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         poplar::Tensor inv_sd;
         std::tie(args[4], inv_sd) = popnn::bn::batchNormEstimates(
@@ -181,7 +179,7 @@ DoCachedBatchNormTraining(poplar::Graph& graph, CompilerResources& res,
       });
   res.bn_tr_graph_cache.emplace(key, f);
   f(args, prog);
-  return {args[3], args[4], args[5]};
+  return std::make_tuple(args[3], args[4], args[5]);
 }
 
 std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor>
@@ -203,7 +201,7 @@ DoCachedBatchNormGrad(poplar::Graph& graph, CompilerResources& res,
       !res.disable_graph_convolution_caching) {
     auto& f = it->second;
     f(args, prog);
-    return {args[5], args[6], args[7]};
+    return std::make_tuple(args[5], args[6], args[7]);
   }
   using namespace poputil::graphfn;
   auto f = VoidFunction(
@@ -230,7 +228,7 @@ DoCachedBatchNormGrad(poplar::Graph& graph, CompilerResources& res,
       });
   res.bn_grad_graph_cache.emplace(key, f);
   f(args, prog);
-  return {args[5], args[6], args[7]};
+  return std::make_tuple(args[5], args[6], args[7]);
 }
 
 }  // namespace batch_norm_graph_caching
