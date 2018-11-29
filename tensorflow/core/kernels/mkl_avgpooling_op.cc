@@ -53,19 +53,16 @@ class MklAvgPoolingOp : public OpKernel {
 
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window ksize field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window stride field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window stride field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
-                errors::Unimplemented(
-                    "Pooling is not yet supported on the "
-                    "batch dimension."));
+                errors::Unimplemented("Pooling is not yet supported on the "
+                                      "batch dimension."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -231,19 +228,16 @@ class MklAvgPoolingGradOp : public OpKernel {
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window ksize field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window strides field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
-                errors::Unimplemented(
-                    "Pooling is not yet supported on the "
-                    "batch dimension."));
+                errors::Unimplemented("Pooling is not yet supported on the "
+                                      "batch dimension."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -365,9 +359,8 @@ class MklAvgPoolingGradOp : public OpKernel {
         // elements.
         OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
                                  tensor_in_shape.NumElements() == 4,
-                    errors::InvalidArgument(
-                        "original input shape must be "
-                        "1-dimensional and 4 elements"));
+                    errors::InvalidArgument("original input shape must be "
+                                            "1-dimensional and 4 elements"));
 
         // For avgpooling, out_backprop should have 4 dimensions.
         OP_REQUIRES(
@@ -557,8 +550,7 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
         output_min->flat<float>()(0) = min_input;
         output_max->flat<float>()(0) = max_input;
       }
-    }
-    catch (mkldnn::error& e) {
+    } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
                          string(e.message) + ", in file " + string(__FILE__) +
                          ":" + std::to_string(__LINE__);
@@ -660,8 +652,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       // execute pooling op
       pooling_bwd->Execute(diff_dst_data, diff_src_data);
-    }
-    catch (mkldnn::error& e) {
+    } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
                          string(e.message) + ", in file " + string(__FILE__) +
                          ":" + std::to_string(__LINE__);
@@ -685,15 +676,13 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
     if (!original_input_mkl_shape.IsMklTensor()) {
       OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
                                tensor_in_shape.NumElements() == 4,
-                  errors::InvalidArgument(
-                      "original input shape must be "
-                      "1-dimensional and 4 elements"));
+                  errors::InvalidArgument("original input shape must be "
+                                          "1-dimensional and 4 elements"));
     } else {
       OP_REQUIRES(context, original_input_mkl_shape.GetDimension() == 1 &&
                                original_input_mkl_shape.DimSize(0) == 4,
-                  errors::InvalidArgument(
-                      "original input shape must be "
-                      "1-dimensional and 4 elements"));
+                  errors::InvalidArgument("original input shape must be "
+                                          "1-dimensional and 4 elements"));
     }
 
     if (!input_gradient_mkl_shape.IsMklTensor()) {

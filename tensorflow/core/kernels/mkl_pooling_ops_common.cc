@@ -380,24 +380,21 @@ void MklPoolParameters::Init(OpKernelContext* context,
     // any padding, and expects the depth_window to equal the depth
     // stride (no overlapping).
     OP_REQUIRES(context, depth % depth_window == 0,
-                errors::Unimplemented(
-                    "Depthwise max pooling requires the"
-                    " depth window to evenly divide the"
-                    " input depth"));
+                errors::Unimplemented("Depthwise max pooling requires the"
+                                      " depth window to evenly divide the"
+                                      " input depth"));
     OP_REQUIRES(context, depth_stride == depth_window,
-                errors::Unimplemented(
-                    "Depthwise max pooling requires the"
-                    " depth window to equal the depth"
-                    " stride"));
+                errors::Unimplemented("Depthwise max pooling requires the"
+                                      " depth window to equal the depth"
+                                      " stride"));
 
     // The current version of depthwise max is only implemented on CPU.
     OP_REQUIRES(context,
                 (DeviceType(static_cast<Device*>(context->device())
                                 ->attributes()
                                 .device_type()) == DeviceType(DEVICE_CPU)),
-                errors::Unimplemented(
-                    "Depthwise max pooling is currently "
-                    "only implemented for CPU devices."));
+                errors::Unimplemented("Depthwise max pooling is currently "
+                                      "only implemented for CPU devices."));
 
     out_depth = depth / depth_window;
   }

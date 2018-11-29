@@ -56,7 +56,7 @@ class ConvMklToTF : public OpsTestBase {
 
     output = *GetOutput(0);
   }
-  void TestBody() {};
+  void TestBody(){};
 };
 
 class QuantizedPoolingTest : public OpsTestBase {};
@@ -95,9 +95,9 @@ TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
   const int expected_height = input_height / stride;
 
   // The input pools we are averaging. (NHWC input, quantized.)
-  //   0th channel       1st channel
-  //   1  3 |  5  7      2  4 |  6  8
-  //   9 11 | 13 15     10 12 | 14 16
+  //    0th channel       1st channel
+  //    1  3 |  5  7      2  4 |  6  8
+  //    9 11 | 13 15     10 12 | 14 16
   //   -------------     -------------
   //   17 19 | 21 23     18 20 | 22 24
   //   25 27 | 29 31     26 28 | 30 32
@@ -163,9 +163,9 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
   const int expected_height = input_height / stride;
 
   // The max is computed from these input pools. (NHWC input, quantized.)
-  //   0th channel       1st channel
-  //   1  3 |  5  7      2  4 |  6  8
-  //   9 11 | 13 15     10 12 | 14 16
+  //    0th channel       1st channel
+  //    1  3 |  5  7      2  4 |  6  8
+  //    9 11 | 13 15     10 12 | 14 16
   //   -------------     -------------
   //   17 19 | 21 23     18 20 | 22 24
   //   25 27 | 29 31     26 28 | 30 32
