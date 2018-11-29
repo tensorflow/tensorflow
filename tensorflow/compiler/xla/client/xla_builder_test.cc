@@ -267,7 +267,7 @@ TEST_F(XlaBuilderTest, BinopHasInDimAndDegenerateBroadcast) {
 TEST_F(XlaBuilderTest, BroadcastInDim) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 3}), "x");
-  BroadcastInDim(x, ShapeUtil::MakeShape(F32, {2, 4, 3}),
+  BroadcastInDim(x, {2, 4, 3},
                  /*broadcast_dimensions=*/{0, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
@@ -277,7 +277,7 @@ TEST_F(XlaBuilderTest, BroadcastInDim) {
 TEST_F(XlaBuilderTest, BroadcastInDimWithDegeneratedDim) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 1, 4}), "x");
-  BroadcastInDim(x, ShapeUtil::MakeShape(F32, {2, 3, 4}),
+  BroadcastInDim(x, {2, 3, 4},
                  /*broadcast_dimensions=*/{0, 1, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
