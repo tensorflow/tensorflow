@@ -1,6 +1,6 @@
-path: "tensorflow.losses.MeanSquaredError"
+path: "tensorflow.keras.losses.MeanSquaredLogarithmicError"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.losses.MeanSquaredError\'>"
+  is_instance: "<class \'tensorflow.python.keras.losses.MeanSquaredLogarithmicError\'>"
   is_instance: "<class \'tensorflow.python.keras.losses.Loss\'>"
   is_instance: "<type \'object\'>"
   member_method {

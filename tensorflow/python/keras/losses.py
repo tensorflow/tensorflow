@@ -116,7 +116,7 @@ class Loss(object):
     NotImplementedError('Must be implemented in subclasses.')
 
 
-@tf_export('losses.MeanSquaredError', 'keras.losses.MeanSquaredError')
+@tf_export('keras.losses.MeanSquaredError')
 class MeanSquaredError(Loss):
   """Computes the mean of squares of errors between labels and predictions.
 
@@ -126,7 +126,7 @@ class MeanSquaredError(Loss):
   Usage:
 
   ```python
-  mse = tf.losses.MeanSquaredError()
+  mse = tf.keras.losses.MeanSquaredError()
   loss = mse([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Loss: ', loss.numpy())  # Loss: 0.75
   ```
@@ -135,7 +135,7 @@ class MeanSquaredError(Loss):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.MeanSquaredError())
+  model.compile('sgd', loss=tf.keras.losses.MeanSquaredError())
   ```
   """
 
@@ -154,6 +154,7 @@ class MeanSquaredError(Loss):
     return mean_squared_error(y_true, y_pred)
 
 
+@tf_export('keras.losses.MeanAbsoluteError')
 class MeanAbsoluteError(Loss):
   """Computes the mean of absolute difference between labels and predictions.
 
@@ -163,7 +164,7 @@ class MeanAbsoluteError(Loss):
   Usage:
 
   ```python
-  mae = tf.losses.MeanAbsoluteError()
+  mae = tf.keras.losses.MeanAbsoluteError()
   loss = mae([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Loss: ', loss.numpy())  # Loss: 0.75
   ```
@@ -172,7 +173,7 @@ class MeanAbsoluteError(Loss):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.MeanAbsoluteError())
+  model.compile('sgd', loss=tf.keras.losses.MeanAbsoluteError())
   ```
   """
 
@@ -191,6 +192,7 @@ class MeanAbsoluteError(Loss):
     return mean_absolute_error(y_true, y_pred)
 
 
+@tf_export('keras.losses.MeanAbsolutePercentageError')
 class MeanAbsolutePercentageError(Loss):
   """Computes the mean absolute percentage error between `y_true` and `y_pred`.
 
@@ -200,7 +202,7 @@ class MeanAbsolutePercentageError(Loss):
   Usage:
 
   ```python
-  mape = tf.losses.MeanAbsolutePercentageError()
+  mape = tf.keras.losses.MeanAbsolutePercentageError()
   loss = mape([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Loss: ', loss.numpy())  # Loss: 5e+08
   ```
@@ -209,7 +211,7 @@ class MeanAbsolutePercentageError(Loss):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.MeanAbsolutePercentageError())
+  model.compile('sgd', loss=tf.keras.losses.MeanAbsolutePercentageError())
   ```
   """
 
@@ -228,6 +230,7 @@ class MeanAbsolutePercentageError(Loss):
     return mean_absolute_percentage_error(y_true, y_pred)
 
 
+@tf_export('keras.losses.MeanSquaredLogarithmicError')
 class MeanSquaredLogarithmicError(Loss):
   """Computes the mean squared logarithmic error between `y_true` and `y_pred`.
 
@@ -237,7 +240,7 @@ class MeanSquaredLogarithmicError(Loss):
   Usage:
 
   ```python
-  msle = tf.losses.MeanSquaredLogarithmicError()
+  msle = tf.keras.losses.MeanSquaredLogarithmicError()
   loss = msle([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Loss: ', loss.numpy())  # Loss: 0.36034
   ```
@@ -246,7 +249,7 @@ class MeanSquaredLogarithmicError(Loss):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.MeanSquaredLogarithmicError())
+  model.compile('sgd', loss=tf.keras.losses.MeanSquaredLogarithmicError())
   ```
   """
 

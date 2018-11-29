@@ -1,7 +1,19 @@
 path: "tensorflow.keras.losses"
 tf_module {
   member {
+    name: "MeanAbsoluteError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanAbsolutePercentageError"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "MeanSquaredError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanSquaredLogarithmicError"
     mtype: "<type \'type\'>"
   }
   member_method {

@@ -1,10 +1,6 @@
 path: "tensorflow.losses"
 tf_module {
   member {
-    name: "MeanSquaredError"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "Reduction"
     mtype: "<type \'type\'>"
   }
