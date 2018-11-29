@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OptimizationOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Optional"
     mtype: "<type \'type\'>"
   }
