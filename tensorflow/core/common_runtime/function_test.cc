@@ -1433,9 +1433,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
 
     GraphDef actual;
     g->ToGraphDef(&actual);
-    // The optimizer is non-deterministic, so we only check that the number of
-    // nodes is not greater than expected.
-    EXPECT_LE(actual.node_size(), expected.node_size());
+    TF_EXPECT_GRAPH_EQ(expected, actual);
   }
 }
 
