@@ -17,11 +17,21 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import os
 import tempfile
+
 import six
+import tensorflow as tf
+# OSS TF V2 import placeholder.
+
+
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_export
+from tensorflow.tools.common import public_api
+from tensorflow.tools.common import traverse
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import tf_upgrade_v2
 
@@ -64,6 +74,51 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, "tf.math.rsqrt(tf.math.log_sigmoid(3.8))\n")
 
+  def testAllAPI(self):
+    if not hasattr(tf.compat, "v2"):
+      return
+
+    v2_symbols = set([])
+    attr_v2 = tf_export.API_ATTRS[
+        tf_export.TENSORFLOW_API_NAME].names
+
+    def symbol_collector(unused_path, unused_parent, children):
+      for child in children:
+        _, attr = tf_decorator.unwrap(child[1])
+        if not hasattr(attr, "__dict__"):
+          continue
+        api_names_v2 = attr.__dict__.get(attr_v2, [])
+        for name in api_names_v2:
+          v2_symbols.add("tf." + name)
+
+    visitor = public_api.PublicAPIVisitor(symbol_collector)
+    traverse.traverse(tf.compat.v2, visitor)
+
+    attr_v1 = (
+        tf_export.API_ATTRS_V1[tf_export.TENSORFLOW_API_NAME].names)
+
+    # Converts all symbols in the v1 namespace to the v2 namespace, raising
+    # an error if the target of the conversion is not in the v2 namespace.
+    def conversion_visitor(unused_path, unused_parent, children):
+      for child in children:
+        _, attr = tf_decorator.unwrap(child[1])
+        if not hasattr(attr, "__dict__"):
+          continue
+        api_names = attr.__dict__.get(attr_v1, [])
+        for name in api_names:
+          _, _, _, text = self._upgrade("tf." + name)
+          if (text and
+              not text.startswith("tf.compat.v1") and
+              text not in v2_symbols):
+            self.assertFalse(
+                True, "Symbol %s generated from %s not in v2 API" % (
+                    text, name))
+
+    visitor = public_api.PublicAPIVisitor(conversion_visitor)
+    visitor.do_not_descend_map["tf"].append("contrib")
+    visitor.private_map["tf.compat"] = ["v1", "v2"]
+    traverse.traverse(tf.compat.v1, visitor)
+
   def testRenameConstant(self):
     text = "tf.MONOLITHIC_BUILD\n"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
@@ -89,7 +144,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
                      "tf.boolean_mask(tensor=a, mask=b, name=c, axis=d)\n")
 
   def testLearningRateDecay(self):
-    for decay in ["tf.train.exponential_decay", "tf.train.piecewise_constant",
+    for decay in ["tf.train.exponential_decay",
                   "tf.train.polynomial_decay", "tf.train.natural_exp_decay",
                   "tf.train.inverse_time_decay", "tf.train.cosine_decay",
                   "tf.train.cosine_decay_restarts",
@@ -100,6 +155,14 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       _, report, errors, _ = self._upgrade(text)
       self.assertEqual(errors, ["test.py:1: %s requires manual check." % decay])
       self.assertIn("%s has been changed" % decay, report)
+
+  def testPiecewiseDecay(self):
+    text = "tf.train.piecewise_constant_decay(a, b)\n"
+    _, report, errors, _ = self._upgrade(text)
+    self.assertEqual(
+        errors,
+        ["test.py:1: tf.train.piecewise_constant_decay requires manual check."])
+    self.assertIn("tf.train.piecewise_constant_decay has been changed", report)
 
   def testEstimatorLossReductionChange(self):
     classes = [
