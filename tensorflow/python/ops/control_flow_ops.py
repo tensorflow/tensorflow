@@ -3145,7 +3145,6 @@ def while_loop_v2(cond,
                   back_prop=True,
                   swap_memory=False,
                   maximum_iterations=None,
-                  return_same_structure=False,
                   name=None):
   """Repeat `body` while the condition `cond` is true.
 
@@ -3221,17 +3220,11 @@ def while_loop_v2(cond,
       to run.  If provided, the `cond` output is AND-ed with an additional
       condition ensuring the number of iterations executed is no greater than
       `maximum_iterations`.
-    return_same_structure: If True, output has same structure as `loop_vars`. If
-      eager execution is enabled, this is ignored (and always treated as True).
     name: Optional name prefix for the returned tensors.
 
   Returns:
-    The output tensors for the loop variables after the loop.
-     If `return_same_structure` is True, the return value has the same
-     structure as `loop_vars`.
-     If `return_same_structure` is False, the return value is a Tensor,
-     TensorArray or IndexedSlice if the length of `loop_vars` is 1, or a list
-     otherwise.
+    The output tensors for the loop variables after the loop. The return value
+      has the same structure as `loop_vars`.
 
   Raises:
     TypeError: if `cond` or `body` is not callable.
@@ -3318,7 +3311,7 @@ def while_loop_v2(cond,
       swap_memory=swap_memory,
       name=name,
       maximum_iterations=maximum_iterations,
-      return_same_structure=return_same_structure)
+      return_same_structure=True)
 
 
 # pylint: disable=redefined-outer-name
@@ -3501,7 +3494,8 @@ def while_loop(cond,
         loop_vars,
         shape_invariants=shape_invariants,
         maximum_iterations=maximum_iterations,
-        name=name)
+        name=name,
+        return_same_structure=return_same_structure)
 
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:

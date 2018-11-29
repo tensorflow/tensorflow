@@ -45,11 +45,24 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
   def testSingleLoopVar(self):
     x = constant_op.constant(2.)
-    ret = while_loop_v2(lambda v: v < 8., lambda v: v * v, [x])
+    ret = while_loop_v2(
+        lambda v: v < 8., lambda v: v * v, [x], return_same_structure=False)
     grad = gradients_impl.gradients(ret, [x])
     with self.cached_session() as sess:
       self.assertEqual(self.evaluate(ret), 16.)
       self.assertSequenceEqual(self.evaluate(grad), [32.])
+
+  def testReturnSameStructureTrue(self):
+    x = constant_op.constant(2.)
+    ret = while_loop_v2(
+        lambda v: v < 8., lambda v: v * v, [x], return_same_structure=True)
+    grad = gradients_impl.gradients(ret, [x])
+    with self.cached_session() as sess:
+      eval_result = sess.run(ret)
+      self.assertIsInstance(eval_result, list)
+      self.assertLen(eval_result, 1)
+      self.assertEqual(16., eval_result[0])
+      self.assertSequenceEqual(sess.run(grad), [32.])
 
   def testMultipleLoopVarsBasic(self):
     x = constant_op.constant(5.)
@@ -59,7 +72,10 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # y = 3.
     # while x < 45.:
     #   x = x * y
-    ret = while_loop_v2(lambda v, _: v < 45., lambda v, w: (v * w, w), [x, y])
+    ret = while_loop_v2(
+        lambda v, _: v < 45.,
+        lambda v, w: (v * w, w), [x, y],
+        return_same_structure=False)
     # ret = [x*y^2, y]
 
     # Note: This is simply d_ret[0]/d_x since d_ret[1]/d_x is 0.
@@ -77,8 +93,10 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # while x < 45.:
     #   x = x * y
     #   y = x + y
-    ret = while_loop_v2(lambda v, _: v < 45., lambda v, w: (v * w, v + w),
-                        [x, y])
+    ret = while_loop_v2(
+        lambda v, _: v < 45.,
+        lambda v, w: (v * w, v + w), [x, y],
+        return_same_structure=False)
     # ret = [y*x**2 + x*y**2, x*y + x + y]
 
     gradx_0 = gradients_impl.gradients(ret[0], [x])  # [2*x*y + y**2]
@@ -98,8 +116,12 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
   def testMultipleWhileLoops(self):
     x = constant_op.constant(2.)
-    ret1 = while_loop_v2(lambda v: v < 4., lambda v: v * v, [x])  # x**2
-    ret2 = while_loop_v2(lambda v: v < 16., lambda v: v * v, [ret1])  # x**4
+    ret1 = while_loop_v2(
+        lambda v: v < 4., lambda v: v * v, [x],
+        return_same_structure=False)  # x**2
+    ret2 = while_loop_v2(
+        lambda v: v < 16., lambda v: v * v, [ret1],
+        return_same_structure=False)  # x**4
     grad = gradients_impl.gradients(ret2, [x])  # 4x**3
     grad_grad = gradients_impl.gradients(grad, [x])  # 12x**2
     with self.cached_session() as sess:
@@ -108,7 +130,9 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
   def testDoubleDerivative(self):
     x = constant_op.constant(2.)
-    ret = while_loop_v2(lambda v: v < 8., lambda v: v**2, [x])  # x**4
+    ret = while_loop_v2(
+        lambda v: v < 8., lambda v: v**2, [x],
+        return_same_structure=False)  # x**4
     grad = gradients_impl.gradients(ret, [x])  # 4x**3
     grad_grad = gradients_impl.gradients(grad, [x])  # 12x**2
     with self.cached_session() as sess:
@@ -154,7 +178,10 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   def testCaptureExternalTensorInCond(self):
     x = constant_op.constant(2.)
     y = constant_op.constant(1.)
-    ret = while_loop_v2(lambda v: v + y < 9., lambda v: v * 3., [x])
+    ret = while_loop_v2(
+        lambda v: v + y < 9.,
+        lambda v: v * 3., [x],
+        return_same_structure=False)
     grad = gradients_impl.gradients(ret, [x])
     with self.cached_session() as sess:
       self.assertEqual(self.evaluate(ret), 18.)
@@ -163,7 +190,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   def testCaptureExternalTensorInBody(self):
     x = constant_op.constant(2.)
     y = constant_op.constant(3.)
-    ret = while_loop_v2(lambda v: v < 8., lambda v: v * y, [x])
+    ret = while_loop_v2(
+        lambda v: v < 8., lambda v: v * y, [x], return_same_structure=False)
     grad = gradients_impl.gradients(ret, [x])
     with self.cached_session() as sess:
       self.assertEqual(self.evaluate(ret), 18.)
@@ -184,7 +212,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       tl = list_ops.tensor_list_push_back(tl, constant_op.constant(100.))
       return x**2., tl
 
-    ret = while_loop_v2(Cond, Body, [x, tensor_list])
+    ret = while_loop_v2(
+        Cond, Body, [x, tensor_list], return_same_structure=False)
     grad = gradients_impl.gradients(ret[0], x)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(ret[0]), 16.)
@@ -206,7 +235,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       tl = list_ops.tensor_list_push_back(tl, x)
       return x**2., tl
 
-    ret = while_loop_v2(Cond, Body, [x, tensor_list])
+    ret = while_loop_v2(
+        Cond, Body, [x, tensor_list], return_same_structure=False)
 
     for op in ops.get_default_graph().get_operations():
       if op.type == "While":
@@ -253,7 +283,10 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     y = array_ops.placeholder(dtype=dtypes.float32, shape=shape)
 
     # Forward pass.
-    ret = while_loop_v2(lambda v, u: v < 8., lambda v, u: (v * v, u), [x, y])
+    ret = while_loop_v2(
+        lambda v, u: v < 8.,
+        lambda v, u: (v * v, u), [x, y],
+        return_same_structure=False)
     while_op = ret[0].op.inputs[0].op
     # Get the TensorList output of While op containing the accumulated values
     # of y.
@@ -277,8 +310,10 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
   def _createWhile(self, name):
     """Helper function testDefaultName."""
-    output = while_v2.while_loop(lambda i: i < 3, lambda i: i + 1,
-                                 [constant_op.constant(0)])
+    output = while_v2.while_loop(
+        lambda i: i < 3,
+        lambda i: i + 1, [constant_op.constant(0)],
+        return_same_structure=False)
     while_op = output.op.inputs[0].op
     self.assertEqual(while_op.type, "While")
     return while_op
@@ -329,9 +364,14 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     def Body(i, previous_sum):
       prod = constant_op.constant(1.)
       return i - 1., previous_sum + while_loop_v2(
-          lambda c, _: c > 0, lambda c, v: (c - 1., v * n), [i, prod])[1]
+          lambda c, _: c > 0,
+          lambda c, v: (c - 1., v * n), [i, prod],
+          return_same_structure=False)[1]
 
-    result = while_loop_v2(lambda i, _: i >= 0, Body, [m, sum_of_powers])[1]
+    result = while_loop_v2(
+        lambda i, _: i >= 0,
+        Body, [m, sum_of_powers],
+        return_same_structure=False)[1]
     grad = gradients_impl.gradients(result, [n])
     with self.cached_session() as sess:
       self.assertEqual(self.evaluate(result), 364.)
@@ -345,7 +385,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       return v * v
 
     x = constant_op.constant(2.)
-    ret = while_loop_v2(lambda v: v < 8., Body, [x])
+    ret = while_loop_v2(
+        lambda v: v < 8., Body, [x], return_same_structure=False)
     grad = gradients_impl.gradients(ret, [x])
     with self.cached_session() as sess:
       self.assertEqual(self.evaluate(ret), 16.)
@@ -363,13 +404,17 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         return row, col + 1., ta, n
 
       # TODO(b/118457764): Remove n from loop_vars from both loops once fixed.
-      ta = while_loop_v2(lambda _, col, _1, n: col <= n, InnerBody,
-                         [row, constant_op.constant(1.), ta, n])[2]
+      ta = while_loop_v2(
+          lambda _, col, _1, n: col <= n,
+          InnerBody, [row, constant_op.constant(1.), ta, n],
+          return_same_structure=False)[2]
       return row + 1., ta, n
 
     ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=9)
-    ta = while_loop_v2(lambda row, _, _1: row <= n, Body,
-                       [constant_op.constant(1.), ta, n])[1]
+    ta = while_loop_v2(
+        lambda row, _, _1: row <= n,
+        Body, [constant_op.constant(1.), ta, n],
+        return_same_structure=False)[1]
 
     output = array_ops.reshape(ta.stack(), [3, 3])
     self.assertAllEqual(

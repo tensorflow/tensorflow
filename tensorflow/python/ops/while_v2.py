@@ -64,7 +64,8 @@ def while_loop(cond,
                loop_vars,
                shape_invariants=None,
                maximum_iterations=None,
-               name=None):
+               name=None,
+               return_same_structure=True):
   """Like tf.while_loop, except emits a single While op."""
   maximum_iterations = _validate_and_convert_to_tensor(maximum_iterations)
   # Keep the original loop_vars around to know which args were TensorArrays.
@@ -257,6 +258,9 @@ def while_loop(cond,
   # First var is loop counter.
   outputs = _pack_sequence_as(orig_loop_vars,
                               outputs[1:1 + num_flattened_outputs])
+
+  if return_same_structure:
+    return outputs
 
   flattened_outputs = nest.flatten(outputs)
   if len(flattened_outputs) == 1:
