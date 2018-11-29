@@ -1266,6 +1266,7 @@ class HloInstruction {
   // superior.
   // Precondition: opcode must be kConvolution or kDot.
   const PrecisionConfig& precision_config() const;
+  PrecisionConfig* mutable_precision_config();
 
   // Sets the debug metadata for this instruction.
   void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
