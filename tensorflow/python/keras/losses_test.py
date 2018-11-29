@@ -27,6 +27,7 @@ from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import test
 
 try:
@@ -146,9 +147,9 @@ class MeanSquaredErrorTest(test.TestCase):
 
   def test_config(self):
     mse_obj = keras.losses.MeanSquaredError(
-        reduction=keras.losses.ReductionV2.SUM, name='mse_1')
+        reduction=losses_impl.ReductionV2.SUM, name='mse_1')
     self.assertEqual(mse_obj.name, 'mse_1')
-    self.assertEqual(mse_obj.reduction, keras.losses.ReductionV2.SUM)
+    self.assertEqual(mse_obj.reduction, losses_impl.ReductionV2.SUM)
 
   def test_all_correct_unweighted(self):
     mse_obj = keras.losses.MeanSquaredError()
@@ -214,7 +215,7 @@ class MeanSquaredErrorTest(test.TestCase):
 
   def test_no_reduction(self):
     mse_obj = keras.losses.MeanSquaredError(
-        reduction=keras.losses.ReductionV2.NONE)
+        reduction=losses_impl.ReductionV2.NONE)
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
                                   shape=(2, 3),
@@ -225,7 +226,7 @@ class MeanSquaredErrorTest(test.TestCase):
 
   def test_sum_reduction(self):
     mse_obj = keras.losses.MeanSquaredError(
-        reduction=keras.losses.ReductionV2.SUM)
+        reduction=losses_impl.ReductionV2.SUM)
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
                                   shape=(2, 3),
@@ -239,9 +240,9 @@ class MeanAbsoluteErrorTest(test.TestCase):
 
   def test_config(self):
     mae_obj = keras.losses.MeanAbsoluteError(
-        reduction=keras.losses.ReductionV2.SUM, name='mae_1')
+        reduction=losses_impl.ReductionV2.SUM, name='mae_1')
     self.assertEqual(mae_obj.name, 'mae_1')
-    self.assertEqual(mae_obj.reduction, keras.losses.ReductionV2.SUM)
+    self.assertEqual(mae_obj.reduction, losses_impl.ReductionV2.SUM)
 
   def test_all_correct_unweighted(self):
     mae_obj = keras.losses.MeanAbsoluteError()
@@ -307,7 +308,7 @@ class MeanAbsoluteErrorTest(test.TestCase):
 
   def test_no_reduction(self):
     mae_obj = keras.losses.MeanAbsoluteError(
-        reduction=keras.losses.ReductionV2.NONE)
+        reduction=losses_impl.ReductionV2.NONE)
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
                                   shape=(2, 3),
@@ -318,7 +319,7 @@ class MeanAbsoluteErrorTest(test.TestCase):
 
   def test_sum_reduction(self):
     mae_obj = keras.losses.MeanAbsoluteError(
-        reduction=keras.losses.ReductionV2.SUM)
+        reduction=losses_impl.ReductionV2.SUM)
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
                                   shape=(2, 3),
@@ -332,9 +333,9 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
 
   def test_config(self):
     mape_obj = keras.losses.MeanAbsolutePercentageError(
-        reduction=keras.losses.ReductionV2.SUM, name='mape_1')
+        reduction=losses_impl.ReductionV2.SUM, name='mape_1')
     self.assertEqual(mape_obj.name, 'mape_1')
-    self.assertEqual(mape_obj.reduction, keras.losses.ReductionV2.SUM)
+    self.assertEqual(mape_obj.reduction, losses_impl.ReductionV2.SUM)
 
   def test_unweighted(self):
     mape_obj = keras.losses.MeanAbsolutePercentageError()
@@ -389,9 +390,9 @@ class MeanSquaredLogarithmicErrorTest(test.TestCase):
 
   def test_config(self):
     msle_obj = keras.losses.MeanSquaredLogarithmicError(
-        reduction=keras.losses.ReductionV2.SUM, name='mape_1')
+        reduction=losses_impl.ReductionV2.SUM, name='mape_1')
     self.assertEqual(msle_obj.name, 'mape_1')
-    self.assertEqual(msle_obj.reduction, keras.losses.ReductionV2.SUM)
+    self.assertEqual(msle_obj.reduction, losses_impl.ReductionV2.SUM)
 
   def test_unweighted(self):
     msle_obj = keras.losses.MeanSquaredLogarithmicError()
