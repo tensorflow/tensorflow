@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -124,6 +125,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(
           ctx->function_library()->Clone(&flib_def_, &pflr_, &lib_));
 
+      // Create a FunctionHandleCache.
+      function_handle_cache_.reset(new FunctionHandleCache(lib_));
+
       // Some functions may have been modified without having their names
       // changed (for example, nested dataset graphs from FlatMap or
       // Interleave). To avoid name conflicts, we remove these functions from
@@ -176,6 +180,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         IteratorContext::Params params(ctx);
         params.lib = dataset()->lib_;
+        params.function_handle_cache = dataset()->function_handle_cache_.get();
         return dataset()->optimized_input_->MakeIterator(
             IteratorContext(std::move(params)), prefix(), &input_impl_);
       }
@@ -185,6 +190,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
                              bool* end_of_sequence) override {
         IteratorContext::Params params(ctx);
         params.lib = dataset()->lib_;
+        params.function_handle_cache = dataset()->function_handle_cache_.get();
         return input_impl_->GetNext(IteratorContext(std::move(params)),
                                     out_tensors, end_of_sequence);
       }
@@ -284,6 +290,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
     FunctionLibraryRuntime* lib_ = nullptr;
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_ = nullptr;
     std::unique_ptr<FunctionLibraryDefinition> flib_def_ = nullptr;
+    std::unique_ptr<FunctionHandleCache> function_handle_cache_ = nullptr;
     const DatasetBase* input_;
     const std::vector<string> optimizations_;
     const DataTypeVector output_types_;

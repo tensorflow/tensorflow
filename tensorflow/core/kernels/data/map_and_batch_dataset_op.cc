@@ -46,7 +46,8 @@ const int64 kMaxBatchResults = 16;
 class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   using MapAndBatchIteratorFunction =
-      std::function<void(IteratorContext*, const string&, std::vector<Tensor>,
+      std::function<void(IteratorContext*, InstantiatedCapturedFunction*,
+                         const string&, std::vector<Tensor>,
                          std::shared_ptr<std::vector<Tensor>>, StatusCallback)>;
 
   explicit MapAndBatchDatasetOp(OpKernelConstruction* ctx)
@@ -105,19 +106,20 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     MapAndBatchIteratorFunction map_func;
     CapturedFunction* raw_captured_func = captured_func.get();
     if (indices.empty()) {
-      map_func = [raw_captured_func](
-                     IteratorContext* ctx, const string& prefix,
-                     std::vector<Tensor> args,
-                     std::shared_ptr<std::vector<Tensor>> out_tensors,
-                     StatusCallback done) {
-        raw_captured_func->RunAsync(ctx, std::move(args), out_tensors.get(),
-                                    std::move(done), prefix);
+      map_func = [](IteratorContext* ctx,
+                    InstantiatedCapturedFunction* instantiated_captured_func,
+                    const string& prefix, std::vector<Tensor> args,
+                    std::shared_ptr<std::vector<Tensor>> out_tensors,
+                    StatusCallback done) {
+        instantiated_captured_func->RunAsync(
+            ctx, std::move(args), out_tensors.get(), std::move(done), prefix);
       };
     } else {
       std::vector<bool> can_move = ComputeMoveVector(indices);
       map_func = [raw_captured_func, indices, can_move](
-                     IteratorContext* ctx, const string& prefix,
-                     std::vector<Tensor> args,
+                     IteratorContext* ctx,
+                     InstantiatedCapturedFunction* instantiated_captured_func,
+                     const string& prefix, std::vector<Tensor> args,
                      std::shared_ptr<std::vector<Tensor>> out_tensors,
                      StatusCallback done) {
         const std::vector<Tensor>& captured_inputs =
@@ -275,7 +277,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -464,8 +467,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
         // Apply the map function on `input_element`, storing the result in
         // `return_values`, and invoking `done` when finished.
-        map_func_(ctx.get(), prefix(), std::move(input_element),
-                  std::move(return_values), std::move(done));
+        map_func_(ctx.get(), instantiated_captured_func_.get(), prefix(),
+                  std::move(input_element), std::move(return_values),
+                  std::move(done));
       }
 
       Status CopyPartialBatch(Tensor* output, const Tensor& value,
@@ -785,6 +789,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       // Identifies the maximum number of batch results to store.
       int64 max_batch_results_ GUARDED_BY(*mu_);
       string prefix_end_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;

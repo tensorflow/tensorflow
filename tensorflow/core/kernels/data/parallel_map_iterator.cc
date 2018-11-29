@@ -34,13 +34,11 @@ class ParallelMapIterator : public DatasetBaseIterator {
  public:
   ParallelMapIterator(const typename DatasetBaseIterator::BaseParams& params,
                       const DatasetBase* input_dataset,
-                      std::function<Status(IteratorContext*)> init_func,
-                      ParallelMapIteratorFunction map_func,
+                      std::unique_ptr<ParallelMapFunctor> parallel_map_functor,
                       int32 num_parallel_calls, bool sloppy)
       : DatasetBaseIterator(params),
         input_dataset_(input_dataset),
-        init_func_(std::move(init_func)),
-        map_func_(std::move(map_func)),
+        parallel_map_functor_(std::move(parallel_map_functor)),
         mu_(std::make_shared<mutex>()),
         cond_var_(std::make_shared<condition_variable>()),
         num_parallel_calls_(std::make_shared<model::SharedState>(
@@ -70,10 +68,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
     }
     TF_RETURN_IF_ERROR(
         input_dataset_->MakeIterator(ctx, prefix(), &input_impl_));
-    if (init_func_) {
-      TF_RETURN_IF_ERROR(init_func_(ctx));
-    }
-    return Status::OK();
+    return parallel_map_functor_->InitFunc(ctx);
   }
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
@@ -225,8 +220,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
 
     // Apply the map function on `input_element`, storing the result in
     // `result->return_values`, and invoking `done` when finished.
-    map_func_(ctx.get(), prefix(), std::move(input_element),
-              &result->return_values, std::move(done));
+    parallel_map_functor_->MapFunc(ctx.get(), prefix(),
+                                   std::move(input_element),
+                                   &result->return_values, std::move(done));
   }
 
   Status ProcessResult(const std::shared_ptr<InvocationResult>& result,
@@ -360,8 +356,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   const DatasetBase* const input_dataset_;  // Not owned.
-  const std::function<Status(IteratorContext*)> init_func_;
-  const ParallelMapIteratorFunction map_func_;
+  std::unique_ptr<ParallelMapFunctor> parallel_map_functor_;
   // Used for coordination between the main thread and the runner thread.
   const std::shared_ptr<mutex> mu_;
   // Used for coordination between the main thread and the runner thread. In
@@ -390,12 +385,11 @@ class ParallelMapIterator : public DatasetBaseIterator {
 std::unique_ptr<IteratorBase> NewParallelMapIterator(
     const DatasetBaseIterator::BaseParams& params,
     const DatasetBase* input_dataset,
-    std::function<Status(IteratorContext*)> init_func,
-    ParallelMapIteratorFunction map_func, int32 num_parallel_calls,
-    bool sloppy) {
-  return MakeUnique<ParallelMapIterator>(
-      params, input_dataset, std::move(init_func), std::move(map_func),
-      num_parallel_calls, sloppy);
+    std::unique_ptr<ParallelMapFunctor> parallel_map_functor,
+    int32 num_parallel_calls, bool sloppy) {
+  return MakeUnique<ParallelMapIterator>(params, input_dataset,
+                                         std::move(parallel_map_functor),
+                                         num_parallel_calls, sloppy);
 }
 
 }  // namespace data
