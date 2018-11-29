@@ -26,6 +26,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:filter_for_shard_ops",
         "//tensorflow/python/data/experimental/ops:stats_options",
         "//tensorflow/python/data/experimental/ops:threading_options",
         "//tensorflow/python/data/util:nest",
