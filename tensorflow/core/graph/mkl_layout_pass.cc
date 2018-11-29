@@ -2700,7 +2700,7 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   for (const Edge* e : transpose_to_nchw->out_edges()) {
     if (!e->IsControlEdge()) {
       const int kTransposeWithMklOpOutputSlot = 0;
-      CHECK_NOTNULL((*g)->AddEdge(new_node, kTransposeWithMklOpOutputSlot,
+      DCHECK((*g)->AddEdge(new_node, kTransposeWithMklOpOutputSlot,
                                   e->dst(), e->dst_input()));
     }
   }
