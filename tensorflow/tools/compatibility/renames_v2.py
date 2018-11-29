@@ -603,7 +603,7 @@ renames = {
     'tf.train.SingularMonitoredSession': 'tf.compat.v1.train.SingularMonitoredSession',
     'tf.train.Supervisor': 'tf.compat.v1.train.Supervisor',
     'tf.train.SyncReplicasOptimizer': 'tf.compat.v1.train.SyncReplicasOptimizer',
-    'tf.train.VocabInfo': 'tf.compat.v1.train.VocabInfo',
+    'tf.train.VocabInfo': 'tf.estimator.VocabInfo',
     'tf.train.WorkerSessionCreator': 'tf.compat.v1.train.WorkerSessionCreator',
     'tf.train.add_queue_runner': 'tf.compat.v1.train.add_queue_runner',
     'tf.train.assert_global_step': 'tf.compat.v1.train.assert_global_step',
