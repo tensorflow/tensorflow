@@ -36,6 +36,32 @@ from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import tf_upgrade_v2
 
 
+_TENSORFLOW_API_ATTR_V1 = (
+    tf_export.API_ATTRS_V1[tf_export.TENSORFLOW_API_NAME].names)
+_TENSORFLOW_API_ATTR = tf_export.API_ATTRS[tf_export.TENSORFLOW_API_NAME].names
+_ESTIMATOR_API_ATTR_V1 = (
+    tf_export.API_ATTRS_V1[tf_export.ESTIMATOR_API_NAME].names)
+_ESTIMATOR_API_ATTR = tf_export.API_ATTRS[tf_export.ESTIMATOR_API_NAME].names
+
+
+def get_v1_names(symbol):
+  names_v1 = []
+  if hasattr(symbol, _TENSORFLOW_API_ATTR_V1):
+    names_v1.extend(getattr(symbol, _TENSORFLOW_API_ATTR_V1))
+  if hasattr(symbol, _ESTIMATOR_API_ATTR_V1):
+    names_v1.extend(getattr(symbol, _ESTIMATOR_API_ATTR_V1))
+  return names_v1
+
+
+def get_v2_names(symbol):
+  names_v2 = set()
+  if hasattr(symbol, _TENSORFLOW_API_ATTR):
+    names_v2.update(getattr(symbol, _TENSORFLOW_API_ATTR))
+  if hasattr(symbol, _ESTIMATOR_API_ATTR):
+    names_v2.update(getattr(symbol, _ESTIMATOR_API_ATTR))
+  return list(names_v2)
+
+
 class TestUpgrade(test_util.TensorFlowTestCase):
   """Test various APIs that have been changed in 2.0.
 
@@ -79,32 +105,23 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       return
 
     v2_symbols = set([])
-    attr_v2 = tf_export.API_ATTRS[
-        tf_export.TENSORFLOW_API_NAME].names
 
     def symbol_collector(unused_path, unused_parent, children):
       for child in children:
         _, attr = tf_decorator.unwrap(child[1])
-        if not hasattr(attr, "__dict__"):
-          continue
-        api_names_v2 = attr.__dict__.get(attr_v2, [])
+        api_names_v2 = get_v2_names(attr)
         for name in api_names_v2:
           v2_symbols.add("tf." + name)
 
     visitor = public_api.PublicAPIVisitor(symbol_collector)
     traverse.traverse(tf.compat.v2, visitor)
 
-    attr_v1 = (
-        tf_export.API_ATTRS_V1[tf_export.TENSORFLOW_API_NAME].names)
-
     # Converts all symbols in the v1 namespace to the v2 namespace, raising
     # an error if the target of the conversion is not in the v2 namespace.
     def conversion_visitor(unused_path, unused_parent, children):
       for child in children:
         _, attr = tf_decorator.unwrap(child[1])
-        if not hasattr(attr, "__dict__"):
-          continue
-        api_names = attr.__dict__.get(attr_v1, [])
+        api_names = get_v1_names(attr)
         for name in api_names:
           _, _, _, text = self._upgrade("tf." + name)
           if (text and
