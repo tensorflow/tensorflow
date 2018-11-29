@@ -154,7 +154,8 @@ enum class OperatorType : uint8 {
   kUnpack,
   kZerosLike,
   kResizeNearestNeighbor,
-  kLeakyRelu
+  kLeakyRelu,
+  kAbs
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -653,6 +654,17 @@ struct UnidirectionalSequenceLstmOperator : Operator {
 // TensorFlow equivalent: Mul
 struct MulOperator : Operator {
   MulOperator() : Operator(OperatorType::kMul) {}
+};
+
+// Element-wise Abs operator:
+//   x -> abs(x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Relu
+struct AbsOperator : Operator {
+  AbsOperator() : Operator(OperatorType::kAbs) {}
 };
 
 // Element-wise Relu operator:

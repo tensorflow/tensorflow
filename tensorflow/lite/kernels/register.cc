@@ -31,6 +31,7 @@ TfLiteRegistration* Register_RELU_1();
 
 namespace builtin {
 
+TfLiteRegistration* Register_ABS();
 TfLiteRegistration* Register_RELU();
 TfLiteRegistration* Register_RELU_N1_TO_1();
 TfLiteRegistration* Register_RELU6();
@@ -154,6 +155,7 @@ const TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op,
 }
 
 BuiltinOpResolver::BuiltinOpResolver() {
+  AddBuiltin(BuiltinOperator_ABS, Register_ABS());
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
   AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6());

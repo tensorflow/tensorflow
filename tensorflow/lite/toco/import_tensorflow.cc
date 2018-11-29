@@ -2255,6 +2255,7 @@ ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
 
 ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
+      {"Abs", ConvertSimpleOperator<AbsOperator>},
       {"Add", ConvertSimpleOperator<AddOperator, 2>},
       {"AddN", ConvertSimpleOperatorFlexOk<AddNOperator>},
       {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
