@@ -96,6 +96,8 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "MaxPool",
       "BiasAdd",
       "Relu",
+      "Sigmoid",
+      "Tanh",
       "Add",
       "Mul",
       "Sub",

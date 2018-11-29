@@ -1977,13 +1977,43 @@ tensorflow::Status ConvertPool(OpConverterParams* params) {
 }
 
 tensorflow::Status ConvertActivation(OpConverterParams* params) {
-  const nvinfer1::ITensor* tensor = params->inputs.at(0).tensor();
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  if (inputs.size() != 1) {
+    return tensorflow::errors::InvalidArgument(
+        node_def.op(), " expects one input, at ", node_def.name());
+  }
+  if (!inputs.at(0).is_tensor()) {
+    return tensorflow::errors::Unimplemented(
+        node_def.op(), " is only implemented for tensors, at ",
+        node_def.name());
+  }
+  static const std::unordered_map<string, nvinfer1::ActivationType> ops{
+      {"Relu", nvinfer1::ActivationType::kRELU},
+      {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
+      {"Tanh", nvinfer1::ActivationType::kTANH},
+  };
+  auto op_pair = ops.find(node_def.op());
+  if (op_pair == ops.end()) {
+    return tensorflow::errors::Unimplemented(
+        "Activation op: ", node_def.op(),
+        " not supported at: ", node_def.name());
+  }
+  if (params->validation_only) return tensorflow::Status::OK();
+
+  // Start conversion.
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   nvinfer1::IActivationLayer* layer =
       params->converter->network()->addActivation(
-          *const_cast<nvinfer1::ITensor*>(tensor),
-          nvinfer1::ActivationType::kRELU);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, params->node_def.name());
+          *const_cast<nvinfer1::ITensor*>(tensor), op_pair->second);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  // Set quantization range for output of Sigmoid, Tanh.
+  if (node_def.op() == "Sigmoid") {
+    params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 1.0f);
+  } else if (node_def.op() == "Tanh") {
+    params->converter->ProvideQuantizationRange(output_tensor, -1.0f, 1.0f);
+  }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
 }
@@ -3136,6 +3166,9 @@ static void RegisterValidatableOpConverters(
        {"Add", "Mul", "Sub", "Div", "RealDiv", "Maximum", "Minimum"}) {
     (*registration)[binary_op_type] = ConvertBinary;
   }
+  for (auto activation_op_type : {"Relu", "Sigmoid", "Tanh"}) {
+    (*registration)[activation_op_type] = ConvertActivation;
+  }
 }
 
 void TrtNodeValidator::RegisterOpValidators() {
@@ -3147,7 +3180,6 @@ void Converter::RegisterOpConverters() {
 
   op_registry_["Conv2D"] = ConvertConv2D;
   op_registry_["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
-  op_registry_["Relu"] = ConvertActivation;
   op_registry_["MaxPool"] = ConvertPool;
   op_registry_["AvgPool"] = ConvertPool;
   // TODO(ben,jie): this is a temp hack.
