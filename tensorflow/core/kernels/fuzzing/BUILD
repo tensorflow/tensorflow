@@ -18,10 +18,13 @@ cc_library(
 )
 
 load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_ops_fuzz_target_lib")
+load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_oss_fuzz_corpus")
 
 tf_ops_fuzz_target_lib("identity")
 
 tf_ops_fuzz_target_lib("string_to_number")
+
+tf_oss_fuzz_corpus("string_to_number")
 
 tf_ops_fuzz_target_lib("string_split")
 
