@@ -23,6 +23,7 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils_impl
@@ -412,6 +413,23 @@ class SignatureDefUtilsTest(test.TestCase):
         {"foo": _STRING, "bar": _FLOAT},
         {},
         signature_constants.PREDICT_METHOD_NAME)
+
+  def testOpSignatureDef(self):
+    key = "adding_1_and_2_key"
+    add_op = math_ops.add(1, 2, name="adding_1_and_2")
+    signature_def = signature_def_utils_impl.op_signature_def(add_op, key)
+    self.assertIn(key, signature_def.outputs)
+    self.assertEqual(add_op.name, signature_def.outputs[key].name)
+
+  def testLoadOpFromSignatureDef(self):
+    key = "adding_1_and_2_key"
+    add_op = math_ops.add(1, 2, name="adding_1_and_2")
+    signature_def = signature_def_utils_impl.op_signature_def(add_op, key)
+
+    self.assertEqual(
+        add_op,
+        signature_def_utils_impl.load_op_from_signature_def(signature_def, key))
+
 
 if __name__ == "__main__":
   test.main()
