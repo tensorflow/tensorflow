@@ -64,6 +64,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "keep_dims": "keepdims",
             "reduction_indices": "axis",
         },
+        "tf.nn.erosion2d": {
+            "kernel": "filters",
+            "rates": "dilations",
+        },
         "tf.math.l2_normalize": {
             "dim": "axis",
         },
@@ -699,6 +703,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.conv2d_backprop_input":
         "WARNING: use_cudnn_on_gpu argument has been removed and \"filter\" "
         "was renamed to \"filters\"",
+        "tf.nn.erosion2d":
+        "WARNING: <function name> now requires a data_format argument",
         "tf.zeros_like": tf_01s_like_no_optimize_comment,
         "tf.ones_like": tf_01s_like_no_optimize_comment,
     }

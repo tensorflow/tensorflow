@@ -142,7 +142,7 @@ tf_module {
   }
   member_method {
     name: "erosion2d"
-    argspec: "args=[\'value\', \'kernel\', \'strides\', \'rates\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'value\', \'filters\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "fixed_unigram_candidate_sampler"
