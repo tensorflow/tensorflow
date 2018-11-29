@@ -67,11 +67,8 @@ XlaOp BilinearWeights(XlaOpKernelContext* ctx, XlaOp ratio,
   std::vector<int64> last_two_dims_indices = {(broadcast_dims_size - 2),
                                               (broadcast_dims_size - 1)};
 
-  xla::Shape broadcast_shape =
-      xla::ShapeUtil::MakeShape(xla_type, broadcast_dims);
-
   auto broadcast_first_term =
-      xla::BroadcastInDim(first_term, broadcast_shape, last_two_dims_indices);
+      xla::BroadcastInDim(first_term, broadcast_dims, last_two_dims_indices);
 
   // Ratio is of the same dimension as warp, which is [batch, dim_0,... dim_n,
   // 2], we broadcast ratio tensor to 'broadcast_dim' by keeping the
@@ -82,7 +79,7 @@ XlaOp BilinearWeights(XlaOpKernelContext* ctx, XlaOp ratio,
   ratio_broadcast_indices.erase(ratio_broadcast_indices.end() - 2);
 
   auto broadcast_ratio =
-      xla::BroadcastInDim(ratio, broadcast_shape, ratio_broadcast_indices);
+      xla::BroadcastInDim(ratio, broadcast_dims, ratio_broadcast_indices);
 
   auto first_term_subtract_weights = broadcast_first_term - broadcast_ratio;
 
@@ -93,7 +90,7 @@ XlaOp BilinearWeights(XlaOpKernelContext* ctx, XlaOp ratio,
   sign_change = xla::ConvertElementType(sign_change, xla_type);
 
   auto broadcast_sign_change =
-      xla::BroadcastInDim(sign_change, broadcast_shape, last_two_dims_indices);
+      xla::BroadcastInDim(sign_change, broadcast_dims, last_two_dims_indices);
 
   auto flipped = first_term_subtract_weights * broadcast_sign_change;
 
@@ -229,21 +226,19 @@ XlaOp CalculateGradData(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
 
   std::vector<int64> weights_with_channels_dims = reshaped_weights_dims;
   weights_with_channels_dims.push_back(data_channels);
-  auto weights_with_channels_shape =
-      xla::ShapeUtil::MakeShape(warp_type, weights_with_channels_dims);
   std::vector<int64> reshaped_weights_indices(reshaped_weights_dims.size());
   std::iota(reshaped_weights_indices.begin(), reshaped_weights_indices.end(),
             0);
 
   // The dimension is [batch, dim_0, ..., dim_n, 2, 2, data_channel].
   auto broadcast_reshaped_weights = xla::BroadcastInDim(
-      reshaped_weights, weights_with_channels_shape, reshaped_weights_indices);
+      reshaped_weights, weights_with_channels_dims, reshaped_weights_indices);
 
   std::vector<int64> grad_output_indices(warp_dims_without_last_dims.size());
   std::iota(grad_output_indices.begin(), grad_output_indices.end(), 0);
   grad_output_indices.push_back(weights_with_channels_dims.size() - 1);
   XlaOp broadcast_grad_output = xla::BroadcastInDim(
-      grad_output, weights_with_channels_shape, grad_output_indices);
+      grad_output, weights_with_channels_dims, grad_output_indices);
 
   auto grad_output_multiply_weights =
       broadcast_grad_output * broadcast_reshaped_weights;
@@ -291,12 +286,9 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
   std::vector<int64> warp_dims_without_last_dims(warp_dims.begin(),
                                                  warp_dims.end() - 1);
 
+  // With dimension [batch, dim_0, ...dim_n, 4]
   std::vector<int64> neighbor_broadcast_dims = warp_dims_without_last_dims;
   neighbor_broadcast_dims.push_back(4);
-
-  // With dimension [batch, dim_0, ...dim_n, 4]
-  auto neighbor_broadcast_shape =
-      xla::ShapeUtil::MakeShape(data_type, neighbor_broadcast_dims);
 
   // The dimension is [batch, dim_0, ... dim_n, 4, data_channels]
   auto neighbors_data = Gather2by2Neighbors(
@@ -323,7 +315,7 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
       xla::BroadcastInDim(
           xla::ConvertElementType(
               xla::ConstantR1<float>(ctx->builder(), {0, 0, -1, 1}), data_type),
-          neighbor_broadcast_shape, {last_warp_dim}),
+          neighbor_broadcast_dims, {last_warp_dim}),
       neighbors_data, dot_dims, /*precision_config=*/nullptr);
 
   // img_cxfy - img_fxfy
@@ -331,7 +323,7 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
       xla::BroadcastInDim(
           xla::ConvertElementType(
               xla::ConstantR1<float>(ctx->builder(), {-1, 1, 0, 0}), data_type),
-          neighbor_broadcast_shape, {last_warp_dim}),
+          neighbor_broadcast_dims, {last_warp_dim}),
       neighbors_data, dot_dims, /*precision_config=*/nullptr);
 
   // img_cxcy - img_cxfy
@@ -339,7 +331,7 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
       xla::BroadcastInDim(
           xla::ConvertElementType(
               xla::ConstantR1<float>(ctx->builder(), {0, -1, 0, 1}), data_type),
-          neighbor_broadcast_shape, {last_warp_dim}),
+          neighbor_broadcast_dims, {last_warp_dim}),
       neighbors_data, dot_dims, /*precision_config=*/nullptr);
 
   // img_fxcy - img_fxfy
@@ -347,7 +339,7 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
       xla::BroadcastInDim(
           xla::ConvertElementType(
               xla::ConstantR1<float>(ctx->builder(), {-1, 0, 1, 0}), data_type),
-          neighbor_broadcast_shape, {last_warp_dim}),
+          neighbor_broadcast_dims, {last_warp_dim}),
       neighbors_data, dot_dims, /*precision_config=*/nullptr);
 
   // Slice out x and y.
@@ -491,13 +483,11 @@ class ResamplerOp : public XlaOpKernel {
     auto warp_dims = warp_shape.dim_sizes();
     std::vector<int64> result_dims(warp_dims.begin(), warp_dims.end() - 1);
     result_dims.push_back(data_channels);
-    xla::Shape broadcasted_shape =
-        xla::ShapeUtil::MakeShape(xla::PrimitiveType::PRED, result_dims);
 
     std::vector<int64> broadcasted_dims(warp_dims.size() - 1);
     std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
     auto broadcasted_is_in_bound =
-        xla::BroadcastInDim(is_in_bound, broadcasted_shape, broadcasted_dims);
+        xla::BroadcastInDim(is_in_bound, result_dims, broadcasted_dims);
 
     // Set out of bound samples to zero.
     auto zeros =
