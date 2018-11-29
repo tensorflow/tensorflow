@@ -1158,6 +1158,21 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "unicode_encode_op_test",
+    size = "small",
+    srcs = ["unicode_encode_op_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
+    ],
+)
+
+tf_py_test(
     name = "unicode_transcode_op_test",
     size = "small",
     srcs = ["unicode_transcode_op_test.py"],

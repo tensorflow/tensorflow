@@ -4826,11 +4826,13 @@ tf_kernel_library(
     name = "unicode_ops",
     prefix = "unicode_ops",
     deps = [
+        ":bounds_check",
         ":string_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:string_ops_op_lib",
+        "//third_party/eigen3",
         "//third_party/icu/data:conversion_data",
         "@icu//:common",
     ],
@@ -5731,8 +5733,8 @@ filegroup(
             "batch_kernels.*",
             "regex_full_match_op.cc",
             "regex_replace_op.cc",
-            "unicode_script_op.cc",
             "unicode_ops.cc",
+            "unicode_script_op.cc",
             # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
             "mkl_*",
             "xsmm_*",

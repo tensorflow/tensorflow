@@ -1117,7 +1117,11 @@ tf_gen_op_libs(
     op_lib_names = [
         "string_ops",
     ],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        ":lib_internal",
+        ":lib_proto_parsing",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_gen_op_libs(
