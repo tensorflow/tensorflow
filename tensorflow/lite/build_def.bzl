@@ -294,6 +294,7 @@ def generated_test_models():
         "space_to_depth",
         "sparse_to_dense",
         "split",
+        "splitv",
         "sqrt",
         "square",
         "squared_difference",

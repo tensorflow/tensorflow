@@ -1158,6 +1158,29 @@ void ConvertSplitOperator(const Model& model,
                                   tensorflow_graph);
 }
 
+void ConvertSplitVOperator(const Model& model,
+                           const TensorFlowSplitVOperator& src_op,
+                           GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* split_v_op = tensorflow_graph->add_node();
+  split_v_op->set_op("SplitV");
+  split_v_op->set_name(src_op.outputs[0]);
+  for (const auto& input : src_op.inputs) {
+    *split_v_op->add_input() = input;
+  }
+  (*split_v_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
+  (*split_v_op->mutable_attr())["num_split"].set_i(src_op.num_split);
+  const auto& split_dim_array = model.GetArray(src_op.inputs[1]);
+  CHECK(split_dim_array.buffer);
+  CHECK(split_dim_array.data_type == ArrayDataType::kInt32);
+  const auto& split_dim_data =
+      split_dim_array.GetBuffer<ArrayDataType::kInt32>().data;
+  CHECK_EQ(split_dim_data.size(), 1);
+  const int split_dim = split_dim_data[0];
+  CreateDummyConcatDimTensorConst(src_op.inputs[0], split_dim,
+                                  tensorflow_graph);
+}
+
 void ConvertCastOperator(const Model& model, const CastOperator& src_op,
                          GraphDef* tensorflow_graph) {
   tensorflow::NodeDef* cast_op = tensorflow_graph->add_node();
@@ -2133,6 +2156,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertSplitOperator(model,
                          static_cast<const TensorFlowSplitOperator&>(src_op),
                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kSplitV) {
+    ConvertSplitVOperator(model,
+                          static_cast<const TensorFlowSplitVOperator&>(src_op),
+                          tensorflow_graph);
   } else if (src_op.type == OperatorType::kFakeQuant) {
     ConvertFakeQuantOperator(static_cast<const FakeQuantOperator&>(src_op),
                              tensorflow_graph);

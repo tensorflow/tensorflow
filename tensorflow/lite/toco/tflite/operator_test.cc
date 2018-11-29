@@ -310,6 +310,14 @@ TEST_F(OperatorTest, CustomSplit) {
   EXPECT_EQ(op.num_split, output_toco_op->num_split);
 }
 
+TEST_F(OperatorTest, CustomSplitV) {
+  TensorFlowSplitVOperator op;
+  op.num_split = 123;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SPLIT_V", OperatorType::kSplitV), op);
+  EXPECT_EQ(op.num_split, output_toco_op->num_split);
+}
+
 TEST_F(OperatorTest, BuiltinAveragePool) {
   AveragePoolOperator op;
   op.fused_activation_function = FusedActivationFunctionType::kRelu6;
