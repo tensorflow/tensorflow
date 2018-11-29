@@ -32,6 +32,7 @@ py_library(
         ":ragged_map_ops",
         ":ragged_math_ops",
         ":ragged_operators",
+        ":ragged_string_ops",
         ":ragged_tensor",
         ":ragged_tensor_shape",
         ":ragged_tensor_value",
@@ -176,6 +177,21 @@ py_library(
         ":ragged_elementwise_ops",
         ":ragged_getitem",
         ":ragged_tensor",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "ragged_string_ops",
+    srcs = ["ragged_string_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_array_ops",
+        ":ragged_conversion_ops",
+        ":ragged_factory_ops",
+        ":ragged_tensor",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
     ],
 )

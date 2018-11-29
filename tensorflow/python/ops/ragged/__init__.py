@@ -156,6 +156,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.ops.ragged import ragged_operators
+from tensorflow.python.ops.ragged import ragged_string_ops
 
 from tensorflow.python.ops.ragged.ragged_array_ops import batch_gather
 from tensorflow.python.ops.ragged.ragged_array_ops import boolean_mask
