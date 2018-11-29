@@ -26,7 +26,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -56,10 +55,10 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
       ]:
         a = self._ConstOp(weights_shape)
         f = x + a
-        x = math_ops.sigmoid(f)
+        x = self.trt_incompatible_op(f)
         a = self._ConstOp(weights_shape)
         f = a + x
-        x = math_ops.sigmoid(f)
+        x = self.trt_incompatible_op(f)
       gen_array_ops.reshape(x, [5, -1], name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
