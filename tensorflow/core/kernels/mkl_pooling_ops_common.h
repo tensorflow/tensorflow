@@ -459,19 +459,16 @@ class MklPoolingOpBase : public OpKernel {
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &this->ksize_));
     OP_REQUIRES(context, this->ksize_.size() == 4 || this->ksize_.size() == 5,
-                errors::InvalidArgument(
-                    "Sliding window ksize field must "
-                    "specify 4 or 5 dimensions"));
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 or 5 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &this->stride_));
     OP_REQUIRES(context, this->stride_.size() == 4 || this->stride_.size() == 5,
-                errors::InvalidArgument(
-                    "Sliding window strides field must "
-                    "specify 4 or 5 dimensions"));
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 or 5 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &this->padding_));
     OP_REQUIRES(context, this->ksize_[0] == 1 && this->stride_[0] == 1,
-                errors::Unimplemented(
-                    "Pooling is not yet supported on the "
-                    "batch dimension."));
+                errors::Unimplemented("Pooling is not yet supported on the "
+                                      "batch dimension."));
     bool is_pool2d = (this->ksize_.size() == 4);
     this->data_format_mkldnn_ =
         is_pool2d ? TFDataFormatToMklDnnDataFormat(this->data_format_tf_)

@@ -54,19 +54,16 @@ class MklMaxPoolingOp : public OpKernel {
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window ksize field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window stride field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window stride field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
-                errors::Unimplemented(
-                    "Pooling is not yet supported on the "
-                    "batch dimension."));
+                errors::Unimplemented("Pooling is not yet supported on the "
+                                      "batch dimension."));
 
     workspace_enabled_ = false;
     // We may not get this attribute for this node if it does not go through
@@ -216,14 +213,12 @@ class MklMaxPoolingGradOp : public OpKernel {
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window ksize field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window strides field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
@@ -641,8 +636,7 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         // execute pooling op
         pooling_fwd->Execute(src_data, dst_data, ws_data);
       }
-    }
-    catch (mkldnn::error& e) {
+    } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
                          string(e.message) + ", in file " + string(__FILE__) +
                          ":" + std::to_string(__LINE__);
@@ -772,10 +766,11 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       if (ws_md.data.format != pooling_bwd->GetWorkspaceFormat()) {
         memory::dims ws_dims;
         ws_dims.assign(ws_md.data.dims, ws_md.data.dims + ws_md.data.ndims);
-        auto target_ws = memory::primitive_desc(
-            {{ws_dims}, pooling_bwd->GetWorkspaceDataType(),
-             pooling_bwd->GetWorkspaceFormat()},
-            cpu_engine);
+        auto target_ws =
+            memory::primitive_desc({{ws_dims},
+                                    pooling_bwd->GetWorkspaceDataType(),
+                                    pooling_bwd->GetWorkspaceFormat()},
+                                   cpu_engine);
         workspace_dnn_data.SetUsrMem(ws_md, &workspace_tensor);
         workspace_dnn_data.CheckReorderToOpMem(target_ws);
         ws_data = workspace_dnn_data.GetOpMem().get_data_handle();
@@ -785,8 +780,7 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       // execute pooling
       pooling_bwd->Execute(diff_dst_data, diff_src_data, ws_data);
-    }
-    catch (mkldnn::error& e) {
+    } catch (mkldnn::error& e) {
       string error_msg = "Status:" + std::to_string(e.status) + ", message: " +
                          string(e.message) + ". in file " + string(__FILE__) +
                          ":" + std::to_string(__LINE__);
@@ -857,12 +851,12 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           context, workspace_tensor.dims() == 1,
           errors::InvalidArgument("Workspace tensor must be 1-dimensional"));
     } else {
-      OP_REQUIRES(context, this->workspace_enabled_,
-                  errors::Unimplemented(
-                      "MKL-DNN Max Pooling does not "
-                      "yet support the use case "
-                      "where MaxPoolGrad is called without first"
-                      " calling MaxPool."));
+      OP_REQUIRES(
+          context, this->workspace_enabled_,
+          errors::Unimplemented("MKL-DNN Max Pooling does not "
+                                "yet support the use case "
+                                "where MaxPoolGrad is called without first"
+                                " calling MaxPool."));
     }
   }
 };  // MklMaxPoolingGradOp
