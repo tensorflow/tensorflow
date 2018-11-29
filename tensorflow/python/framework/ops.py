@@ -910,13 +910,7 @@ class _EagerTensorBase(Tensor):
     return self._copy(context.context(), "GPU:" + str(gpu_index))
 
   def __bool__(self):
-    if self._shape_tuple() != ():  # pylint: disable=g-explicit-bool-comparison
-      raise ValueError(
-          "Non-scalar tensor %s cannot be converted to boolean." % repr(self))
-    if self.dtype != dtypes.bool:
-      raise ValueError(
-          "Non-boolean tensor %s cannot be converted to boolean." % repr(self))
-    return bool(self.cpu().numpy())
+    return bool(self.numpy())
 
   def __nonzero__(self):
     return self.__bool__()
