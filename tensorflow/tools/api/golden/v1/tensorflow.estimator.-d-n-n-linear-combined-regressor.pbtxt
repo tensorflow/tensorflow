@@ -1,7 +1,6 @@
 path: "tensorflow.estimator.DNNLinearCombinedRegressor"
 tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.dnn_linear_combined.DNNLinearCombinedRegressor\'>"
-  is_instance: "<class \'tensorflow_estimator.python.estimator.canned.dnn_linear_combined.DNNLinearCombinedRegressorV2\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
   is_instance: "<type \'object\'>"
