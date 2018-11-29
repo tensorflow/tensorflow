@@ -101,12 +101,12 @@ ExecutionOptions CreateExecutionOptions(
   }
   if (build_options.result_layout() != nullptr) {
     *execution_options.mutable_shape_with_output_layout() =
-        *build_options.result_layout();
+        build_options.result_layout()->ToProto();
   } else {
+    Shape result_shape(program_shape->result());
+    LayoutUtil::SetToDefaultLayout(&result_shape);
     *execution_options.mutable_shape_with_output_layout() =
-        program_shape->result();
-    LayoutUtil::SetToDefaultLayout(
-        execution_options.mutable_shape_with_output_layout());
+        result_shape.ToProto();
   }
   return execution_options;
 }

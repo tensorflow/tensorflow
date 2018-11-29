@@ -154,7 +154,7 @@ message Layout {
 // See the XLA documentation for more information on shapes and layouts.
 //
 // LINT.IfChange
-message Shape {
+message ShapeProto {
   reserved 1;
   reserved "rank";
 
@@ -169,7 +169,7 @@ message Shape {
   repeated int64 dimensions = 3;
 
   // For tuples only, the shapes of constitutent shapes in the tuple sequence.
-  repeated Shape tuple_shapes = 4;
+  repeated ShapeProto tuple_shapes = 4;
 
   // The layout used to back this shape.
   Layout layout = 5;
@@ -184,8 +184,8 @@ message Shape {
 // Shape of the parameters and output of a computation (like a traditional
 // function signature).
 message ProgramShapeProto {
-  repeated Shape parameters = 1;
-  Shape result = 2;
+  repeated ShapeProto parameters = 1;
+  ShapeProto result = 2;
   repeated string parameter_names = 3;
 }
 
@@ -320,7 +320,7 @@ message DeviceAssignmentProto {
 // Transfers to/from the client are encoded in literal form, and the structure
 // of the repeated fields is implied by the shape.
 message LiteralProto {
-  Shape shape = 1;
+  ShapeProto shape = 1;
   repeated bool preds = 2;
   bytes s8s = 15;
   bytes u8s = 3;
@@ -521,7 +521,7 @@ message OpSharding {
   }
   Type type = 1;
   // The shape of the sharded tile.
-  Shape tile_shape = 2;
+  ShapeProto tile_shape = 2;
   // The shape of the tile assignment tensor - this must be the same rank as
   // tile_shape and the product of its dimensions must equal
   // tile_assignment_devices.size().

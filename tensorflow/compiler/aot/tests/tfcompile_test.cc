@@ -529,10 +529,12 @@ TEST(TFCompileTest, ProgramShape) {
   const xla::ProgramShapeProto* muladd_shape = muladd.ProgramShape();
   ASSERT_TRUE(muladd_shape != nullptr);
   ASSERT_EQ(muladd_shape->parameters_size(), 2);
-  EXPECT_TRUE(ShapeUtil::Compatible(muladd_shape->parameters(0), f32_2x2));
-  EXPECT_TRUE(ShapeUtil::Compatible(muladd_shape->parameters(1), f32_2x2));
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(xla::Shape(muladd_shape->parameters(0)), f32_2x2));
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(xla::Shape(muladd_shape->parameters(1)), f32_2x2));
 
-  const xla::Shape& muladd_result = muladd_shape->result();
+  const xla::Shape muladd_result(muladd_shape->result());
   ASSERT_EQ(muladd_result.element_type(), xla::TUPLE);
   ASSERT_EQ(ShapeUtil::TupleElementCount(muladd_result), 2);
   const xla::Shape& muladd_result0 =
