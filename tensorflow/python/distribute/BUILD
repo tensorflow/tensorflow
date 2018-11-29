@@ -245,6 +245,7 @@ py_library(
     srcs = ["input_ops.py"],
     deps = [
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/experimental/ops:filter_for_shard_ops",
         "//tensorflow/python/data/util:nest",
     ],
 )

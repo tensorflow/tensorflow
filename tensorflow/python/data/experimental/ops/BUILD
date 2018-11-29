@@ -140,6 +140,18 @@ py_library(
 )
 
 py_library(
+    name = "filter_for_shard_ops",
+    srcs = ["filter_for_shard_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:tensor_util",
+    ],
+)
+
+py_library(
     name = "error_ops",
     srcs = ["error_ops.py"],
     srcs_version = "PY2AND3",
@@ -403,6 +415,7 @@ py_library(
         ":counter",
         ":enumerate_ops",
         ":error_ops",
+        ":filter_for_shard_ops",
         ":get_single_element",
         ":grouping",
         ":indexed_dataset_ops",
