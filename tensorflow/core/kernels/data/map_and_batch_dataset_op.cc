@@ -38,6 +38,9 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+// Maximum number of batch results to buffer.
+const int64 kMaxBatchResults = 16;
+
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
@@ -243,7 +246,11 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             cond_var_(std::make_shared<condition_variable>()),
             num_parallel_calls_(std::make_shared<model::SharedState>(
                 params.dataset->num_parallel_calls_, mu_, cond_var_)),
-            map_func_(std::move(map_func)) {
+            map_func_(std::move(map_func)),
+            max_batch_results_(std::min(kMaxBatchResults,
+                                        (params.dataset->num_parallel_calls_ +
+                                         params.dataset->batch_size_ - 1) /
+                                            params.dataset->batch_size_)) {
         std::vector<string> components =
             str_util::Split(params.prefix, "::", str_util::SkipEmpty());
         prefix_end_ = components.back();
@@ -280,9 +287,11 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           EnsureRunnerThreadStarted(ctx);
           while (batch_results_.empty() ||
                  batch_results_.front()->num_calls > 0) {
+            ++waiting_;
             RecordStop(ctx);
             cond_var_->wait(l);
             RecordStart(ctx);
+            --waiting_;
           }
           std::swap(result, batch_results_.front());
           batch_results_.pop_front();
@@ -572,18 +581,24 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         }
         auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
           int64 num_parallel_calls = num_parallel_calls_->value;
-          int64 max_batch_results =
-              (num_parallel_calls + dataset()->batch_size_ - 1) /
-              dataset()->batch_size_;
           return num_calls_ >= num_parallel_calls ||
-                 (batch_results_.size() > max_batch_results ||
-                  (batch_results_.size() == max_batch_results &&
+                 (batch_results_.size() > max_batch_results_ ||
+                  (batch_results_.size() == max_batch_results_ &&
                    call_counter_ % dataset()->batch_size_ == 0));
         };
         while (true) {
           {
             mutex_lock l(*mu_);
             while (!cancelled_ && busy()) {
+              if (waiting_ > 0 && num_calls_ < num_parallel_calls_->value &&
+                  max_batch_results_ < kMaxBatchResults) {
+                // If there is a caller waiting for a batch and the number of
+                // outstanding calls is not maxed out, it means we are out of
+                // `batch_results_` slots. Instead of waiting for a slot to open
+                // up, we create a new one to utilize CPU efficiently.
+                max_batch_results_++;
+                continue;
+              }
               RecordStop(ctx.get());
               cond_var_->wait(l);
               RecordStart(ctx.get());
@@ -761,8 +776,14 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       std::unique_ptr<IteratorBase> input_impl_;
       // Buffer for storing the (intermediate) batch results.
       std::deque<std::shared_ptr<BatchResult>> batch_results_ GUARDED_BY(*mu_);
+      // Background thread used for coordinating input processing.
       std::unique_ptr<Thread> runner_thread_ GUARDED_BY(*mu_);
+      // Determines whether the transformation has been cancelled.
       bool cancelled_ GUARDED_BY(*mu_) = false;
+      // Identifies the number of callers currently waiting for a batch result.
+      int64 waiting_ GUARDED_BY(*mu_) = 0;
+      // Identifies the maximum number of batch results to store.
+      int64 max_batch_results_ GUARDED_BY(*mu_);
       string prefix_end_;
     };
 
