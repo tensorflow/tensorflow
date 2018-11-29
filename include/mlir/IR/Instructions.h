@@ -150,7 +150,7 @@ public:
     return {result_begin(), result_end()};
   }
 
-  // Support const operand iteration.
+  // Support const result iteration.
   using const_result_iterator =
       ResultIterator<const Instruction, const CFGValue>;
   const_result_iterator result_begin() const {
@@ -177,6 +177,21 @@ public:
 
   const InstResult &getInstResult(unsigned idx) const {
     return getInstResults()[idx];
+  }
+
+  // Support result type iteration.
+  using result_type_iterator =
+      ResultTypeIterator<const Instruction, const CFGValue>;
+  result_type_iterator result_type_begin() const {
+    return result_type_iterator(this, 0);
+  }
+
+  result_type_iterator result_type_end() const {
+    return result_type_iterator(this, getNumResults());
+  }
+
+  llvm::iterator_range<result_type_iterator> getResultTypes() const {
+    return {result_type_begin(), result_type_end()};
   }
 
   //===--------------------------------------------------------------------===//

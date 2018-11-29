@@ -29,6 +29,7 @@ template <typename OpType> class ConstOpPointer;
 template <typename OpType> class OpPointer;
 template <typename ObjectType, typename ElementType> class OperandIterator;
 template <typename ObjectType, typename ElementType> class ResultIterator;
+template <typename ObjectType, typename ElementType> class ResultTypeIterator;
 class Function;
 class IROperandOwner;
 class Instruction;
@@ -97,11 +98,18 @@ public:
   result_iterator result_end();
   llvm::iterator_range<result_iterator> getResults();
 
-  // Support const operand iteration.
+  // Support const result iteration.
   using const_result_iterator = ResultIterator<const Operation, const SSAValue>;
   const_result_iterator result_begin() const;
   const_result_iterator result_end() const;
   llvm::iterator_range<const_result_iterator> getResults() const;
+
+  // Support for result type iteration.
+  using result_type_iterator =
+      ResultTypeIterator<const Operation, const SSAValue>;
+  result_type_iterator result_type_begin() const;
+  result_type_iterator result_type_end() const;
+  llvm::iterator_range<result_type_iterator> getResultTypes() const;
 
   // Support for successor querying.
   unsigned getNumSuccessors() const;
@@ -399,6 +407,31 @@ public:
   }
 };
 
+/// This template implements the result type iterators for the various IR
+/// classes in terms of getResult(idx)->getType().
+template <typename ObjectType, typename ElementType>
+class ResultTypeIterator final
+    : public IndexedAccessorIterator<
+          ResultTypeIterator<ObjectType, ElementType>, ObjectType,
+          ElementType> {
+public:
+  /// Initializes the result type iterator to the specified index.
+  ResultTypeIterator(ObjectType *object, unsigned index)
+      : IndexedAccessorIterator<ResultTypeIterator<ObjectType, ElementType>,
+                                ObjectType, ElementType>(object, index) {}
+
+  /// Support converting to the const variant. This will be a no-op for const
+  /// variant.
+  operator ResultTypeIterator<const ObjectType, const ElementType>() const {
+    return ResultTypeIterator<const ObjectType, const ElementType>(this->object,
+                                                                   this->index);
+  }
+
+  Type operator*() const {
+    return this->object->getResult(this->index)->getType();
+  }
+};
+
 // Implement the inline operand iterator methods.
 inline auto Operation::operand_begin() -> operand_iterator {
   return operand_iterator(this, 0);
@@ -449,6 +482,19 @@ inline auto Operation::result_end() const -> const_result_iterator {
 inline auto Operation::getResults() const
     -> llvm::iterator_range<const_result_iterator> {
   return {result_begin(), result_end()};
+}
+
+inline auto Operation::result_type_begin() const -> result_type_iterator {
+  return result_type_iterator(this, 0);
+}
+
+inline auto Operation::result_type_end() const -> result_type_iterator {
+  return result_type_iterator(this, getNumResults());
+}
+
+inline auto Operation::getResultTypes() const
+    -> llvm::iterator_range<result_type_iterator> {
+  return {result_type_begin(), result_type_end()};
 }
 } // end namespace mlir
 

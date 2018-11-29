@@ -139,7 +139,7 @@ public:
     return {result_begin(), result_end()};
   }
 
-  // Support const operand iteration.
+  // Support const result iteration.
   using const_result_iterator =
       ResultIterator<const OperationStmt, const MLValue>;
   const_result_iterator result_begin() const {
@@ -166,6 +166,21 @@ public:
 
   const StmtResult &getStmtResult(unsigned idx) const {
     return getStmtResults()[idx];
+  }
+
+  // Support result type iteration.
+  using result_type_iterator =
+      ResultTypeIterator<const OperationStmt, const MLValue>;
+  result_type_iterator result_type_begin() const {
+    return result_type_iterator(this, 0);
+  }
+
+  result_type_iterator result_type_end() const {
+    return result_type_iterator(this, getNumResults());
+  }
+
+  llvm::iterator_range<result_type_iterator> getResultTypes() const {
+    return {result_type_begin(), result_type_end()};
   }
 
   //===--------------------------------------------------------------------===//
