@@ -25,6 +25,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -34,6 +35,7 @@ from tensorflow.python.platform import test
 
 class DynamicPartitionTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testSimpleOneDimensional(self):
     with self.session(use_gpu=True) as sess:
       data = constant_op.constant([0, 13, 2, 39, 4, 17], dtype=dtypes.float32)
@@ -54,6 +56,7 @@ class DynamicPartitionTest(test.TestCase):
     self.assertEqual([None], partitions[2].get_shape().as_list())
     self.assertEqual([None], partitions[3].get_shape().as_list())
 
+  @test_util.run_deprecated_v1
   def testSimpleTwoDimensional(self):
     with self.session(use_gpu=True) as sess:
       data = constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
@@ -151,6 +154,7 @@ class DynamicPartitionTest(test.TestCase):
                                  dtype=np.float64).reshape(-1, 4),
                         partition_vals[3])
 
+  @test_util.run_deprecated_v1
   def testHigherRank(self):
     np.random.seed(7)
     with self.session(use_gpu=True) as sess:
@@ -287,6 +291,7 @@ class DynamicPartitionTest(test.TestCase):
     for i in range(40):
       self.assertAllEqual([], partition_vals[i])
 
+  @test_util.run_deprecated_v1
   def testErrorIndexOutOfRange(self):
     with self.cached_session() as sess:
       data = constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
@@ -297,6 +302,7 @@ class DynamicPartitionTest(test.TestCase):
       with self.assertRaisesOpError(r"partitions\[2\] = 99 is not in \[0, 4\)"):
         self.evaluate(partitions)
 
+  @test_util.run_deprecated_v1
   def testScalarIndexOutOfRange(self):
     with self.cached_session() as sess:
       bad = 17
@@ -305,6 +311,7 @@ class DynamicPartitionTest(test.TestCase):
       with self.assertRaisesOpError(r"partitions = 17 is not in \[0, 7\)"):
         self.evaluate(partitions)
 
+  @test_util.run_deprecated_v1
   def testHigherRankIndexOutOfRange(self):
     with self.cached_session() as sess:
       shape = (2, 3)
@@ -320,6 +327,7 @@ class DynamicPartitionTest(test.TestCase):
               r"partitions\[%d,%d\] = 17 is not in \[0, 7\)" % (i, j)):
             sess.run(partitions, feed_dict={indices: bad})
 
+  @test_util.run_deprecated_v1
   def testErrorWrongDimsIndices(self):
     data = constant_op.constant([[0], [1], [2]])
     indices = constant_op.constant([[0], [0]])

@@ -27,6 +27,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
@@ -69,6 +70,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorUsingFunction(self):
     def generator():
       for i in range(1, 100):
@@ -79,18 +81,21 @@ class FromGeneratorTest(test_base.DatasetTestBase):
     self._testFromGeneratorOneShot(generator, elem_sequence, 1)
     self._testFromGeneratorOneShot(generator, elem_sequence, 5)
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorUsingList(self):
     generator = lambda: [[i] * i for i in range(1, 100)]
     elem_sequence = list(generator())
     self._testFromGenerator(generator, elem_sequence, 1)
     self._testFromGenerator(generator, elem_sequence, 5)
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorUsingNdarray(self):
     generator = lambda: np.arange(100, dtype=np.int64)
     elem_sequence = list(generator())
     self._testFromGenerator(generator, elem_sequence, 1, output_types=np.int64)
     self._testFromGenerator(generator, elem_sequence, 5, output_types=np.int64)
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorUsingGeneratorExpression(self):
     # NOTE(mrry): Generator *expressions* are not repeatable (or in
     # general reusable), because they eagerly evaluate the `for`
@@ -102,6 +107,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
     self._testFromGenerator(generator, elem_sequence, 1)
     self._testFromGenerator(generator, elem_sequence, 5)
 
+  @test_util.run_deprecated_v1
   def testFromMultipleConcurrentGenerators(self):
     num_inner_repeats = 5
     num_outer_repeats = 100
@@ -199,6 +205,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorImplicitConversion(self):
     def generator():
       yield [1]
@@ -223,6 +230,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorString(self):
     def generator():
       yield "foo"
@@ -243,6 +251,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorTypeError(self):
     def generator():
       yield np.array([1, 2, 3], dtype=np.int64)
@@ -266,6 +275,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorShapeError(self):
     def generator():
       yield np.array([1, 2, 3], dtype=np.int64)
@@ -289,6 +299,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorStructureError(self):
     def generator():
       yield 1, 2
@@ -317,6 +328,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorHeterogeneous(self):
     def generator():
       yield 1
@@ -335,6 +347,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorStopShort(self):
 
     def generator():
@@ -353,6 +366,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       self.assertAllEqual(0, sess.run(get_next))
       self.assertAllEqual(1, sess.run(get_next))
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorDestructorCalled(self):
     # Use an `Event` to signal that the generator has been deleted.
     event = threading.Event()
@@ -387,6 +401,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       # iterator terminates (and the generator iterator is deleted).
       self.assertTrue(event.is_set())
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorWithArgs(self):
 
     def flat_map_fn(elem):
@@ -414,6 +429,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  @test_util.run_deprecated_v1
   def testFromGeneratorWithTwoArgs(self):
 
     def flat_map_fn(elem, message):
@@ -446,6 +462,7 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  @test_util.run_deprecated_v1
   def testGeneratorDatasetFinalizeFunctionCalled(self):
     # NOTE(mrry): This test tests the internal `_GeneratorDataset`,
     # which affords more control over what the finalize function can do than

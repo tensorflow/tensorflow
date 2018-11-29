@@ -55,6 +55,7 @@ class ShardedFileOpsTest(test.TestCase):
 
 class ShapeInferenceTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testRestoreV2WithSliceInput(self):
     op = io_ops.restore_v2("model", ["var1", "var2"], ["", "3 4 0,1:-"],
                            [dtypes.float32, dtypes.float32])
@@ -62,11 +63,13 @@ class ShapeInferenceTest(test.TestCase):
     self.assertFalse(op[0].get_shape().is_fully_defined())
     self.assertEqual([1, 4], op[1].get_shape())
 
+  @test_util.run_deprecated_v1
   def testRestoreV2NumSlicesNotMatch(self):
     with self.assertRaises(ValueError):
       io_ops.restore_v2("model", ["var1", "var2", "var3"], ["", "3 4 0,1:-"],
                         [dtypes.float32, dtypes.float32])
 
+  @test_util.run_deprecated_v1
   def testRestoreSlice(self):
     op = gen_io_ops.restore_slice("model", "var", "3 4 0,1:-", dtypes.float32)
     self.assertEqual([1, 4], op.get_shape())

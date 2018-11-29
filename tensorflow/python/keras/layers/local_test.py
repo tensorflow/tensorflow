@@ -32,6 +32,7 @@ class LocallyConnected1DLayersTest(test.TestCase):
   # fails inside a graph function in an eager context (fails with error
   # "Incompatible shapes between op input and calculated input gradient").
 
+  @tf_test_util.run_deprecated_v1
   def test_locallyconnected_1d(self):
     with self.cached_session():
       num_samples = 2
@@ -120,6 +121,7 @@ class LocallyConnected2DLayersTest(test.TestCase):
   # fails inside a graph function in an eager context (fails with error
   # "Incompatible shapes between op input and calculated input gradient").
 
+  @tf_test_util.run_deprecated_v1
   def test_locallyconnected_2d(self):
     with self.cached_session():
       num_samples = 8
@@ -155,6 +157,7 @@ class LocallyConnected2DLayersTest(test.TestCase):
                   kwargs=kwargs,
                   input_shape=(num_samples, num_row, num_col, stack_size))
 
+  @tf_test_util.run_deprecated_v1
   def test_locallyconnected_2d_channels_first(self):
     with self.cached_session():
       num_samples = 8
@@ -232,6 +235,7 @@ class LocallyConnected2DLayersTest(test.TestCase):
 
 class LocallyConnectedImplementationModeTest(test.TestCase):
 
+  @tf_test_util.run_deprecated_v1
   def test_locallyconnected_implementation(self):
     with self.cached_session():
       num_samples = 4

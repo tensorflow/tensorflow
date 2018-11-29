@@ -35,6 +35,7 @@ from tensorflow.python.platform import test
 
 class ConcatOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testHStack(self):
     with self.session(use_gpu=True):
       p1 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
@@ -50,6 +51,7 @@ class ConcatOpTest(test.TestCase):
     self.assertAllEqual(result[:4, :], params[p1])
     self.assertAllEqual(result[4:, :], params[p2])
 
+  @test_util.run_deprecated_v1
   def testVStack(self):
     with self.session(use_gpu=True):
       p1 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
@@ -138,6 +140,7 @@ class ConcatOpTest(test.TestCase):
       else:
         self.assertAllClose(result[ind], params[p[i]], 0.01)
 
+  @test_util.run_deprecated_v1
   def testRandom(self):
     self._testRandom(dtypes.bool)
     self._testRandom(dtypes.float32)
@@ -148,6 +151,7 @@ class ConcatOpTest(test.TestCase):
     self._testRandom(dtypes.complex64)
     self._testRandom(dtypes.complex128)
 
+  @test_util.run_deprecated_v1
   def testInvalidConcatDimTypeAndShape(self):
     a = variables.Variable(constant_op.constant(1.0, shape=[1]))
     b = variables.Variable(constant_op.constant(2.0, shape=[1]))
@@ -199,10 +203,12 @@ class ConcatOpTest(test.TestCase):
         result = self.evaluate(concated_grad)
     self.assertAllEqual(result, grad_inp)
 
+  @test_util.run_deprecated_v1
   def testGradientsSimple(self):
     self._testGradientsSimple(dtypes.float32)
     self._testGradientsSimple(dtypes.complex64)
 
+  @test_util.run_deprecated_v1
   def testGradientsFirstDim(self):
     with test_util.use_gpu():
       inp = []
@@ -227,6 +233,7 @@ class ConcatOpTest(test.TestCase):
 
     self.assertAllEqual(result, grad_inp)
 
+  @test_util.run_deprecated_v1
   def testGradientsLastDim(self):
     # Test both positive and negative concat axis.
     # -1 and 2 correspond to the same axis for 3-dimensional tensors.
@@ -284,10 +291,12 @@ class ConcatOpTest(test.TestCase):
 
     self.assertAllEqual(result, grad_inp)
 
+  @test_util.run_deprecated_v1
   def testGradientsRandom(self):
     for _ in range(5):
       self._RunAndVerifyGradientsRandom()
 
+  @test_util.run_deprecated_v1
   def testGradientWithUnknownInputDim(self):
     with self.session(use_gpu=True):
       x = array_ops.placeholder(dtypes.float32)
@@ -309,6 +318,7 @@ class ConcatOpTest(test.TestCase):
 
       self.assertAllEqual(result, grad_inp)
 
+  @test_util.run_deprecated_v1
   def testShapeError(self):
     # Rank doesn't match.
     with self.assertRaises(ValueError):
@@ -338,6 +348,7 @@ class ConcatOpTest(test.TestCase):
            constant_op.constant(20.0, shape=[4, 4, 4])
           ], -4)
 
+  @test_util.run_deprecated_v1
   def testShapeWithUnknownConcatDim(self):
     p1 = array_ops.placeholder(dtypes.float32)
     c1 = constant_op.constant(10.0, shape=[4, 4, 4, 4])
@@ -356,6 +367,7 @@ class ConcatOpTest(test.TestCase):
     with self.assertRaises(ValueError):
       array_ops.concat([p1, c1, p2, c3], dim)
 
+  @test_util.run_deprecated_v1
   def testZeroSize(self):
     # Verify that concat doesn't crash and burn for zero size inputs
     np.random.seed(7)
@@ -377,6 +389,7 @@ class ConcatOpTest(test.TestCase):
               dxs = self.evaluate(gradients_impl.gradients(c, xs, dc))
               self.assertAllEqual(dc, np.concatenate(dxs, axis=axis))
 
+  @test_util.run_deprecated_v1
   def testTensorConcatDim0Grad(self):
     x_shapes = [[20, 7, 3], [10, 7, 3], [14, 7, 3]]
     output_shape = [44, 7, 3]
@@ -391,6 +404,7 @@ class ConcatOpTest(test.TestCase):
                                                     output_shape)
     self.assertLess(err, 1e-11)
 
+  @test_util.run_deprecated_v1
   def testTensorConcatDim1Grad(self):
     x_shapes = [[20, 7, 3], [20, 3, 3], [20, 1, 3]]
     output_shape = [20, 11, 3]
@@ -405,6 +419,7 @@ class ConcatOpTest(test.TestCase):
                                                     output_shape)
     self.assertLess(err, 1e-11)
 
+  @test_util.run_deprecated_v1
   def testIndexedSlicesConcatDim0Grad(self):
     x_shapes = [[20, 7, 3], [10, 7, 3], [14, 7, 3]]
     output_shape = [4, 7, 3]
@@ -420,6 +435,7 @@ class ConcatOpTest(test.TestCase):
                                                     output_shape)
     self.assertLess(err, 1e-11)
 
+  @test_util.run_deprecated_v1
   def testIndexedSlicesConcatDim1Grad(self):
     x_shapes = [[20, 7, 3], [20, 3, 3], [20, 1, 3]]
     output_shape = [4, 11, 3]
@@ -435,6 +451,7 @@ class ConcatOpTest(test.TestCase):
                                                     output_shape)
     self.assertLess(err, 1e-11)
 
+  @test_util.run_deprecated_v1
   def testIndexedSlicesConcatDim2Grad(self):
     x_shapes = [[20, 7, 3], [20, 7, 1], [20, 7, 2]]
     output_shape = [4, 7, 6]
@@ -450,6 +467,7 @@ class ConcatOpTest(test.TestCase):
                                                     output_shape)
     self.assertLess(err, 1e-11)
 
+  @test_util.run_deprecated_v1
   def testIndexedSlicesConcatDim1Grad_UnknownInputDim(self):
     x_shapes = [[20, 7, 3], [20, 3, 3], [20, 1, 3]]
     output_shape = [4, 11, 3]
@@ -479,6 +497,7 @@ class ConcatOpTest(test.TestCase):
     self.assertAllEqual(
         self.evaluate(concat_list_t), self.evaluate(concat_tuple_t))
 
+  @test_util.run_deprecated_v1
   def testConcatNoScalars(self):
     scalar = constant_op.constant(7)
     dim = array_ops.placeholder(dtypes.int32)
@@ -488,6 +507,7 @@ class ConcatOpTest(test.TestCase):
 
   # important as gpu implementation could fail if
   # shared memory is not large for all the inputs
+  @test_util.run_deprecated_v1
   def testConcatLargeNumberOfTensors(self):
     with self.session(use_gpu=True):
       for concat_dim in range(2):
@@ -529,6 +549,7 @@ class ConcatOpTest(test.TestCase):
       output = gen_array_ops.concat_v2([t1, t2], 0)
       self.assertFalse(self.evaluate(output))  # Checks that output is empty
 
+  @test_util.run_deprecated_v1
   def testConcatInvalidAxis(self):
     with self.assertRaises(ValueError):
       with test_util.use_gpu():
@@ -578,6 +599,7 @@ class ConcatOpTest(test.TestCase):
       result = concated_grad.eval(feed_dict=feed_dict)
       self.assertAllEqual(result, grad_inp)
 
+  @test_util.run_deprecated_v1
   def testGradientsNegativeAxis(self):
     x1 = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
     x2 = [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]]
@@ -630,6 +652,7 @@ class ConcatOffsetTest(test.TestCase):
       ans = self.evaluate(off)
       self.assertAllEqual(ans, [[0, 0, 0], [0, 3, 0], [0, 10, 0]])
 
+  @test_util.run_deprecated_v1
   def testNotVector(self):
     cdim = constant_op.constant(1, dtypes.int32)
     s0 = constant_op.constant([[2, 3, 5]], dtypes.int32)
@@ -639,6 +662,7 @@ class ConcatOffsetTest(test.TestCase):
                                  r"should be a vector"):
       self.evaluate(off)
 
+  @test_util.run_deprecated_v1
   def testConcatDimOutOfRange(self):
     cdim = constant_op.constant(4, dtypes.int32)
     s0 = constant_op.constant([2, 3, 5], dtypes.int32)
@@ -648,6 +672,7 @@ class ConcatOffsetTest(test.TestCase):
                                  r"Concat dim is out of range: 4 vs. 3"):
       self.evaluate(off)
 
+  @test_util.run_deprecated_v1
   def testDimMismatch(self):
     cdim = constant_op.constant(1, dtypes.int32)
     s0 = constant_op.constant([2, 3, 5], dtypes.int32)
@@ -657,6 +682,7 @@ class ConcatOffsetTest(test.TestCase):
                                  r"should contain 3 elem"):
       self.evaluate(off)
 
+  @test_util.run_deprecated_v1
   def testSizeMismatch(self):
     cdim = constant_op.constant(1, dtypes.int32)
     s0 = constant_op.constant([2, 3, 5], dtypes.int32)

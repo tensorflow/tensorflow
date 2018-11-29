@@ -69,6 +69,7 @@ def sequential_model(add_input_layer, include_input_shape=True):
 
 class TestModelCloning(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_clone_sequential_model(self):
     with self.cached_session():
       val_a = np.random.random((10, 4))
@@ -101,7 +102,10 @@ class TestModelCloning(test.TestCase):
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(None, val_out)
 
+  @test_util.run_deprecated_v1
   def test_clone_sequential_model_input_layer(self):
+
+    @test_util.run_deprecated_v1
     def test_input_layer(include_inputs):
       with self.cached_session():
         val_a = np.random.random((10, 4))
@@ -138,6 +142,7 @@ class TestModelCloning(test.TestCase):
     test_input_layer(True)
     test_input_layer(False)
 
+  @test_util.run_deprecated_v1
   def test_clone_functional_model(self):
     with self.cached_session():
       val_a = np.random.random((10, 4))
@@ -397,6 +402,7 @@ class TestCloneAndBuildModel(test.TestCase):
       new_model.train_on_batch(inp, out)
       new_model.evaluate(inp, out)
 
+  @test_util.run_deprecated_v1
   def test_clone_and_build_compiled_sequential_model(self):
     with self.cached_session():
       model = keras.models.Sequential()
@@ -409,6 +415,7 @@ class TestCloneAndBuildModel(test.TestCase):
 
     self._clone_and_build_test_helper(model)
 
+  @test_util.run_deprecated_v1
   def test_clone_and_build_functional_model(self):
     with self.cached_session():
       input_a = keras.Input(shape=(4,))
@@ -425,6 +432,7 @@ class TestCloneAndBuildModel(test.TestCase):
 
     self._clone_and_build_test_helper(model)
 
+  @test_util.run_deprecated_v1
   def test_clone_and_build_subclassed_model(self):
     class SubclassedModel(keras.Model):
 
@@ -473,9 +481,11 @@ class TestCloneAndBuildModel(test.TestCase):
   def test_replace_tf_optimizer_iterations_variable(self):
     self.assert_optimizer_iterations_increases(adam.AdamOptimizer(0.01))
 
+  @test_util.run_deprecated_v1
   def test_replace_keras_optimizer_iterations_variable(self):
     self.assert_optimizer_iterations_increases('adam')
 
+  @test_util.run_deprecated_v1
   def test_clone_and_build_sequential_model_without_inputs_defined(self):
     with self.cached_session():
       model = sequential_model(False, False)

@@ -30,6 +30,7 @@ from tensorflow.python.platform import googletest
 class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
                                  parameterized.TestCase):
 
+  @test_util.run_deprecated_v1
   def testDocStringExamples(self):
     """Example from ragged_to_tensor.__doc__."""
     rt = ragged.constant([[9, 8, 7], [], [6, 5], [4]])
@@ -97,6 +98,7 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
           'expected': [[[[1], [2]], [[9], [9]], [[3], [9]]]],
       },
   )
+  @test_util.run_deprecated_v1
   def testRaggedTensorToTensor(self,
                                rt_input,
                                expected,
@@ -132,6 +134,7 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
           'error': (TypeError, "Expected int32, got 'a' of type 'str' instead"),
       },
   )
+  @test_util.run_deprecated_v1
   def testError(self, rt_input, default, error, ragged_rank=None):
     rt = ragged.constant(rt_input, ragged_rank=ragged_rank)
     with self.assertRaisesRegexp(error[0], error[1]):

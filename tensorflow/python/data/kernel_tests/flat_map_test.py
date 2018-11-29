@@ -60,6 +60,7 @@ class FlatMapTest(test_base.DatasetTestBase):
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   # Note: no eager mode coverage, session specific test.
+  @test_util.run_deprecated_v1
   def testSkipEagerSharedResourceNestedFlatMapDataset(self):
     repeats = [[1, 2], [3, 4], [5, 0], [1, 7]]
     components = np.array(repeats, dtype=np.int64)

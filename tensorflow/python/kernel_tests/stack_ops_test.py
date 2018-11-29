@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -41,6 +42,7 @@ class StackOpTest(test.TestCase):
         c1 = gen_data_flow_ops.stack_pop_v2(h, dtypes.float32)
       self.assertAllClose([[4.0, 5.0]], self.evaluate(c1))
 
+  @test_util.run_deprecated_v1
   def testStackPushPop(self):
     self._testStackPushPop(use_gpu=False)
     self._testStackPushPop(use_gpu=True)
@@ -56,6 +58,7 @@ class StackOpTest(test.TestCase):
         c1 = gen_data_flow_ops.stack_pop_v2(h, dtypes.float32)
       self.assertAllClose(a, self.evaluate(c1))
 
+  @test_util.run_deprecated_v1
   def testStackPushPopSwap(self):
     self._testStackPushPopSwap(use_gpu=False)
     self._testStackPushPopSwap(use_gpu=True)
@@ -93,6 +96,7 @@ class StackOpTest(test.TestCase):
           c1, b1, [r, v], [r.get_shape(), tensor_shape.unknown_shape()])
       self.assertAllClose(np.ones(2000) * 10.0, self.evaluate(ry))
 
+  @test_util.run_deprecated_v1
   def testStackWhileSwap(self):
     self._testStackWhileSwap(use_gpu=False)
     self._testStackWhileSwap(use_gpu=True)
@@ -112,6 +116,7 @@ class StackOpTest(test.TestCase):
       r = c1 + c2
       self.assertAllClose(9.0, self.evaluate(r))
 
+  @test_util.run_deprecated_v1
   def testMultiStack(self):
     self._testMultiStack(use_gpu=False)
     self._testMultiStack(use_gpu=True)
@@ -135,6 +140,7 @@ class StackOpTest(test.TestCase):
       self.assertAllClose(out1, 4.0)
       self.assertAllClose(out2, 5.0)
 
+  @test_util.run_deprecated_v1
   def testSameNameStacks(self):
     self._testSameNameStacks(use_gpu=False)
     self._testSameNameStacks(use_gpu=True)
@@ -146,6 +152,7 @@ class StackOpTest(test.TestCase):
       c1 = gen_data_flow_ops.stack_close_v2(h)
       self.evaluate(c1)
 
+  @test_util.run_deprecated_v1
   def testCloseStack(self):
     self._testCloseStack(use_gpu=False)
     self._testCloseStack(use_gpu=True)
@@ -159,6 +166,7 @@ class StackOpTest(test.TestCase):
         c1 = gen_data_flow_ops.stack_close_v2(h)
       self.evaluate(c1)
 
+  @test_util.run_deprecated_v1
   def testPushCloseStack(self):
     self._testPushCloseStack(use_gpu=False)
     self._testPushCloseStack(use_gpu=True)
@@ -175,6 +183,7 @@ class StackOpRefTest(test.TestCase):
         c1 = gen_data_flow_ops.stack_pop(h, dtypes.float32)
       self.assertAllClose([[4.0, 5.0]], self.evaluate(c1))
 
+  @test_util.run_deprecated_v1
   def testStackPushPop(self):
     self._testStackPushPop(use_gpu=False)
     self._testStackPushPop(use_gpu=True)
@@ -189,6 +198,7 @@ class StackOpRefTest(test.TestCase):
         c1 = gen_data_flow_ops.stack_pop(h, dtypes.float32)
       self.assertAllClose(a, self.evaluate(c1))
 
+  @test_util.run_deprecated_v1
   def testStackPushPopSwap(self):
     self._testStackPushPopSwap(use_gpu=False)
     self._testStackPushPopSwap(use_gpu=True)
@@ -238,10 +248,12 @@ class StackOpRefTest(test.TestCase):
           c1, b1, [r, v], [r.get_shape(), tensor_shape.unknown_shape()])
       self.assertAllClose(np.ones(2000) * 10.0, self.evaluate(ry))
 
+  @test_util.run_deprecated_v1
   def testStackWhileSwap(self):
     self._testStackWhileSwap(use_gpu=False)
     self._testStackWhileSwap(use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testMultiStack(self):
     self._testMultiStack(use_gpu=False)
     self._testMultiStack(use_gpu=True)
@@ -255,6 +267,7 @@ class StackOpRefTest(test.TestCase):
       _ = c1 + c2
       self.assertNotEqual(h1.eval()[1], self.evaluate(h2)[1])
 
+  @test_util.run_deprecated_v1
   def testSameNameStacks(self):
     self._testSameNameStacks(use_gpu=False)
     self._testSameNameStacks(use_gpu=True)
@@ -265,6 +278,7 @@ class StackOpRefTest(test.TestCase):
       c1 = gen_data_flow_ops.stack_close(h)
       self.evaluate(c1)
 
+  @test_util.run_deprecated_v1
   def testCloseStack(self):
     self._testCloseStack(use_gpu=False)
     self._testCloseStack(use_gpu=True)
@@ -277,6 +291,7 @@ class StackOpRefTest(test.TestCase):
         c1 = gen_data_flow_ops.stack_close(h)
       self.evaluate(c1)
 
+  @test_util.run_deprecated_v1
   def testPushCloseStack(self):
     self._testPushCloseStack(use_gpu=False)
     self._testPushCloseStack(use_gpu=True)

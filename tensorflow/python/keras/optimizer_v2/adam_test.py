@@ -62,6 +62,7 @@ def get_beta_accumulators(opt, dtype):
 
 class AdamOptimizerTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testSparse(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -106,6 +107,7 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSparseDevicePlacement(self):
     for index_dtype in [dtypes.int32, dtypes.int64]:
       with self.cached_session(force_gpu=test.is_gpu_available()):
@@ -119,6 +121,7 @@ class AdamOptimizerTest(test.TestCase):
         variables.global_variables_initializer().run()
         minimize_op.run()
 
+  @test_util.run_deprecated_v1
   def testSparseRepeatedIndices(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -208,6 +211,7 @@ class AdamOptimizerTest(test.TestCase):
     with context.eager_mode():
       self.doTestBasic(use_callable_params=True)
 
+  @test_util.run_deprecated_v1
   def testBasicWithLearningRateDecay(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       with self.session(graph=ops.Graph()):
@@ -254,6 +258,7 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -292,6 +297,7 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():

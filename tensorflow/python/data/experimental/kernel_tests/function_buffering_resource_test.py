@@ -107,11 +107,13 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
       self.assertEqual(elem, [5.0])
       self.evaluate(destroy_op)
 
+  @test_util.run_deprecated_v1
   def testSameDeviceCPU(self):
     self._prefetch_fn_helper_one_shot("same_device_cpu",
                                       "/job:localhost/replica:0/task:0/cpu:0",
                                       "/job:localhost/replica:0/task:0/cpu:0")
 
+  @test_util.run_deprecated_v1
   def testDifferentDeviceCPU(self):
     self._prefetch_fn_helper_one_shot("diff_device_cpu",
                                       "/job:localhost/replica:0/task:0/cpu:0",
@@ -125,6 +127,7 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
                                       "/job:localhost/replica:0/task:0/cpu:0",
                                       "/job:localhost/replica:0/task:0/gpu:0")
 
+  @test_util.run_deprecated_v1
   def testReinitialization(self):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
 
@@ -165,6 +168,7 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
       self.assertEqual(elem, [5.0])
       self.evaluate(destroy_op)
 
+  @test_util.run_deprecated_v1
   def testReinitializationOutOfRange(self):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
 

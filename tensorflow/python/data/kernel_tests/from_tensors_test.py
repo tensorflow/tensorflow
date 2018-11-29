@@ -154,6 +154,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
     self.assertEquals(([], ([], []), []), dataset.output_shapes)
 
   # TODO(b/117581999): more specific shapes in eager mode.
+  @test_util.run_deprecated_v1
   def testSkipEagerNestedStructure(self):
     components = (np.array([1, 2, 3], dtype=np.int64), (np.array([4., 5.]),
                                                         np.array([6., 7.])),

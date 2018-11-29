@@ -165,6 +165,7 @@ class StatefulScatterNdTest(test.TestCase):
       result = self.evaluate(scatter)
       self.assertAllClose(result, expected)
 
+  @test_util.run_deprecated_v1
   def testSimpleResource(self):
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
     updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
@@ -207,12 +208,15 @@ class StatefulScatterNdTest(test.TestCase):
       result = self.evaluate(scatter)
       self.assertAllClose(result, expected)
 
+  @test_util.run_deprecated_v1
   def testVariableRankUpdate(self):
     self._VariableRankTests(_NumpyUpdate, state_ops.scatter_nd_update)
 
+  @test_util.run_deprecated_v1
   def testVariableRankAdd(self):
     self._VariableRankTests(_NumpyAdd, state_ops.scatter_nd_add)
 
+  @test_util.run_deprecated_v1
   def testVariableRankSub(self):
     self._VariableRankTests(_NumpySub, state_ops.scatter_nd_sub)
 
@@ -230,6 +234,7 @@ class StatefulScatterNdTest(test.TestCase):
         self._VariableRankTest(
             np_scatter, tf_scatter, vtype, itype, repeat_indices=True)
 
+  @test_util.run_deprecated_v1
   def testScatterRepeatIndices(self):
     """This tests scatter_add using indices that repeat."""
     self._ScatterRepeatIndicesTest(_NumpyAdd, state_ops.scatter_nd_add)
@@ -251,6 +256,7 @@ class StatefulScatterNdTest(test.TestCase):
   #     session.run([update0, update1])
   #     self.assertAllEqual([False, True], self.evaluate(var))
 
+  @test_util.run_deprecated_v1
   def testScatterOutOfRangeCpu(self):
     # TODO(simister): Re-enable once binary size increase due to
     # scatter_nd ops is under control.
@@ -287,6 +293,7 @@ class StatefulScatterNdTest(test.TestCase):
         state_ops.scatter_nd_update(ref, indices,
                                     updates).get_shape().as_list(), shape)
 
+  @test_util.run_deprecated_v1
   def testResVarInvalidOutputShape(self):
     res = variables.Variable(
         initial_value=lambda: array_ops.zeros(shape=[], dtype=dtypes.float32),
@@ -296,6 +303,7 @@ class StatefulScatterNdTest(test.TestCase):
       with self.assertRaisesOpError("Output must be at least 1-D"):
         state_ops.scatter_nd_update(res, [[0]], [0.22]).eval()
 
+  @test_util.run_deprecated_v1
   def testExtraIndicesDimensions(self):
     indices = array_ops.zeros([1, 1, 2], dtypes.int32)
     updates = array_ops.zeros([1, 1], dtypes.int32)
@@ -309,6 +317,7 @@ class StatefulScatterNdTest(test.TestCase):
       ref.initializer.run()
       self.assertAllEqual(expected_result, self.evaluate(scatter_update))
 
+  @test_util.run_deprecated_v1
   def testRank3InvalidShape1(self):
     indices = array_ops.zeros([3, 2, 2], dtypes.int32)
     updates = array_ops.zeros([2, 2, 2], dtypes.int32)
@@ -318,6 +327,7 @@ class StatefulScatterNdTest(test.TestCase):
         ValueError, "The outer \\d+ dimensions of indices\\.shape="):
       state_ops.scatter_nd_update(ref, indices, updates)
 
+  @test_util.run_deprecated_v1
   def testRank3InvalidShape2(self):
     indices = array_ops.zeros([2, 2, 1], dtypes.int32)
     updates = array_ops.zeros([2, 2], dtypes.int32)
@@ -327,6 +337,7 @@ class StatefulScatterNdTest(test.TestCase):
         ValueError, "The inner \\d+ dimensions of input\\.shape="):
       state_ops.scatter_nd_update(ref, indices, updates)
 
+  @test_util.run_deprecated_v1
   def testConcurrentUpdates(self):
     num_updates = 10000
     update_values = np.random.rand(num_updates)
@@ -455,6 +466,7 @@ class ScatterNdTest(test.TestCase):
     self.assertAllEqual(
         self.scatter_nd(indices, updates, shape).get_shape().as_list(), shape)
 
+  @test_util.run_deprecated_v1
   def testExtraIndicesDimensions(self):
     indices = array_ops.zeros([1, 1, 2], dtypes.int32)
     updates = array_ops.zeros([1, 1], dtypes.int32)
@@ -465,24 +477,28 @@ class ScatterNdTest(test.TestCase):
     with self.cached_session():
       self.assertAllEqual(expected_result, self.evaluate(scatter))
 
+  @test_util.run_deprecated_v1
   def testUndefinedIndicesShape(self):
     indices = array_ops.placeholder(dtypes.int32, shape=None)
     updates = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
     shape = constant_op.constant([2, 2, 2], dtypes.int32)
     self.scatter_nd(indices, updates, shape)
 
+  @test_util.run_deprecated_v1
   def testUndefinedUpdatesShape(self):
     indices = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
     updates = array_ops.placeholder(dtypes.int32, shape=None)
     shape = constant_op.constant([2, 2, 2], dtypes.int32)
     self.scatter_nd(indices, updates, shape)
 
+  @test_util.run_deprecated_v1
   def testUndefinedOutputShape(self):
     indices = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
     updates = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
     shape = array_ops.placeholder(dtypes.int32, shape=[None])
     self.scatter_nd(indices, updates, shape)
 
+  @test_util.run_deprecated_v1
   def testEmptyOutputShape1(self):
     indices = array_ops.zeros([2, 2, 2], dtypes.int32)
     updates = array_ops.zeros([2, 2, 2], dtypes.int32)
@@ -492,6 +508,7 @@ class ScatterNdTest(test.TestCase):
         ValueError, "Indices and updates specified for empty output shape"):
       self.scatter_nd(indices, updates, shape)
 
+  @test_util.run_deprecated_v1
   def testEmptyOutputShape2(self):
     indices = array_ops.placeholder(dtypes.int32, shape=None)
     updates = array_ops.placeholder(dtypes.int32, shape=None)
@@ -505,6 +522,7 @@ class ScatterNdTest(test.TestCase):
             updates: np.zeros([2, 2, 2], dtype=np.int32)
         })
 
+  @test_util.run_deprecated_v1
   def testEmptyOutputShape3(self):
     indices = array_ops.zeros([0], dtypes.int32)
     updates = array_ops.zeros([0], dtypes.int32)
@@ -514,6 +532,7 @@ class ScatterNdTest(test.TestCase):
     with self.cached_session():
       self.assertEqual(scatter.eval().size, 0)
 
+  @test_util.run_deprecated_v1
   def testRank3InvalidShape1(self):
     indices = array_ops.zeros([3, 2, 2], dtypes.int32)
     updates = array_ops.zeros([2, 2, 2], dtypes.int32)
@@ -522,6 +541,7 @@ class ScatterNdTest(test.TestCase):
         ValueError, "The outer \\d+ dimensions of indices\\.shape="):
       self.scatter_nd(indices, updates, shape)
 
+  @test_util.run_deprecated_v1
   def testRank3InvalidShape2(self):
     indices = array_ops.zeros([2, 2, 1], dtypes.int32)
     updates = array_ops.zeros([2, 2], dtypes.int32)
@@ -530,6 +550,7 @@ class ScatterNdTest(test.TestCase):
         ValueError, "The inner \\d+ dimensions of (input|output)\\.shape="):
       self.scatter_nd(indices, updates, shape)
 
+  @test_util.run_deprecated_v1
   def testGradientsRank2ElementUpdate(self):
     for dtype in GRADIENT_TESTS_DTYPES:
       indices = constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32)
@@ -549,6 +570,7 @@ class ScatterNdTest(test.TestCase):
         if self.non_aliasing_add_test:
           self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
+  @test_util.run_deprecated_v1
   def testGradientsRank2SliceUpdate(self):
     for dtype in GRADIENT_TESTS_DTYPES:
       indices = constant_op.constant([[1], [0]], dtype=dtypes.int32)
@@ -569,6 +591,7 @@ class ScatterNdTest(test.TestCase):
         if self.non_aliasing_add_test:
           self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
+  @test_util.run_deprecated_v1
   def testGradientsRank3SliceUpdate(self):
     for dtype in GRADIENT_TESTS_DTYPES:
       indices = constant_op.constant([[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
@@ -592,6 +615,7 @@ class ScatterNdTest(test.TestCase):
         if self.non_aliasing_add_test:
           self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
+  @test_util.run_deprecated_v1
   def testGradientsRank7SliceUpdate(self):
     for dtype in GRADIENT_TESTS_DTYPES:
       indices = constant_op.constant(
@@ -619,6 +643,7 @@ class ScatterNdTest(test.TestCase):
         if self.non_aliasing_add_test:
           self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
+  @test_util.run_deprecated_v1
   def testScatterNdRepatedIndicesAdd(self):
     indices = array_ops.zeros([100000, 1], dtypes.int32)
     values = np.random.randn(100000)
@@ -627,6 +652,7 @@ class ScatterNdTest(test.TestCase):
       val = self.scatter_nd(indices, values, shape).eval()
     self.assertAllClose([np.sum(values)], val)
 
+  @test_util.run_deprecated_v1
   def testSmokeScatterNdBatch2DSliceDim2(self):
     with self.cached_session():
       indices = array_ops.zeros([3, 5, 2], dtype=dtypes.int32)
@@ -634,6 +660,7 @@ class ScatterNdTest(test.TestCase):
       shape = [4, 6, 7]
       self.scatter_nd(indices, values, shape).eval()
 
+  @test_util.run_deprecated_v1
   def testSmokeScatterNdBatch1DSliceDim2(self):
     with self.cached_session():
       indices = array_ops.zeros([0, 2], dtype=dtypes.int32)
@@ -641,6 +668,7 @@ class ScatterNdTest(test.TestCase):
       shape = [4, 6, 7]
       self.scatter_nd(indices, values, shape).eval()
 
+  @test_util.run_deprecated_v1
   def testSmokeScatterNdBatch1DSliceDim3ShapeRank7(self):
     with self.cached_session():
       indices = array_ops.zeros([1, 3], dtype=dtypes.int32)
@@ -648,6 +676,7 @@ class ScatterNdTest(test.TestCase):
       shape = [3, 4, 5, 6, 7, 8, 9]
       self.scatter_nd(indices, values, shape).eval()
 
+  @test_util.run_deprecated_v1
   def testSmokeScatterNdBatch2DSliceDim3ShapeRank7(self):
     with self.cached_session():
       indices = array_ops.zeros([1, 2, 3], dtype=dtypes.int32)

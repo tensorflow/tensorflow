@@ -327,6 +327,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
            max_splits=max_splits)
       self.assertAllEqual([[], []], self.evaluate(node_ids_list))
 
+  @test_util.run_deprecated_v1
   def testMakeStatsSummarySimple(self):
     """Simple test for MakeStatsSummary."""
     with self.cached_session():

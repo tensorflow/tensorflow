@@ -29,6 +29,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops as math_ops_lib
@@ -102,6 +103,7 @@ class DeviceFunctionsTest(test.TestCase):
     self.assertDeviceEqual(var_5.device, "/device:GPU:0")
     self.assertDeviceEqual(var_6.device, "/device:CPU:0")
 
+  @test_util.run_deprecated_v1
   def testNestedDeviceFunctions(self):
     with ops.Graph().as_default():
       var_0 = variables.VariableV1(0)

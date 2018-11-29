@@ -23,6 +23,7 @@ from tensorflow.python.client.session import Session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -34,6 +35,7 @@ class TensorListTest(test.TestCase):
   def _shape(self, shape_tuple):
     return constant(shape_tuple, dtypes.int32)
 
+  @test_util.run_deprecated_v1
   def test_dynamic_list_append(self):
     l = []
     l = tl.dynamic_list_append(l, 1)
@@ -80,6 +82,7 @@ class TensorListTest(test.TestCase):
       l[0] = ops.convert_to_tensor(b)
       self.assertEqual(l[0].numpy(), b.numpy())
 
+  @test_util.run_deprecated_v1
   def test_list_append_tf(self):
     a = constant(3.0)
     l = tl.TensorList(a.shape, a.dtype)

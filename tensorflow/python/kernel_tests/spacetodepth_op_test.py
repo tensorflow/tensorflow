@@ -159,6 +159,7 @@ class SpaceToDepthTest(test.TestCase):
 
   # Error handling:
 
+  @test_util.run_deprecated_v1
   def testInputWrongDimMissingDepth(self):
     # The input is missing the last dimension ("depth")
     x_np = [[[1, 2], [3, 4]]]
@@ -167,6 +168,7 @@ class SpaceToDepthTest(test.TestCase):
       out_tf = array_ops.space_to_depth(x_np, block_size)
       self.evaluate(out_tf)
 
+  @test_util.run_deprecated_v1
   def testInputWrongDimMissingBatch(self):
     # The input is missing the first dimension ("batch")
     x_np = [[[1], [2]], [[3], [4]]]
@@ -174,6 +176,7 @@ class SpaceToDepthTest(test.TestCase):
     with self.assertRaises(ValueError):
       _ = array_ops.space_to_depth(x_np, block_size)
 
+  @test_util.run_deprecated_v1
   def testBlockSize0(self):
     # The block size is 0.
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -182,6 +185,7 @@ class SpaceToDepthTest(test.TestCase):
       out_tf = array_ops.space_to_depth(x_np, block_size)
       self.evaluate(out_tf)
 
+  @test_util.run_deprecated_v1
   def testBlockSizeOne(self):
     # The block size is 1. The block size needs to be > 1.
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -190,6 +194,7 @@ class SpaceToDepthTest(test.TestCase):
       out_tf = array_ops.space_to_depth(x_np, block_size)
       self.evaluate(out_tf)
 
+  @test_util.run_deprecated_v1
   def testBlockSizeLarger(self):
     # The block size is too large for this input.
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -198,6 +203,7 @@ class SpaceToDepthTest(test.TestCase):
       out_tf = array_ops.space_to_depth(x_np, block_size)
       self.evaluate(out_tf)
 
+  @test_util.run_deprecated_v1
   def testBlockSizeNotDivisibleWidth(self):
     # The block size divides width but not height.
     x_np = [[[[1], [2], [3]], [[3], [4], [7]]]]
@@ -205,6 +211,7 @@ class SpaceToDepthTest(test.TestCase):
     with self.assertRaises(ValueError):
       _ = array_ops.space_to_depth(x_np, block_size)
 
+  @test_util.run_deprecated_v1
   def testBlockSizeNotDivisibleHeight(self):
     # The block size divides height but not width.
     x_np = [[[[1], [2]], [[3], [4]], [[5], [6]]]]
@@ -212,6 +219,7 @@ class SpaceToDepthTest(test.TestCase):
     with self.assertRaises(ValueError):
       _ = array_ops.space_to_depth(x_np, block_size)
 
+  @test_util.run_deprecated_v1
   def testBlockSizeNotDivisibleBoth(self):
     # The block size does not divide neither width or height.
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -219,6 +227,7 @@ class SpaceToDepthTest(test.TestCase):
     with self.assertRaises(ValueError):
       _ = array_ops.space_to_depth(x_np, block_size)
 
+  @test_util.run_deprecated_v1
   def testUnknownShape(self):
     t = array_ops.space_to_depth(
         array_ops.placeholder(dtypes.float32), block_size=4)
@@ -334,11 +343,13 @@ class SpaceToDepthGradientTest(test.TestCase):
 
   # Don't use very large numbers as dimensions here as the result is tensor
   # with cartesian product of the dimensions.
+  @test_util.run_deprecated_v1
   def testSmall(self):
     block_size = 2
     self._compare(1, 2, 3, 5, block_size, "NHWC")
     self._compare(1, 2, 3, 5, block_size, "NCHW")
 
+  @test_util.run_deprecated_v1
   def testSmall2(self):
     block_size = 2
     self._compare(2, 4, 3, 2, block_size, "NHWC")

@@ -384,6 +384,7 @@ class PoolingTest(test.TestCase):
         expected=[],
         use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testAvgPooling(self):
     for use_gpu in True, False:
       self._testAvgPoolValidPadding(use_gpu)
@@ -577,6 +578,7 @@ class PoolingTest(test.TestCase):
         expected=[],
         use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testMaxPooling(self):
     for use_gpu in True, False:
       self._testMaxPoolValidPadding(use_gpu)
@@ -588,6 +590,7 @@ class PoolingTest(test.TestCase):
       self._testMaxPoolEmptyInput(use_gpu)
 
   # Tests for DepthwiseMaxPooling on CPU only.
+  @test_util.run_deprecated_v1
   def testDepthwiseMaxPool1x1DepthWindow1(self):
     # input is:
     # [1.0, ..., 10.0] along depth,
@@ -613,6 +616,7 @@ class PoolingTest(test.TestCase):
           use_gpu=False,
           v2=v2)
 
+  @test_util.run_deprecated_v1
   def testDepthwiseMaxPool2x2DepthWindow3(self):
     # input is:
     #
@@ -639,6 +643,7 @@ class PoolingTest(test.TestCase):
           use_gpu=False,
           v2=v2)
 
+  @test_util.run_deprecated_v1
   def testKernelSmallerThanStrideValid(self):
     for use_gpu in [True, False]:
       self._VerifyValues(
@@ -670,6 +675,7 @@ class PoolingTest(test.TestCase):
           expected=[5, 8, 26, 29],
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testKernelSmallerThanStrideSame(self):
     for use_gpu in [True, False]:
       for pool_func in [nn_ops.max_pool, nn_ops.avg_pool]:
@@ -1167,6 +1173,7 @@ class PoolingTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testMaxPoolGradValidPadding1_1(data_format, use_gpu)
@@ -1497,6 +1504,7 @@ class PoolingTest(test.TestCase):
     else:
       del os.environ["TF_ENABLE_MAXPOOL_NANPROP"]
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGradDirect(self):
     self._testMaxPoolGradDirect1_1()
     self._testMaxPoolGradDirect1_2()
@@ -1616,6 +1624,7 @@ class PoolingTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGradGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testMaxPoolGradGradValidPadding1_1(data_format, use_gpu)
@@ -1649,6 +1658,7 @@ class PoolingTest(test.TestCase):
         orig_input, orig_output, grad, [1, window_rows, window_cols, 1],
         [1, row_stride, col_stride, 1], padding)
 
+  @test_util.run_deprecated_v1
   def testAvgPoolGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testAvgPoolGradValidPadding1_1(data_format, use_gpu)
@@ -1778,6 +1788,7 @@ class PoolingTest(test.TestCase):
         data_format=data_format,
         use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
     # All shapes unknown.
     for pool_func in [nn_ops.max_pool, nn_ops.avg_pool]:
@@ -1806,6 +1817,7 @@ class PoolingTest(test.TestCase):
             strides=[1, 1, 1, 1],
             padding="SAME")
 
+  @test_util.run_deprecated_v1
   def testOpEdgeCases(self):
     with self.session(use_gpu=test.is_gpu_available()) as sess:
       pool_funcs = [nn_ops.max_pool, nn_ops.avg_pool]

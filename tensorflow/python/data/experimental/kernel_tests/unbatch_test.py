@@ -28,6 +28,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
@@ -37,6 +38,7 @@ from tensorflow.python.util import compat
 
 class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @test_util.run_deprecated_v1
   def testUnbatchWithUnknownRankInput(self):
     placeholder = array_ops.placeholder(dtypes.int32)
     dataset = dataset_ops.Dataset.from_tensors(placeholder).apply(
@@ -51,6 +53,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_elem)
 
+  @test_util.run_deprecated_v1
   def testUnbatchScalarDataset(self):
     data = tuple([math_ops.range(10) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
@@ -70,6 +73,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(op)
 
+  @test_util.run_deprecated_v1
   def testUnbatchDatasetWithStrings(self):
     data = tuple([math_ops.range(10) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
@@ -90,6 +94,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(op)
 
+  @test_util.run_deprecated_v1
   def testUnbatchDatasetWithSparseTensor(self):
     st = sparse_tensor.SparseTensorValue(
         indices=[[i, i] for i in range(10)],
@@ -111,6 +116,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testUnbatchDatasetWithDenseAndSparseTensor(self):
     st = sparse_tensor.SparseTensorValue(
         indices=[[i, i] for i in range(10)],
@@ -133,6 +139,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testUnbatchSingleElementTupleDataset(self):
     data = tuple([(math_ops.range(10),) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
@@ -152,6 +159,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(op)
 
+  @test_util.run_deprecated_v1
   def testUnbatchMultiElementTupleDataset(self):
     data = tuple([(math_ops.range(10 * i, 10 * i + 10),
                    array_ops.fill([10], "hi")) for i in range(3)])
@@ -173,6 +181,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(op)
 
+  @test_util.run_deprecated_v1
   def testUnbatchEmpty(self):
     data = dataset_ops.Dataset.from_tensors(
         (constant_op.constant([]), constant_op.constant([], shape=[0, 4]),
@@ -191,6 +200,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       data.apply(batching.unbatch())
 
+  @test_util.run_deprecated_v1
   def testUnbatchDynamicShapeMismatch(self):
     ph1 = array_ops.placeholder(dtypes.int32, shape=[None])
     ph2 = array_ops.placeholder(dtypes.int32, shape=None)

@@ -24,6 +24,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
@@ -76,6 +77,7 @@ class SparseTensorsMapTest(test.TestCase):
     shape = np.array([3, 4, 5]).astype(np.int64)
     return sparse_tensor_lib.SparseTensorValue(ind, val, shape)
 
+  @test_util.run_deprecated_v1
   def testAddTakeMany(self):
     with self.session(graph=ops.Graph(), use_gpu=False) as sess:
       sp_input0 = self._SparseTensorValue_5x6(np.arange(6))
@@ -98,6 +100,7 @@ class SparseTensorsMapTest(test.TestCase):
       self.assertAllEqual(combined_values[6:], sp_input1[1])
       self.assertAllEqual(combined_shape, [2, 5, 6])
 
+  @test_util.run_deprecated_v1
   def testFeedAddTakeMany(self):
     with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
@@ -125,6 +128,7 @@ class SparseTensorsMapTest(test.TestCase):
       self.assertAllEqual(combined_values[6:], input1_val[1])
       self.assertAllEqual(combined_shape, [2, 5, 6])
 
+  @test_util.run_deprecated_v1
   def testAddManyTakeManyRoundTrip(self):
     with self.session(use_gpu=False) as sess:
       # N == 4 because shape_value == [4, 5]
@@ -147,6 +151,7 @@ class SparseTensorsMapTest(test.TestCase):
       self.assertAllEqual(roundtrip_value.values, values_value)
       self.assertAllEqual(roundtrip_value.dense_shape, shape_value)
 
+  @test_util.run_deprecated_v1
   def testDeserializeFailsInconsistentRank(self):
     with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
@@ -168,6 +173,7 @@ class SparseTensorsMapTest(test.TestCase):
           r"SparseTensor\[1\] was: 3 but rank of SparseTensor\[1\] is: 4"):
         self.evaluate(sp_roundtrip)
 
+  @test_util.run_deprecated_v1
   def testTakeManyFailsWrongInputOp(self):
     with self.session(use_gpu=False) as sess:
       input_val = self._SparseTensorValue_5x6(np.arange(6))

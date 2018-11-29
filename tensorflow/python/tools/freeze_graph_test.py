@@ -161,9 +161,11 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
             },)
         builder.save(as_text=True)
 
+  @test_util.run_deprecated_v1
   def testFreezeGraphV1(self):
     self._testFreezeGraph(saver_pb2.SaverDef.V1)
 
+  @test_util.run_deprecated_v1
   def testFreezeGraphV2(self):
     self._testFreezeGraph(saver_pb2.SaverDef.V2)
 

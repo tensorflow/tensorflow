@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -115,6 +116,7 @@ class StructureTest(test.TestCase, parameterized.TestCase):
                   indices=[[0], [1], [2]], values=[4, 5, 6], dense_shape=[3])
       }, (constant_op.constant(15.0), constant_op.constant([4, 5, 6]))]),
   )
+  @test_util.run_deprecated_v1
   def testIsCompatibleWithStructure(
       self, original_value_fn, compatible_values_fn, incompatible_values_fn):
     original_value = original_value_fn()

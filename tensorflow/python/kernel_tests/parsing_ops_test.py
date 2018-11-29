@@ -33,6 +33,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
@@ -121,6 +122,7 @@ class ParseExampleTest(test.TestCase):
           self.assertEqual(
               tuple(out[k].dense_shape.get_shape().as_list()), (2,))
 
+  @test_util.run_deprecated_v1
   def testEmptySerializedWithAllDefaults(self):
     sparse_name = "st_a"
     a_name = "a"
@@ -243,6 +245,7 @@ class ParseExampleTest(test.TestCase):
         },
         expected_err=(ValueError, "Missing shape for feature a"))
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingSparse(self):
     original = [
         example(features=features({
@@ -571,6 +574,7 @@ class ParseExampleTest(test.TestCase):
         }
     }, expected_output)
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingSparseAndSparseFeatureAndDenseWithNoDefault(self):
     expected_st_a = (  # indices, values, shape
         np.empty((0, 2), dtype=np.int64),  # indices
@@ -631,6 +635,7 @@ class ParseExampleTest(test.TestCase):
         },
         expected_output)
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingSparseAndSparseFeatureWithReuse(self):
     expected_idx = (  # indices, values, shape
         np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.int64),
@@ -740,6 +745,7 @@ class ParseExampleTest(test.TestCase):
     for batch_size in (1, 10, 20, 100, 256):
       self._testSerializedContainingVarLenDenseLargerBatch(batch_size)
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingVarLenDense(self):
     aname = "a"
     bname = "b"
@@ -962,6 +968,7 @@ class ParseSingleExampleTest(test.TestCase):
           self.assertEqual(
               tuple(out[k].dense_shape.get_shape().as_list()), (1,))
 
+  @test_util.run_deprecated_v1
   def testSingleExampleWithSparseAndSparseFeatureAndDense(self):
     original = example(
         features=features({
@@ -1180,6 +1187,7 @@ class ParseSequenceExampleTest(test.TestCase):
         expected_err=expected_err,
         batch=True)
 
+  @test_util.run_deprecated_v1
   def testSequenceExampleWithSparseAndDenseContext(self):
     original = sequence_example(
         context=features({
@@ -1223,6 +1231,7 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_context_values=expected_context_output)
 
+  @test_util.run_deprecated_v1
   def testSequenceExampleWithMultipleSizeFeatureLists(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1286,6 +1295,7 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
+  @test_util.run_deprecated_v1
   def testSequenceExampleWithoutDebugName(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1343,6 +1353,7 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
+  @test_util.run_deprecated_v1
   def testSequenceExampleWithSparseAndDenseFeatureLists(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1401,6 +1412,7 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
+  @test_util.run_deprecated_v1
   def testSequenceExampleWithEmptyFeatureInFeatureLists(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1541,6 +1553,7 @@ class ParseSequenceExampleTest(test.TestCase):
             " feature_list_dense_missing_assumed_empty or"
             " feature_list_dense_defaults?"))
 
+  @test_util.run_deprecated_v1
   def testSequenceExampleBatch(self):
     first = sequence_example(
         feature_lists=feature_lists({
@@ -1695,6 +1708,7 @@ class DecodeJSONExampleTest(test.TestCase):
             })),
     ])
 
+  @test_util.run_deprecated_v1
   def testInvalidSyntax(self):
     with self.cached_session() as sess:
       json_tensor = constant_op.constant(["{]"])
@@ -1705,6 +1719,7 @@ class DecodeJSONExampleTest(test.TestCase):
 
 class ParseTensorOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testToFloat32(self):
     with self.cached_session():
       expected = np.random.rand(3, 4, 5).astype(np.float32)
@@ -1718,6 +1733,7 @@ class ParseTensorOpTest(test.TestCase):
 
       self.assertAllEqual(expected, result)
 
+  @test_util.run_deprecated_v1
   def testToUint8(self):
     with self.cached_session():
       expected = np.random.rand(3, 4, 5).astype(np.uint8)
@@ -1731,6 +1747,7 @@ class ParseTensorOpTest(test.TestCase):
 
       self.assertAllEqual(expected, result)
 
+  @test_util.run_deprecated_v1
   def testTypeMismatch(self):
     with self.cached_session():
       expected = np.random.rand(3, 4, 5).astype(np.uint8)
@@ -1744,6 +1761,7 @@ class ParseTensorOpTest(test.TestCase):
           r"\(uint16\)"):
         tensor.eval(feed_dict={serialized: tensor_proto.SerializeToString()})
 
+  @test_util.run_deprecated_v1
   def testInvalidInput(self):
     with self.cached_session():
       serialized = array_ops.placeholder(dtypes.string)

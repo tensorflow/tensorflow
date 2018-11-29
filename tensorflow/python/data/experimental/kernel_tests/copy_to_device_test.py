@@ -35,6 +35,7 @@ from tensorflow.python.util import compat as util_compat
 
 class CopyToDeviceTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testCopyToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -61,6 +62,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyToDeviceInt32(self):
     host_dataset = dataset_ops.Dataset.from_tensors([0, 1, 2, 3])
     device_dataset = host_dataset.apply(
@@ -86,6 +88,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyToSameDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -112,6 +115,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyToDeviceWithPrefetch(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -138,6 +142,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyDictToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10).map(lambda x: {"a": x})
     device_dataset = host_dataset.apply(
@@ -164,6 +169,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyDictToDeviceWithPrefetch(self):
     host_dataset = dataset_ops.Dataset.range(10).map(lambda x: {"a": x})
     device_dataset = host_dataset.apply(
@@ -190,6 +196,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopySparseTensorsToDevice(self):
 
     def make_tensor(i):
@@ -224,6 +231,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopySparseTensorsToDeviceWithPrefetch(self):
 
     def make_tensor(i):
@@ -426,6 +434,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         with self.assertRaises(errors.OutOfRangeError):
           self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyToDeviceWithReInit(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -456,6 +465,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyToDeviceWithReInitAndPrefetch(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(

@@ -24,6 +24,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -145,6 +146,7 @@ class SliceTest(test.TestCase):
         slice_val = self.evaluate(slice_t)
         self.assertAllEqual(slice_val, inp[lo:hi])
 
+  @test_util.run_deprecated_v1
   def testScalarInput(self):
     input_val = 0
     with self.cached_session() as sess:
@@ -159,6 +161,7 @@ class SliceTest(test.TestCase):
                                                "out of range"):
         sess.run([slice_t], feed_dict={input_t: input_val})
 
+  @test_util.run_deprecated_v1
   def testInvalidIndex(self):
     input_val = [1, 2]
     with self.cached_session() as sess:
@@ -179,6 +182,7 @@ class SliceTest(test.TestCase):
     np_ans = x[begin:begin + size, :]
     self.assertAllEqual(tf_ans, np_ans)
 
+  @test_util.run_deprecated_v1
   def testSliceMatrixDim0(self):
     x = np.random.rand(8, 4).astype("f")
     self._testSliceMatrixDim0(x, 1, 2)
@@ -213,6 +217,7 @@ class SliceTest(test.TestCase):
     self.assertEqual(slice_val.shape, slice_t.get_shape())
     self.assertEqual(slice2_val.shape, slice2_t.get_shape())
 
+  @test_util.run_deprecated_v1
   def testComplex(self):
     with self.session(use_gpu=True):
       inp = np.random.rand(4, 10, 10, 4).astype("f")
@@ -316,6 +321,7 @@ class SliceTest(test.TestCase):
       g1_val, g2_val = self.evaluate([g1, g2])
     self.assertAllEqual(g1_val, g2_val)
 
+  @test_util.run_deprecated_v1
   def testGradientsAll(self):
     # Slice the middle square out of a 4x4 input
     self._testGradientSlice([4, 4], [1, 1], [2, 2])
@@ -335,6 +341,7 @@ class SliceTest(test.TestCase):
     # Use -1 as a slice dimension on a 2D tensor.
     self._testGradientVariableSize2D()
 
+  @test_util.run_deprecated_v1
   def testNotIterable(self):
     # NOTE(mrry): If we register __getitem__ as an overloaded
     # operator, Python will valiantly attempt to iterate over the
@@ -346,6 +353,7 @@ class SliceTest(test.TestCase):
       for _ in c:
         pass
 
+  @test_util.run_deprecated_v1
   def testComputedShape(self):
     # NOTE(mrry): We cannot currently handle partially-known values,
     # because `tf.slice()` uses -1 to specify a wildcard size, and

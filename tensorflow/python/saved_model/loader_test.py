@@ -26,6 +26,7 @@ from absl.testing import parameterized
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -93,6 +94,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
     super(SavedModelLoaderTest, self).tearDown()
     shutil.rmtree(test.get_temp_dir(), ignore_errors=True)
 
+  @test_util.run_deprecated_v1
   def test_load_function(self, builder_cls):
     self.export_simple_graph(builder_cls)
     loader = loader_impl.SavedModelLoader(SIMPLE_ADD_SAVED_MODEL)
@@ -108,6 +110,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(5, sess.graph.get_tensor_by_name("x:0").eval())
       self.assertEqual(7, sess.graph.get_tensor_by_name("y:0").eval())
 
+  @test_util.run_deprecated_v1
   def test_load_graph(self, builder_cls):
     self.export_simple_graph(builder_cls)
     loader = loader_impl.SavedModelLoader(SIMPLE_ADD_SAVED_MODEL)
@@ -127,6 +130,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.FailedPreconditionError):
         self.evaluate(y)
 
+  @test_util.run_deprecated_v1
   def test_load_with_import_scope(self, builder_cls):
     self.export_graph_with_main_op(builder_cls)
     loader = loader_impl.SavedModelLoader(SAVED_MODEL_WITH_MAIN_OP)
@@ -157,6 +161,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(5, sess.graph.get_tensor_by_name("baa/x:0").eval())
       self.assertEqual(7, sess.graph.get_tensor_by_name("baa/y:0").eval())
 
+  @test_util.run_deprecated_v1
   def test_restore_variables(self, builder_cls):
     self.export_graph_with_main_op(builder_cls)
     loader = loader_impl.SavedModelLoader(SAVED_MODEL_WITH_MAIN_OP)
@@ -174,6 +179,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
       loader.restore_variables(sess, tf_saver.Saver())
       self.assertEqual(55, self.evaluate(z))
 
+  @test_util.run_deprecated_v1
   def test_run_init_op(self, builder_cls):
     self.export_graph_with_main_op(builder_cls)
     loader = loader_impl.SavedModelLoader(SAVED_MODEL_WITH_MAIN_OP)
@@ -206,6 +212,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(RuntimeError):
       loader.get_meta_graph_def_from_tags(["not_a_graph"])
 
+  @test_util.run_deprecated_v1
   def test_load_saved_model_with_no_variables(self, builder_cls):
     """Test that SavedModel runs saver when there appear to be no variables.
 

@@ -40,6 +40,7 @@ class ScanTest(test_base.DatasetTestBase):
     return dataset_ops.Dataset.from_tensors(0).repeat().apply(
         scan_ops.scan(start, scan_fn))
 
+  @test_util.run_deprecated_v1
   def testCount(self):
     def make_scan_fn(step):
       return lambda state, _: (state + step, state)
@@ -83,6 +84,7 @@ class ScanTest(test_base.DatasetTestBase):
     self.assertEqual(5, self.evaluate(next_element()))
     self.assertEqual(8, self.evaluate(next_element()))
 
+  @test_util.run_deprecated_v1
   def testSparseCount(self):
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
@@ -114,6 +116,7 @@ class ScanTest(test_base.DatasetTestBase):
         with self.assertRaises(errors.OutOfRangeError):
           self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testChangingStateShape(self):
     # Test the fixed-point shape invariant calculations: start with
     # initial values with known shapes, and use a scan function that
