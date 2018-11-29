@@ -2694,7 +2694,7 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   // Create node.
   Node* new_node;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
-  CHECK_NOTNULL(new_node);
+  DCHECK(new_node);
 
   // Fill outputs.
   for (const Edge* e : transpose_to_nchw->out_edges()) {
