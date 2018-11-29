@@ -719,10 +719,6 @@ class CondV2Test(test.TestCase):
 
   @test_util.enable_control_flow_v2
   def testCondAndTensorArray(self):
-    if test_util.is_gpu_available():
-      old_enable_tensor_array_v2 = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
-      # TODO(b/119689663): Enable this.
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = False
     x = math_ops.range(-5, 5)
     output = tensor_array_ops.TensorArray(dtype=dtypes.int32, size=x.shape[0])
 
@@ -744,15 +740,9 @@ class CondV2Test(test.TestCase):
     output_t = output.stack()
     self.assertAllEqual(
         self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
-    if test_util.is_gpu_available():
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = old_enable_tensor_array_v2
 
   @test_util.enable_control_flow_v2
   def testCondAndTensorArrayInDefun(self):
-    if test_util.is_gpu_available():
-      old_enable_tensor_array_v2 = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
-      # TODO(b/119689663): Enable this.
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = False
 
     @function.defun
     def f():
@@ -779,9 +769,6 @@ class CondV2Test(test.TestCase):
     output_t = f()
     self.assertAllEqual(
         self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
-
-    if test_util.is_gpu_available():
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = old_enable_tensor_array_v2
 
 
 class CondV2CollectionTest(test.TestCase):
