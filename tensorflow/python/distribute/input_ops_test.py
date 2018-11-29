@@ -126,7 +126,7 @@ class AutoShardDatasetTest(test.TestCase):
 
   def testListfiles(self):
     filenames = self._createTFRecordFiles()
-    file_pattern = filenames[0].rsplit("/", 1)[0] + "/tf_record.*.txt"
+    file_pattern = filenames[0].rsplit(os.sep, 1)[0] + "/tf_record.*.txt"
     dataset = dataset_ops.Dataset.list_files(file_pattern, shuffle=False)
     dataset = dataset.flat_map(readers.TFRecordDataset)
     dataset = input_ops.auto_shard_dataset(
