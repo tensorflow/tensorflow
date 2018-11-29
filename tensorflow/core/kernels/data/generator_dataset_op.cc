@@ -182,11 +182,13 @@ void GeneratorDatasetOp::MakeDataset(OpKernelContext* ctx,
 }
 
 namespace {
-REGISTER_KERNEL_BUILDER(Name("GeneratorDataset").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("GeneratorDataset").Device(DEVICE_CPU).Priority(2),
                         GeneratorDatasetOp);
-REGISTER_KERNEL_BUILDER(
-    Name("GeneratorDataset").Device(DEVICE_GPU).HostMemory("handle"),
-    GeneratorDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("GeneratorDataset")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("handle")
+                            .Priority(1),
+                        GeneratorDatasetOp);
 }  // namespace
 
 }  // namespace data

@@ -1272,50 +1272,60 @@ class DeserializeIteratorOp : public OpKernel {
 
 
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_CPU).Priority(2),
                         IteratorHandleOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_GPU).Priority(1),
                         IteratorHandleOp);
-REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU).Priority(2),
                         MakeIteratorOp);
 REGISTER_KERNEL_BUILDER(
-    Name("MakeIterator").Device(DEVICE_GPU).HostMemory("dataset"),
+    Name("MakeIterator").Device(DEVICE_GPU).Priority(1).HostMemory("dataset"),
     MakeIteratorOp);
-REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE_CPU),
-                        AnonymousIteratorHandleOp);
-REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE_GPU),
-                        AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("AnonymousIterator").Device(DEVICE_CPU).Priority(2),
+    AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("AnonymousIterator").Device(DEVICE_GPU).Priority(1),
+    AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),
                         ToSingleElementOp);
 REGISTER_KERNEL_BUILDER(Name("ReduceDataset").Device(DEVICE_CPU),
                         ReduceDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("OneShotIterator").Device(DEVICE_CPU),
                         OneShotIteratorOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU).Priority(2),
                         IteratorGetNextOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_GPU).Priority(1),
                         IteratorGetNextOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE_CPU),
-                        IteratorGetNextSyncOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE_GPU),
-                        IteratorGetNextSyncOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorGetNextAsOptional").Device(DEVICE_CPU),
-                        IteratorGetNextAsOptionalOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorGetNextAsOptional").Device(DEVICE_GPU),
-                        IteratorGetNextAsOptionalOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle").Device(DEVICE_CPU),
-                        IteratorToStringHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("IteratorGetNextSync").Device(DEVICE_CPU).Priority(2),
+    IteratorGetNextSyncOp);
+REGISTER_KERNEL_BUILDER(
+    Name("IteratorGetNextSync").Device(DEVICE_GPU).Priority(1),
+    IteratorGetNextSyncOp);
+REGISTER_KERNEL_BUILDER(
+    Name("IteratorGetNextAsOptional").Device(DEVICE_CPU).Priority(2),
+    IteratorGetNextAsOptionalOp);
+REGISTER_KERNEL_BUILDER(
+    Name("IteratorGetNextAsOptional").Device(DEVICE_GPU).Priority(1),
+    IteratorGetNextAsOptionalOp);
+REGISTER_KERNEL_BUILDER(
+    Name("IteratorToStringHandle").Device(DEVICE_CPU).Priority(2),
+    IteratorToStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle")
                             .Device(DEVICE_GPU)
-                            .HostMemory("string_handle"),
+                            .HostMemory("string_handle")
+                            .Priority(1),
                         IteratorToStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandle").Device(DEVICE_CPU),
                         IteratorFromStringHandleOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandleV2").Device(DEVICE_CPU),
-                        IteratorFromStringHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("IteratorFromStringHandleV2").Device(DEVICE_CPU).Priority(2),
+    IteratorFromStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandleV2")
                             .Device(DEVICE_GPU)
-                            .HostMemory("string_handle"),
+                            .HostMemory("string_handle")
+                            .Priority(1),
                         IteratorFromStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
                         SerializeIteratorOp);
