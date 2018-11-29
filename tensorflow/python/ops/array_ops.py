@@ -2085,7 +2085,9 @@ def _normalize_sparse_shape(shape, name):
     return (None, None)
   rank = shape.get_shape()[0] if isinstance(shape, ops.Tensor) else len(shape)
   if not isinstance(shape, ops.Tensor) and None in shape:
-    return (None, rank)
+    if not isinstance(shape, (list, tuple)):
+        return (None, rank)
+    shape = [dim if dim is not None else -1 for dim in shape]
   return (ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name), rank)
 
 
