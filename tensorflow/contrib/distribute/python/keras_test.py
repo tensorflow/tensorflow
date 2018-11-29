@@ -1263,7 +1263,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       model.add(keras.layers.Dense(1))
       initial_weights = model.get_weights()
 
-      def fit_and_predict(with_distribution=None):
+      def fit_eval_and_predict(with_distribution=None):
         # We have initialized the model to the same weight for the distribution
         # and non-distribution run.
         model.set_weights(initial_weights)
@@ -1283,10 +1283,10 @@ class TestDistributionStrategyCorrectness(test.TestCase,
 
         return weights, eval_result, predict_result
 
-      wts_with_ds, eval_with_ds, predict_with_ds = fit_and_predict(
+      wts_with_ds, eval_with_ds, predict_with_ds = fit_eval_and_predict(
           with_distribution=distribution)
-      wts_without_ds, eval_without_ds, predict_without_ds = fit_and_predict(
-          with_distribution=None)
+      wts_without_ds, eval_without_ds, predict_without_ds = (
+          fit_eval_and_predict(with_distribution=None))
 
       # Verify that the weights, eval results, predict outputs  are the same
       # within some limits of tolerance.
