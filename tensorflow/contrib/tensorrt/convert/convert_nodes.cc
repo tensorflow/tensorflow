@@ -130,7 +130,7 @@ void GetOutputProperties(const grappler::GraphProperties& graph_properties,
     *dtype = out_shape.dtype();
     *shape = out_shape.shape();
   } else {
-    VLOG(0) << "Unknown output shape" << node->name();
+    LOG(INFO) << "Unknown output shape" << node->name();
     *dtype = node->output_type(out_port);
   }
 }
@@ -3378,7 +3378,8 @@ tensorflow::Status ConvertSegmentToGraphDef(
     }
   }
   *common_scope = local_scope;
-  VLOG(0) << "Segment @scope '" << local_scope << "', converted to graph";
+  VLOG(1) << "Converted TensorRT candidate segment @scope '" << local_scope
+          << "' to a GraphDef";
   return tensorflow::Status::OK();
 }
 

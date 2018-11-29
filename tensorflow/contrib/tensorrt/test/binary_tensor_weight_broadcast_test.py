@@ -70,7 +70,7 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["my_trt_op_%d" % i for i in range(16)]
+    return ["TRTEngineOp_%d" % i for i in range(16)]
 
 
 if __name__ == "__main__":
