@@ -106,23 +106,23 @@ static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
 XLA_MAKE_BINARY(FloorDiv,
                 FloorDivImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
-static xla::XlaOp XlogyImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
-                            xla::XlaOp y, const BCast& broadcast_helper) {
+xla::XlaOp XlogyImpl(xla::XlaOp x, xla::XlaOp y,
+                     const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
-  auto zero = XlaHelpers::Zero(b, dtype);
+  auto zero = xla::ZerosLike(x);
   auto is_zero = xla::Eq(x, zero);
   return xla::Select(is_zero, zero, xla::Mul(x, xla::Log(y)));
 }
-XLA_MAKE_BINARY(Xlogy, XlogyImpl(b, input_type(0), lhs, rhs, broadcast_helper));
+XLA_MAKE_BINARY(Xlogy, XlogyImpl(lhs, rhs, broadcast_helper));
 
-static xla::XlaOp XdivyImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
-                            xla::XlaOp y, const BCast& broadcast_helper) {
+xla::XlaOp XdivyImpl(xla::XlaOp x, xla::XlaOp y,
+                     const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
-  auto zero = XlaHelpers::Zero(b, dtype);
+  auto zero = xla::ZerosLike(x);
   auto is_zero = xla::Eq(x, zero);
   return xla::Select(is_zero, zero, xla::Div(x, y));
 }
-XLA_MAKE_BINARY(Xdivy, XdivyImpl(b, input_type(0), lhs, rhs, broadcast_helper));
+XLA_MAKE_BINARY(Xdivy, XdivyImpl(lhs, rhs, broadcast_helper));
 
 // Implementation of FloorMod. Pseudo-code:
 // T trunc_mod = std::fmod(x, y);
