@@ -644,6 +644,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     }
 
     // Below are the ops with no builtin_data strcture.
+    case BuiltinOperator_ABS:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
     // ok for now, since there is no call implementation either.

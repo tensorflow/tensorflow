@@ -203,6 +203,7 @@ enum BuiltinOperator : byte {
   LEAKY_RELU = 98,
   SQUARED_DIFFERENCE = 99,
   MIRROR_PAD = 100,
+  ABS = 101,
 }
 
 // Options for the builtin operators.
@@ -284,6 +285,7 @@ union BuiltinOptions {
   LeakyReluOptions,
   SquaredDifferenceOptions,
   MirrorPadOptions,
+  AbsOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -634,6 +636,10 @@ table LogicalOrOptions {
 table OneHotOptions {
   axis:int;
 }
+
+table AbsOptions {
+}
+
 
 table LogicalAndOptions {
 }
