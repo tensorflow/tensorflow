@@ -179,10 +179,9 @@ class PartitionedCallOp : public AsyncOpKernel {
                              done);
 
         OP_REQUIRES_OK_ASYNC(
-            ctx,
-            OptimizationPassRegistry::Global()->RunGrouping(
-                OptimizationPassRegistry::POST_REWRITE_FOR_EXEC,
-                optimization_options),
+            ctx, OptimizationPassRegistry::Global()->RunGrouping(
+                     OptimizationPassRegistry::POST_REWRITE_FOR_EXEC,
+                     optimization_options),
             done);
 
         std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
