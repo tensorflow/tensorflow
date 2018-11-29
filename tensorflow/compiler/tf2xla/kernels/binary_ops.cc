@@ -43,6 +43,9 @@ namespace {
         const std::vector<int64>& extend_dimensions) override {          \
       xla::XlaBuilder* b = ctx->builder();                               \
       (void)b;                                                           \
+      (void)lhs_shape;                                                   \
+      (void)rhs_shape;                                                   \
+      (void)extend_dimensions;                                           \
       return HLO;                                                        \
     }                                                                    \
   };                                                                     \
