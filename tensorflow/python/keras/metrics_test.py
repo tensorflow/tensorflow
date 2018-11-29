@@ -1138,5 +1138,38 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(self.evaluate(s_obj.tn), 25.)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class CosineProximityTest(test.TestCase):
+
+  def test_config(self):
+    cosine_obj = metrics.CosineProximity(name='my_cos', dtype=dtypes.int32)
+    self.assertEqual(cosine_obj.name, 'my_cos')
+    self.assertEqual(cosine_obj._dtype, dtypes.int32)
+
+  def test_unweighted(self):
+    cosine_obj = metrics.CosineProximity()
+    self.evaluate(variables.variables_initializer(cosine_obj.variables))
+
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+
+    update_op = cosine_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = cosine_obj.result()
+    self.assertAllClose(-0.60723, result, atol=1e-5)
+
+  def test_weighted(self):
+    cosine_obj = metrics.CosineProximity()
+    self.evaluate(variables.variables_initializer(cosine_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    result = cosine_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose(-0.59916, self.evaluate(result), atol=1e-5)
+
 if __name__ == '__main__':
   test.main()

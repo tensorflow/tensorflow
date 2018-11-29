@@ -1477,6 +1477,43 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
                                self.tn[min_index] + self.fp[min_index])
 
 
+class CosineProximity(MeanMetricWrapper):
+  """Computes the cosine distance between the labels and predictions.
+
+  For example, if `y_true` is [0, 1, 1], and `y_pred` is [1, 0, 1], the cosine
+  proximity is -0.5.
+
+  This metric keeps the average cosine distance between `predictions` and
+  `labels` over a stream of data.
+
+  Usage:
+  ```python
+  m = tf.metrics.CosineProximity()
+  m.update_state([0, 1, 1], [1, 0, 1])
+  print('Final result: ', m.result().numpy())  # Final result: -0.5
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.metrics.CosineProximity()])
+  ```
+  """
+
+  def __init__(self, name='cosine_proximity', dtype=None):
+    super(CosineProximity, self).__init__(cosine, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(CosineProximity, cls).from_config(config)
+
+
 def accuracy(y_true, y_pred):
   y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:
