@@ -235,7 +235,8 @@ class TestModelCloning(test.TestCase):
 
   def test_sequential_cloning_does_not_create_unnecessary_placeholders(self):
     with ops.Graph().as_default():
-      model = keras.models.Sequential([keras.layers.Dense(4)])
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(4, input_shape=(4,)))
     graph = ops.Graph()
     with graph.as_default():
       x = array_ops.ones((10, 4))
