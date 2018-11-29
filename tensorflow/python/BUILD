@@ -3534,6 +3534,19 @@ py_library(
     ],
 )
 
+# Dependency added and used by ClusterResolvers to avoid circular dependency between keras, distribute, and training.
+py_library(
+    name = "training_server_lib",
+    srcs = ["training/server_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":pywrap_tensorflow",
+        ":util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
 py_library(
     name = "saveable_object",
     srcs = ["training/saveable_object.py"],

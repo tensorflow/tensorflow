@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.contrib.cluster_resolver.python.training.tpu_cluster_resolver import TPUClusterResolver
+from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat

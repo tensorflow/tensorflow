@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,9 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# This file (and all files in this directory in general) is a backwards
-# compatibility shim that exists to re-export ClusterResolvers such that
-# existing OSS code will not be broken.
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver
+from tensorflow.python.distribute.cluster_resolver import gce_cluster_resolver
+from tensorflow.python.distribute.cluster_resolver import kubernetes_cluster_resolver
+from tensorflow.python.distribute.cluster_resolver import slurm_cluster_resolver
+from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
@@ -51,3 +54,4 @@ _allowed_symbols = [
 ]
 
 remove_undocumented(__name__, _allowed_symbols)
+
