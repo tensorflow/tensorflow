@@ -446,8 +446,7 @@ class ControlFlowTest(test.TestCase):
         g = gradients_impl.gradients(y, x)[0]
 
       self.assertAllEqual(sess.run(g, {pred: True}), [2.0, 2.0, 2.0])
-      # TODO(b/119791601): Enable this.
-      # self.assertAllEqual(sess.run(g, {pred: False}), [0.0, 0.0, 0.0])
+      self.assertAllEqual(sess.run(g, {pred: False}), [0.0, 0.0, 0.0])
 
   @test_util.disable_control_flow_v2("b/113293074")
   def testCondIndexedSlicesDifferentTypes(self):
@@ -2168,11 +2167,8 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(512.0, self.evaluate(r))
 
   def testNestedWhileCondWhileGrad(self):
-    if control_flow_ops.ENABLE_WHILE_V2 and test_util.is_gpu_available():
-      self.skipTest("b/118459209")
     self._testNestedWhileCondWhileGrad(use_gpu=False)
 
-  @test_util.disable_control_flow_v2("b/118459209")
   def testNestedWhileCondWhileGradGpu(self):
     self._testNestedWhileCondWhileGrad(use_gpu=True)
 

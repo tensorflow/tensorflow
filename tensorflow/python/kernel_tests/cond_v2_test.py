@@ -126,7 +126,7 @@ class CondV2Test(test.TestCase):
       self.assertEqual(sess.run(out, {pred: False}), (2.0,))
 
   def _createCond(self, name):
-    """Helper function for testDefaultName."""
+    """Creates a cond_v2 call and returns the output tensor and the cond op."""
     pred = constant_op.constant(True, name="pred")
     x = constant_op.constant(1.0, name="x")
 
@@ -139,11 +139,11 @@ class CondV2Test(test.TestCase):
     output = cond_v2.cond_v2(pred, true_fn, false_fn, name=name)
     cond_op = output.op.inputs[0].op
     self.assertEqual(cond_op.type, "If")
-    return cond_op
+    return output, cond_op
 
   def testDefaultName(self):
     with ops.Graph().as_default():
-      cond_op = self._createCond(None)
+      _, cond_op = self._createCond(None)
       self.assertEqual(cond_op.name, "cond")
       self.assertRegexpMatches(
           cond_op.get_attr("then_branch").name, r"cond_true_\d*")
@@ -152,14 +152,14 @@ class CondV2Test(test.TestCase):
 
     with ops.Graph().as_default():
       with ops.name_scope("foo"):
-        cond1_op = self._createCond("")
+        _, cond1_op = self._createCond("")
         self.assertEqual(cond1_op.name, "foo/cond")
         self.assertRegexpMatches(
             cond1_op.get_attr("then_branch").name, r"foo_cond_true_\d*")
         self.assertRegexpMatches(
             cond1_op.get_attr("else_branch").name, r"foo_cond_false_\d*")
 
-        cond2_op = self._createCond(None)
+        _, cond2_op = self._createCond(None)
         self.assertEqual(cond2_op.name, "foo/cond_1")
         self.assertRegexpMatches(
             cond2_op.get_attr("then_branch").name, r"foo_cond_1_true_\d*")
@@ -612,11 +612,11 @@ class CondV2Test(test.TestCase):
   def testLowering(self):
     with ops.Graph().as_default() as g:
       with self.session(graph=g) as sess:
-        out_cond = self._createCond("cond")
+        cond_output, _ = self._createCond("cond")
 
         run_options = config_pb2.RunOptions(output_partition_graphs=True)
         run_metadata = config_pb2.RunMetadata()
-        sess.run(out_cond, options=run_options, run_metadata=run_metadata)
+        sess.run(cond_output, options=run_options, run_metadata=run_metadata)
 
         # If lowering was enabled, there should be a `Switch` node
         switch_found = any(
@@ -641,12 +641,12 @@ class CondV2Test(test.TestCase):
       # Build the cond_v2 in an XLA context
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
-      out_cond = self._createCond("cond")
+      cond_output, _ = self._createCond("cond")
       xla_context.Exit()
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       run_metadata = config_pb2.RunMetadata()
-      sess.run(out_cond, options=run_options, run_metadata=run_metadata)
+      sess.run(cond_output, options=run_options, run_metadata=run_metadata)
 
       # Lowering disabled in XLA, there should be no `Switch` node
       switch_found = any(
