@@ -433,6 +433,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.math.confusion_matrix",
         "tf.decode_csv":
             "tf.io.decode_csv",
+        "tf.data.Iterator":
+            "tf.compat.v1.data.Iterator",
+        "tf.nn.fused_batch_norm":
+            "tf.compat.v1.nn.fused_batch_norm",
     }
     # pylint: enable=line-too-long
 
@@ -681,7 +685,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                     " module if you need command line parsing.",
         "tf.train.exponential_decay":
             decay_function_comment,
-        "tf.train.piecewise_constant":
+        "tf.train.piecewise_constant_decay":
             decay_function_comment,
         "tf.train.polynomial_decay":
             decay_function_comment,

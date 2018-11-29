@@ -78,8 +78,11 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tf_upgrade_v2",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/tools/common:public_api",
+        "//tensorflow/tools/common:traverse",
         "@six_archive//:six",
     ],
 )
