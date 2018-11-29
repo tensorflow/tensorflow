@@ -1973,6 +1973,15 @@ py_library(
 )
 
 py_library(
+    name = "optional_grad",
+    srcs = ["ops/optional_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_ops",
+    ],
+)
+
+py_library(
     name = "sets",
     srcs = [
         "ops/sets.py",
@@ -2151,6 +2160,7 @@ py_library(
         ":graph_to_function_def",
         ":pywrap_tensorflow",
         ":util",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:function",
     ],
 )
@@ -2295,6 +2305,7 @@ py_library(
         ":manip_ops",
         ":math_grad",
         ":math_ops",
+        ":optional_grad",
         ":platform",
         ":random_grad",
         ":resource_variable_ops",

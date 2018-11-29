@@ -49,6 +49,7 @@ from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import manip_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import optional_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import random_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
