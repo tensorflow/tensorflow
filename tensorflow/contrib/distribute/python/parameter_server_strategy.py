@@ -237,6 +237,11 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._compute_devices, True)
 
+  def _make_dataset_iterator(self, dataset):
+    worker_device_pairs = [(self._worker_device, self._compute_devices)]
+    return values.DatasetIterator(dataset, worker_device_pairs,
+                                  self._num_replicas_in_sync)
+
   def _make_input_fn_iterator(
       self,
       input_fn,
