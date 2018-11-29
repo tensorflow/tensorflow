@@ -21,10 +21,15 @@ from __future__ import print_function
 import ast
 import collections
 import os
+import re
 import shutil
 import sys
 import tempfile
 import traceback
+
+# Some regular expressions we will need for parsing
+FIND_OPEN = re.compile(r"^\s*(\[).*$")
+FIND_STRING_CHARS = re.compile(r"['\"]")
 
 
 class APIChangeSpec(object):
@@ -57,7 +62,7 @@ class _FileEditTuple(
   Fields:
     comment: A description of the edit and why it was made.
     line: The line number in the file where the edit occurs (1-indexed).
-    start: The line number in the file where the edit occurs (0-indexed).
+    start: The column number in the file where the edit occurs (0-indexed).
     old: text string to remove (this must match what was in file).
     new: text string to add in place of `old`.
   """
@@ -248,13 +253,12 @@ class _ASTCallVisitor(ast.NodeVisitor):
     This is necessary mainly because ListComp's location reporting reports
     the next token after the list comprehension list opening.
 
+    Returns:
+      lineno, offset for the given node
+
     Args:
       node: Node for which we wish to know the lineno and col_offset
     """
-    import re
-    find_open = re.compile("^\s*(\\[).*$")
-    find_string_chars = re.compile("['\"]")
-
     if isinstance(node, ast.ListComp):
       # Strangely, ast.ListComp returns the col_offset of the first token
       # after the '[' token which appears to be a bug. Workaround by
@@ -268,7 +272,7 @@ class _ASTCallVisitor(ast.NodeVisitor):
         reversed_preceding_text = text[:col][::-1]
         # First find if a [ can be found with only whitespace between it and
         # col.
-        m = find_open.match(reversed_preceding_text)
+        m = FIND_OPEN.match(reversed_preceding_text)
         if m:
           new_col_offset = col - m.start(1) - 1
           return line, new_col_offset
@@ -287,7 +291,7 @@ class _ASTCallVisitor(ast.NodeVisitor):
             comment_start = prev_line.find("#")
             if comment_start == -1:
               col = len(prev_line) - 1
-            elif find_string_chars.search(prev_line[comment_start:]) is None:
+            elif FIND_STRING_CHARS.search(prev_line[comment_start:]) is None:
               col = comment_start
             else:
               return None, None
@@ -391,8 +395,9 @@ class _ASTCallVisitor(ast.NodeVisitor):
     """
     full_name, _ = self._get_attribute_full_path(node)
     if full_name:
-      self._rename_functions(node, full_name)
+      # Make sure the warning comes first, otherwise the name may have changed
       self._print_warning_for_function(node, full_name)
+      self._rename_functions(node, full_name)
     if full_name in self._api_change_spec.change_to_function:
       if not hasattr(node, "is_function_for_call"):
         new_text = full_name + "()"
