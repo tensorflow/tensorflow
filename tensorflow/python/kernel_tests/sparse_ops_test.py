@@ -722,6 +722,47 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
             self.evaluate(reduced).shape)
         self.assertLess(err, 1e-3)
 
+  def _testSparseReduceShape(self, sp_t, reduction_axes, ndims, keep_dims,
+                             do_sum):
+    densified = sparse_ops.sparse_tensor_to_dense(sp_t).eval()
+
+    np_op = np.sum
+    tf_op = sparse_ops.sparse_reduce_sum
+    if not do_sum:
+      np_op = np.max
+      tf_op = sparse_ops.sparse_reduce_max
+
+    np_ans = densified
+    if reduction_axes is None:
+      np_ans = np_op(np_ans, keepdims=keep_dims)
+    else:
+      if not isinstance(reduction_axes, list):  # Single scalar.
+        reduction_axes = [reduction_axes]
+      reduction_axes = np.array(reduction_axes).astype(np.int32)
+      # Handles negative axes.
+      reduction_axes = (reduction_axes + ndims) % ndims
+      # Loop below depends on sorted.
+      reduction_axes.sort()
+      for ra in reduction_axes.ravel()[::-1]:
+        np_ans = np_op(np_ans, axis=ra, keepdims=keep_dims)
+
+    tf_ans = tf_op(sp_t, reduction_axes, keep_dims)
+    self.assertAllEqual(np_ans.shape, tf_ans.get_shape().as_list())
+
+  def testSparseReduceSumOrMaxShape(self):
+    sp_t = sparse_tensor.SparseTensor(self.ind, self.vals, self.dense_shape)
+
+    with self.session(use_gpu=False):
+      for do_sum in [True, False]:
+        for keep_dims in [True, False]:
+          self._testSparseReduceShape(sp_t, None, 2, keep_dims, do_sum)
+          self._testSparseReduceShape(sp_t, 0, 2, keep_dims, do_sum)
+          self._testSparseReduceShape(sp_t, [1], 2, keep_dims, do_sum)
+          self._testSparseReduceShape(sp_t, [0, 1], 2, keep_dims, do_sum)
+          self._testSparseReduceShape(sp_t, [1, 0], 2, keep_dims, do_sum)
+          self._testSparseReduceShape(sp_t, [-1], 2, keep_dims, do_sum)
+          self._testSparseReduceShape(sp_t, [1, -2], 2, keep_dims, do_sum)
+
 
 class SparseMathOpsTest(test_util.TensorFlowTestCase):
 
