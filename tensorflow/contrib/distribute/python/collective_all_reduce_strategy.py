@@ -24,6 +24,7 @@ from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import values
@@ -80,6 +81,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       ]
     else:
       local_devices = ["/device:CPU:0"]
+    self._worker_device = device_util.canonicalize("/device:CPU:0")
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
     super(CollectiveAllReduceExtended, self).__init__(
@@ -116,14 +118,14 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._is_chief = multi_worker_util.is_chief(cluster_spec, task_type,
                                                 task_id)
 
-    worker_device = "/job:%s/task:%d" % (task_type, task_id)
+    self._worker_device = "/job:%s/task:%d" % (task_type, task_id)
     if num_gpus_per_worker:
       local_devices = [
-          "%s/device:GPU:%d" % (worker_device, i)
+          "%s/device:GPU:%d" % (self._worker_device, i)
           for i in range(num_gpus_per_worker)
       ]
     else:
-      local_devices = [worker_device]
+      local_devices = [self._worker_device]
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
     super(CollectiveAllReduceExtended, self).__init__(
@@ -222,6 +224,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._devices, True)
 
+  def _make_dataset_iterator(self, dataset):
+    worker_device_pairs = [(self._worker_device, self._devices)]
+    return values.DatasetIterator(dataset, worker_device_pairs,
+                                  self._num_replicas_in_sync)
+
   def _make_input_fn_iterator(
       self,
       input_fn,
@@ -238,7 +245,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_replicas_in_sync=self._num_replicas_in_sync)
 
     return values.InputFunctionIterator(
-        input_fn, [(self._default_device, self._devices)], [input_context])
+        input_fn, [(self._worker_device, self._devices)], [input_context])
 
   def _configure(self,
                  session_config=None,
