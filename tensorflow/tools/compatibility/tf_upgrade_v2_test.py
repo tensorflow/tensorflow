@@ -97,8 +97,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
                   "tf.train.noisy_linear_cosine_decay"]:
 
       text = "%s(a, b)\n" % decay
-      _, report, errors, new_text = self._upgrade(text)
-      self.assertEqual(text, new_text)
+      _, report, errors, _ = self._upgrade(text)
       self.assertEqual(errors, ["test.py:1: %s requires manual check." % decay])
       self.assertIn("%s has been changed" % decay, report)
 
@@ -216,7 +215,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     text = "self.est.export_savedmodel(path)"
     _, report, unused_errors, unused_new_text = self._upgrade(text)
     self.assertIn(
-        "rename the function export_savedmodel() to export_saved_model()",
+        "rename the method export_savedmodel() to export_saved_model()",
         report)
 
   def testArgmin(self):
