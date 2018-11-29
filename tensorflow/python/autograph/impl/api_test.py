@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import gc
 
 import numpy as np
@@ -209,6 +210,26 @@ class ApiTest(test.TestCase):
       x = api.converted_call(test_fn, None, converter.ConversionOptions(),
                              constant_op.constant(-1))
       self.assertEqual(1, self.evaluate(x))
+
+  def test_converted_call_functools_partial(self):
+
+    def test_fn(x, y, z):
+      if x < 0:
+        return -x, -y, -z
+      return x, y, z
+
+    x = api.converted_call(
+        functools.partial(test_fn, constant_op.constant(-1), z=-3),
+        None, converter.ConversionOptions(),
+        constant_op.constant(-2))
+    self.assertEqual((1, 2, 3), self.evaluate(x))
+
+    x = api.converted_call(
+        functools.partial(
+            functools.partial(test_fn, constant_op.constant(-1)), z=-3),
+        None, converter.ConversionOptions(),
+        constant_op.constant(-2))
+    self.assertEqual((1, 2, 3), self.evaluate(x))
 
   def test_converted_call_method_explicit_owner(self):
     # TODO(mdan): Implement.
