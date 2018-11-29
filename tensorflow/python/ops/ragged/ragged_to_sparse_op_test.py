@@ -23,6 +23,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import ragged
 from tensorflow.python.platform import googletest
 
@@ -178,7 +179,7 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase):
                           ragged_rank=2)
     rt2 = ragged.constant([[[[9.0, 8.0], [7.0, 6.0]], [[5.0, 4.0]]]],
                           ragged_rank=2)
-    rt = rt1 + rt2 * 2.0
+    rt = ragged.map_inner_values(math_ops.add, rt1, rt2 * 2.0)
     st = ragged.to_sparse(rt)
 
     g1, g2 = gradients_impl.gradients(st.values, [rt1.inner_values,

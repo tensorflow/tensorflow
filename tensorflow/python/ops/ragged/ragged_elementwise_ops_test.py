@@ -399,44 +399,37 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     y = ragged.from_row_splits(
         array_ops.placeholder_with_default([1, 2, 3], shape=None), x.row_splits)
     with self.assertRaisesRegexp(
-        ValueError, r'Ragged elementwise ops require that rank \(number '
-        r'of dimensions\) be statically known.'):
+        ValueError, r'Unable to broadcast: unknown rank'):
       ragged.add(x, y)
 
-  def testBroadcastError1(self):
-    x = ragged.constant([[1, 2], [3]])
-    y = [[12]]
-    with self.assertRaisesRegexp(
-        ValueError, 'Ragged elementwise ops do not support broadcasting yet'):
-      ragged.add(x, y)
-
-  def testBroadcastError2(self):
-    x = ragged.constant([[[1, 2], [3, 4]], [[5]]], ragged_rank=2)
-    y = ragged.constant([[[8], [3]], [[2]]], ragged_rank=1)
-    with self.assertRaisesRegexp(ValueError,
-                                 'Inputs must have identical ragged splits'):
-      ragged.add(x, y)
-
-  def testBroadcastError3(self):
-    x = ragged.constant([[[1, 2], [3]], [[4, 5], [6]]], ragged_rank=2)
-    y = ragged.constant([[7, 8], [9]], ragged_rank=1)
-    with self.assertRaisesRegexp(
-        ValueError, 'Ragged elementwise ops do not support broadcasting yet'):
-      ragged.add(x, y)
-
-  def testBroadcastError4(self):
-    x = ragged.constant([[[1]]])
-    y = ragged.constant([[1]])
-    with self.assertRaisesRegexp(
-        ValueError, 'Ragged elementwise ops do not support broadcasting yet'):
-      ragged.add(x, y)
+  @parameterized.parameters([
+      dict(
+          x=ragged.constant_value([[1, 2], [3]]),
+          y=[[10]],
+          expected=[[11, 12], [13]]),
+      dict(
+          x=ragged.constant_value([[[1, 2], [3, 4]], [[5]]], ragged_rank=2),
+          y=ragged.constant_value([[[10], [20]], [[30]]], ragged_rank=1),
+          expected=[[[11, 12], [23, 24]], [[35]]]),
+      dict(
+          x=ragged.constant_value([[[1]]]),
+          y=ragged.constant_value([[1]]),
+          expected=[[[2]]]),
+  ])
+  def testBroadcastAdd(self, x, y, expected):
+    x = ragged.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
+    y = ragged.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
+    result = x + y
+    with self.cached_session():
+      self.assertEqual(result.eval().tolist(), expected)
 
   def testShapeMismatch(self):
     x = ragged.constant([[1, 2, 3], [4, 5]])
     y = ragged.constant([[1, 2, 3], [4, 5, 6]])
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'Inputs must have identical ragged splits'):
-      ragged.add(x, y)
+                                 'Incompatible shapes'):
+      with self.cached_session():
+        ragged.add(x, y).eval()
 
   def testDocstring(self):
     self.assertRegexpMatches(

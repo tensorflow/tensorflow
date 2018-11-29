@@ -33,6 +33,7 @@ py_library(
         ":ragged_math_ops",
         ":ragged_operators",
         ":ragged_tensor",
+        ":ragged_tensor_shape",
         ":ragged_tensor_value",
         ":ragged_util",
         ":segment_id_ops",
@@ -155,6 +156,7 @@ py_library(
     deps = [
         ":ragged_factory_ops",
         ":ragged_tensor",
+        ":ragged_tensor_shape",
         ":ragged_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:clip_ops",
@@ -191,6 +193,25 @@ py_library(
 )
 
 py_library(
+    name = "ragged_tensor_shape",
+    srcs = ["ragged_tensor_shape.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_array_ops",
+        ":ragged_conversion_ops",
+        ":ragged_factory_ops",
+        ":ragged_tensor",
+        ":ragged_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
+    ],
+)
+
+py_library(
     name = "ragged_tensor_value",
     srcs = ["ragged_tensor_value.py"],
     srcs_version = "PY2AND3",
@@ -207,6 +228,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:ragged_math_ops_gen",
     ],
 )
 
@@ -687,6 +709,18 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:string_ops",
         "//tensorflow/python/keras:backend",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_tensor_shape_test",
+    srcs = ["ragged_tensor_shape_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
     ],
 )
