@@ -2386,7 +2386,7 @@ class Operation(object):
     Raises:
       ValueError: If this op does not have an attr with the given `name`.
     """
-    fields = ["s", "i", "f", "b", "type", "shape", "tensor", "func"]
+    fields = ("s", "i", "f", "b", "type", "shape", "tensor", "func")
     try:
       with c_api_util.tf_buffer() as buf:
         c_api.TF_OperationGetAttrValueProto(self._c_op, name, buf)
@@ -2397,25 +2397,21 @@ class Operation(object):
     x = attr_value_pb2.AttrValue()
     x.ParseFromString(data)
 
-    # Treat an empty oneof value as an empty list.
-    if not x.WhichOneof("value"):
+    oneof_value = x.WhichOneof("value")
+    if oneof_value is None:
       return []
-    if x.HasField("list"):
+    if oneof_value == "list":
       for f in fields:
         if getattr(x.list, f):
           if f == "type":
-            return [dtypes.as_dtype(x) for x in list(getattr(x.list, f))]
+            return [dtypes.as_dtype(t) for t in x.list.type]
           else:
             return list(getattr(x.list, f))
       return []
-    else:
-      for f in fields:
-        if x.HasField(f):
-          if f == "type":
-            return dtypes.as_dtype(getattr(x, f))
-          else:
-            return getattr(x, f)
-      assert False, "Unsupported field type in " + str(x)
+    if oneof_value == "type":
+      return dtypes.as_dtype(x.type)
+    assert oneof_value in fields, "Unsupported field type in " + str(x)
+    return getattr(x, oneof_value)
 
   def run(self, feed_dict=None, session=None):
     """Runs this operation in a `Session`.
