@@ -27,6 +27,7 @@ import six
 
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import filter_for_shard_ops
+from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.ops import iterator_ops
@@ -1587,56 +1588,15 @@ class Options(options_lib.OptionsBase):
       "Whether to dynamically adjust the values of tunable parameters (e.g. "
       "degrees of parallelism).")
 
-  experimental_filter_fusion = options_lib.create_option(
-      name="experimental_filter_fusion",
-      ty=bool,
-      docstring="Whether to fuse filter transformations.")
-
-  experimental_hoist_random_uniform = options_lib.create_option(
-      name="experimental_hoist_random_uniform",
-      ty=bool,
-      docstring=
-      "Whether to hoist `tf.random_uniform()` ops out of map transformations.")
-
-  experimental_map_and_batch_fusion = options_lib.create_option(
-      name="experimental_map_and_batch_fusion",
-      ty=bool,
-      docstring="Whether to fuse map and batch transformations.")
-
-  experimental_map_and_filter_fusion = options_lib.create_option(
-      name="experimental_map_and_filter_fusion",
-      ty=bool,
-      docstring="Whether to fuse map and filter transformations.")
-
-  experimental_map_fusion = options_lib.create_option(
-      name="experimental_map_and_filter_fusion",
-      ty=bool,
-      docstring="Whether to fuse map transformations.")
-
-  experimental_map_parallelization = options_lib.create_option(
-      name="experimental_map_parallelization",
-      ty=bool,
-      docstring="Whether to parallelize stateless map transformations.")
-
-  experimental_map_vectorization = options_lib.create_option(
-      name="experimental_map_vectorization",
-      ty=bool,
-      docstring="Whether to vectorize map transformations.")
-
-  experimental_noop_elimination = options_lib.create_option(
-      name="experimental_noop_elimination",
-      ty=bool,
-      docstring="Whether to eliminate no-op transformations.")
-
   experimental_numa_aware = options_lib.create_option(
       name="experimental_numa_aware",
       ty=bool,
       docstring="Whether to use NUMA-aware operations.")
 
-  experimental_shuffle_and_repeat_fusion = options_lib.create_option(
-      name="experimental_shuffle_and_repeat_fusion",
-      ty=bool,
-      docstring="Whether to fuse shuffle and repeat transformations.")
+  experimental_optimization = options_lib.create_option(
+      name="experimental_optimization",
+      ty=optimization_options.OptimizationOptions,
+      docstring="Associates the given optimization options with the dataset.")
 
   experimental_stats = options_lib.create_option(
       name="experimental_stats",
@@ -1650,29 +1610,30 @@ class Options(options_lib.OptionsBase):
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
-    experimental_optimizations = [
-        "filter_fusion",
-        "hoist_random_uniform",
-        "map_and_batch_fusion",
-        "map_and_filter_fusion",
-        "map_fusion",
-        "map_parallelization",
-        "map_vectorization",
-        "noop_elimination",
-        "shuffle_and_repeat_fusion",
-    ]
-    result = []
-    for exp_opt in experimental_optimizations:
-      if getattr(self, "experimental_" + exp_opt):
-        result.append(exp_opt)
 
-    if getattr(self, "experimental_numa_aware"):
+    result = []
+    exp_optimization_options = self.experimental_optimization
+    if exp_optimization_options:
+      optimizations = [
+          "filter_fusion",
+          "hoist_random_uniform",
+          "map_and_batch_fusion",
+          "map_and_filter_fusion",
+          "map_fusion",
+          "map_parallelization",
+          "map_vectorization",
+          "noop_elimination",
+          "shuffle_and_repeat_fusion",
+      ]
+      for optimization in optimizations:
+        if getattr(exp_optimization_options, optimization):
+          result.append(optimization)
+    if self.experimental_numa_aware:
       result.append("make_numa_aware")
-    if getattr(self, "experimental_deterministic") is False:
+    if self.experimental_deterministic is False:
       result.append("make_sloppy")
-    experimental_stats_options = getattr(self, "experimental_stats")
-    if experimental_stats_options and getattr(experimental_stats_options,
-                                              "latency_all_edges"):
+    exp_stats_options = self.experimental_stats
+    if exp_stats_options and exp_stats_options.latency_all_edges:
       result.append("latency_all_edges")
     return result
 
