@@ -1,6 +1,6 @@
 op {
   graph_op_name: "AddV2"
   endpoint {
-    name: "math.AddV2"
+    name: "math.Add"
   }
 }

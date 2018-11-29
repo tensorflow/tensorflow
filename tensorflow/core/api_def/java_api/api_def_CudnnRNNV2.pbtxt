@@ -1,6 +1,6 @@
 op {
   graph_op_name: "CudnnRNNV2"
   endpoint {
-    name: "nn.CudnnRnnV2"
+    name: "nn.CudnnRnn"
   }
 }

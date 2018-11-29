@@ -1,6 +1,4 @@
 op {
   graph_op_name: "InTopK"
-  endpoint {
-    name: "nn.InTopK"
-  }
+  visibility: SKIP
 }

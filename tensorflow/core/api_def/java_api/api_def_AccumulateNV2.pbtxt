@@ -1,6 +1,6 @@
 op {
   graph_op_name: "AccumulateNV2"
   endpoint {
-    name: "math.AccumulateNV2"
+    name: "math.AccumulateN"
   }
 }

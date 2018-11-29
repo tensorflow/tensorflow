@@ -1,6 +1,6 @@
 op {
   graph_op_name: "ResourceSparseApplyFtrlV2"
   endpoint {
-    name: "train.ResourceSparseApplyFtrlV2"
+    name: "train.ResourceSparseApplyFtrl"
   }
 }

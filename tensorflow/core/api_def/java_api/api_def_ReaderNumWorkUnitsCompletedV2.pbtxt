@@ -1,6 +1,6 @@
 op {
   graph_op_name: "ReaderNumWorkUnitsCompletedV2"
   endpoint {
-    name: "io.ReaderNumWorkUnitsCompletedV2"
+    name: "io.ReaderNumWorkUnitsCompleted"
   }
 }

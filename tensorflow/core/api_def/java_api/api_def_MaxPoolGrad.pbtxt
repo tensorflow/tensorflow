@@ -1,6 +1,4 @@
 op {
   graph_op_name: "MaxPoolGrad"
-  endpoint {
-    name: "nn.MaxPoolGrad"
-  }
+  visibility: SKIP
 }

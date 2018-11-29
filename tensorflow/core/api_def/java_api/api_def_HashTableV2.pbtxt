@@ -1,3 +1,6 @@
 op {
   graph_op_name: "HashTableV2"
+  endpoint {
+    name: "HashTable"
+  }
 }

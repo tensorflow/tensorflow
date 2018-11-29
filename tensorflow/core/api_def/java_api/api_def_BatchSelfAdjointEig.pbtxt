@@ -1,6 +1,4 @@
 op {
   graph_op_name: "BatchSelfAdjointEig"
-  endpoint {
-    name: "linalg.BatchSelfAdjointEig"
-  }
+  visibility: SKIP
 }

@@ -1,3 +1,6 @@
 op {
   graph_op_name: "GetSessionHandleV2"
+  endpoint {
+    name: "GetSessionHandle"
+  }
 }

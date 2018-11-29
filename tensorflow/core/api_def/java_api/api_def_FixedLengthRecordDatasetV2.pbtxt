@@ -1,6 +1,6 @@
 op {
   graph_op_name: "FixedLengthRecordDatasetV2"
   endpoint {
-    name: "data.FixedLengthRecordDatasetV2"
+    name: "data.FixedLengthRecordDataset"
   }
 }

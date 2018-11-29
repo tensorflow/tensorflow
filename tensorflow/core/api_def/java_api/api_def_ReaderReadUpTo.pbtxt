@@ -1,6 +1,4 @@
 op {
   graph_op_name: "ReaderReadUpTo"
-  endpoint {
-    name: "io.ReaderReadUpTo"
-  }
+  visibility: SKIP
 }

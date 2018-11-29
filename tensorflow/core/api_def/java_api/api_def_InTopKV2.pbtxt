@@ -1,6 +1,6 @@
 op {
   graph_op_name: "InTopKV2"
   endpoint {
-    name: "nn.InTopKV2"
+    name: "nn.InTopK"
   }
 }

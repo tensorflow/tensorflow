@@ -1,6 +1,4 @@
 op {
   graph_op_name: "IteratorFromStringHandle"
-  endpoint {
-    name: "data.IteratorFromStringHandle"
-  }
+  visibility: SKIP
 }

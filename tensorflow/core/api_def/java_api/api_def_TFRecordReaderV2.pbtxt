@@ -1,6 +1,6 @@
 op {
   graph_op_name: "TFRecordReaderV2"
   endpoint {
-    name: "io.TfRecordReaderV2"
+    name: "io.TfRecordReader"
   }
 }

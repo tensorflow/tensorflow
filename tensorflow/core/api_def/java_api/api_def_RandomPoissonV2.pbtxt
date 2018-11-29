@@ -1,6 +1,6 @@
 op {
   graph_op_name: "RandomPoissonV2"
   endpoint {
-    name: "random.RandomPoissonV2"
+    name: "random.RandomPoisson"
   }
 }

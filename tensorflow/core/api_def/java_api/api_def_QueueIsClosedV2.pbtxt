@@ -1,6 +1,6 @@
 op {
   graph_op_name: "QueueIsClosedV2"
   endpoint {
-    name: "io.QueueIsClosedV2"
+    name: "io.QueueIsClosed"
   }
 }

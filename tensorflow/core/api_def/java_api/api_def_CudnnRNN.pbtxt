@@ -1,6 +1,4 @@
 op {
   graph_op_name: "CudnnRNN"
-  endpoint {
-    name: "nn.CudnnRnn"
-  }
+  visibility: SKIP
 }

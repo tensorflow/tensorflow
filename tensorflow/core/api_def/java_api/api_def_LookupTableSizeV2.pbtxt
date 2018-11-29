@@ -1,3 +1,6 @@
 op {
   graph_op_name: "LookupTableSizeV2"
+  endpoint {
+    name: "LookupTableSize"
+  }
 }

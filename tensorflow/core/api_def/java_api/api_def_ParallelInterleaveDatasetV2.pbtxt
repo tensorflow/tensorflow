@@ -1,3 +1,6 @@
 op {
   graph_op_name: "ParallelInterleaveDatasetV2"
+  endpoint {
+    name: "ParallelInterleaveDataset"
+  }
 }

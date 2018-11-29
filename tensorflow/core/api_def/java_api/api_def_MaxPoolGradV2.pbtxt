@@ -1,6 +1,6 @@
 op {
   graph_op_name: "MaxPoolGradV2"
   endpoint {
-    name: "nn.MaxPoolGradV2"
+    name: "nn.MaxPoolGrad"
   }
 }

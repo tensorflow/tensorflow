@@ -1,6 +1,4 @@
 op {
   graph_op_name: "ReaderNumWorkUnitsCompleted"
-  endpoint {
-    name: "io.ReaderNumWorkUnitsCompleted"
-  }
+  visibility: SKIP
 }

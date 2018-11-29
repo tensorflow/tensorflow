@@ -1,3 +1,6 @@
 op {
   graph_op_name: "TensorArraySplitV3"
+  endpoint {
+    name: "TensorArraySplit"
+  }
 }

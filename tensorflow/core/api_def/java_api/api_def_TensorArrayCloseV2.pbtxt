@@ -1,3 +1,4 @@
 op {
   graph_op_name: "TensorArrayCloseV2"
+  visibility: SKIP
 }

@@ -1,3 +1,6 @@
 op {
   graph_op_name: "TensorArrayCloseV3"
+  endpoint {
+    name: "TensorArrayClose"
+  }
 }

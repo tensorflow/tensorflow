@@ -1,6 +1,4 @@
 op {
   graph_op_name: "WholeFileReader"
-  endpoint {
-    name: "io.WholeFileReader"
-  }
+  visibility: SKIP
 }

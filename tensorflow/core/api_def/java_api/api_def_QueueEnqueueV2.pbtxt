@@ -1,6 +1,6 @@
 op {
   graph_op_name: "QueueEnqueueV2"
   endpoint {
-    name: "io.QueueEnqueueV2"
+    name: "io.QueueEnqueue"
   }
 }

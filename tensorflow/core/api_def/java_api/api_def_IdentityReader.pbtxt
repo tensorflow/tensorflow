@@ -1,6 +1,4 @@
 op {
   graph_op_name: "IdentityReader"
-  endpoint {
-    name: "io.IdentityReader"
-  }
+  visibility: SKIP
 }

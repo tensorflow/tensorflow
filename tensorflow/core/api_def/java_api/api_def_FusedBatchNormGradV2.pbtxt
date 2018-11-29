@@ -1,6 +1,6 @@
 op {
   graph_op_name: "FusedBatchNormGradV2"
   endpoint {
-    name: "nn.FusedBatchNormGradV2"
+    name: "nn.FusedBatchNormGrad"
   }
 }

@@ -1,6 +1,4 @@
 op {
   graph_op_name: "FixedLengthRecordDataset"
-  endpoint {
-    name: "data.FixedLengthRecordDataset"
-  }
+  visibility: SKIP
 }
