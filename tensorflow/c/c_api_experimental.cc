@@ -8799,6 +8799,10 @@ void TF_MakeInternalErrorStatus(TF_Status* status, const char* errMsg) {
 // This builder is used in the eager API to build a NodeDef.
 struct TF_AttrBuilder : public tensorflow::AttrBuilder {
   using tensorflow::AttrBuilder::AttrBuilder;
+  // The string buffers to make sure that any `attr_name` we pass into
+  // `builder->Set()` will outlive the subsequent
+  // `TF_AttrBuilderCheckCanRunOnDevice()` call(s) on the same `builder`.
+  std::set<std::string> attr_names;
 };
 
 TF_AttrBuilder* TF_NewAttrBuilder(const char* op_name) {
@@ -8809,13 +8813,15 @@ void TF_DeleteAttrBuilder(TF_AttrBuilder* builder) { delete builder; }
 
 void TF_AttrBuilderSetType(TF_AttrBuilder* builder, const char* attr_name,
                            TF_DataType value) {
-  builder->Set(attr_name, static_cast<tensorflow::DataType>(value));
+  auto iter = builder->attr_names.insert(attr_name).first;
+  builder->Set((*iter).c_str(), static_cast<tensorflow::DataType>(value));
 }
 
 void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder, const char* attr_name,
                                const TF_DataType* values, int num_values) {
+  auto iter = builder->attr_names.insert(attr_name).first;
   builder->Set(
-      attr_name,
+      (*iter).c_str(),
       tensorflow::gtl::ArraySlice<const tensorflow::DataType>(
           reinterpret_cast<const tensorflow::DataType*>(values), num_values));
 }
