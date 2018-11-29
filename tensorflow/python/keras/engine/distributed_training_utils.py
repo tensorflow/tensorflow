@@ -328,7 +328,7 @@ def init_restore_or_wait_for_variables():
   """Initialize or restore variables or wait for variables to be initialized."""
   session = K._get_session()  # pylint: disable=protected-access
   worker_context = dc_context.get_current_worker_context()
-  if not worker_context or worker_context.should_init:
+  if not worker_context or worker_context.experimental_should_init:
     # TODO(yuefengz): if checkpoints exit, restore from checkpoint.
     K._initialize_variables(session)  # pylint: disable=protected-access
   else:
