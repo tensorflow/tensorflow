@@ -1796,8 +1796,9 @@ XlaBuilder builder(client_, "reduce_window_2x3");
 auto shape = ShapeUtil::MakeShape(F32, {4, 6});
 auto input = builder.Parameter(0, shape, "input");
 builder.ReduceWindow(
-    input, *max,
+    input,
     /*init_val=*/builder.ConstantLiteral(LiteralUtil::MinValue(F32)),
+    *max,
     /*window_dimensions=*/{2, 3},
     /*window_stride_dimensions=*/{2, 3},
     Padding::kValid);
