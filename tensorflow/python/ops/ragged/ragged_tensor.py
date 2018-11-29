@@ -257,6 +257,7 @@ class RaggedTensor(object):
       raise TypeError("Row-partitioning argument must be a Tensor.")
     values.shape.with_rank_at_least(1)
     row_splits.shape.assert_has_rank(1)
+    row_splits.set_shape([None])
 
     self._values = values
     self._row_splits = row_splits
