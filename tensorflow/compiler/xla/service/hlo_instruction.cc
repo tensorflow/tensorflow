@@ -3014,6 +3014,16 @@ const PrecisionConfig& HloInstruction::precision_config() const {
   LOG(FATAL) << "Unimplemented method.";
 }
 
+PrecisionConfig* HloInstruction::mutable_precision_config() {
+  if (auto* convolution = DynCast<HloConvolutionInstruction>(this)) {
+    return convolution->mutable_precision_config();
+  }
+  if (auto* dot = DynCast<HloDotInstruction>(this)) {
+    return dot->mutable_precision_config();
+  }
+  LOG(FATAL) << "Unimplemented method.";
+}
+
 HloModule* HloInstruction::GetModule() const {
   if (parent_) {
     return parent_->parent();
