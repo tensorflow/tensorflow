@@ -869,6 +869,7 @@ tf_cuda_library(
         "framework/dataset_stateful_op_whitelist.h",
         "framework/device_base.h",
         "framework/function.h",
+        "framework/function_handle_cache.h",
         "framework/graph_def_util.h",
         "framework/graph_to_functiondef.h",
         "framework/kernel_def_builder.h",
