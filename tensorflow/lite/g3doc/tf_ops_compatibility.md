@@ -866,6 +866,22 @@ Options {
 }
 ```
 
+**SPLIT_V**
+
+```
+Inputs {
+  0: tensor (input)
+  1: 1-D tensor (size_splits)
+  2: 0-D tensor (axis)
+}
+Outputs {
+  0-N: subtensors built from the input tensors
+}
+Options {
+  num_splits: Specifies number of outputs
+}
+```
+
 **SQRT**
 
 ```

@@ -978,6 +978,26 @@ class Split
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class SplitV
+    : public BuiltinOperator<TensorFlowSplitVOperator, ::tflite::SplitVOptions,
+                             ::tflite::BuiltinOptions_SplitVOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateSplitVOptions(*builder, op.num_split);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->num_split = options.num_splits();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class StridedSlice
     : public BuiltinOperator<StridedSliceOperator,
                              ::tflite::StridedSliceOptions,
@@ -1521,6 +1541,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                     OperatorType::kSqueeze));
   ops.push_back(
       MakeUnique<Split>(::tflite::BuiltinOperator_SPLIT, OperatorType::kSplit));
+  ops.push_back(MakeUnique<SplitV>(::tflite::BuiltinOperator_SPLIT_V,
+                                   OperatorType::kSplitV));
   ops.push_back(MakeUnique<StridedSlice>(
       ::tflite::BuiltinOperator_STRIDED_SLICE, OperatorType::kStridedSlice));
   ops.push_back(MakeUnique<TopK_V2>(::tflite::BuiltinOperator_TOPK_V2,

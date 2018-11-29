@@ -121,6 +121,7 @@ enum class OperatorType : uint8 {
   kRsqrt,
   kShape,
   kSplit,
+  kSplitV,
   kSqrt,
   kSquare,
   kSquaredDifference,
@@ -1398,6 +1399,12 @@ struct SliceOperator : Operator {
 // support graph transformations to other operator types by matching sub-graphs.
 struct TensorFlowSplitOperator : Operator {
   TensorFlowSplitOperator() : Operator(OperatorType::kSplit) {}
+  int num_split = 0;
+};
+
+// TensorFlow SplitV equivalent. Refer to TensorFlow documentation for details.
+struct TensorFlowSplitVOperator : Operator {
+  TensorFlowSplitVOperator() : Operator(OperatorType::kSplitV) {}
   int num_split = 0;
 };
 
