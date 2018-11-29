@@ -399,7 +399,7 @@ def func_graph_from_py_func(name,
               autograph.ConversionOptions(
                   verbose=autograph.Verbosity.BRIEF,
                   recursive=True,
-                  strip_decorators=(function.defun, def_function.function),
+                  strip_decorators=(def_function.function,),
                   optional_features=(),
               ), *args, **kwargs)
 
