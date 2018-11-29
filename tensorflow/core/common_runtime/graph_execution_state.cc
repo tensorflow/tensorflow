@@ -25,9 +25,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -393,6 +396,42 @@ Status ValidateFeedAndFetchDevices(
   }
   return Status::OK();
 }
+
+Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
+                                        PartialTensorShape* shape,
+                                        DataType* type) {
+  static const gtl::FlatSet<string>* const kHasExplicitShapeAttribute =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
+          "Placeholder", "PlaceholderV2", "PlaceholderWithDefault",
+          "ParallelConcat", "ImmutableConst", "_ParallelConcatStart",
+          "InfeedDequeue", "OutfeedDequeue", "CollectiveBcastSend",
+          "CollectiveBcastRecv", "AccumulateNV2", "VariableV2", "Variable",
+          "TemporaryVariable", "NcclBroadcast", "_ScopedAllocator",
+          "_ScopedAllocatorConcat"}));
+
+  // All the node types handled here have their output datatype set in
+  // either attribute 'dtype' or 'T'.
+  if (!GetNodeAttr(node, "dtype", type).ok() &&
+      !GetNodeAttr(node, "T", type).ok()) {
+    return errors::InvalidArgument(
+        "Could not determine output type for feed node: ", node.name(),
+        " of type ", node.op());
+  }
+
+  // First handle the case of feeding a const node.
+  if (node.op() == "Const" && HasNodeAttr(node, "value")) {
+    *shape =
+        PartialTensorShape(node.attr().at("value").tensor().tensor_shape());
+  } else if (kHasExplicitShapeAttribute->find(node.op()) !=
+             kHasExplicitShapeAttribute->end()) {
+    TF_RETURN_IF_ERROR(GetNodeAttr(node, "shape", shape));
+  } else {
+    return errors::InvalidArgument("Could not determine shape for feed node: ",
+                                   node.name(), " of type ", node.op());
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 Status GraphExecutionState::PruneGraph(
@@ -553,9 +592,6 @@ Status GraphExecutionState::OptimizeGraph(
   }
 
   if (grappler::MetaOptimizerEnabled(session_options_->config)) {
-    // Adding this functionality in steps. The first step is to make sure
-    // we don't break dependencies. The second step will be to turn the
-    // functionality on by default.
     grappler::GrapplerItem item;
     item.id = "tf_graph";
     graph_->ToGraphDef(&item.graph);
@@ -599,26 +635,30 @@ Status GraphExecutionState::OptimizeGraph(
         if (feeds.find(node.name()) == feeds.end()) {
           continue;
         }
-        if (node.attr().count("dtype") == 0 ||
-            node.attr().count("shape") == 0) {
-          return errors::InvalidArgument("Missing node shape or type");
-        }
-        TensorShapeProto shape_proto(node.attr().at("shape").shape());
-        // If the shape of the placeholder value is only partially known,
-        // we're free to use any dimension we want to feed the placeholder. We
-        // choose 1 to minimize the memory impact. Note that this only matters
-        // if an optimizer choose to run the graph to build its cost model,
-        // which doesn't happen (yet)
-        if (shape_proto.unknown_rank()) {
-          shape_proto.set_unknown_rank(false);
-        }
-        for (auto& dim : *shape_proto.mutable_dim()) {
-          if (dim.size() < 0) {
-            dim.set_size(1);
+        // Get the type and shape of the feed node.
+        PartialTensorShape partial_shape;
+        DataType type;
+        TF_RETURN_IF_ERROR(
+            GetFeedShapeAndTypeFromAttribute(node, &partial_shape, &type));
+        // If the shape of the placeholder is only partially known, we are free
+        // to set unknown dimensions of its shape to any value we desire. We
+        // choose 0 to minimize the memory impact. Note that this only matters
+        // if an optimizer chooses to run the graph.
+        TensorShape shape;
+        if (partial_shape.unknown_rank()) {
+          shape = TensorShape({0});
+        } else {
+          for (int i = 0; i < partial_shape.dims(); ++i) {
+            if (partial_shape.dim_size(i) < 0) {
+              partial_shape.set_dim(i, 0);
+            }
+          }
+          if (!partial_shape.AsTensorShape(&shape)) {
+            return errors::InvalidArgument(
+                "Could not derive shape for feed node: ", node.DebugString());
           }
         }
-        TensorShape shape(shape_proto);
-        DataType type = node.attr().at("dtype").type();
+
         Tensor fake_input(type, shape);
         item.feed.emplace_back(node.name(), fake_input);
       }
