@@ -113,5 +113,26 @@ INSTANTIATE_TEST_CASE_P(IotaR3TestInstantiation, IotaR3Test,
                                                             /*step=*/10),
                                            ::testing::Values(0, 1, 2)));
 
+class IotaR3PredTest : public ClientLibraryTestBase,
+                       public ::testing::WithParamInterface<int> {};
+
+TEST_P(IotaR3PredTest, DoIt) {
+  const auto element_type = PRED;
+  const int64 num_elements = 2;
+  const int64 iota_dim = GetParam();
+  XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
+  std::vector<int64> dimensions = {42, 19};
+  dimensions.insert(dimensions.begin() + iota_dim, num_elements);
+  Iota(&builder, ShapeUtil::MakeShape(element_type, dimensions), iota_dim);
+  if (primitive_util::IsFloatingPointType(element_type)) {
+    ComputeAndCompare(&builder, {}, ErrorSpec{0.0001});
+  } else {
+    ComputeAndCompare(&builder, {});
+  }
+}
+
+INSTANTIATE_TEST_CASE_P(IotaR3PredTestInstantiation, IotaR3PredTest,
+                        ::testing::Values(0, 1, 2));
+
 }  // namespace
 }  // namespace xla

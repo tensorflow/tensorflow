@@ -2245,13 +2245,15 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                 : iota->shape();
         PrimitiveType component_element_type = component_shape.element_type();
         llvm::Value* iota_result;
-        if (ShapeUtil::ElementIsIntegral(component_shape)) {
+        if (primitive_util::IsIntegralType(component_element_type) ||
+            component_element_type == PRED) {
           iota_result = b_->CreateIntCast(
               elem_index_linear,
               llvm_ir::PrimitiveTypeToIrType(component_element_type, module_),
               /*isSigned=*/false);
         } else {
-          TF_RET_CHECK(ShapeUtil::ElementIsFloating(component_shape))
+          TF_RET_CHECK(
+              primitive_util::IsFloatingPointType(component_element_type))
               << component_element_type;
           llvm::Type* float_ir_type;
           if (component_element_type == BF16) {
