@@ -102,7 +102,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "t": "x",
             "msg": "message",
         },
-        "tf.sparse.add": ["a", "b", "thresh"],
+        "tf.sparse.add": {
+            "thresh": "threshold",
+        },
+        "tf.sparse_add": {
+            "thresh": "threshold",
+        },
+        "tf.sparse.concat": {
+            "concat_dim": "axis",
+        },
+        "tf.sparse_concat": {
+            "concat_dim": "axis",
+        },
         "tf.sparse.split": {
             "split_dim": "axis",
         },
@@ -197,9 +208,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.strings.to_hash_bucket": {
             "string_tensor": "input",
         },
-        "tf.sparse.concat": [
-            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
-        ],
         "tf.reduce_all": {
             "reduction_indices": "axis",
             "keep_dims": "keepdims",
@@ -481,7 +489,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.size": ["input", "name", "out_type"],
         "tf.random.poisson": ["lam", "shape", "dtype", "seed", "name"],
         "tf.sparse.add": ["a", "b", "thresh"],
+        "tf.sparse_add": ["a", "b", "thresh"],
         "tf.sparse.concat": [
+            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
+        ],
+        "tf.sparse_concat": [
             "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
         ],
         "tf.sparse.segment_mean": [
