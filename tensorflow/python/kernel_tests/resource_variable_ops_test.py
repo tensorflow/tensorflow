@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -136,6 +137,14 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(v[0].assign(2.0))
     self.assertAllEqual(self.evaluate(v), [2.0, 2.0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testVariableShape(self):
+    v = resource_variable_ops.ResourceVariable([1., 1.])
+    self.assertAllEqual(
+        tensor_util.constant_value(
+            resource_variable_ops.variable_shape(v.handle)),
+        [2])
 
   def testDifferentAssignGraph(self):
     with ops.Graph().as_default():
