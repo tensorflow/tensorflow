@@ -55,7 +55,7 @@ TEST(StringUtil, TestStringUtil) {
   new_shape->data[0] = 2;
   new_shape->data[1] = 1;
   buf0.WriteToTensor(t0, new_shape);
-  buf1.WriteToTensor(t1);
+  buf1.WriteToTensorAsVector(t1);
 
   // Check tensor shapes.
   EXPECT_EQ(t0->dims->size, 2);
@@ -99,7 +99,7 @@ TEST(StringUtil, TestAddJoinedString) {
 
   DynamicBuffer buf;
   buf.AddJoinedString({{s0, 3}, {s1, 4}, {s2, 0}, {s3, 3}}, ' ');
-  buf.WriteToTensor(t0);
+  buf.WriteToTensorAsVector(t0);
 
   ASSERT_EQ(GetStringCount(t0), 1);
   StringRef str_ref;
@@ -115,7 +115,7 @@ TEST(StringUtil, TestEmptyList) {
   t0->type = kTfLiteString;
   t0->allocation_type = kTfLiteDynamic;
   DynamicBuffer buf;
-  buf.WriteToTensor(t0);
+  buf.WriteToTensorAsVector(t0);
 
   ASSERT_EQ(GetStringCount(t0), 0);
   ASSERT_EQ(t0->bytes, 8);

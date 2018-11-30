@@ -566,7 +566,7 @@ TEST(BasicInterpreter, ThreeStepAllocate) {
     DynamicBuffer buf;
     StringRef str_ref = GetString(input, 0);
     buf.AddString(str_ref);
-    buf.WriteToTensor(output);
+    buf.WriteToTensorAsVector(output);
     return kTfLiteOk;
   };
 

@@ -49,7 +49,7 @@ void ExecuteTfLite(const std::string& sentence,
     TfLiteTensor* input = interpreter->tensor(interpreter->inputs()[0]);
     tflite::DynamicBuffer buf;
     buf.AddString(sentence.data(), sentence.length());
-    buf.WriteToTensor(input);
+    buf.WriteToTensorAsVector(input);
     interpreter->AllocateTensors();
 
     interpreter->Invoke();
