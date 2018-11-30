@@ -58,7 +58,7 @@ PY_TEST_DIR="py_test_dir"
 SKIP_TEST=0
 RELEASE_BUILD=0
 TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..."
-EXTRA_BUILD_FLAGS=${ADDITIONAL_BUILD_ARGS:-}
+EXTRA_BUILD_FLAGS=${EXTRA_BUILD_FLAGS:-}
 
 # --skip_test            Skip running tests
 # --enable_remote_cache  Add options to enable remote cache for build and test
