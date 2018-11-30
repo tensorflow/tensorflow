@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
+#include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
@@ -175,12 +176,24 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     return;
   }
   StepStatsCollector* collector = nullptr;
+  DeviceTracer* tracer = nullptr;
   if (request->exec_opts().report_tensor_allocations_upon_oom() ||
       request->exec_opts().record_timeline() ||
       request->exec_opts().record_costs()) {
     collector = new StepStatsCollector(response->mutable_step_stats());
+    tracer = CreateDeviceTracerRaw();
+    // tracer may be NULL on platforms without accelerators.
+    if (tracer) {
+      Status s = tracer->Start();
+      if (!s.ok()) {
+        delete tracer;
+        done(s);
+        return;
+      }
+    }
     // TODO(mrry,pbar): GPU tracing for distributed steps.
   }
+
   CancellationManager* cm = new CancellationManager;
   opts->SetCancelCallback([this, cm, step_id]() {
     cm->StartCancel();
@@ -195,17 +208,20 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     delete cm;
     delete collector;
     delete out;
+    delete tracer;
     done(errors::Aborted("Call was aborted"));
     return;
   }
+
   session->graph_mgr->ExecuteAsync(
       request->graph_handle(), step_id, session.get(), request->exec_opts(),
       collector, response, cm, in,
-      [this, step_id, response, session, cm, out, token, collector, opts,
+      [this, step_id, response, session, cm, out, token, tracer, collector, opts,
        done](Status s) {
         if (s.ok()) {
           s = session->graph_mgr->RecvOutputs(step_id, out);
         }
+
         opts->ClearCancelCallback();
         cancellation_manager_.DeregisterCallback(token);
         delete cm;
@@ -217,6 +233,13 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
             response->AddRecv(key, val);
           }
         }
+
+        if (tracer) {
+          tracer->Stop();
+          tracer->Collect(collector);
+        }
+        delete tracer;
+
         if (collector) collector->Finalize();
         delete collector;
         delete out;

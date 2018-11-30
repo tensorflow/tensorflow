@@ -74,6 +74,7 @@ class DeviceTracer {
 // Returns 'nullptr' on platforms where tracing is not supported.
 std::unique_ptr<DeviceTracer> CreateDeviceTracer();
 
+DeviceTracer* CreateDeviceTracerRaw();
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEVICE_TRACER_H_
