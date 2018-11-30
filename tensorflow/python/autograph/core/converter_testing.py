@@ -32,6 +32,7 @@ from tensorflow.python.autograph.core import errors
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
@@ -43,7 +44,7 @@ def imported_decorator(f):
   return lambda a: f(a) + 1
 
 
-# TODO(mdan): We might be able to use the real namer here.
+# TODO(mdan): We should use the real namer here.
 class FakeNamer(object):
   """A fake namer that uses a global counter to generate unique names."""
 
@@ -61,7 +62,8 @@ class FakeNamer(object):
                              original_fqn,
                              live_entity=None,
                              owner_type=None):
-    del live_entity
+    if inspect_utils.islambda(live_entity):
+      return None, False
     if owner_type is not None:
       return None, False
     return ('renamed_%s' % '_'.join(original_fqn)), True
