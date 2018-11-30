@@ -329,7 +329,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
       for grad, var in grads_and_vars:
         scope_name = ("" if ops.executing_eagerly_outside_functions() else
                       "_" + var.op.name)
-        with ops.name_scope("update" + scope_name), ops.colocate_with(var):
+        with ops.name_scope("update" + scope_name):
           update_ops.append(update_grad_to_var(grad, var))
       # control dependencies does not work in per replica mode, please change
       # this once b/118841692 is fixed.
