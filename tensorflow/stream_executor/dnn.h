@@ -730,6 +730,7 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
+  AlgorithmDesc() : AlgorithmDesc(0, false) {}
   AlgorithmDesc(Index a, bool use_tensor_ops) {
     proto_.set_algo_id(a);
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
