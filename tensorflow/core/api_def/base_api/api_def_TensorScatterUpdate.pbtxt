@@ -1,5 +1,11 @@
 op {
-  graph_op_name: "ScatterNd"
+  graph_op_name: "TensorScatterUpdate"
+  in_arg {
+    name: "tensor"
+    description: <<END
+Tensor to copy/update.
+END
+  }
   in_arg {
     name: "indices"
     description: <<END
@@ -12,12 +18,6 @@ END
 Updates to scatter into output.
 END
   }
-  in_arg {
-    name: "shape"
-    description: <<END
-1-D. The shape of the resulting tensor.
-END
-  }
   out_arg {
     name: "output"
     description: <<END
@@ -25,16 +25,13 @@ A new tensor with the given shape and updates applied according
 to the indices.
 END
   }
-  summary: "Scatter `updates` into a new tensor according to `indices`."
+  summary: "Scatter `updates` into an existing tensor according to `indices`."
   description: <<END
-Creates a new tensor by applying sparse `updates` to individual values or
-slices within a tensor (initially zero for numeric, empty for string) of
-the given `shape` according to indices.  This operator is the inverse of the
-`tf.gather_nd` operator which extracts values or slices from a given tensor.
-
-This operation is similar to tensor_scatter_add, except that the tensor is
-zero-initialized. Calling `tf.scatter_nd(indices, values, shape)` is identical
-to `tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`
+This operation creates a new tensor by applying sparse `updates` to the passed
+in `tensor`.
+This operation is very similar to `tf.scatter_nd`, except that the updates are
+scattered onto an existing tensor (as opposed to a zero-tensor). If the memory
+for the existing tensor cannot be re-used, a copy is made and updated.
 
 If `indices` contains duplicates, then their updates are accumulated (summed).
 
@@ -68,23 +65,19 @@ In Python, this scatter operation would look like this:
 ```python
     indices = tf.constant([[4], [3], [1], [7]])
     updates = tf.constant([9, 10, 11, 12])
-    shape = tf.constant([8])
-    scatter = tf.scatter_nd(indices, updates, shape)
+    tensor = tf.ones([8], dtype=tf.int32)
+    updated = tf.tensor_scatter_update(tensor, indices, updates)
     with tf.Session() as sess:
       print(sess.run(scatter))
 ```
 
 The resulting tensor would look like this:
 
-    [0, 11, 0, 10, 9, 0, 0, 12]
+    [1, 11, 1, 10, 9, 1, 1, 12]
 
 We can also, insert entire slices of a higher rank tensor all at once. For
 example, if we wanted to insert two slices in the first dimension of a
 rank-3 tensor with two matrices of new values.
-
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
-</div>
 
 In Python, this scatter operation would look like this:
 
@@ -94,8 +87,8 @@ In Python, this scatter operation would look like this:
                             [7, 7, 7, 7], [8, 8, 8, 8]],
                            [[5, 5, 5, 5], [6, 6, 6, 6],
                             [7, 7, 7, 7], [8, 8, 8, 8]]])
-    shape = tf.constant([4, 4, 4])
-    scatter = tf.scatter_nd(indices, updates, shape)
+    tensor = tf.ones([4, 4, 4])
+    updated = tf.tensor_scatter_update(tensor, indices, updates)
     with tf.Session() as sess:
       print(sess.run(scatter))
 ```
@@ -103,9 +96,9 @@ In Python, this scatter operation would look like this:
 The resulting tensor would look like this:
 
     [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+     [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
      [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
+     [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]]
 
 Note that on CPU, if an out of bound index is found, an error is returned.
 On GPU, if an out of bound index is found, the index is ignored.

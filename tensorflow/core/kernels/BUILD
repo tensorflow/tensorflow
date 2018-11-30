@@ -4589,6 +4589,7 @@ tf_kernel_library(
         ":dense_update_functor",
         ":training_op_helpers",
         ":variable_ops",
+        ":inplace_ops",
     ],
 )
 
