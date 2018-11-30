@@ -586,7 +586,11 @@ class _GraphTensorArrayV2(object):
 
   def concat(self, name=None):
     """See TensorArray."""
-    raise NotImplementedError("TensorArray.concat")
+    value = list_ops.tensor_list_concat(
+        input_handle=self._flow, element_dtype=self._dtype, name=name)
+    if self._element_shape and self._element_shape[0].dims is not None:
+      value.set_shape([None] + self._element_shape[0].dims[1:])
+    return value
 
   @tf_should_use.should_use_result
   def unstack(self, value, name=None):
@@ -630,7 +634,30 @@ class _GraphTensorArrayV2(object):
   @tf_should_use.should_use_result
   def split(self, value, lengths, name=None):
     """See TensorArray."""
-    raise NotImplementedError("TensorArray.split")
+    with ops.name_scope(name, "TensorArraySplit", [self._flow, value, lengths]):
+      value = ops.convert_to_tensor(value, name="value")
+      lengths_64 = math_ops.to_int64(lengths)
+      if self._infer_shape and not context.executing_eagerly():
+        clengths = tensor_util.constant_value(lengths_64)
+        if value.shape.dims is not None:
+          if clengths is not None and clengths.max() == clengths.min():
+            self._merge_element_shape(
+                tensor_shape.TensorShape([clengths[0]]).concatenate(
+                    value.shape[1:]))
+      flow_out = list_ops.tensor_list_split(
+          tensor=value,
+          lengths=lengths_64,
+          element_shape=self._element_shape[0] if self._element_shape else None,
+          name=name)
+      ta = TensorArray(
+          dtype=self._dtype,
+          handle=self.handle,
+          flow=flow_out,
+          colocate_with_first_write_call=self._colocate_with_first_write_call)
+      ta._infer_shape = self._infer_shape
+      ta._element_shape = self._element_shape
+      ta._colocate_with = self._colocate_with
+      return ta
 
   def size(self, name=None):
     """See TensorArray."""
