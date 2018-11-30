@@ -241,7 +241,7 @@ Status ProcessDataEdgeBetweenOutsideCompilationAndHostComputation(
 
   // Remove the edge from host to outside compilation. Add a placeholder as
   // outside compilation node input.
-  std::map<string, Node*> placeholders;
+  std::map<std::pair<string, int>, Node*> placeholders;
   for (int i = 0; i < edges.size(); i++) {
     Node* dst = g->FindNodeId(edges[i].dst_node_id);
     const Edge* e;
@@ -253,9 +253,10 @@ Status ProcessDataEdgeBetweenOutsideCompilationAndHostComputation(
     // Find or create placeholder node.
     string new_name =
         edges[i].is_host_to_outside_compilation
-            ? absl::StrCat(src->name(), "_host_to_oc_placeholder")
-            : absl::StrCat(src->name(), "_oc_to_host_placeholder");
-    auto iter = placeholders.find(new_name);
+            ? absl::StrCat(src->name(), "_host_to_oc_placeholder_", src_output)
+            : absl::StrCat(src->name(), "_oc_to_host_placeholder_", src_output);
+    auto placeholder_index = std::make_pair(src->name(), src_output);
+    auto iter = placeholders.find(placeholder_index);
     Node* placeholder_node;
     if (iter == placeholders.end()) {
       NodeDefBuilder placeholder_builder(new_name, "Placeholder");
@@ -288,7 +289,7 @@ Status ProcessDataEdgeBetweenOutsideCompilationAndHostComputation(
       Status s;
       placeholder_node = g->AddNode(placeholder_def, &s);
       TF_RETURN_IF_ERROR(s);
-      placeholders[new_name] = placeholder_node;
+      placeholders[placeholder_index] = placeholder_node;
     } else {
       placeholder_node = iter->second;
     }
@@ -642,7 +643,7 @@ Status PreprocessDataEdgesBetweenOutsideCompilations(
 
   // Remove the edge from host to outside compilation. Add a placeholder as
   // outside compilation node input.
-  std::map<string, Node*> placeholders;
+  std::map<std::pair<string, int>, Node*> placeholders;
   for (int i = 0; i < edges.size(); i++) {
     Node* dst = g->FindNodeId(edges[i].dst_node_id);
     const Edge* e;
@@ -652,8 +653,10 @@ Status PreprocessDataEdgesBetweenOutsideCompilations(
     g->RemoveEdge(e);
 
     // Find or create placeholder node.
-    string new_name = absl::StrCat(src->name(), "_oc_to_oc_placeholder");
-    auto iter = placeholders.find(new_name);
+    string new_name =
+        absl::StrCat(src->name(), "_oc_to_oc_placeholder_", src_output);
+    auto placeholder_index = std::make_pair(src->name(), src_output);
+    auto iter = placeholders.find(placeholder_index);
     Node* placeholder_node;
     if (iter == placeholders.end()) {
       NodeDefBuilder placeholder_builder(new_name, "Placeholder");
@@ -673,7 +676,7 @@ Status PreprocessDataEdgesBetweenOutsideCompilations(
       Status s;
       placeholder_node = g->AddNode(placeholder_def, &s);
       TF_RETURN_IF_ERROR(s);
-      placeholders[new_name] = placeholder_node;
+      placeholders[placeholder_index] = placeholder_node;
     } else {
       placeholder_node = iter->second;
     }
