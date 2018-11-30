@@ -880,6 +880,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(self.evaluate(result_0), [6., 8.])
     self.assertAllEqual(self.evaluate(result_1), [10., 12.])
 
+  @test_util.run_deprecated_v1
   def testSkipEagerConcatShapeInference(self):
 
     def BuildTensor(element_shape):
@@ -1004,6 +1005,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32),
         [4., 5.])
 
+  @test_util.run_deprecated_v1
   def testSkipEagerSplitWithInvalidTensorShapeFails(self):
     with self.cached_session():
       tensor = array_ops.placeholder(dtype=dtypes.float32)
@@ -1013,6 +1015,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           r"Tensor must be at least a vector, but saw shape: \[\]"):
         l.eval({tensor: 1})
 
+  @test_util.run_deprecated_v1
   def testSkipEagerSplitWithInvalidLengthsShapeFails(self):
     with self.cached_session():
       lengths = array_ops.placeholder(dtype=dtypes.int64)
@@ -1042,6 +1045,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_split([1., 2.], element_shape=None, lengths=[1])
       self.evaluate(l)
 
+  @test_util.run_deprecated_v1
   def testSkipEagerSplitWithScalarElementShapeFails(self):
     with self.assertRaisesRegexp(ValueError,
                                  r"Shapes must be equal rank, but are 1 and 0"):
@@ -1065,6 +1069,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           r"but saw: \[\]"):
         list_ops.tensor_list_split([1., 2.], element_shape=[], lengths=[1, 1])
 
+  @test_util.run_deprecated_v1
   def testSkipEagerSplitWithIncompatibleTensorShapeAndElementShapeFails(self):
     with self.assertRaisesRegexp(ValueError,
                                  r"Shapes must be equal rank, but are 2 and 1"):
