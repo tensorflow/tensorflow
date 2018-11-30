@@ -639,6 +639,17 @@ private:
   explicit MulIOp(const Operation *state) : BinaryOp(state) {}
 };
 
+/// The "select" operation chooses one value based on a binary condition
+/// supplied as its first operand. If the value of the first operand is 1, the
+/// second operand is chosen, otherwise the third operand is chosen. The second
+/// and the third operand must have the same type. The operation applies
+/// elementwise to vectors and tensors.  The shape of all arguments must be
+/// identical. For example, the maximum operation is obtained by combining
+/// "select" with "cmpi" as follows.
+///
+///   %2 = cmpi "gt" %0, %1 : i32         // %2 is i1
+///   %3 = select %2, %0, %1 : i32
+///
 class SelectOp : public Op<SelectOp, OpTrait::NOperands<3>::Impl,
                            OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
