@@ -1,10 +1,13 @@
 licenses(["notice"])  # Apache 2.0
 
+package_group(
+    name = "friends",
+    includes = ["//tensorflow:internal"],
+)
+
 package(
     default_visibility = [
-        "//learning/deepmind/public/wavenet/python:__subpackages__",
-        "//learning/tfx:__subpackages__",
-        "//tensorflow:internal",
+        ":friends",
     ],
 )
 

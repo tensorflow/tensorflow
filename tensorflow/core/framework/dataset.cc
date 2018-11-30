@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
+#include <unordered_map>
 
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 namespace data {
@@ -140,7 +143,7 @@ Status GraphDefBuilderWrapper::AddFunction(SerializationContext* ctx,
             << " the graph. It will not be added again.";
     return Status::OK();
   }
-  if (!ctx->allow_stateful_functions()) {
+  if (!ctx->optimization_only()) {
     TF_RETURN_IF_ERROR(
         EnsureFunctionIsStateless(ctx->flib_def(), function_name));
   }
@@ -203,28 +206,9 @@ bool GraphDefBuilderWrapper::HasAttr(const string& name,
   return HasAttr(op_def, attr_name);
 }
 
-Status DatasetBase::Save(SerializationContext* ctx,
-                         IteratorStateWriter* writer) const {
-  string serialized_graph_def;
-  string output_node;
-  GraphDefBuilder b;
-  DatasetGraphDefBuilder db(&b);
-  Node* node = nullptr;
-  TF_RETURN_IF_ERROR(AsGraphDefInternal(ctx, &db, &node));
-  output_node = node->name();
-  GraphDef graph_def;
-  TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
-  graph_def.SerializeToString(&serialized_graph_def);
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(kDatasetGraphKey, serialized_graph_def));
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(kDatasetGraphOutputNodeKey, output_node));
-  return Status::OK();
-}
-
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                    DatasetBase** out_dataset) {
-  if (!(tensor.dtype() == DT_VARIANT ||
+  if (!(tensor.dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(tensor.shape()))) {
     return errors::InvalidArgument(
         "Dataset tensor must be a scalar of dtype DT_VARIANT.");
@@ -249,6 +233,47 @@ Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
   }
   tensor->scalar<Variant>()() = DatasetVariantWrapper(dataset);
   return Status::OK();
+}
+
+Status DatasetBase::Save(SerializationContext* ctx,
+                         IteratorStateWriter* writer) const {
+  string serialized_graph_def;
+  string output_node;
+  GraphDefBuilder b;
+  DatasetGraphDefBuilder db(&b);
+  Node* node = nullptr;
+  TF_RETURN_IF_ERROR(AsGraphDefInternal(ctx, &db, &node));
+  output_node = node->name();
+  GraphDef graph_def;
+  TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
+  graph_def.SerializeToString(&serialized_graph_def);
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(kDatasetGraphKey, serialized_graph_def));
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(kDatasetGraphOutputNodeKey, output_node));
+  return Status::OK();
+}
+
+Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
+    SerializationContext* ctx, const DatasetBase* dataset, Node** output) {
+  Status status = dataset->AsGraphDefInternal(ctx, this, output);
+  if (ctx->optimization_only() && errors::IsUnimplemented(status)) {
+    Tensor t(DT_VARIANT, TensorShape({}));
+    // `StoreDatasetInVariantTensor` will transfer ownership of `dataset`. We
+    // increment the refcount of `dataset` here to retain ownership.
+    dataset->Ref();
+    TF_RETURN_IF_ERROR(
+        StoreDatasetInVariantTensor(const_cast<DatasetBase*>(dataset), &t));
+    TF_RETURN_IF_ERROR(AddPlaceholder(t, output));
+    DCHECK_NE(ctx->input_list(), nullptr);
+    ctx->input_list()->emplace_back((*output)->name(), std::move(t));
+    LOG(WARNING)
+        << "Input of " << dataset->DebugString()
+        << " will not be optimized because the dataset does not implement the "
+           "AsGraphDefInternal() method needed to apply optimizations.";
+    return Status::OK();
+  }
+  return status;
 }
 
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {

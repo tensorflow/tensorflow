@@ -24,11 +24,13 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     selector_dataset = dataset_ops.Dataset.range(10).repeat(100)
     input_datasets = [
@@ -40,12 +42,12 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for _ in range(100):
         for i in range(10):
-          self.assertEqual(i, sess.run(next_element))
+          self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def _normalize(self, vec):
     return vec / vec.sum()
@@ -71,12 +73,13 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
     with self.cached_session() as sess:
       freqs = np.zeros([num_datasets])
       for _ in range(num_samples):
-        freqs[sess.run(next_element)] += 1
+        freqs[self.evaluate(next_element)] += 1
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
     return freqs
 
+  @test_util.run_deprecated_v1
   def testSampleFromDatasets(self):
     random_seed.set_random_seed(1619)
     num_samples = 5000
@@ -96,6 +99,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
       freqs = self._testSampleFromDatasetsHelper(probs_ds, classes, num_samples)
       self.assertLess(self._chi2(probs, freqs / num_samples), 1e-2)
 
+  @test_util.run_deprecated_v1
   def testSelectFromDatasets(self):
     words = [b"foo", b"bar", b"baz"]
     datasets = [dataset_ops.Dataset.from_tensors(w).repeat() for w in words]
@@ -107,9 +111,9 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       for i in choice_array:
-        self.assertEqual(words[i], sess.run(next_element))
+        self.assertEqual(words[i], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testErrors(self):
     with self.assertRaisesRegexp(ValueError,

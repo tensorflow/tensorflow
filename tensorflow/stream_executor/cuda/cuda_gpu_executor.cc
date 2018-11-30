@@ -25,6 +25,7 @@ limitations under the License.
 #include <unistd.h>
 #endif
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/cuda/cuda_event.h"
@@ -146,7 +147,7 @@ port::Status CUDAExecutor::Init(int device_ordinal,
 }
 
 bool CUDAExecutor::FindOnDiskForComputeCapability(
-    port::StringPiece filename, port::StringPiece canonical_suffix,
+    absl::string_view filename, absl::string_view canonical_suffix,
     string *found_filename) const {
   if (cc_major_ == 0 && cc_minor_ == 0) {
     return false;
@@ -661,8 +662,13 @@ bool CUDAExecutor::MemcpyDeviceToDevice(Stream *stream,
 }
 
 bool CUDAExecutor::HostCallback(Stream *stream,
-                                std::function<void()> callback) {
-  auto callback_ptr = new std::function<void()>(callback);
+                                std::function<port::Status()> callback) {
+  auto callback_ptr = new std::function<void()>([callback]() {
+    port::Status s = callback();
+    if (!s.ok()) {
+      LOG(WARNING) << "Host callback failed: " << s;
+    }
+  });
   return CUDADriver::AddStreamCallback(context_, AsCUDAStreamValue(stream),
                                        InternalHostCallback, callback_ptr);
 }

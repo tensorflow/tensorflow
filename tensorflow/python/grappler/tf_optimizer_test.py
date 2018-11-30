@@ -17,12 +17,13 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import item as gitem
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
@@ -34,6 +35,7 @@ from tensorflow.python.platform import test
 
 class PyWrapOptimizeGraphTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     """Make sure arguments can be passed correctly."""
     a = constant_op.constant(10, name='a')
@@ -45,15 +47,17 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     train_op.append(d)
     mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
 
-    rewriter_config = rewriter_config_pb2.RewriterConfig()
+    config = config_pb2.ConfigProto()
+    rewriter_config = config.graph_options.rewrite_options
     rewriter_config.optimizers.append('constfold')
     rewriter_config.min_graph_nodes = -1
 
-    graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
+    graph = tf_optimizer.OptimizeGraph(config, mg)
 
     self.assertEqual(len(graph.node), 1)
     self.assertItemsEqual([node.name for node in graph.node], ['d'])
 
+  @test_util.run_deprecated_v1
   def testKeepNodes(self):
     g = ops.Graph()
     with g.as_default():
@@ -68,18 +72,21 @@ class PyWrapOptimizeGraphTest(test.TestCase):
 
     # Optimize the graph.
     mg = meta_graph.create_meta_graph_def(graph=g)
-    rewriter_config = rewriter_config_pb2.RewriterConfig()
+    config = config_pb2.ConfigProto()
+    rewriter_config = config.graph_options.rewrite_options
     rewriter_config.min_graph_nodes = -1
-    optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
+    optimized_graph = tf_optimizer.OptimizeGraph(config, mg)
 
     # Check that the nodes referenced in various collections have been preserved
-    self.assertEqual(len(optimized_graph.node), 5)
-    self.assertEqual(d.op.name, optimized_graph.node[0].name)
-    self.assertEqual(a1.op.name, optimized_graph.node[1].name)
-    self.assertEqual('Variable/initial_value', optimized_graph.node[2].name)
-    self.assertEqual(a2.op.name, optimized_graph.node[3].name)
-    self.assertEqual('Variable/Assign', optimized_graph.node[4].name)
+    optimized_graph_nodes = [node.name for node in optimized_graph.node]
+    expected_nodes = [
+        d.op.name, a1.op.name, a2.op.name, 'Variable/initial_value',
+        'Variable/Assign'
+    ]
+    self.assertEqual(len(optimized_graph_nodes), len(expected_nodes))
+    self.assertAllInSet(optimized_graph_nodes, expected_nodes)
 
+  @test_util.run_deprecated_v1
   def testLoops(self):
     g = ops.Graph()
     with g.as_default():
@@ -110,9 +117,10 @@ class PyWrapOptimizeGraphTest(test.TestCase):
 
     # Optimize the graph.
     mg = meta_graph.create_meta_graph_def(graph=g)
-    rewriter_config = rewriter_config_pb2.RewriterConfig()
+    config = config_pb2.ConfigProto()
+    rewriter_config = config.graph_options.rewrite_options
     rewriter_config.min_graph_nodes = -1
-    optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
+    optimized_graph = tf_optimizer.OptimizeGraph(config, mg)
     mg.graph_def.CopyFrom(optimized_graph)
 
     # Check that the nodes referenced in various collections have been preserved

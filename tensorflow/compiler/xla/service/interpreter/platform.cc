@@ -110,3 +110,5 @@ REGISTER_MODULE_INITIALIZER(
 // open-source project, so this will be a no-op there.
 REGISTER_MODULE_INITIALIZER_SEQUENCE(interpreter_platform,
                                      multi_platform_manager);
+REGISTER_MODULE_INITIALIZER_SEQUENCE(multi_platform_manager_listener,
+                                     interpreter_platform);

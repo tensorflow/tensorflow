@@ -114,7 +114,7 @@ HloModule ModuleWithWhile
 
 body {
   p_b = (f32[2],(f32[2],f32[2])) parameter(0)
-  p_b.0 = f32[2] get-tuple-element((f32[2],f32[2],f32[2]) p_b), index=0
+  p_b.0 = f32[2] get-tuple-element((f32[2],(f32[2],f32[2])) p_b), index=0
   p_b.1 = (f32[2],f32[2]) get-tuple-element((f32[2],(f32[2],f32[2])) p_b), index=1
 
   p_b.1.1 = f32[2] get-tuple-element(p_b.1), index=0
@@ -241,6 +241,179 @@ ENTRY entry {
       EXPECT_GT(inst->user_count(), 0);
     }
   }
+}
+
+TEST_F(WhileLoopConstantSinkingTest, ConditionalSinkConstant) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[],f32[]) parameter(0)
+  p_body.0 = f32[] get-tuple-element((f32[],f32[]) p_body), index=0
+  const = f32[] constant(1)
+  add = f32[] add(p_body.0, const)
+  p_body.1 = f32[] get-tuple-element((f32[],f32[]) p_body), index=1
+  ROOT root = (f32[],f32[]) tuple(add, p_body.1)
+}
+
+condition {
+  p_cond = (f32[],f32[]) parameter(0)
+  p_cond.0 = f32[] get-tuple-element((f32[],f32[]) p_cond), index=0
+  p_cond.1 = f32[] get-tuple-element((f32[],f32[]) p_cond), index=1
+  ROOT result = pred[] less-than(p_cond.0, p_cond.1)
+}
+
+ENTRY entry {
+  const_0 = f32[] constant(0)
+  const_1 = f32[] constant(10)
+  while_init = (f32[],f32[]) tuple(const_0, const_1)
+  ROOT while = (f32[],f32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  auto* while_condition = module->GetComputationWithName("condition");
+  EXPECT_THAT(while_condition->root_instruction(), op::Lt(_, op::Constant()));
+}
+
+TEST_F(WhileLoopConstantSinkingTest, ConditionalTupleShapedConstants) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_b = (f32[],(f32[],f32[])) parameter(0)
+  p_b.0 = f32[] get-tuple-element((f32[],(f32[],f32[])) p_b), index=0
+  p_b.1 = (f32[],f32[]) get-tuple-element((f32[],(f32[],f32[])) p_b), index=1
+  p_b.1.0 = f32[] get-tuple-element((f32[],f32[]) p_b.1), index=0
+  add = f32[] add(p_b.0, p_b.1.0)
+  ROOT root = (f32[],(f32[],f32[])) tuple(add, p_b.1)
+}
+
+condition {
+  p_c = (f32[],(f32[],f32[])) parameter(0)
+  p_c.0 = f32[] get-tuple-element((f32[],(f32[],f32[])) p_c), index=0
+  p_c.1 = (f32[],f32[]) get-tuple-element((f32[],(f32[],f32[])) p_c), index=1
+  p_c.1.1 = f32[] get-tuple-element((f32[],f32[]) p_c.1), index=1
+  ROOT result = pred[] less-than(p_c.0, p_c.1.1)
+}
+
+ENTRY entry {
+  const_0 = f32[] constant(0)
+  const_1 = (f32[], f32[]) constant((f32[], f32[]) (1, 10))
+  while_init = (f32[],(f32[],f32[])) tuple(const_0, const_1)
+  ROOT while = (f32[],(f32[],f32[])) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  auto* while_condition = module->GetComputationWithName("condition");
+  EXPECT_THAT(while_condition->root_instruction(),
+              op::Lt(_, op::GetTupleElement(op::Constant())));
+}
+
+TEST_F(WhileLoopConstantSinkingTest, ConditionalDontCreateDeadConstant) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[],f32[],f32[]) parameter(0)
+  p_body.0 = f32[] get-tuple-element((f32[],f32[],f32[]) p_body), index=0
+  const = f32[] constant(1)
+  add = f32[] add(p_body.0, const)
+  p_body.1 = f32[] get-tuple-element((f32[],f32[],f32[]) p_body), index=1
+  p_body.2 = f32[] get-tuple-element((f32[],f32[],f32[]) p_body), index=2
+  ROOT root = (f32[],f32[],f32[]) tuple(add, p_body.1, p_body.2)
+}
+
+condition {
+  p_cond = (f32[],f32[],f32[]) parameter(0)
+  p_cond.0 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=0
+  p_cond.1 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=1
+  p_cond.2 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=2
+  ROOT result = pred[] less-than(p_cond.0, p_cond.1)
+}
+
+ENTRY entry {
+  const_0 = f32[] constant(0)
+  const_1 = f32[] constant(10)
+  const_2 = f32[] constant(12)
+  while_init = (f32[],f32[],f32[]) tuple(const_0, const_1, const_2)
+  ROOT while = (f32[],f32[],f32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  auto* while_condition = module->GetComputationWithName("condition");
+  EXPECT_THAT(while_condition->root_instruction(), op::Lt(_, op::Constant()));
+  for (const HloInstruction* inst : while_condition->instructions()) {
+    if (inst->opcode() == HloOpcode::kConstant) {
+      EXPECT_GT(inst->user_count(), 0);
+    }
+  }
+}
+
+TEST_F(WhileLoopConstantSinkingTest, ConditionalMultipleSameIndexGTEs) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[],f32[],f32[]) parameter(0)
+  p_body.0 = f32[] get-tuple-element((f32[],f32[],f32[]) p_body), index=0
+  const = f32[] constant(1)
+  add.0 = f32[] add(p_body.0, const)
+  p_body.1 = f32[] get-tuple-element((f32[],f32[],f32[]) p_body), index=1
+  add.1 = f32[] add(p_body.1, const)
+  p_body.2 = f32[] get-tuple-element((f32[],f32[],f32[]) p_body), index=2
+  ROOT root = (f32[],f32[],f32[]) tuple(add.0, add.1, p_body.2)
+}
+
+condition {
+  p_cond = (f32[],f32[],f32[]) parameter(0)
+  p_cond.0 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=0
+  p_cond.2 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=2
+  lt.0 = pred[] less-than(p_cond.0, p_cond.2)
+  p_cond.1 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=1
+  p_cond.2.c = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=2
+  lt.1 = pred[] less-than(p_cond.1, p_cond.2.c)
+  ROOT result = pred[] and(lt.0, lt.1)
+}
+
+ENTRY entry {
+  const_0 = f32[] constant(0)
+  const_1 = f32[] constant(0)
+  const_2 = f32[] constant(12)
+  while_init = (f32[],f32[],f32[]) tuple(const_0, const_1, const_2)
+  ROOT while = (f32[],f32[],f32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  auto* while_condition = module->GetComputationWithName("condition");
+  EXPECT_THAT(while_condition->root_instruction(),
+              op::And(op::Lt(_, op::Constant()), op::Lt(_, op::Constant())));
 }
 }  // namespace
 }  // namespace xla

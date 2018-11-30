@@ -591,6 +591,7 @@ cc_library(
     deps = [
         ":function_utils",
         ":graph_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/cc:ops",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu",
@@ -627,6 +628,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:logging_ops",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:nn",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + tf_protos_all(),

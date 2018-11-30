@@ -19,14 +19,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
-class HloPassPipelineTest : public HloVerifiedTestBase {
+class HloPassPipelineTest : public HloTestBase {
  protected:
   StatusOr<HloModuleGroup> ParseModuleGroup(
       absl::Span<const string> hlo_strings) {

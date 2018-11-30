@@ -164,11 +164,11 @@ cc_library(
     deps = [
         ":constants",
         ":math",
-        ":numeric",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/base",
     ],
 )
 
@@ -177,8 +177,9 @@ cc_library(
     srcs = ["sorting.cc"],
     hdrs = ["sorting.h"],
     deps = [
-        ":numeric",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
     ],
@@ -187,10 +188,6 @@ cc_library(
 xla_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
-    blacklisted_backends = [
-        "cpu",
-        "gpu",
-    ],
     tags = ["enable_for_xla_interpreter"],
     deps = [
         ":sorting",

@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
@@ -61,11 +61,11 @@ class MatrixBandPartOp : public XlaOpKernel {
 
     // Compute 'offset', which is how many diagonals we are above/below the
     // diagonal.
-    xla::XlaOp iota_m = xla::Iota(builder, index_xla_type, m);
-    xla::XlaOp iota_n = xla::Iota(builder, index_xla_type, n);
+    xla::Shape iota_shape = xla::ShapeUtil::MakeShape(index_xla_type, {m, n});
+    xla::XlaOp iota_m = xla::Iota(builder, iota_shape, /*iota_dimension=*/0);
+    xla::XlaOp iota_n = xla::Iota(builder, iota_shape, /*iota_dimension=*/1);
 
-    auto offset = xla::Sub(xla::Broadcast(iota_n, {m}), iota_m,
-                           /*broadcast_dimensions=*/{0});
+    auto offset = xla::Sub(iota_n, iota_m);
 
     // If num_lower or num_upper are negative, include all lower/upper
     // diagonals.

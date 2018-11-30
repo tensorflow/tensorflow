@@ -47,7 +47,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
       with variable_scope.variable_scope('some_scope'):
         variable_scope.get_variable(name='embeddings', shape=[5, 16],
                                     initializer=initializer)
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       saver = saver_lib.Saver()
       saver.save(sess, checkpoint_prefix, global_step=5)
     self.checkpoint_file = '{}-5'.format(checkpoint_prefix)
@@ -115,7 +115,8 @@ class LoadAndRemapWrappersTest(test.TestCase):
         axis=1)
 
     with self.cached_session():
-      self.assertAllClose(expected_remapped_matrix, remapped_matrix.eval())
+      self.assertAllClose(expected_remapped_matrix,
+                          self.evaluate(remapped_matrix))
 
   def test_load_and_remap_output_layer_weight_initializer_linear(self):
     """Tests for the output layer initializer in the linear multi-class case."""

@@ -1,6 +1,6 @@
 name: XLA
 breadcrumb_name: XLA
-home_url: /extend/xla
+home_url: /xla/
 parent_project_metadata_path: /_project.yaml
 description: >
   XLA is a compiler-based linear algebra execution engine.

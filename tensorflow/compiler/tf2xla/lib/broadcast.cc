@@ -80,10 +80,8 @@ xla::StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
     broadcast_dim = broadcast_shape_size - broadcast_dim - 1;
   }
   absl::c_reverse(broadcast_shape);
-  xla::XlaOp output = xla::BroadcastInDim(
-      input,
-      xla::ShapeUtil::MakeShape(input_shape.element_type(), broadcast_shape),
-      broadcast_dims);
+  xla::XlaOp output =
+      xla::BroadcastInDim(input, broadcast_shape, broadcast_dims);
   if (broadcast_shape != output_dims) {
     output = xla::Reshape(output, output_dims);
   }

@@ -265,6 +265,22 @@ XlaOp Digamma(XlaOp input) {
   return result;
 }
 
+// Implements Banker's rounding: numbers that are equidistant between two
+// integers are rounded towards even.
+XlaOp RoundToEven(XlaOp x) {
+  auto half = xla::ScalarLike(x, 0.5);
+  auto one = xla::ScalarLike(x, 1.0);
+  auto two = xla::ScalarLike(x, 2.0);
+
+  auto round_val = xla::Floor(x);
+  auto fraction = x - round_val;
+  auto nearest_even_int = round_val - two * xla::Floor(half * x);
+  auto is_odd = xla::Eq(nearest_even_int, one);
+  return xla::Select(xla::Or(xla::Gt(fraction, half),
+                             xla::And(xla::Eq(fraction, half), is_odd)),
+                     round_val + one, round_val);
+}
+
 // Trigonometric functions.
 
 // acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x))

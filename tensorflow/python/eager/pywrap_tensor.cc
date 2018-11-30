@@ -156,7 +156,8 @@ bool IsCompatible(int desired_dtype, TF_DataType returned_dtype) {
       tensorflow::DataTypeIsInteger(returned)) {
     return true;
   } else if (tensorflow::DataTypeIsFloating(desired) &&
-             tensorflow::DataTypeIsFloating(returned)) {
+             (tensorflow::DataTypeIsFloating(returned) ||
+              tensorflow::DataTypeIsInteger(returned))) {
     return true;
   } else if (tensorflow::DataTypeIsComplex(desired) &&
              (tensorflow::DataTypeIsComplex(returned) ||
@@ -419,9 +420,14 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
       if (TF_GetCode(self->status) != TF_OK) {
         PyErr_SetString(
             PyExc_TypeError,
-            tensorflow::strings::StrCat("Error while casting from DataType ",
-                                        handle_dtype, " to ", desired_dtype,
-                                        ". ", TF_Message(self->status))
+            tensorflow::strings::StrCat(
+                "Error while casting from DataType ",
+                tensorflow::DataTypeString(
+                    static_cast<tensorflow::DataType>(handle_dtype)),
+                " to ",
+                tensorflow::DataTypeString(
+                    static_cast<tensorflow::DataType>(desired_dtype)),
+                ". ", TF_Message(self->status))
                 .c_str());
         // Cleanup self->status before returning.
         TF_SetStatus(self->status, TF_OK, "");
@@ -433,8 +439,10 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
       PyErr_SetString(
           PyExc_TypeError,
           tensorflow::strings::StrCat(
-              "Cannot convert value ", TFE_GetPythonString(value_str.get()),
-              " to EagerTensor with requested dtype: ", desired_dtype)
+              "Cannot convert provided value to EagerTensor. Provided value: ",
+              TFE_GetPythonString(value_str.get()), " Requested dtype: ",
+              tensorflow::DataTypeString(
+                  static_cast<tensorflow::DataType>(desired_dtype)))
               .c_str());
       return -1;
     }
@@ -664,11 +672,29 @@ static PyObject* EagerTensor_device(EagerTensor* self) {
 #endif
 }
 
+// Getter `backing_device`.
+static PyObject* EagerTensor_backing_device(EagerTensor* self) {
+  const char* device =
+      TFE_TensorHandleBackingDeviceName(self->handle, self->status);
+  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+    // Cleanup self->status before returning.
+    TF_SetStatus(self->status, TF_OK, "");
+    return nullptr;
+  }
+#if PY_MAJOR_VERSION >= 3
+  return PyUnicode_FromString(device);
+#else
+  return PyBytes_FromString(device);
+#endif
+}
+
 static PyGetSetDef EagerTensor_getseters[] = {
     {const_cast<char*>("_id"), (getter)EagerTensor_getid, nullptr,
      const_cast<char*>("_id"), nullptr},
     {const_cast<char*>("device"), (getter)EagerTensor_device, nullptr,
      const_cast<char*>("device"), nullptr},
+    {const_cast<char*>("backing_device"), (getter)EagerTensor_backing_device,
+     nullptr, const_cast<char*>("backing_device"), nullptr},
     {const_cast<char*>("_handle_data"), (getter)EagerTensor_tensor_handle,
      (setter)EagerTensor_settensor_handle, const_cast<char*>("_tensor_handle"),
      nullptr},

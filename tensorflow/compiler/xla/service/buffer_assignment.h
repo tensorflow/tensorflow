@@ -545,12 +545,10 @@ class BufferAssigner {
       ReuseAllocationFunction reuse_checker = nullptr);
 
  private:
-  BufferAssigner(bool allow_input_output_aliasing,
-                 bool allocate_buffers_for_constants,
+  BufferAssigner(bool allocate_buffers_for_constants,
                  BufferLiveness::Colorer colorer,
                  ReuseAllocationFunction reuse_checker)
-      : allow_input_output_aliasing_(allow_input_output_aliasing),
-        allocate_buffers_for_constants_(allocate_buffers_for_constants),
+      : allocate_buffers_for_constants_(allocate_buffers_for_constants),
         colorer_(colorer),
         reuse_checker_(reuse_checker) {}
   virtual ~BufferAssigner() = default;
@@ -639,10 +637,6 @@ class BufferAssigner {
                       absl::flat_hash_set<const LogicalBuffer*>,
                       LogicalBuffer::Color::Hasher>
   SplitBuffersByColor(const absl::flat_hash_set<const LogicalBuffer*>& buffers);
-
-  // If true, buffer assignments assumes that input parameter buffers and output
-  // buffers can be shared if their sizes match.
-  bool allow_input_output_aliasing_;
 
   // If true, allocate buffers for constant instructions.
   bool allocate_buffers_for_constants_;

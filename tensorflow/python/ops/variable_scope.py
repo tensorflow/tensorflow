@@ -437,37 +437,43 @@ class _VariableStore(object):
           raise ValueError(
               "Partitioner must be callable, but received: %s" % partitioner)
         with ops.name_scope(None):
-          return self._get_partitioned_variable(name=name,
-                                                shape=shape,
-                                                dtype=dtype,
-                                                initializer=initializer,
-                                                regularizer=regularizer,
-                                                reuse=reuse,
-                                                trainable=trainable,
-                                                collections=collections,
-                                                caching_device=caching_device,
-                                                partitioner=partitioner,
-                                                validate_shape=validate_shape,
-                                                use_resource=use_resource,
-                                                constraint=constraint)
+          return self._get_partitioned_variable(
+              name=name,
+              shape=shape,
+              dtype=dtype,
+              initializer=initializer,
+              regularizer=regularizer,
+              reuse=reuse,
+              trainable=trainable,
+              collections=collections,
+              caching_device=caching_device,
+              partitioner=partitioner,
+              validate_shape=validate_shape,
+              use_resource=use_resource,
+              constraint=constraint,
+              synchronization=synchronization,
+              aggregation=aggregation)
 
       # Special case for partitioned variable to allow reuse without having to
       # specify partitioner.
       if (reuse is True and partitioner is None
           and name in self._partitioned_vars):
-        return self._get_partitioned_variable(name=name,
-                                              shape=shape,
-                                              dtype=dtype,
-                                              initializer=initializer,
-                                              regularizer=regularizer,
-                                              reuse=reuse,
-                                              trainable=trainable,
-                                              collections=collections,
-                                              caching_device=caching_device,
-                                              partitioner=None,
-                                              validate_shape=validate_shape,
-                                              use_resource=use_resource,
-                                              constraint=constraint)
+        return self._get_partitioned_variable(
+            name=name,
+            shape=shape,
+            dtype=dtype,
+            initializer=initializer,
+            regularizer=regularizer,
+            reuse=reuse,
+            trainable=trainable,
+            collections=collections,
+            caching_device=caching_device,
+            partitioner=None,
+            validate_shape=validate_shape,
+            use_resource=use_resource,
+            constraint=constraint,
+            synchronization=synchronization,
+            aggregation=aggregation)
 
       # Single variable case
       if "%s/part_0" % name in self._vars:
@@ -553,7 +559,9 @@ class _VariableStore(object):
                                 caching_device=None,
                                 validate_shape=True,
                                 use_resource=None,
-                                constraint=None):
+                                constraint=None,
+                                synchronization=VariableSynchronization.AUTO,
+                                aggregation=VariableAggregation.NONE):
     """Gets or creates a sharded variable list with these parameters.
 
     The `partitioner` must be a callable that accepts a fully defined
@@ -619,6 +627,15 @@ class _VariableStore(object):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
 
     Returns:
       A `PartitionedVariable` object.
@@ -629,14 +646,8 @@ class _VariableStore(object):
         when violating reuse during variable creation, or if an existing
         sharded variable exists for the given name but with different sharding.
     """
-    if context.executing_eagerly():
-      raise NotImplementedError("Partitioned variables are not yet supported "
-                                "when eager execution is enabled.")
-
     initializing_from_value = initializer is not None and isinstance(
         initializer, ops.Tensor)
-    reuse_without_partition = reuse and not partitioner
-
     if name in self._vars:
       raise ValueError(
           "A partitioner was provided, but an unpartitioned version of the "
@@ -647,30 +658,9 @@ class _VariableStore(object):
     if initializing_from_value:
       shape = shape.merge_with(initializer.get_shape())
 
-    if not reuse_without_partition:
-      if not shape.is_fully_defined():
-        raise ValueError("Shape of a new partitioned variable (%s) must be "
-                         "fully defined, but instead was %s." % (name, shape))
-
-      if shape.ndims < 1:
-        raise ValueError("A partitioned Variable must have rank at least 1, "
-                         "shape: %s" % shape)
-
-      partitions = partitioner(shape=shape, dtype=dtype)
-
-      if not isinstance(partitions, collections_lib.Sequence):
-        raise ValueError("Partitioner must return a sequence, but saw: %s"
-                         % partitions)
-
-      if len(partitions) != shape.ndims:
-        raise ValueError(
-            "Partitioner returned a partition list that does not match the "
-            "Variable's rank: %s vs. %s" % (partitions, shape))
-
-      if any([p < 1 for p in partitions]):
-        raise ValueError(
-            "Partitioner returned zero partitions for some axes: %s" %
-            partitions)
+    partitions = None
+    if not reuse or partitioner:
+      partitions = _call_partitioner(partitioner, shape, dtype)
 
     if name in self._partitioned_vars:
       if reuse is False:
@@ -692,7 +682,7 @@ class _VariableStore(object):
             % (name, dtype.name, existing_var.dtype.name))
 
       # pylint: disable=protected-access
-      if (not reuse_without_partition and
+      if (partitions is not None and
           existing_var._get_partitions() != partitions):
         raise ValueError(
             "Trying to reuse partitioned variable %s, but specified partitions "
@@ -707,14 +697,7 @@ class _VariableStore(object):
                        "created with tf.get_variable(). Did you mean to set "
                        "reuse=False or reuse=tf.AUTO_REUSE in VarScope?" % name)
 
-    slice_dim, slice_shape = _compute_slice_dim_and_shape(
-        shape.as_list(), partitions)
-
-    vs = []
-    num_slices = partitions[slice_dim]
-    num_slices_with_excess = shape.dims[slice_dim].value % num_slices
-
-    slice_offset = [0] * shape.ndims
+    slice_dim, num_slices = _get_slice_dim_and_num_slices(partitions)
 
     if "%s/part_0" % name in self._vars:
       if "%s/part_%d" % (name, num_slices - 1) not in self._vars:
@@ -730,15 +713,14 @@ class _VariableStore(object):
             "%s/part_0 was found, but so was the extra shard %s/part_%d."
             % (num_slices, name, name, num_slices))
 
-    for i in xrange(num_slices):
-      var_shape = slice_shape[:]
-      var_offset = slice_offset[:]
+    vs = []
+    for i, (var_offset, var_shape) in enumerate(_iter_slices(
+        shape.as_list(),
+        num_slices,
+        slice_dim
+    )):
       partition_info = _PartitionInfo(
           full_shape=shape.as_list(), var_offset=var_offset)
-      if i < num_slices_with_excess:
-        var_shape[slice_dim] += 1
-      slice_offset[slice_dim] += var_shape[slice_dim]
-
       var_full_name = "%s/part_%d" % (name, i)
       with ops.name_scope(var_full_name + "/PartitionedInitializer"):
         # Create the tensor to initialize the variable with default value.
@@ -776,7 +758,9 @@ class _VariableStore(object):
             caching_device=caching_device,
             validate_shape=validate_shape,
             use_resource=use_resource,
-            constraint=constraint)
+            constraint=constraint,
+            synchronization=synchronization,
+            aggregation=aggregation)
 
       # pylint: disable=protected-access
       var._set_save_slice_info(variables.Variable.SaveSliceInfo(
@@ -784,15 +768,13 @@ class _VariableStore(object):
       vs.append(var)
       # pylint: enable=protected-access
 
-      # pylint: disable=protected-access
     partitioned_var = variables.PartitionedVariable(name=name,
                                                     shape=shape,
                                                     dtype=dtype,
                                                     variable_list=vs,
                                                     partitions=partitions)
-    # pylint: enable=protected-access
-
-    self._partitioned_vars[name] = partitioned_var
+    if not context.executing_eagerly() or self._store_eager_variables:
+      self._partitioned_vars[name] = partitioned_var
     return partitioned_var
 
   def _get_single_variable(self,
@@ -894,20 +876,22 @@ class _VariableStore(object):
         variable_dtype = None
       else:
         # Instantiate initializer if provided initializer is a type object.
-        if isinstance(initializer, type(init_ops.Initializer)):
+        if tf_inspect.isclass(initializer):
           initializer = initializer(dtype=dtype)
-        if shape and shape.is_fully_defined():
+        if shape is not None and shape.is_fully_defined():
           init_val = lambda: initializer(  # pylint: disable=g-long-lambda
               shape.as_list(), dtype=dtype, partition_info=partition_info)
-        elif not tf_inspect.getargspec(initializer).args:
+          variable_dtype = dtype.base_dtype
+        elif len(tf_inspect.getargspec(initializer).args) == len(
+            tf_inspect.getargspec(initializer).defaults or []):
           init_val = initializer
+          variable_dtype = None
         else:
-          raise ValueError("You can only pass an initializer function that "
-                           "expects no arguments to its callable when the "
-                           "shape is not fully defined. The given initializer "
-                           "function expects the following args %s" %
-                           tf_inspect.getargspec(initializer).args)
-        variable_dtype = dtype.base_dtype
+          raise ValueError("The initializer passed is not valid. It should "
+                           "be a callable with no arguments and the "
+                           "shape should not be provided or an instance of "
+                           "`tf.keras.initializers.*' and `shape` should be "
+                           "fully defined.")
 
     # Create the variable.
     if use_resource is None:
@@ -1061,9 +1045,6 @@ class VariableScope(object):
       if self._caching_device is not None:
         raise NotImplementedError("Caching devices is not yet supported "
                                   "when eager execution is enabled.")
-      if self._partitioner is not None:
-        raise NotImplementedError("Partitioned variables are not yet supported "
-                                  "when eager execution is enabled.")
       self._reuse = AUTO_REUSE
       self._use_resource = True
 
@@ -1143,9 +1124,6 @@ class VariableScope(object):
 
   def set_partitioner(self, partitioner):
     """Set partitioner for this scope."""
-    if partitioner and context.executing_eagerly():
-      raise NotImplementedError("Partitioned variables are not yet supported "
-                                "when eager execution is enabled.")
     self._partitioner = partitioner
 
   def set_custom_getter(self, custom_getter):
@@ -1254,11 +1232,10 @@ class VariableScope(object):
                                 partitioner=None,
                                 validate_shape=True,
                                 use_resource=None,
-                                constraint=None):
+                                constraint=None,
+                                synchronization=VariableSynchronization.AUTO,
+                                aggregation=VariableAggregation.NONE):
     """Gets an existing variable with this name or create a new one."""
-    if context.executing_eagerly():
-      raise NotImplementedError("Partitioned variables are not yet supported "
-                                "when eager execution is enabled.")
     if initializer is None:
       initializer = self._initializer
     if regularizer is None:
@@ -1300,11 +1277,21 @@ class VariableScope(object):
     with ops.name_scope(None):
       # pylint: disable=protected-access
       return var_store._get_partitioned_variable(
-          full_name, shape=shape, dtype=dtype, initializer=initializer,
-          regularizer=regularizer, reuse=self.reuse, trainable=trainable,
-          collections=collections, caching_device=caching_device,
-          partitioner=partitioner, validate_shape=validate_shape,
-          use_resource=use_resource, constraint=constraint)
+          full_name,
+          shape=shape,
+          dtype=dtype,
+          initializer=initializer,
+          regularizer=regularizer,
+          reuse=self.reuse,
+          trainable=trainable,
+          collections=collections,
+          caching_device=caching_device,
+          partitioner=partitioner,
+          validate_shape=validate_shape,
+          use_resource=use_resource,
+          constraint=constraint,
+          synchronization=synchronization,
+          aggregation=aggregation)
       # pylint: enable=protected-access
 
 
@@ -1661,7 +1648,9 @@ def _get_partitioned_variable(name,
                               partitioner=None,
                               validate_shape=True,
                               use_resource=None,
-                              constraint=None):
+                              constraint=None,
+                              synchronization=VariableSynchronization.AUTO,
+                              aggregation=VariableAggregation.NONE):
   """Gets or creates a sharded variable list with these parameters.
 
   The `partitioner` must be a callable that accepts a fully defined
@@ -1719,6 +1708,15 @@ def _get_partitioned_variable(name,
       variable and return the Tensor for the projected value
       (which must have the same shape). Constraints are not safe to
       use when doing asynchronous distributed training.
+    synchronization: Indicates when a distributed a variable will be
+      aggregated. Accepted values are constants defined in the class
+      `tf.VariableSynchronization`. By default the synchronization is set to
+      `AUTO` and the current `DistributionStrategy` chooses
+      when to synchronize. If `synchronization` is set to `ON_READ`,
+      `trainable` must not be set to `True`.
+    aggregation: Indicates how a distributed variable will be aggregated.
+      Accepted values are constants defined in the class
+      `tf.VariableAggregation`.
 
   Returns:
     A tuple `(shards, partitions)` where `shards` is the list of `Variable`
@@ -1740,11 +1738,21 @@ def _get_partitioned_variable(name,
         "If so, consider instead using get_variable with a non-empty "
         "partitioner parameter instead." % scope.custom_getter)
   return scope._get_partitioned_variable(
-      _get_default_variable_store(), name, shape=shape, dtype=dtype,
-      initializer=initializer, regularizer=regularizer, trainable=trainable,
-      collections=collections, caching_device=caching_device,
-      partitioner=partitioner, validate_shape=validate_shape,
-      use_resource=use_resource, constraint=constraint)
+      _get_default_variable_store(),
+      name,
+      shape=shape,
+      dtype=dtype,
+      initializer=initializer,
+      regularizer=regularizer,
+      trainable=trainable,
+      collections=collections,
+      caching_device=caching_device,
+      partitioner=partitioner,
+      validate_shape=validate_shape,
+      use_resource=use_resource,
+      constraint=constraint,
+      synchronization=synchronization,
+      aggregation=aggregation)
   # pylint: enable=protected-access
 
 
@@ -2194,8 +2202,8 @@ class variable_scope(object):
 
     try:
       return self._enter_scope_uncached()
-    except:
-      if not self._building_function:
+    except Exception:
+      if self._in_graph_mode and not self._building_function:
         if self._graph_context_manager is not None:
           self._graph_context_manager.__exit__(*sys.exc_info())
       raise
@@ -2361,34 +2369,71 @@ def variable_op_scope(values,
     yield scope
 
 
-def _compute_slice_dim_and_shape(full_shape, slicing):
-  """Computes which dimension is being sliced and the typical slice shape."""
+def _call_partitioner(partitioner, shape, dtype):
+  """Call partitioner validating its inputs/output.
 
-  slice_shape = [0] * len(full_shape)
-  slice_dim = None
-  for dim, num_slices in enumerate(slicing):
-    dim_size = full_shape[dim]
-    if num_slices <= 0 or dim_size < num_slices:
-      raise ValueError("Cannot create %d slices for size %d. shape: %s, "
-                       "slicing: %s" %
-                       (num_slices, full_shape[dim], full_shape, slicing))
-    if num_slices == 1:
-      # Not slicing in this dimension.
-      slice_shape[dim] = dim_size
-    elif slice_dim is not None:
-      # We only support slicing along one of the dimensions.
-      raise ValueError("Can only slice a variable along one dimension: "
-                       "shape: %s, slicing: %s" % (full_shape, slicing))
-    else:
-      # Note: We will add any extras onto the last slice, later.
-      slice_dim = dim
-      slice_shape[dim] = dim_size // num_slices
+  Args:
+    partitioner: a function mapping `Tensor` shape and dtype to a
+        list of partitions.
+    shape: shape of the `Tensor` to partition, must have at least two
+        dimensions.
+    dtype: dtype of the elements in the `Tensor`.
 
-  # Degenerate case: If "slicing" was all ones, pretend we are slicing along
-  # the first dimension.
-  if slice_dim is None:
+  Returns:
+    A list with elements >=1 and exactly one >1. The index of that
+    element corresponds to the partitioning axis.
+  """
+  if not shape.is_fully_defined():
+    raise ValueError("Shape of a new partitioned variable must be "
+                     "fully defined, but instead was %s." % (shape,))
+  if shape.ndims < 1:
+    raise ValueError("A partitioned Variable must have rank at least 1, "
+                     "shape: %s" % shape)
+
+  slicing = partitioner(shape=shape, dtype=dtype)
+  if not isinstance(slicing, collections_lib.Sequence):
+    raise ValueError("Partitioner must return a sequence, but saw: %s"
+                     % slicing)
+  if len(slicing) != shape.ndims:
+    raise ValueError(
+        "Partitioner returned a partition list that does not match the "
+        "Variable's rank: %s vs. %s" % (slicing, shape))
+  if any(p < 1 for p in slicing):
+    raise ValueError(
+        "Partitioner returned zero partitions for some axes: %s" %
+        slicing)
+  if sum(p > 1 for p in slicing) > 1:
+    raise ValueError(
+        "Can only slice a variable along one dimension: "
+        "shape: %s, partitioning: %s" % (shape, slicing))
+  return slicing
+
+
+# TODO(slebedev): could be inlined, but
+# `_VariableStore._get_partitioned_variable` is too complex even
+# without this logic.
+def _get_slice_dim_and_num_slices(slicing):
+  """Get slicing dimension and number of slices from the partitioner output."""
+  for slice_dim, num_slices in enumerate(slicing):
+    if num_slices > 1:
+      break
+  else:
+    # Degenerate case: no partitioning applied.
     slice_dim = 0
-  return slice_dim, slice_shape
+    num_slices = 1
+  return slice_dim, num_slices
+
+
+def _iter_slices(full_shape, num_slices, slice_dim):
+  """Slices a given a shape along the specified dimension."""
+  num_slices_with_excess = full_shape[slice_dim] % num_slices
+  offset = [0] * len(full_shape)
+  min_slice_len = full_shape[slice_dim] // num_slices
+  for i in xrange(num_slices):
+    shape = full_shape[:]
+    shape[slice_dim] = min_slice_len + bool(i < num_slices_with_excess)
+    yield offset[:], shape
+    offset[slice_dim] += shape[slice_dim]
 
 
 def _get_trainable_value(synchronization, trainable):

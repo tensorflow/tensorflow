@@ -173,9 +173,7 @@ Status XlaCompileOnDemandOp::Compile(
   XlaCompiler::Options options;
   options.device_type = metadata.jit_device_type();
   options.client = metadata.client();
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
-      OpRegistry::Global(), FunctionDefLibrary{});
-  options.flib_def = flib_def.get();
+  options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.shape_representation_fn = metadata.shape_representation_fn();
 
   XlaCompiler::CompileOptions compile_options;
@@ -189,8 +187,13 @@ Status XlaCompileOnDemandOp::Compile(
   compile_options.always_return_tuple = false;
 
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
-  return cache->CompileSingleOp(options, constant_arguments, variable_args, ctx,
-                                compile_options, result, executable);
+
+  std::vector<XlaCompiler::Argument> args;
+  TF_RETURN_IF_ERROR(XlaComputationLaunchContext::BuildXlaCompilerArguments(
+      constant_arguments, variable_args, ctx, &args));
+
+  return cache->CompileSingleOp(options, args, ctx, compile_options, result,
+                                executable);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {

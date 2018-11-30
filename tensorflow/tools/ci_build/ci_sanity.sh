@@ -324,9 +324,12 @@ do_external_licenses_check(){
   LICENSES_FILE="$(mktemp)_licenses.log"
   MISSING_LICENSES_FILE="$(mktemp)_missing_licenses.log"
   EXTRA_LICENSES_FILE="$(mktemp)_extra_licenses.log"
+  TMP_FILE="$(mktemp)_tmp.log"
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
- bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going \
+ bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
+ cat "${TMP_FILE}" \
+  | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
@@ -335,7 +338,9 @@ do_external_licenses_check(){
 
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
-  bazel query "deps(${LICENSES_TARGET})" --keep_going \
+  bazel query "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
+ cat "${TMP_FILE}" \
+  | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
@@ -434,9 +439,9 @@ cmd_status(){
 # out by default in TF WORKSPACE file.
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/java/demo/app/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/examples/android/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/schema/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/java/demo/app/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/examples/android/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/schema/..."
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}

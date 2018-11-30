@@ -101,7 +101,7 @@ def list_variables(ckpt_dir_or_file):
   return result
 
 
-@tf_export("train.init_from_checkpoint")
+@tf_export(v1=["train.init_from_checkpoint"])
 def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   """Replaces `tf.Variable` initializers so they load from a checkpoint file.
 
@@ -187,7 +187,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
     _init_from_checkpoint(None, ckpt_dir_or_file, assignment_map)
   else:
     distribution_strategy_context.get_replica_context().merge_call(
-        _init_from_checkpoint, ckpt_dir_or_file, assignment_map)
+        _init_from_checkpoint, args=(ckpt_dir_or_file, assignment_map))
 
 
 def _init_from_checkpoint(_, ckpt_dir_or_file, assignment_map):
@@ -318,13 +318,13 @@ def _set_checkpoint_initializer(variable,
         saveable_objects.append(s)
 
     assert len(saveable_objects) == 1  # Should be only one variable.
-    init_op = saveable_objects[0].restore([restore_op], restored_shapes=None)
+  init_op = saveable_objects[0].restore([restore_op], restored_shapes=None)
 
-    # pylint:disable=protected-access
-    variable._initializer_op = init_op
-    restore_op.set_shape(variable.shape)
-    variable._initial_value = restore_op
-    # pylint:enable=protected-access
+  # pylint:disable=protected-access
+  variable._initializer_op = init_op
+  restore_op.set_shape(variable.shape)
+  variable._initial_value = restore_op
+  # pylint:enable=protected-access
 
 
 def _set_variable_or_list_initializer(variable_or_list, ckpt_file,

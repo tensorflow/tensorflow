@@ -987,6 +987,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTrace:
     case HloOpcode::kAfterAll:
+    case HloOpcode::kAddDependency:
     case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kBroadcast:
@@ -1043,6 +1044,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kMap:
+    case HloOpcode::kGetDimensionSize:
       return kGray;
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kAllToAll:
@@ -1266,12 +1268,12 @@ const HloInstruction* HloDotDumper::GetNodeForEdge(
 
 class GraphRendererRegistry {
  public:
-  void AddRenderer(GraphRendererInterface* graph_renderer) {
+  void SetRenderer(std::shared_ptr<GraphRendererInterface> graph_renderer) {
     tensorflow::mutex_lock lock(mu_);
     graph_renderer_ = graph_renderer;
   }
 
-  GraphRendererInterface* GetDefaultRenderer() {
+  std::shared_ptr<GraphRendererInterface> GetDefaultRenderer() {
     tensorflow::mutex_lock lock(mu_);
     return graph_renderer_;
   }
@@ -1283,13 +1285,13 @@ class GraphRendererRegistry {
 
  private:
   tensorflow::mutex mu_;
-  GraphRendererInterface* graph_renderer_ = nullptr;
+  std::shared_ptr<GraphRendererInterface> graph_renderer_ GUARDED_BY(mu_);
 };
 
 }  // namespace
 
-Registrar::Registrar(GraphRendererInterface* dumper) {
-  GraphRendererRegistry::Default()->AddRenderer(dumper);
+Registrar::Registrar(std::shared_ptr<GraphRendererInterface> dumper) {
+  GraphRendererRegistry::Default()->SetRenderer(dumper);
 }
 
 namespace {

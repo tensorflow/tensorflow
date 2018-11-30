@@ -56,7 +56,7 @@ TEST_F(CpuNoAliasTest, Concat) {
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   // Now that we have an HLO module, build an llvm_ir::AliasAnalysis for it.

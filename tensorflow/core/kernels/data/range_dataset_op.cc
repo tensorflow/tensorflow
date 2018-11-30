@@ -104,9 +104,8 @@ class RangeDatasetOp : public DatasetOpKernel {
           *end_of_sequence = true;
           return Status::OK();
         }
-        out_tensors->emplace_back(ctx->allocator({}), DT_INT64,
-                                  TensorShape({}));
-        out_tensors->back().scalar<int64>()() = next_;
+        out_tensors->reserve(1);
+        out_tensors->emplace_back(next_);
         *end_of_sequence = false;
         next_ += dataset()->step_;
 
@@ -114,6 +113,11 @@ class RangeDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("next"), next_));

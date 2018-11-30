@@ -334,7 +334,7 @@ DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
   // ordering based on dependencies. ExecutesBefore will return true iff there
   // exists a path in the HLO computation graph from 'a' to 'b'.
   for (auto* computation : module->MakeNonfusionComputations()) {
-    predecessors_.emplace(computation, computation->ComputeReachability());
+    predecessors_.emplace(computation, HloReachabilityMap::Build(computation));
   }
 }
 
@@ -356,8 +356,7 @@ void SequentialHloOrdering::Initialize() {
   // Create a map from instruction to its order position.
   TF_DCHECK_OK(schedule_.Verify());
   for (const auto& computation_sequence : schedule_.sequences()) {
-    const std::vector<const HloInstruction*>& order =
-        computation_sequence.second.instructions();
+    const auto& order = computation_sequence.second.instructions();
     for (int i = 0; i < order.size(); ++i) {
       InsertOrDie(&order_position_, order[i], i);
     }
@@ -374,11 +373,10 @@ bool SequentialHloOrdering::ExecutesBeforeInSameComputation(
   return order_position_.at(a) < order_position_.at(b);
 }
 
-const std::vector<const HloInstruction*>*
-SequentialHloOrdering::SequentialOrder(
+const HloInstructionSequence* SequentialHloOrdering::SequentialOrder(
     const HloComputation& computation) const {
   return schedule_.is_computation_scheduled(&computation)
-             ? &schedule_.sequence(&computation).instructions()
+             ? &schedule_.sequence(&computation)
              : nullptr;
 }
 

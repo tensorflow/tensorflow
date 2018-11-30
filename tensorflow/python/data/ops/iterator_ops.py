@@ -68,7 +68,7 @@ def _device_stack_is_empty():
   return not bool(device_stack)
 
 
-@tf_export("data.Iterator")
+@tf_export(v1=["data.Iterator"])
 class Iterator(checkpointable.CheckpointableBase):
   """Represents the state of iterating through a `Dataset`."""
 
@@ -571,7 +571,7 @@ class EagerIterator(checkpointable.CheckpointableBase):
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)
 
-      return self._structure._from_tensor_list(ret)  # pylint: disable=protected-access
+      return self._structure._from_compatible_tensor_list(ret)  # pylint: disable=protected-access
 
   def next(self):
     """Returns a nested structure of `tf.Tensor`s containing the next element.

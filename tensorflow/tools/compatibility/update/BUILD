@@ -9,7 +9,9 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:lib",
+        "//tensorflow/python:no_contrib",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
+        "//tensorflow/tools/compatibility:tf_upgrade_v2_lib",
     ],
 )

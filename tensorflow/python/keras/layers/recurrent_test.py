@@ -120,7 +120,7 @@ class RNNTest(test.TestCase):
              MinimalRNNCell(16, 8),
              MinimalRNNCell(32, 16)]
     layer = keras.layers.RNN(cells)
-    self.assertEqual(layer.cell.state_size, (8, 8, 16, 16, 32, 32))
+    self.assertEqual(layer.cell.state_size, ((8, 8), (16, 16), (32, 32)))
     self.assertEqual(layer.cell.output_size, 32)
     y = layer(x)
     model = keras.models.Model(x, y)
@@ -1013,8 +1013,8 @@ class RNNTest(test.TestCase):
         inputs, _ = cell(inputs, initial_state)
         output = inputs
         if not context.executing_eagerly():
-          sess.run(variables_lib.global_variables_initializer())
-          output = sess.run(output)
+          self.evaluate(variables_lib.global_variables_initializer())
+          output = self.evaluate(output)
         return output
 
     random_seed.set_random_seed(12345)
@@ -1043,6 +1043,67 @@ class RNNTest(test.TestCase):
     self.assertAllClose(first_implementation_output,
                         second_implementation_output)
     self.assertAllClose(first_implementation_output, tf_lstm_cell_output)
+
+  def test_masking_rnn_with_output_and_states(self):
+
+    class Cell(keras.layers.Layer):
+
+      def __init__(self):
+        self.state_size = None
+        self.output_size = None
+        super(Cell, self).__init__()
+
+      def build(self, input_shape):
+        self.state_size = input_shape[-1]
+        self.output_size = input_shape[-1]
+
+      def call(self, inputs, states):
+        return inputs, [s + 1 for s in states]
+
+    x = keras.Input((3, 1), name='x')
+    x_masked = keras.layers.Masking()(x)
+    s_0 = keras.Input((1,), name='s_0')
+    y, s = keras.layers.RNN(
+        Cell(), return_state=True)(x_masked, initial_state=s_0)
+    model = keras.models.Model([x, s_0], [y, s])
+    model.compile(optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.001),
+                  loss='mse')
+
+    # last time step masked
+    x_np = np.array([[[1.], [2.], [0.]]])
+    s_0_np = np.array([[10.]])
+    y_np, s_np = model.predict([x_np, s_0_np])
+
+    # 1 is added to initial state two times
+    self.assertAllClose(s_np, s_0_np + 2)
+    # Expect last output to be the same as last output before masking
+    self.assertAllClose(y_np, x_np[:, 1, :])
+
+  def test_zero_output_for_masking(self):
+
+    for unroll in [True, False]:
+      cell = keras.layers.SimpleRNNCell(5)
+      x = keras.Input((5, 5))
+      mask = keras.layers.Masking()
+      layer = keras.layers.RNN(
+          cell, return_sequences=True, zero_output_for_mask=True, unroll=unroll)
+      masked_input = mask(x)
+      y = layer(masked_input)
+      model = keras.models.Model(x, y)
+      model.compile(optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.001),
+                    loss='mse')
+
+      np_x = np.ones((6, 5, 5))
+      result_1 = model.predict(np_x)
+
+      # set the time 4 and 5 for last record to be zero (masked).
+      np_x[5, 3:] = 0
+      result_2 = model.predict(np_x)
+
+      # expect the result_2 has same output, except the time 4,5 for last
+      # record.
+      result_1[5, 3:] = 0
+      self.assertAllClose(result_1, result_2)
 
 
 class Minimal2DRNNCell(keras.layers.Layer):

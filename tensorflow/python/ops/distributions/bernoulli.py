@@ -32,7 +32,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("distributions.Bernoulli")
+@tf_export(v1=["distributions.Bernoulli"])
 class Bernoulli(distribution.Distribution):
   """Bernoulli distribution.
 

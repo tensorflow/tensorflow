@@ -21,8 +21,6 @@ from __future__ import print_function as _print_function
 import os as _os
 
 # pylint: disable=g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-
 from tensorflow.python.tools import component_api_helper as _component_api_helper
 _component_api_helper.package_hook(
     parent_package_str=__name__,
@@ -30,11 +28,10 @@ _component_api_helper.package_hook(
 
 # API IMPORTS PLACEHOLDER
 
-from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
-
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
-_tf_api_dir = _os.path.dirname(_os.path.dirname(app.__file__))  # pylint: disable=undefined-variable
+# We're using bitwise, but there's nothing special about that.
+_tf_api_dir = _os.path.dirname(_os.path.dirname(bitwise.__file__))  # pylint: disable=undefined-variable
 if _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
@@ -54,5 +51,11 @@ except NameError:
   # For e.g. this file will be originally placed under tensorflow/_api/v1 which
   # does not have 'python', 'core' directories. Then, it will be copied
   # to tensorflow/ which does have these two directories.
+  pass
+# Similarly for compiler. Do it separately to make sure we do this even if the
+# others don't exist.
+try:
+  del compiler
+except NameError:
   pass
 # pylint: enable=undefined-variable

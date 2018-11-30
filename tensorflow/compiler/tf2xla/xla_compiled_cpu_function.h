@@ -26,7 +26,7 @@ limitations under the License.
 // Forward-declare, rather than include, to reduce code size for users that
 // never use this functionality.
 namespace xla {
-class ProgramShape;
+class ProgramShapeProto;
 class HloProfilePrinterData;
 }
 
@@ -84,7 +84,7 @@ class XlaCompiledCpuFunction {
     void set_result_names(const char** result_names) {
       result_names_ = result_names;
     }
-    void set_program_shape(const xla::ProgramShape* program_shape) {
+    void set_program_shape(const xla::ProgramShapeProto* program_shape) {
       program_shape_ = program_shape;
     }
     const xla::HloProfilePrinterData* hlo_profile_printer_data() const {
@@ -122,7 +122,7 @@ class XlaCompiledCpuFunction {
     const char** result_names_ = nullptr;
 
     // [Optional] Arg and result shapes.
-    const xla::ProgramShape* program_shape_ = nullptr;
+    const xla::ProgramShapeProto* program_shape_ = nullptr;
 
     // [Optional] Profile printer data.  Null if profiling is disabled.
     const xla::HloProfilePrinterData* hlo_profile_printer_data_ = nullptr;
@@ -264,7 +264,7 @@ class XlaCompiledCpuFunction {
 
   // Returns the shape of the args and results. May return nullptr if the
   // program shape isn't available.
-  const xla::ProgramShape* ProgramShape() const { return program_shape_; }
+  const xla::ProgramShapeProto* ProgramShape() const { return program_shape_; }
 
   bool hlo_profiling_enabled() const {
     return hlo_profile_printer_data_ != nullptr;
@@ -287,11 +287,6 @@ class XlaCompiledCpuFunction {
 
   // Argument i needs to be placed in buffer_table_[arg_index_to_temp_index_[i]]
   // for XLA generated code to be able to find it.
-  //
-  // For now we need to keep around the args_ array because there is code that
-  // depends on args() returning a void**.  However, in the future we may remove
-  // args_ in favor of using buffer_table_ as the sole storage for the
-  // arguments.
   const int32* const arg_index_table_;
 
   // The number of incoming arguments.
@@ -310,7 +305,7 @@ class XlaCompiledCpuFunction {
   // Optional metadata.
   const char** arg_names_ = nullptr;
   const char** result_names_ = nullptr;
-  const xla::ProgramShape* program_shape_ = nullptr;
+  const xla::ProgramShapeProto* program_shape_ = nullptr;
   const xla::HloProfilePrinterData* hlo_profile_printer_data_ = nullptr;
 };
 

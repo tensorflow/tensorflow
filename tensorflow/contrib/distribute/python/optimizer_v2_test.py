@@ -51,7 +51,7 @@ class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
       def run_step():
         return control_flow_ops.group(distribution.unwrap(
             distribution.call_for_each_replica(
-                model_fn, iterator.get_next(), run_concurrently=layer.built)))
+                model_fn, args=(iterator.get_next(),))))
 
       if not context.executing_eagerly():
         with self.cached_session() as sess:

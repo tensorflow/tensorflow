@@ -31,7 +31,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 #include "cuda/include/cuda_runtime_api.h"
-#include "tensorrt/include/NvInfer.h"
+#include "tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -130,6 +130,10 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // The finalized calibrator for inference.
   std::unique_ptr<TRTInt8Calibrator> calibrator_;
+
+  // If true, create calibration graph for INT8 mode. Otherwise, we are using
+  // user-provided quantization ranges.
+  bool use_calibration_;
 };
 
 }  // namespace tensorrt

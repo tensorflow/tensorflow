@@ -33,20 +33,20 @@ constexpr std::array<DataType, 9> kExecAllTypes = {
 class XlaInterpreterDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override;
+                       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
 Status XlaInterpreterDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
-    std::vector<Device*>* devices) {
+    std::vector<std::unique_ptr<Device>>* devices) {
   static XlaDeviceOpRegistrations* registrations = RegisterXlaDeviceKernels(
       DEVICE_XLA_INTERPRETER, DEVICE_INTERPRETER_XLA_JIT);
   (void)registrations;
 
   XlaOpRegistry::DeviceRegistration registration;
   registration.compilation_device_name = DEVICE_INTERPRETER_XLA_JIT;
-  registration.requires_compilation = true;
-  registration.enable_jit_by_default = false;
+  registration.autoclustering_policy =
+      XlaOpRegistry::AutoclusteringPolicy::kAlways;
   registration.compile_resource_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_INTERPRETER,
                                            registration);
@@ -60,10 +60,8 @@ Status XlaInterpreterDeviceFactory::CreateDevices(
   options.device_name = DEVICE_XLA_INTERPRETER;
   options.device_ordinal = 0;
   options.compilation_device_name = DEVICE_INTERPRETER_XLA_JIT;
-  options.transfer_as_literal = false;
   options.use_multiple_streams = false;
-  auto device = absl::make_unique<XlaDevice>(session_options, options);
-  devices->push_back(device.release());
+  devices->push_back(absl::make_unique<XlaDevice>(session_options, options));
 
   return Status::OK();
 }

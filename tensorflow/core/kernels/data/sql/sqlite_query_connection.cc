@@ -58,9 +58,8 @@ Status SqliteQueryConnection::GetNext(IteratorContext* ctx,
     for (int i = 0; i < column_count_; i++) {
       DataType dt = output_types_[i];
       // TODO(mrry): Pass in the `IteratorContext::allocator()`.
-      Tensor tensor(ctx->allocator({}), dt, {});
-      FillTensorWithResultSetEntry(dt, i, &tensor);
-      out_tensors->emplace_back(std::move(tensor));
+      out_tensors->emplace_back(ctx->allocator({}), dt, TensorShape({}));
+      FillTensorWithResultSetEntry(dt, i, &out_tensors->back());
     }
   }
   return Status::OK();

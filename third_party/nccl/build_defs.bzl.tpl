@@ -43,8 +43,7 @@ def _process_srcs_impl(ctx):
             substitutions = {
                 "\"collectives.h": "\"collectives/collectives.h",
                 "\"../collectives.h": "\"collectives/collectives.h",
-                "#if __CUDACC_VER_MAJOR__":
-                    "#if defined __CUDACC_VER_MAJOR__ && __CUDACC_VER_MAJOR__",
+                "#if __CUDACC_VER_MAJOR__": "#if defined __CUDACC_VER_MAJOR__ && __CUDACC_VER_MAJOR__",
                 # Substitutions are applied in order.
                 "std::nullptr_t": "nullptr_t",
                 "nullptr_t": "std::nullptr_t",
@@ -140,13 +139,16 @@ _gen_link_src = rule(
 )
 """Patches the include directives for the link.stub file."""
 
-def device_link(name, srcs):
-    """Links seperately compiled relocatable device code into a cc_library."""
+def rdc_library(name, deps):
+    """Produces a cc_library from deps containing relocatable device code."""
 
-    # From .a and .pic.a archives, just use the latter.
+    # From .a and .pic.a archives, just use the latter. Otherwise we get
+    # multiply defined symbols.
+    # TODO(csigg): C++ Sandwich once available should allow passing this target
+    # to a cc_library dependency, which would avoid the linking order issue.
     _filter(
-        name = name + "_pic_a",
-        srcs = srcs,
+        name = name + "_deps_a",
+        srcs = deps,
         suffix = ".pic.a",
     )
 
@@ -160,10 +162,8 @@ def device_link(name, srcs):
         cmd = ("$(location %s) " % nvlink +
                select({
                    # NCCL is only supported on Linux.
-                   "@org_tensorflow//tensorflow:linux_x86_64":
-                       "--cpu-arch=X86_64 ",
-                   "@org_tensorflow//tensorflow:linux_ppc64le":
-                       "--cpu-arch=PPC64LE ",
+                   "@org_tensorflow//tensorflow:linux_x86_64": "--cpu-arch=X86_64 ",
+                   "@org_tensorflow//tensorflow:linux_ppc64le": "--cpu-arch=PPC64LE ",
                    "//conditions:default": "",
                }) +
                "--arch=%s $(SRCS) " % arch +
@@ -172,7 +172,7 @@ def device_link(name, srcs):
         native.genrule(
             name = "%s_%s" % (name, arch),
             outs = [register_hdr, cubin],
-            srcs = [name + "_pic_a"],
+            srcs = [name + "_deps_a"],
             cmd = cmd,
             tools = [nvlink],
         )
@@ -182,8 +182,9 @@ def device_link(name, srcs):
     # Generate fatbin header from all cubins.
     fatbin_hdr = name + ".fatbin.h"
     fatbinary = "@local_config_nccl//:cuda/bin/fatbinary"
-    cmd = ("PATH=$$CUDA_TOOLKIT_PATH/bin:$$PATH " +  # for bin2c
-           "$(location %s) -64 --cmdline=--compile-only --link " % fatbinary +
+    bin2c = "@local_config_nccl//:cuda/bin/bin2c"
+    cmd = ("$(location %s) -64 --cmdline=--compile-only " % fatbinary +
+           "--link --bin2c-path $$(dirname $(location %s)) " % bin2c +
            "--compress-all %s --create=%%{name}.fatbin " % " ".join(images) +
            "--embedded-fatbin=$@")
     native.genrule(
@@ -191,12 +192,12 @@ def device_link(name, srcs):
         outs = [fatbin_hdr],
         srcs = cubins,
         cmd = cmd,
-        tools = [fatbinary],
+        tools = [fatbinary, bin2c],
     )
 
     # Generate the source file #including the headers generated above.
     _gen_link_src(
-        name = name + "_cc",
+        name = name + "_dlink_src",
         # Include just the last one, they are equivalent.
         register_hdr = register_hdr,
         fatbin_hdr = fatbin_hdr,
@@ -206,12 +207,13 @@ def device_link(name, srcs):
 
     # Compile the source file into the cc_library.
     native.cc_library(
-        name = name,
-        srcs = [name + "_cc"],
+        name = name + "_dlink_a",
+        srcs = [
+            name + "_dlink_src",
+        ],
         textual_hdrs = [register_hdr, fatbin_hdr],
         deps = [
             "@local_config_cuda//cuda:cuda_headers",
-            "@local_config_cuda//cuda:cudart_static",
         ],
         defines = [
             # Silence warning about including internal header.
@@ -220,4 +222,31 @@ def device_link(name, srcs):
             "__NV_EXTRA_INITIALIZATION=",
             "__NV_EXTRA_FINALIZATION=",
         ],
+        linkstatic = True,
+    )
+
+    # Repackage deps into a single archive. This avoid unresolved symbols when
+    # the archives happen to be linked in the wrong order. For more details, see
+    # https://eli.thegreenplace.net/2013/07/09/library-order-in-static-linking
+    native.genrule(
+        name = name + "_a",
+        srcs = [
+            name + "_deps_a",
+            name + "_dlink_a",
+        ],
+        outs = [name + ".a"],
+        # See https://stackoverflow.com/a/23621751
+        cmd = """
+addlibs=$$(echo $(SRCS) | sed "s/[^ ]* */\\naddlib &/g")
+printf "create $@$${addlibs}\\nsave\\nend" | $(AR) -M
+""",
+    )
+
+    native.cc_library(
+        name = name,
+        srcs = [name + "_a"],
+        deps = [
+            "@local_config_cuda//cuda:cudart_static",
+        ],
+        linkstatic = True,
     )

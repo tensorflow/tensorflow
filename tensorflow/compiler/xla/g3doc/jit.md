@@ -58,7 +58,7 @@ sess = tf.Session(config=config)
 > compiled for the CPU. JIT compilation for CPU operations must be done via
 > the manual method documented below.
 
-#### Manual
+#### Manual with experimental_jit_scope()
 
 JIT compilation can also be turned on manually for one or more operators. This
 is done by tagging the operators to compile with the attribute
@@ -78,6 +78,16 @@ Example usage:
 The `_XlaCompile` attribute is currently supported on a best-effort basis. If an
 operator cannot be compiled, TensorFlow will silently fall back to the normal
 implementation.
+
+#### Manual with xla.compile()
+
+Unlike experimental_jit_scope() which silently falls back to normal Tensorflow
+on uncompilable operator, xla.compile() returns an explicit error. This is
+useful if you want more predictable behaviors from XLA compilation.
+
+Please see
+[xla.compile() tutorial Colab](./tutorials/xla_compile.ipynb)
+for how to use it.
 
 ### Placing operators on XLA devices
 
@@ -134,7 +144,7 @@ Execute the python script to train the model with XLA and turn on a debugging
 feature of XLA via an environmental variable that outputs the XLA graph.
 
 ```shell
-TF_XLA_FLAGS="--xla_hlo_graph_path=/tmp --xla_generate_hlo_graph=.*" python mnist_softmax_xla.py
+XLA_FLAGS="--xla_hlo_graph_path=/tmp --xla_generate_hlo_graph=.*" python mnist_softmax_xla.py
 ```
 
 Open the timeline file created (`timeline.ctf.json`).  The rendered timeline

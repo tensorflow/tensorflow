@@ -2743,6 +2743,9 @@ REGISTER_OP("QuantizeAndDequantizeV2")
     .Attr("range_given: bool = false")
     .Output("output: T")
     .Attr("T: {bfloat16, half, float, double}")
+    .Attr(
+        "round_mode: {'HALF_TO_EVEN', 'HALF_UP'} = "
+        "'HALF_TO_EVEN'")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));

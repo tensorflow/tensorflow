@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
@@ -147,14 +148,15 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 3});
+    std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(
-        options, "/job:localhost/replica:0/task:0", &devices_));
+        options, "/job:localhost/replica:0/task:0", &devices));
 
     FunctionDefLibrary proto;
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    device_mgr_.reset(new DeviceMgr(devices_));
+    device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
         opts, default_thread_pool, nullptr /* cluster_flr */));
@@ -358,7 +360,6 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   FunctionLibraryRuntime* flr0_;
   FunctionLibraryRuntime* flr1_;
   FunctionLibraryRuntime* flr2_;
-  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
@@ -434,6 +435,57 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLib) {
   HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
                              {} /* options */, {x}, {&y}),
            "Not found: Function XTimesTwo is not defined.");
+}
+
+TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLibAndDelayedInstantiation) {
+  using FDH = ::tensorflow::FunctionDefHelper;
+
+  Init({});
+
+  FunctionDef xt4_override = test::function::XTimesTwo();
+  xt4_override.mutable_signature()->set_name("XTimesFour");
+
+  // Call XTimesFour via PartitionedCall which delays functions instantiation
+  // to the first call to Compute/ComputeAsync.
+  FunctionDef my_xt4 = FunctionDefHelper::Create(
+      "MyXTimesFour", {"x:float"}, {"z:float"}, {},
+      {{{"x_times_four"},
+        "PartitionedCall",
+        {"x"},
+        {{"Tin", DataTypeSlice({DT_FLOAT})},
+         {"Tout", DataTypeSlice({DT_FLOAT})},
+         {"f", FDH::FunctionRef("XTimesFour", {{"T", DT_FLOAT}})}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "x_times_four:output:0"}});
+
+  FunctionDefLibrary lib;
+  *lib.add_function() = test::function::XTimesTwo();
+  *lib.add_function() = test::function::XTimesFour();
+  *lib.add_function() = my_xt4;
+  std::unique_ptr<FunctionLibraryDefinition> overlay_lib(
+      new FunctionLibraryDefinition(OpRegistry::Global(), lib));
+
+  FunctionLibraryRuntime::InstantiateOptions options;
+  options.overlay_lib = overlay_lib.get();
+
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+
+  // When we instantiate with default library overlay we should get x*4.
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "MyXTimesFour", {}, options, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({4, 8, 12, 16}));
+
+  // Overlay library that overrides default XTimesFour with XTimesTwo body.
+  FunctionDefLibrary lib_override;
+  *lib_override.add_function() = xt4_override;
+  *lib_override.add_function() = my_xt4;
+  std::unique_ptr<FunctionLibraryDefinition> overlay_lib_override(
+      new FunctionLibraryDefinition(OpRegistry::Global(), lib_override));
+
+  // We should call the XTimesFour override which is actually x*2.
+  options.overlay_lib = overlay_lib_override.get();
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "MyXTimesFour", {}, options, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, StateHandle) {

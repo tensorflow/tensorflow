@@ -22,12 +22,12 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
 #include "tensorflow/stream_executor/lib/notification.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
@@ -336,7 +336,7 @@ static port::Status InternalInit() {
 /* static */ bool CUDADriver::GetDeviceName(CUdevice device,
                                             string *device_name) {
   static const size_t kCharLimit = 64;
-  port::InlinedVector<char, 4> chars(kCharLimit);
+  absl::InlinedVector<char, 4> chars(kCharLimit);
   CUresult res = cuDeviceGetName(chars.begin(), kCharLimit - 1, device);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to get device name for " << device << ": "
@@ -575,8 +575,8 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     static const unsigned int kLogBufferBytesLimit = 1024;
     unsigned int error_log_buffer_bytes = kLogBufferBytesLimit;
     unsigned int info_log_buffer_bytes = kLogBufferBytesLimit;
-    port::InlinedVector<char, 4> error_log_buffer(error_log_buffer_bytes);
-    port::InlinedVector<char, 4> info_log_buffer(info_log_buffer_bytes);
+    absl::InlinedVector<char, 4> error_log_buffer(error_log_buffer_bytes);
+    absl::InlinedVector<char, 4> info_log_buffer(info_log_buffer_bytes);
     bool log_verbose = true;
     CUjit_option options[] = {CU_JIT_ERROR_LOG_BUFFER_SIZE_BYTES,
                               CU_JIT_ERROR_LOG_BUFFER,
@@ -1466,7 +1466,7 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
 /* static */ string CUDADriver::GetPCIBusID(CUdevice device) {
   string pci_bus_id;
   static const int kBufferSize = 64;
-  port::InlinedVector<char, 4> chars(kBufferSize);
+  absl::InlinedVector<char, 4> chars(kBufferSize);
   chars[kBufferSize - 1] = '\0';
   CUresult res = cuDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device);
   if (res != CUDA_SUCCESS) {

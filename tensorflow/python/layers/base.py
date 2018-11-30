@@ -23,6 +23,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util import function_utils
@@ -30,9 +31,9 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-
+# Avoid breaking users who directly import this symbol from this file.
+# TODO(fchollet): remove this.
 InputSpec = base_layer.InputSpec  # pylint: disable=invalid-name
-
 
 _KERAS_STYLE_SCOPE = False
 
@@ -208,6 +209,9 @@ class Layer(base_layer.Layer):
         raise ValueError(
             'reuse argument not allowed when keras style layers are enabled, '
             'but saw: {}'.format(self._reuse))
+      self._keras_style = True
+    else:
+      self._keras_style = False
 
     self._graph = None
     self._call_has_scope_arg = 'scope' in self._call_fn_args
@@ -239,11 +243,11 @@ class Layer(base_layer.Layer):
   def _make_unique_name(self, name_uid_map=None, avoid_names=None,
                         namespace='', zero_based=False):
     base_name = base_layer.to_snake_case(self.__class__.__name__)
-    name = base_layer.unique_layer_name(base_name,
-                                        name_uid_map=name_uid_map,
-                                        avoid_names=avoid_names,
-                                        namespace=namespace,
-                                        zero_based=zero_based)
+    name = base_layer_utils.unique_layer_name(base_name,
+                                              name_uid_map=name_uid_map,
+                                              avoid_names=avoid_names,
+                                              namespace=namespace,
+                                              zero_based=zero_based)
     return (name, base_name)
 
   @property
@@ -275,7 +279,7 @@ class Layer(base_layer.Layer):
 
   def _name_scope(self):
     """Determines op naming for the Layer."""
-    if _is_in_keras_style_scope():
+    if self._keras_style:
       return super(Layer, self)._name_scope()
     return self._current_scope.original_name_scope
 
@@ -349,7 +353,7 @@ class Layer(base_layer.Layer):
       ValueError: When trainable has been set to True with synchronization
         set as `ON_READ`.
     """
-    if _is_in_keras_style_scope():
+    if self._keras_style:
       return super(Layer, self).add_weight(
           name=name,
           shape=shape,
@@ -477,7 +481,7 @@ class Layer(base_layer.Layer):
     """
     scope = kwargs.pop('scope', None)
 
-    if _is_in_keras_style_scope():
+    if self._keras_style:
       if scope is not None:
         raise ValueError(
             'scope argument not allowed when keras style layers are enabled, '

@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -40,18 +41,21 @@ using MultiDeviceIteratorCallback =
 
 class MultiDeviceIterator : public ResourceBase {
  public:
-  MultiDeviceIterator(const DataTypeVector& output_types,
-                      const std::vector<PartialTensorShape>& output_shapes,
-                      const std::vector<string>& devices,
-                      std::unique_ptr<FunctionLibraryDefinition> flib_def,
-                      std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
-                      FunctionLibraryRuntime* lib)
+  MultiDeviceIterator(
+      const DataTypeVector& output_types,
+      const std::vector<PartialTensorShape>& output_shapes,
+      const std::vector<string>& devices,
+      std::unique_ptr<FunctionLibraryDefinition> flib_def,
+      std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+      FunctionLibraryRuntime* lib,
+      std::unique_ptr<FunctionHandleCache> function_handle_cache)
       : output_types_(output_types),
         output_shapes_(output_shapes),
         devices_(devices),
         flib_def_(std::move(flib_def)),
         pflr_(std::move(pflr)),
-        lib_(lib) {
+        lib_(lib),
+        function_handle_cache_(std::move(function_handle_cache)) {
     DCHECK(lib_ != nullptr);
   }
 
@@ -86,12 +90,19 @@ class MultiDeviceIterator : public ResourceBase {
   void GetNextFromShard(IteratorContext* ctx, int shard_num,
                         int64 incarnation_id,
                         MultiDeviceIteratorCallback callback) {
-    if (lib_ != nullptr) {
-      ctx->set_lib(lib_);
+    if (ctx->lib() == lib_) {
+      tf_shared_lock l(mu_);
+      multi_device_buffer_->GetNextFromShard(ctx, shard_num, incarnation_id,
+                                             std::move(callback));
+    } else {
+      IteratorContext::Params params(ctx);
+      params.lib = lib_;
+      params.function_handle_cache = function_handle_cache_.get();
+      IteratorContext iter_ctx(std::move(params));
+      tf_shared_lock l(mu_);
+      multi_device_buffer_->GetNextFromShard(
+          &iter_ctx, shard_num, incarnation_id, std::move(callback));
     }
-    tf_shared_lock l(mu_);
-    multi_device_buffer_->GetNextFromShard(ctx, shard_num, incarnation_id,
-                                           std::move(callback));
   }
 
   const DataTypeVector& output_types() const { return output_types_; }
@@ -108,6 +119,10 @@ class MultiDeviceIterator : public ResourceBase {
   FunctionLibraryRuntime* const lib() {
     tf_shared_lock l(mu_);
     return lib_;
+  }
+
+  FunctionHandleCache* function_handle_cache() {
+    return function_handle_cache_.get();
   }
 
  private:
@@ -200,7 +215,7 @@ class MultiDeviceIterator : public ResourceBase {
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!background_thread_) {
         background_thread_.reset(ctx->env()->StartThread(
-            {}, "multi_device_iterator_background_thread",
+            {}, "tf_data_multi_device_iterator",
             std::bind(&MultiDeviceIterator::MultiDeviceBuffer::BackgroundThread,
                       this, new IteratorContext(*ctx))));
       }
@@ -334,6 +349,7 @@ class MultiDeviceIterator : public ResourceBase {
   const std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   const std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   FunctionLibraryRuntime* const lib_ = nullptr;  // not owned.
+  const std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
 
   int64 incarnation_id_ GUARDED_BY(mu_) = 0;
@@ -377,21 +393,24 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
         OP_REQUIRES_OK(context, context->function_library()->Clone(
                                     &flib_def, &pflr, &lib));
+        std::unique_ptr<FunctionHandleCache> function_handle_cache(
+            new FunctionHandleCache(lib));
         ResourceMgr* mgr = context->resource_manager();
         OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
 
         MultiDeviceIterator* resource;
-        OP_REQUIRES_OK(
-            context,
-            mgr->LookupOrCreate<MultiDeviceIterator>(
-                cinfo_.container(), cinfo_.name(), &resource,
-                [this, lib, &flib_def, &pflr](MultiDeviceIterator** ret)
-                    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-                      *ret = new MultiDeviceIterator(
-                          output_types_, output_shapes_, devices_,
-                          std::move(flib_def), std::move(pflr), lib);
-                      return Status::OK();
-                    }));
+        OP_REQUIRES_OK(context,
+                       mgr->LookupOrCreate<MultiDeviceIterator>(
+                           cinfo_.container(), cinfo_.name(), &resource,
+                           [this, lib, &flib_def, &pflr,
+                            &function_handle_cache](MultiDeviceIterator** ret)
+                               EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                                 *ret = new MultiDeviceIterator(
+                                     output_types_, output_shapes_, devices_,
+                                     std::move(flib_def), std::move(pflr), lib,
+                                     std::move(function_handle_cache));
+                                 return Status::OK();
+                               }));
 
         Status s = VerifyResource(resource);
         if (TF_PREDICT_FALSE(!s.ok())) {
@@ -455,8 +474,10 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     core::ScopedUnref unref(resource);
 
     std::unique_ptr<IteratorBase> iterator;
-    IteratorContext iter_ctx(ctx);
-    iter_ctx.set_lib(resource->lib());
+    IteratorContext::Params params(ctx);
+    params.lib = resource->lib();
+    params.function_handle_cache = resource->function_handle_cache();
+    IteratorContext iter_ctx(std::move(params));
     OP_REQUIRES_OK(
         ctx, dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));
     int64 incarnation_id;
@@ -478,11 +499,8 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
  public:
   explicit MultiDeviceIteratorGetNextFromShardOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
-        thread_pool_(new thread::ThreadPool(
-            ctx->env(), ThreadOptions(),
-            strings::StrCat("multi_device_iterator_get_next_thread_",
-                            SanitizeThreadSuffix(name())),
-            1 /* num_threads */, false /* low_latency_hint */)) {}
+        background_worker_(ctx->env(),
+                           "tf_data_multi_device_iterator_get_next") {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor* tensor_shard_num;
@@ -497,18 +515,8 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
     MultiDeviceIterator* iterator;
     OP_REQUIRES_OK_ASYNC(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
-    thread_pool_->Schedule(std::bind(
+    background_worker_.Schedule(std::bind(
         [ctx, iterator, shard_num, incarnation_id](DoneCallback done) {
-          IteratorContext::Params params;
-          params.env = ctx->env();
-          params.runner = *(ctx->runner());
-          params.function_library = iterator->function_library();
-          DeviceBase* device = ctx->function_library()->device();
-          params.allocator_getter = [device](AllocatorAttributes attrs) {
-            return device->GetAllocator(attrs);
-          };
-          IteratorContext iter_ctx(std::move(params));
-
           MultiDeviceIteratorCallback callback = std::bind(
               [ctx](const HostBufferElement& elem, DoneCallback done) {
                 // iterator->Unref();
@@ -526,6 +534,9 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
               },
               std::placeholders::_1, std::move(done));
 
+          IteratorContext::Params params(ctx);
+          params.function_library = iterator->function_library();
+          IteratorContext iter_ctx(std::move(params));
           iterator->GetNextFromShard(&iter_ctx, shard_num, incarnation_id,
                                      callback);
           iterator->Unref();
@@ -534,7 +545,7 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
   }
 
  private:
-  std::unique_ptr<thread::ThreadPool> thread_pool_;
+  BackgroundWorker background_worker_;
 };
 
 REGISTER_KERNEL_BUILDER(
