@@ -2126,9 +2126,19 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
   Scope s = Scope::NewRootScope();
   auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
   auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
-  auto expanddims = ops::ExpandDims(s.WithOpName("my_expanddims"), input, weights);
+  auto expanddims = ops::ExpandDims(s.WithOpName("my_expanddims"), input, 
+                                    weights);
   const NodeDef& node_def = expanddims.operation.node()->def();
 
+  {
+    // Input is weights, should fail.
+    Reset();
+    AddTestWeights<int32>("input", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    AddTestWeights<int32>("weights", {1}, {1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "ExpandDims expects tensor for input, at my_expanddims");
+  }
   {
     // Axis is a tensor, should fail.
     Reset();
@@ -2144,7 +2154,8 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<int32>("weights", {1}, {0});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-        "Modifying batch dimension is not supported for ExpandDims, at my_expanddims");
+        "Modifying batch dimension is not supported for ExpandDims, at "
+        "my_expanddims");
   }
   {
     // Add dim at batch dimension via negative axis, should fail.
@@ -2153,7 +2164,8 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     // Input is rank 4 (batch dim included)
     AddTestWeights<int32>("weights", {1}, {-5});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-        "Modifying batch dimension is not supported for ExpandDims, at my_expanddims");
+        "Modifying batch dimension is not supported for ExpandDims, at "
+        "my_expanddims");
   }
   {
     // Axis > rank(input), should fail.
@@ -2250,6 +2262,15 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     return squeeze.operation.node()->def();
   };
 
+  {
+    // Input is weights, should fail.
+    Reset();
+    NodeDef node_def = get_squeeze_nodedef({0});
+    AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Squeeze expects tensor for input, at my_squeeze");
+  }
   {
     // Squeeze batch dim, should fail.
     Reset();
