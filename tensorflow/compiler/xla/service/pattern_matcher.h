@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/utility/utility.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -44,32 +45,45 @@ namespace xla {
 //
 // This pattern will match Add instructions whose first operand is a constant.
 //
-// Each pattern type has the following modifiers:
+// Each pattern type has the following modifiers, which are described where
+// nontrivial.
 //
 //   Op():
-//     - WithName: match operations with the given name
-//     - WithOpcode: match operations with the given opcode
-//     - WithShape: match operations whose shape matches the given pattern
-//     - WithOperand: match operations whose operand matches the given pattern
+//     - Is: is the given HloInstruction* (i.e. pointer equality)
+//     - WithName
+//     - WithOpcode
+//     - WithoutOpcode: anything other than the given opcode
+//     - WithShape: instr's shape matches the given pattern
+//     - WithShapeEqualTo: instr's shape is equal to the given Shape
+//     - WithShapeCompatibleTo: instr's shape is compatible with the given Shape
+//     - WithNumOperands
+//     - WithOperand: operand at the given index matches the given pattern
+//     - IsConstant
+//     - IsNonConstant
+//     - IsConstantScalar/IsEffectiveConstantScalar: Optionally accepts a value,
+//       e.g. IsConstantScalar() or IsConstantScalar(42).
+//     - WithFusionKind
+//     - WithTupleIndex: get-tuple-element operations with the given tuple index
 //
 //   Shape():
-//     - EqualTo: matches shapes that are equal to the argument
-//     - CompatibleTo: matches shapes that are compatible to the argument
-//     - IsScalar/IsArray/IsTuple: matches scalar/array/tuple shapes
-//     - IsDenseArray/IsSparseArray: matches arrays with dense/sparse format
-//     - WithLayout: match shapes whose layout matches the given pattern
-//     - WithLayoutEqualTo: matches shapes whose layouts equal the argument
-//     - WithSubshape: matches tuple shapes whose subshape matches the given
-//       pattern
-//     - WithSubshapeEqualTo: matches shapes with a subshape equal the argument
-//     - WithElementType: matches array/scalar shapes with the given element
-//       type
-//     - WithRank: matches array/scalar types with the given rank
+//     - EqualTo
+//     - CompatibleTo
+//     - IsScalar/IsEffectiveScalar/IsArray/IsTuple
+//     - IsDenseArray/IsSparseArray
+//     - WithLayout: layout shape's layout matches the given pattern (e.g.
+//       Layout().WithDenseFormat())
+//     - WithLayoutEqualTo: shape's layout equals the argument (i.e. another
+//       Layout, but not the result of Layout().foo())
+//     - WithSubshape: shape is a tuple whose subshape matches the given pattern
+//       (e.g. Shape().IsScalar()).
+//     - WithSubshapeEqualTo: shape is a tuple with a subshape equal to the arg
+//       (i.e. another Shape, but not the result of Shape().foo())
+//     - WithElementType: shape is an array/scalar with the given elem type
+//     - WithRank: shape is an array/scalar with the given rank
 //
 //  Layout():
-//     - EqualTo: matches layouts that are equal to the argument
-//     - WithDenseFormat/WithSparseFormat: matches layouts with dense/sparse
-//       format
+//     - EqualTo
+//     - WithDenseFormat/WithSparseFormat
 //
 // Op(), Shape(), and Layout() may be passed an argument of type
 // HloInstruction**, Shape**, or Layout**, respectively, or const versions of
@@ -82,53 +96,55 @@ namespace xla {
 //   CHECK(Match(foo,
 //               match::Op().WithOperand(0, match::Op(&matched_operand))));
 //
-// Helpers are provided for common nullary, unary, binary, and ternary
-// instructions. These helpers can be called with no arguments, in which case
-// they will match any instruction matching the opcode. They may also be called
-// with matches for the operands and with an optional capture. (The capture must
-// be the first argument.) Some examples of these helpers and their equivalents
-// are provided below.
-//
+// Helpers are provided for most HLO instructions. These helpers can be called
+// with no arguments, in which case they will match any instruction matching the
+// opcode. They may also be called with matches for the operands and with an
+// optional capture. (The capture must be the first argument.) Some examples of
+// these helpers and their equivalents are provided below.
+
 // Example nullary instruction:
 //   Parameter()                    == Op().WithOpcode(HloOpcode::kParameter)
 //   Parameter(&a)                  == Op(&a).WithOpcode(HloOpcode::kParameter)
 //
 // Example unary instruction:
-//   Abs()                             == Op().WithOpcode(HloOpcode::kAbs)
-//   Abs(Op(&a))                       == Op().WithOpcode(HloOpcode::kAbs)
-//                                            .WithOperand(0, Op(&a)))
-//   Abs(&a, Op(&b))                   == Op(&a).WithOpcode(HloOpcode::kAbs)
-//                                              .WithOperand(0, Op(&b))
+//   Abs()                          == Op().WithOpcode(HloOpcode::kAbs)
+//   Abs(Op(&a))                    == Op().WithOpcode(HloOpcode::kAbs)
+//                                         .WithOperand(0, Op(&a)))
+//   Abs(&a, Op(&b))                == Op(&a).WithOpcode(HloOpcode::kAbs)
+//                                           .WithOperand(0, Op(&b))
 //
-// Example binary instruction:
-//   Add()                             == Op().WithOpcode(HloOpcode::kAdd)
-//   Add(Op(&a), Op(&b))               == Op().WithOpcode(HloOpcode::kAdd)
-//                                            .WithOperand(0, Op(&a))
-//                                            .WithOperand(1, Op(&b))
-//   Add(&a, Op(&b), Op(&c))           == Op(&a).WithOpcode(HloOpcode::kAdd)
-//                                              .WithOperand(0, Op(&b))
-//                                              .WithOperand(1, Op(&c))
+// Commutative binary instructions have a special form that accepts either order
+// of args, e.g.:
 //
-// Example ternary instruction:
-//   Clamp()                           == Op().WithOpcode(HloOpcode::kClamp)
-//   Clamp(Op(&a), Op(&b), Op(&c))     == Op().WithOpcode(HloOpcode::kClamp)
-//                                            .WithOperand(0, Op(&a))
-//                                            .WithOperand(1, Op(&b))
-//                                            .WithOperand(2, Op(&c))
-//   Clamp(&a, Op(&b), Op(&c), Op(&d)) == Op(&a).WithOpcode(HloOpcode::kClamp)
-//                                              .WithOperand(0, Op(&b))
-//                                              .WithOperand(1, Op(&c))
-//                                              .WithOperand(2, Op(&d))
+//   AddAnyOrder(Parameter(1), Abs()) ==
+//     Op().WithOpcode(HloOpcode::kAdd)
+//         .WithBinaryOperandsAnyOrder(Op().WithParameterNum(1), Abs());
 //
+//   MultiplyAnyOrder(&a, Parameter(), Abs())  // Captures the mul in `a`.
+//
+// The following additional helpers are provided.  In all cases, `&a` is
+// optional.
+//
+//   ConstantScalar(&a)               == Op(&a).IsConstantScalar();
+//   ConstantScalar(&a, v)            == Op(&a).IsConstantScalar(v);
+//   ConstantEffectiveScalar(&a)      == Op(&a).IsConstantEffectiveScalar();
+//   ConstantEffectiveScalar(&a, v)   == Op(&a).IsConstantEffectiveScalar(&a, v)
+//   NonConstant(&a)                  == Op(&a).IsNonConstant()
+//   GetTupleElement(&a, b, index)    == Op(&a).WithTupleIndex(index)
+//                                             .WithOperand(0, b);
+//   Parameter(&a, n)                 == Op(&a).WithParameterNum(n);
 
 struct MatchOption {
   // If true, actually capture matched item into the user pointer.
   bool capture;
+
+  // An explanation for why we failed to match is streamed here, if not-null.
+  std::ostream* explain_os;
 };
 
 template <typename Value, typename Pattern>
 bool Match(Value* value, const Pattern& pattern,
-           MatchOption option = {/*.capture=*/true}) {
+           MatchOption option = {/*.capture=*/true, /*.explain_os=*/nullptr}) {
   if (option.capture) {
     auto new_option = option;
     new_option.capture = false;
@@ -142,6 +158,77 @@ bool Match(Value* value, const Pattern& pattern,
 namespace match {
 
 namespace detail {
+
+// Macro for streaming to option.explain_os if it's not null.
+//
+//   EXPLAIN << "value of foo(): " << foo()
+//
+#pragma push_macro("EXPLAIN")
+#define EXPLAIN \
+  if (option.explain_os) *option.explain_os
+
+// kIndentInc is the additional number of spaces that we indent by when we
+// increase the indent "by one".
+enum {
+  kIndentInc = 2,
+};
+
+// Writes a newline and then `indent` spaces.
+//
+// We follow an unintuitive convention in this file's pretty-printers: Indents
+// are performed by the caller, not the callee.  For example, if you want to
+// print
+//
+//   foo:
+//    - bar
+//
+// you'd do:
+//
+//  Foo::DescribeTo(std::ostream* os, int64 indent) {
+//    *os << "foo:";
+//    Indent(os, indent)  // Create a newline at the *current* indent level.
+//    *os << " - ";
+//    bar.DescribeTo(os, indent + 3);  // + 3 because strlen(" * ") == 3.
+//  }
+//
+//  Bar::DescribeTo(std::ostream* os, int64 indent) { *os << "bar"; }
+//
+// Notice that Bar::DescribeTo() does not call Indent; the indenting is
+// performed by Foo.  This convention allows the caller to decide whether a
+// matcher is preceded by a newline, which is important e.g. for the AllOf
+// matcher.
+//
+// (Incidentally, indenting in Match's explanations is handled differently.
+// Indents are a common case in DescribeTo [we're printing a whole tree], but
+// they're a special case in Match [we're printing only a path through the tree
+// that encounters a failing node]. Indents in Match only appear when we
+// encounter a failing disjunction, so we just handle them as a special case
+// there.)
+inline void Indent(std::ostream* os, int64 indent) {
+  *os << "\n";
+  for (int64 i = 0; i < indent; ++i) {
+    *os << " ";
+  }
+}
+
+// SFINAE template that determines whether T declares a static member
+// kIsTrivialMatcher.
+//
+// Trivial matchers get special treatment.  For example, when printing
+// a conjunction of matchers, we don't print "and" after a trivial matcher. This
+// yields e.g.
+//    "a shape compatible with f32[1,2]"
+// rather than
+//    "a shape AND compatible with f32[1,2]"
+template <typename T, typename Dummy = void>
+struct IsTrivialMatcher {
+  static constexpr bool value = false;
+};
+template <typename T>
+struct IsTrivialMatcher<T,
+                        typename std::enable_if<T::kIsTrivialMatcher>::type> {
+  static constexpr bool value = true;
+};
 
 template <typename Item, typename... Patterns>
 class AllOfPattern {
@@ -162,10 +249,19 @@ class AllOfPattern {
     return matched;
   }
 
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    DescribeToImpl(os, std::integral_constant<size_t, 0>(), indent);
+  }
+
+  // Accessor for patterns_.  Please don't use this outside of this file.
+  const std::tuple<Patterns...>& patterns() const { return patterns_; }
+
  private:
   template <typename ItemType, size_t index>
   bool MatchImpl(ItemType* item, MatchOption option,
                  std::integral_constant<size_t, index>) const {
+    // We don't need to do any EXPLAINing here; it's all correctly handled by
+    // our sub-matchers (if any fail).
     return std::get<index>(patterns_).Match(item, option) &&
            MatchImpl(item, option, std::integral_constant<size_t, index + 1>());
   }
@@ -176,6 +272,73 @@ class AllOfPattern {
     return true;
   }
 
+  // Pretty-printing a conjunction has some special cases to make it easy to
+  // read in the simple (common) case.
+  //
+  // If sizeof...(Patterns) == 1, prints as e.g.
+  //
+  //   a shape
+  //
+  // If sizeof...(Patterns) == 2 and patterns_[0] is a trivial matcher (e.g. "a
+  // shape") prints as
+  //
+  //   a shape compatible with f32[1,2]
+  //
+  // If sizeof...(Patterns) > 2 and patterns_[0] is a trivial matcher, prints as
+  //
+  //   a shape:
+  //    * compatible with f32[1,2] AND
+  //    * that represents a scalar
+  //
+  // Otherwise prints as:
+  //
+  //   all of:
+  //    * foo AND
+  //    * bar
+  //
+  template <size_t index>
+  void DescribeToImpl(std::ostream* os, std::integral_constant<size_t, index>,
+                      int64 indent) const {
+    constexpr bool first_is_trivial =
+        IsTrivialMatcher<typename std::remove_reference<decltype(
+            std::get<0>(patterns_))>::type>::value;
+    constexpr bool is_last = index == sizeof...(Patterns) - 1;
+    const auto& submatcher = std::get<index>(patterns_);
+
+    auto print_bulleted_item = [&] {
+      *os << " * ";
+      submatcher.DescribeTo(os, indent + 3);
+      if (!is_last) {
+        *os << " AND";
+        Indent(os, indent);
+      }
+    };
+
+    if (index == 0) {
+      if (first_is_trivial || is_last) {
+        submatcher.DescribeTo(os, indent + kIndentInc);
+        if (sizeof...(Patterns) > 2) {
+          *os << ":";
+          Indent(os, indent);
+        }
+      } else {
+        *os << "all of:";
+        Indent(os, indent);
+        print_bulleted_item();
+      }
+    } else if (first_is_trivial && index == 1 && sizeof...(Patterns) == 2) {
+      *os << " ";
+      submatcher.DescribeTo(os, indent);
+    } else {
+      print_bulleted_item();
+    }
+    DescribeToImpl(os, std::integral_constant<size_t, index + 1>(), indent);
+  }
+
+  void DescribeToImpl(std::ostream* os,
+                      std::integral_constant<size_t, sizeof...(Patterns)>,
+                      int64 indent) const {}
+
   std::tuple<Patterns...> patterns_;
 };
 
@@ -183,15 +346,30 @@ class AllOfPattern {
 
 // Returns a pattern that represents the conjunction of all input patterns. All
 // patterns need to match in order to have the AllOf pattern match.
-//
-// TODO(timshen): Currently AllOf is still nested, e.g. AllOf<AllOf<A>, B> is
-// not AllOf<A, B>. We might want to flatten the AllOf type structure if the
-// C++ compile error message gets annoying.
 template <typename Item, typename... Patterns>
 detail::AllOfPattern<typename std::remove_const<Item>::type, Patterns...> AllOf(
     const Patterns&... patterns) {
   return detail::AllOfPattern<typename std::remove_const<Item>::type,
                               Patterns...>(patterns...);
+}
+
+// AllOf<AllOf<A, B...>, X, Y, ...> => AllOf<A, B, ..., X, Y, ...>.
+//
+// This transformation is necessary for good pretty-printing.
+template <typename Item, typename... InnerPs, typename... OuterPs>
+detail::AllOfPattern<typename std::remove_const<Item>::type, InnerPs...,
+                     OuterPs...>
+AllOf(const detail::AllOfPattern<Item, InnerPs...>& inner_p,
+      const OuterPs&... outer_ps) {
+  // Invoke constructor of AllOfPattern<Item, InnerPs..., OuterPs...>.
+  auto make_all_of = [](const InnerPs&... inner_ps,
+                        const OuterPs&... outer_ps) {
+    return detail::AllOfPattern<typename std::remove_const<Item>::type,
+                                InnerPs..., OuterPs...>(inner_ps...,
+                                                        outer_ps...);
+  };
+  return absl::apply(make_all_of, std::tuple_cat(inner_p.patterns(),
+                                                 std::make_tuple(outer_ps...)));
 }
 
 namespace detail {
@@ -204,8 +382,18 @@ class LayoutPattern;
 class LayoutPatternBaseImpl {
  public:
   bool Match(const ::xla::Layout* layout, MatchOption option) const {
-    return layout != nullptr;
+    if (layout == nullptr) {
+      EXPLAIN << "Layout is null";
+      return false;
+    }
+    return true;
   }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "a layout";
+  }
+
+  static constexpr bool kIsTrivialMatcher = true;
 };
 
 // A LayoutPattern implementation that matches only if the layout equals a
@@ -216,7 +404,17 @@ class LayoutPatternEqualImpl {
       : layout_(layout) {}
 
   bool Match(const ::xla::Layout* layout, MatchOption option) const {
-    return LayoutUtil::Equal(*layout_, *layout);
+    if (!LayoutUtil::Equal(*layout_, *layout)) {
+      EXPLAIN << "Layout " << LayoutUtil::HumanString(*layout)
+              << " is not equal to expected "
+              << LayoutUtil::HumanString(*layout_);
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "equal to " << LayoutUtil::HumanString(*layout_);
   }
 
  private:
@@ -230,7 +428,16 @@ class LayoutPatternFormatImpl {
   explicit constexpr LayoutPatternFormatImpl(Format format) : format_(format) {}
 
   bool Match(const ::xla::Layout* layout, MatchOption option) const {
-    return layout->format() == format_;
+    if (layout->format() != format_) {
+      EXPLAIN << "Layout has format " << Format_Name(layout->format())
+              << " but expected " << Format_Name(format_);
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "with format " << Format_Name(format_);
   }
 
  private:
@@ -242,11 +449,13 @@ template <typename LayoutType, typename Impl>
 class LayoutPattern {
  private:
   template <typename NewImpl>
-  LayoutPattern<LayoutType, AllOfPattern<::xla::Layout, Impl, NewImpl>>
-  AppendImpl(NewImpl new_impl) const {
-    return LayoutPattern<LayoutType,
-                         AllOfPattern<::xla::Layout, Impl, NewImpl>>(
-        AllOf<Layout>(impl_, std::move(new_impl)), matched_layout_);
+  auto AppendImpl(NewImpl new_impl) const
+      -> LayoutPattern<LayoutType,
+                       decltype(AllOf<Layout>(std::declval<Impl>(),
+                                              std::move(new_impl)))> {
+    auto new_allof = AllOf<Layout>(impl_, std::move(new_impl));
+    return LayoutPattern<LayoutType, decltype(new_allof)>(std::move(new_allof),
+                                                          matched_layout_);
   }
 
  public:
@@ -274,6 +483,10 @@ class LayoutPattern {
       return true;
     }
     return false;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    impl_.DescribeTo(os, indent);
   }
 
   // Modifies the pattern to match only if the layout equals the given proto.
@@ -306,19 +519,48 @@ class AnyOfPattern {
   explicit AnyOfPattern(const Patterns&... patterns) : patterns_(patterns...) {}
 
   bool Match(const Item* item, MatchOption option) const {
-    return MatchImpl(item, option, std::integral_constant<size_t, 0>());
+    return MatchImpl(item, option);
   }
 
   bool Match(Item* item, MatchOption option) const {
-    return MatchImpl(item, option, std::integral_constant<size_t, 0>());
+    return MatchImpl(item, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "any of:";
+    Indent(os, indent);
+    DescribeToImpl(os, std::integral_constant<size_t, 0>(), indent);
   }
 
  private:
+  template <typename ItemType>
+  bool MatchImpl(ItemType* item, MatchOption option) const {
+    // If we're generating an explanation, buffer it until we know we failed.
+    absl::optional<std::stringstream> explanation;
+    MatchOption new_option = option;
+    if (option.explain_os) {
+      new_option.explain_os = &explanation.emplace();
+    }
+    bool rv = MatchRecursiveImpl(item, new_option,
+                                 std::integral_constant<size_t, 0>());
+    if (!rv && option.explain_os) {
+      EXPLAIN << "None of the following matchers succeeded:";
+      EXPLAIN << explanation->str();
+    }
+    return rv;
+  }
+
   template <typename ItemType, size_t index>
-  bool MatchImpl(ItemType* item, MatchOption option,
-                 std::integral_constant<size_t, index>) const {
+  bool MatchRecursiveImpl(ItemType* item, MatchOption option,
+                          std::integral_constant<size_t, index>) const {
     auto new_option = option;
     new_option.capture = false;
+
+    absl::optional<std::stringstream> explanation;
+    if (option.explain_os) {
+      new_option.explain_os = &explanation.emplace();
+    }
+
     // Try to match the sub-pattern without capturing behavior.
     if (std::get<index>(patterns_).Match(item, new_option)) {
       // Capture the branch.
@@ -337,19 +579,45 @@ class AnyOfPattern {
         // AnyOf will be a runtime number indicate which sub-pattern is matched.
         // Then we run another pass to do captures only with the help of the
         // trace.
-        bool ret = std::get<index>(patterns_).Match(item, option);
-        DCHECK(ret);
+        bool matched = std::get<index>(patterns_).Match(item, option);
+        DCHECK(matched);
       }
       return true;
     }
-    return MatchImpl(item, option, std::integral_constant<size_t, index + 1>());
+    if (option.explain_os) {
+      EXPLAIN << "\nMatcher #" << index + 1;
+      EXPLAIN << "\n - ";
+      std::get<index>(patterns_).DescribeTo(option.explain_os, /*indent=*/3);
+      EXPLAIN << "\nfailed with";
+      EXPLAIN << "\n - ";
+      EXPLAIN << absl::StrReplaceAll(explanation->str(), {{"\n", "\n   "}});
+    }
+    return MatchRecursiveImpl(item, option,
+                              std::integral_constant<size_t, index + 1>());
   }
 
   template <typename ItemType>
-  bool MatchImpl(ItemType* item, MatchOption option,
-                 std::integral_constant<size_t, sizeof...(Patterns)>) const {
+  bool MatchRecursiveImpl(
+      ItemType* item, MatchOption option,
+      std::integral_constant<size_t, sizeof...(Patterns)>) const {
     return false;
   }
+
+  template <size_t index>
+  void DescribeToImpl(std::ostream* os, std::integral_constant<size_t, index>,
+                      int64 indent) const {
+    *os << " - ";
+    std::get<index>(patterns_).DescribeTo(os, indent + 3);
+    if (index != sizeof...(Patterns) - 1) {
+      *os << " OR";
+      Indent(os, indent);
+    }
+    DescribeToImpl(os, std::integral_constant<size_t, index + 1>(), indent);
+  }
+
+  void DescribeToImpl(std::ostream* os,
+                      std::integral_constant<size_t, sizeof...(Patterns)>,
+                      int64 indent) const {}
 
   std::tuple<Patterns...> patterns_;
 };
@@ -395,8 +663,17 @@ class ShapePattern;
 class ShapePatternBaseImpl {
  public:
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
+    if (shape == nullptr) {
+      EXPLAIN << "Shape is null";
+    }
     return shape != nullptr;
   }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "a shape";
+  }
+
+  static constexpr bool kIsTrivialMatcher = true;
 };
 
 // A ShapePattern implementation that matches only if the shape equals a Shape
@@ -407,7 +684,16 @@ class ShapePatternEqualImpl {
       : shape_(shape) {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    return ShapeUtil::Equal(*shape_, *shape);
+    if (!ShapeUtil::Equal(*shape_, *shape)) {
+      EXPLAIN << "Shape not equal to "
+              << ShapeUtil::HumanStringWithLayout(*shape_);
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "equal to " << ShapeUtil::HumanStringWithLayout(*shape_);
   }
 
  private:
@@ -422,7 +708,16 @@ class ShapePatternCompatibleImpl {
       : shape_(shape) {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    return ShapeUtil::Compatible(*shape_, *shape);
+    if (!ShapeUtil::Compatible(*shape_, *shape)) {
+      EXPLAIN << "Shape not compatible with "
+              << ShapeUtil::HumanString(*shape_);
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "compatible with " << ShapeUtil::HumanString(*shape_);
   }
 
  private:
@@ -437,7 +732,16 @@ class ShapePatternElementTypeImpl {
       : element_type_(element_type) {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    return shape->element_type() == element_type_;
+    if (shape->element_type() != element_type_) {
+      EXPLAIN << "Shape does not have element type "
+              << PrimitiveType_Name(element_type_);
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "with element type " << PrimitiveType_Name(element_type_);
   }
 
  private:
@@ -450,7 +754,15 @@ class ShapePatternIsScalarImpl {
   explicit constexpr ShapePatternIsScalarImpl() {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    return ShapeUtil::IsScalar(*shape);
+    if (!ShapeUtil::IsScalar(*shape)) {
+      EXPLAIN << "Shape is not a scalar";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "that represents a scalar";
   }
 };
 
@@ -460,7 +772,15 @@ class ShapePatternIsArrayImpl {
   explicit constexpr ShapePatternIsArrayImpl() {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    return ShapeUtil::IsArray(*shape);
+    if (!ShapeUtil::IsArray(*shape)) {
+      EXPLAIN << "Shape is not an array";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "that represents an array";
   }
 };
 
@@ -470,7 +790,34 @@ class ShapePatternIsTupleImpl {
   explicit constexpr ShapePatternIsTupleImpl() {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    return ShapeUtil::IsTuple(*shape);
+    if (!ShapeUtil::IsTuple(*shape)) {
+      EXPLAIN << "Shape is not a tuple";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "that represents a tuple";
+  }
+};
+
+// A ShapePattern implementation that matches only if the shape is an effective
+// scalar.
+class ShapePatternEffectiveScalarImpl {
+ public:
+  explicit constexpr ShapePatternEffectiveScalarImpl() {}
+
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
+    if (!ShapeUtil::IsEffectiveScalar(*shape)) {
+      EXPLAIN << "Shape is not an effective scalar";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "that is an effective scalar";
   }
 };
 
@@ -481,7 +828,23 @@ class ShapePatternRankImpl {
   explicit constexpr ShapePatternRankImpl(int64 rank) : rank_(rank) {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    return ShapeUtil::Rank(*shape) == rank_;
+    if (ShapeUtil::Rank(*shape) != rank_) {
+      if (rank_ == 0) {
+        EXPLAIN << "Shape is not a scalar";
+      } else {
+        EXPLAIN << "Shape does not have rank " << rank_;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    if (rank_ == 0) {
+      *os << "that is a scalar";
+    } else {
+      *os << "that has " << rank_ << " dimension" << (rank_ != 1 ? "s" : "");
+    }
   }
 
  private:
@@ -503,8 +866,21 @@ class ShapePatternLayoutImpl {
   }
 
   bool Match(Shape* shape, MatchOption option) const {
-    return LayoutUtil::HasLayout(*shape) &&
-           layout_.Match(shape->mutable_layout(), option);
+    if (!LayoutUtil::HasLayout(*shape)) {
+      EXPLAIN << "Shape does not have a layout";
+      return false;
+    }
+    if (!layout_.Match(shape->mutable_layout(), option)) {
+      EXPLAIN << "\nin layout";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "with";
+    Indent(os, indent + kIndentInc);
+    layout_.DescribeTo(os, indent + kIndentInc);
   }
 
  private:
@@ -522,17 +898,40 @@ class ShapePatternSubshapeImpl {
       : index_(index), subshape_(subshape) {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    return ShapeUtil::IndexIsValid(*shape, index_) &&
-           subshape_.Match(&ShapeUtil::GetSubshape(*shape, index_), option);
+    return MatchImpl(shape, option);
   }
 
   bool Match(::xla::Shape* shape, MatchOption option) const {
-    return ShapeUtil::IndexIsValid(*shape, index_) &&
-           subshape_.Match(ShapeUtil::GetMutableSubshape(shape, index_),
-                           option);
+    return MatchImpl(shape, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "with subshape at index " << index_.ToString() << " which is";
+    Indent(os, indent + kIndentInc);
+    subshape_.DescribeTo(os, indent + kIndentInc);
   }
 
  private:
+  Shape* GetSubshape(Shape* shape) const {
+    return ShapeUtil::GetMutableSubshape(shape, index_);
+  }
+  const Shape* GetSubshape(const Shape* shape) const {
+    return &ShapeUtil::GetSubshape(*shape, index_);
+  }
+
+  template <typename ShapeType>
+  bool MatchImpl(ShapeType* shape, MatchOption option) const {
+    if (!ShapeUtil::IndexIsValid(*shape, index_)) {
+      EXPLAIN << "No subshape at " << index_.ToString();
+      return false;
+    }
+    if (!subshape_.Match(GetSubshape(shape), option)) {
+      EXPLAIN << "\nin subshape at " << index_.ToString();
+      return false;
+    }
+    return true;
+  }
+
   ShapeIndexView index_;
   ShapePattern<SubshapeType, SubshapeImpl> subshape_;
 };
@@ -542,10 +941,12 @@ template <typename ShapeType, typename Impl>
 class ShapePattern {
  private:
   template <typename NewImpl>
-  ShapePattern<ShapeType, AllOfPattern<::xla::Shape, Impl, NewImpl>> AppendImpl(
-      NewImpl new_impl) const {
-    return ShapePattern<ShapeType, AllOfPattern<::xla::Shape, Impl, NewImpl>>(
-        AllOf<Shape>(impl_, std::move(new_impl)), matched_shape_);
+  auto AppendImpl(NewImpl new_impl) const
+      -> ShapePattern<ShapeType, decltype(AllOf<Shape>(std::declval<Impl>(),
+                                                       std::move(new_impl)))> {
+    auto new_all_of = AllOf<Shape>(impl_, std::move(new_impl));
+    return ShapePattern<ShapeType, decltype(new_all_of)>(std::move(new_all_of),
+                                                         matched_shape_);
   }
 
  public:
@@ -560,6 +961,11 @@ class ShapePattern {
       }
       return true;
     }
+    if (shape) {
+      EXPLAIN << "\nin "
+              << (shape->has_layout() ? ShapeUtil::HumanStringWithLayout(*shape)
+                                      : ShapeUtil::HumanString(*shape));
+    }
     return false;
   }
 
@@ -571,7 +977,14 @@ class ShapePattern {
       }
       return true;
     }
+    EXPLAIN << "\nin "
+            << (shape->has_layout() ? ShapeUtil::HumanStringWithLayout(*shape)
+                                    : ShapeUtil::HumanString(*shape));
     return false;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    return impl_.DescribeTo(os, indent);
   }
 
   // Modifies the pattern to match only if the shape equals the given proto.
@@ -610,6 +1023,11 @@ class ShapePattern {
   constexpr auto IsTuple() const
       -> decltype(this->AppendImpl(ShapePatternIsTupleImpl())) {
     return AppendImpl(ShapePatternIsTupleImpl());
+  }
+
+  constexpr auto IsEffectiveScalar() const
+      -> decltype(this->AppendImpl(ShapePatternEffectiveScalarImpl())) {
+    return AppendImpl(ShapePatternEffectiveScalarImpl());
   }
 
   // Modifies the pattern to match only if the shape has the given rank.
@@ -706,6 +1124,15 @@ Shape(::xla::Shape** matched_shape) {
 
 namespace detail {
 
+// Overloads to get a const or non-const operand out of an instruction.
+inline HloInstruction* HloOperand(HloInstruction* instr, int64 idx) {
+  return instr->mutable_operand(idx);
+}
+inline const HloInstruction* HloOperand(const HloInstruction* instr,
+                                        int64 idx) {
+  return instr->operand(idx);
+}
+
 template <typename HloInstructionType, typename Impl>
 class HloInstructionPattern;
 
@@ -714,8 +1141,18 @@ class HloInstructionPattern;
 class HloInstructionPatternBaseImpl {
  public:
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
-    return inst != nullptr;
+    if (inst == nullptr) {
+      EXPLAIN << "HloInstruction* is null";
+      return false;
+    }
+    return true;
   }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "an HloInstruction";
+  }
+
+  static constexpr bool kIsTrivialMatcher = true;
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
@@ -726,11 +1163,42 @@ class HloInstructionPatternNameImpl {
       : name_(name) {}
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
-    return inst->name() == name_;
+    if (inst->name() != name_) {
+      EXPLAIN << "HloInstruction not named \"" << name_ << "\"";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "named \"" << name_ << "\"";
   }
 
  private:
   absl::string_view name_;
+};
+
+// An HloInstructionPattern implementation that matches only if the instruction
+// equals a particular pointer.
+class HloInstructionIsImpl {
+ public:
+  explicit HloInstructionIsImpl(const HloInstruction* inst) : inst_(inst) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    if (inst != inst_) {
+      EXPLAIN << "HloInstruction " << inst << " is not " << inst_ << " ("
+              << inst_->ToShortString() << ")";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "which is " << inst_ << " (" << inst_->ToShortString() << ")";
+  }
+
+ private:
+  const HloInstruction* inst_;
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
@@ -742,7 +1210,25 @@ class HloInstructionPatternOpcodeImpl {
       : opcode_(opcode), invert_(invert) {}
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
-    return (invert_ ^ (inst->opcode() == opcode_));
+    if (invert_ && inst->opcode() == opcode_) {
+      EXPLAIN << "HloInstruction has opcode " << HloOpcodeString(opcode_)
+              << ", expected anything else";
+      return false;
+    }
+    if (!invert_ && inst->opcode() != opcode_) {
+      EXPLAIN << "HloInstruction doesn't have opcode "
+              << HloOpcodeString(opcode_);
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    if (!invert_) {
+      *os << "with opcode " << HloOpcodeString(opcode_);
+    } else {
+      *os << "with any opcode other than " << HloOpcodeString(opcode_);
+    }
   }
 
  private:
@@ -757,8 +1243,17 @@ class HloInstructionPatternNumOperandsImpl {
   explicit constexpr HloInstructionPatternNumOperandsImpl(int64 num_operands)
       : num_operands_(num_operands) {}
 
-  bool Match(const ::xla::HloInstruction* inst, MatchOption /*option*/) const {
-    return inst->operand_count() == num_operands_;
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    if (inst->operand_count() != num_operands_) {
+      EXPLAIN << "HloInstruction doesn't have " << num_operands_ << " operands";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "with " << num_operands_ << " operand"
+        << (num_operands_ != 1 ? "s" : "");
   }
 
  private:
@@ -775,11 +1270,25 @@ class HloInstructionPatternShapeImpl {
       : shape_(shape) {}
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
-    return shape_.Match(&inst->shape(), option);
+    if (!shape_.Match(&inst->shape(), option)) {
+      EXPLAIN << "\nin output shape";
+      return false;
+    }
+    return true;
   }
 
   bool Match(::xla::HloInstruction* inst, MatchOption option) const {
-    return shape_.Match(inst->mutable_shape(), option);
+    if (!shape_.Match(inst->mutable_shape(), option)) {
+      EXPLAIN << "\nin output shape";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "outputting";
+    Indent(os, indent + kIndentInc);
+    shape_.DescribeTo(os, indent + kIndentInc);
   }
 
  private:
@@ -797,18 +1306,195 @@ class HloInstructionPatternOperandImpl {
       : operand_index_(operand_index), operand_(operand) {}
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
-    return operand_index_ < inst->operand_count() &&
-           operand_.Match(inst->operand(operand_index_), option);
+    return MatchImpl(inst, option);
   }
 
   bool Match(::xla::HloInstruction* inst, MatchOption option) const {
-    return operand_index_ < inst->operand_count() &&
-           operand_.Match(inst->mutable_operand(operand_index_), option);
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "with operand " << operand_index_ << " which is:";
+    Indent(os, indent + kIndentInc);
+    operand_.DescribeTo(os, indent + kIndentInc);
   }
 
  private:
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    if (operand_index_ >= inst->operand_count()) {
+      EXPLAIN << "desired operand index " << operand_index_
+              << " is out of bounds";
+      return false;
+    }
+    if (!operand_.Match(HloOperand(inst, operand_index_), option)) {
+      EXPLAIN << "\nin operand " << operand_index_;
+      return false;
+    }
+    return true;
+  }
+
   int64 operand_index_;
   HloInstructionPattern<OperandType, OperandImpl> operand_;
+};
+
+// Matches a binary instruction whose operands come in any order.
+template <typename OperandType1, typename OperandImpl1, typename OperandType2,
+          typename OperandImpl2>
+class HloInstructionPatternBinaryOperandsAnyOrderImpl {
+ public:
+  explicit constexpr HloInstructionPatternBinaryOperandsAnyOrderImpl(
+      const HloInstructionPattern<OperandType1, OperandImpl1>& op1,
+      const HloInstructionPattern<OperandType2, OperandImpl2>& op2)
+      : op1_(op1), op2_(op2) {}
+
+  bool Match(HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  bool Match(const HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "with two operands in either order:";
+    Indent(os, indent);
+    *os << " - ";
+    op1_.DescribeTo(os, indent + 3);
+    Indent(os, indent);
+    *os << " - ";
+    op2_.DescribeTo(os, indent + 3);
+  }
+
+ private:
+  HloInstruction* operand(HloInstruction* inst, int64 idx) const {
+    return inst->mutable_operand(idx);
+  }
+  const HloInstruction* operand(const HloInstruction* inst, int64 idx) const {
+    return inst->operand(idx);
+  }
+
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    // We could implement this using AnyOf and AllOf matchers, but the templates
+    // get pretty difficult to debug, since any compile error herein becomes
+    // not-an-error via SFINAE.  Also this way lets us give better messages on
+    // failure.
+    if (inst->operand_count() != 2) {
+      EXPLAIN << "HloInstruction did not have two operands";
+      return false;
+    }
+
+    // If we're not generating explanations, this is pretty simple.
+    if (!option.explain_os) {
+      auto try_match = [&](int64 idx1, int64 idx2) {
+        MatchOption new_option = option;
+        new_option.capture = false;
+        if (op1_.Match(operand(inst, idx1), new_option) &&
+            op2_.Match(operand(inst, idx2), new_option)) {
+          if (option.capture) {
+            bool matched = op1_.Match(operand(inst, idx1), option) &&
+                           op2_.Match(operand(inst, idx2), option);
+            DCHECK(matched);
+          }
+          return true;
+        }
+        return false;
+      };
+      return try_match(0, 1) || try_match(1, 0);
+    }
+
+    // If we are generating explanations, we have some work to do in order to
+    // generate a helpful error.
+    //
+    // First, try all four operand/matcher combinations, recording the
+    // failure explanations separately from option.explain_os. matches[i][j]
+    // tells us if matcher_i matches operand j.
+    bool matches[/*matcher*/ 2][/*operand*/ 2];
+    std::stringstream explanations[/*matcher*/ 2][/*operand*/ 2];
+    for (int i = 0; i < 2; ++i) {
+      for (int j = 0; j < 2; ++j) {
+        MatchOption new_option = option;
+        new_option.capture = false;
+        new_option.explain_os = &explanations[i][j];
+        matches[i][j] = i == 0 ? op1_.Match(operand(inst, j), new_option)
+                               : op2_.Match(operand(inst, j), new_option);
+      }
+    }
+
+    // Check if the match succeeded.
+    for (int i = 0; i < 2; ++i) {
+      if (matches[0][i] && matches[1][(i + 1) % 2]) {
+        // Rerun the matches with capture enabled if necessary.
+        if (option.capture) {
+          auto* operand1 = operand(inst, i);
+          auto* operand2 = operand(inst, (i + 1) % 2);
+          bool matched =
+              op1_.Match(operand1, option) && op2_.Match(operand2, option);
+          DCHECK(matched);
+        }
+        return true;
+      }
+    }
+
+    auto describe_matcher = [&](int matcher_idx) {
+      EXPLAIN << "\n - ";
+      if (matcher_idx == 0) {
+        op1_.DescribeTo(option.explain_os, /*indent=*/3);
+      } else {
+        CHECK_EQ(matcher_idx, 1);
+        op2_.DescribeTo(option.explain_os, /*indent=*/3);
+      }
+      for (int i = 0; i < 2; ++i) {
+        if (matches[matcher_idx][/*operand*/ i]) {
+          continue;
+        }
+        EXPLAIN << "\ndoes not match " << (i == 0 ? "LHS" : "RHS") << ":\n";
+        EXPLAIN << " - ";
+        EXPLAIN << absl::StrReplaceAll(
+            explanations[matcher_idx][/*operand*/ i].str(), {{"\n", "\n   "}});
+      }
+    };
+
+    // If we failed to match, one of the following is true:
+    //  1. op1 (op2) matches neither LHS nor RHS, or
+    //  2. op1 and op2 both match LHS (RHS), but neither matches RHS (LHS).
+    // We print different explanations depending on which case we're in.
+
+    // Case 1.
+    bool wrote_explanation = false;
+    for (int i = 0; !wrote_explanation && i < 2; ++i) {
+      if (!matches[i][0] && !matches[i][1]) {
+        EXPLAIN << "HloInstruction's operands (ignoring order) did not match "
+                << (i == 0 ? "first" : "second") << " matcher.  Specifically,";
+        describe_matcher(i);
+        wrote_explanation = true;
+      }
+    }
+
+    // Case 2.
+    for (int i = 0; !wrote_explanation && i < 2; ++i) {
+      if (matches[/*matcher*/ 0][/*operand*/ i] &&
+          matches[/*matcher*/ 1][/*operand*/ i]) {
+        CHECK(!matches[0][(i + 1) % 2]);
+        CHECK(!matches[1][(i + 1) % 2]);
+        CHECK(!wrote_explanation);
+        EXPLAIN << "HloInstruction's " << (i == 1 ? "LHS" : "RHS")
+                << " operand did not match either of the two matchers.  "
+                   "Specifically,";
+        describe_matcher(0);
+        EXPLAIN << "\nand";
+        describe_matcher(1);
+        wrote_explanation = true;
+      }
+    }
+
+    CHECK(wrote_explanation);
+    return false;
+  }
+
+  HloInstructionPattern<OperandType1, OperandImpl1> op1_;
+  HloInstructionPattern<OperandType2, OperandImpl2> op2_;
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
@@ -820,14 +1506,32 @@ class HloInstructionPatternFusionKindImpl {
       : kind_(kind) {}
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
-    return inst->opcode() == HloOpcode::kFusion && inst->fusion_kind() == kind_;
+    return MatchImpl(inst, option);
   }
 
   bool Match(::xla::HloInstruction* inst, MatchOption option) const {
-    return inst->opcode() == HloOpcode::kFusion && inst->fusion_kind() == kind_;
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "with fusion kind " << ToString(kind_);
   }
 
  private:
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    if (inst->opcode() != HloOpcode::kFusion) {
+      EXPLAIN << "HloInstruction does not have fusion kind " << ToString(kind_)
+              << "; it's not a fusion";
+      return false;
+    }
+    if (inst->fusion_kind() != kind_) {
+      EXPLAIN << "HloInstruction does not have fusion kind " << ToString(kind_);
+      return false;
+    }
+    return true;
+  }
+
   ::xla::HloInstruction::FusionKind kind_;
 };
 
@@ -839,47 +1543,153 @@ class HloInstructionPatternTupleIndexImpl {
       : tuple_index_(tuple_index) {}
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
-    return inst->opcode() == HloOpcode::kGetTupleElement &&
-           inst->tuple_index() == tuple_index_;
+    return MatchImpl(inst, option);
   }
 
   bool Match(::xla::HloInstruction* inst, MatchOption option) const {
-    return inst->opcode() == HloOpcode::kGetTupleElement &&
-           inst->tuple_index() == tuple_index_;
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "which is a GTE with index " << tuple_index_;
   }
 
  private:
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    if (inst->opcode() != HloOpcode::kGetTupleElement) {
+      EXPLAIN << "HloInstruction is not a GTE with index " << tuple_index_
+              << "; it's not a GTE at all";
+      return false;
+    }
+    if (inst->tuple_index() != tuple_index_) {
+      EXPLAIN << "HloInstruction is not a GTE with index " << tuple_index_;
+      return false;
+    }
+    return true;
+  }
+
   int64 tuple_index_;
 };
 
-template <typename ItemType, typename Predicate>
-class HloPredicatePatternImpl {
+class HloInstructionPatternParameterNumImpl {
  public:
-  explicit HloPredicatePatternImpl(Predicate pred) : pred_(std::move(pred)) {}
+  explicit constexpr HloInstructionPatternParameterNumImpl(int64 parameter_num)
+      : parameter_num_(parameter_num) {}
 
-  bool Match(const ItemType* item, MatchOption option) const {
-    return pred_(item);
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
   }
 
-  bool Match(ItemType* item, MatchOption option) const { return pred_(item); }
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "which is parameter " << parameter_num_;
+  }
 
  private:
-  Predicate pred_;
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    if (inst->opcode() != HloOpcode::kParameter ||
+        inst->parameter_number() != parameter_num_) {
+      EXPLAIN << "HloInstruction is not parameter " << parameter_num_;
+      return false;
+    }
+    return true;
+  }
+
+  int64 parameter_num_;
 };
 
-struct PatternFriend;
+// Matches a constant scalar or effective scalar, optionally with a given value.
+template <typename ScalarTy>
+class HloConstantScalarImpl {
+ public:
+  explicit constexpr HloConstantScalarImpl(bool match_effective_scalar)
+      : val_(absl::nullopt), match_effective_scalar_(match_effective_scalar) {}
+
+  constexpr HloConstantScalarImpl(ScalarTy val, bool match_effective_scalar)
+      : val_(val), match_effective_scalar_(match_effective_scalar) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "which is a constant "
+        << (match_effective_scalar_ ? "effective " : "") << "scalar";
+    if (val_.has_value()) {
+      *os << " with value " << *val_;
+    }
+  }
+
+ private:
+  template <typename InstTy>
+  bool MatchImpl(InstTy* inst, MatchOption option) const {
+    const auto* const_inst = DynCast<HloConstantInstruction>(inst);
+    if (!const_inst) {
+      EXPLAIN << "HloInstruction is not a constant";
+      return false;
+    }
+    if (match_effective_scalar_ &&
+        !ShapeUtil::IsEffectiveScalar(inst->shape())) {
+      EXPLAIN << "HloInstruction is not an effective scalar";
+      return false;
+    }
+    if (!match_effective_scalar_ && !ShapeUtil::IsScalar(inst->shape())) {
+      EXPLAIN << "HloInstruction is not a scalar";
+      return false;
+    }
+    if (!val_.has_value()) {
+      return true;
+    }
+
+    // Check that literal == static_cast<LitearlTy>(val) and
+    // val == static_cast<ValTy>(literal).  This is sufficient to ensure that
+    // the two constant scalars are actually "equal".
+    auto val_literal = LiteralUtil::CreateR0(*val_);
+    auto literal_r0_or = const_inst->literal().Reshape({});
+    auto val_as_literal_ty_or =
+        val_literal.Convert(const_inst->shape().element_type());
+    if (!literal_r0_or.ok() || !val_as_literal_ty_or.ok()) {
+      EXPLAIN << "could not construct relevant Literals (how did this happen?)";
+      return false;
+    }
+    auto literal_r0 = std::move(literal_r0_or).ValueOrDie();
+    auto val_as_literal_ty = std::move(val_as_literal_ty_or).ValueOrDie();
+    auto literal_r0_as_val_ty_or =
+        literal_r0.Convert(val_literal.shape().element_type());
+    bool rv = literal_r0_as_val_ty_or.ok() &&  //
+              literal_r0_as_val_ty_or.ValueOrDie() == val_literal &&
+              literal_r0 == val_as_literal_ty;
+    if (!rv) {
+      EXPLAIN << "HloInstruction's constant value " << literal_r0.ToString()
+              << " did not match expected value " << *val_;
+    }
+    return rv;
+  }
+
+  absl::optional<ScalarTy> val_;
+  bool match_effective_scalar_;
+};
 
 // A pattern that matches HloInstructions.
 template <typename HloInstructionType, typename Impl>
 class HloInstructionPattern {
  private:
   template <typename NewImpl>
-  HloInstructionPattern<HloInstructionType,
-                        AllOfPattern<::xla::HloInstruction, Impl, NewImpl>>
-  AppendImpl(NewImpl new_impl) const {
-    return HloInstructionPattern<
-        HloInstructionType, AllOfPattern<::xla::HloInstruction, Impl, NewImpl>>(
-        AllOf<HloInstruction>(impl_, std::move(new_impl)), matched_inst_);
+  auto AppendImpl(NewImpl new_impl) const -> HloInstructionPattern<
+      HloInstructionType, decltype(AllOf<HloInstruction>(
+                              std::declval<Impl>(), std::move(new_impl)))> {
+    auto new_allof = AllOf<HloInstruction>(impl_, std::move(new_impl));
+    return HloInstructionPattern<HloInstructionType, decltype(new_allof)>(
+        std::move(new_allof), matched_inst_);
   }
 
  public:
@@ -895,6 +1705,12 @@ class HloInstructionPattern {
       }
       return true;
     }
+    if (inst != nullptr) {
+      EXPLAIN << "\nin "
+              << inst->ToString(HloPrintOptions()
+                                    .set_print_metadata(false)
+                                    .set_print_percent(false));
+    }
     return false;
   }
 
@@ -906,6 +1722,10 @@ class HloInstructionPattern {
       }
       return true;
     }
+    EXPLAIN << "\nin "
+            << inst->ToString(HloPrintOptions()
+                                  .set_print_metadata(false)
+                                  .set_print_percent(false));
     return false;
   }
 
@@ -935,10 +1755,45 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternOpcodeImpl(opcode, true));
   }
 
+  constexpr auto Is(const HloInstruction* instr) const
+      -> decltype(this->AppendImpl(HloInstructionIsImpl(instr))) {
+    return AppendImpl(HloInstructionIsImpl(instr));
+  }
+
   // Modifies the pattern to match only if the instruction is a constant.
   constexpr auto IsConstant() const
       -> decltype(this->WithOpcode(HloOpcode::kConstant)) {
     return WithOpcode(HloOpcode::kConstant);
+  }
+
+  constexpr auto IsConstantScalar() const -> decltype(this->AppendImpl(
+      HloConstantScalarImpl</*Dummy*/ int>(/*match_effective_scalar=*/false))) {
+    return AppendImpl(
+        HloConstantScalarImpl</*Dummy*/ int>(/*match_effective_scalar=*/false));
+  }
+
+  // This does not check that T has the same type as the instruction, so e.g.
+  // IsConstantScalar(1.0) may match a constant of shape int32[].
+  template <typename ScalarTy>
+  constexpr auto IsConstantScalar(const ScalarTy& val) const
+      -> decltype(this->AppendImpl(HloConstantScalarImpl<ScalarTy>(
+          val, /*match_effective_scalar=*/false))) {
+    return AppendImpl(
+        HloConstantScalarImpl<ScalarTy>(val, /*match_effective_scalar=*/false));
+  }
+
+  constexpr auto IsConstantEffectiveScalar() const -> decltype(this->AppendImpl(
+      HloConstantScalarImpl</*Dummy*/ int>(/*match_effective_scalar=*/true))) {
+    return AppendImpl(
+        HloConstantScalarImpl</*Dummy*/ int>(/*match_effective_scalar=*/true));
+  }
+
+  template <typename ScalarTy>
+  constexpr auto IsConstantEffectiveScalar(const ScalarTy& val) const
+      -> decltype(this->AppendImpl(HloConstantScalarImpl<ScalarTy>(
+          val, /*match_effective_scalar=*/true))) {
+    return AppendImpl(
+        HloConstantScalarImpl<ScalarTy>(val, /*match_effective_scalar=*/true));
   }
 
   // Modifies the pattern to match only if the instruction is not a constant.
@@ -957,6 +1812,22 @@ class HloInstructionPattern {
         HloInstructionPatternShapeImpl<ShapeType, ShapeImpl>(shape));
   }
 
+  // Make this a templated function to work around gcc 4.9.4 template infinite
+  // recursion bug.
+  template <typename Dummy = void>
+  constexpr auto WithShapeEqualTo(const ::xla::Shape* shape)
+      -> decltype(this->WithShape(Shape().EqualTo(shape))) {
+    return WithShape(Shape().EqualTo(shape));
+  }
+
+  // Make this a templated function to work around gcc 4.9.4 template infinite
+  // recursion bug.
+  template <typename Dummy = void>
+  constexpr auto WithShapeCompatibleTo(const ::xla::Shape* shape)
+      -> decltype(this->WithShape(Shape().CompatibleTo(shape))) {
+    return WithShape(Shape().CompatibleTo(shape));
+  }
+
   // Modifies the pattern to match only if the instruction has an operand that
   // matches the given pattern.
   template <typename OperandType, typename OperandImpl>
@@ -969,6 +1840,20 @@ class HloInstructionPattern {
     return AppendImpl(
         HloInstructionPatternOperandImpl<OperandType, OperandImpl>(
             operand_index, operand));
+  }
+
+  template <typename OperandType1, typename OperandImpl1, typename OperandType2,
+            typename OperandImpl2>
+  constexpr auto WithBinaryOperandsAnyOrder(
+      const HloInstructionPattern<OperandType1, OperandImpl1>& op1,
+      const HloInstructionPattern<OperandType2, OperandImpl2>& op2) const
+      -> decltype(this->AppendImpl(
+          HloInstructionPatternBinaryOperandsAnyOrderImpl<
+              OperandType1, OperandImpl1, OperandType2, OperandImpl2>(op1,
+                                                                      op2))) {
+    return AppendImpl(
+        HloInstructionPatternBinaryOperandsAnyOrderImpl<
+            OperandType1, OperandImpl1, OperandType2, OperandImpl2>(op1, op2));
   }
 
   // Modifies the pattern to match only if the instruction is a fusion node with
@@ -985,17 +1870,18 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternTupleIndexImpl(tuple_index));
   }
 
- private:
-  template <typename Predicate>
-  constexpr auto WithPredicate(Predicate pred) const -> decltype(
-      this->AppendImpl(HloPredicatePatternImpl<HloInstruction, Predicate>(
-          std::move(pred)))) {
-    return AppendImpl(
-        HloPredicatePatternImpl<HloInstruction, Predicate>(std::move(pred)));
+  // Modifies the pattern to match only if the instruction is a parameter
+  // with the given parameter number.
+  constexpr auto WithParameterNum(int64 parameter_num) const -> decltype(
+      this->AppendImpl(HloInstructionPatternParameterNumImpl(parameter_num))) {
+    return AppendImpl(HloInstructionPatternParameterNumImpl(parameter_num));
   }
 
-  friend struct PatternFriend;
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    impl_.DescribeTo(os, indent);
+  }
 
+ private:
   Impl impl_;
   HloInstructionType** matched_inst_;
 };
@@ -1090,6 +1976,7 @@ XLA_UNOP_PATTERN(Reverse)
 XLA_UNOP_PATTERN(SendDone)
 XLA_UNOP_PATTERN(Sign)
 XLA_UNOP_PATTERN(Sin)
+XLA_UNOP_PATTERN(Slice)
 XLA_UNOP_PATTERN(Sort)
 XLA_UNOP_PATTERN(Tanh)
 XLA_UNOP_PATTERN(Transpose)
@@ -1127,25 +2014,32 @@ XLA_UNOP_PATTERN(Transpose)
 #define XLA_COMMUTATIVE_BINOP_PATTERN(NAME)                                 \
   XLA_BINOP_PATTERN(NAME)                                                   \
                                                                             \
-  template <typename Lhs, typename Rhs>                                     \
-  inline auto NAME##AnyOrder(Lhs&& lhs, Rhs&& rhs)                          \
-      ->decltype(AnyOf<HloInstruction>(NAME(lhs, rhs), NAME(rhs, lhs))) {   \
-    return AnyOf<HloInstruction>(NAME(lhs, rhs), NAME(rhs, lhs));           \
-  }                                                                         \
-                                                                            \
   template <typename HloInstructionType, typename Lhs, typename Rhs>        \
   inline auto NAME##AnyOrder(HloInstructionType** matched_inst, Lhs&& lhs,  \
                              Rhs&& rhs)                                     \
-      ->decltype(AnyOf<HloInstructionType>(NAME(matched_inst, lhs, rhs),    \
-                                           NAME(matched_inst, rhs, lhs))) { \
-    return AnyOf<HloInstructionType>(NAME(matched_inst, lhs, rhs),          \
-                                     NAME(matched_inst, rhs, lhs));         \
+      ->decltype(Op(matched_inst)                                           \
+                     .WithOpcode(HloOpcode::k##NAME)                        \
+                     .WithBinaryOperandsAnyOrder(std::forward<Lhs>(lhs),    \
+                                                 std::forward<Rhs>(rhs))) { \
+    return Op(matched_inst)                                                 \
+        .WithOpcode(HloOpcode::k##NAME)                                     \
+        .WithBinaryOperandsAnyOrder(std::forward<Lhs>(lhs),                 \
+                                    std::forward<Rhs>(rhs));                \
+  }                                                                         \
+  template <typename Lhs, typename Rhs>                                     \
+  inline auto NAME##AnyOrder(Lhs&& lhs, Rhs&& rhs)                          \
+      ->decltype(NAME##AnyOrder<HloInstruction>(                            \
+          nullptr, std::forward<Lhs>(lhs), std::forward<Rhs>(rhs))) {       \
+    return NAME##AnyOrder<HloInstruction>(nullptr, std::forward<Lhs>(lhs),  \
+                                          std::forward<Rhs>(rhs));          \
   }
 XLA_COMMUTATIVE_BINOP_PATTERN(Add)
 XLA_BINOP_PATTERN(Atan2)
 XLA_BINOP_PATTERN(Divide)
 XLA_BINOP_PATTERN(Complex)
+XLA_BINOP_PATTERN(Convolution)
 XLA_BINOP_PATTERN(Dot)
+XLA_BINOP_PATTERN(DynamicSlice)
 XLA_COMMUTATIVE_BINOP_PATTERN(Eq)
 XLA_BINOP_PATTERN(Gather)
 XLA_BINOP_PATTERN(Ge)
@@ -1157,6 +2051,7 @@ XLA_COMMUTATIVE_BINOP_PATTERN(Minimum)
 XLA_COMMUTATIVE_BINOP_PATTERN(Multiply)
 XLA_COMMUTATIVE_BINOP_PATTERN(Ne)
 XLA_BINOP_PATTERN(Outfeed)
+XLA_BINOP_PATTERN(Pad)
 XLA_BINOP_PATTERN(Power)
 XLA_BINOP_PATTERN(Remainder)
 XLA_BINOP_PATTERN(Send)
@@ -1257,31 +2152,9 @@ inline auto WithOperands(Matcher&& m, int64 operand_num, FirstArg&& first_arg,
 // We could implement all ops as "variadic" ops, but it would make the
 // already-bad compile errors even worse.
 XLA_VARIADIC_OP_PATTERN(Concatenate);
+XLA_VARIADIC_OP_PATTERN(CustomCall);
 XLA_VARIADIC_OP_PATTERN(Reduce);
-
-namespace detail {
-struct PatternFriend {
-  template <typename T>
-  static auto ConstantScalar(T constant) -> decltype(
-      Constant()
-          .WithShape(match::Shape().IsScalar())
-          .WithPredicate(
-              std::declval<std::function<bool(const HloInstruction*)>>())) {
-    std::function<bool(const HloInstruction*)> pred =
-        [constant](const HloInstruction* instr) {
-          const auto& literal = Cast<HloConstantInstruction>(instr)->literal();
-          auto status_or_const = LiteralUtil::CreateR0(constant).Convert(
-              literal.shape().element_type());
-          return status_or_const.ok() &&
-                 literal == status_or_const.ConsumeValueOrDie();
-        };
-
-    return Constant()
-        .WithShape(match::Shape().IsScalar())
-        .WithPredicate(std::move(pred));
-  }
-};
-}  // namespace detail
+XLA_VARIADIC_OP_PATTERN(Tuple);
 
 // Helpers for matching non-constant instructions.
 inline auto NonConstant() -> decltype(Op().IsNonConstant()) {
@@ -1320,14 +2193,71 @@ inline auto GetTupleElement(HloInstructionType** matched_inst, Arg&& arg,
       .WithTupleIndex(tuple_index);
 }
 
-template <typename T>
-inline auto ConstantScalar(T constant)
-    -> decltype(detail::PatternFriend::ConstantScalar(constant)) {
-  return detail::PatternFriend::ConstantScalar(constant);
+// Add overloads for Parameter which take an int64 specifying the parameter
+// number.
+inline auto Parameter(int64 parameter_num) -> decltype(
+    Op().WithOpcode(HloOpcode::kParameter).WithParameterNum(parameter_num)) {
+  return Op().WithOpcode(HloOpcode::kParameter).WithParameterNum(parameter_num);
+}
+template <typename HloInstructionType>
+inline auto Parameter(HloInstructionType** matched_inst, int64 parameter_num)
+    -> decltype(Op(matched_inst)
+                    .WithOpcode(HloOpcode::kParameter)
+                    .WithParameterNum(parameter_num)) {
+  return Op(matched_inst)
+      .WithOpcode(HloOpcode::kParameter)
+      .WithParameterNum(parameter_num);
+}
+
+inline auto ConstantScalar() -> decltype(Op().IsConstantScalar()) {
+  return Op().IsConstantScalar();
+}
+
+template <typename HloInstructionType>
+inline auto ConstantScalar(HloInstructionType** matched_inst)
+    -> decltype(Op(matched_inst).IsConstantScalar()) {
+  return Op(matched_inst).IsConstantScalar();
+}
+
+template <typename ScalarTy>
+inline auto ConstantScalar(ScalarTy val)
+    -> decltype(Op().IsConstantScalar(val)) {
+  return Op().IsConstantScalar(val);
+}
+
+template <typename HloInstructionType, typename ScalarTy>
+inline auto ConstantScalar(HloInstructionType** matched_inst, ScalarTy val)
+    -> decltype(Op(matched_inst).IsConstantScalar(val)) {
+  return Op(matched_inst).IsConstantScalar(val);
+}
+
+inline auto ConstantEffectiveScalar() -> decltype(Op().IsConstantScalar()) {
+  return Op().IsConstantEffectiveScalar();
+}
+
+template <typename HloInstructionType>
+inline auto ConstantEffectiveScalar(HloInstructionType** matched_inst)
+    -> decltype(Op(matched_inst).IsConstantScalar()) {
+  return Op(matched_inst).IsConstantEffectiveScalar();
+}
+
+template <typename ScalarTy>
+inline auto ConstantEffectiveScalar(ScalarTy val)
+    -> decltype(Op().IsConstantEffectiveScalar(val)) {
+  return Op().IsConstantEffectiveScalar(val);
+}
+
+template <typename HloInstructionType, typename ScalarTy>
+inline auto ConstantEffectiveScalar(HloInstructionType** matched_inst,
+                                    ScalarTy val)
+    -> decltype(Op(matched_inst).IsConstantEffectiveScalar(val)) {
+  return Op(matched_inst).IsConstantEffectiveScalar(val);
 }
 
 }  // namespace match
 
 }  // namespace xla
 
+#undef EXPLAIN
+#pragma pop_macro("EXPLAIN")
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
