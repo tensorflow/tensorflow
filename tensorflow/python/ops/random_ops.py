@@ -192,6 +192,7 @@ def random_uniform(shape,
                    maxval=None,
                    dtype=dtypes.float32,
                    seed=None,
+                   op_id=0,
                    name=None):
   """Outputs random values from a uniform distribution.
 
@@ -217,8 +218,9 @@ def random_uniform(shape,
     dtype: The type of the output: `float16`, `float32`, `float64`, `int32`,
       or `int64`.
     seed: A Python integer. Used to create a random seed for the distribution.
-      See `tf.set_random_seed`
-      for behavior.
+      See `tf.set_random_seed` for behavior.
+    op_id: A Python integer. Used to identify the random_uniform Op from the
+      cached random_uniform Ops with the same attributes.
     name: A name for the operation (optional).
 
   Returns:
@@ -242,9 +244,11 @@ def random_uniform(shape,
     seed1, seed2 = random_seed.get_seed(seed)
     if dtype.is_integer:
       return gen_random_ops.random_uniform_int(
-          shape, minval, maxval, seed=seed1, seed2=seed2, name=name)
+          shape, minval, maxval, seed=seed1, seed2=seed2, op_id=op_id,
+          name=name)
     else:
-      rnd = gen_random_ops.random_uniform(shape, dtype, seed=seed1, seed2=seed2)
+      rnd = gen_random_ops.random_uniform(
+        shape, dtype, seed=seed1, seed2=seed2, op_id=op_id, name=name)
       return math_ops.add(rnd * (maxval - minval), minval, name=name)
 
 
