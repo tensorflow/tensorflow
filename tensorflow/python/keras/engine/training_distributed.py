@@ -19,10 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import enum
+import enum  # pylint: disable=g-bad-import-order
 import numpy as np
 
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -36,7 +38,6 @@ from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.util import nest
 
 
@@ -540,7 +541,7 @@ def _clone_and_build_model(model, inputs=None, targets=None, mode=None):
 def clone_model_on_replicas(model, strategy, make_callback_model=False,
                             inputs=None, targets=None, mode=None):
   """Create a cloned model on each replica."""
-  with strategy.scope():
+  with K.get_graph().as_default(), strategy.scope():
     grouped_model = strategy.extended.call_for_each_replica(
         _clone_and_build_model, args=(model, inputs, targets, mode))
     if mode is _Mode.TRAIN:
@@ -583,6 +584,9 @@ def _get_input_from_iterator(iterator, model):
 
 def _get_execution_function(model, mode):
   """Get function to run one step of distributed model execution."""
+  if context.executing_eagerly():
+    return _get_eager_execution_function(model, mode)
+
   strategy = model._distribution_strategy
   if not model._grouped_model:
     clone_model_on_replicas(
@@ -627,6 +631,40 @@ def _get_execution_function(model, mode):
         **all_session_args)
 
 
+def _get_eager_execution_function(model, mode):
+  """Get function to run one step of distributed model eager execution."""
+  strategy = model._distribution_strategy
+  if not model._grouped_model:
+    clone_model_on_replicas(
+        model, strategy, make_callback_model=(mode == 'train'))
+
+  def _per_device_function(model):
+    f = model._get_execution_function(mode)
+    return (f.inputs, f.outputs)
+
+  # NOTE(priyag): Try creating a new FuncGraph within DS scope instead of using
+  # the global one.
+  with K.get_graph().as_default(), strategy.scope():
+    # Create train ops on each of the devices when we call
+    # `_per_device_fit_function`.
+    (grouped_inputs, grouped_outputs) = strategy.call_for_each_replica(
+        _per_device_function, args=(model._grouped_model,))
+
+    # Unwrap all the per device values returned from `call_for_each_replica`.
+    # Unwrapping per device values gives you a list of values that can be
+    # used to construct a new train function that is composed of inptus/outputs
+    # on all the devices over which the model is distributed.
+    (all_inputs, all_outputs, _, _) = distributed_training_utils.unwrap_values(
+        strategy,
+        grouped_inputs,
+        grouped_outputs)
+
+    return K.function(
+        all_inputs,
+        all_outputs,
+        name='eager_distributed_{}_function'.format(mode))
+
+
 def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """Prepare feed values to the model execution function.
 
@@ -653,7 +691,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
         None for _ in range(len(model.outputs) * strategy.num_replicas_in_sync)
     ]
   ins = inputs + targets + sample_weights
-  if mode == 'train' and not isinstance(K.learning_phase(), int):
+  if mode == 'train' and not isinstance(K.symbolic_learning_phase(), int):
     ins += [True]
   return ins
 

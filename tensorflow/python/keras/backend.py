@@ -3188,7 +3188,7 @@ def function(inputs, outputs, updates=None, name=None, **kwargs):
   Raises:
       ValueError: if invalid kwargs are passed in or if in eager execution.
   """
-  if context.executing_eagerly():
+  if ops.executing_eagerly_outside_functions():
     if kwargs:
       raise ValueError('Session keyword arguments are not support during '
                        'eager execution. You passed: %s' % (kwargs,))

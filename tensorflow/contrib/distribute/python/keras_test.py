@@ -27,6 +27,7 @@ from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import values
+from tensorflow.python.eager import test
 from tensorflow.python.estimator import keras as keras_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.framework import constant_op
@@ -38,7 +39,6 @@ from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.platform import gfile
-from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop

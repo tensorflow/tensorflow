@@ -500,9 +500,6 @@ class Model(Network):
         raise NotImplementedError(
             'optimizer must be an instance of '
             'tf.train.Optimizer, not a %s' % type(optimizer))
-      if self.run_eagerly:
-        raise NotImplementedError('DistributionStrategy is not supported '
-                                  'when running a model eagerly.')
       if sample_weight_mode:
         raise NotImplementedError('sample_weight_mode is not supported with '
                                   'DistributionStrategy.')
@@ -1064,7 +1061,9 @@ class Model(Network):
 
     with self._distribution_strategy.scope():
       iterator = self._distribution_strategy.make_dataset_iterator(x)
-      K.get_session().run(iterator.initialize())
+      init_op = iterator.initialize()
+      if not context.executing_eagerly():
+        K.get_session().run(init_op)
 
     training_utils.validate_iterator_input(x, y, sample_weight,
                                            validation_split)
@@ -1795,7 +1794,8 @@ class Model(Network):
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps)
-    elif isinstance(x, iterator_ops.EagerIterator):
+    elif (isinstance(x, iterator_ops.EagerIterator) and
+          not self._distribution_strategy):
       return training_generator.fit_generator(
           self,
           x,

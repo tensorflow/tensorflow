@@ -113,7 +113,7 @@ class FuncGraph(ops.Graph):
     # this stack from the default graph even in eager mode. Maybe it should be
     # part of the eager context? This would also allow us to remove a
     # get_default_graph() call from the function cache lookup.
-    self._distribution_strategy_stack = graph._distribution_strategy_stack
+    self._distribution_strategy_stack = list(graph._distribution_strategy_stack)
     # We ignore device placements from any outer scopes while tracing the
     # function when possible, to avoid hard-coding them in the function
     # graph. "Default" placements come from the PartitionedCallOp's placement,
