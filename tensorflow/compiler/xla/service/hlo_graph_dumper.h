@@ -66,6 +66,12 @@ string DumpGraph(const HloComputation& computation, const string& label,
 string DumpNeighborhoodAround(const HloInstruction& node, int radius,
                               bool show_backend_config = false);
 
+// Dumps nodes on any of the paths from `from` to `to`.  If there are more than
+// max_nodes on all paths, restricts to the max_nodes nodes on the shortest
+// paths.
+string DumpAllPathsFromTo(const HloInstruction& from, const HloInstruction& to,
+                          int64 max_nodes, bool show_backend_config = false);
+
 // Dumps the HloModule::ToString() as a file into the provided directory path
 // suffixed with the provided label.
 //
