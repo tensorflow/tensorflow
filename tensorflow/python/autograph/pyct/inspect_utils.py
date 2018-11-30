@@ -46,6 +46,14 @@ if six.PY2:
   SPECIAL_BUILTINS['xrange'] = xrange
 
 
+def islambda(f):
+  if not tf_inspect.isfunction(f):
+    return False
+  if not hasattr(f, '__name__'):
+    return False
+  return f.__name__ == '<lambda>'
+
+
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
   if f in SPECIAL_BUILTINS.values():

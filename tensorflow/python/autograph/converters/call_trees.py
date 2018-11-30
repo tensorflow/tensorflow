@@ -140,6 +140,11 @@ class CallTreeTransformer(converter.Base):
 
     if target_entity is not None:
 
+      # Currently, lambdas are always converted.
+      # TODO(mdan): Allow markers of the kind f = ag.do_not_convert(lambda: ...)
+      if inspect_utils.islambda(target_entity):
+        return True
+
       # This may be reached when "calling" a callable attribute of an object.
       # For example:
       #
