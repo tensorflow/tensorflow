@@ -300,6 +300,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           axis=2,
           expected=[[mean(1, 2), mean(3, 4, 5)], [mean(6, 7), 8], [9]]),
   )
+  @test_util.run_deprecated_v1
   def testReduce(self, ragged_reduce_op, rt_input, axis, expected):
     rt_input = ragged.constant(rt_input)
     reduced = ragged_reduce_op(rt_input, axis)
@@ -311,6 +312,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertTrue(
         ((actual == expected) | (np.isnan(actual) & np.isnan(expected))).all())
 
+  @test_util.run_deprecated_v1
   def testMeanNan(self):
     rt_as_list = [[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]]
     expected = (
@@ -321,6 +323,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.test_session():
       self.assertEqualWithNan(reduced.eval(), expected)
 
+  @test_util.run_deprecated_v1
   def testMeanWithTensorInputs(self):
     tensor = [[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]]
     expected = [2.0, 20.0]
@@ -328,6 +331,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.test_session():
       self.assertAllEqual(reduced.eval(), expected)
 
+  @test_util.run_deprecated_v1
   def testErrors(self):
     rt_input = ragged.constant([[1, 2, 3], [4, 5]])
     axis = array_ops.placeholder_with_default(constant_op.constant([0]), None)

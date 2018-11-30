@@ -1268,12 +1268,12 @@ const HloInstruction* HloDotDumper::GetNodeForEdge(
 
 class GraphRendererRegistry {
  public:
-  void AddRenderer(GraphRendererInterface* graph_renderer) {
+  void SetRenderer(std::shared_ptr<GraphRendererInterface> graph_renderer) {
     tensorflow::mutex_lock lock(mu_);
     graph_renderer_ = graph_renderer;
   }
 
-  GraphRendererInterface* GetDefaultRenderer() {
+  std::shared_ptr<GraphRendererInterface> GetDefaultRenderer() {
     tensorflow::mutex_lock lock(mu_);
     return graph_renderer_;
   }
@@ -1285,13 +1285,13 @@ class GraphRendererRegistry {
 
  private:
   tensorflow::mutex mu_;
-  GraphRendererInterface* graph_renderer_ = nullptr;
+  std::shared_ptr<GraphRendererInterface> graph_renderer_ GUARDED_BY(mu_);
 };
 
 }  // namespace
 
-Registrar::Registrar(GraphRendererInterface* dumper) {
-  GraphRendererRegistry::Default()->AddRenderer(dumper);
+Registrar::Registrar(std::shared_ptr<GraphRendererInterface> dumper) {
+  GraphRendererRegistry::Default()->SetRenderer(dumper);
 }
 
 namespace {

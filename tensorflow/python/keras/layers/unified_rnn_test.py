@@ -69,6 +69,7 @@ class RNNTest(test.TestCase):
   def tearDown(self):
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def test_unifiedRNN(self):
     input_shape = 10
     rnn_state_size = 8
@@ -113,6 +114,7 @@ class RNNTest(test.TestCase):
         self.assertNotEqual(existing_loss, loss_value)
         existing_loss = loss_value
 
+  @test_util.run_deprecated_v1
   def test_unifiedRNN_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under
     # the condition that the function returns different number of internal

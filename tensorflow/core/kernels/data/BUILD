@@ -600,6 +600,7 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -620,6 +621,10 @@ tf_kernel_library(
     name = "optional_ops",
     srcs = ["optional_ops.cc"],
     hdrs = ["optional_ops.h"],
+    gpu_srcs = [
+        "optional_ops.cu.cc",
+        "optional_ops.h",
+    ],
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -627,6 +632,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/eigen3",
     ],
 )
 

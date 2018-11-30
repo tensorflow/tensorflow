@@ -24,6 +24,7 @@ import abc
 
 import six
 
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -37,7 +38,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import distribution_strategy_context as distribute_ctx
 from tensorflow.python.training import slot_creator
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -214,7 +214,7 @@ def _get_processor(v):
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
-@tf_export("train.Optimizer")
+@tf_export(v1=["train.Optimizer"])
 class Optimizer(
     # Optimizers inherit from CheckpointableBase rather than Checkpointable
     # since they do most of their dependency management themselves (slot

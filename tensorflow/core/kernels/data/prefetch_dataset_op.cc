@@ -391,13 +391,14 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 }
 
 namespace {
-REGISTER_KERNEL_BUILDER(Name("PrefetchDataset").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("PrefetchDataset").Device(DEVICE_CPU).Priority(2),
                         PrefetchDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("PrefetchDataset")
                             .Device(DEVICE_GPU)
                             .HostMemory("buffer_size")
                             .HostMemory("input_dataset")
-                            .HostMemory("handle"),
+                            .HostMemory("handle")
+                            .Priority(1),
                         PrefetchDatasetOp);
 }  // namespace
 

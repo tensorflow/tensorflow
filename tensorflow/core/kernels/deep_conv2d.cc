@@ -787,7 +787,7 @@ struct TransformOutputTile {
             const int64 shard_base = sr * filter_shards_col + sc;
             const int64 out_buf_base = tile_base + out_depth_base + shard_base;
 
-            // Calcuate output indices and outputs to drop (if needed).
+            // Calculate output indices and outputs to drop (if needed).
             const int64 out_r_start =
                 in_r + args.pad_rows - sr * tile_stride_rows;
             // NOTE: The index 't' for 'num_tiles is used in index calculation

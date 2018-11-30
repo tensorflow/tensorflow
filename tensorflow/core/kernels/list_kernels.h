@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/util/tensor_ops_util.h"
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
@@ -357,51 +358,10 @@ Status TensorListBinaryAdd(OpKernelContext* c, const TensorList& a,
   for (int i = 0; i < a.tensors.size(); ++i) {
     const Tensor& a_tensor = a.tensors[i];
     const Tensor& b_tensor = b.tensors[i];
-    if (a_tensor.dtype() == DT_INVALID) {
-      out->tensors.push_back(b_tensor);
-      continue;
-    }
-    if (b_tensor.dtype() == DT_INVALID) {
-      out->tensors.push_back(a_tensor);
-      continue;
-    }
-    if (a_tensor.shape() != b_tensor.shape()) {
-      // TODO(apassos) support broadcasting additions here?
-      return errors::InvalidArgument(
-          "Trying to add two tensors with incompatible element shapes. "
-          "One is ",
-          a_tensor.shape().DebugString(), " and the other is ",
-          b_tensor.shape().DebugString(), " in position ", i);
-    }
     Tensor out_tensor;
-    AllocatorAttributes attr;
-    if (a_tensor.dtype() == DT_VARIANT) {
-      attr.set_on_host(true);
-    }
-    TF_RETURN_IF_ERROR(c->allocate_temp(a_tensor.dtype(), a_tensor.shape(),
-                                        &out_tensor, attr));
+    TF_RETURN_IF_ERROR(
+        BinaryAddTensors<Device>(c, a_tensor, b_tensor, &out_tensor));
     out->tensors.push_back(out_tensor);
-    switch (out_tensor.dtype()) {
-#define DTYPE_CASE(dtype)                                        \
-  case DataTypeToEnum<dtype>::value:                             \
-    out_tensor.flat<dtype>().device(c->eigen_device<Device>()) = \
-        a_tensor.flat<dtype>() + b_tensor.flat<dtype>();         \
-    break;
-
-      TF_CALL_NUMBER_TYPES(DTYPE_CASE)
-
-#undef DTYPE_CASE
-      case DataTypeToEnum<Variant>::value: {
-        Variant* v_out = &(out_tensor.scalar<Variant>()());
-        TF_RETURN_IF_ERROR(BinaryOpVariants<Device>(
-            c, ADD_VARIANT_BINARY_OP, a_tensor.scalar<Variant>()(),
-            b_tensor.scalar<Variant>()(), v_out));
-        break;
-      }
-      default:
-        return errors::InvalidArgument("Trying to add unsupported dtype ",
-                                       out_tensor.dtype());
-    }
   }
   return Status::OK();
 }
@@ -414,46 +374,7 @@ Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
   y->tensors.reserve(x.tensors.size());
   for (const Tensor& t : x.tensors) {
     Tensor out_tensor;
-    AllocatorAttributes attr;
-    if (t.dtype() == DT_VARIANT) {
-      attr.set_on_host(true);
-    }
-    TF_RETURN_IF_ERROR(
-        c->allocate_temp(t.dtype(), t.shape(), &out_tensor, attr));
-    switch (out_tensor.dtype()) {
-#define DTYPE_CASE(dtype)                                        \
-  case DataTypeToEnum<dtype>::value:                             \
-    out_tensor.flat<dtype>().device(c->eigen_device<Device>()) = \
-        out_tensor.flat<dtype>().constant(dtype(0));             \
-    break;
-
-      TF_CALL_POD_TYPES(DTYPE_CASE)
-
-#undef DTYPE_CASE
-
-      case DT_INVALID: {
-        // Uninitialized tensor in the TensorList.
-        out_tensor = Tensor(DT_INVALID);
-        break;
-      }
-      case DataTypeToEnum<Variant>::value: {
-        const TensorList* inner_x = t.scalar<Variant>()().get<TensorList>();
-        if (inner_x == nullptr) {
-          return errors::InvalidArgument("Input handle is not a list. Saw: '",
-                                         t.scalar<Variant>()().DebugString(),
-                                         "'");
-        }
-        TensorList inner_y;
-        TF_RETURN_IF_ERROR(TensorListZerosLike<Device>(c, *inner_x, &inner_y));
-        out_tensor.scalar<Variant>()() = std::move(inner_y);
-        break;
-      }
-
-      default:
-        return errors::InvalidArgument(
-            "Trying to compute zeros_like for unsupported dtype ",
-            DataTypeString(out_tensor.dtype()));
-    }
+    TF_RETURN_IF_ERROR(ZerosLikeTensor<Device>(c, t, &out_tensor));
     y->tensors.emplace_back(out_tensor);
   }
   return Status::OK();

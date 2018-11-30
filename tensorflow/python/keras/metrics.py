@@ -25,6 +25,7 @@ import sys
 import types
 import weakref
 from enum import Enum
+import numpy as np
 import six
 
 from tensorflow.python.eager import context
@@ -48,6 +49,7 @@ from tensorflow.python.keras.losses import sparse_categorical_crossentropy
 from tensorflow.python.keras.losses import squared_hinge
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -62,13 +64,6 @@ from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
-
-
-def check_is_tensor_or_operation(x, name):
-  """Raises type error if the given input is not a tensor or operation."""
-  if not (isinstance(x, ops.Tensor) or isinstance(x, ops.Operation)):
-    raise TypeError('{0} must be a Tensor or Operation, given: {1}'.format(
-        name, x))
 
 
 def clone_metric(metric):
@@ -103,8 +98,6 @@ def update_state_wrapper(update_state_fn):
     update_op = update_state_fn(*args, **kwargs)
     if update_op is not None:  # update_op will be None in eager execution.
       metric_obj.add_update(update_op, inputs=True)
-      check_is_tensor_or_operation(
-          update_op, 'Metric {0}\'s update'.format(metric_obj.name))
     return update_op
 
   return tf_decorator.make_decorator(update_state_fn, decorated)
@@ -129,7 +122,7 @@ def result_wrapper(result_fn):
     `merge_call()`.
   """
 
-  def decorated(metric_obj, *args):
+  def decorated(_, *args):
     """Decorated function with merge_call."""
     replica_context = distribution_strategy_context.get_replica_context()
     if replica_context is None:  # if in cross replica context already
@@ -150,8 +143,6 @@ def result_wrapper(result_fn):
       # replica mode and compute a value in cross replica mode.
       result_t = replica_context.merge_call(
           merge_fn_wrapper, args=(result_fn,) + args)
-    check_is_tensor_or_operation(result_t,
-                                 'Metric {0}\'s result'.format(metric_obj.name))
     return result_t
 
   return tf_decorator.make_decorator(result_fn, decorated)
@@ -215,7 +206,8 @@ def _update_confusion_matrix_variables(variables_to_update,
     y_true: A `Tensor` whose shape matches `y_pred`. Will be cast to `bool`.
     y_pred: A floating point `Tensor` of arbitrary shape and whose values are in
       the range `[0, 1]`.
-    thresholds: A python list or tuple of float thresholds in `[0, 1]`.
+    thresholds: A float value or a python list or tuple of float thresholds in
+      `[0, 1]`.
     sample_weight: Optional `Tensor` whose rank is either 0, or the same rank as
       `y_true`, and must be broadcastable to `y_true` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `y_true` dimension).
@@ -264,6 +256,7 @@ def _update_confusion_matrix_variables(variables_to_update,
         math_ops.cast(y_pred, dtype=dtypes.float32),
         math_ops.cast(y_true, dtype=dtypes.bool), sample_weight)
 
+  thresholds = to_list(thresholds)
   num_thresholds = len(thresholds)
   num_predictions = array_ops.size(y_pred)
 
@@ -604,9 +597,7 @@ class Mean(Metric):
     # updated.
     update_total_op = state_ops.assign_add(self.total, values)
     with ops.control_dependencies([update_total_op]):
-      update_count_op = state_ops.assign_add(self.count, num_values)
-      with ops.control_dependencies([update_count_op]):
-        return control_flow_ops.no_op()
+      return state_ops.assign_add(self.count, num_values)
 
   def result(self):
     return math_ops.div_no_nan(self.total, self.count)
@@ -868,21 +859,22 @@ class _ConfusionMatrixConditionCount(Metric):
 
     Args:
       confusion_matrix_cond: One of `_ConfusionMatrix` conditions.
-      thresholds: (Optional) Defaults to [0.5]. A python list/tuple of float
-        threshold values in [0, 1]. A threshold is compared with prediction
-        values to determine the truth value of predictions (i.e., above the
-        threshold is `true`, below is `false`). One metric value is generated
-        for each threshold value.
+      thresholds: (Optional) Defaults to 0.5. A float value or a python
+        list/tuple of float threshold values in [0, 1]. A threshold is compared
+        with prediction values to determine the truth value of predictions
+        (i.e., above the threshold is `true`, below is `false`). One metric
+        value is generated for each threshold value.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
     """
     super(_ConfusionMatrixConditionCount, self).__init__(name=name, dtype=dtype)
     self._confusion_matrix_cond = confusion_matrix_cond
-    self.thresholds = [0.5] if thresholds is None else thresholds
-    _assert_thresholds_range(self.thresholds)
+    self.thresholds = 0.5 if thresholds is None else thresholds
+    thresholds = to_list(thresholds)
+    _assert_thresholds_range(thresholds)
     self.accumulator = self.add_weight(
         'accumulator',
-        shape=(len(self.thresholds),),
+        shape=(len(thresholds),),
         initializer=init_ops.zeros_initializer)
 
   def update_state(self, y_true, y_pred, sample_weight=None):
@@ -903,7 +895,16 @@ class _ConfusionMatrixConditionCount(Metric):
     }, y_true, y_pred, self.thresholds, sample_weight)
 
   def result(self):
-    return ops.convert_to_tensor(self.accumulator)
+    if isinstance(self.thresholds, (list, tuple)):
+      result = self.accumulator
+    else:
+      result = self.accumulator[0]
+    return ops.convert_to_tensor(result)
+
+  def reset_states(self):
+    num_thresholds = len(to_list(self.thresholds))
+    for v in self.variables:
+      K.set_value(v, np.zeros((num_thresholds,)))
 
 
 @tf_export('metrics.FalsePositives', 'keras.metrics.FalsePositives')
@@ -941,11 +942,11 @@ class FalsePositives(_ConfusionMatrixConditionCount):
     """Creates a `FalsePositives` instance.
 
     Args:
-      thresholds: (Optional) Defaults to [0.5]. A python list/tuple of float
-        threshold values in [0, 1]. A threshold is compared with prediction
-        values to determine the truth value of predictions (i.e., above the
-        threshold is `true`, below is `false`). One metric value is generated
-        for each threshold value.
+      thresholds: (Optional) Defaults to 0.5. A float value or a python
+        list/tuple of float threshold values in [0, 1]. A threshold is compared
+        with prediction values to determine the truth value of predictions
+        (i.e., above the threshold is `true`, below is `false`). One metric
+        value is generated for each threshold value.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
     """
@@ -991,11 +992,11 @@ class FalseNegatives(_ConfusionMatrixConditionCount):
     """Creates a `FalseNegatives` instance.
 
     Args:
-      thresholds: (Optional) Defaults to [0.5]. A python list/tuple of float
-        threshold values in [0, 1]. A threshold is compared with prediction
-        values to determine the truth value of predictions (i.e., above the
-        threshold is `true`, below is `false`). One metric value is generated
-        for each threshold value.
+      thresholds: (Optional) Defaults to 0.5. A float value or a python
+        list/tuple of float threshold values in [0, 1]. A threshold is compared
+        with prediction values to determine the truth value of predictions
+        (i.e., above the threshold is `true`, below is `false`). One metric
+        value is generated for each threshold value.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
     """
@@ -1041,11 +1042,11 @@ class TrueNegatives(_ConfusionMatrixConditionCount):
     """Creates a `TrueNegatives` instance.
 
     Args:
-      thresholds: (Optional) Defaults to [0.5]. A python list/tuple of float
-        threshold values in [0, 1]. A threshold is compared with prediction
-        values to determine the truth value of predictions (i.e., above the
-        threshold is `true`, below is `false`). One metric value is generated
-        for each threshold value.
+      thresholds: (Optional) Defaults to 0.5. A float value or a python
+        list/tuple of float threshold values in [0, 1]. A threshold is compared
+        with prediction values to determine the truth value of predictions
+        (i.e., above the threshold is `true`, below is `false`). One metric
+        value is generated for each threshold value.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
     """
@@ -1091,11 +1092,11 @@ class TruePositives(_ConfusionMatrixConditionCount):
     """Creates a `TruePositives` instance.
 
     Args:
-      thresholds: (Optional) Defaults to [0.5]. A python list/tuple of float
-        threshold values in [0, 1]. A threshold is compared with prediction
-        values to determine the truth value of predictions (i.e., above the
-        threshold is `true`, below is `false`). One metric value is generated
-        for each threshold value.
+      thresholds: (Optional) Defaults to 0.5. A float value or a python
+        list/tuple of float threshold values in [0, 1]. A threshold is compared
+        with prediction values to determine the truth value of predictions
+        (i.e., above the threshold is `true`, below is `false`). One metric
+        value is generated for each threshold value.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
     """
@@ -1142,23 +1143,25 @@ class Precision(Metric):
     """Creates a `Precision` instance.
 
     Args:
-      thresholds: (Optional) Defaults to [0.5]. A python list/tuple of float
-        threshold values in [0, 1]. A threshold is compared with prediction
-        values to determine the truth value of predictions (i.e., above the
-        threshold is `true`, below is `false`). One metric value is generated
-        for each threshold value.
+      thresholds: (Optional) Defaults to 0.5. A float value or a python
+        list/tuple of float threshold values in [0, 1]. A threshold is compared
+        with prediction values to determine the truth value of predictions
+        (i.e., above the threshold is `true`, below is `false`). One metric
+        value is generated for each threshold value.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
     """
     super(Precision, self).__init__(name=name, dtype=dtype)
-    self.thresholds = [0.5] if thresholds is None else thresholds
+    self.thresholds = 0.5 if thresholds is None else thresholds
+    thresholds = to_list(thresholds)
+    _assert_thresholds_range(thresholds)
     self.tp = self.add_weight(
         'true_positives',
-        shape=(len(self.thresholds),),
+        shape=(len(thresholds),),
         initializer=init_ops.zeros_initializer)
     self.fp = self.add_weight(
         'false_positives',
-        shape=(len(self.thresholds),),
+        shape=(len(thresholds),),
         initializer=init_ops.zeros_initializer)
 
   def update_state(self, y_true, y_pred, sample_weight=None):
@@ -1180,10 +1183,13 @@ class Precision(Metric):
     }, y_true, y_pred, self.thresholds, sample_weight)
 
   def result(self):
-    return array_ops.where(
-        math_ops.greater(self.tp + self.fp, 0),
-        math_ops.div(self.tp, self.tp + self.fp),
-        array_ops.zeros_like(self.thresholds))
+    result = math_ops.div_no_nan(self.tp, self.tp + self.fp)
+    return result if isinstance(self.thresholds, (list, tuple)) else result[0]
+
+  def reset_states(self):
+    num_thresholds = len(to_list(self.thresholds))
+    for v in self.variables:
+      K.set_value(v, np.zeros((num_thresholds,)))
 
 
 @tf_export('metrics.Recall', 'keras.metrics.Recall')
@@ -1222,23 +1228,25 @@ class Recall(Metric):
     """Creates a `Recall` instance.
 
     Args:
-      thresholds: (Optional) Defaults to [0.5]. A python list/tuple of float
-        threshold values in [0, 1]. A threshold is compared with prediction
-        values to determine the truth value of predictions (i.e., above the
-        threshold is `true`, below is `false`). One metric value is generated
-        for each threshold value.
+      thresholds: (Optional) Defaults to 0.5. A float value or a python
+        list/tuple of float threshold values in [0, 1]. A threshold is compared
+        with prediction values to determine the truth value of predictions
+        (i.e., above the threshold is `true`, below is `false`). One metric
+        value is generated for each threshold value.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
     """
     super(Recall, self).__init__(name=name, dtype=dtype)
-    self.thresholds = [0.5] if thresholds is None else thresholds
+    self.thresholds = 0.5 if thresholds is None else thresholds
+    thresholds = to_list(thresholds)
+    _assert_thresholds_range(thresholds)
     self.tp = self.add_weight(
         'true_positives',
-        shape=(len(self.thresholds),),
+        shape=(len(thresholds),),
         initializer=init_ops.zeros_initializer)
     self.fn = self.add_weight(
         'false_negatives',
-        shape=(len(self.thresholds),),
+        shape=(len(thresholds),),
         initializer=init_ops.zeros_initializer)
 
   def update_state(self, y_true, y_pred, sample_weight=None):
@@ -1260,10 +1268,13 @@ class Recall(Metric):
     }, y_true, y_pred, self.thresholds, sample_weight)
 
   def result(self):
-    return array_ops.where(
-        math_ops.greater(self.tp + self.fn, 0),
-        math_ops.div(self.tp, self.tp + self.fn),
-        array_ops.zeros_like(self.thresholds))
+    result = math_ops.div_no_nan(self.tp, self.tp + self.fn)
+    return result if isinstance(self.thresholds, (list, tuple)) else result[0]
+
+  def reset_states(self):
+    num_thresholds = len(to_list(self.thresholds))
+    for v in self.variables:
+      K.set_value(v, np.zeros((num_thresholds,)))
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -1323,6 +1334,11 @@ class SensitivitySpecificityBase(Metric):
         _ConfusionMatrix.FALSE_POSITIVES: self.fp,
         _ConfusionMatrix.FALSE_NEGATIVES: self.fn,
     }, y_true, y_pred, self.thresholds, sample_weight)
+
+  def reset_states(self):
+    num_thresholds = len(self.thresholds)
+    for v in self.variables:
+      K.set_value(v, np.zeros((num_thresholds,)))
 
 
 class SensitivityAtSpecificity(SensitivitySpecificityBase):
@@ -1459,6 +1475,43 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     # Compute specificity at that index.
     return math_ops.div_no_nan(self.tn[min_index],
                                self.tn[min_index] + self.fp[min_index])
+
+
+class CosineProximity(MeanMetricWrapper):
+  """Computes the cosine distance between the labels and predictions.
+
+  For example, if `y_true` is [0, 1, 1], and `y_pred` is [1, 0, 1], the cosine
+  proximity is -0.5.
+
+  This metric keeps the average cosine distance between `predictions` and
+  `labels` over a stream of data.
+
+  Usage:
+  ```python
+  m = tf.metrics.CosineProximity()
+  m.update_state([0, 1, 1], [1, 0, 1])
+  print('Final result: ', m.result().numpy())  # Final result: -0.5
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.metrics.CosineProximity()])
+  ```
+  """
+
+  def __init__(self, name='cosine_proximity', dtype=None):
+    super(CosineProximity, self).__init__(cosine, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(CosineProximity, cls).from_config(config)
 
 
 def accuracy(y_true, y_pred):

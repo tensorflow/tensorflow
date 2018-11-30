@@ -921,22 +921,22 @@ tensorflow::ImportNumpy();
     $1 = NULL;
   } else {
     if (!HandleStringAttribute($input, "generate_hlo_graph", [&](string s) {
-      build_options.set_generate_hlo_graph(std::move(s));
+      build_options.mutable_debug_options()->set_xla_generate_hlo_graph(std::move(s));
     })) {
       return nullptr;
     }
     if (!HandleStringAttribute($input, "dump_optimized_hlo_proto_to", [&](string s) {
-      build_options.set_dump_optimized_hlo_proto_to(std::move(s));
+      build_options.mutable_debug_options()->set_xla_dump_optimized_hlo_proto_to(std::move(s));
     })) {
       return nullptr;
     }
     if (!HandleStringAttribute($input, "dump_unoptimized_hlo_proto_to", [&](string s) {
-      build_options.set_dump_unoptimized_hlo_proto_to(std::move(s));
+      build_options.mutable_debug_options()->set_xla_dump_unoptimized_hlo_proto_to(std::move(s));
     })) {
       return nullptr;
     }
     if (!HandleStringAttribute($input, "dump_per_pass_hlo_proto_to", [&](string s) {
-      build_options.set_dump_per_pass_hlo_proto_to(std::move(s));
+      build_options.mutable_debug_options()->set_xla_dump_per_pass_hlo_proto_to(std::move(s));
     })) {
       return nullptr;
     }
@@ -950,7 +950,7 @@ tensorflow::ImportNumpy();
         PyErr_SetString(PyExc_TypeError, "ExecutableBuildOptions.hlo_profile must be a bool or None.");
         SWIG_fail;
       }
-      build_options.set_hlo_profile(o == Py_True);
+      build_options.mutable_debug_options()->set_xla_hlo_profile(o == Py_True);
     }
     Py_DECREF(o);
 

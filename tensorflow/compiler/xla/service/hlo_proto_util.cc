@@ -48,7 +48,7 @@ StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
   return std::move(module);
 }
 
-StatusOr<std::vector<const Shape*>> EntryComputationParameterShapes(
+StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
     const HloProto& hlo_proto) {
   if (!hlo_proto.has_hlo_module()) {
     return NotFound("HloProto missing HloModuleProto.");
@@ -57,15 +57,16 @@ StatusOr<std::vector<const Shape*>> EntryComputationParameterShapes(
     return NotFound("HloProto missing program shape.");
   }
 
-  std::vector<const Shape*> parameter_shapes;
+  std::vector<const ShapeProto*> parameter_shapes;
   const auto& program_shape = hlo_proto.hlo_module().host_program_shape();
-  for (const Shape& shape : program_shape.parameters()) {
+  for (const ShapeProto& shape : program_shape.parameters()) {
     parameter_shapes.push_back(&shape);
   }
   return parameter_shapes;
 }
 
-StatusOr<const Shape*> EntryComputationOutputShape(const HloProto& hlo_proto) {
+StatusOr<const ShapeProto*> EntryComputationOutputShape(
+    const HloProto& hlo_proto) {
   if (!hlo_proto.has_hlo_module()) {
     return NotFound("HloProto missing HloModuleProto.");
   }

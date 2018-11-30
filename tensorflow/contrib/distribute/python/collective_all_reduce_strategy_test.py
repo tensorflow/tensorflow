@@ -131,7 +131,7 @@ class CollectiveAllReduceStrategyTestBase(
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
             # TODO(yuefengz): support non-Mirrored variable as destinations.
-            g = d.reduce(
+            g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
                 d.update(v, update, g, grouped=False)):
@@ -225,10 +225,7 @@ class CollectiveAllReduceStrategyTestBase(
         return array_ops.identity(x)
 
       x = distribution.call_for_each_replica(model_fn)
-      reduced_x = distribution.unwrap(
-          distribution.reduce(
-              reduce_util.ReduceOp.MEAN, x,
-              destinations='/cpu:0'))[0]
+      reduced_x = distribution.reduce(reduce_util.ReduceOp.MEAN, x)
       x = distribution.unwrap(x)[0]
 
       sess.run(variables.global_variables_initializer())

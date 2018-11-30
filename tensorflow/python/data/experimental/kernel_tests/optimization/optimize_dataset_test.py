@@ -51,7 +51,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       sess.run(init_op, {input_t: np.ones([512, 1024, 1025], np.int32)})
-      sess.run(get_next)
+      self.evaluate(get_next)
 
   # TODO(b/117581999): Add eager coverage for the following tests.
   def testSkipEagerOptimizationLargeInputFromTensorSlices(self):
@@ -64,7 +64,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       sess.run(init_op, {input_t: np.ones([1, 512, 1024, 1025], np.int32)})
-      sess.run(get_next)
+      self.evaluate(get_next)
 
   def testOptimizationNestedDataset(self):
 

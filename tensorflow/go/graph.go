@@ -112,9 +112,17 @@ func (g *Graph) ImportWithOptions(def []byte, options GraphImportOptions) error 
 	C.TF_ImportGraphDefOptionsSetPrefix(opts, cprefix)
 
 	if len(options.Device) != 0 {
-		cdev := C.CString(options.Device)
-		defer C.free(unsafe.Pointer(cdev))
-		C.TF_ImportGraphDefOptionsSetDefaultDevice(opts, cdev)
+		// TODO(ashankar): Remove this error and uncomment below
+		// when a release of the C library which includes
+		// https://github.com/tensorflow/tensorflow/commit/e0af5ac53e5a8ad9b07cdd5738c0a8e12f938c4e
+		// has been made.
+		// See https://github.com/tensorflow/tensorflow/issues/23257
+		return fmt.Errorf("GraphImportOptions.Device is only supported with the TensorFlow C library versions after 1.12 (or built from master). See https://github.com/tensorflow/tensorflow/issues/23257")
+		/*
+			cdev := C.CString(options.Device)
+			defer C.free(unsafe.Pointer(cdev))
+			C.TF_ImportGraphDefOptionsSetDefaultDevice(opts, cdev)
+		*/
 	}
 
 	buf := C.TF_NewBuffer()

@@ -78,13 +78,13 @@ Status SessionMgr::CreateSession(const string& session,
 
   if (isolate_session_state) {
     // Create a private copy of the DeviceMgr for the WorkerSession.
-    std::vector<Device*> renamed_devices;
+    std::vector<std::unique_ptr<Device>> renamed_devices;
     for (Device* d : worker_env_->local_devices) {
       renamed_devices.push_back(RenamedDevice::NewRenamedDevice(
           worker_name, d, false, isolate_session_state));
     }
 
-    auto device_mgr = MakeUnique<DeviceMgr>(renamed_devices);
+    auto device_mgr = MakeUnique<DeviceMgr>(std::move(renamed_devices));
     auto graph_mgr = MakeUnique<GraphMgr>(worker_env_, device_mgr.get());
     worker_session.reset(
         new WorkerSession(session, worker_name,

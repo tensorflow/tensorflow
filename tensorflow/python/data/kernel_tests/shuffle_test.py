@@ -115,6 +115,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @test_util.run_deprecated_v1
   def testSkipEagerSeedZero(self):
     """Test for same behavior when the seed is a Python or Tensor zero."""
     iterator = (

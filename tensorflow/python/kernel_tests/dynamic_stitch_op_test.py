@@ -47,6 +47,7 @@ class DynamicStitchTestBase(object):
         # Dimension 0 is max(flatten(indices))+1.
         self.assertEqual([2], stitched_t.get_shape().as_list())
 
+  @test_util.run_deprecated_v1
   def testShapeInferenceForScalarWithNonConstantIndices(self):
     with test_util.use_gpu():
       indices = [
@@ -134,6 +135,7 @@ class DynamicStitchTestBase(object):
       # Dimension 0 is max(flatten(indices))+1.
       self.assertEqual([8, 2], stitched_t.get_shape().as_list())
 
+  @test_util.run_deprecated_v1
   def testHigherRank(self):
     with self.session(use_gpu=True) as sess:
       indices = [
@@ -160,6 +162,7 @@ class DynamicStitchTestBase(object):
       for datum, grad in zip(data, sess.run(grads[3:])):
         self.assertAllEqual(7. * self.evaluate(datum), grad)
 
+  @test_util.run_deprecated_v1
   def testErrorIndicesMultiDimensional(self):
     indices = [
         constant_op.constant([0, 4, 7]),
@@ -172,6 +175,7 @@ class DynamicStitchTestBase(object):
     with self.assertRaises(ValueError):
       self.stitch_op(indices, data)
 
+  @test_util.run_deprecated_v1
   def testErrorDataNumDimsMismatch(self):
     indices = [
         constant_op.constant([0, 4, 7]),
@@ -184,6 +188,7 @@ class DynamicStitchTestBase(object):
     with self.assertRaises(ValueError):
       self.stitch_op(indices, data)
 
+  @test_util.run_deprecated_v1
   def testErrorDataDimSizeMismatch(self):
     indices = [
         constant_op.constant([0, 4, 5]),
@@ -196,6 +201,7 @@ class DynamicStitchTestBase(object):
     with self.assertRaises(ValueError):
       self.stitch_op(indices, data)
 
+  @test_util.run_deprecated_v1
   def testErrorDataAndIndicesSizeMismatch(self):
     indices = [
         constant_op.constant([0, 4, 7]),
@@ -233,6 +239,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
         # Dimension 0 is max(flatten(indices))+1.
         self.assertEqual([2], stitched_t.get_shape().as_list())
 
+  @test_util.run_deprecated_v1
   def testHigherRank(self):
     with self.session(use_gpu=True) as sess:
       indices = [
@@ -271,6 +278,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
         # Dimension 0 is max(flatten(indices))+1.
         self.assertEqual([2], stitched_t.get_shape().as_list())
 
+  @test_util.run_deprecated_v1
   def testHigherRankGPU(self):
     with self.cached_session() as sess:
       indices = [

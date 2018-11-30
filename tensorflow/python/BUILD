@@ -1393,6 +1393,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_pip"],  # test_ops_2 is not available in pip.
     deps = [
+        ":cond_v2",
         ":control_flow_ops",
         ":errors",
         ":framework",
@@ -1407,6 +1408,7 @@ py_test(
         ":util",
         ":variable_scope",
         ":variables",
+        ":while_v2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
@@ -1973,6 +1975,15 @@ py_library(
 )
 
 py_library(
+    name = "optional_grad",
+    srcs = ["ops/optional_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_ops",
+    ],
+)
+
+py_library(
     name = "sets",
     srcs = [
         "ops/sets.py",
@@ -2151,6 +2162,7 @@ py_library(
         ":graph_to_function_def",
         ":pywrap_tensorflow",
         ":util",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:function",
     ],
 )
@@ -2295,6 +2307,7 @@ py_library(
         ":manip_ops",
         ":math_grad",
         ":math_ops",
+        ":optional_grad",
         ":platform",
         ":random_grad",
         ":resource_variable_ops",
@@ -3518,6 +3531,19 @@ py_library(
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/training/checkpointable:base",
         "//tensorflow/python/training/checkpointable:util",
+    ],
+)
+
+# Dependency added and used by ClusterResolvers to avoid circular dependency between keras, distribute, and training.
+py_library(
+    name = "training_server_lib",
+    srcs = ["training/server_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":pywrap_tensorflow",
+        ":util",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 

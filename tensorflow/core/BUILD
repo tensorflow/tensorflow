@@ -96,6 +96,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 
 # For platform specific build config
@@ -868,6 +869,7 @@ tf_cuda_library(
         "framework/dataset_stateful_op_whitelist.h",
         "framework/device_base.h",
         "framework/function.h",
+        "framework/function_handle_cache.h",
         "framework/graph_def_util.h",
         "framework/graph_to_functiondef.h",
         "framework/kernel_def_builder.h",
@@ -911,6 +913,7 @@ tf_cuda_library(
         "util/bcast.h",
         "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
+        "util/dump_graph.h",
         "util/events_writer.h",
         "util/example_proto_fast_parsing.h",
         "util/example_proto_helper.h",
@@ -928,6 +931,7 @@ tf_cuda_library(
         "util/stream_executor_util.h",
         "util/strided_slice_op.h",
         "util/tensor_format.h",
+        "util/tensor_ops_util.h",
         "util/tensor_slice_reader.h",
         "util/tensor_slice_reader_cache.h",
         "util/tensor_slice_writer.h",
@@ -1113,7 +1117,11 @@ tf_gen_op_libs(
     op_lib_names = [
         "string_ops",
     ],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        ":lib_internal",
+        ":lib_proto_parsing",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_gen_op_libs(
@@ -1467,7 +1475,7 @@ tf_cuda_library(
         ":gpu_runtime",
         ":lib",
         ":ops",
-    ],
+    ] + tensorflow_opensource_extra_deps(),
 )
 
 cc_library(
@@ -2678,6 +2686,7 @@ tf_cuda_library(
         ":version_lib",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
@@ -2980,6 +2989,7 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
+        "@com_google_absl//absl/memory",
         "//third_party/eigen3",
         "//tensorflow/core/grappler:grappler_item",
     ] + mkl_deps(),
@@ -3428,6 +3438,7 @@ tf_cc_tests(
         "platform/profile_utils/cpu_utils_test.cc",
         "platform/stacktrace_handler_test.cc",
         "platform/subprocess_test.cc",
+        "platform/vmodule_benchmark_test.cc",
     ],
     deps = [
         ":lib",
@@ -3438,6 +3449,20 @@ tf_cc_tests(
         ":test_main",
         "//third_party/eigen3",
         "@zlib_archive//:zlib",
+    ],
+)
+
+tf_cc_test(
+    name = "vmodule_test",
+    srcs = ["platform/vmodule_test.cc"],
+    tags = ["optonly"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        "//third_party/eigen3",
     ],
 )
 
@@ -3713,6 +3738,7 @@ tf_cc_tests(
         "util/bcast_test.cc",
         "util/command_line_flags_test.cc",
         "util/device_name_utils_test.cc",
+        "util/dump_graph_test.cc",
         "util/equal_graph_def_test.cc",
         "util/events_writer_test.cc",
         "util/example_proto_fast_parsing_test.cc",
@@ -3843,6 +3869,7 @@ tf_cc_tests_gpu(
         ":test",
         ":test_main",
         ":testlib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -3871,6 +3898,7 @@ tf_cc_tests_gpu(
         ":test",
         ":test_main",
         ":testlib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -4438,6 +4466,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:shape_ops",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )

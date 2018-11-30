@@ -23,6 +23,7 @@ from tensorflow.python.client import session as session_module
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -32,7 +33,6 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
 
 
@@ -94,11 +94,8 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
                                         grouped_inputs)
   if with_loss_tensor:
     # reduce loss tensor before adding it to the list of fetches
-    loss = distribution_strategy.unwrap(
-        distribution_strategy.reduce(distribute_lib.get_loss_reduction(),
-                                     grouped_outputs[0],
-                                     destinations='/device:CPU:0'))[0]
-
+    loss = distribution_strategy.reduce(distribute_lib.get_loss_reduction(),
+                                        grouped_outputs[0])
     all_outputs = flatten_perdevice_values(distribution_strategy,
                                            grouped_outputs[1:])
     all_outputs = [loss] + all_outputs
@@ -331,7 +328,7 @@ def init_restore_or_wait_for_variables():
   """Initialize or restore variables or wait for variables to be initialized."""
   session = K._get_session()  # pylint: disable=protected-access
   worker_context = dc_context.get_current_worker_context()
-  if not worker_context or worker_context.should_init:
+  if not worker_context or worker_context.experimental_should_init:
     # TODO(yuefengz): if checkpoints exit, restore from checkpoint.
     K._initialize_variables(session)  # pylint: disable=protected-access
   else:

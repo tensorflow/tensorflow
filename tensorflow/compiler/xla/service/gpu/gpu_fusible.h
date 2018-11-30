@@ -46,6 +46,16 @@ bool IsReduceInputFusion(const HloInstruction& instr);
 // is either an unfused reduction-to-vector op or a reduce input fusion.
 bool IsInputFusibleReduction(const HloInstruction& instr);
 
+// Whether instruction shapes are compatible for multi-output fusion, i.e.
+// whether the emitters support lowering the resulting fusion.
+// This function works for both, sibling and producer-conumser multi-output
+// fusion.
+// So far, multi-output fusion is supported for loop fusions and reduce
+// input fusions only. It is up to the caller to ensure the instructions
+// themselves are fusible!
+bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
+                                          const HloInstruction& instr2);
+
 }  // namespace gpu
 }  // namespace xla
 

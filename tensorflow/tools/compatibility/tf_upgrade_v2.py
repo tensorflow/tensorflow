@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
-
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
 
@@ -31,6 +29,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
     self.function_keyword_renames = {
+        "tf.argmin": {
+            "dimension": "axis",
+        },
+        "tf.argmax": {
+            "dimension": "axis",
+        },
         "tf.image.crop_and_resize": {
             "box_ind": "box_indices",
         },
@@ -46,13 +50,41 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.batch_to_space_nd": {
             "block_size": "block_shape",
         },
+        "tf.constant": {
+            "verify_shapes": "verify_shapes_is_now_always_true",
+        },
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
+        },
+        "tf.linalg.l2_normalize": {
+            "dim": "axis",
         },
         "tf.math.count_nonzero": {
             "input_tensor": "input",
             "keep_dims": "keepdims",
             "reduction_indices": "axis",
+        },
+        "tf.nn.erosion2d": {
+            "kernel": "filters",
+            "rates": "dilations",
+        },
+        "tf.math.l2_normalize": {
+            "dim": "axis",
+        },
+        "tf.math.log_softmax": {
+            "dim": "axis",
+        },
+        "tf.math.softmax": {
+            "dim": "axis"
+        },
+        "tf.nn.l2_normalize": {
+            "dim": "axis",
+        },
+        "tf.nn.log_softmax": {
+            "dim": "axis",
+        },
+        "tf.nn.moments": {
+            "keep_dims": "keepdims",
         },
         "tf.nn.pool": {
             "dilation_rate": "dilations"
@@ -60,22 +92,33 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.separable_conv2d": {
             "rate": "dilations"
         },
+        "tf.nn.softmax": {
+            "dim": "axis"
+        },
         "tf.nn.sufficient_statistics": {
             "keep_dims": "keepdims"
-        },
-        "tf.nn.log_softmax": {
-            "dim": "axis",
-        },
-        "tf.nn.softmax": {
-            "dim": "axis",
         },
         "tf.debugging.assert_all_finite": {
             "t": "x",
             "msg": "message",
         },
-        "tf.sparse.add": ["a", "b", "thresh"],
+        "tf.sparse.add": {
+            "thresh": "threshold",
+        },
+        "tf.sparse_add": {
+            "thresh": "threshold",
+        },
+        "tf.sparse.concat": {
+            "concat_dim": "axis",
+        },
+        "tf.sparse_concat": {
+            "concat_dim": "axis",
+        },
         "tf.sparse.split": {
             "split_dim": "axis",
+        },
+        "tf.max_pool_with_argmax": {
+            "Targmax": "output_dtype",
         },
         "tf.multinomial": {
             "output_dtype": "dtype",
@@ -153,18 +196,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.random.stateless_multinomial": {
             "output_dtype": "dtype",
         },
-        "tf.linalg.l2_normalize": {
-            "dim": "axis",
+        "tf.string_to_number": {
+            "string_tensor": "input",
         },
-        "tf.math.l2_normalize": {
-            "dim": "axis",
+        "tf.strings.to_number": {
+            "string_tensor": "input",
         },
-        "tf.nn.l2_normalize": {
-            "dim": "axis",
+        "tf.string_to_hash_bucket": {
+            "string_tensor": "input",
         },
-        "tf.sparse.concat": [
-            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
-        ],
+        "tf.strings.to_hash_bucket": {
+            "string_tensor": "input",
+        },
         "tf.reduce_all": {
             "reduction_indices": "axis",
             "keep_dims": "keepdims",
@@ -242,40 +285,38 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
     }
 
-    # Mapping from function to the new name of the function
-    self.symbol_renames = renames_v2.renames
     # pylint: disable=line-too-long
     # Add additional renames not in renames_v2.py here.
     # IMPORTANT: For the renames in here, if you also need to add to
     # function_reorders or function_keyword_renames, use the OLD function name.
     # These renames happen after the arguments have been processed.
-    self.symbol_renames.update({
+    self.manual_symbol_renames = {
         "tf.batch_to_space_nd":
             "tf.batch_to_space",
         "tf.gfile.Copy":
-            "tf.io.gfile.Copy",
+            "tf.io.gfile.copy",
         "tf.gfile.DeleteRecursively":
-            "tf.io.gfile.DeleteRecursively",
+            "tf.io.gfile.rmtree",
         "tf.gfile.Exists":
-            "tf.io.gfile.Exists",
+            "tf.io.gfile.exists",
         "tf.gfile.Glob":
-            "tf.io.gfile.Glob",
+            "tf.io.gfile.glob",
         "tf.gfile.IsDirectory":
-            "tf.io.gfile.IsDirectory",
+            "tf.io.gfile.isdir",
         "tf.gfile.ListDirectory":
-            "tf.io.gfile.ListDirectory",
+            "tf.io.gfile.listdir",
         "tf.gfile.MakeDirs":
-            "tf.io.gfile.MakeDirs",
+            "tf.io.gfile.makedirs",
         "tf.gfile.MkDir":
-            "tf.io.gfile.MkDir",
+            "tf.io.gfile.mkdir",
         "tf.gfile.Remove":
-            "tf.io.gfile.Remove",
+            "tf.io.gfile.remove",
         "tf.gfile.Rename":
-            "tf.io.gfile.Rename",
+            "tf.io.gfile.rename",
         "tf.gfile.Stat":
-            "tf.io.gfile.Stat",
+            "tf.io.gfile.stat",
         "tf.gfile.Walk":
-            "tf.io.gfile.Walk",
+            "tf.io.gfile.walk",
         "tf.contrib.data.AUTOTUNE":
             "tf.data.experimental.AUTOTUNE",
         "tf.contrib.data.Counter":
@@ -372,6 +413,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.sparse.concat",
         "tf.sparse_split":
             "tf.sparse.split",
+        "tf.string_to_hash_bucket":
+            "tf.strings.to_hash_bucket",
+        "tf.string_to_number":
+            "tf.strings.to_number",
         "tf.multinomial":
             "tf.random.categorical",
         "tf.random.multinomial":
@@ -386,13 +431,24 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.math.confusion_matrix",
         "tf.train.confusion_matrix":
             "tf.math.confusion_matrix",
-    })
+        "tf.decode_csv":
+            "tf.io.decode_csv",
+        "tf.data.Iterator":
+            "tf.compat.v1.data.Iterator",
+        "tf.nn.fused_batch_norm":
+            "tf.compat.v1.nn.fused_batch_norm",
+        "tf.losses.Reduction.MEAN":
+            "tf.compat.v1.losses.Reduction.MEAN",
+        "tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS":
+            "tf.compat.v1.losses.Reduction.SUM_BY_NONZERO_WEIGHTS",
+        "tf.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS":
+            "tf.compat.v1.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS",
+    }
     # pylint: enable=line-too-long
 
-    # For custom behavior and if auto-generate rename in renames_v2.py
-    # is incorrect, add the op name here to exclude it from renames_v2.py.
-    excluded_renames = [
-    ]
+    # Mapping from function to the new name of the function
+    self.symbol_renames = renames_v2.renames
+    self.symbol_renames.update(self.manual_symbol_renames)
 
     # Variables that should be changed to functions.
     self.change_to_function = {}
@@ -405,11 +461,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_reorders = {
         "tf.io.serialize_sparse": ["sp_input", "name", "out_type"],
         "tf.io.serialize_many_sparse": ["sp_input", "name", "out_type"],
-        "tf.argmax": ["input", "axis", "name", "dimension", "output_type"],
-        "tf.argmin": ["input", "axis", "name", "dimension", "output_type"],
+        "tf.argmax": ["input", "axis", "name", "axis", "output_type"],
+        "tf.argmin": ["input", "axis", "name", "axis", "output_type"],
         "tf.batch_to_space": ["input", "crops", "block_size", "name"],
         "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
         "tf.convert_to_tensor": ["value", "dtype", "name", "preferred_dtype"],
+        "tf.nn.moments": ["x", "axes", "shift", "keepdims", "name"],
         "tf.nn.convolution": [
             "input", "filter", "padding", "strides", "dilation_rate", "name",
             "data_format"
@@ -442,7 +499,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.size": ["input", "name", "out_type"],
         "tf.random.poisson": ["lam", "shape", "dtype", "seed", "name"],
         "tf.sparse.add": ["a", "b", "thresh"],
+        "tf.sparse_add": ["a", "b", "thresh"],
         "tf.sparse.concat": [
+            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
+        ],
+        "tf.sparse_concat": [
             "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
         ],
         "tf.sparse.segment_mean": [
@@ -561,14 +622,19 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Specially handled functions.
     self.function_handle = {
         "tf.nn.dropout": self._dropout_handler,
+        "tf.gradients": self._colocate_handler("tf.gradients"),
+        "*.minimize": self._colocate_handler("Optimizer.minimize"),
+        "*.compute_gradients":
+            self._colocate_handler("Optimizer.compute_gradients"),
     }
 
     decay_function_comment = (
-        "ERROR: <function name> has been changed to return a callable instead "
-        "of a tensor when graph building, but its functionality remains "
+        "WARNING: <function name> has been changed to return a callable instead"
+        " of a tensor when graph building, but its functionality remains "
         "unchanged during eager execution (returns a callable like "
         "before). The converter cannot detect and fix this reliably, so "
-        "you need to inspect this usage manually.\n"
+        "this usage has been converted to compat.v1 (even though it may already"
+        " be correct).\n"
     )
 
     # TODO(b/118888586): add default value change to update script.
@@ -580,17 +646,23 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     assert_return_type_comment = (
         "WARNING: assert_* functions have been changed to return None, the "
         "data argument has been removed, and arguments have been reordered."
+        "\nThe calls have been converted to compat.v1 for safety (even though "
+        " they may already have been correct)."
     )
 
     assert_rank_comment = (
         "WARNING: assert_rank_* functions have been changed to return None, and"
         " the data and summarize arguments have been removed."
+        "\nThe calls have been converted to compat.v1 for safety (even though "
+        " they may already have been correct)."
     )
 
     tf_01s_like_no_optimize_comment = (
         "WARNING: tf.zeros_like and tf.ones_like no longer have the optimize "
         "argument in TF 2.0 or after (also, `tensor' argument is renamed to "
         "`input')."
+        "\nThe calls have been converted to compat.v1 for safety (even though "
+        " they may already have been correct)."
     )
 
     # Function warnings. <function name> placeholder inside warnings will be
@@ -615,9 +687,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.debugging.assert_rank": assert_rank_comment,
         "tf.debugging.assert_rank_at_least": assert_rank_comment,
         "tf.debugging.assert_rank_in": assert_rank_comment,
+        "tf.flags": "tf.flags has been removed, please use the argparse or absl"
+                    " module if you need command line parsing.",
         "tf.train.exponential_decay":
             decay_function_comment,
-        "tf.train.piecewise_constant":
+        "tf.train.piecewise_constant_decay":
             decay_function_comment,
         "tf.train.polynomial_decay":
             decay_function_comment,
@@ -660,14 +734,31 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.conv2d_backprop_input":
         "WARNING: use_cudnn_on_gpu argument has been removed and \"filter\" "
         "was renamed to \"filters\"",
+        "tf.nn.erosion2d":
+        "WARNING: <function name> now requires a data_format argument",
         "tf.zeros_like": tf_01s_like_no_optimize_comment,
         "tf.ones_like": tf_01s_like_no_optimize_comment,
     }
-    # Right now we can't have both a rename and a warning.
+
     self.symbol_renames = {
         name: new_name
         for name, new_name in self.symbol_renames.items()
-        if name not in self.function_warnings and name not in excluded_renames
+    }
+
+    export_saved_model_renamed = (
+        "(Manual edit required) Please rename the method export_savedmodel() "
+        "to export_saved_model(). Two things to note:\n\t(1) The argument "
+        "strip_default_attributes has been removed. The function will always "
+        "strip the default attributes from ops. If this breaks your code, "
+        "please switch to tf.compat.v1.estimator.Estimator.\n\t(2) This change "
+        "only effects core estimator. If you are using "
+        "tf.contrib.learn.Estimator, please switch to using core estimator.")
+
+    # Specify warnings for functions that aren't restricted to the tf.x.y.z
+    # format. This should only be used for methods with unique names, e.g.
+    # export_savedmodel, which is only defined in Estimator objects.
+    self.unrestricted_function_warnings = {
+        "export_savedmodel": export_saved_model_renamed,
     }
 
   @staticmethod
@@ -693,78 +784,22 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
           "",
           "1 - ")
 
-
-if __name__ == "__main__":
-  parser = argparse.ArgumentParser(
-      formatter_class=argparse.RawDescriptionHelpFormatter,
-      description="""Convert a TensorFlow Python file to 2.0
-
-Simple usage:
-  tf_upgrade_v2.py --infile foo.py --outfile bar.py
-  tf_upgrade_v2.py --intree ~/code/old --outtree ~/code/new
-""")
-  parser.add_argument(
-      "--infile",
-      dest="input_file",
-      help="If converting a single file, the name of the file "
-      "to convert")
-  parser.add_argument(
-      "--outfile",
-      dest="output_file",
-      help="If converting a single file, the output filename.")
-  parser.add_argument(
-      "--intree",
-      dest="input_tree",
-      help="If converting a whole tree of files, the directory "
-      "to read from (relative or absolute).")
-  parser.add_argument(
-      "--outtree",
-      dest="output_tree",
-      help="If converting a whole tree of files, the output "
-      "directory (relative or absolute).")
-  parser.add_argument(
-      "--copyotherfiles",
-      dest="copy_other_files",
-      help=("If converting a whole tree of files, whether to "
-            "copy the other files."),
-      type=bool,
-      default=False)
-  parser.add_argument(
-      "--reportfile",
-      dest="report_filename",
-      help=("The name of the file where the report log is "
-            "stored."
-            "(default: %(default)s)"),
-      default="report.txt")
-  args = parser.parse_args()
-
-  upgrade = ast_edits.ASTCodeUpgrader(TFAPIChangeSpec())
-  report_text = None
-  report_filename = args.report_filename
-  files_processed = 0
-  if args.input_file:
-    if not args.output_file:
-      raise ValueError(
-          "--outfile=<output file> argument is required when converting a "
-          "single file.")
-    files_processed, report_text, errors = upgrade.process_file(
-        args.input_file, args.output_file)
-    files_processed = 1
-  elif args.input_tree:
-    if not args.output_tree:
-      raise ValueError(
-          "--outtree=<output directory> argument is required when converting a "
-          "file tree.")
-    files_processed, report_text, errors = upgrade.process_tree(
-        args.input_tree, args.output_tree, args.copy_other_files)
-  else:
-    parser.print_help()
-  if report_text:
-    open(report_filename, "w").write(report_text)
-    print("TensorFlow 2.0 Upgrade Script")
-    print("-----------------------------")
-    print("Converted %d files\n" % files_processed)
-    print("Detected %d errors that require attention" % len(errors))
-    print("-" * 80)
-    print("\n".join(errors))
-    print("\nMake sure to read the detailed log %r\n" % report_filename)
+  @staticmethod
+  def _colocate_handler(name):
+    def _helper(file_edit_recorder, node):
+      for keyword in node.keywords:
+        if keyword.arg == "colocate_gradients_with_ops":
+          # TODO(jhseu): Since ast_edit.py does string replacement, there's no
+          # straightforward way to remove the argument. Try to fix before 2.0 is
+          # final.
+          comment = ("For tf.gradients and tf.Optimizer.minimize, "
+                     "colocate_gradients_with_op has been removed and now "
+                     "defaults to True.")
+          file_edit_recorder.add(
+              comment,
+              node.lineno,
+              node.col_offset,
+              "",
+              "",
+              error="{} requires manual check.".format(name))
+    return _helper

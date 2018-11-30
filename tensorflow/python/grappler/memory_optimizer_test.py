@@ -25,6 +25,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -37,6 +38,7 @@ from tensorflow.python.training import training as train
 class MemoryOptimizerSwapTest(test.TestCase):
   """Tests the Grappler memory optimizer."""
 
+  @test_util.run_deprecated_v1
   def testNoSwapping(self):
     """Make sure the graph is preserved when there is nothing to swap."""
     a = variables.VariableV1(10, name='a')
@@ -60,6 +62,7 @@ class MemoryOptimizerSwapTest(test.TestCase):
     self.assertEqual(len(graph.node), graph_size)
     self.assertItemsEqual([node.name for node in graph.node], nodes)
 
+  @test_util.run_deprecated_v1
   def testSimpleSwap(self):
     """Check that the swap annotations are followed."""
     a = variables.VariableV1(10, name='a')
@@ -231,10 +234,10 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
       train_op = graph.get_operation_by_name(train_op_name)
       loss_op = graph.get_tensor_by_name(loss_op_name)
       with session.Session(config=config, graph=graph) as sess:
-        sess.run(init_op)
-        sess.run(train_op)
-        sess.run(train_op)
-        return sess.run(loss_op)
+        self.evaluate(init_op)
+        self.evaluate(train_op)
+        self.evaluate(train_op)
+        return self.evaluate(loss_op)
 
   def testRecomputationRewritingNoErrors(self):
     """Tests that graph output is not significantly different with rewriting."""
@@ -295,8 +298,8 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
           rewrite_options=manual_memory_config)
       session_config = config_pb2.ConfigProto(graph_options=graph_options)
       with session.Session(config=session_config) as sess:
-        sess.run(init_op)
-        sess.run(train_op)
+        self.evaluate(init_op)
+        self.evaluate(train_op)
 
   def testHintDoesRewrite(self):
     graph = self._annotated_graph()[0]

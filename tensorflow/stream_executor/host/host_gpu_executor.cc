@@ -148,8 +148,13 @@ port::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
 }
 
 bool HostExecutor::HostCallback(Stream *stream,
-                                std::function<void()> callback) {
-  AsHostStream(stream)->EnqueueTask(callback);
+                                std::function<port::Status()> callback) {
+  AsHostStream(stream)->EnqueueTask([callback]() {
+    port::Status s = callback();
+    if (!s.ok()) {
+      LOG(WARNING) << "Host callback failed: " << s;
+    }
+  });
   return true;
 }
 

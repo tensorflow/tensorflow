@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import values
@@ -133,7 +134,8 @@ class MirroredExtended(CoreMirroredExtended):
     if self._cluster_spec:
       worker_device_pairs = self._worker_devices
     else:
-      worker_device_pairs = [("/job:localhost", self._devices)]
+      worker = device_util.canonicalize("/device:CPU:0")
+      worker_device_pairs = [(worker, self._devices)]
     return values.DatasetIterator(dataset, worker_device_pairs)
 
   def _distribute_dataset(self, dataset_fn):

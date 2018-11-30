@@ -23,11 +23,6 @@ limitations under the License.
 namespace tflite {
 namespace optimized_ops {
 
-// clang-format gets confused with this file and ends up formatting lines to
-// be larger than 80 characters. Turn off here and back on at the end of the
-// file.
-// clang-format off
-
 // See CategorizeDotProductKernel for definitive taxonomy.
 enum class DotProduct3x3KernelType {
   kNone = 0,  // Parameter combination is not supported for dot product kernels.
@@ -120,42 +115,58 @@ struct DepthwiseConvParams {
 #define OFFSET_OUTPUT_WIDTH 84
 #define OFFSET_OUTPUT_HEIGHT 88
 
-static_assert(offsetof(DepthwiseConvParams, input_depth) ==
-                  OFFSET_INPUT_DEPTH, "");
+static_assert(offsetof(DepthwiseConvParams, input_depth) == OFFSET_INPUT_DEPTH,
+              "");
 static_assert(offsetof(DepthwiseConvParams, input_row_size) ==
-                  OFFSET_INPUT_ROW_SIZE, "");
+                  OFFSET_INPUT_ROW_SIZE,
+              "");
 static_assert(offsetof(DepthwiseConvParams, output_depth) ==
-                  OFFSET_OUTPUT_DEPTH, "");
+                  OFFSET_OUTPUT_DEPTH,
+              "");
 static_assert(offsetof(DepthwiseConvParams, output_row_size) ==
-                  OFFSET_OUTPUT_ROW_SIZE, "");
+                  OFFSET_OUTPUT_ROW_SIZE,
+              "");
 static_assert(offsetof(DepthwiseConvParams, filter_row_size) ==
-                  OFFSET_FILTER_ROW_SIZE, "");
+                  OFFSET_FILTER_ROW_SIZE,
+              "");
 static_assert(offsetof(DepthwiseConvParams, input_offset) ==
-                  OFFSET_INPUT_OFFSET, "");
+                  OFFSET_INPUT_OFFSET,
+              "");
 static_assert(offsetof(DepthwiseConvParams, output_offset) ==
-                  OFFSET_OUTPUT_OFFSET, "");
+                  OFFSET_OUTPUT_OFFSET,
+              "");
 static_assert(offsetof(DepthwiseConvParams, filter_offset) ==
-                  OFFSET_FILTER_OFFSET, "");
+                  OFFSET_FILTER_OFFSET,
+              "");
 static_assert(offsetof(DepthwiseConvParams, output_multiplier) ==
-                  OFFSET_OUTPUT_MULTIPLIER, "");
+                  OFFSET_OUTPUT_MULTIPLIER,
+              "");
 static_assert(offsetof(DepthwiseConvParams, output_activation_min) ==
-                  OFFSET_OUTPUT_ACTIVATION_MIN, "");
+                  OFFSET_OUTPUT_ACTIVATION_MIN,
+              "");
 static_assert(offsetof(DepthwiseConvParams, output_activation_max) ==
-                  OFFSET_OUTPUT_ACTIVATION_MAX, "");
+                  OFFSET_OUTPUT_ACTIVATION_MAX,
+              "");
 static_assert(offsetof(DepthwiseConvParams, output_right_shift) ==
-                  OFFSET_OUTPUT_RIGHT_SHIFT, "");
-static_assert(offsetof(DepthwiseConvParams, input_width) ==
-                  OFFSET_INPUT_WIDTH, "");
+                  OFFSET_OUTPUT_RIGHT_SHIFT,
+              "");
+static_assert(offsetof(DepthwiseConvParams, input_width) == OFFSET_INPUT_WIDTH,
+              "");
 static_assert(offsetof(DepthwiseConvParams, input_height) ==
-                  OFFSET_INPUT_HEIGHT, "");
+                  OFFSET_INPUT_HEIGHT,
+              "");
 static_assert(offsetof(DepthwiseConvParams, stride_width) ==
-                  OFFSET_STRIDE_WIDTH, "");
+                  OFFSET_STRIDE_WIDTH,
+              "");
 static_assert(offsetof(DepthwiseConvParams, stride_height) ==
-                  OFFSET_STRIDE_HEIGHT, "");
+                  OFFSET_STRIDE_HEIGHT,
+              "");
 static_assert(offsetof(DepthwiseConvParams, output_width) ==
-                  OFFSET_OUTPUT_WIDTH, "");
+                  OFFSET_OUTPUT_WIDTH,
+              "");
 static_assert(offsetof(DepthwiseConvParams, output_height) ==
-                  OFFSET_OUTPUT_HEIGHT, "");
+                  OFFSET_OUTPUT_HEIGHT,
+              "");
 
 template <int32 kDepth, int32 kStrideWidth, int32 kStrideHeight>
 struct DepthwiseConvWindow {};
@@ -164,10 +175,10 @@ template <>
 struct DepthwiseConvWindow<8, 1, 1> {
  public:
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
-                  const int32* bias_ptr, uint8* output_ptr, int64_t input_depth,
-                  int64_t input_row_size, int32 output_window_height,
-                  int32 output_window_width,
-                  const DepthwiseConvParams* params_ptr) {
+                         const int32* bias_ptr, uint8* output_ptr,
+                         int64_t input_depth, int64_t input_row_size,
+                         int32 output_window_height, int32 output_window_width,
+                         const DepthwiseConvParams* params_ptr) {
     const int64_t input_width_increment = 2 * input_depth;
     const int64_t input_height_increment = 2 * input_row_size;
     const int64_t output_height_increment = 2 * params_ptr->output_row_size;
@@ -1147,10 +1158,10 @@ struct DepthwiseConvWindow<8, 1, 1> {
 template <>
 struct DepthwiseConvWindow<8, 2, 2> {
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
-                  const int32* bias_ptr, uint8* output_ptr, int64_t input_depth,
-                  int64_t input_row_size, int32 output_window_height,
-                  int32 output_window_width,
-                  const DepthwiseConvParams* params_ptr) {
+                         const int32* bias_ptr, uint8* output_ptr,
+                         int64_t input_depth, int64_t input_row_size,
+                         int32 output_window_height, int32 output_window_width,
+                         const DepthwiseConvParams* params_ptr) {
     const int64_t input_width_increment = 4 * input_depth;
     const int64_t input_height_increment = 4 * input_row_size;
     const int64_t output_height_increment = 2 * params_ptr->output_row_size;
@@ -2990,11 +3001,10 @@ struct ShuffleParams {
   ShuffleParams() = default;
   ShuffleParams(int32 output_width, int32 output_height, int32 stride_width,
                 int32 stride_height)
-  : output_width(output_width)
-  , output_height(output_height)
-  , input_width(get_shuffle_input_size(stride_width, output_width))
-  , input_height(get_shuffle_input_size(stride_height, output_height)) {
-  }
+      : output_width(output_width),
+        output_height(output_height),
+        input_width(get_shuffle_input_size(stride_width, output_width)),
+        input_height(get_shuffle_input_size(stride_height, output_height)) {}
 };
 
 template <int32 kStrideWidth, int32 kStrideHeight>
@@ -3003,10 +3013,10 @@ struct DepthwiseConvThroughDepth {
   // |start_depth| to |end_depth|. Keep this not inlined to maintain a small
   // binary size. We use a DepthwiseConvParams struct for read only params
   // to minimize call overhead.
-  static __attribute__((noinline)) void Run(const uint8* input_ptr,
-      const uint8* filter_ptr, const int32* bias_ptr, uint8* output_ptr,
-      int64_t start_depth, int64_t end_depth, int64_t input_depth,
-      int64_t input_row_size, int32 output_window_height,
+  static __attribute__((noinline)) void Run(
+      const uint8* input_ptr, const uint8* filter_ptr, const int32* bias_ptr,
+      uint8* output_ptr, int64_t start_depth, int64_t end_depth,
+      int64_t input_depth, int64_t input_row_size, int32 output_window_height,
       int32 output_window_width, const DepthwiseConvParams& params) {
     for (; start_depth <= end_depth - 8; start_depth += 8) {
       DepthwiseConvWindow<8, kStrideWidth, kStrideHeight>::Run(
@@ -3029,12 +3039,15 @@ struct DepthwiseConvMultiRow {
                          uint8* output_data, const DepthwiseConvParams& params,
                          const ShuffleParams& shuffle_params,
                          uint8* shuffle_workspace) {
-    TFLITE_DCHECK(shuffle_params.input_height ==
+    TFLITE_DCHECK(
+        shuffle_params.input_height ==
         get_shuffle_input_size(kStrideHeight, shuffle_params.output_height));
-    TFLITE_DCHECK(shuffle_params.input_width ==
+    TFLITE_DCHECK(
+        shuffle_params.input_width ==
         get_shuffle_input_size(kStrideWidth, shuffle_params.output_width));
-    TFLITE_DCHECK(64 * shuffle_params.input_width * shuffle_params.input_height
-                  <= DEPTHWISECONV_SHUFFLE_WORKSPACE_SIZE);
+    TFLITE_DCHECK(64 * shuffle_params.input_width *
+                      shuffle_params.input_height <=
+                  DEPTHWISECONV_SHUFFLE_WORKSPACE_SIZE);
 
     int32 out_x = start_x;
 
@@ -3045,7 +3058,7 @@ struct DepthwiseConvMultiRow {
     if (params.output_depth > 64 ||
         (params.output_depth <= 64 && params.input_width > 150)) {
       for (; out_x <= (end_x - shuffle_params.output_width);
-             out_x += shuffle_params.output_width) {
+           out_x += shuffle_params.output_width) {
         const uint8* input_ptr = input_data;
         const int32* bias_ptr = bias_data;
         const uint8* filter_ptr = filter_data;
@@ -3091,8 +3104,8 @@ struct DepthwiseConvMultiRow {
         }
 
         // Handle leftover depth.
-        ConvKernel::Run(input_ptr, filter_ptr, bias_ptr, output_ptr,
-                        depth, params.output_depth, params.input_depth,
+        ConvKernel::Run(input_ptr, filter_ptr, bias_ptr, output_ptr, depth,
+                        params.output_depth, params.input_depth,
                         params.input_row_size, shuffle_params.output_height,
                         shuffle_params.output_width, params);
 
@@ -3119,13 +3132,15 @@ struct DepthwiseConvMultiRow {
 //   * Horizontal edges.
 //   * Vertical edges.
 inline void DepthwiseConvHandlePadding(const uint8* input_data,
-    const uint8* filter_data, const int32* bias_data, uint8* output_data,
-    const DepthwiseConvParams& params) {
+                                       const uint8* filter_data,
+                                       const int32* bias_data,
+                                       uint8* output_data,
+                                       const DepthwiseConvParams& params) {
   if (params.input_width == 1 && params.input_height == 1) {
-    const uint8* filter_ptr = filter_data + params.filter_row_size
-        + params.output_depth;
-    DepthwiseConvPartial<EdgeType::kCenter, 1, 1>::Run(input_data, filter_ptr,
-        bias_data, output_data, &params);
+    const uint8* filter_ptr =
+        filter_data + params.filter_row_size + params.output_depth;
+    DepthwiseConvPartial<EdgeType::kCenter, 1, 1>::Run(
+        input_data, filter_ptr, bias_data, output_data, &params);
     return;
   }
 
@@ -3136,27 +3151,27 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
 
   // Handle top row.
   const uint8* input_ptr = input_data;
-  const uint8* filter_ptr = filter_data + params.filter_row_size
-      + params.output_depth;
+  const uint8* filter_ptr =
+      filter_data + params.filter_row_size + params.output_depth;
   uint8* output_ptr = output_data;
 
-  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(input_ptr, filter_ptr,
-      bias_data, output_ptr, &params);
+  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(
+      input_ptr, filter_ptr, bias_data, output_ptr, &params);
 
   input_ptr += (params.stride_width - 1) * params.input_depth;
   filter_ptr = filter_data + params.filter_row_size;
   output_ptr += params.output_depth;
 
   for (int32 out_x = out_x_start_corner + 1; out_x < out_x_end_corner;
-           out_x++) {
+       out_x++) {
     DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1>::Run(
         input_ptr, filter_ptr, bias_data, output_ptr, &params);
     input_ptr += params.stride_width * params.input_depth;
     output_ptr += params.output_depth;
   }
 
-  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(input_ptr, filter_ptr,
-      bias_data, output_ptr, &params);
+  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(
+      input_ptr, filter_ptr, bias_data, output_ptr, &params);
 
   // Handle left side.
   input_ptr = input_data + (params.stride_width - 1) * params.input_row_size;
@@ -3164,7 +3179,7 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
   output_ptr = output_data + params.output_row_size;
 
   for (int32 out_y = out_y_start_corner + 1; out_y < out_y_end_corner;
-           out_y++) {
+       out_y++) {
     DepthwiseConvPartial<EdgeType::kVertical, 1, 1>::Run(
         input_ptr, filter_ptr, bias_data, output_ptr, &params);
     input_ptr += params.stride_width * params.input_row_size;
@@ -3172,14 +3187,14 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
   }
 
   // Handle right side.
-  input_ptr = input_data + (params.input_width - 2) * params.input_depth
-      + (params.stride_width - 1) * params.input_row_size;
+  input_ptr = input_data + (params.input_width - 2) * params.input_depth +
+              (params.stride_width - 1) * params.input_row_size;
   filter_ptr = filter_data;
   output_ptr = output_data + params.output_row_size +
-      (params.output_width - 1) * params.output_depth;
+               (params.output_width - 1) * params.output_depth;
 
   for (int32 out_y = out_y_start_corner + 1; out_y < out_y_end_corner;
-         out_y++) {
+       out_y++) {
     DepthwiseConvPartial<EdgeType::kVertical, 1, 1>::Run(
         input_ptr, filter_ptr, bias_data, output_ptr, &params);
     input_ptr += params.stride_width * params.input_row_size;
@@ -3189,26 +3204,26 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
   // Handle bottom row.
   input_ptr = input_data + (params.input_height - 2) * params.input_row_size;
   filter_ptr = filter_data + params.output_depth;
-  output_ptr = output_data +
-      (params.output_height - 1) * params.output_row_size;
+  output_ptr =
+      output_data + (params.output_height - 1) * params.output_row_size;
 
-  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(input_ptr, filter_ptr,
-      bias_data, output_ptr, &params);
+  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(
+      input_ptr, filter_ptr, bias_data, output_ptr, &params);
 
   input_ptr += (params.stride_width == 1) ? 0 : params.input_depth;
   filter_ptr = filter_data;
   output_ptr += params.output_depth;
 
   for (int32 out_x = out_x_start_corner + 1; out_x < out_x_end_corner;
-           out_x++) {
+       out_x++) {
     DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1>::Run(
         input_ptr, filter_ptr, bias_data, output_ptr, &params);
     input_ptr += params.stride_width * params.input_depth;
     output_ptr += params.output_depth;
   }
 
-  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(input_ptr, filter_ptr,
-      bias_data, output_ptr, &params);
+  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(
+      input_ptr, filter_ptr, bias_data, output_ptr, &params);
 }
 
 inline bool Fast3x3FilterKernelSupported(
@@ -3383,8 +3398,8 @@ inline void DepthwiseConv3x3Filter(
       const int in_x = (out_x * stride_width) - pad_width;
       const int in_y = (out_y * stride_height) - pad_height;
       input_ptr += in_y * params.input_row_size + in_x * params.input_depth;
-      output_ptr += out_y * params.output_row_size
-          + out_x * params.output_depth;
+      output_ptr +=
+          out_y * params.output_row_size + out_x * params.output_depth;
     }
 
     // Shuffling shapes that maximize width over the shuffle workspace size
@@ -3439,7 +3454,6 @@ inline void DepthwiseConv3x3Filter(
     }
   }
 }
-// clang-format on
 
 #endif  // __aarch64__
 

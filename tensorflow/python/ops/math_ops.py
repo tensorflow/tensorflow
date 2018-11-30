@@ -82,8 +82,6 @@ def argmax(input,
            output_type=dtypes.int64):
   axis = deprecation.deprecated_argument_lookup(
       "axis", axis, "dimension", dimension)
-  if axis is None:
-    axis = 0
   return argmax_v2(input, axis, output_type, name)
 
 
@@ -111,6 +109,8 @@ def argmax_v2(input,
   Returns:
     A `Tensor` of type `output_type`.
   """
+  if axis is None:
+    axis = 0
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 
@@ -127,8 +127,6 @@ def argmin(input,
            output_type=dtypes.int64):
   axis = deprecation.deprecated_argument_lookup(
       "axis", axis, "dimension", dimension)
-  if axis is None:
-    axis = 0
   return argmin_v2(input, axis, output_type, name)
 
 
@@ -156,6 +154,8 @@ def argmin_v2(input,
   Returns:
     A `Tensor` of type `output_type`.
   """
+  if axis is None:
+    axis = 0
   return gen_math_ops.arg_min(input, axis, name=name, output_type=output_type)
 
 
@@ -1521,8 +1521,6 @@ def count_nonzero(input_tensor,
       "axis", axis,
       "reduction_indices", reduction_indices
       )
-  if keepdims is None:
-    keepdims = False
 
   return count_nonzero_v2(input_tensor, axis, keepdims, dtype, name)
 
@@ -1580,6 +1578,8 @@ def count_nonzero_v2(input,  # pylint: disable=redefined-builtin
   Returns:
     The reduced tensor (number of nonzero values).
   """
+  if keepdims is None:
+    keepdims = False
   with ops.name_scope(name, "count_nonzero", [input]):
     input = ops.convert_to_tensor(input, name="input")
     # A scalar of 'zero' is enough as `not_equal` will broadcast.

@@ -105,6 +105,7 @@ class RaggedExpandDimsOpTest(test_util.TensorFlowTestCase,
            expected=EXAMPLE4D_EXPAND_AXIS[4],
            expected_shape=[3, None, None, 2, 1]),
   ])  # pyformat: disable
+  @test_util.run_deprecated_v1
   def testRaggedExpandDims(self,
                            rt_input,
                            axis,

@@ -60,6 +60,8 @@ class XlaOpKernelContext {
  public:
   explicit XlaOpKernelContext(OpKernelContext* context);
 
+  XlaContext* xla_context() const;
+
   // Returns the XLA XlaBuilder containing the output of compilation.
   xla::XlaBuilder* builder() const;
 

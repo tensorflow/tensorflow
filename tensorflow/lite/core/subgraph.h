@@ -216,10 +216,9 @@ class Subgraph {
     if (t->data_is_stale) {
       TF_LITE_ENSURE(context_, t->delegate != nullptr);
       TF_LITE_ENSURE(context_, t->buffer_handle != kTfLiteNullBufferHandle);
-      // This can be null if the delegate doesn't use its own buffer.
       TF_LITE_ENSURE(context_, t->delegate->CopyFromBufferHandle != nullptr);
-      t->delegate->CopyFromBufferHandle(context_, t->delegate, t->buffer_handle,
-                                        t->data.raw, t->bytes);
+      TF_LITE_ENSURE(context_, t->delegate->CopyFromBufferHandle(
+                                   context_, t->delegate, t->buffer_handle, t));
       t->data_is_stale = false;
     }
     return kTfLiteOk;

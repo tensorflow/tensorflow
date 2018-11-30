@@ -79,8 +79,8 @@ class ReshapeTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": ["reshape-%d" % i for i in range(7)] +
-                       ["reshape-%d/shape" % i for i in range(7)]
+        "TRTEngineOp_0": ["reshape-%d" % i for i in range(7)] +
+                         ["reshape-%d/shape" % i for i in range(7)]
     }
 
   def ShouldRunTest(self, run_params):
@@ -117,7 +117,7 @@ class TransposeTest(trt_test.TfTrtIntegrationTestBase):
         # Note: by default Grappler will run the TRT optimizer twice. At the
         # first time it will group the two transpose ops below to same segment
         # then fail the conversion due to the expected batch dimension problem.
-        # At the second time, since the input of bridge op is my_trt_op_0, it
+        # At the second time, since the input of bridge op is TRTEngineOp_0, it
         # will fail to do shape inference which then cause conversion to fail.
         # TODO(laigd): support shape inference, make TRT optimizer run only
         # once, and fix this.
@@ -136,7 +136,7 @@ class TransposeTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": [
+        "TRTEngineOp_0": [
             "transpose-1", "transpose-1/perm", "transposeback",
             "transposeback/perm"
         ]

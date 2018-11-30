@@ -50,6 +50,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -892,8 +893,8 @@ def run_all_in_graph_and_eager_modes(cls):
   """Execute all test methods in the given class with and without eager."""
   base_decorator = run_in_graph_and_eager_modes
   for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith(
-        "test") and not name.startswith("testSkipEager"):
+    if callable(value) and name.startswith("test") and not (
+        name.startswith("testSkipEager") or name.startswith("test_skip_eager")):
       setattr(cls, name, base_decorator(value))
   return cls
 
@@ -1026,7 +1027,10 @@ def run_deprecated_v1(func=None):
       raise ValueError("`run_deprecated_v1` only supports test methods.")
 
     def decorated(self, *args, **kwargs):
-      with context.graph_mode():
+      if tf2.enabled():
+        with context.graph_mode():
+          f(self, *args, **kwargs)
+      else:
         f(self, *args, **kwargs)
 
     return decorated

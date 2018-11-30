@@ -129,7 +129,7 @@ class LogarithmOpTest(test.TestCase):
           random_ops.random_normal([5, 5], seed=42), dtypes.complex64)
       logm1 = gen_linalg_ops.matrix_logarithm(matrix1)
       logm2 = gen_linalg_ops.matrix_logarithm(matrix2)
-      logm = sess.run([logm1, logm2])
+      logm = self.evaluate([logm1, logm2])
       self.assertAllEqual(logm[0], logm[1])
 
 

@@ -87,13 +87,13 @@ void DumpText(const HloModule& module, const string& label,
 // Class that registers a graph renderer.
 class Registrar {
  public:
-  Registrar(GraphRendererInterface* dumper);
+  Registrar(std::shared_ptr<GraphRendererInterface> dumper);
 };
 
-#define XLA_INTERNAL_REGISTER_GRAPH_RENDERER(factory, ctr, ...)   \
-  static ::xla::hlo_graph_dumper::Registrar                       \
-      XLA_INTERNAL_REGISTER_GRAPH_RENDERER_NAME(ctr)(new factory, \
-                                                     ##__VA_ARGS__)
+#define XLA_INTERNAL_REGISTER_GRAPH_RENDERER(factory, ctr, ...) \
+  static ::xla::hlo_graph_dumper::Registrar                     \
+      XLA_INTERNAL_REGISTER_GRAPH_RENDERER_NAME(ctr)(           \
+          std::make_shared<factory>(), ##__VA_ARGS__)
 
 // __COUNTER__ must go through another macro to be properly expanded
 #define XLA_INTERNAL_REGISTER_GRAPH_RENDERER_NAME(ctr) ___##ctr##__object_

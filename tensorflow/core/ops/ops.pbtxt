@@ -37164,6 +37164,53 @@ op {
   }
 }
 op {
+  name: "UnicodeEncode"
+  input_arg {
+    name: "input_values"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "input_splits"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "errors"
+    type: "string"
+    default_value {
+      s: "replace"
+    }
+    allowed_values {
+      list {
+        s: "ignore"
+        s: "replace"
+        s: "strict"
+      }
+    }
+  }
+  attr {
+    name: "output_encoding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "UTF-8"
+        s: "UTF-16-BE"
+        s: "UTF-32-BE"
+      }
+    }
+  }
+  attr {
+    name: "replacement_char"
+    type: "int"
+    default_value {
+      i: 65533
+    }
+  }
+}
+op {
   name: "UnicodeScript"
   input_arg {
     name: "input"

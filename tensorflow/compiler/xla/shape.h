@@ -26,6 +26,102 @@ limitations under the License.
 
 namespace xla {
 
+// A shape describes the number of dimensions in a array, the bounds of each
+// dimension, and the primitive component type. For tuples, shape describes the
+// structure (number of elements and nesting).
+class Shape {
+ public:
+  Shape() = default;
+
+  // Construct a shape from a ShapeProto.
+  explicit Shape(const ShapeProto& shape_proto);
+
+  // Returns a ShapeProto representation of the Shape.
+  ShapeProto ToProto() const;
+
+  // Returns a human-readable string that represents the given shape, with or
+  // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
+  string ToString(bool print_layout = false) const;
+
+  // The following methods mirror the protobuf generated code interface for the
+  // message ShapeProto. This enabled easy migration of this data structure
+  // from a proto to a proper C++ class.
+  // TODO(b/29771030): Replace or augment these methods with a more ergonomic
+  // interface.
+
+  // Methods for accessing the primitive type.
+  PrimitiveType element_type() const { return element_type_; }
+  void set_element_type(PrimitiveType value) { element_type_ = value; }
+
+  // Methods for accessing the dimensions array.
+  int dimensions_size() const { return dimensions_.size(); }
+  int64 dimensions(int index) const { return dimensions_.at(index); }
+  void set_dimensions(int index, int64 value) { dimensions_.at(index) = value; }
+  void add_dimensions(int64 value) { dimensions_.push_back(value); }
+  void clear_dimensions() { dimensions_.clear(); }
+  const std::vector<int64>& dimensions() const { return dimensions_; }
+  std::vector<int64>* mutable_dimensions() { return &dimensions_; }
+
+  // Methods for accessing the tuple subshapes. This field only non-empty for
+  // tuple shapes.
+  int tuple_shapes_size() const { return tuple_shapes_.size(); }
+  const Shape& tuple_shapes(int index) const { return tuple_shapes_.at(index); }
+  Shape* mutable_tuple_shapes(int index) { return &tuple_shapes_.at(index); }
+  Shape* add_tuple_shapes() {
+    tuple_shapes_.push_back(Shape());
+    return &tuple_shapes_.back();
+  }
+  void clear_tuple_shapes() { tuple_shapes_.clear(); }
+  const std::vector<Shape>& tuple_shapes() const { return tuple_shapes_; }
+  std::vector<Shape>* mutable_tuple_shapes() { return &tuple_shapes_; }
+
+  // Methods for accessing the layout field.
+  bool has_layout() const { return layout_.has_value(); }
+  const Layout& layout() const {
+    if (layout_.has_value()) {
+      return *layout_;
+    } else {
+      return Layout::default_instance();
+    }
+  }
+  Layout* mutable_layout() {
+    if (!layout_.has_value()) {
+      layout_ = Layout();
+    }
+    return &layout_.value();
+  }
+  void clear_layout() { layout_.reset(); }
+
+  void Swap(Shape* other) {
+    using std::swap;
+    swap(*this, *other);
+  }
+
+  void Clear() {
+    element_type_ = PRIMITIVE_TYPE_INVALID;
+    dimensions_.clear();
+    tuple_shapes_.clear();
+    layout_.reset();
+  }
+
+  string SerializeAsString() const { return ToProto().SerializeAsString(); }
+  string ShortDebugString() const { return ToProto().ShortDebugString(); }
+  string DebugString() const { return ToProto().DebugString(); }
+
+ public:
+  // The element type of this shape (tuple, array, etc).
+  PrimitiveType element_type_ = PRIMITIVE_TYPE_INVALID;
+
+  // The array bounds of the dimensions. This is nonempty only for array shapes.
+  std::vector<int64> dimensions_;
+
+  // The tuple element subshapes. This is nonempty only for tuple shapes.
+  std::vector<Shape> tuple_shapes_;
+
+  // The array layout of the shape. This is present only for array shapes.
+  absl::optional<Layout> layout_;
+};
+
 // Shape of the parameters and output of an XLA computation. This is analogous
 // to a traditional function signature.
 class ProgramShape {
@@ -61,7 +157,6 @@ class ProgramShape {
   // Methods for accessing and manipulating the Shape of the result.
   const Shape& result() const { return result_; }
   Shape* mutable_result() { return &result_; }
-  void clear_result() { result_.Clear(); }
 
   // Methods for accessing and manipulating the names of the parameters.
   int parameter_names_size() const { return parameter_names_.size(); }
@@ -101,6 +196,7 @@ class ProgramShape {
   Shape result_;
 };
 
+std::ostream& operator<<(std::ostream& out, const Shape& shape);
 std::ostream& operator<<(std::ostream& out, const ProgramShape& program_shape);
 
 }  // namespace xla

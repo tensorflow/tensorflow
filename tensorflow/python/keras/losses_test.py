@@ -27,6 +27,7 @@ from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import test
 
 try:
@@ -146,9 +147,9 @@ class MeanSquaredErrorTest(test.TestCase):
 
   def test_config(self):
     mse_obj = keras.losses.MeanSquaredError(
-        reduction=keras.losses.ReductionV2.SUM, name='mse_1')
+        reduction=losses_impl.ReductionV2.SUM, name='mse_1')
     self.assertEqual(mse_obj.name, 'mse_1')
-    self.assertEqual(mse_obj.reduction, keras.losses.ReductionV2.SUM)
+    self.assertEqual(mse_obj.reduction, losses_impl.ReductionV2.SUM)
 
   def test_all_correct_unweighted(self):
     mse_obj = keras.losses.MeanSquaredError()
@@ -214,7 +215,7 @@ class MeanSquaredErrorTest(test.TestCase):
 
   def test_no_reduction(self):
     mse_obj = keras.losses.MeanSquaredError(
-        reduction=keras.losses.ReductionV2.NONE)
+        reduction=losses_impl.ReductionV2.NONE)
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
                                   shape=(2, 3),
@@ -225,7 +226,7 @@ class MeanSquaredErrorTest(test.TestCase):
 
   def test_sum_reduction(self):
     mse_obj = keras.losses.MeanSquaredError(
-        reduction=keras.losses.ReductionV2.SUM)
+        reduction=losses_impl.ReductionV2.SUM)
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
                                   shape=(2, 3),
@@ -239,9 +240,9 @@ class MeanAbsoluteErrorTest(test.TestCase):
 
   def test_config(self):
     mae_obj = keras.losses.MeanAbsoluteError(
-        reduction=keras.losses.ReductionV2.SUM, name='mae_1')
+        reduction=losses_impl.ReductionV2.SUM, name='mae_1')
     self.assertEqual(mae_obj.name, 'mae_1')
-    self.assertEqual(mae_obj.reduction, keras.losses.ReductionV2.SUM)
+    self.assertEqual(mae_obj.reduction, losses_impl.ReductionV2.SUM)
 
   def test_all_correct_unweighted(self):
     mae_obj = keras.losses.MeanAbsoluteError()
@@ -307,7 +308,7 @@ class MeanAbsoluteErrorTest(test.TestCase):
 
   def test_no_reduction(self):
     mae_obj = keras.losses.MeanAbsoluteError(
-        reduction=keras.losses.ReductionV2.NONE)
+        reduction=losses_impl.ReductionV2.NONE)
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
                                   shape=(2, 3),
@@ -318,7 +319,7 @@ class MeanAbsoluteErrorTest(test.TestCase):
 
   def test_sum_reduction(self):
     mae_obj = keras.losses.MeanAbsoluteError(
-        reduction=keras.losses.ReductionV2.SUM)
+        reduction=losses_impl.ReductionV2.SUM)
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
                                   shape=(2, 3),
@@ -332,9 +333,9 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
 
   def test_config(self):
     mape_obj = keras.losses.MeanAbsolutePercentageError(
-        reduction=keras.losses.ReductionV2.SUM, name='mape_1')
+        reduction=losses_impl.ReductionV2.SUM, name='mape_1')
     self.assertEqual(mape_obj.name, 'mape_1')
-    self.assertEqual(mape_obj.reduction, keras.losses.ReductionV2.SUM)
+    self.assertEqual(mape_obj.reduction, losses_impl.ReductionV2.SUM)
 
   def test_unweighted(self):
     mape_obj = keras.losses.MeanAbsolutePercentageError()
@@ -389,9 +390,9 @@ class MeanSquaredLogarithmicErrorTest(test.TestCase):
 
   def test_config(self):
     msle_obj = keras.losses.MeanSquaredLogarithmicError(
-        reduction=keras.losses.ReductionV2.SUM, name='mape_1')
+        reduction=losses_impl.ReductionV2.SUM, name='mape_1')
     self.assertEqual(msle_obj.name, 'mape_1')
-    self.assertEqual(msle_obj.reduction, keras.losses.ReductionV2.SUM)
+    self.assertEqual(msle_obj.reduction, losses_impl.ReductionV2.SUM)
 
   def test_unweighted(self):
     msle_obj = keras.losses.MeanSquaredLogarithmicError()
@@ -439,6 +440,63 @@ class MeanSquaredLogarithmicErrorTest(test.TestCase):
                                   dtype=dtypes.float32)
     loss = msle_obj(y_true, y_pred, sample_weight=0)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class CosineProximityTest(test.TestCase):
+
+  def test_config(self):
+    cosine_obj = keras.losses.CosineProximity(
+        reduction=losses_impl.ReductionV2.SUM, name='cosine_loss')
+    self.assertEqual(cosine_obj.name, 'cosine_loss')
+    self.assertEqual(cosine_obj.reduction, losses_impl.ReductionV2.SUM)
+
+  def test_unweighted(self):
+    cosine_obj = keras.losses.CosineProximity()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = cosine_obj(y_true, y_pred)
+    self.assertAlmostEqual(self.evaluate(loss), -0.18722, 3)
+
+  def test_scalar_weighted(self):
+    cosine_obj = keras.losses.CosineProximity()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = cosine_obj(y_true, y_pred, sample_weight=2.3)
+    self.assertAlmostEqual(self.evaluate(loss), -0.43060, 3)
+
+  def test_sample_weighted(self):
+    cosine_obj = keras.losses.CosineProximity()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    loss = cosine_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 0.15599, 3)
+
+  def test_timestep_weighted(self):
+    cosine_obj = keras.losses.CosineProximity()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3, 1),
+                                  dtype=dtypes.float32)
+    sample_weight = constant_op.constant([3, 6, 5, 0, 4, 2], shape=(2, 3))
+    loss = cosine_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), -2.0000, 3)
+
+  def test_zero_weighted(self):
+    cosine_obj = keras.losses.CosineProximity()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = cosine_obj(y_true, y_pred, sample_weight=0)
+    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
 
 
 if __name__ == '__main__':

@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_kronecker as kronecker
@@ -53,6 +54,7 @@ def _kronecker_dense(factors):
 
 class KroneckerDenseTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testKroneckerDenseMatrix(self):
     x = ops.convert_to_tensor([[2., 3.], [1., 2.]], dtype=dtypes.float32)
     y = ops.convert_to_tensor([[1., 2.], [5., -1.]], dtype=dtypes.float32)

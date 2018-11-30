@@ -1455,8 +1455,7 @@ class Model(Network):
 
     if self.__class__.__name__ == 'Sequential' and not self.built:
       if tensor_util.is_tensor(inputs):
-        input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
-        self.build(input_shape=input_shape)
+        input_shape = (None,) + tuple(inputs.shape.as_list()[1:])
       elif isinstance(inputs, dict):
         # We assert that the first layer is a FeatureLayer.
         if not training_utils.is_feature_layer(self.layers[0]):
@@ -1464,10 +1463,9 @@ class Model(Network):
                            'which doesn\'t have FeatureLayer as the first layer'
                            ' is an error.')
         input_shape = (None,)
-        self.build(input_shape=input_shape)
       else:
-        input_shape = (None,) + inputs.shape[1:]
-        self.build(input_shape=input_shape)
+        input_shape = (None,) + tuple(inputs.shape[1:])
+      self._build_input_shape = input_shape
 
     # On-the-fly setting of symbolic model inputs (either by using the tensor
     # provided, or by creating a placeholder if Numpy data was provided).
@@ -1485,6 +1483,8 @@ class Model(Network):
         self._feed_inputs.append(v)
         self._feed_input_names.append(k)
         self._feed_input_shapes.append(K.int_shape(v))
+
+    # TODO(fchollet): consider calling `_maybe_build` before calling the model.
 
     if outputs is None:
       # Obtain symbolic outputs by calling the model.

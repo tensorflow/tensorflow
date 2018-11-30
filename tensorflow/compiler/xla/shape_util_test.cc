@@ -546,37 +546,6 @@ TEST(ShapeUtilTest, IsLeafIndex) {
   EXPECT_TRUE(ShapeUtil::IsLeafIndex(nested_tuple_shape, {1, 1}));
 }
 
-TEST(ShapeUtilTest, HumanString) {
-  Shape opaque = ShapeUtil::MakeOpaqueShape();
-  Shape token = ShapeUtil::MakeTokenShape();
-  Shape scalar = ShapeUtil::MakeShape(F32, {});
-  Shape matrix = ShapeUtil::MakeShape(U32, {1, 2});
-  Shape matrix2 = ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1});
-  Shape tuple = ShapeUtil::MakeTupleShape({opaque, scalar, matrix, matrix2});
-  Shape nested_tuple = ShapeUtil::MakeTupleShape({tuple, matrix, token});
-
-  EXPECT_EQ("opaque[]", ShapeUtil::HumanString(opaque));
-  EXPECT_EQ("token[]", ShapeUtil::HumanString(token));
-  EXPECT_EQ("f32[]", ShapeUtil::HumanString(scalar));
-  EXPECT_EQ("u32[1,2]", ShapeUtil::HumanString(matrix));
-  EXPECT_EQ("s32[3,4]", ShapeUtil::HumanString(matrix2));
-  EXPECT_EQ("(opaque[], f32[], u32[1,2], s32[3,4])",
-            ShapeUtil::HumanString(tuple));
-  EXPECT_EQ("((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
-            ShapeUtil::HumanString(nested_tuple));
-
-  EXPECT_EQ("opaque[]", ShapeUtil::HumanStringWithLayout(opaque));
-  EXPECT_EQ("f32[]", ShapeUtil::HumanStringWithLayout(scalar));
-  EXPECT_EQ("u32[1,2]{1,0}", ShapeUtil::HumanStringWithLayout(matrix));
-  EXPECT_EQ("s32[3,4]{0,1}", ShapeUtil::HumanStringWithLayout(matrix2));
-  EXPECT_EQ("(opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1})",
-            ShapeUtil::HumanStringWithLayout(tuple));
-  EXPECT_EQ(
-      "((opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1}), u32[1,2]{1,0}, "
-      "token[])",
-      ShapeUtil::HumanStringWithLayout(nested_tuple));
-}
-
 TEST(ShapeUtilTest, ForEachSubshapeArray) {
   const Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   int calls = 0;

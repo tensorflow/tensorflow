@@ -49,6 +49,7 @@ class ZeroFractionTest(test_lib.TestCase):
     nonzeros = np.count_nonzero(x.flatten())
     return 1.0 - nonzeros / total_elements
 
+  @test_util.run_deprecated_v1
   def testZeroFraction(self):
     x_shape = [5, 17]
     x_np = np.random.randint(0, 2, size=x_shape).astype(np.float32)
@@ -62,21 +63,25 @@ class ZeroFractionTest(test_lib.TestCase):
     eps = 1e-8
     self.assertAllClose(y_tf_np, y_np, eps)
 
+  @test_util.run_deprecated_v1
   def testZeroFractionEmpty(self):
     x = np.zeros(0)
     y = self.evaluate(nn_impl.zero_fraction(x))
     self.assertTrue(np.isnan(y))
 
+  @test_util.run_deprecated_v1
   def testZeroFraction2_27Zeros(self):
     sparsity = nn_impl.zero_fraction(
         array_ops.zeros([int(2**27 * 1.01)], dtype=dtypes.int8))
     self.assertAllClose(1.0, self.evaluate(sparsity))
 
+  @test_util.run_deprecated_v1
   def testZeroFraction2_27Ones(self):
     sparsity = nn_impl.zero_fraction(
         array_ops.ones([int(2**27 * 1.01)], dtype=dtypes.int8))
     self.assertAllClose(0.0, self.evaluate(sparsity))
 
+  @test_util.run_deprecated_v1
   def testUnknownSize(self):
     value = array_ops.placeholder(dtype=dtypes.float32)
     sparsity = nn_impl.zero_fraction(value)
@@ -101,8 +106,8 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     x_np = np.random.randn(*x_shape).astype(np.float32)
     y_np = self._softmax(x_np)
     x_tf = constant_op.constant(x_np)
-    y_tf = nn_ops.softmax(x_tf)
-    y_tf_last_dim = nn_ops.softmax(x_tf, 1)
+    y_tf = nn_ops.softmax_v2(x_tf)
+    y_tf_last_dim = nn_ops.softmax_v2(x_tf, 1)
     y_tf_np = self.evaluate(y_tf)
     y_tf_last_dim_np = self.evaluate(y_tf_last_dim)
     eps = 1e-3
@@ -111,9 +116,9 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 
   def testSoftmaxAxes(self):
     arr = np.linspace(0., 1, 12).reshape(3, 4)
-    x_neg_axis = nn_ops.softmax(arr, axis=-2)
-    y_pos_axis = nn_ops.softmax(arr, axis=0)
-    z_gt_axis = nn_ops.softmax(arr, axis=0)
+    x_neg_axis = nn_ops.softmax_v2(arr, axis=-2)
+    y_pos_axis = nn_ops.softmax_v2(arr, axis=0)
+    z_gt_axis = nn_ops.softmax_v2(arr, axis=0)
     x_neg_axis_tf = self.evaluate(x_neg_axis)
     y_pos_axis_tf = self.evaluate(y_pos_axis)
     z_gt_axis_tf = self.evaluate(z_gt_axis)
@@ -122,11 +127,12 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
 
   @parameterized.parameters(((5, 10),), ((2, 3, 4),))
+  @test_util.run_deprecated_v1
   def testGradient(self, x_shape):
     x_np = np.random.randn(*x_shape).astype(np.float64)
     with self.cached_session():
       x_tf = constant_op.constant(x_np)
-      y_tf = nn_ops.softmax(x_tf)
+      y_tf = nn_ops.softmax_v2(x_tf)
       err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
                                                     x_shape)
     eps = 2e-8
@@ -157,6 +163,7 @@ class LogPoissonLossTest(test_lib.TestCase):
     self.assertAllClose(y_tf_np, y_np, eps)
     self.assertAllClose(y_tf_np_stirling, y_np_stirling, eps)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float64)
@@ -189,16 +196,16 @@ class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     x_np = np.random.randn(*x_shape).astype(np.float32)
     y_np = self._log_softmax(x_np)
     x_tf = constant_op.constant(x_np)
-    y_tf = nn_ops.log_softmax(x_tf)
+    y_tf = nn_ops.log_softmax_v2(x_tf)
     y_tf_np = self.evaluate(y_tf)
     eps = 1e-3
     self.assertAllClose(y_tf_np, y_np, eps)
 
   def testLogSoftmaxAxes(self):
     arr = np.linspace(0., 1, 12).reshape(3, 4)
-    x_neg_axis = nn_ops.log_softmax(arr, axis=-2)
-    y_pos_axis = nn_ops.log_softmax(arr, axis=0)
-    z_gt_axis = nn_ops.log_softmax(arr, axis=0)
+    x_neg_axis = nn_ops.log_softmax_v2(arr, axis=-2)
+    y_pos_axis = nn_ops.log_softmax_v2(arr, axis=0)
+    z_gt_axis = nn_ops.log_softmax_v2(arr, axis=0)
     x_neg_axis_tf = self.evaluate(x_neg_axis)
     y_pos_axis_tf = self.evaluate(y_pos_axis)
     z_gt_axis_tf = self.evaluate(z_gt_axis)
@@ -207,11 +214,12 @@ class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
 
   @parameterized.parameters(((5, 10),), ((2, 3, 4),))
+  @test_util.run_deprecated_v1
   def testGradient(self, x_shape):
     x_np = np.random.randn(*x_shape).astype(np.float64)
     with self.cached_session():
       x_tf = constant_op.constant(x_np)
-      y_tf = nn_ops.log_softmax(x_tf)
+      y_tf = nn_ops.log_softmax_v2(x_tf)
       err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
                                                     x_shape)
     eps = 1e-7
@@ -229,6 +237,7 @@ class L2LossTest(test_lib.TestCase):
       value = self.evaluate(l2loss)
       self.assertAllClose(7.0, value)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)  # Make it reproducible.
@@ -262,7 +271,7 @@ class L2NormalizeTest(test_lib.TestCase):
     for dim in range(len(x_shape)):
       y_np = self._l2Normalize(x_np, dim)
       x_tf = constant_op.constant(x_np, name="x")
-      y_tf = nn_impl.l2_normalize(x_tf, dim)
+      y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
       self.assertAllClose(y_np, self.evaluate(y_tf))
 
   @test_util.run_in_graph_and_eager_modes
@@ -273,9 +282,10 @@ class L2NormalizeTest(test_lib.TestCase):
     dim = [1, 2]
     y_np = self._l2Normalize(x_np, dim)
     x_tf = constant_op.constant(x_np, name="x")
-    y_tf = nn_impl.l2_normalize(x_tf, dim)
+    y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
     self.assertAllClose(y_np, self.evaluate(y_tf))
 
+  @test_util.run_deprecated_v1
   def testL2NormalizeGradient(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)
@@ -283,7 +293,7 @@ class L2NormalizeTest(test_lib.TestCase):
     for dim in range(len(x_shape)):
       with self.cached_session():
         x_tf = constant_op.constant(x_np, name="x")
-        y_tf = nn_impl.l2_normalize(x_tf, dim)
+        y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
         err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
                                                       x_shape)
       print("L2Normalize gradient err = %g " % err)
@@ -361,6 +371,7 @@ class DropoutTest(test_lib.TestCase):
           sorted_value = np.unique(np.sort(value[i, :]))
           self.assertEqual(sorted_value.size, 1)
 
+  @test_util.run_deprecated_v1
   def testDropoutPlaceholderKeepProb(self):
     # Runs dropout with 0-1 tensor 10 times, sum the number of ones and validate
     # that it is producing approximately the right number of ones over a large
@@ -389,6 +400,7 @@ class DropoutTest(test_lib.TestCase):
       print(rel_error)
       self.assertTrue(rel_error < 0.15)
 
+  @test_util.run_deprecated_v1
   def testShapedDropoutUnknownShape(self):
     x_dim = 40
     y_dim = 30
@@ -422,6 +434,7 @@ class DropoutTest(test_lib.TestCase):
       print(rel_error)
       self.assertTrue(rel_error < 0.15)
 
+  @test_util.run_deprecated_v1
   def testInvalidKeepProb(self):
     x_dim = 40
     y_dim = 30
@@ -437,6 +450,7 @@ class DropoutTest(test_lib.TestCase):
     with self.assertRaises(ValueError):
       nn_ops.dropout(t, array_ops.placeholder(dtypes.float32, shape=[2]))
 
+  @test_util.run_deprecated_v1
   def testShapedDropoutShapeError(self):
     # Runs shaped dropout and verifies an error is thrown on misshapen noise.
     x_dim = 40
@@ -457,6 +471,7 @@ class DropoutTest(test_lib.TestCase):
     _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
     _ = nn_ops.dropout(t, keep_prob, noise_shape=[1, 1])
 
+  @test_util.run_deprecated_v1
   def testNoDropoutFast(self):
     x = array_ops.zeros((5,))
     for p in 1, constant_op.constant(1.0):
@@ -938,6 +953,7 @@ class ReluTest(test_lib.TestCase):
     z = self.evaluate(nn_ops.relu(constant_op.constant(x)))
     self.assertAllEqual(y, z)
 
+  @test_util.run_deprecated_v1
   def testNaNs(self):
     # Test that relu(nan) = nan for various sizes.
     for i in range(18):
@@ -966,6 +982,7 @@ class LeakyReluTest(test_lib.TestCase):
     self.assertLessEqual(outputs.max(), 1.0)
     self.assertAllClose(inputs, outputs)
 
+  @test_util.run_deprecated_v1
   def testValues(self):
     for dtype in [np.int32, np.int64, np.float16, np.float32, np.float64]:
       np_values = np.array([-2, -1, 0, 1, 2], dtype=dtype)
@@ -977,6 +994,7 @@ class LeakyReluTest(test_lib.TestCase):
       self.assertAllClose(
           outputs, [-0.4, -0.2, 0.0, 1.0, 2.0], rtol=tol, atol=tol)
 
+  @test_util.run_deprecated_v1
   def testName(self):
     np_values = np.array([-2, -1, 0, 1, 2], dtype=np.float64)
     outputs_with_name_set = nn_ops.leaky_relu(
@@ -990,6 +1008,7 @@ class LeakyReluTest(test_lib.TestCase):
 
 class SwishTest(test_lib.TestCase):
 
+  @test_util.run_deprecated_v1
   def testValues(self):
     np_values = np.array(
         [np.linspace(-10.0, 0.0, 100),
@@ -1004,6 +1023,7 @@ class SwishTest(test_lib.TestCase):
 
     self.assertAllClose(actual_outputs, expected_outputs)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     shape = [5, 3, 4]
     sigma = 5
@@ -1034,8 +1054,8 @@ class MomentsTest(test_lib.TestCase):
             with self.session(graph=g) as sess:
               inputs = constant_op.constant(
                   input_values, shape=input_shape, dtype=dtypes.float32)
-              mean, variance = nn_impl.moments(
-                  inputs, moments_axes, keep_dims=keep_dims)
+              mean, variance = nn_impl.moments_v2(
+                  inputs, moments_axes, keepdims=keep_dims)
 
               if check_gradients:
                 err = gradient_checker.compute_gradient_error(

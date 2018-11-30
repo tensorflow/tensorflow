@@ -124,6 +124,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/ops/losses",
         "//tensorflow/tools/docs:doc_controls",
     ],
@@ -245,6 +246,7 @@ py_library(
     srcs = ["input_ops.py"],
     deps = [
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/experimental/ops:filter_for_shard_ops",
         "//tensorflow/python/data/util:nest",
     ],
 )

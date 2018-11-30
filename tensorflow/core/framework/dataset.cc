@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
+#include <unordered_map>
 
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 namespace data {

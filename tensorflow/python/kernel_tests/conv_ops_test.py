@@ -908,8 +908,8 @@ class Conv2DTest(test.TestCase):
         conv = gradients_impl.gradients(conv_forward, t1)[0]
         conv_2 = gradients_impl.gradients(conv_forward_2, t1)[0]
         # "values" consists of two tensors for two backprops
-        value = sess.run(conv)
-        value_2 = sess.run(conv_2)
+        value = self.evaluate(conv)
+        value_2 = self.evaluate(conv_2)
         self.assertShapeEqual(value, conv)
         self.assertShapeEqual(value_2, conv_2)
       tf_logging.info("expected = ", value_2)
@@ -961,8 +961,8 @@ class Conv2DTest(test.TestCase):
           conv_forward_2 = test_util.NCHWToNHWC(conv_forward_2)
         conv = gradients_impl.gradients(conv_forward, t2)[0]
         conv_2 = gradients_impl.gradients(conv_forward, t2)[0]
-        value = sess.run(conv)
-        value_2 = sess.run(conv_2)
+        value = self.evaluate(conv)
+        value_2 = self.evaluate(conv_2)
         self.assertShapeEqual(value, conv)
         self.assertShapeEqual(value_2, conv_2)
       tf_logging.info("expected = ", value_2)
@@ -1545,7 +1545,7 @@ class DepthwiseConv2DTest(test.TestCase):
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
       conv = nn_impl.depthwise_conv2d(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
-      value = sess.run(conv)
+      value = self.evaluate(conv)
     tf_logging.info("value = ", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
@@ -1667,7 +1667,7 @@ class SeparableConv2DTest(test.TestCase):
       if data_format == "NCHW":
         conv = array_ops.transpose(conv, [0, 2, 3, 1])
 
-      value = sess.run(conv)
+      value = self.evaluate(conv)
     tf_logging.info("value = ", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-3)
     self.assertShapeEqual(value, conv)
@@ -1774,10 +1774,10 @@ class DeepConv2DTest(test.TestCase):
       conv = nn_ops.conv2d(t1, t2, strides=strides, padding=padding)
 
       os.environ["TF_USE_DEEP_CONV2D"] = "0"
-      values_expect = sess.run([conv])
+      values_expect = self.evaluate([conv])
 
       os.environ["TF_USE_DEEP_CONV2D"] = "1"
-      values_test = sess.run([conv])
+      values_test = self.evaluate([conv])
 
       self.assertAllClose(values_expect, values_test, rtol=1e-5, atol=1e-5)
 

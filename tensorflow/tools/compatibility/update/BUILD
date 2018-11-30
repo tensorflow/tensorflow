@@ -12,5 +12,6 @@ py_binary(
         "//tensorflow/python:no_contrib",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
+        "//tensorflow/tools/compatibility:tf_upgrade_v2_lib",
     ],
 )

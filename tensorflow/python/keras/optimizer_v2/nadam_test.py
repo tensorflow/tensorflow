@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.optimizer_v2 import nadam
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -111,9 +112,11 @@ class NadamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
+  @test_util.run_deprecated_v1
   def testSparse(self):
     self.doTestSparse(use_resource=False)
 
+  @test_util.run_deprecated_v1
   def testResourceSparse(self):
     self.doTestSparse(use_resource=True)
 
@@ -158,9 +161,11 @@ class NadamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
+  @test_util.run_deprecated_v1
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
 
+  @test_util.run_deprecated_v1
   def testBasicWithLearningRateDecay(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():

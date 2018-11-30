@@ -282,7 +282,8 @@ class LocalComputationBuilder {
   LocalOp Broadcast(const LocalOp& operand,
                     absl::Span<const int64> broadcast_sizes);
 
-  LocalOp BroadcastInDim(const LocalOp& operand, const Shape& shape,
+  LocalOp BroadcastInDim(const LocalOp& operand,
+                         absl::Span<const int64> out_dim_sizes,
                          absl::Span<const int64> broadcast_dimensions);
 
   LocalOp Pad(const LocalOp& operand, const LocalOp& padding_value,

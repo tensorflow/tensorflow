@@ -418,6 +418,33 @@ then v12 == f32[8x3] {{10, 11, 12},
 
 ```
 
+## CollectivePermute
+
+See also
+[`XlaBuilder::CollectivePermute`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+CollectivePermute is a collective operation that sends and receives data cross
+replicas.
+
+<b> `CollectivePermute(operand, source_target_pairs)` </b>
+
+| Arguments             | Type                    | Semantics                  |
+| --------------------- | ----------------------- | -------------------------- |
+| `operand`             | `XlaOp`                 | n dimensional input array  |
+| `source_target_pairs` | `<int64, int64>` vector | A list of                  |
+:                       :                         : (source_replica_id,        :
+:                       :                         : target_replica_id) pairs.  :
+:                       :                         : For each pair, the operand :
+:                       :                         : is sent from source        :
+:                       :                         : replica to target replica. :
+
+Note that there are the following restrictions on the `source_target_pair`:
+
+-   Any two pairs should not have the same target replica id, and they should
+    not have the same source replica id.
+-   If a replica id is not a target in any pair, then the output on that replica
+    is a tensor consists of 0(s) with the same shape as the input.
+
 ## Concatenate
 
 See also
@@ -1796,8 +1823,9 @@ XlaBuilder builder(client_, "reduce_window_2x3");
 auto shape = ShapeUtil::MakeShape(F32, {4, 6});
 auto input = builder.Parameter(0, shape, "input");
 builder.ReduceWindow(
-    input, *max,
+    input,
     /*init_val=*/builder.ConstantLiteral(LiteralUtil::MinValue(F32)),
+    *max,
     /*window_dimensions=*/{2, 3},
     /*window_stride_dimensions=*/{2, 3},
     Padding::kValid);

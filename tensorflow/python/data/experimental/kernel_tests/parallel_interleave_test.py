@@ -195,9 +195,9 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
           [[4] * 4, [5] * 5, [6] * 6] * self.repeat_count, 1, 1):
         self.write_coordination_events[expected_element].set()
         self.assertEqual(expected_element * expected_element,
-                         sess.run(self.next_element))
+                         self.evaluate(self.next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def testSingleThreaded(self):
     self._testSingleThreaded()
@@ -235,10 +235,10 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
       for expected_element in self._interleave(
           [[3] * 3, [7] * 7, [4] * 4] * self.repeat_count, 2, 1):
         self.write_coordination_events[expected_element].set()
-        output = sess.run(self.next_element)
+        output = self.evaluate(self.next_element)
         self.assertEqual(expected_element * expected_element, output)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def _testTwoThreadsNoContention(self, sloppy=False):
     # num_threads > 1.
@@ -262,7 +262,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
         self.write_coordination_events[expected_element].set()
         if done_first_event:  # First event starts the worker threads.
           self.read_coordination_events[expected_element].acquire()
-        actual_element = sess.run(self.next_element)
+        actual_element = self.evaluate(self.next_element)
         if not done_first_event:
           self.read_coordination_events[expected_element].acquire()
           done_first_event = True
@@ -270,7 +270,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
                          "At index %s: %s expected, got: %s" %
                          (i, expected_element, actual_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def testTwoThreadsNoContention(self):
     self._testTwoThreadsNoContention()
@@ -309,7 +309,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
         else:
           self.write_coordination_events[expected_element].set()
         time.sleep(0.5)  # Sleep to consistently "avoid" the race condition.
-        actual_element = sess.run(self.next_element)
+        actual_element = self.evaluate(self.next_element)
         if not done_first_event:
           done_first_event = True
           self.assertTrue(
@@ -318,7 +318,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
                          "At index %s: %s expected, got: %s" %
                          (i, expected_element, actual_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def testTwoThreadsNoContentionWithRaces(self):
     self._testTwoThreadsNoContentionWithRaces()
@@ -348,7 +348,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
         self.write_coordination_events[expected_element].set()
         if done_first_event:  # First event starts the worker threads.
           self.read_coordination_events[expected_element].acquire()
-        actual_element = sess.run(self.next_element)
+        actual_element = self.evaluate(self.next_element)
         if not done_first_event:
           done_first_event = True
           self.read_coordination_events[expected_element].acquire()
@@ -356,7 +356,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
                          "At index %s: %s expected, got: %s" %
                          (i, expected_element, actual_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def testTwoThreadsNoContentionBlockLength(self):
     self._testTwoThreadsNoContentionBlockLength()
@@ -396,7 +396,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
         else:
           self.write_coordination_events[expected_element].set()
         time.sleep(0.5)  # Sleep to consistently "avoid" the race condition.
-        actual_element = sess.run(self.next_element)
+        actual_element = self.evaluate(self.next_element)
         if not done_first_event:
           done_first_event = True
           self.assertTrue(
@@ -405,7 +405,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
                          "At index %s: %s expected, got: %s" %
                          (i, expected_element, actual_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def testTwoThreadsNoContentionWithRacesAndBlocking(self):
     self._testTwoThreadsNoContentionWithRacesAndBlocking()
@@ -428,7 +428,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
               self.prefetch_input_elements: 0,
           })
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def testEmptyInput(self):
     self._testEmptyInput()
@@ -451,7 +451,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
               self.prefetch_input_elements: 0,
           })
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def testNonEmptyInputIntoEmptyOutputs(self):
     self._testNonEmptyInputIntoEmptyOutputs()
@@ -484,7 +484,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
         # presence of finishing iterators.
         if done_first_event and not (sloppy and (i in race_indices)):
           self.read_coordination_events[expected_element].acquire()
-        actual_element = sess.run(self.next_element)
+        actual_element = self.evaluate(self.next_element)
         if not done_first_event or (sloppy and (i in race_indices)):
           done_first_event = True
           self.read_coordination_events[expected_element].acquire()
@@ -520,10 +520,10 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
       ]
       for element in mis_ordering:
         self.write_coordination_events[element].set()
-        self.assertEqual(element * element, sess.run(self.next_element))
+        self.assertEqual(element * element, self.evaluate(self.next_element))
         self.assertTrue(self.read_coordination_events[element].acquire(False))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def testBlockLengthWithContentionSloppy(self):
     with self.cached_session() as sess:
@@ -549,7 +549,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
         self.write_coordination_events[expected_element].set()
         if done_first_event:  # First event starts the worker threads.
           self.read_coordination_events[expected_element].acquire()
-        actual_element = sess.run(self.next_element)
+        actual_element = self.evaluate(self.next_element)
         if not done_first_event:
           self.read_coordination_events[expected_element].acquire()
           done_first_event = True
@@ -557,7 +557,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
                          "At index %s: %s expected, got: %s" %
                          (i, expected_element, actual_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def _testEarlyExit(self, sloppy=False):
     # Exiting without consuming all input should not block
@@ -575,7 +575,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
           })
       for i in range(4, 7):
         self.write_coordination_events[i].set()
-      elem = sess.run(self.next_element)  # Start all workers
+      elem = self.evaluate(self.next_element)  # Start all workers
       # Allow the one successful worker to progress beyond the py_func again.
       elem = int(math.sqrt(elem))
       self.write_coordination_events[elem].set()
@@ -608,7 +608,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.cached_session() as sess:
       output_values = []
       for _ in range(30):
-        output_values.append(sess.run(iterator.get_next()))
+        output_values.append(self.evaluate(iterator.get_next()))
 
     expected_values = self._interleave(
         [[4] * 4, [5] * 5, [6] * 6] * self.repeat_count, 1, 2)
@@ -637,13 +637,13 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(10):
         for j in range(2):
           expected = [i, 0] if j % 2 == 0 else [0, -i]
-          self.assertAllEqual(expected, sess.run(get_next))
+          self.assertAllEqual(expected, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
   def testErrorsInOutputFn(self):
     with self.cached_session() as sess:
@@ -668,15 +668,15 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
           self.error = ValueError()
           self.write_coordination_events[expected_element].set()
           with self.assertRaises(errors.InvalidArgumentError):
-            sess.run(self.next_element)
+            self.evaluate(self.next_element)
         else:
           self.write_coordination_events[expected_element].set()
-          actual_element = sess.run(self.next_element)
+          actual_element = self.evaluate(self.next_element)
           self.assertEqual(expected_element * expected_element, actual_element,
                            "At index %s: %s expected, got: %s" %
                            (i, expected_element, actual_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def testErrorsInInputFn(self):
 
@@ -720,14 +720,14 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
           self._interleave([[4] * 4, [5], [6] * 6] * self.repeat_count, 2, 1)):
         if expected_element == 5:
           with self.assertRaises(errors.InvalidArgumentError):
-            sess.run(self.next_element)
+            self.evaluate(self.next_element)
         else:
-          actual_element = sess.run(self.next_element)
+          actual_element = self.evaluate(self.next_element)
           self.assertEqual(expected_element, actual_element,
                            "At index %s: %s expected, got: %s" %
                            (i, expected_element, actual_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def testErrorsInInterleaveFn(self):
 
@@ -769,14 +769,14 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
           self._interleave([[4] * 4, [5], [6] * 6] * self.repeat_count, 2, 1)):
         if expected_element == 5:
           with self.assertRaises(errors.InvalidArgumentError):
-            sess.run(self.next_element)
+            self.evaluate(self.next_element)
         else:
-          actual_element = sess.run(self.next_element)
+          actual_element = self.evaluate(self.next_element)
           self.assertEqual(expected_element, actual_element,
                            "At index %s: %s expected, got: %s" %
                            (i, expected_element, actual_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+        self.evaluate(self.next_element)
 
   def testShutdownRace(self):
     dataset = dataset_ops.Dataset.range(20)
@@ -796,10 +796,10 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.cached_session() as sess:
       for _ in range(2):
         elements = []
-        sess.run(iterator.initializer)
+        self.evaluate(iterator.initializer)
         try:
           while True:
-            elements.extend(sess.run(next_element))
+            elements.extend(self.evaluate(next_element))
         except errors.OutOfRangeError:
           pass
         results.append(elements)
