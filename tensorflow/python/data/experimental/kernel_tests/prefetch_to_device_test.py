@@ -37,12 +37,9 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     device_dataset = host_dataset.apply(
         prefetching_ops.prefetch_to_device("/cpu:1"))
 
-    # NOTE(mrry): This device block creates the "host" dataset and iterator on
-    # /cpu:0, and ensures that the prefetching is across devices. In typical use
-    # this would not be necessary, because the GPU device would not support any
-    # of the dataset-related ops.
-    with ops.device("/cpu:0"):
+    with ops.device("/cpu:1"):
       iterator = device_dataset.make_one_shot_iterator()
+      next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
     self.assertEqual(host_dataset.output_types, iterator.output_types)
@@ -51,12 +48,11 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
     self.assertEqual(host_dataset.output_classes, iterator.output_classes)
 
-    next_element = iterator.get_next()
     self.assertEqual(dtypes.int64, next_element.dtype)
     self.assertEqual([], next_element.shape)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -69,12 +65,9 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.prefetch_to_device(
             "/job:localhost/replica:0/task:0/device:CPU:0"))
 
-    # NOTE(mrry): This device block creates the "host" dataset and iterator on
-    # /cpu:0, and ensures that the prefetching is across devices. In typical use
-    # this would not be necessary, because the GPU device would not support any
-    # of the dataset-related ops.
-    with ops.device("/cpu:0"):
+    with ops.device("/cpu:1"):
       iterator = device_dataset.make_one_shot_iterator()
+      next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
     self.assertEqual(host_dataset.output_types, iterator.output_types)
@@ -83,11 +76,10 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
     self.assertEqual(host_dataset.output_classes, iterator.output_classes)
 
-    next_element = iterator.get_next()
     self.assertEqual(dtypes.int64, next_element.dtype)
     self.assertEqual([], next_element.shape)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -99,12 +91,9 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     device_dataset = host_dataset.apply(
         prefetching_ops.prefetch_to_device("/cpu:1"))
 
-    # NOTE(mrry): This device block creates the "host" dataset and iterator on
-    # /cpu:0, and ensures that the prefetching is across devices. In typical use
-    # this would not be necessary, because the GPU device would not support any
-    # of the dataset-related ops.
-    with ops.device("/cpu:0"):
+    with ops.device("/cpu:1"):
       iterator = device_dataset.make_one_shot_iterator()
+      next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
     self.assertEqual(host_dataset.output_types, iterator.output_types)
@@ -113,12 +102,11 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
     self.assertEqual(host_dataset.output_classes, iterator.output_classes)
 
-    next_element = iterator.get_next()
     self.assertEqual(dtypes.int64, next_element["a"].dtype)
     self.assertEqual([], next_element["a"].shape)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       for i in range(10):
         self.assertEqual({"a": i}, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -134,12 +122,9 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     device_dataset = host_dataset.apply(
         prefetching_ops.prefetch_to_device("/cpu:1"))
 
-    # NOTE(mrry): This device block creates the "host" dataset and iterator on
-    # /cpu:0, and ensures that the prefetching is across devices. In typical use
-    # this would not be necessary, because the GPU device would not support any
-    # of the dataset-related ops.
-    with ops.device("/cpu:0"):
+    with ops.device("/cpu:1"):
       iterator = device_dataset.make_one_shot_iterator()
+      next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
     self.assertEqual(host_dataset.output_types, iterator.output_types)
@@ -148,11 +133,10 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
     self.assertEqual(host_dataset.output_classes, iterator.output_classes)
 
-    next_element = iterator.get_next()
     self.assertEqual(dtypes.int64, next_element.dtype)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       for i in range(10):
         actual = self.evaluate(next_element)
         self.assertAllEqual([i], actual.values)
@@ -172,7 +156,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     iterator = device_dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -184,12 +168,9 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     device_dataset = host_dataset.apply(
         prefetching_ops.prefetch_to_device("/cpu:1"))
 
-    # NOTE(mrry): This device block creates the "host" dataset and iterator on
-    # /cpu:0, and ensures that the prefetching is across devices. In typical use
-    # this would not be necessary, because the GPU device would not support any
-    # of the dataset-related ops.
-    with ops.device("/cpu:0"):
+    with ops.device("/cpu:1"):
       iterator = device_dataset.make_initializable_iterator()
+      next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
     self.assertEqual(host_dataset.output_types, iterator.output_types)
@@ -198,12 +179,11 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
     self.assertEqual(host_dataset.output_classes, iterator.output_classes)
 
-    next_element = iterator.get_next()
     self.assertEqual(dtypes.int64, next_element.dtype)
     self.assertEqual([], next_element.shape)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       self.evaluate(iterator.initializer)
       for i in range(5):
         self.assertEqual(i, self.evaluate(next_element))
@@ -224,7 +204,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     iterator = device_dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(iterator.initializer)
       for i in range(5):
         self.assertEqual(i, self.evaluate(next_element))
