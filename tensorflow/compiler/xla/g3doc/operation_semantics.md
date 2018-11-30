@@ -1466,10 +1466,11 @@ Builds a constant literal on device rather than a potentially large host
 transfer. Creates a rank 1 array of values starting at zero and incrementing by
 one.
 
-Arguments | Type            | Semantics
---------- | --------------- | ------------------------------------
-`type`    | `PrimitiveType` | type U
-`size`    | `int64`         | The number of elements in the array.
+Arguments        | Type            | Semantics
+---------------- | --------------- | ------------------------------------
+`type`           | `PrimitiveType` | type U
+`size`           | `int64`         | The number of elements in the array.
+`iota_dimension` | `int64`         | The dimension to increment along.
 
 ## Map
 
