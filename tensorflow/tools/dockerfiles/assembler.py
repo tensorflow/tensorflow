@@ -34,6 +34,7 @@ import errno
 import itertools
 import multiprocessing
 import os
+import platform
 import re
 import shutil
 import sys
@@ -550,6 +551,13 @@ def main(argv):
 
       # Don't build any images for dockerfile-only releases
       if not FLAGS.build_images:
+        continue
+
+      # Only build images for host architecture
+      proc_arch = platform.processor()
+      is_x86 = proc_arch.startswith('x86')
+      if (is_x86 and any([arch in tag for arch in ['ppc64le']]) or
+          not is_x86 and proc_arch not in tag):
         continue
 
       # Generate a temporary Dockerfile to use to build, since docker-py
