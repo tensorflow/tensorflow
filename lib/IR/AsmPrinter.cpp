@@ -408,6 +408,11 @@ void ModulePrinter::printFunctionReference(const Function *func) {
 }
 
 void ModulePrinter::printAttribute(Attribute attr) {
+  if (!attr) {
+    os << "<<NULL ATTRIBUTE>>";
+    return;
+  }
+
   switch (attr.getKind()) {
   case Attribute::Kind::Bool:
     os << (attr.cast<BoolAttr>().getValue() ? "true" : "false");
