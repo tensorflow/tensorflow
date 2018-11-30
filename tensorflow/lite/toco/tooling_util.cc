@@ -536,12 +536,12 @@ void DumpGraphvizVideoFrame(const Model& model) {
   if (!dump_hashes.count(hash)) {
     LOG(INFO) << "DUMPING GRAPHVIZ VIDEO FRAME: " << dump_id;
     dump_hashes.insert(hash);
-    CHECK(port::file::SetContents(
-              port::file::JoinPath(
-                  dump_options.dump_graphviz,
-                  toco::port::StringF("toco_video_%05d.dot", dump_id)),
-              graphviz_dump, port::file::Defaults())
-              .ok());
+    const auto result = port::file::SetContents(
+        port::file::JoinPath(
+            dump_options.dump_graphviz,
+            toco::port::StringF("toco_video_%05d.dot", dump_id)),
+        graphviz_dump, port::file::Defaults());
+    QCHECK(result.ok()) << result.error_message();
     dump_id++;
   }
 }
@@ -555,14 +555,13 @@ void LogDump(int log_level, const string& message, const Model& model) {
     string graphviz_dump;
 
     DumpGraphviz(model, &graphviz_dump);
-    CHECK(port::file::SetContents(
-              port::file::JoinPath(
-                  dump_options.dump_graphviz,
-                  absl::StrCat("toco_",
-                               absl::StrReplaceAll(message, {{" ", "_"}}),
-                               ".dot")),
-              graphviz_dump, port::file::Defaults())
-              .ok());
+    const auto result = port::file::SetContents(
+        port::file::JoinPath(
+            dump_options.dump_graphviz,
+            absl::StrCat("toco_", absl::StrReplaceAll(message, {{" ", "_"}}),
+                         ".dot")),
+        graphviz_dump, port::file::Defaults());
+    QCHECK(result.ok()) << result.error_message();
   }
 
   if (!VLOG_IS_ON(log_level)) {
