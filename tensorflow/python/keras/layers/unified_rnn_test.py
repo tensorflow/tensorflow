@@ -18,34 +18,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import time
+
+import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
-from tensorflow.python.eager import context
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras import activations
-from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import constraints
-from tensorflow.python.keras import initializers
-from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNLSTM
-from tensorflow.python.keras.layers.recurrent import RNN
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.layers.recurrent import UnifiedLSTM
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
@@ -53,21 +41,17 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import gradient_descent
 
 
-class RNNTest(test.TestCase):
+# Global config for grappler setting that is used for graph mode test.
+_rewrites = rewriter_config_pb2.RewriterConfig()
+_rewrites.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
+_customer_optimizer = _rewrites.custom_optimizers.add()
+_customer_optimizer.name = 'ExperimentalImplementationSelector'
+_rewrites.min_graph_nodes = -1
+_graph_options = config_pb2.GraphOptions(rewrite_options=_rewrites)
+_config = config_pb2.ConfigProto(graph_options=_graph_options)
 
-  rewrites = rewriter_config_pb2.RewriterConfig()
-  rewrites.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
-  customer_optimizer = rewrites.custom_optimizers.add()
-  customer_optimizer.name = 'ExperimentalImplementationSelector'
-  rewrites.min_graph_nodes = -1
-  graph_options = config_pb2.GraphOptions(rewrite_options=rewrites)
-  config = config_pb2.ConfigProto(graph_options=graph_options)
 
-  def setUp(self):
-    self.config = RNNTest.config
-
-  def tearDown(self):
-    ops.reset_default_graph()
+class UnifiedRNNTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def test_unifiedRNN(self):
@@ -78,7 +62,7 @@ class RNNTest(test.TestCase):
     batch = 100
     epoch = 1
 
-    with self.cached_session(config=self.config, use_gpu=True) as sess:
+    with self.cached_session(config=_config, use_gpu=True) as sess:
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=batch,
           test_samples=0,
@@ -86,7 +70,7 @@ class RNNTest(test.TestCase):
           num_classes=output_shape)
       y_train = keras.utils.to_categorical(y_train, output_shape)
 
-      layer = UnifiedLSTM(rnn_state_size)
+      layer = UnifiedLSTM(rnn_state_size, return_runtime=True)
 
       inputs = array_ops.placeholder(
           dtypes.float32, shape=(None, timestep, input_shape), name='inputs')
@@ -126,7 +110,7 @@ class RNNTest(test.TestCase):
     batch = 100
     epoch = 1
 
-    with self.cached_session(config=self.config, use_gpu=True) as sess:
+    with self.cached_session(config=_config, use_gpu=True) as sess:
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=batch,
           test_samples=0,
@@ -134,7 +118,7 @@ class RNNTest(test.TestCase):
           num_classes=output_shape)
       y_train = keras.utils.to_categorical(y_train, output_shape)
 
-      layer = UnifiedLSTM(rnn_state_size)
+      layer = UnifiedLSTM(rnn_state_size, return_runtime=True)
 
       inputs = array_ops.placeholder(
           dtypes.float32, shape=(None, timestep, input_shape), name='inputs')
@@ -172,7 +156,7 @@ class RNNTest(test.TestCase):
         self.assertNotEqual(existing_loss, loss_value)
         existing_loss = loss_value
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
+  @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_keras_model_with_lstm(self):
     input_shape = 10
     rnn_state_size = 8
@@ -193,10 +177,420 @@ class RNNTest(test.TestCase):
     inputs = keras.layers.Input(
         shape=[timestep, input_shape], dtype=dtypes.float32)
 
-    outputs, unused_runtime = layer(inputs)
+    outputs = layer(inputs)
     model = keras.models.Model(inputs, outputs)
     model.compile('rmsprop', loss='mse')
     model.fit(x_train, y_train, epochs=epoch)
+    model.evaluate(x_train, y_train)
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_return_sequences_LSTM(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        UnifiedLSTM,
+        kwargs={
+            'units': units,
+            'return_sequences': True
+        },
+        input_shape=(num_samples, timesteps, embedding_dim))
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_static_shape_inference_LSTM(self):
+    # Github issue: 15165
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+
+    model = keras.models.Sequential()
+    inputs = keras.layers.Dense(
+        embedding_dim, input_shape=(timesteps, embedding_dim))
+    model.add(inputs)
+    layer = UnifiedLSTM(units, return_sequences=True)
+    model.add(layer)
+    outputs = model.layers[-1].output
+    self.assertEquals(outputs.get_shape().as_list(), [None, timesteps, units])
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_dynamic_behavior_LSTM(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    layer = UnifiedLSTM(units, input_shape=(None, embedding_dim))
+    model = keras.models.Sequential()
+    model.add(layer)
+    model.compile(gradient_descent.GradientDescentOptimizer(0.001), 'mse')
+    x = np.random.random((num_samples, timesteps, embedding_dim))
+    y = np.random.random((num_samples, units))
+    model.train_on_batch(x, y)
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_dropout_LSTM(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        UnifiedLSTM,
+        kwargs={
+            'units': units,
+            'dropout': 0.1,
+            'recurrent_dropout': 0.1
+        },
+        input_shape=(num_samples, timesteps, embedding_dim))
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_implementation_mode_LSTM(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    for mode in [1, 2]:
+      testing_utils.layer_test(
+          UnifiedLSTM,
+          kwargs={
+              'units': units,
+              'implementation': mode
+          },
+          input_shape=(num_samples, timesteps, embedding_dim))
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_constraints_LSTM(self):
+    embedding_dim = 4
+    layer_class = UnifiedLSTM
+    k_constraint = keras.constraints.max_norm(0.01)
+    r_constraint = keras.constraints.max_norm(0.01)
+    b_constraint = keras.constraints.max_norm(0.01)
+    layer = layer_class(
+        5,
+        return_sequences=False,
+        weights=None,
+        input_shape=(None, embedding_dim),
+        kernel_constraint=k_constraint,
+        recurrent_constraint=r_constraint,
+        bias_constraint=b_constraint)
+    layer.build((None, None, embedding_dim))
+    self.assertEqual(layer.cell.kernel.constraint, k_constraint)
+    self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
+    self.assertEqual(layer.cell.bias.constraint, b_constraint)
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_with_masking_layer_LSTM(self):
+    layer_class = UnifiedLSTM
+    inputs = np.random.random((2, 3, 4))
+    targets = np.abs(np.random.random((2, 3, 5)))
+    targets /= targets.sum(axis=-1, keepdims=True)
+    model = keras.models.Sequential()
+    model.add(keras.layers.Masking(input_shape=(3, 4)))
+    model.add(layer_class(units=5, return_sequences=True, unroll=False))
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01))
+    model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_stacking_LSTM(self):
+    inputs = np.random.random((2, 3, 4))
+    targets = np.abs(np.random.random((2, 3, 5)))
+    targets /= targets.sum(axis=-1, keepdims=True)
+    model = keras.models.Sequential()
+    model.add(UnifiedLSTM(10, return_sequences=True, unroll=False))
+    model.add(UnifiedLSTM(5, return_sequences=True, unroll=False))
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01))
+    model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_masking_with_stacking_LSTM(self):
+    inputs = np.random.random((2, 3, 4))
+    targets = np.abs(np.random.random((2, 3, 5)))
+    targets /= targets.sum(axis=-1, keepdims=True)
+    model = keras.models.Sequential()
+    model.add(keras.layers.Masking(input_shape=(3, 4)))
+    model.add(UnifiedLSTM(10, return_sequences=True, unroll=False))
+    model.add(UnifiedLSTM(5, return_sequences=True, unroll=False))
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01))
+    model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_from_config_LSTM(self):
+    layer_class = UnifiedLSTM
+    for stateful in (False, True):
+      l1 = layer_class(units=1, stateful=stateful)
+      l2 = layer_class.from_config(l1.get_config())
+      assert l1.get_config() == l2.get_config()
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_specify_initial_state_keras_tensor(self):
+    num_states = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+
+    # Test with Keras tensor
+    inputs = keras.Input((timesteps, embedding_dim))
+    initial_state = [keras.Input((units,)) for _ in range(num_states)]
+    layer = UnifiedLSTM(units)
+    if len(initial_state) == 1:
+      output = layer(inputs, initial_state=initial_state[0])
+    else:
+      output = layer(inputs, initial_state=initial_state)
+    assert initial_state[0] in layer._inbound_nodes[0].input_tensors
+
+    model = keras.models.Model([inputs] + initial_state, output)
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01))
+
+    inputs = np.random.random((num_samples, timesteps, embedding_dim))
+    initial_state = [
+        np.random.random((num_samples, units)) for _ in range(num_states)
+    ]
+    targets = np.random.random((num_samples, units))
+    model.train_on_batch([inputs] + initial_state, targets)
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def DISABLED_test_specify_initial_state_non_keras_tensor(self):
+    num_states = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+
+    # Test with non-Keras tensor
+    inputs = keras.Input((timesteps, embedding_dim))
+    initial_state = [
+        keras.backend.random_normal_variable((num_samples, units), 0, 1)
+        for _ in range(num_states)
+    ]
+    layer = UnifiedLSTM(units)
+    output = layer(inputs, initial_state=initial_state)
+
+    model = keras.models.Model(inputs, output)
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01))
+
+    inputs = np.random.random((num_samples, timesteps, embedding_dim))
+    targets = np.random.random((num_samples, units))
+    model.train_on_batch(inputs, targets)
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_reset_states_with_values(self):
+    num_states = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+
+    layer = UnifiedLSTM(units, stateful=True)
+    layer.build((num_samples, timesteps, embedding_dim))
+    layer.reset_states()
+    assert len(layer.states) == num_states
+    assert layer.states[0] is not None
+    self.assertAllClose(
+        keras.backend.eval(layer.states[0]),
+        np.zeros(keras.backend.int_shape(layer.states[0])),
+        atol=1e-4)
+    state_shapes = [keras.backend.int_shape(state) for state in layer.states]
+    values = [np.ones(shape) for shape in state_shapes]
+    if len(values) == 1:
+      values = values[0]
+    layer.reset_states(values)
+    self.assertAllClose(
+        keras.backend.eval(layer.states[0]),
+        np.ones(keras.backend.int_shape(layer.states[0])),
+        atol=1e-4)
+
+    # Test with invalid data
+    with self.assertRaises(ValueError):
+      layer.reset_states([1] * (len(layer.states) + 1))
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_specify_state_with_masking(self):
+    num_states = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+
+    inputs = keras.Input((timesteps, embedding_dim))
+    _ = keras.layers.Masking()(inputs)
+    initial_state = [keras.Input((units,)) for _ in range(num_states)]
+    output = UnifiedLSTM(units)(inputs, initial_state=initial_state)
+
+    model = keras.models.Model([inputs] + initial_state, output)
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01))
+
+    inputs = np.random.random((num_samples, timesteps, embedding_dim))
+    initial_state = [
+        np.random.random((num_samples, units)) for _ in range(num_states)
+    ]
+    targets = np.random.random((num_samples, units))
+    model.train_on_batch([inputs] + initial_state, targets)
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_return_state(self):
+    num_states = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+
+    inputs = keras.Input(batch_shape=(num_samples, timesteps, embedding_dim))
+    layer = UnifiedLSTM(units, return_state=True, stateful=True)
+    outputs = layer(inputs)
+    state = outputs[1:]
+    assert len(state) == num_states
+    model = keras.models.Model(inputs, state[0])
+
+    inputs = np.random.random((num_samples, timesteps, embedding_dim))
+    state = model.predict(inputs)
+    self.assertAllClose(keras.backend.eval(layer.states[0]), state, atol=1e-4)
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_state_reuse(self):
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+
+    inputs = keras.Input(batch_shape=(num_samples, timesteps, embedding_dim))
+    layer = UnifiedLSTM(units, return_state=True, return_sequences=True)
+    outputs = layer(inputs)
+    output, state = outputs[0], outputs[1:]
+    output = UnifiedLSTM(units)(output, initial_state=state)
+    model = keras.models.Model(inputs, output)
+
+    inputs = np.random.random((num_samples, timesteps, embedding_dim))
+    model.predict(inputs)
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_initial_states_as_other_inputs(self):
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+    num_states = 2
+    layer_class = UnifiedLSTM
+
+    # Test with Keras tensor
+    main_inputs = keras.Input((timesteps, embedding_dim))
+    initial_state = [keras.Input((units,)) for _ in range(num_states)]
+    inputs = [main_inputs] + initial_state
+
+    layer = layer_class(units)
+    output = layer(inputs)
+    assert initial_state[0] in layer._inbound_nodes[0].input_tensors
+
+    model = keras.models.Model(inputs, output)
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01))
+
+    main_inputs = np.random.random((num_samples, timesteps, embedding_dim))
+    initial_state = [
+        np.random.random((num_samples, units)) for _ in range(num_states)
+    ]
+    targets = np.random.random((num_samples, units))
+    model.train_on_batch([main_inputs] + initial_state, targets)
+
+
+class LSTMLayerGraphOnlyTest(test.TestCase):
+
+  def test_statefulness_LSTM(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    layer_class = UnifiedLSTM
+    with self.cached_session(config=_config):
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.Embedding(
+              4,
+              embedding_dim,
+              mask_zero=True,
+              input_length=timesteps,
+              batch_input_shape=(num_samples, timesteps)))
+      layer = layer_class(
+          units, return_sequences=False, stateful=True, weights=None)
+      model.add(layer)
+      model.compile(
+          optimizer=gradient_descent.GradientDescentOptimizer(0.01), loss='mse')
+      out1 = model.predict(np.ones((num_samples, timesteps)))
+      self.assertEqual(out1.shape, (num_samples, units))
+
+      # train once so that the states change
+      model.train_on_batch(
+          np.ones((num_samples, timesteps)), np.ones((num_samples, units)))
+      out2 = model.predict(np.ones((num_samples, timesteps)))
+
+      # if the state is not reset, output should be different
+      self.assertNotEqual(out1.max(), out2.max())
+
+      # check that output changes after states are reset
+      # (even though the model itself didn't change)
+      layer.reset_states()
+      out3 = model.predict(np.ones((num_samples, timesteps)))
+      self.assertNotEqual(out2.max(), out3.max())
+
+      # check that container-level reset_states() works
+      model.reset_states()
+      out4 = model.predict(np.ones((num_samples, timesteps)))
+      self.assertAllClose(out3, out4, atol=1e-5)
+
+      # check that the call to `predict` updated the states
+      out5 = model.predict(np.ones((num_samples, timesteps)))
+      self.assertNotEqual(out4.max(), out5.max())
+
+      # Check masking
+      layer.reset_states()
+
+      left_padded_input = np.ones((num_samples, timesteps))
+      left_padded_input[0, :1] = 0
+      left_padded_input[1, :2] = 0
+      out6 = model.predict(left_padded_input)
+
+      layer.reset_states()
+
+      right_padded_input = np.ones((num_samples, timesteps))
+      right_padded_input[0, -1:] = 0
+      right_padded_input[1, -2:] = 0
+      out7 = model.predict(right_padded_input)
+
+      self.assertAllClose(out7, out6, atol=1e-5)
+
+  def test_regularizers_LSTM(self):
+    embedding_dim = 4
+    layer_class = UnifiedLSTM
+    with self.cached_session(config=_config):
+      layer = layer_class(
+          5,
+          return_sequences=False,
+          weights=None,
+          input_shape=(None, embedding_dim),
+          kernel_regularizer=keras.regularizers.l1(0.01),
+          recurrent_regularizer=keras.regularizers.l1(0.01),
+          bias_regularizer='l2',
+          activity_regularizer='l1')
+      layer.build((None, None, 2))
+      self.assertEqual(len(layer.losses), 3)
+      x = keras.backend.variable(np.ones((2, 3, 2)))
+      layer(x)
+      self.assertEqual(len(layer.get_losses_for(x)), 1)
+
+
+class UnifiedRNNPerformanceTest(test.TestCase):
 
   def _measure_performance(self, test_config, model, x_train, y_train):
     batch = test_config['batch']
@@ -241,7 +635,7 @@ class RNNTest(test.TestCase):
     inputs = keras.layers.Input(
         shape=[timestep, input_shape], dtype=dtypes.float32)
 
-    outputs, _ = layer(inputs)
+    outputs = layer(inputs)
     model = keras.models.Model(inputs, outputs)
     model.compile('sgd', 'mse')
 
@@ -272,7 +666,7 @@ class RNNTest(test.TestCase):
                  'Normal LSTM', sec_per_epoch)
     return sec_per_epoch
 
-  @test_util.run_in_graph_and_eager_modes(config=config, use_gpu=True)
+  @test_util.run_in_graph_and_eager_modes(config=_config, use_gpu=True)
   def test_performance_with_standard_cudnn_impl(self):
     if not test.is_gpu_available():
       self.skipTest('performance test will only run on GPU')
@@ -324,319 +718,6 @@ class RNNTest(test.TestCase):
     #     unified_vs_normal, 5,
     #     'Expect the performance of Unified LSTM is more than 5 times of '
     #     'normal LSTM, but got {0:.2f}'.format(unified_vs_normal))
-
-
-class UnifiedLSTM(RNN):
-
-  def __init__(self,
-               units,
-               activation='tanh',
-               recurrent_activation='hard_sigmoid',
-               kernel_initializer='glorot_uniform',
-               recurrent_initializer='orthogonal',
-               bias_initializer='zeros',
-               unit_forget_bias=True,
-               kernel_regularizer=None,
-               recurrent_regularizer=None,
-               bias_regularizer=None,
-               activity_regularizer=None,
-               kernel_constraint=None,
-               recurrent_constraint=None,
-               bias_constraint=None,
-               return_sequences=False,
-               return_state=False,
-               go_backwards=False,
-               stateful=False,
-               time_major=False,
-               **kwargs):
-    super(RNN, self).__init__(**kwargs)  # pylint: disable=bad-super-call
-    self.units = units
-    cell_spec = collections.namedtuple('cell', ['state_size', 'output_size'])
-    self.cell = cell_spec(
-        state_size=(self.units, self.units), output_size=self.units)
-    self.activation = activations.get(activation)
-    self.recurrent_activation = activations.get(recurrent_activation)
-    self.kernel_initializer = initializers.get(kernel_initializer)
-    self.recurrent_initializer = initializers.get(recurrent_initializer)
-    self.bias_initializer = initializers.get(bias_initializer)
-    self.unit_forget_bias = unit_forget_bias
-
-    self.kernel_regularizer = regularizers.get(kernel_regularizer)
-    self.recurrent_regularizer = regularizers.get(recurrent_regularizer)
-    self.bias_regularizer = regularizers.get(bias_regularizer)
-    self.activity_regularizer = regularizers.get(activity_regularizer)
-
-    self.kernel_constraint = constraints.get(kernel_constraint)
-    self.recurrent_constraint = constraints.get(recurrent_constraint)
-    self.bias_constraint = constraints.get(bias_constraint)
-
-    self.return_sequences = return_sequences
-    self.return_state = return_state
-    self.go_backwards = go_backwards
-    self.stateful = stateful
-    self.time_major = time_major
-    self._num_constants = None
-    self._num_inputs = None
-    self._states = None
-    self.input_spec = [InputSpec(ndim=3)]
-    self.state_spec = [
-        InputSpec(shape=(None, dim)) for dim in (self.units, self.units)
-    ]
-
-  @tf_utils.shape_type_conversion
-  def build(self, input_shape):
-    super(UnifiedLSTM, self).build(input_shape)
-    if isinstance(input_shape, list):
-      input_shape = input_shape[0]
-    input_dim = int(input_shape[-1])
-
-    self.kernel = self.add_weight(
-        shape=(input_dim, self.units * 4),
-        name='kernel',
-        dtype=dtypes.float32,
-        use_resource=True,
-        initializer=self.kernel_initializer,
-        regularizer=self.kernel_regularizer,
-        constraint=self.kernel_constraint)
-    self.recurrent_kernel = self.add_weight(
-        shape=(self.units, self.units * 4),
-        name='recurrent_kernel',
-        dtype=dtypes.float32,
-        use_resource=True,
-        initializer=self.recurrent_initializer,
-        regularizer=self.recurrent_regularizer,
-        constraint=self.recurrent_constraint)
-
-    # Normal LSTM has 4 bias instead of 8.
-    if self.unit_forget_bias:
-
-      def bias_initializer(_, *args, **kwargs):
-        return array_ops.concat([
-            self.bias_initializer((self.units * 5,), *args, **kwargs),
-            initializers.Ones()((self.units,), *args, **kwargs),
-            self.bias_initializer((self.units * 2,), *args, **kwargs),
-        ],
-                                axis=0)
-    else:
-      bias_initializer = self.bias_initializer
-    self.bias = self.add_weight(
-        shape=(self.units * 8,),
-        name='bias',
-        dtype=dtypes.float32,
-        use_resource=True,
-        initializer=bias_initializer,
-        regularizer=self.bias_regularizer,
-        constraint=self.bias_constraint)
-    self.built = True
-
-  def call(self, inputs, mask=None, training=None, initial_state=None):
-    if isinstance(inputs, list):
-      initial_state = inputs[1:]
-      inputs = inputs[0]
-    elif initial_state is not None:
-      pass
-    elif self.stateful:
-      initial_state = self.states
-    else:
-      initial_state = self.get_initial_state(inputs)
-
-    if len(initial_state) != len(self.states):
-      raise ValueError('Layer has ' + str(len(self.states)) +
-                       ' states but was passed ' + str(len(initial_state)) +
-                       ' initial states.')
-
-    if self.go_backwards:
-      # Reverse time axis.
-      inputs = K.reverse(inputs, 1)
-
-    if ops.executing_eagerly_outside_functions():
-      if context.num_gpus() > 0:
-        outputs, [new_h, new_c], runtime = cudnn_lstm(
-            inputs, initial_state[0], initial_state[1], self.kernel,
-            self.recurrent_kernel, self.bias, self.units)
-      else:
-        outputs, [new_h, new_c], runtime = normal_lstm(
-            inputs, initial_state[0], initial_state[1], self.kernel,
-            self.recurrent_kernel, self.bias, self.units, self.activation,
-            self.recurrent_activation)
-    else:
-      outputs, [new_h, new_c], runtime = normal_lstm(
-          inputs, initial_state[0], initial_state[1], self.kernel,
-          self.recurrent_kernel, self.bias, self.units, self.activation,
-          self.recurrent_activation)
-
-      function.register(cudnn_lstm, inputs, initial_state[0], initial_state[1],
-                        self.kernel, self.recurrent_kernel, self.bias,
-                        self.units)
-
-    states = [new_h, new_c]
-
-    if self.stateful:
-      updates = []
-      for i in range(len(states)):
-        updates.append(state_ops.assign(self.states[i], states[i]))
-      self.add_update(updates, inputs)
-
-    if self.return_sequences:
-      output = outputs
-    else:
-      output = outputs[:, -1, :]
-
-    if self.return_state:
-      return [output] + states
-    else:
-      return output, runtime
-
-  @tf_utils.shape_type_conversion
-  def compute_output_shape(self, input_shape):
-    if isinstance(input_shape, list):
-      input_shape = input_shape[0]
-
-    if _is_multiple_state(self.cell.state_size):
-      state_size = self.cell.state_size
-    else:
-      state_size = [self.cell.state_size]
-
-    if getattr(self.cell, 'output_size', None) is not None:
-      output_dim = tensor_shape.as_shape(self.cell.output_size).as_list()
-    else:
-      # Note that state_size[0] could be a tensor_shape or int.
-      output_dim = tensor_shape.as_shape(state_size[0]).as_list()
-
-    if self.return_sequences:
-      output_shape = tuple([input_shape[0], input_shape[1]] + output_dim)
-    else:
-      output_shape = tuple([input_shape[0]] + output_dim)
-
-    if self.return_state:
-      state_shape = [
-          tuple([input_shape[0]] + tensor_shape.as_shape(dim).as_list())
-          for dim in state_size
-      ]
-      return [output_shape] + state_shape
-    else:
-      return output_shape
-
-  @property
-  def trainable_weights(self):
-    if self.trainable and self.built:
-      return [self.kernel, self.recurrent_kernel, self.bias]
-    return []
-
-  @property
-  def non_trainable_weights(self):
-    if not self.trainable and self.built:
-      return [self.kernel, self.recurrent_kernel, self.bias]
-    return []
-
-  @property
-  def losses(self):
-    return super(RNN, self).losses
-
-  def get_losses_for(self, inputs=None):
-    return super(RNN, self).get_losses_for(inputs=inputs)   # pylint: disable=bad-super-call
-
-  def get_weights(self):
-    return super(RNN, self).get_weights()  # pylint: disable=bad-super-call
-
-
-def _canonical_to_params(weights, biases, shape):
-  weights = [array_ops.reshape(x, shape) for x in weights]
-  biases = [array_ops.reshape(x, shape) for x in biases]
-  return array_ops.concat(weights + biases, axis=0)
-
-
-def _is_multiple_state(state_size):
-  """Check whether the state_size contains multiple states."""
-  return (hasattr(state_size, '__len__') and
-          not isinstance(state_size, tensor_shape.TensorShape))
-
-
-@function.defun_with_attributes(
-    attributes={
-        'experimental_api_implements': 'lstm',
-        'experimental_api_preferred_device': 'CPU'
-    })
-def normal_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, units,
-                activation, recurrent_activation):
-  input_shape = K.int_shape(inputs)
-  timesteps = input_shape[1]
-
-  def step(cell_inputs, cell_states):
-    h_tm1 = cell_states[0]  # previous memory state
-    c_tm1 = cell_states[1]  # previous carry state
-
-    # Only use the second half of the bias weights.
-    _, real_bias = array_ops.split(bias, 2)
-
-    z = K.dot(cell_inputs, kernel)
-    z += K.dot(h_tm1, recurrent_kernel)
-    z = K.bias_add(z, real_bias)
-
-    z0 = z[:, :units]
-    z1 = z[:, units:2 * units]
-    z2 = z[:, 2 * units:3 * units]
-    z3 = z[:, 3 * units:]
-
-    i = recurrent_activation(z0)
-    f = recurrent_activation(z1)
-    c = f * c_tm1 + i * activation(z2)
-    o = recurrent_activation(z3)
-
-    h = o * activation(c)
-    return h, [h, c]
-
-  _, outputs, new_states = K.rnn(
-      step,
-      inputs, [init_h, init_c],
-      constants=None,
-      unroll=False,
-      input_length=timesteps)
-  return outputs, new_states, constant_op.constant(
-      'cpu', dtype=dtypes.string, name='runtime')
-
-
-@function.defun_with_attributes(
-    attributes={
-        'experimental_api_implements': 'lstm',
-        'experimental_api_preferred_device': 'GPU'
-    })
-def cudnn_lstm(inputs, input_h, input_c, kernel, recurrent_kernel, bias, units):
-  inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
-  input_h = array_ops.expand_dims(input_h, axis=0)
-  input_c = array_ops.expand_dims(input_c, axis=0)
-
-  params = _canonical_to_params(
-      weights=[
-          kernel[:, :units],
-          kernel[:, units:units * 2],
-          kernel[:, units * 2:units * 3],
-          kernel[:, units * 3:],
-          recurrent_kernel[:, :units],
-          recurrent_kernel[:, units:units * 2],
-          recurrent_kernel[:, units * 2:units * 3],
-          recurrent_kernel[:, units * 3:],
-      ],
-      biases=[
-          bias[:units],
-          bias[units:units * 2],
-          bias[units * 2:units * 3],
-          bias[units * 3:units * 4],
-          bias[units * 4:units * 5],
-          bias[units * 5:units * 6],
-          bias[units * 6:units * 7],
-          bias[units * 7:],
-      ],
-      shape=constant_op.constant([-1]))
-
-  outputs, h, c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
-      inputs, input_h=input_h, input_c=input_c, params=params)
-  outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
-  h = h[0]
-  c = c[0]
-  return outputs, [h, c], constant_op.constant(
-      'cudnn', dtype=dtypes.string, name='runtime')
-
 
 if __name__ == '__main__':
   test.main()
