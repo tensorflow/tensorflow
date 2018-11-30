@@ -397,6 +397,29 @@ class OpsTest(test_util.TensorFlowTestCase):
     t1.start()
     t1.join()
 
+  def testCachedRandomUniform(self):
+    a1 = random_ops.random_uniform((3, ), seed=0, op_id=1)
+    b1 = random_ops.random_uniform((3, ), seed=0, op_id=2)
+    self.assertAllEqual(a1, b1)
+
+    a2 = random_ops.random_uniform((3, 0), seed=0, op_id=1)
+    b2 = random_ops.random_uniform((3, 0), seed=0, op_id=1)
+    self.assertNotEqual(a2, b2)
+
+    a3 = random_ops.random_uniform(
+        (3, ), seed=0, dtype=dtypes.int32, maxval=10, op_id=1)
+    b3 = random_ops.random_uniform(
+        (3, ), seed=0, dtype=dtypes.int32, maxval=10, op_id=2)
+    self.assertAllEqual(a3, b3)
+
+    a4 = random_ops.random_uniform(
+        (3, 0), seed=0, dtype=dtypes.int32, maxval=10, op_id=1)
+    b4 = random_ops.random_uniform(
+        (3, 0), seed=0, dtype=dtypes.int32, maxval=10, op_id=1)
+    self.assertNotEqual(a4, b4)
+
+
+
 
 if __name__ == '__main__':
   test.main()
