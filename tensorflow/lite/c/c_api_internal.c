@@ -125,6 +125,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "INT32";
     case kTfLiteUInt8:
       return "UINT8";
+    case kTfLiteInt8:
+      return "INT8";
     case kTfLiteInt64:
       return "INT64";
     case kTfLiteBool:
@@ -137,3 +139,14 @@ const char* TfLiteTypeGetName(TfLiteType type) {
   return "Unknown type";
 }
 
+TfLiteDelegate TfLiteDelegateCreate() {
+  TfLiteDelegate d = {
+      .data_ = NULL,
+      .Prepare = NULL,
+      .CopyFromBufferHandle = NULL,
+      .CopyToBufferHandle = NULL,
+      .FreeBufferHandle = NULL,
+      .flags = kTfLiteDelegateFlagsNone,
+  };
+  return d;
+}

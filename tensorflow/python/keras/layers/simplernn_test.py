@@ -98,6 +98,7 @@ class SimpleRNNLayerTest(test.TestCase):
     self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
     self.assertEqual(layer.cell.bias.constraint, b_constraint)
 
+  @tf_test_util.run_deprecated_v1
   def test_with_masking_layer_SimpleRNN(self):
     layer_class = keras.layers.SimpleRNN
     inputs = np.random.random((2, 3, 4))
@@ -120,6 +121,7 @@ class SimpleRNNLayerTest(test.TestCase):
 
 class SimpleRNNLayerGraphOnlyTest(test.TestCase):
 
+  @tf_test_util.run_deprecated_v1
   def test_statefulness_SimpleRNN(self):
     num_samples = 2
     timesteps = 3
@@ -183,6 +185,7 @@ class SimpleRNNLayerGraphOnlyTest(test.TestCase):
 
       np.testing.assert_allclose(out7, out6, atol=1e-5)
 
+  @tf_test_util.run_deprecated_v1
   def test_regularizers_SimpleRNN(self):
     embedding_dim = 4
     layer_class = keras.layers.SimpleRNN

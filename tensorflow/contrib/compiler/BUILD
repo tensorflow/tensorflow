@@ -58,6 +58,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/compiler/jit:xla_ops_py",
+        "//tensorflow/compiler/jit/ops:xla_ops_grad",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",

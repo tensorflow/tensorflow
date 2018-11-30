@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -31,7 +32,7 @@ class SquareRootOpTest(test.TestCase):
 
   def _verifySquareRoot(self, matrix, np_type):
     matrix = matrix.astype(np_type)
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       # Verify that matmul(sqrtm(A), sqrtm(A)) = A
       sqrt = gen_linalg_ops.matrix_square_root(matrix)
       square = math_ops.matmul(sqrt, sqrt)
@@ -96,19 +97,20 @@ class SquareRootOpTest(test.TestCase):
       gen_linalg_ops.matrix_square_root(tensor)
 
   def testNotSquare(self):
-    with self.test_session():
-      with self.assertRaises(ValueError):
-        tensor = constant_op.constant([[1., 0., -1.], [-1., 1., 0.]])
-        gen_linalg_ops.matrix_square_root(tensor).eval()
+    with self.assertRaises(ValueError):
+      tensor = constant_op.constant([[1., 0., -1.], [-1., 1., 0.]])
+      self.evaluate(gen_linalg_ops.matrix_square_root(tensor))
 
   def testConcurrentExecutesWithoutError(self):
-    with self.test_session(use_gpu=True) as sess:
+    with test_util.use_gpu():
       matrix1 = random_ops.random_normal([5, 5], seed=42)
       matrix2 = random_ops.random_normal([5, 5], seed=42)
-      sqrt1 = gen_linalg_ops.matrix_square_root(matrix1)
-      sqrt2 = gen_linalg_ops.matrix_square_root(matrix2)
+      square1 = math_ops.matmul(matrix1, matrix1)
+      square2 = math_ops.matmul(matrix2, matrix2)
+      sqrt1 = gen_linalg_ops.matrix_square_root(square1)
+      sqrt2 = gen_linalg_ops.matrix_square_root(square2)
       all_ops = [sqrt1, sqrt2]
-      sqrt = sess.run(all_ops)
+      sqrt = self.evaluate(all_ops)
       self.assertAllEqual(sqrt[0], sqrt[1])
 
 

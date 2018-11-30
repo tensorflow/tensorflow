@@ -238,6 +238,13 @@ def setup_python(environ_cp):
   write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
   environ_cp['PYTHON_BIN_PATH'] = python_bin_path
 
+  # If choosen python_lib_path is from a path specified in the PYTHONPATH
+  # variable, need to tell bazel to include PYTHONPATH
+  if environ_cp.get('PYTHONPATH'):
+    python_paths = environ_cp.get('PYTHONPATH').split(':')
+    if python_lib_path in python_paths:
+      write_action_env_to_bazelrc('PYTHONPATH', environ_cp.get('PYTHONPATH'))
+
   # Write tools/python_bin_path.sh
   with open(
       os.path.join(_TF_WORKSPACE_ROOT, 'tools', 'python_bin_path.sh'),
@@ -859,7 +866,7 @@ def set_tf_cuda_version(environ_cp):
     cuda_toolkit_paths_full = [
         os.path.join(cuda_toolkit_path, x) for x in cuda_rt_lib_paths
     ]
-    if any([os.path.exists(x) for x in cuda_toolkit_paths_full]):
+    if any(os.path.exists(x) for x in cuda_toolkit_paths_full):
       break
 
     # Reset and retry
@@ -1694,6 +1701,7 @@ def main():
   config_info_line('nohdfs', 'Disable HDFS support.')
   config_info_line('noignite', 'Disable Apacha Ignite support.')
   config_info_line('nokafka', 'Disable Apache Kafka support.')
+  config_info_line('nonccl', 'Disable NVIDIA NCCL support.')
 
 
 if __name__ == '__main__':

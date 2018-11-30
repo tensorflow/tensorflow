@@ -121,8 +121,10 @@ enum class OperatorType : uint8 {
   kRsqrt,
   kShape,
   kSplit,
+  kSplitV,
   kSqrt,
   kSquare,
+  kSquaredDifference,
   kSum,
   kSwitch,
   kTile,
@@ -152,7 +154,9 @@ enum class OperatorType : uint8 {
   kCTCBeamSearchDecoder,
   kUnpack,
   kZerosLike,
-  kResizeNearestNeighbor
+  kResizeNearestNeighbor,
+  kLeakyRelu,
+  kAbs
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -653,6 +657,17 @@ struct MulOperator : Operator {
   MulOperator() : Operator(OperatorType::kMul) {}
 };
 
+// Element-wise Abs operator:
+//   x -> abs(x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Relu
+struct AbsOperator : Operator {
+  AbsOperator() : Operator(OperatorType::kAbs) {}
+};
+
 // Element-wise Relu operator:
 //   x -> max(0, x)
 //
@@ -697,6 +712,19 @@ struct Relu6Operator : Operator {
 // Equivalent to keras.layers.PReLU.
 struct PReluOperator : Operator {
   PReluOperator() : Operator(OperatorType::kPRelu) {}
+};
+
+// LeakyRelu
+//   x -> max(x, alpha * x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: LeakyRelu
+struct LeakyReluOperator : Operator {
+  LeakyReluOperator() : Operator(OperatorType::kLeakyRelu) {}
+
+  float alpha = 0.2f;  // 0.2 matches the default value for the TF op attribute.
 };
 
 // Element-wise Logistic operator:
@@ -1289,6 +1317,17 @@ struct TensorFlowSquareOperator : Operator {
   TensorFlowSquareOperator() : Operator(OperatorType::kSquare) {}
 };
 
+// Element-wise squared difference ((x-y)*(x-y)) operator.
+//
+// Inputs:
+//   inputs[0]: required: the left-hand side array
+//   inputs[1]: required: the right-hand side array
+//
+// TensorFlow equivalent: SquaredDifference
+struct SquaredDifferenceOperator : Operator {
+  SquaredDifferenceOperator() : Operator(OperatorType::kSquaredDifference) {}
+};
+
 // Transposes a tensor.
 //
 // By default, this operation performs a regular matrix transpose on 2-D input
@@ -1360,6 +1399,12 @@ struct SliceOperator : Operator {
 // support graph transformations to other operator types by matching sub-graphs.
 struct TensorFlowSplitOperator : Operator {
   TensorFlowSplitOperator() : Operator(OperatorType::kSplit) {}
+  int num_split = 0;
+};
+
+// TensorFlow SplitV equivalent. Refer to TensorFlow documentation for details.
+struct TensorFlowSplitVOperator : Operator {
+  TensorFlowSplitVOperator() : Operator(OperatorType::kSplitV) {}
   int num_split = 0;
 };
 

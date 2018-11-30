@@ -17,13 +17,49 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import os
 import tempfile
+
 import six
+import tensorflow as tf
+# OSS TF V2 import placeholder.
+
+
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_export
+from tensorflow.tools.common import public_api
+from tensorflow.tools.common import traverse
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import tf_upgrade_v2
+
+
+_TENSORFLOW_API_ATTR_V1 = (
+    tf_export.API_ATTRS_V1[tf_export.TENSORFLOW_API_NAME].names)
+_TENSORFLOW_API_ATTR = tf_export.API_ATTRS[tf_export.TENSORFLOW_API_NAME].names
+_ESTIMATOR_API_ATTR_V1 = (
+    tf_export.API_ATTRS_V1[tf_export.ESTIMATOR_API_NAME].names)
+_ESTIMATOR_API_ATTR = tf_export.API_ATTRS[tf_export.ESTIMATOR_API_NAME].names
+
+
+def get_v1_names(symbol):
+  names_v1 = []
+  if hasattr(symbol, _TENSORFLOW_API_ATTR_V1):
+    names_v1.extend(getattr(symbol, _TENSORFLOW_API_ATTR_V1))
+  if hasattr(symbol, _ESTIMATOR_API_ATTR_V1):
+    names_v1.extend(getattr(symbol, _ESTIMATOR_API_ATTR_V1))
+  return names_v1
+
+
+def get_v2_names(symbol):
+  names_v2 = set()
+  if hasattr(symbol, _TENSORFLOW_API_ATTR):
+    names_v2.update(getattr(symbol, _TENSORFLOW_API_ATTR))
+  if hasattr(symbol, _ESTIMATOR_API_ATTR):
+    names_v2.update(getattr(symbol, _ESTIMATOR_API_ATTR))
+  return list(names_v2)
 
 
 class TestUpgrade(test_util.TensorFlowTestCase):
@@ -64,6 +100,42 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, "tf.math.rsqrt(tf.math.log_sigmoid(3.8))\n")
 
+  def testAllAPI(self):
+    if not hasattr(tf.compat, "v2"):
+      return
+
+    v2_symbols = set([])
+
+    def symbol_collector(unused_path, unused_parent, children):
+      for child in children:
+        _, attr = tf_decorator.unwrap(child[1])
+        api_names_v2 = get_v2_names(attr)
+        for name in api_names_v2:
+          v2_symbols.add("tf." + name)
+
+    visitor = public_api.PublicAPIVisitor(symbol_collector)
+    traverse.traverse(tf.compat.v2, visitor)
+
+    # Converts all symbols in the v1 namespace to the v2 namespace, raising
+    # an error if the target of the conversion is not in the v2 namespace.
+    def conversion_visitor(unused_path, unused_parent, children):
+      for child in children:
+        _, attr = tf_decorator.unwrap(child[1])
+        api_names = get_v1_names(attr)
+        for name in api_names:
+          _, _, _, text = self._upgrade("tf." + name)
+          if (text and
+              not text.startswith("tf.compat.v1") and
+              text not in v2_symbols):
+            self.assertFalse(
+                True, "Symbol %s generated from %s not in v2 API" % (
+                    text, name))
+
+    visitor = public_api.PublicAPIVisitor(conversion_visitor)
+    visitor.do_not_descend_map["tf"].append("contrib")
+    visitor.private_map["tf.compat"] = ["v1", "v2"]
+    traverse.traverse(tf.compat.v1, visitor)
+
   def testRenameConstant(self):
     text = "tf.MONOLITHIC_BUILD\n"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
@@ -72,6 +144,16 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, "some_call(tf.sysconfig.MONOLITHIC_BUILD)\n")
 
+  def testRenameArgs(self):
+    text = ("tf.nn.pool(input_a, window_shape_a, pooling_type_a, padding_a, "
+            "dilation_rate_a, strides_a, name_a, data_format_a)\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text,
+                     ("tf.nn.pool(input=input_a, window_shape=window_shape_a,"
+                      " pooling_type=pooling_type_a, padding=padding_a, "
+                      "dilations=dilation_rate_a, strides=strides_a, "
+                      "name=name_a, data_format=data_format_a)\n"))
+
   def testReorder(self):
     text = "tf.boolean_mask(a, b, c, d)\n"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
@@ -79,7 +161,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
                      "tf.boolean_mask(tensor=a, mask=b, name=c, axis=d)\n")
 
   def testLearningRateDecay(self):
-    for decay in ["tf.train.exponential_decay", "tf.train.piecewise_constant",
+    for decay in ["tf.train.exponential_decay",
                   "tf.train.polynomial_decay", "tf.train.natural_exp_decay",
                   "tf.train.inverse_time_decay", "tf.train.cosine_decay",
                   "tf.train.cosine_decay_restarts",
@@ -87,18 +169,156 @@ class TestUpgrade(test_util.TensorFlowTestCase):
                   "tf.train.noisy_linear_cosine_decay"]:
 
       text = "%s(a, b)\n" % decay
-      _, report, errors, new_text = self._upgrade(text)
-      self.assertEqual(text, new_text)
+      _, report, errors, _ = self._upgrade(text)
       self.assertEqual(errors, ["test.py:1: %s requires manual check." % decay])
       self.assertIn("%s has been changed" % decay, report)
 
-  def testEstimatorLossReductionChangege(self):
-    text = "tf.estimator.LinearClassifier(a, b)\n"
-    _, report, errors, new_text = self._upgrade(text)
+  def testPiecewiseDecay(self):
+    text = "tf.train.piecewise_constant_decay(a, b)\n"
+    _, report, errors, _ = self._upgrade(text)
+    self.assertEqual(
+        errors,
+        ["test.py:1: tf.train.piecewise_constant_decay requires manual check."])
+    self.assertIn("tf.train.piecewise_constant_decay has been changed", report)
+
+  def testEstimatorLossReductionChange(self):
+    classes = [
+        "LinearClassifier", "LinearRegressor", "DNNLinearCombinedClassifier",
+        "DNNLinearCombinedRegressor", "DNNRegressor", "DNNClassifier",
+        "BaselineClassifier", "BaselineRegressor"
+    ]
+    for c in classes:
+      ns = "tf.estimator." + c
+      text = ns + "(a, b)"
+      _, report, errors, new_text = self._upgrade(text)
+      self.assertEqual(text, new_text)
+      self.assertEqual(errors, ["test.py:1: %s requires manual check." % ns])
+      self.assertIn("loss_reduction has been changed", report)
+
+  def testDropout(self):
+    text = "tf.nn.dropout(x, keep_prob, name=\"foo\")\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.nn.dropout(x, 1 - keep_prob, name=\"foo\")\n",
+    )
+
+    text = "tf.nn.dropout(x)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, text)
+    self.assertEqual(
+        errors,
+        ["test.py:1: tf.nn.dropout requires manual check."]
+    )
+
+  def testCountNonZeroChanges(self):
+    text = (
+        "tf.math.count_nonzero(input_tensor=input, dtype=dtype, name=name, "
+        "reduction_indices=axis, keep_dims=keepdims)\n"
+        )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    expected_text = (
+        "tf.math.count_nonzero(input=input, dtype=dtype, name=name, "
+        "axis=axis, keepdims=keepdims)\n"
+        )
+    self.assertEqual(new_text, expected_text)
+
+  def testRandomMultinomialToRandomCategorical(self):
+    text = (
+        "tf.random.multinomial(logits, samples, seed, name, output_dtype)\n"
+        )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    expected_text = (
+        "tf.random.categorical(logits=logits, num_samples=samples, seed=seed, "
+        "name=name, dtype=output_dtype)\n"
+        )
+    self.assertEqual(new_text, expected_text)
+
+    text = (
+        "tf.multinomial(logits, samples, seed, name, output_dtype)\n"
+        )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    expected_text = (
+        "tf.random.categorical(logits=logits, num_samples=samples, seed=seed, "
+        "name=name, dtype=output_dtype)\n"
+        )
+    self.assertEqual(new_text, expected_text)
+
+  def testConvolutionOpUpdate(self):
+    text = (
+        "tf.nn.convolution(input, filter, padding, strides, dilation_rate, "
+        "name, data_format)"
+    )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    expected_text = (
+        "tf.nn.convolution(input=input, filters=filter, padding=padding, "
+        "strides=strides, dilations=dilation_rate, name=name, "
+        "data_format=data_format)"
+    )
+    self.assertEqual(new_text, expected_text)
+
+  def testColocateGradientsWithOps(self):
+    text = "tf.gradients(a, foo=False)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
     self.assertEqual(text, new_text)
-    self.assertEqual(errors, ["test.py:1: %s requires manual check."
-                              % "tf.estimator.LinearClassifier"])
-    self.assertIn("loss_reduction has been changed", report)
+    self.assertEqual(errors, [])
+
+    text = "tf.gradients(a, colocate_gradients_with_ops=False)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+    self.assertEqual(errors, ["test.py:1: tf.gradients requires manual check."])
+
+    text = "optimizer.minimize(a, foo=False)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+    self.assertEqual(errors, [])
+
+    text = "optimizer.minimize(a, colocate_gradients_with_ops=False)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+    self.assertEqual(errors,
+                     ["test.py:1: Optimizer.minimize requires manual check."])
+
+    text = "optimizer.compute_gradients(a, foo=False)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+    self.assertEqual(errors, [])
+
+    text = "optimizer.compute_gradients(a, colocate_gradients_with_ops=False)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+    self.assertEqual(errors,
+                     ["test.py:1: Optimizer.compute_gradients "
+                      "requires manual check."])
+
+  def testExportSavedModelRename(self):
+    text = "self.est.export_savedmodel(path)"
+    _, report, unused_errors, unused_new_text = self._upgrade(text)
+    self.assertIn(
+        "rename the method export_savedmodel() to export_saved_model()",
+        report)
+
+  def testArgmin(self):
+    text = "tf.argmin(input, name=n, dimension=1, output_type=type)"
+    expected_text = "tf.argmin(input=input, name=n, axis=1, output_type=type)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.argmin(input, 0)"
+    expected_text = "tf.argmin(input=input, axis=0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testArgmax(self):
+    text = "tf.argmax(input, name=n, dimension=1, output_type=type)"
+    expected_text = "tf.argmax(input=input, name=n, axis=1, output_type=type)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.argmax(input, 0)"
+    expected_text = "tf.argmax(input=input, axis=0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

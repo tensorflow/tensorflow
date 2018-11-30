@@ -38,6 +38,7 @@ cuda_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python/compat:compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
@@ -71,15 +72,11 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:session",
         "//tensorflow/python/data/experimental/ops:error_ops",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -371,6 +368,25 @@ py_test(
 )
 
 py_test(
+    name = "matching_files_test",
+    size = "small",
+    srcs = ["matching_files_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:matching_files",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "override_threadpool_test",
     size = "small",
     srcs = ["override_threadpool_test.py"],
@@ -617,7 +633,9 @@ py_test(
     size = "medium",
     srcs = ["stats_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":reader_dataset_ops_test_base",
         ":stats_dataset_test_base",

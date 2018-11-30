@@ -31,7 +31,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 
-#include "tensorrt/include/NvInfer.h"
+#include "tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -39,7 +39,8 @@ namespace tensorrt {
 class TRTCalibrationResource : public tensorflow::ResourceBase {
  public:
   ~TRTCalibrationResource() {
-    VLOG(0) << "Destroying Calibration Resource " << std::endl << DebugString();
+    LOG(INFO) << "Destroying Calibration Resource " << std::endl
+              << DebugString();
     builder_.reset();
     engine_.reset();
     // We need to manually destroy the builder and engine before the allocator

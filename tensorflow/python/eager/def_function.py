@@ -214,7 +214,7 @@ class PolymorphicFunction(object):
                python_function,
                name,
                input_signature=None,
-               autograph=False,
+               autograph=True,
                experimental_autograph_options=None):
     """Initializes a polymorphic function.
 
@@ -503,7 +503,7 @@ class PolymorphicFunction(object):
 @tf_export("function", v1=[])
 def function(func=None,
              input_signature=None,
-             autograph=False,
+             autograph=True,
              experimental_autograph_options=None):
   """Creates a callable TensorFlow graph from a Python function.
 
@@ -552,9 +552,9 @@ def function(func=None,
     return x + tf.to_float(c)
 
   assert int(c) == 0
-  assert f(1.0) == 3.0
+  assert f(1.0) == 2.0
   assert int(c) == 1
-  assert f(1.0) == 4.0
+  assert f(1.0) == 3.0
   assert int(c) == 2
   ```
 

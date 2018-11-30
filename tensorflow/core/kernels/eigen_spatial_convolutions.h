@@ -56,6 +56,7 @@ namespace internal {
 //
 // TODO(ezhulenev): Consolidate this part of the code with the image patch
 // extraction code since they are both very similar.
+
 template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
           typename Device, typename Scalar_, typename Index,
           typename nocontract_t, typename contract_t, int Side, int packet_size,
@@ -70,6 +71,7 @@ class TensorContractionInputMapper<
     inner_dim_reordered, Alignment> {
  public:
   typedef Scalar_ Scalar;
+
   typedef TensorContractionInputMapper<
       Scalar, Index, Side,
       TensorEvaluator<
@@ -79,6 +81,7 @@ class TensorContractionInputMapper<
       nocontract_t, contract_t, packet_size, inner_dim_contiguous,
       inner_dim_reordered, Alignment>
       Self;
+
   typedef TensorContractionSubMapper<
       Scalar, Index, Side,
       TensorEvaluator<
@@ -88,6 +91,7 @@ class TensorContractionInputMapper<
       nocontract_t, contract_t, packet_size, inner_dim_contiguous,
       inner_dim_reordered, Alignment>
       SubMapper;
+
   typedef SubMapper VectorMapper;
   typedef SubMapper LinearMapper;
   typedef typename packet_traits<Scalar>::type Packet;
@@ -533,6 +537,7 @@ class TensorContractionSubMapper<
       nocontract_t, contract_t, packet_size, inner_dim_contiguous,
       inner_dim_reordered, Alignment>
       ParentMapper;
+
   typedef TensorContractionSubMapper<
       Scalar, Index, Side,
       TensorEvaluator<
@@ -542,21 +547,22 @@ class TensorContractionSubMapper<
       nocontract_t, contract_t, packet_size, inner_dim_contiguous,
       inner_dim_reordered, Alignment>
       Self;
+
   typedef Self LinearMapper;
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorContractionSubMapper(
       const ParentMapper& base_mapper, Index vert_offset, Index horiz_offset)
-      : m_base_mapper(base_mapper),
-        m_depth_offset(vert_offset),
-        m_col_offset(horiz_offset) {
+      : m_depth_offset(vert_offset),
+        m_col_offset(horiz_offset),
+        m_base_mapper(base_mapper) {
     m_base_mapper.computeBaseIndices(m_col_offset, m_rowIndex, m_colIndex,
                                      m_otherIndex);
   }
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorContractionSubMapper(
       const Self& base_mapper, Index vert_offset, Index horiz_offset)
-      : m_base_mapper(base_mapper.m_base_mapper),
-        m_depth_offset(vert_offset + base_mapper.m_depth_offset),
-        m_col_offset(horiz_offset + base_mapper.m_col_offset) {
+      : m_depth_offset(vert_offset + base_mapper.m_depth_offset),
+        m_col_offset(horiz_offset + base_mapper.m_col_offset),
+        m_base_mapper(base_mapper.m_base_mapper) {
     m_base_mapper.computeBaseIndices(m_col_offset, m_rowIndex, m_colIndex,
                                      m_otherIndex);
   }
@@ -578,7 +584,6 @@ class TensorContractionSubMapper<
     return m_base_mapper.template loadPacket<Alignment>(i + m_depth_offset,
                                                         j + m_col_offset);
   }
-
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Scalar
   loadCoeffStandard(Index i) const {
     return m_base_mapper.loadCoeffStandard(i + m_depth_offset, m_rowIndex,
@@ -611,16 +616,27 @@ class TensorContractionSubMapper<
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE Index maxCol(const Index peeled_k) const {
     const Index max_col =
-        fastPatchColStride().divide(m_depth_offset + peeled_k);
+        (m_depth_offset + (peeled_k == 0 ? 0 : peeled_k - 1)) /
+        fastPatchColStride();
     return std::min<Index>(1 + max_col, patchCols());
   }
 
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE Index maxRow(const Index peeled_k,
                                    const Index col) const {
-    const Index max_row = fastPatchRowStride().divide(
-        m_depth_offset + peeled_k - col * patchColStride());
+    const Index max_row = (m_depth_offset + (peeled_k == 0 ? 0 : peeled_k - 1) -
+                           col * patchColStride()) /
+                          fastPatchRowStride();
     return std::min<Index>(1 + max_row, patchRows());
+  }
+
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Index maxDepth(const Index peeled_k, const Index col,
+                                     Index row) const {
+    const Index max_depth = m_depth_offset + peeled_k -  //
+                            col * patchColStride() -     //
+                            row * patchRowStride();
+    return std::min<Index>(max_depth, patchDepth());
   }
 
   // MaxDepth uses only the remaining number of elements in the peeled_k.
@@ -692,6 +708,12 @@ class TensorContractionSubMapper<
     return r < 0 || r >= m_base_mapper.m_inputRows;
   }
   EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE bool padAnyRow(const Index first_row,
+                                     const Index last_row) const {
+    return m_rowIndex + first_row < 0 ||
+           m_rowIndex + last_row >= m_base_mapper.m_inputRows;
+  }
+  EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE bool padCol(const Index col) const {
     const Index c = m_colIndex + col;
     return c < 0 || c >= m_base_mapper.m_inputCols;
@@ -738,9 +760,6 @@ class TensorContractionSubMapper<
   }
 
  private:
-  const ParentMapper m_base_mapper;  // Keeping a copy instead of a reference
-                                     // performs better in benchmarks.
-
   Index m_depth_offset;  // First row in the input matrix
   Index m_col_offset;    // First col in the input matrix
 
@@ -750,6 +769,9 @@ class TensorContractionSubMapper<
   Index m_rowIndex;
   Index m_colIndex;
   Index m_otherIndex;
+
+  const ParentMapper m_base_mapper;  // Keeping a copy instead of a reference
+                                     // performs better in benchmarks.
 };
 
 // Arrange a block of the right input matrix (in our case it's always a "virtual
@@ -1319,23 +1341,19 @@ struct mkldnn_gemm_pack<
   typedef typename packet_traits<Scalar>::type Packet;
 
   EIGEN_DONT_INLINE
-  void operator()(Scalar* block, const DataMapper& rhs, StorageIndex rows,
+  void operator()(Scalar* block, const DataMapper rhs, StorageIndex rows,
                   StorageIndex cols) {
     const bool standard_patches = !rhs.nonStandardPatches();
 
     if (standard_patches && (rhs.patchDepth() % packet_size == 0)) {
-      if (rhs.rowStride() == 1) {
-        packStandardPatches<true, /*squeeze*/ true>(block, rhs, rows, cols);
-      } else {
-        packStandardPatches<true, /*squeeze*/ false>(block, rhs, rows, cols);
-      }
+      // Single packet always belong to single patch (row, col).
+      packStandardPatches</*patch_depth_is_multiple_of_packet_size*/ true>(
+          block, rhs, rows, cols);
 
     } else if (standard_patches) {
-      if (rhs.rowStride() == 1) {
-        packStandardPatches<false, /*squeeze*/ true>(block, rhs, rows, cols);
-      } else {
-        packStandardPatches<false, /*squeeze*/ false>(block, rhs, rows, cols);
-      }
+      // Single packet can span across multiple patch rows or columns.
+      packStandardPatches</*patch_depth_is_multiple_of_packet_size*/ false>(
+          block, rhs, rows, cols);
 
     } else {
       // With non-standard patches we don't do any vectorized loads.
@@ -1357,72 +1375,64 @@ struct mkldnn_gemm_pack<
   // - patch_depth_is_multiple_of_packet_size=true: We are guaranteed to have
   //   depth dimension size to be a multiple of packet size, so we can skip all
   //   non vectorized loads and checks.
-  //
-  // - squeeze_reads=true: If stride along the `row` dimension is `1`, we can
-  //   squeeze reads along the `row` and `depth` dimensions, because they are
-  //   guaranteed to be contiguous in memory (two innermost dimensions).
-  //
-  template <bool patch_depth_is_multiple_of_packet_size, bool squeeze_reads>
+  template <bool patch_depth_is_multiple_of_packet_size>
   EIGEN_ALWAYS_INLINE void packStandardPatches(Scalar* block,
-                                               const DataMapper& rhs,
+                                               const DataMapper rhs,
                                                StorageIndex rows,
                                                StorageIndex cols) {
     eigen_assert(!rhs.nonStandardPatches());
 
     // Give vectorized_rows the name used in all other gemm_pack_rhs above.
-    const Index peeled_k = (rows / packet_size) * packet_size;
+    const StorageIndex peeled_k = (rows / packet_size) * packet_size;
 
-    const Index start_col = rhs.colOffset();
-    const Index max_col = rhs.maxCol(peeled_k);
+    const StorageIndex start_col = rhs.colOffset();
+    const StorageIndex max_col = rhs.maxCol(peeled_k);
 
     for (StorageIndex col = 0; col < cols; ++col) {
       SubMapper lm = rhs.getLinearMapper(0, col);
 
-      Index k = 0;
+      StorageIndex k = 0;
       for (Index c = start_col; c < max_col; ++c) {
         eigen_assert(k <= peeled_k);
 
-        const Index start_row = (c == start_col) ? rhs.rowOffset() : 0;
-        const Index max_row = rhs.maxRow(peeled_k, c);
+        const StorageIndex start_row = (c == start_col) ? rhs.rowOffset() : 0;
+        const StorageIndex max_row = rhs.maxRow(peeled_k, c);
         const bool pad_col = lm.padCol(c);
 
         // We can squeeze reads for all rows in [start_row, max_row) range.
-        if (squeeze_reads && !pad_col && !lm.padRow(start_row) &&
-            !lm.padRow(max_row - 1)) {
-          const Index start_depth = (c == start_col) ? rhs.depthOffset() : 0;
+        if (!pad_col && !lm.padAnyRow(start_row, max_row - 1)) {
+          const StorageIndex start_depth =
+              (c == start_col) ? rhs.depthOffset() : 0;
 
-          // Upper bound on the number of elements in the depth dimension that
-          // we can squeeze read.
-          const Index squeeze_length =
-              (max_row - start_row) * rhs.patchDepth() - start_depth;
+          const StorageIndex max_depth =
+              std::min<StorageIndex>(start_depth + (peeled_k - k),
+                                     (max_row - start_row) * rhs.patchDepth());
 
-          // Do not overshoot beyond the block size.
-          const Index max_depth =
-              start_depth + std::min<Index>(peeled_k - k, squeeze_length);
+          const StorageIndex base_idx = lm.baseIndex(start_row, c);
 
-          const Index base_idx = lm.baseIndex(start_row, c);
-
-          if (patch_depth_is_multiple_of_packet_size)
+          if (patch_depth_is_multiple_of_packet_size) {
+            // If patch depth is a multiple of packet size, it's guaranteed that
+            // we can process all values in depth dimension with packets.
             eigen_assert((max_depth - start_depth) % packet_size == 0);
+            StorageIndex d = start_depth;
 
-          // If patch depth is a multiple of packet size, it's guaranteed that
-          // we can process all values in depth dimension with packets.
-          const Index max_vectorized_depth =
-              patch_depth_is_multiple_of_packet_size ? max_depth
-                                                     : max_depth - packet_size;
+            for (; d < max_depth; d += packet_size) {
+              eigen_assert(k < peeled_k);
+              internal::pstoreu(block, rhs.packetNoPadding(d, base_idx));
+              block += packet_size;
+              k += packet_size;
+            }
 
-          Index d = start_depth;
+          } else {
+            StorageIndex d = start_depth;
+            const StorageIndex vectorized_depth = max_depth - packet_size;
 
-          // 1. Process depth dimension with vectorized instructions.
-          for (; d < max_vectorized_depth; d += packet_size) {
-            eigen_assert(k < peeled_k);
-            internal::pstoreu(block, rhs.packetNoPadding(d, base_idx));
-            block += packet_size;
-            k += packet_size;
-          }
-
-          // 2. Finish with coefficients.
-          if (!patch_depth_is_multiple_of_packet_size) {
+            for (; d <= vectorized_depth; d += packet_size) {
+              eigen_assert(k < peeled_k);
+              internal::pstoreu(block, rhs.packetNoPadding(d, base_idx));
+              block += packet_size;
+              k += packet_size;
+            }
             for (; d < max_depth; d++) {
               eigen_assert(k < peeled_k);
               *block = rhs.coeffNoPadding(d, base_idx);
@@ -1437,39 +1447,43 @@ struct mkldnn_gemm_pack<
 
         // If we are not allowed to squeeze reads along the `row` and `depth`
         // dimensions, we must process rows one by one.
-        for (Index r = start_row; r < max_row; ++r) {
+        for (StorageIndex r = start_row; r < max_row; ++r) {
           eigen_assert(k <= peeled_k);
 
-          const Index start_depth =
+          const StorageIndex start_depth =
               ((c == start_col) && (r == start_row)) ? rhs.depthOffset() : 0;
-          const Index max_depth = rhs.maxDepth(peeled_k - k, start_depth);
+          const StorageIndex max_depth =
+              rhs.maxDepth(peeled_k - k, start_depth);
 
           const bool pad = pad_col || lm.padRow(r);
-          const Index base_idx = lm.baseIndex(r, c);
+          const StorageIndex base_idx = lm.baseIndex(r, c);
 
-          if (patch_depth_is_multiple_of_packet_size)
+          if (patch_depth_is_multiple_of_packet_size) {
+            // If patch depth is a multiple of packet size, it's guaranteed that
+            // we can process all values in depth dimension with packets.
             eigen_assert((max_depth - start_depth) % packet_size == 0);
+            StorageIndex d = start_depth;
 
-          // If patch depth is a multiple of packet size, it's guaranteed that
-          // we can process all values in depth dimension with packets.
-          const Index max_vectorized_depth =
-              patch_depth_is_multiple_of_packet_size ? max_depth
-                                                     : max_depth - packet_size;
+            for (; d < max_depth; d += packet_size) {
+              eigen_assert(k < peeled_k);
+              const Packet p = pad ? pset1<Packet>(Scalar(0))
+                                   : rhs.packetNoPadding(d, base_idx);
+              internal::pstoreu(block, p);
+              block += packet_size;
+              k += packet_size;
+            }
 
-          Index d = start_depth;
-
-          // 1. Process depth dimension with vectorized instructions.
-          for (; d < max_vectorized_depth; d += packet_size) {
-            eigen_assert(k < peeled_k);
-            const Packet p = pad ? pset1<Packet>(Scalar(0))
-                                 : rhs.packetNoPadding(d, base_idx);
-            internal::pstoreu(block, p);
-            block += packet_size;
-            k += packet_size;
-          }
-
-          // 2. Finish with coefficients.
-          if (!patch_depth_is_multiple_of_packet_size) {
+          } else {
+            const StorageIndex max_vectorized_depth = max_depth - packet_size;
+            StorageIndex d = start_depth;
+            for (; d < max_vectorized_depth; d += packet_size) {
+              eigen_assert(k < peeled_k);
+              const Packet p = pad ? pset1<Packet>(Scalar(0))
+                                   : rhs.packetNoPadding(d, base_idx);
+              internal::pstoreu(block, p);
+              block += packet_size;
+              k += packet_size;
+            }
             for (; d < max_depth; d++) {
               eigen_assert(k < peeled_k);
               *block = pad ? Scalar(0) : rhs.coeffNoPadding(d, base_idx);

@@ -157,6 +157,7 @@ tensorflow/core/kernels/mirror_pad_op_cpu_impl_2.cc
 tensorflow/core/kernels/mirror_pad_op_cpu_impl_3.cc
 tensorflow/core/kernels/mirror_pad_op_cpu_impl_4.cc
 tensorflow/core/kernels/mirror_pad_op_cpu_impl_5.cc
+tensorflow/core/kernels/multinomial_op.cc
 tensorflow/core/kernels/no_op.cc
 tensorflow/core/kernels/non_max_suppression_op.cc
 tensorflow/core/kernels/one_hot_op.cc
@@ -252,6 +253,7 @@ tensorflow/core/kernels/split_op.cc
 tensorflow/core/kernels/split_v_op.cc
 tensorflow/core/kernels/stack.cc
 tensorflow/core/kernels/stack_ops.cc
+tensorflow/core/kernels/stateless_random_ops.cc
 tensorflow/core/kernels/strided_slice_op.cc
 tensorflow/core/kernels/strided_slice_op_inst_0.cc
 tensorflow/core/kernels/strided_slice_op_inst_1.cc

@@ -34,7 +34,8 @@ namespace {
 class FilterDatasetOp : public UnaryDatasetOpKernel {
  public:
   using FilterIteratorPredicate =
-      std::function<Status(IteratorContext*, std::vector<Tensor>, bool*)>;
+      std::function<Status(IteratorContext*, InstantiatedCapturedFunction*,
+                           std::vector<Tensor>, bool*)>;
 
   explicit FilterDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
@@ -55,13 +56,12 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
 
     FilterIteratorPredicate filter_pred;
     if (indices.empty()) {
-      CapturedFunction* raw_captured_func = captured_func.get();
-      filter_pred = [raw_captured_func](IteratorContext* ctx,
-                                        const std::vector<Tensor>& args,
-                                        bool* out_matched) {
+      filter_pred = [](IteratorContext* ctx,
+                       InstantiatedCapturedFunction* inst_captured_func,
+                       const std::vector<Tensor>& args, bool* out_matched) {
         std::vector<Tensor> result;
         TF_RETURN_IF_ERROR(
-            raw_captured_func->RunWithBorrowedArgs(ctx, args, &result));
+            inst_captured_func->RunWithBorrowedArgs(ctx, args, &result));
 
         if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
             result[0].NumElements() != 1) {
@@ -73,6 +73,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       };
     } else {
       filter_pred = [indices](IteratorContext* ctx,
+                              InstantiatedCapturedFunction* inst_captured_func,
                               const std::vector<Tensor>& args,
                               bool* out_matched) {
         const Tensor& predicate = args[indices[0]];
@@ -169,7 +170,8 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -197,7 +199,8 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
 
-          TF_RETURN_IF_ERROR(filter_pred_(ctx, *out_tensors, &matched));
+          TF_RETURN_IF_ERROR(filter_pred_(
+              ctx, instantiated_captured_func_.get(), *out_tensors, &matched));
           if (!matched) {
             // Clear the output tensor list since it didn't match.
             out_tensors->clear();
@@ -274,6 +277,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       int64 dropped_elements_ GUARDED_BY(mu_);
       const FilterIteratorPredicate filter_pred_;
       string prefix_end_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;

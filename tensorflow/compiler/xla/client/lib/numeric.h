@@ -22,9 +22,6 @@ limitations under the License.
 
 namespace xla {
 
-// Returns a rank 1 tensor of `type` containing values [0, 1, 2, ...].
-XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size);
-
 // Returns an m x n matrix with 1s on the diagonal elements, zeros everywhere
 // else.
 XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m, int64 n);

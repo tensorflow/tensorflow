@@ -44,11 +44,11 @@ cc_library(
         "png.h",
         "pngconf.h",
     ],
-    includes = ["."],
     copts = select({
         ":windows": ["-DPNG_INTEL_SSE_OPT=1"],
         "//conditions:default": [],
     }),
+    includes = ["."],
     linkopts = select({
         ":windows": [],
         "//conditions:default": ["-lm"],

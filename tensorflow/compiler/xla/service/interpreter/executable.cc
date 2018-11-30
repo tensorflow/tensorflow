@@ -37,7 +37,7 @@ namespace xla {
 namespace interpreter {
 
 InterpreterExecutable::InterpreterExecutable(
-    std::unique_ptr<const HloModule> hlo_module,
+    std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<HloEvaluator> evaluator)
     : Executable(std::move(hlo_module), /*hlo_profile_printer=*/nullptr,
                  /*hlo_profile_index_map=*/nullptr),

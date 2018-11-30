@@ -32,7 +32,7 @@ from tensorflow.python.training import saver
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.VocabInfo")
+@tf_export(v1=["train.VocabInfo"])
 class VocabInfo(
     collections.namedtuple("VocabInfo", [
         "new_vocab",
@@ -248,7 +248,7 @@ def _warm_start_var_with_vocab(var,
     prev_tensor_name = _infer_var_name(var)
 
   # TODO(eddz): Fix functionality for rank-1 Variables (like FC biases).
-  total_v_first_axis = sum([v.get_shape().as_list()[0] for v in var])
+  total_v_first_axis = sum(v.get_shape().as_list()[0] for v in var)
   for v in var:
     v_shape = v.get_shape().as_list()
     slice_info = v._get_save_slice_info()
@@ -333,12 +333,12 @@ def _get_grouped_variables(vars_to_warm_start):
         ops.GraphKeys.TRAINABLE_VARIABLES,
         scope=vars_to_warm_start)
   elif isinstance(vars_to_warm_start, list):
-    if all([isinstance(v, str) for v in vars_to_warm_start]):
+    if all(isinstance(v, str) for v in vars_to_warm_start):
       list_of_vars = []
       for v in vars_to_warm_start:
         list_of_vars += ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
                                            scope=v)
-    elif all([checkpoint_utils._is_variable(v) for v in vars_to_warm_start]):  # pylint: disable=protected-access
+    elif all(checkpoint_utils._is_variable(v) for v in vars_to_warm_start):  # pylint: disable=protected-access
       list_of_vars = vars_to_warm_start
     else:
       raise ValueError("If `vars_to_warm_start` is a list, it must be all "

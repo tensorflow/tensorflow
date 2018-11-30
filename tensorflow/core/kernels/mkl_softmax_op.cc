@@ -88,6 +88,7 @@ class MklSoftmaxOp : public OpKernel {
       // n = batch, c = channels, t = sequence lenght, h = height,
       // w = width, d = depth
 
+
       switch (input_dims) {
         case 1:
           layout_type = memory::format::x;

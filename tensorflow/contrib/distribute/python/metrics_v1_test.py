@@ -72,14 +72,14 @@ def _regression_dataset_fn():
       "predictions": [1., .75, .25, 0.]}).repeat()
 
 
-# TODO(priyag): Add TPU Strategy to this once metrics aggregate correctly using
-# ReplicaLocalVariables on TPUs. Submit http://cl/208914352.
 def all_combinations():
   return combinations.combine(
       distribution=[combinations.default_strategy,
                     combinations.one_device_strategy,
                     combinations.mirrored_strategy_with_gpu_and_cpu,
-                    combinations.mirrored_strategy_with_two_gpus],
+                    combinations.mirrored_strategy_with_two_gpus,
+                    combinations.core_mirrored_strategy_with_gpu_and_cpu,
+                    combinations.core_mirrored_strategy_with_two_gpus],
       mode=["graph"])
 
 
@@ -100,18 +100,19 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
       if isinstance(distribution, tpu_strategy.TPUStrategy):
         def step_fn(ctx, inputs):
           value, update = distribution.call_for_each_replica(
-              metric_fn, args=[inputs])
+              metric_fn, args=inputs)
           ctx.set_non_tensor_output(name="value", output=value)
           return distribution.group(update)
 
         ctx = distribution.run_steps_on_dataset(
-            step_fn, iterator, iterations=distribution.steps_per_run)
+            step_fn, iterator, iterations=distribution.extended.steps_per_run)
         update = ctx.run_op
         value = ctx.non_tensor_outputs["value"]
         # In each run, we run multiple steps, and each steps consumes as many
         # batches as number of replicas.
         batches_per_update = (
-            distribution.num_replicas_in_sync * distribution.steps_per_run)
+            distribution.num_replicas_in_sync *
+            distribution.extended.steps_per_run)
       else:
         value, update = distribution.call_for_each_replica(
             metric_fn, iterator.get_next())

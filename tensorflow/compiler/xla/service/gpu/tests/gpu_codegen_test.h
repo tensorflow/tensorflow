@@ -26,7 +26,7 @@ namespace gpu {
 // Tests that verify IR or PTX emitted by the GPU backend is as expected.
 class GpuCodegenTest : public LlvmIrGenTestBase {
  protected:
-  // Like HloTestBase::CreateNewUnverifiedModule(), with a flag for configuring
+  // Like HloTestBase::CreateNewVerifiedModule(), with a flag for configuring
   // the ftz option.
   std::unique_ptr<HloModule> CreateNewUnverifiedModuleWithFTZ(bool ftz);
 

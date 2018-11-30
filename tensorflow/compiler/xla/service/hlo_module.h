@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -103,11 +104,7 @@ class HloModule {
                                        HloCloneContext* context = nullptr);
 
   // Return a pointer to the entry computation of the module.
-  const HloComputation* entry_computation() const {
-    CHECK_NE(nullptr, entry_computation_);
-    return entry_computation_;
-  }
-  HloComputation* entry_computation() {
+  HloComputation* entry_computation() const {
     CHECK_NE(nullptr, entry_computation_);
     return entry_computation_;
   }
@@ -134,6 +131,12 @@ class HloModule {
   const ComputationLayout& entry_computation_layout() const {
     return config_.entry_computation_layout();
   }
+
+  // Generates a hash value of an HLO module. Hash considers
+  // information on opcode, shape, operands, and typically a root instruction.
+  // This function returns the same hash value for equivalent HLO modules,
+  // with respect to HloInstruction::Identical() method.
+  uint64 Hash() const { return entry_computation()->Hash(); }
 
   // Gets the computations in this module.
   //
@@ -232,6 +235,16 @@ class HloModule {
     return input_output_alias_config_;
   }
 
+  // DynamicParameterBinding holds the list of bindings that indicates which
+  // parameter dimensions are dynamic and which parameters represent their
+  // runtime value.
+  DynamicParameterBinding& dynamic_parameter_binding() {
+    return dynamic_parameter_binding_;
+  }
+  const DynamicParameterBinding& dynamic_parameter_binding() const {
+    return dynamic_parameter_binding_;
+  }
+
   // Returns an id that is unique to this module across all modules created over
   // the lifetime of this process.
   int unique_id() const { return unique_id_; }
@@ -285,6 +298,9 @@ class HloModule {
   // alias_config indicates the alias information of input/output buffers that
   // are expected from the module.
   HloInputOutputAliasConfig input_output_alias_config_;
+
+  // Bindings for dynamic parameter mapping.
+  DynamicParameterBinding dynamic_parameter_binding_;
 };
 
 }  // namespace xla

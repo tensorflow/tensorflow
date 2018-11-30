@@ -580,7 +580,7 @@ TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
   //   ...
   // where each of the (pi * pj)'s is represented as a fusion node so that
   // multi-output fusion will pay attention to it.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder b(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {10, 100});
 

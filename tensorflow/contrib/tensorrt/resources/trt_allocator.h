@@ -22,7 +22,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
+#include "tensorrt/NvInfer.h"
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
 

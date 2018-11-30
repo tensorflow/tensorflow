@@ -38,7 +38,7 @@ class InterpreterTest : public ::testing::Test {
   }
 
  protected:
-  TfLiteContext* GetInterpreterContext() { return &interpreter_.context_; }
+  TfLiteContext* GetInterpreterContext() { return interpreter_.context_; }
 
   Interpreter interpreter_;
 };
@@ -1099,8 +1099,8 @@ class TestDelegate : public ::testing::Test {
       };
       delegate_.CopyFromBufferHandle =
           [](TfLiteContext* context, TfLiteDelegate* delegate,
-             TfLiteBufferHandle buffer_handle, void* data,
-             size_t size) -> TfLiteStatus {
+             TfLiteBufferHandle buffer_handle,
+             TfLiteTensor* output) -> TfLiteStatus {
         // TODO(ycling): Implement tests to test buffer copying logic.
         return kTfLiteOk;
       };

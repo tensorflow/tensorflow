@@ -35,6 +35,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
@@ -58,10 +59,10 @@ def _map_nested(data, func):
 def _nested_all(data, cond_func):
   """Checks if all elements in a nested structure satisfy cond_func."""
   if isinstance(data, (tuple, list)):
-    return all([_nested_all(nested_data, cond_func) for nested_data in data])
+    return all(_nested_all(nested_data, cond_func) for nested_data in data)
   elif isinstance(data, dict):
     return all(
-        [_nested_all(nested_data, cond_func) for nested_data in data.values()])
+        _nested_all(nested_data, cond_func) for nested_data in data.values())
   else:
     return cond_func(data)
 
@@ -69,7 +70,7 @@ def _nested_all(data, cond_func):
 def _nested_any(data, cond_func):
   """Checks if any nested_elements in a nested structure satisfy cond_func."""
   if isinstance(data, (tuple, list)):
-    return any([_nested_any(nested_data, cond_func) for nested_data in data])
+    return any(_nested_any(nested_data, cond_func) for nested_data in data)
   elif isinstance(data, dict):
     return any(
         [_nested_any(nested_data, cond_func) for nested_data in data.values()])
@@ -138,6 +139,9 @@ def convert_to_iterator(x=None,
 
   """
   if isinstance(x, iterator_ops.EagerIterator):
+    if steps_per_epoch is None:
+      raise ValueError('You must specify the number of steps (number of batches'
+                       ' to draw from the iterator).')
     return x, steps_per_epoch
 
   if not _nested_any(sample_weights, lambda x: x is None):
@@ -152,7 +156,7 @@ def convert_to_iterator(x=None,
   data = _convert_lists_to_tuples(data)
   if steps_per_epoch is None and batch_size is not None:
     num_samples = _get_batch_axis_size(data)
-    steps_per_epoch = int(math.ceil(num_samples / batch_size))
+    steps_per_epoch = int(math.ceil(num_samples / int(batch_size)))
 
   if steps_per_epoch is None:
     alternative_arg_name = (
@@ -224,9 +228,9 @@ def standardize_single_array(x):
     return None
   if x.shape is not None and len(x.shape) == 1:
     if tensor_util.is_tensor(x):
-      return array_ops.expand_dims(x, axis=1)
+      x = array_ops.expand_dims(x, axis=1)
     else:
-      return np.expand_dims(x, 1)
+      x = np.expand_dims(x, 1)
   return x
 
 
@@ -629,15 +633,14 @@ def weighted_masked_objective(fn):
         weights = mask
       else:
         # Update dimensions of weights to match with mask if possible.
-        mask, _, weights = metrics_module.squeeze_or_expand_dimensions(
-            mask, None, weights)
+        mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
         weights *= mask
 
     # Apply sample weighting.
     if weights is not None:
 
       # Update dimensions of weights to match with values if possible.
-      score_array, _, weights = metrics_module.squeeze_or_expand_dimensions(
+      score_array, _, weights = squeeze_or_expand_dimensions(
           score_array, None, weights)
       try:
         # Broadcast weights if possible.
@@ -651,7 +654,7 @@ def weighted_masked_objective(fn):
       score_array = math_ops.multiply(score_array, weights)
       score_array = math_ops.reduce_sum(score_array)
       weights = math_ops.reduce_sum(weights)
-      score_array = metrics_module.safe_div(score_array, weights)
+      score_array = math_ops.div_no_nan(score_array, weights)
     return K.mean(score_array)
 
   return weighted
@@ -835,10 +838,20 @@ def call_metric_function(metric_fn, y_true, y_pred, weights=None, mask=None):
     return metric_fn(y_true, y_pred, sample_weight=mask)
 
   # Update dimensions of weights to match with mask.
-  mask, _, weights = metrics_module.squeeze_or_expand_dimensions(
-      mask, None, weights)
+  mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
   weights *= mask
   return metric_fn(y_true, y_pred, sample_weight=weights)
+
+
+def get_loss_function(loss):
+  """Returns the loss function corresponding to the given loss input."""
+  if loss is None or isinstance(loss, losses.Loss):
+    return loss
+
+  # TODO(psv): After we have added all V2 losses, update this function.
+  if loss in ['mse', 'MSE', 'mean_squared_error']:
+    return losses.MeanSquaredError()
+  return losses.get(loss)
 
 
 def validate_iterator_input(x, y, sample_weight, validation_split=None):
@@ -1053,9 +1066,11 @@ class ModelInputs(object):
     self._inputs = inputs
     self._is_dict = isinstance(self._inputs, dict)
     self._is_single_input = not isinstance(self._inputs, (list, tuple, dict))
+
     self._flattened_inputs = []
     self._input_names = []
-    if isinstance(self._inputs, dict):
+
+    if self._is_dict:
       for k in sorted(self._inputs.keys()):
         self._flattened_inputs.append(self._inputs[k])
         self._input_names.append(k)
@@ -1064,7 +1079,6 @@ class ModelInputs(object):
       self._input_names = [
           'input_%d' % (i + 1) for i in range(len(self._flattened_inputs))
       ]
-    assert len(self._input_names) == len(self._flattened_inputs)
 
   def get_input_names(self):
     """Returns keys to name inputs by.
@@ -1074,56 +1088,29 @@ class ModelInputs(object):
     """
     return self._input_names
 
-  def _get(self, return_single_as_list=False):
-    """Returns provided inputs, potentially transformed.
-
-    Inputs are returned in the same format they were provided i.e. lists
-    are returned as lists, single entries as single entries (unless
-    `return_single_as_list` is true), dictionaries as dictionaries.
-
-    Args:
-      return_single_as_list: Returns a list of size 1 for single entry case.
-    """
-    if self._is_dict:
-      return dict(zip(self._input_names, self._flattened_inputs))
-    if self._is_single_input and not return_single_as_list:
-      return self._flattened_inputs[0]
-    return self._flattened_inputs
-
-  def get_input_values(self):
-    """Returns input values passed in."""
-    if context.executing_eagerly():
-      for i in range(len(self._flattened_inputs)):
-        v = self._flattened_inputs[i]
-        if tensor_util.is_tensor(v):
-          v = cast_single_tensor(v)
-        else:
-          v = ops.convert_to_tensor(v, dtype=K.floatx())
-        self._flattened_inputs[i] = v
-    return self._get(return_single_as_list=False)
-
   def get_symbolic_inputs(self, return_single_as_list=False):
     """Returns inputs to be set as self.inputs for a model."""
     for i in range(len(self._flattened_inputs)):
       k = self._input_names[i]
       v = self._flattened_inputs[i]
-      if context.executing_eagerly():
-        v = K.placeholder((None,) + tuple(v.shape[1:]), name=k)
-      else:
-        if isinstance(v, list):
-          v = np.asarray(v)
-          if v.ndim == 1:
-            v = np.expand_dims(v, 1)
-        if isinstance(v, (np.ndarray)):
-          # We fix the placeholder shape except the batch size.
-          # This is suboptimal, but it is the best we can do with the info
-          # we have. The user should call `model._set_inputs(placeholders)`
-          # to specify custom placeholders if the need arises.
-          shape = (None,) + v.shape[1:]
-          v = K.placeholder(shape=shape, name=k)
+      if isinstance(v, (list, float, int)):
+        v = np.asarray(v)
+        if v.ndim == 1:
+          v = np.expand_dims(v, 1)
+      if isinstance(v, (np.ndarray, ops.EagerTensor)):
+        # We fix the placeholder shape except the batch size.
+        # This is suboptimal, but it is the best we can do with the info
+        # we have. The user should call `model._set_inputs(placeholders)`
+        # to specify custom placeholders if the need arises.
+        shape = (None,) + tuple(v.shape[1:])
+        v = K.placeholder(shape=shape, name=k)
       self._flattened_inputs[i] = v
 
-    return self._get(return_single_as_list)
+    if self._is_dict:
+      return dict(zip(self._input_names, self._flattened_inputs))
+    if self._is_single_input and not return_single_as_list:
+      return self._flattened_inputs[0]
+    return self._flattened_inputs
 
   def as_dict(self):
     """An iterable over a dictionary version of inputs."""

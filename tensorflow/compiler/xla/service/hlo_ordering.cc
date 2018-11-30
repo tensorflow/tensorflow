@@ -356,8 +356,7 @@ void SequentialHloOrdering::Initialize() {
   // Create a map from instruction to its order position.
   TF_DCHECK_OK(schedule_.Verify());
   for (const auto& computation_sequence : schedule_.sequences()) {
-    const std::vector<const HloInstruction*>& order =
-        computation_sequence.second.instructions();
+    const auto& order = computation_sequence.second.instructions();
     for (int i = 0; i < order.size(); ++i) {
       InsertOrDie(&order_position_, order[i], i);
     }

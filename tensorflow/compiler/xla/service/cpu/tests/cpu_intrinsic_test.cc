@@ -91,7 +91,7 @@ TEST_P(CpuUnaryIntrinsicTest, DoIt) {
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
 
-  auto hlo_module = CreateNewUnverifiedModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   string check_lines{spec.check_lines.data(), spec.check_lines.size()};

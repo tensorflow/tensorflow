@@ -622,18 +622,6 @@ REGISTER_OP("TextLineDataset")
       return shape_inference::ScalarShape(c);
     });
 
-REGISTER_OP("MatchingFilesDataset")
-    .Input("patterns: string")
-    .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      shape_inference::ShapeHandle unused;
-      // `patterns` must be a scalar or a vector.
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
-      return shape_inference::ScalarShape(c);
-    });
-
 REGISTER_OP("SqlDataset")
     .Input("driver_name: string")
     .Input("data_source_name: string")

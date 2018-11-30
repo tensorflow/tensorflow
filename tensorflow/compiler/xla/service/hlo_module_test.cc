@@ -63,7 +63,7 @@ class HloModuleTest : public HloTestBase {
 
 TEST_F(HloModuleTest, OneComputationPostOrder) {
   // Create a module with a single computation.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(CreateConstantComputation());
 
   EXPECT_THAT(module->MakeComputationPostOrder(),
@@ -72,7 +72,7 @@ TEST_F(HloModuleTest, OneComputationPostOrder) {
 
 TEST_F(HloModuleTest, TwoComputationsPostOrder) {
   // Create a module with two unconnected computations.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation1 = module->AddEntryComputation(CreateConstantComputation());
   auto computation2 =
       module->AddEmbeddedComputation(CreateConstantComputation());
@@ -88,7 +88,7 @@ TEST_F(HloModuleTest, TwoComputationsPostOrder) {
 
 TEST_F(HloModuleTest, CloneTest) {
   // Create and copy a module with a diamond call graph of computations.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation1 =
       module->AddEmbeddedComputation(CreateConstantComputation());
   auto computation2 =
@@ -111,7 +111,7 @@ TEST_F(HloModuleTest, CloneTest) {
 }
 
 TEST_F(HloModuleTest, CloneHasFusion) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
 
   // Create the fused computation.
   HloComputation* fused_computation;
@@ -154,7 +154,7 @@ TEST_F(HloModuleTest, CloneHasFusion) {
 
 TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
   // Create a module with a diamond call graph of computations.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation1 =
       module->AddEmbeddedComputation(CreateConstantComputation());
   auto computation2 =
@@ -174,7 +174,7 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
 
 TEST_F(HloModuleTest, LargeConstantToString) {
   // Create a module with a single computation.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder("Constant");
   std::vector<float> values(16, 42.0);
   builder.AddInstruction(
@@ -194,8 +194,8 @@ TEST_F(HloModuleTest, LargeConstantToString) {
 }
 
 TEST_F(HloModuleTest, UniqueModuleId) {
-  auto module_a = CreateNewUnverifiedModule();
-  auto module_b = CreateNewUnverifiedModule();
+  auto module_a = CreateNewVerifiedModule();
+  auto module_b = CreateNewVerifiedModule();
   EXPECT_NE(module_a->unique_id(), module_b->unique_id());
 }
 

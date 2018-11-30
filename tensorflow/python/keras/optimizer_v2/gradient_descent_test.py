@@ -47,7 +47,6 @@ class GradientDescentOptimizerTest(test.TestCase):
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         sgd = gradient_descent.SGD(3.0)
-        # self.assertFalse(sgd._initial_decay)
         sgd_op = sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
         self.evaluate(variables.global_variables_initializer())
         # Run 1 step of sgd
@@ -57,6 +56,43 @@ class GradientDescentOptimizerTest(test.TestCase):
                                            self.evaluate(var0))
         self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
                                            self.evaluate(var1))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBasicWithLearningRateDecay(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
+        grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
+        learning_rate = 3.0
+        decay = 0.5
+        sgd = gradient_descent.SGD(learning_rate=learning_rate, decay=decay)
+        if not context.executing_eagerly():
+          sgd_op = sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        self.evaluate(variables.global_variables_initializer())
+        # Run 2 steps of sgd
+        if not context.executing_eagerly():
+          self.evaluate(sgd_op)
+        else:
+          sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        # Validate updated params
+        self.assertAllCloseAccordingToType([1.0 - 3.0 * 0.1, 2.0 - 3.0 * 0.1],
+                                           self.evaluate(var0))
+        self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
+                                           self.evaluate(var1))
+
+        if not context.executing_eagerly():
+          self.evaluate(sgd_op)
+        else:
+          sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        # Validate updated params
+        self.assertAllCloseAccordingToType(
+            [1.0 - 3.0 * 0.1 - 2.0 * 0.1, 2.0 - 3.0 * 0.1 - 2.0 * 0.1],
+            self.evaluate(var0))
+        self.assertAllCloseAccordingToType(
+            [3.0 - 3.0 * 0.01 - 2.0 * 0.01, 4.0 - 3.0 * 0.01 - 2.0 * 0.01],
+            self.evaluate(var1))
 
   @test_util.run_in_graph_and_eager_modes
   def testBasicCallableParams(self):
@@ -98,6 +134,7 @@ class GradientDescentOptimizerTest(test.TestCase):
                                            self.evaluate(var0))
         self.assertAllCloseAccordingToType([3.0 - 1.0], self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -137,6 +174,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
                                            self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testGradWrtRef(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -169,6 +207,37 @@ class GradientDescentOptimizerTest(test.TestCase):
                                            self.evaluate(var0))
         self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
                                            self.evaluate(var1))
+
+  @test_util.run_deprecated_v1
+  def testSparseBasicWithLearningRateDecay(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
+        var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
+        grads0 = ops.IndexedSlices(
+            constant_op.constant([0.1], shape=[1, 1], dtype=dtype),
+            constant_op.constant([0]), constant_op.constant([2, 1]))
+        grads1 = ops.IndexedSlices(
+            constant_op.constant([0.01], shape=[1, 1], dtype=dtype),
+            constant_op.constant([1]), constant_op.constant([2, 1]))
+        sgd_op = gradient_descent.SGD(
+            3.0, decay=0.5).apply_gradients(
+                zip([grads0, grads1], [var0, var1]))
+        self.evaluate(variables.global_variables_initializer())
+        # Run 2 steps of sgd
+        self.evaluate(sgd_op)
+        # Validate updated params
+        self.assertAllCloseAccordingToType([[1.0 - 3.0 * 0.1], [2.0]],
+                                           self.evaluate(var0))
+        self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
+                                           self.evaluate(var1))
+
+        self.evaluate(sgd_op)
+        # Validate updated params
+        self.assertAllCloseAccordingToType(
+            [[1.0 - 3.0 * 0.1 - 2.0 * 0.1], [2.0]], self.evaluate(var0))
+        self.assertAllCloseAccordingToType(
+            [[3.0], [4.0 - 3.0 * 0.01 - 2.0 * 0.01]], self.evaluate(var1))
 
   def testCapturingInDefunWhileExecutingEagerly(self):
     with context.eager_mode():
@@ -265,6 +334,7 @@ class MomentumOptimizerTest(test.TestCase):
                 3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
             ]), self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -289,9 +359,10 @@ class MomentumOptimizerTest(test.TestCase):
               var0_np, accum0_np, var0_np * 10, 2.0, 0.9)
           var1_np, accum1_np = self._update_nesterov_momentum_numpy(
               var1_np, accum1_np, 3, 2.0, 0.9)
-          self.assertAllClose(var0_np, var0.eval())
-          self.assertAllClose(var1_np, var1.eval())
+          self.assertAllClose(var0_np, self.evaluate(var0))
+          self.assertAllClose(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSparseNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -329,10 +400,11 @@ class MomentumOptimizerTest(test.TestCase):
               var0_np, accum0_np, var0_np * 10, 2.0, 0.9)
           var1_np, accum1_np = self._update_nesterov_momentum_numpy(
               var1_np, accum1_np, 3, 2.0, 0.9)
-          self.assertAllClose(var0_np, var0.eval())
-          self.assertAllClose(var1_np, var1.eval())
+          self.assertAllClose(var0_np, self.evaluate(var0))
+          self.assertAllClose(var1_np, self.evaluate(var1))
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       # This test invokes the ResourceSparseApplyMomentum operation, which
@@ -386,6 +458,7 @@ class MomentumOptimizerTest(test.TestCase):
     self.evaluate(sgd_op)
     self.assertAllCloseAccordingToType([[1, 1], [0, 0]], self.evaluate(var0))
 
+  @test_util.run_deprecated_v1
   def testTensorLearningRateAndMomentum(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -406,38 +479,45 @@ class MomentumOptimizerTest(test.TestCase):
         self.assertEquals(slot1.get_shape(), var1.get_shape())
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Step 1: the momentum accumulators where 0. So we should see a normal
         # update: v -= grad * learning_rate
         mom_update.run()
         # Check that the momentum accumulators have been updated.
-        self.assertAllCloseAccordingToType(np.array([0.1, 0.1]), slot0.eval())
-        self.assertAllCloseAccordingToType(np.array([0.01, 0.01]), slot1.eval())
+        self.assertAllCloseAccordingToType(
+            np.array([0.1, 0.1]), self.evaluate(slot0))
+        self.assertAllCloseAccordingToType(
+            np.array([0.01, 0.01]), self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]), var0.eval())
+            np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]),
+            self.evaluate(var0))
         self.assertAllCloseAccordingToType(
-            np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]), var1.eval())
+            np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]),
+            self.evaluate(var1))
         # Step 2: the momentum accumulators contain the previous update.
         mom_update.run()
         # Check that the momentum accumulators have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]), slot0.eval())
+            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+            self.evaluate(slot0))
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]), slot1.eval())
+            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
+            self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
             np.array([
                 1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
                 2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)
-            ]), var0.eval())
+            ]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
             np.array([
                 2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
                 3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
-            ]), var1.eval())
+            ]), self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSparse(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -461,52 +541,59 @@ class MomentumOptimizerTest(test.TestCase):
         self.assertEquals(slot1.get_shape(), var1.get_shape())
 
         # Fetch params to validate initial values
-        self.assertAllClose([0, 0], var0.eval()[0])
-        self.assertAllClose([0, 0], var0.eval()[1])
-        self.assertAllClose([1, 1], var1.eval()[2])
+        self.assertAllClose([0, 0], self.evaluate(var0)[0])
+        self.assertAllClose([0, 0], self.evaluate(var0)[1])
+        self.assertAllClose([1, 1], self.evaluate(var1)[2])
 
         # Step 1: the momentum accumulators are 0. So we should see a normal
         # update: v -= grad * learning_rate
         mom_update.run()
         # Check that the momentum accumulators have been updated.
-        self.assertAllCloseAccordingToType(np.array([0, 0]), slot0.eval()[0])
-        self.assertAllCloseAccordingToType(np.array([.1, .1]), slot0.eval()[1])
+        self.assertAllCloseAccordingToType(
+            np.array([0, 0]),
+            self.evaluate(slot0)[0])
+        self.assertAllCloseAccordingToType(
+            np.array([.1, .1]),
+            self.evaluate(slot0)[1])
         self.assertAllCloseAccordingToType(
             np.array([.01, .01]),
-            slot1.eval()[2])
+            self.evaluate(slot1)[2])
         # Check that the parameters have been updated.
-        self.assertAllCloseAccordingToType(np.array([0, 0]), var0.eval()[0])
+        self.assertAllCloseAccordingToType(
+            np.array([0, 0]),
+            self.evaluate(var0)[0])
         self.assertAllCloseAccordingToType(
             np.array([-(0.1 * 2.0), -(0.1 * 2.0)]),
-            var0.eval()[1])
+            self.evaluate(var0)[1])
         self.assertAllCloseAccordingToType(
             np.array([1.0 - (0.01 * 2.0), 1.0 - (0.01 * 2.0)]),
-            var1.eval()[2])
+            self.evaluate(var1)[2])
         # Step 2: the momentum accumulators contain the previous update.
         mom_update.run()
         # Check that the momentum accumulators have been updated.
-        self.assertAllClose(np.array([0, 0]), slot0.eval()[0])
+        self.assertAllClose(np.array([0, 0]), self.evaluate(slot0)[0])
         self.assertAllCloseAccordingToType(
             np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
-            slot0.eval()[1])
+            self.evaluate(slot0)[1])
         self.assertAllCloseAccordingToType(
             np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
-            slot1.eval()[2])
+            self.evaluate(slot1)[2])
         # Check that the parameters have been updated.
-        self.assertAllClose(np.array([0, 0]), var0.eval()[0])
+        self.assertAllClose(np.array([0, 0]), self.evaluate(var0)[0])
         self.assertAllCloseAccordingToType(
             np.array([
                 -(0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
                 -(0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)
             ]),
-            var0.eval()[1])
+            self.evaluate(var0)[1])
         self.assertAllCloseAccordingToType(
             np.array([
                 0.98 - ((0.9 * 0.01 + 0.01) * 2.0),
                 0.98 - ((0.9 * 0.01 + 0.01) * 2.0)
             ]),
-            var1.eval()[2])
+            self.evaluate(var1)[2])
 
+  @test_util.run_deprecated_v1
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -527,37 +614,43 @@ class MomentumOptimizerTest(test.TestCase):
         self.assertEquals(slot1.get_shape(), var1.get_shape())
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Step 1: the momentum accumulators where 0. So we should see a normal
         # update: v -= grad * learning_rate
         mom_update1.run()
         # Check that the momentum accumulators have been updated.
-        self.assertAllCloseAccordingToType(np.array([0.1, 0.1]), slot0.eval())
-        self.assertAllCloseAccordingToType(np.array([0.01, 0.01]), slot1.eval())
+        self.assertAllCloseAccordingToType(
+            np.array([0.1, 0.1]), self.evaluate(slot0))
+        self.assertAllCloseAccordingToType(
+            np.array([0.01, 0.01]), self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]), var0.eval())
+            np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]),
+            self.evaluate(var0))
         self.assertAllCloseAccordingToType(
-            np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]), var1.eval())
+            np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]),
+            self.evaluate(var1))
         # Step 2: the second momentum accumulators contain the previous update.
         mom_update2.run()
         # Check that the momentum accumulators have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]), slot0.eval())
+            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+            self.evaluate(slot0))
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]), slot1.eval())
+            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
+            self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
             np.array([
                 1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
                 2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)
-            ]), var0.eval())
+            ]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
             np.array([
                 2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
                 3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
-            ]), var1.eval())
+            ]), self.evaluate(var1))
 
   @test_util.run_in_graph_and_eager_modes
   def testConfig(self):
