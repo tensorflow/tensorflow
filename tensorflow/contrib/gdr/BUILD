@@ -58,7 +58,7 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "gdr_worker",
     srcs = ["gdr_worker.cc"],
     hdrs = ["gdr_worker.h"],
