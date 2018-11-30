@@ -21,6 +21,7 @@ limitations under the License.
 #include <deque>
 #include <map>
 #include <memory>
+#include <queue>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -578,7 +579,7 @@ bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
 
   // Show the subcomputation if we're showing any of its members.
   return std::any_of(
-      computation_->instructions().begin(), computation_->instructions().end(),
+      subcomp->instructions().begin(), subcomp->instructions().end(),
       [&](const HloInstruction* instr) { return filter_.Show(instr); });
 }
 
@@ -1298,7 +1299,8 @@ namespace {
 
 // Gets a NodeFilter that includes roughly all instructions whose distance from
 // root is <= radius.
-NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
+NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
+                                      int64 radius) {
   // First, find the neighborhood of nodes with distance from root <= radius.
   // These nodes are our initial set of "normal" nodes.
   std::unordered_map<const HloInstruction*, NodeFilterResult> nodes;
@@ -1405,6 +1407,56 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
   });
 }
 
+// Gets a node filter that includes nodes on all paths from `from` to `to`.  If
+// the all-paths set contains more than max_nodes elements, includes the nodes
+// on the shortest paths and sets hit_limit to true.
+NodeFilter MakeNodeFromToFilter(const HloInstruction* from,
+                                const HloInstruction* to, int64 max_nodes,
+                                bool* hit_limit) {
+  *hit_limit = false;
+
+  // Elements in the queue are paths through the graph.
+  std::deque<std::vector<const HloInstruction*>> queue;
+  queue.push_front({from});
+
+  // Compute the set of nodes we want to show using a slightly-modified
+  // Djikstra's algorithm.  The only real difference is, rather than stopping
+  // when we find a (shortest) path, we continue until we've found max_nodes
+  // nodes on some path.
+  std::unordered_set<const HloInstruction*> visited;
+  std::unordered_set<const HloInstruction*> to_display = {from, to};
+  while (!queue.empty() && to_display.size() < max_nodes) {
+    std::vector<const HloInstruction*> path = std::move(queue.front());
+    queue.pop_front();
+    if (!visited.insert(path.back()).second) {
+      continue;
+    }
+
+    for (const auto* user : path.back()->users()) {
+      if (user == to) {
+        auto it = path.begin();
+        for (; it != path.end() && to_display.size() < max_nodes; ++it) {
+          to_display.insert(*it);
+        }
+        if (it != path.end()) {
+          *hit_limit = true;
+        }
+      } else if (!visited.count(user)) {
+        auto new_path = path;
+        new_path.push_back(user);
+        queue.push_back(std::move(new_path));
+      }
+    }
+  }
+
+  return NodeFilter([=](const HloInstruction* instr) {
+    if (instr == from || instr == to) {
+      return kHighlightNode;
+    }
+    return to_display.count(instr) ? kNormalNode : kHideNode;
+  });
+}
+
 string SaveGraph(const string& graph,
                  GraphRendererInterface::GraphKind graph_kind,
                  const string& dest_path) {
@@ -1484,9 +1536,32 @@ string DumpNeighborhoodAround(const HloInstruction& node, int radius,
   auto debug_options = node.GetModule()->config().debug_options();
   string label =
       StrCat("Neighborhood of ", radius, " nodes around ", node.name());
-  NodeFilter filter = MakeNodeFilter(&node, radius);
+  NodeFilter filter = MakeNodeRadiusAroundFilter(&node, radius);
   string graph =
       HloDotDumper(node.parent(), label, debug_options, show_backend_config,
+                   /*profile=*/nullptr, filter)
+          .Dump();
+  return ExportGraph(graph, GraphRendererInterface::DOT_GRAPH, debug_options);
+}
+
+string DumpAllPathsFromTo(const HloInstruction& from, const HloInstruction& to,
+                          int64 max_nodes, bool show_backend_config) {
+  CHECK_EQ(from.parent(), to.parent()) << "Nodes must be in same computation!";
+  auto debug_options = from.GetModule()->config().debug_options();
+
+  bool hit_limit = false;
+  NodeFilter filter = MakeNodeFromToFilter(&from, &to, max_nodes, &hit_limit);
+  string label;
+  if (!hit_limit) {
+    label = StrCat("All paths from ", from.name(), " to ", to.name());
+  } else {
+    label = StrCat(max_nodes, " nodes on the shortest paths from ", from.name(),
+                   " to ", to.name(),
+                   "<br/><br/>***SHOWING ONLY A SUBSET OF ALL PATHS BETWEEN "
+                   "NODES***<br/><br/>");
+  }
+  string graph =
+      HloDotDumper(from.parent(), label, debug_options, show_backend_config,
                    /*profile=*/nullptr, filter)
           .Dump();
   return ExportGraph(graph, GraphRendererInterface::DOT_GRAPH, debug_options);
