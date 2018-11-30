@@ -60,8 +60,10 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 // A version of SharedValidation (slice_op.h) written for input that is in
 // either Mkl layout or Tensorflow layout.
-// A shared code to validate input shapes and check for identity, which is not dependent on the type of T.
-// We do this to reduce code size by not duplicating all this for all T (float, double, int32, etc.)
+// A shared code to validate input shapes and check for identity, which is not
+// dependent on the type of T.
+// We do this to reduce code size by not duplicating all this for all T (float,
+// double, int32, etc.)
 static void ValidateMklInputs(OpKernelContext* context, bool* is_identity,
                               gtl::InlinedVector<int64, 4>* begin,
                               gtl::InlinedVector<int64, 4>* size) {
@@ -157,13 +159,149 @@ static void CheckCommonCasesForMklInputs(OpKernelContext* context,
   }
 }
 
+// This structure aggregates multiple inputs to Slice methods.
+// Parameters from & to represents memory pointing to reorder.
+// Parameters begin_dims & size_dims represents offset and length
+// passed to view primitive.
+struct MklSliceParams {
+  const memory* from;
+  const memory* to;
+  memory::dims begin_dims;
+  memory::dims size_dims;
+
+  MklSliceParams(const memory* from, const memory* to, memory::dims begin_dims,
+                 memory::dims size_dims)
+      : from(from), to(to), begin_dims(begin_dims), size_dims(size_dims) {}
+};
+
+// This implements the reuse interface of Slice reorders.
+template <typename T>
+class MklSlicePrimitive : public MklPrimitive {
+ public:
+  explicit MklSlicePrimitive(const MklSliceParams& sliceParams) {
+    context_.slice_stream.reset(new stream(stream::kind::eager));
+    Setup(sliceParams);
+  }
+
+  ~MklSlicePrimitive() {}
+
+  void Execute(const MklSliceParams& sliceParams) {
+    context_.src_mem->set_data_handle(sliceParams.from->get_data_handle());
+    context_.dst_mem->set_data_handle(sliceParams.to->get_data_handle());
+    context_.slice_stream->submit(context_.slice_primitives);
+
+    context_.src_mem->set_data_handle(DummyData);
+    context_.dst_mem->set_data_handle(DummyData);
+    return;
+  }
+
+  std::shared_ptr<primitive> GetPrimitive() { return context_.reorder_prim; }
+
+ private:
+  struct SliceContext {
+    std::shared_ptr<mkldnn::memory> src_mem;
+    std::shared_ptr<mkldnn::memory> dst_mem;
+    std::shared_ptr<primitive> reorder_prim;
+    std::shared_ptr<reorder::primitive_desc> reorder_pd;
+    std::shared_ptr<view::primitive_desc> view_pd;
+    std::shared_ptr<mkldnn::stream> slice_stream;
+    std::vector<mkldnn::primitive> slice_primitives;
+    SliceContext()
+        : src_mem(nullptr), dst_mem(nullptr), reorder_prim(nullptr) {}
+  } context_;
+
+  engine cpu_engine_ = engine(engine::cpu, 0);
+
+  void Setup(const MklSliceParams& sliceParams) {
+    context_.src_mem.reset(
+        new memory({sliceParams.from->get_primitive_desc().desc(), cpu_engine_},
+                   DummyData));
+    context_.dst_mem.reset(new memory(
+        {sliceParams.to->get_primitive_desc().desc(), cpu_engine_}, DummyData));
+    auto src_pd = context_.src_mem->get_primitive_desc();
+    auto dst_pd = context_.dst_mem->get_primitive_desc();
+    context_.view_pd =
+        std::make_shared<view::primitive_desc>(view::primitive_desc(
+            src_pd, sliceParams.size_dims, sliceParams.begin_dims));
+    context_.reorder_pd =
+        std::make_shared<reorder::primitive_desc>(reorder::primitive_desc(
+            context_.view_pd->dst_primitive_desc(), dst_pd));
+    context_.reorder_prim = std::make_shared<mkldnn::reorder>(
+        reorder(*context_.reorder_pd, *context_.src_mem, *context_.dst_mem));
+    context_.slice_primitives.push_back(*context_.reorder_prim);
+  }
+};
+
+template <typename T>
+class MklSlicePrimitiveFactory : public MklPrimitiveFactory<T> {
+ public:
+  static MklSlicePrimitive<T>* Get(const MklSliceParams& sliceParams) {
+    auto reorderPrim = static_cast<MklSlicePrimitive<T>*>(
+        MklSlicePrimitiveFactory<T>::GetInstance().GetReorder(sliceParams));
+    if (reorderPrim == nullptr) {
+      reorderPrim = new MklSlicePrimitive<T>(sliceParams);
+      MklSlicePrimitiveFactory<T>::GetInstance().SetReorder(sliceParams,
+                                                            reorderPrim);
+    }
+    return reorderPrim;
+  }
+
+  static MklSlicePrimitiveFactory& GetInstance() {
+    static MklSlicePrimitiveFactory instance_;
+    return instance_;
+  }
+
+ private:
+  MklSlicePrimitiveFactory() {}
+  ~MklSlicePrimitiveFactory() {}
+
+  static string CreateKey(const MklSliceParams& sliceParams) {
+    string prefix = "reorder";
+    FactoryKeyCreator key_creator;
+    auto const& from_desc = sliceParams.from->get_primitive_desc().desc().data;
+    auto const& to_desc = sliceParams.to->get_primitive_desc().desc().data;
+    const int KIdxFirstStride = 0;
+    memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
+    memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
+    memory::dims from_strides(
+        from_desc.layout_desc.blocking.strides[KIdxFirstStride],
+        &from_desc.layout_desc.blocking.strides[KIdxFirstStride]
+                                               [from_desc.ndims]);
+    memory::dims to_strides(
+        to_desc.layout_desc.blocking.strides[KIdxFirstStride],
+        &to_desc.layout_desc.blocking.strides[KIdxFirstStride][to_desc.ndims]);
+    key_creator.AddAsKey(prefix);
+    key_creator.AddAsKey(static_cast<int>(from_desc.format));
+    key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
+    key_creator.AddAsKey(from_dims);
+    key_creator.AddAsKey(from_strides);
+    key_creator.AddAsKey(static_cast<int>(to_desc.format));
+    key_creator.AddAsKey(static_cast<int>(to_desc.data_type));
+    key_creator.AddAsKey(to_dims);
+    key_creator.AddAsKey(to_strides);
+    key_creator.AddAsKey(sliceParams.begin_dims);
+    key_creator.AddAsKey(sliceParams.size_dims);
+    return key_creator.GetKey();
+  }
+
+  MklPrimitive* GetReorder(const MklSliceParams& sliceParams) {
+    string key = CreateKey(sliceParams);
+    return this->GetOp(key);
+  }
+
+  void SetReorder(const MklSliceParams& sliceParams, MklPrimitive* op) {
+    string key = CreateKey(sliceParams);
+    this->SetOp(key, op);
+  }
+};
+
 // MKL-DNN implementation of Slice
 template <typename Device, typename T>
-class MklDnnSliceOp : public OpKernel {
+class MklSliceOp : public OpKernel {
  public:
-  explicit MklDnnSliceOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit MklSliceOp(OpKernelConstruction* context) : OpKernel(context) {}
 
-  ~MklDnnSliceOp() {}
+  ~MklSliceOp() {}
 
   void Compute(OpKernelContext* context) override {
     gtl::InlinedVector<int64, 4> begin;
@@ -179,17 +317,17 @@ class MklDnnSliceOp : public OpKernel {
     if (begin.size() >= 8) {
       OP_REQUIRES(
           context, false,
-          errors::Unimplemented("MklDnnSliceOp : Unhandled input dimensions"));
+          errors::Unimplemented("MklSliceOp : Unhandled input dimensions"));
     }
 
-    ComputeMklDnnSlice(context, begin, size);
+    ComputeMklSlice(context, begin, size);
   }
 
  private:
   // Slice op implemented using MKL-DNN APIs.
-  void ComputeMklDnnSlice(OpKernelContext* context,
-                          const gtl::InlinedVector<int64, 4>& begin,
-                          const gtl::InlinedVector<int64, 4>& size) {
+  void ComputeMklSlice(OpKernelContext* context,
+                       const gtl::InlinedVector<int64, 4>& begin,
+                       const gtl::InlinedVector<int64, 4>& size) {
     try {
       // MKL-DNN API usage below is guided by description at:
       //  https://github.com/01org/mkl-dnn/issues/69
@@ -200,16 +338,15 @@ class MklDnnSliceOp : public OpKernel {
       // probably change the format). Then your steps are:
       //
       // 1. create memory primitive descriptor in_mem_pd and memory primitive
-      //    in_mem_p for the entire source data.
-      // 2. create view primitive descriptor in_submem_pd based on in_mem_pd,
-      //    initial offsets, and sub-sizes
-      // 3. create memory primitive descriptor out_mem_pd and memory primitive
+      //    in_mem_p for the entire source data. create view primitive
+      //    descriptor
+      //    in_submem_pd based on in_mem_pd, initial offsets, and sub-sizes
+      // 2. create memory primitive descriptor out_mem_pd and memory primitive
       //    out_mem_p for the output (the logical sizes should match sub-sizes
-      //    used in step 2, but the format might be arbitrary)
-      // 4. create reorder primitive descriptor reorder_pd based on in_submem_pd
-      //    and out_mem_pd
-      // 5. create reorder primitive itself based on reorder_pd, in_mem_p, and
-      //    out_mem_p.
+      //    used in step 1, but the format might be arbitrary)
+      // 3. create reorder primitive descriptor reorder_pd based on in_submem_pd
+      //    and out_mem_pd. create reorder primitive itself based on reorder_pd,
+      //    in_mem_p, and out_mem_p.
       //
       // Please notice that there is no view primitive. There is only view
       // primitive descriptor. And the reorder uses source memory as input but
@@ -268,32 +405,24 @@ class MklDnnSliceOp : public OpKernel {
         src.SetUsrMem(input_md, &input_tensor);
       }
 
-      // Step 2 - create view primitive descriptor
-      auto view_pd =
-          view::primitive_desc(src.GetUsrMemPrimDesc(), size_dims, begin_dims)
-              .dst_primitive_desc();
+      // Step 2 - Create memory for output.
       auto output_strides = CalculateTFStrides(size_dims);
       auto output_md =
           MklDnnData<T>::CreateBlockedMemDesc(size_dims, output_strides);
       auto output_pd = memory::primitive_desc(output_md, cpu_engine);
-
-      // Step 3 - Create memory for output. If input is in MklDnn layout, then
-      // output is also in MklDnn layout. Otherwise, output is in Tensorflow
-      // layout.
       AllocateOutputTensor(context, input_mkl_shape, &output_pd, size_dims,
                            &output_tensor, &output_mkl_shape);
       DCHECK(output_tensor);
       DCHECK_EQ(input_mkl_shape.IsMklTensor(), output_mkl_shape.IsMklTensor());
       output.SetUsrMem(output_md, output_tensor);
 
-      std::vector<primitive> net;
-      // Step 4 - create reorder primitive desc between view_pd and output_pd.
-      auto reorder_pd =
-          reorder::primitive_desc(view_pd, output.GetUsrMemPrimDesc());
-      // Step 5 - create reorder primitive itself.
-      net.push_back(reorder(reorder_pd, *src.GetUsrMem(), *output.GetUsrMem()));
-      // Execute the reorder primitive.
-      stream(stream::kind::eager).submit(net).wait();
+      // Step 3 - create reorder primitive.
+      MklSliceParams sliceParams(src.GetUsrMem(), output.GetUsrMem(),
+                                 begin_dims, size_dims);
+      MklSlicePrimitive<T>* reorder_prim =
+          MklSlicePrimitiveFactory<T>::Get(sliceParams);
+      // Execute slice reorder.
+      reorder_prim->Execute(sliceParams);
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
                          string(e.message) + ", in file " + string(__FILE__) +
@@ -347,7 +476,7 @@ class MklDnnSliceOp : public OpKernel {
                               .HostMemory("begin")                  \
                               .HostMemory("size")                   \
                               .Label(mkl_op_registry::kMklOpLabel), \
-                          MklDnnSliceOp<CPUDevice, type>);
+                          MklSliceOp<CPUDevice, type>);
 
 TF_CALL_float(REGISTER_MKL_SLICE);
 #undef REGISTER_MKL_SLICE
