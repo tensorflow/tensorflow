@@ -1,3 +1,17 @@
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
 """Multipurpose TensorFlow Docker Helper.
 
 - Assembles Dockerfiles
@@ -213,19 +227,6 @@ class TfDockerTagValidator(cerberus.Validator):
       self.partials = kwargs['partials']
     super(cerberus.Validator, self).__init__(*args, **kwargs)
 
-  def _validate_isvariant(self, isvariant, field, value):
-    """Validate that a variant references an existing variant spec.
-
-    Args:
-      isvariant: Value of the rule, a bool
-      field: The field being validated
-      value: The field's value
-    The rule's arguments are validated against this schema:
-    {'type': 'boolean'}
-    """
-    if isvariant and value not in self.root_document.get('variants', dict()):
-      self._error(field, '{} is not an existing variant.'.format(value))
-
   def _validate_ispartial(self, ispartial, field, value):
     """Validate that a partial references an existing partial spec.
 
@@ -261,7 +262,7 @@ def eprint(*args, **kwargs):
 
 
 def aggregate_all_slice_combinations(spec, slice_set_names):
-  """Figure out all of the variant groupings for a spec."""
+  """Figure out all of the possible slice groupings for a tag spec."""
   slice_sets = copy.deepcopy(spec['slice_sets'])
 
   for name in slice_set_names:
@@ -336,9 +337,9 @@ def gather_tag_args(slices, cli_input_args, required_args):
   args = update_args_dict(args, cli_input_args)
   for arg in required_args:
     if arg not in args:
-      eprint(('> Error: {} is not a valid variant, and also isn\'t an arg '
+      eprint(('> Error: {} is not a valid slice_set, and also isn\'t an arg '
               'provided on the command line. If it is an arg, please specify '
-              'it with --arg. If not, check the variants list.'.format(arg)))
+              'it with --arg. If not, check the slice_sets list.'.format(arg)))
       exit(1)
 
   return args
