@@ -182,7 +182,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     out_tensor = in_tensor + in_tensor
     sess = session.Session()
 
-    # Test invalid shape. None after 1st dimension.
+    # Test None as shape.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
     with self.assertRaises(ValueError) as error:
@@ -190,7 +190,20 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
                      str(error.exception))
 
-  def testBatchSizeInvalid(self):
+  def testSizeEmptyInvalid(self):
+    in_tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[])
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Test empty shape.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    with self.assertRaises(ValueError) as error:
+      converter.convert()
+    self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
+                     str(error.exception))
+
+  def testSizeInvalid(self):
     in_tensor = array_ops.placeholder(
         shape=[1, None, 16, 3], dtype=dtypes.float32)
     out_tensor = in_tensor + in_tensor

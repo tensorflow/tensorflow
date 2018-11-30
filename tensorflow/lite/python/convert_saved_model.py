@@ -199,7 +199,9 @@ def set_tensor_shapes(tensors, shapes):
       integers representing input shapes (e.g., {"foo": : [1, 16, 16, 3]}).
 
   Raises:
-    ValueError: `shapes` contains an invalid tensor.
+    ValueError:
+      `shapes` contains an invalid tensor.
+      `shapes` contains an invalid shape for a valid tensor.
   """
   if shapes:
     tensor_names_to_tensor = {tensor_name(tensor): tensor for tensor in tensors}
@@ -208,7 +210,14 @@ def set_tensor_shapes(tensors, shapes):
         raise ValueError("Invalid tensor \'{}\' found in tensor shapes "
                          "map.".format(name))
       if shape is not None:
-        tensor_names_to_tensor[name].set_shape(shape)
+        tensor = tensor_names_to_tensor[name]
+        try:
+          tensor.set_shape(shape)
+        except ValueError as error:
+          message = ("The shape of tensor '{0}' cannot be changed from {1} to "
+                     "{2}. {3}".format(name, tensor.get_shape(), shape,
+                                       str(error)))
+          raise ValueError(message)
 
 
 def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
