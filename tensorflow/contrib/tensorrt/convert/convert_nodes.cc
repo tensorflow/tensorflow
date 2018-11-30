@@ -2152,7 +2152,8 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
       end.insert(end.begin()+1, 1);
       reshape_dims_added++;
     }
-    reshape_dims = VectorToTrtDims(input_dims, /*ignore_first_dim=*/true);
+    reshape_dims = TensorShapeArrayToTrtDims(input_dims,
+                                             /*ignore_first_dim=*/true);
   }
   // Find dimensions which need to be sliced.
   std::vector<int> pad_dims;
@@ -2259,8 +2260,8 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
       input_dims.erase(input_dims.begin()+1);
     }
 
-    nvinfer1::Dims new_dims = VectorToTrtDims(input_dims,
-                                              /*ignore_first_dim=*/true);
+    nvinfer1::Dims new_dims = TensorShapeArrayToTrtDims(
+        input_dims, /*ignore_first_dim=*/true);
     const nvinfer1::ITensor* output_tensor = nullptr;
     TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
         TRT_TensorOrWeights(tensor), new_dims, &output_tensor));
