@@ -21,40 +21,7 @@
 
 ARG UBUNTU_VERSION=16.04
 
-ARG ARCH=
-ARG CUDA=10.0
-FROM nvidia/cuda${ARCH:+-$ARCH}:${CUDA}-base-ubuntu${UBUNTU_VERSION} as base
-ARG CUDNN=7.4.1.5-1
-
-# Needed for string substitution 
-SHELL ["/bin/bash", "-c"]
-# Pick up some TF dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        cuda-command-line-tools-${CUDA/./-} \
-        cuda-cublas-${CUDA/./-} \
-        cuda-cufft-${CUDA/./-} \
-        cuda-curand-${CUDA/./-} \
-        cuda-cusolver-${CUDA/./-} \
-        cuda-cusparse-${CUDA/./-} \
-        curl \
-        libcudnn7=${CUDNN}+cuda${CUDA} \
-        libfreetype6-dev \
-        libhdf5-serial-dev \
-        libzmq3-dev \
-        pkg-config \
-        software-properties-common \
-        unzip
-
-RUN [ ${ARCH} = ppc64le ] || (apt-get update && \
-        apt-get install nvinfer-runtime-trt-repo-ubuntu1604-5.0.2-ga-cuda${CUDA} \
-        && apt-get update \
-        && apt-get install -y --no-install-recommends libnvinfer5=5.0.2-1+cuda${CUDA} \
-        && apt-get clean \
-        && rm -rf /var/lib/apt/lists/*)
-
-# For CUDA profiling, TensorFlow requires CUPTI.
-ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+FROM ubuntu:${UBUNTU_VERSION} as base
 
 ARG USE_PYTHON_3_NOT_2
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
@@ -81,7 +48,28 @@ RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
 #   tf-nightly
 #   tf-nightly-gpu
 ARG TF_PACKAGE=tensorflow
-RUN ${PIP} install ${TF_PACKAGE}
+RUN apt-get update && apt-get install -y wget libhdf5-dev
+RUN ${PIP} install --global-option=build_ext \
+            --global-option=-I/usr/include/hdf5/serial/ \
+            --global-option=-L/usr/lib/powerpc64le-linux-gnu/hdf5/serial \
+            h5py
+
+# CACHE_STOP is used to rerun future commands, otherwise downloading the .whl will be cached and will not pull the most recent version
+ARG CACHE_STOP=1
+RUN if [ ${TF_PACKAGE} = tensorflow-gpu ]; then \
+        BASE=https://powerci.osuosl.org/job/TensorFlow_PPC64LE_GPU_Release_Build/lastSuccessfulBuild/; \
+    elif [ ${TF_PACKAGE} = tf-nightly-gpu ]; then \
+        BASE=https://powerci.osuosl.org/job/TensorFlow_PPC64LE_GPU_Nightly_Artifact/lastSuccessfulBuild/; \
+    elif [ ${TF_PACKAGE} = tensorflow ]; then \
+        BASE=https://powerci.osuosl.org/job/TensorFlow_PPC64LE_CPU_Release_Build/lastSuccessfulBuild/; \
+    elif [ ${TF_PACKAGE} = tf-nightly ]; then \
+        BASE=https://powerci.osuosl.org/job/TensorFlow_PPC64LE_CPU_Nightly_Artifact/lastSuccessfulBuild/; \
+    fi; \
+    MAJOR=`${PYTHON} -c 'import sys; print(sys.version_info[0])'`; \
+    MINOR=`${PYTHON} -c 'import sys; print(sys.version_info[1])'`; \
+    PACKAGE=$(wget -qO- ${BASE}"api/xml?xpath=//fileName&wrapper=artifacts" | grep -o "[^<>]*cp${MAJOR}${MINOR}[^<>]*.whl"); \
+    wget ${BASE}"artifact/tensorflow_pkg/"${PACKAGE}; \
+    ${PIP} install ${PACKAGE}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
