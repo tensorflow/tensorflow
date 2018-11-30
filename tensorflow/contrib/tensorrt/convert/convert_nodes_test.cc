@@ -2533,7 +2533,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
       for (int i = 0; i < end_mask.size(); i++) {
         if (end_mask[i]) this->end_mask |= (1 << i);
       }
-  }
+    }
 
     std::vector<int> input_dims;
     std::vector<int> expected_output_dims;
