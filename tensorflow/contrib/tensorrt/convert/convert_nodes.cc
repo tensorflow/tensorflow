@@ -120,15 +120,11 @@ inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
   return trt_dims;
 }
 
-inline nvinfer1::Dims VectorToTrtDims(const std::vector<int>& shape,
-                                      bool ignore_first_dim = false) {
-  nvinfer1::Dims trt_dims;
-  const int offset = (ignore_first_dim ? 1 : 0);
-  for (int i = offset; i < shape.size(); i++) {
-    trt_dims.d[i - offset] = shape[i];
-  }
-  trt_dims.nbDims = shape.size() - offset;
-  return trt_dims;
+inline nvinfer1::Dims TensorShapeArrayToTrtDims(const std::vector<int>& shape,
+                                                bool ignore_first_dim = false) {
+  PartialTensorShape tensor_shape;
+  TensorShapeUtils::MakeShape(shape, &tensor_shape);
+  return TensorShapeToTrtDims(tensor_shape, ignore_first_dim);
 }
 
 void GetOutputProperties(const grappler::GraphProperties& graph_properties,
@@ -1898,6 +1894,10 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
     return tensorflow::errors::InvalidArgument(
         "Two inputs expected for ExpandDims, at ", node_def.name());
   }
+  if (inputs.at(0).is_weights() ) {
+    return tensorflow::errors::Unimplemented(
+        "ExpandDims expects tensor for input, at ", node_def.name());
+  }
   if (!inputs.at(1).is_weights() ) {
     return tensorflow::errors::InvalidArgument(
         "ExpandDims expects weights for axis, at ", node_def.name());
@@ -1936,7 +1936,8 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
   input_dims.insert(input_dims.begin()+axis, 1);
   // Reshape tensor.
   const bool ignore_first_dim = input_tensor.is_tensor();
-  nvinfer1::Dims new_dims = VectorToTrtDims(input_dims, ignore_first_dim);
+  nvinfer1::Dims new_dims = TensorShapeArrayToTrtDims(input_dims,
+                                                      ignore_first_dim);
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, &output_tensor));
@@ -1951,6 +1952,10 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
   if (inputs.size() != 1) {
     return tensorflow::errors::InvalidArgument(
         "One input expected for Squeeze, at ", node_def.name());
+  }
+  if (inputs.at(0).is_weights() ) {
+    return tensorflow::errors::Unimplemented(
+        "Squeeze expects tensor for input, at ", node_def.name());
   }
   // Get input shape.
   TRT_TensorOrWeights input_tensor = inputs.at(0);
@@ -1979,7 +1984,7 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
     // Convert negative axis to corresponding positive axis.
     if (axis < 0) axis += input_rank;
     // Don't squeeze batch dim.
-    if (axis == 0) {
+    if (input_tensor.is_tensor() && axis == 0) {
       return tensorflow::errors::Unimplemented(
           "Cannot squeeze batch dimension, at ", node_def.name());
     }
@@ -1999,7 +2004,8 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
                    input_dims.end());
     // Reshape tensor.
   const bool ignore_first_dim = input_tensor.is_tensor();
-  nvinfer1::Dims new_dims = VectorToTrtDims(input_dims, ignore_first_dim);
+  nvinfer1::Dims new_dims = TensorShapeArrayToTrtDims(input_dims,
+                                                      ignore_first_dim);
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, &output_tensor));
