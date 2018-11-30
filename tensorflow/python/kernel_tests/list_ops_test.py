@@ -880,6 +880,217 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(self.evaluate(result_0), [6., 8.])
     self.assertAllEqual(self.evaluate(result_1), [10., 12.])
 
+  def testSkipEagerConcatShapeInference(self):
+
+    def BuildTensor(element_shape):
+      l = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32, element_shape=element_shape)
+      return list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+
+    self.assertIsNone(BuildTensor(None).shape.rank)
+    self.assertAllEqual(BuildTensor([None, 2, 3]).shape.as_list(), [None, 2, 3])
+    self.assertAllEqual(
+        BuildTensor([None, 2, None]).shape.as_list(), [None, 2, None])
+    self.assertAllEqual(BuildTensor([1, 2, 3]).shape.as_list(), [None, 2, 3])
+
+  def testConcatWithFullyDefinedElementShape(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[2, 2])
+    l = list_ops.tensor_list_push_back(l, [[0., 1.], [2., 3.]])
+    l = list_ops.tensor_list_push_back(l, [[4., 5.], [6., 7.]])
+    t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(
+        self.evaluate(t), [[0., 1.], [2., 3.], [4., 5.], [6., 7.]])
+
+  def testConcatWithNonFullyDefinedElementShape(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[None, 2])
+    l = list_ops.tensor_list_push_back(l, [[0., 1.]])
+    l = list_ops.tensor_list_push_back(l, [[2., 3.], [4., 5.]])
+    t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(t), [[0., 1.], [2., 3.], [4., 5.]])
+
+  def testConcatWithMismatchingTensorShapesFails(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=None)
+    l = list_ops.tensor_list_push_back(l, [[0., 1.]])
+    l = list_ops.tensor_list_push_back(l, [[2.], [4.]])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"Tried to concat tensors with unequal shapes: "
+        r"\[2\] vs \[1\]"):
+      t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+  def testConcatEmptyListWithFullyDefinedElementShape(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[5, 2])
+    t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(t).shape, (0, 2))
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[None, 2])
+    t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(t).shape, (0, 2))
+
+  def testConcatEmptyListWithUnknownElementShapeFails(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=None)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "All except the first dimension must be fully"
+        " defined when concating an empty tensor list"):
+      t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+  def testConcatEmptyListWithPartiallyDefinedElementShapeFails(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[2, None])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "All except the first dimension must be fully"
+        " defined when concating an empty tensor list"):
+      t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+  def testConcatListWithScalarElementShapeFails(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=tensor_shape.scalar())
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Concat requires elements to be at least vectors, "
+        "found scalars instead"):
+      t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+  def testConcatListWithScalarElementsFails(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=None)
+    l1 = list_ops.tensor_list_push_back(l, 1.)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError, "Concat saw a scalar shape at index 0"
+        " but requires at least vectors"):
+      t = list_ops.tensor_list_concat(l1, element_dtype=dtypes.float32)
+      self.evaluate(t)
+    l1 = list_ops.tensor_list_push_back(l, [1.])
+    l1 = list_ops.tensor_list_push_back(l1, 2.)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError, "Concat saw a scalar shape at index 1"
+        " but requires at least vectors"):
+      t = list_ops.tensor_list_concat(l1, element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+  def testEvenSplit(self):
+
+    def RunTest(input_tensor, lengths, expected_stacked_output):
+      l = list_ops.tensor_list_split(
+          input_tensor, element_shape=None, lengths=lengths)
+      self.assertAllEqual(
+          list_ops.tensor_list_stack(l, element_dtype=dtypes.float32),
+          expected_stacked_output)
+
+    RunTest([1., 2., 3.], [1, 1, 1], [[1.], [2.], [3.]])
+    RunTest([1., 2., 3., 4.], [2, 2], [[1., 2.], [3., 4.]])
+    RunTest([[1., 2.], [3., 4.]], [1, 1], [[[1., 2.]], [[3., 4.]]])
+
+  def testUnevenSplit(self):
+    l = list_ops.tensor_list_split([1., 2., 3., 4., 5],
+                                   element_shape=None,
+                                   lengths=[3, 2])
+    self.assertAllEqual(list_ops.tensor_list_length(l), 2)
+    self.assertAllEqual(
+        list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32),
+        [1., 2., 3.])
+    self.assertAllEqual(
+        list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32),
+        [4., 5.])
+
+  def testSkipEagerSplitWithInvalidTensorShapeFails(self):
+    with self.cached_session():
+      tensor = array_ops.placeholder(dtype=dtypes.float32)
+      l = list_ops.tensor_list_split(tensor, element_shape=None, lengths=[1])
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"Tensor must be at least a vector, but saw shape: \[\]"):
+        l.eval({tensor: 1})
+
+  def testSkipEagerSplitWithInvalidLengthsShapeFails(self):
+    with self.cached_session():
+      lengths = array_ops.placeholder(dtype=dtypes.int64)
+      l = list_ops.tensor_list_split([1., 2.],
+                                     element_shape=None,
+                                     lengths=lengths)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"Expected lengths to be a vector, received shape: \[\]"):
+        l.eval({lengths: 1})
+
+  def testSplitWithInvalidLengthsFails(self):
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 r"Invalid value in lengths: -1"):
+      l = list_ops.tensor_list_split([1., 2.],
+                                     element_shape=None,
+                                     lengths=[1, -1])
+      self.evaluate(l)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"Attempting to slice \[0, 3\] from tensor with length 2"):
+      l = list_ops.tensor_list_split([1., 2.], element_shape=None, lengths=[3])
+      self.evaluate(l)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"Unused values in tensor. Length of tensor: 2 Values used: 1"):
+      l = list_ops.tensor_list_split([1., 2.], element_shape=None, lengths=[1])
+      self.evaluate(l)
+
+  def testSkipEagerSplitWithScalarElementShapeFails(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 r"Shapes must be equal rank, but are 1 and 0"):
+      l = list_ops.tensor_list_split([1., 2.], element_shape=[], lengths=[1, 1])
+    with self.cached_session():
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"TensorListSplit requires element_shape to be at least of rank 1, "
+          r"but saw: \[\]"):
+        element_shape = array_ops.placeholder(dtype=dtypes.int32)
+        l = list_ops.tensor_list_split([1., 2.],
+                                       element_shape=element_shape,
+                                       lengths=[1, 1])
+        l.eval({element_shape: []})
+
+  def testEagerOnlySplitWithScalarElementShapeFails(self):
+    if context.executing_eagerly():
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"TensorListSplit requires element_shape to be at least of rank 1, "
+          r"but saw: \[\]"):
+        list_ops.tensor_list_split([1., 2.], element_shape=[], lengths=[1, 1])
+
+  def testSkipEagerSplitWithIncompatibleTensorShapeAndElementShapeFails(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 r"Shapes must be equal rank, but are 2 and 1"):
+      l = list_ops.tensor_list_split([[1.], [2.]],
+                                     element_shape=[1],
+                                     lengths=[1, 1])
+
+    with self.cached_session():
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"tensor shape \[2,1\] is not compatible with element_shape \[1\]"):
+        element_shape = array_ops.placeholder(dtype=dtypes.int32)
+        l = list_ops.tensor_list_split([[1.], [2.]],
+                                       element_shape=element_shape,
+                                       lengths=[1, 1])
+        l.eval({element_shape: [1]})
+
+  def testEagerOnlySplitWithIncompatibleTensorShapeAndElementShapeFails(self):
+    if context.executing_eagerly():
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"tensor shape \[2,1\] is not compatible with element_shape \[1\]"):
+        list_ops.tensor_list_split([[1.], [2.]],
+                                   element_shape=[1],
+                                   lengths=[1, 1])
+
 
 if __name__ == "__main__":
   test.main()

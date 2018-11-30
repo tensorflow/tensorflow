@@ -123,10 +123,7 @@ class TensorArrayTest(test.TestCase):
     self._testTensorArrayWritePack(dtypes.int64)
     self._testTensorArrayWritePack(dtypes.complex64)
     self._testTensorArrayWritePack(dtypes.complex128)
-    if not (test.is_gpu_available() and
-            tensor_array_ops.ENABLE_TENSOR_ARRAY_V2):
-      # TODO(b/119684648): Enable this.
-      self._testTensorArrayWritePack(dtypes.string)
+    self._testTensorArrayWritePack(dtypes.string)
 
   def testTensorArrayWritePack(self):
     self._testTensorArrayWritePackMaybeLegacy()
@@ -164,7 +161,6 @@ class TensorArrayTest(test.TestCase):
           convert([[4.0, 5.0], [104.0, 105.0], [204.0, 205.0], [6.0, 7.0],
                    [106.0, 107.0], [8.0, 9.0]]), c0)
 
-  @test_util.disable_control_flow_v2("b/118343594 (TensorArray.concat)")
   @test_util.run_deprecated_v1
   def testTensorArrayWriteConcat(self):
     self._testTensorArrayWriteConcat(dtypes.float32)
@@ -255,10 +251,7 @@ class TensorArrayTest(test.TestCase):
     self._testTensorArrayUnpackRead(dtypes.int64)
     self._testTensorArrayUnpackRead(dtypes.complex64)
     self._testTensorArrayUnpackRead(dtypes.complex128)
-    if not (test.is_gpu_available() and
-            tensor_array_ops.ENABLE_TENSOR_ARRAY_V2):
-      # TODO(b/119684648): Enable this.
-      self._testTensorArrayUnpackRead(dtypes.string)
+    self._testTensorArrayUnpackRead(dtypes.string)
 
   def testTensorArrayUnpackRead(self):
     self._testTensorArrayUnpackReadMaybeLegacy()
@@ -305,7 +298,6 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual(convert([]).reshape(0, 2), d1)
       self.assertAllEqual(convert([[3.0, 301.0]]), d2)
 
-  @test_util.disable_control_flow_v2("b/118343962 (TensorArray.split)")
   @test_util.run_deprecated_v1
   def testTensorArraySplitRead(self):
     self._testTensorArraySplitRead(dtypes.float32)
@@ -512,7 +504,6 @@ class TensorArrayTest(test.TestCase):
           "it has already been written to."):
         self.evaluate(ta.write(2, 3.0).write(2, 3.0).flow)
 
-  @test_util.disable_control_flow_v2("b/118343594 (TensorArray.concat)")
   @test_util.run_deprecated_v1
   def testTensorArrayConcatIncompatibleShapesFails(self):
     with self.session(use_gpu=True):
@@ -545,7 +536,6 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError("shape"):
         self.evaluate(w3.concat())
 
-  @test_util.disable_control_flow_v2("b/118343962 (TensorArray.split)")
   @test_util.run_deprecated_v1
   def testTensorArraySplitIncompatibleShapesFails(self):
     with self.session(use_gpu=True):
@@ -559,22 +549,32 @@ class TensorArrayTest(test.TestCase):
           lengths = array_ops.placeholder(dtypes.int64)
           ta.split([1.0, 2.0, 3.0], lengths).flow.eval(feed_dict={lengths: 1})
 
-      with self.assertRaisesOpError(
-          r"Expected sum of lengths to be equal to values.shape\[0\], "
-          r"but sum of lengths is 1 and value's shape is: \[3\]"):
+      error_msg = ("Unused values in tensor. Length of tensor: 3 Values used: 1"
+                   if tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 and
+                   not in_eager_mode else
+                   r"Expected sum of lengths to be equal to values.shape\[0\], "
+                   r"but sum of lengths is 1 and value's shape is: \[3\]")
+      with self.assertRaisesOpError(error_msg):
         self.evaluate(ta.split([1.0, 2.0, 3.0], [1]).flow)
 
       ta = _make_ta(1, "baz")
-      with self.assertRaisesOpError(
-          r"Expected value to be at least a vector, but received shape: \[\]"):
-        self.evaluate(ta.split(1.0, [1]).flow)
+      if tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 and not in_eager_mode:
+        with self.assertRaisesRegexp(
+            ValueError, "Shape must be at least rank 1 but is rank 0"):
+          self.evaluate(ta.split(1.0, [1]).flow)
+      else:
+        with self.assertRaisesOpError(
+            r"Expected value to be at least a vector, but received shape: \[\]"
+        ):
+          self.evaluate(ta.split(1.0, [1]).flow)
 
-      ta = _make_ta(2, "buz")
-      with self.assertRaisesOpError(
-          r"TensorArray's size is not equal to the size of lengths "
-          r"\(2 vs. 1\), and the TensorArray is not marked as "
-          r"dynamically resizeable"):
-        self.evaluate(ta.split([1.0], [1]).flow)
+      if not tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 or in_eager_mode:
+        ta = _make_ta(2, "buz")
+        with self.assertRaisesOpError(
+            r"TensorArray's size is not equal to the size of lengths "
+            r"\(2 vs. 1\), and the TensorArray is not marked as "
+            r"dynamically resizeable"):
+          self.evaluate(ta.split([1.0], [1]).flow)
 
   def _testTensorArrayWriteGradientAddMultipleAdds(self, dtype):
     with self.cached_session(use_gpu=True):
@@ -773,7 +773,6 @@ class TensorArrayTest(test.TestCase):
       self.assertAllClose([2.0 - 0.5 + 20.0, 3.0 + 1.5 + 30.0], grad_vals[0])
       self.assertAllEqual([4.0 + 40.0, 5.0 + 50.0], grad_vals[1])
 
-  @test_util.disable_control_flow_v2("b/118343594 (TensorArray.concat)")
   @test_util.run_deprecated_v1
   def testSkipEagerTensorArrayGradientWritePackConcatAndRead(self):
     self._testTensorArrayGradientWritePackConcatAndRead()
@@ -837,7 +836,6 @@ class TensorArrayTest(test.TestCase):
   def testSkipEagerTensorArrayGradientUnpackRead(self):
     self._testTensorArrayGradientUnpackRead()
 
-  @test_util.disable_control_flow_v2("b/118343962 (TensorArray.split)")
   @test_util.run_deprecated_v1
   def testSkipEagerTensorArrayGradientSplitConcat(self):
     with self.session(use_gpu=True) as session:
@@ -1168,7 +1166,6 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaises(ValueError):
         w0.write(0, c2)
 
-  @test_util.disable_control_flow_v2("b/118343962 (TensorArray.split)")
   @test_util.run_deprecated_v1
   def testSkipEagerPartlyUnknownShape(self):
     with self.session(use_gpu=True):
@@ -1245,7 +1242,6 @@ class TensorArrayTest(test.TestCase):
   def testUnpackShape(self):
     self._testUnpackShape()
 
-  @test_util.disable_control_flow_v2("b/118343962 (TensorArray.split)")
   @test_util.run_deprecated_v1
   def testSplitShape(self):
     with self.session(use_gpu=True):
@@ -1273,9 +1269,10 @@ class TensorArrayTest(test.TestCase):
         self.assertEqual((2, 2), w0.read(1).get_shape())
       else:
         self.assertEqual(r0.get_shape().ndims, None)
-        self.assertEqual(
-            tensor_shape.TensorShape(
-                ta1.handle.op.get_attr("element_shape")).ndims, None)
+        if not tensor_array_ops.ENABLE_TENSOR_ARRAY_V2:
+          self.assertEqual(
+              tensor_shape.TensorShape(
+                  ta1.handle.op.get_attr("element_shape")).ndims, None)
 
   @test_util.run_deprecated_v1
   def testSkipEagerWriteUnknownShape(self):
@@ -1325,7 +1322,7 @@ class TensorArrayTest(test.TestCase):
   def testSkipEagerTensorArrayUnpackDynamic(self):
     self._testTensorArrayUnpackDynamic()
 
-  @test_util.disable_control_flow_v2("b/118343594 (TensorArray.concat)")
+  @test_util.disable_control_flow_v2("b/117943489")
   @test_util.run_deprecated_v1
   def testSkipEagerTensorArraySplitDynamic(self):
     with self.session(use_gpu=True) as sess:
