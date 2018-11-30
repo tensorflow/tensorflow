@@ -1899,16 +1899,40 @@ def saver_from_object_based_checkpoint(
     builder = BulkSaverBuilder()
 
   saveables = builder._ValidateAndSliceInputs(var_list)  # pylint: disable=protected-access
+  current_names = set()
   for saveable in saveables:
     for spec in saveable.specs:
-      if spec.name not in names_to_keys:
-        raise errors.NotFoundError(
-            None, None,
-            message=("Attempting to load an object-based checkpoint using "
-                     "variable names, but could not find %s in the "
-                     "checkpoint.") % spec.name)
+      current_names.add(spec.name)
+  previous_names = set(names_to_keys.keys())
+  missing_names = current_names - previous_names
+  if missing_names:
+    extra_names = previous_names - current_names
+    intersecting_names = previous_names.intersection(current_names)
+    raise errors.NotFoundError(
+        None, None,
+        message=(
+            "\n\nExisting variables not in the checkpoint: %s\n\n"
+            "Variables names when this checkpoint was written which don't "
+            "exist now: %s\n\n"
+            "(%d variable name(s) did match)\n\n"
+            "Could not find some variables in the checkpoint (see names "
+            "above). Saver was attempting to load an object-based checkpoint "
+            "(saved using tf.train.Checkpoint or tf.keras.Model.save_weights) "
+            "using variable names. If the checkpoint was written with eager "
+            "execution enabled, it's possible that variable names have "
+            "changed (for example missing a '_1' suffix). It's also "
+            "possible that there are new variables which did not exist "
+            "when the checkpoint was written. You can construct a "
+            "Saver(var_list=...) with only the variables which previously "
+            "existed, and if variable names have changed you may need to "
+            "make this a dictionary with the old names as keys. If you're "
+            "using an Estimator, you'll need to return a tf.train.Saver "
+            "inside a tf.train.Scaffold from your model_fn.")
+        % (", ".join(sorted(missing_names)), ", ".join(sorted(extra_names)),
+           len(intersecting_names)))
+  for saveable in saveables:
+    for spec in saveable.specs:
       spec.name = names_to_keys[spec.name]
-
   if cached_saver is None:
     return Saver(saveables)
   return cached_saver
