@@ -74,7 +74,9 @@ static const char* kAWSLoggingTag = "AWSLogging";
 Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
   Aws::Utils::Logging::LogLevel log_level = Aws::Utils::Logging::LogLevel::Info;
 
-  const int64_t level = tensorflow::internal::MinLogLevelFromEnv();
+  const int64_t level = 
+      getenv("AWS_LOG_LEVEL") ? tensorflow::internal::LogLevelStrToInt(getenv("AWS_LOG_LEVEL")) 
+                              : tensorflow::internal::MinLogLevelFromEnv();
 
   switch (level) {
     case INFO:
