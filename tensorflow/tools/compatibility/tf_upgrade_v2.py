@@ -745,6 +745,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "was renamed to \"filters\"",
         "tf.nn.erosion2d":
         "WARNING: <function name> now requires a data_format argument",
+        "tf.nn.nce_loss":
+        "WARNING: `partition_strategy` has been removed from `tf.nn.nce_loss` "
+        " The 'div' strategy is used by default.",
         "tf.zeros_like": tf_01s_like_no_optimize_comment,
         "tf.ones_like": tf_01s_like_no_optimize_comment,
     }
