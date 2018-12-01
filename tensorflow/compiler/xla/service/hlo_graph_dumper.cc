@@ -112,11 +112,6 @@ class NodeFilter {
            result == kSomeUsersOmitted;
   }
 
-  bool ShowFusionSubcomputation(const HloInstruction* instr) const {
-    CHECK_EQ(instr->opcode(), HloOpcode::kFusion);
-    return Show(instr) && !SomeOrAllOperandsOmitted(instr);
-  }
-
  private:
   std::function<NodeFilterResult(const HloInstruction* instr)> filter_;
 };

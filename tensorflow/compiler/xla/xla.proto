@@ -193,7 +193,11 @@ message DebugOptions {
   //  - Assuming that operations never produce or consume NaN or +/- Inf.
   //  - Assuming that +0 and -0 are indistinguishable.
   bool xla_cpu_enable_fast_math = 99;
-  bool xla_gpu_enable_fast_math = 100;
+
+  // When true we lower the Minimum and Maximum hlos in the GPU backend such
+  // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
+  // this is true we don't propagate NaNs through Min and Max.
+  bool xla_gpu_enable_fast_min_max = 100;
 
   // Crashes the program when any kind of verification fails, instead of just
   // logging the failures. One example is cross checking of convolution results

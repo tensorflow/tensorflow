@@ -1922,6 +1922,7 @@ Op(::xla::HloInstruction** matched_inst) {
 XLA_NULLOP_PATTERN(Constant)
 XLA_NULLOP_PATTERN(Parameter)
 XLA_NULLOP_PATTERN(Iota)
+XLA_NULLOP_PATTERN(Rng)
 #undef XLA_NULLOP_PATTERN
 
 // Helpers for unary instructions.
@@ -2053,6 +2054,7 @@ XLA_COMMUTATIVE_BINOP_PATTERN(Ne)
 XLA_BINOP_PATTERN(Outfeed)
 XLA_BINOP_PATTERN(Pad)
 XLA_BINOP_PATTERN(Power)
+XLA_BINOP_PATTERN(ReduceWindow)
 XLA_BINOP_PATTERN(Remainder)
 XLA_BINOP_PATTERN(Send)
 XLA_BINOP_PATTERN(Subtract)
@@ -2099,6 +2101,7 @@ XLA_BINOP_PATTERN(ShiftRightLogical)
         .WithOperand(2, std::forward<Arg2>(arg2));                     \
   }
 XLA_TERNOP_PATTERN(Clamp);
+XLA_TERNOP_PATTERN(Scatter);
 XLA_TERNOP_PATTERN(Select);
 #undef XLA_TERNOP_PATTERN
 
@@ -2153,6 +2156,7 @@ inline auto WithOperands(Matcher&& m, int64 operand_num, FirstArg&& first_arg,
 // already-bad compile errors even worse.
 XLA_VARIADIC_OP_PATTERN(Concatenate);
 XLA_VARIADIC_OP_PATTERN(CustomCall);
+XLA_VARIADIC_OP_PATTERN(Map)
 XLA_VARIADIC_OP_PATTERN(Reduce);
 XLA_VARIADIC_OP_PATTERN(Tuple);
 

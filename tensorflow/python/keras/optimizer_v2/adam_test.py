@@ -25,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -347,14 +348,25 @@ class AdamOptimizerTest(test.TestCase):
       v2 = resource_variable_ops.ResourceVariable(1.)
       opt = adam.Adam(1.)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
-      # There should be iteration, hyper variables, and two unique slot
-      # variables for v1 and v2 respectively.
-      self.assertEqual(10, len(set(opt.variables())))
+      # There should be iteration, and two unique slot variables for v1 and v2.
+      self.assertEqual(5, len(set(opt.variables())))
+      self.assertEqual(
+          self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
   def testAmsgradWithError(self):
     with self.assertRaisesRegexp(ValueError,
                                  "Amsgrad is currently not supported"):
       adam.Adam(learning_rate=1., beta_1=0.9, beta_2=0.99, amsgrad=True)
+
+  def testSetWeightsFromV1AdamWithoutMinimize(self):
+    keras_v1_adam = optimizers.Adam()
+    keras_v2_adam = adam.Adam()
+    keras_v2_adam.set_weights(keras_v1_adam.get_weights())
+    keras_v1_iteration = keras_v1_adam.iterations
+    keras_v2_iteration = keras_v2_adam.iterations
+    self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(
+        self.evaluate(keras_v1_iteration), self.evaluate(keras_v2_iteration))
 
 
 if __name__ == "__main__":

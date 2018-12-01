@@ -757,21 +757,23 @@ class MirroredStrategyNameScopeTest(test.TestCase):
       self.assertEqual("c/replica_1:0", c1.name)
 
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.NamedDistribution(
-            "Mirrored3Devices",
-            # pylint: disable=g-long-lambda
-            lambda: mirrored_strategy.MirroredStrategy(
-                ["/device:GPU:0", "/device:GPU:1", "/device:CPU:0"]),
-            required_gpus=2),
-        combinations.NamedDistribution(
-            "CoreMirrored3Devices",
-            # pylint: disable=g-long-lambda
-            lambda: mirrored_strategy.CoreMirroredStrategy(
-                ["/device:GPU:0", "/device:GPU:1", "/device:CPU:0"]),
-            required_gpus=2)],
-    mode=["graph", "eager"]))
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            combinations.NamedDistribution(
+                "Mirrored3Devices",
+                # pylint: disable=g-long-lambda
+                lambda: mirrored_strategy.MirroredStrategy(
+                    ["/device:GPU:0", "/device:GPU:1", "/device:CPU:0"]),
+                required_gpus=2),
+            combinations.NamedDistribution(
+                "CoreMirrored3Devices",
+                # pylint: disable=g-long-lambda
+                lambda: mirrored_strategy.CoreMirroredStrategy(
+                    ["/device:GPU:0", "/device:GPU:1", "/device:CPU:0"]),
+                required_gpus=2)
+        ],
+        mode=["graph", "eager"]))
 class MirroredThreeDeviceDistributionTest(
     strategy_test_lib.DistributionTestBase,
     parameterized.TestCase):
@@ -1283,14 +1285,14 @@ class MirroredStrategyDefunTest(test.TestCase):
             combinations.NamedDistribution(
                 "Mirrored",
                 # pylint: disable=g-long-lambda
-                lambda: mirrored_strategy.CoreMirroredStrategy(
-                    num_gpus_per_worker=context.num_gpus()),
+                lambda: mirrored_strategy.MirroredStrategy(num_gpus_per_worker=
+                                                           context.num_gpus()),
                 required_gpus=1),
             combinations.NamedDistribution(
                 "CoreMirrored",
                 # pylint: disable=g-long-lambda
                 lambda: mirrored_strategy.CoreMirroredStrategy(
-                    num_gpus_per_worker=context.num_gpus()),
+                    mirrored_strategy.all_local_devices()),
                 required_gpus=1)
         ],
         mode=["graph"]))
@@ -1374,7 +1376,7 @@ class MultiWorkerMirroredStrategyTestWithChief(
 
   def testMinimizeLossGraphCoreMirroredStrategy(self):
     strategy = mirrored_strategy.CoreMirroredStrategy(
-        num_gpus_per_worker=context.num_gpus())
+        mirrored_strategy.all_local_devices())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 

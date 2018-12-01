@@ -248,6 +248,12 @@ class DistributeCoordinatorIntegrationTest(
     ])
     self.assertAllEqual((BATCH_SIZE, LABEL_DIMENSION), predicted_proba.shape)
 
+  def _get_strategy_object(self, strategy_cls):
+    if strategy_cls == mirrored_strategy.CoreMirroredStrategy:
+      return strategy_cls(mirrored_strategy.all_local_devices())
+    else:
+      return strategy_cls(num_gpus_per_worker=context.num_gpus())
+
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
@@ -266,12 +272,10 @@ class DistributeCoordinatorIntegrationTest(
           required_gpus=[0, 1]))
   def test_complete_flow_standalone_client(self, train_distribute_cls,
                                            eval_distribute_cls):
-    train_distribute = train_distribute_cls(
-        num_gpus_per_worker=context.num_gpus())
+    train_distribute = self._get_strategy_object(train_distribute_cls)
 
     if eval_distribute_cls:
-      eval_distribute = eval_distribute_cls(
-          num_gpus_per_worker=context.num_gpus())
+      eval_distribute = self._get_strategy_object(eval_distribute_cls)
     else:
       eval_distribute = None
 
@@ -298,12 +302,10 @@ class DistributeCoordinatorIntegrationTest(
           required_gpus=[0, 1]))
   def test_estimator_standalone_client(self, train_distribute_cls,
                                        eval_distribute_cls):
-    train_distribute = train_distribute_cls(
-        num_gpus_per_worker=context.num_gpus())
+    train_distribute = self._get_strategy_object(train_distribute_cls)
 
     if eval_distribute_cls:
-      eval_distribute = eval_distribute_cls(
-          num_gpus_per_worker=context.num_gpus())
+      eval_distribute = self._get_strategy_object(eval_distribute_cls)
     else:
       eval_distribute = None
 
@@ -347,16 +349,14 @@ class DistributeCoordinatorIntegrationTest(
           required_gpus=[0, 1]))
   def test_complete_flow_indepedent_worker_between_graph(
       self, train_distribute_cls, eval_distribute_cls):
-    train_distribute = train_distribute_cls(
-        num_gpus_per_worker=context.num_gpus())
-
     if (context.num_gpus() < 2 and eval_distribute_cls ==
         collective_all_reduce_strategy.CollectiveAllReduceStrategy):
       self.skipTest("`CollectiveAllReduceStrategy` needs at least two towers.")
 
+    train_distribute = self._get_strategy_object(train_distribute_cls)
+
     if eval_distribute_cls:
-      eval_distribute = eval_distribute_cls(
-          num_gpus_per_worker=context.num_gpus())
+      eval_distribute = self._get_strategy_object(eval_distribute_cls)
     else:
       eval_distribute = None
 
@@ -399,12 +399,10 @@ class DistributeCoordinatorIntegrationTest(
           required_gpus=[0, 1]))
   def test_complete_flow_indepedent_worker_in_graph(self, train_distribute_cls,
                                                     eval_distribute_cls):
-    train_distribute = train_distribute_cls(
-        num_gpus_per_worker=context.num_gpus())
+    train_distribute = self._get_strategy_object(train_distribute_cls)
 
     if eval_distribute_cls:
-      eval_distribute = eval_distribute_cls(
-          num_gpus_per_worker=context.num_gpus())
+      eval_distribute = self._get_strategy_object(eval_distribute_cls)
     else:
       eval_distribute = None
 
@@ -453,7 +451,7 @@ class RunConfigTest(test.TestCase):
       run_config_lib.RunConfig(
           experimental_distribute=DistributeConfig(
               train_distribute=mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus_per_worker=2)))
+                  ["/device:GPU:0", "/device:GPU:1"])))
 
   def test_should_run_distribute_coordinator(self):
     """Tests that should_run_distribute_coordinator return a correct value."""
@@ -477,11 +475,11 @@ class RunConfigTest(test.TestCase):
       config_with_train_distribute = run_config_lib.RunConfig(
           experimental_distribute=DistributeConfig(
               train_distribute=mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus_per_worker=2)))
+                  ["/device:GPU:0", "/device:GPU:1"])))
       config_with_eval_distribute = run_config_lib.RunConfig(
           experimental_distribute=DistributeConfig(
               eval_distribute=mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus_per_worker=2)))
+                  ["/device:GPU:0", "/device:GPU:1"])))
     self.assertTrue(
         dc_training.should_run_distribute_coordinator(
             config_with_train_distribute))
@@ -495,7 +493,7 @@ class RunConfigTest(test.TestCase):
       config = run_config_lib.RunConfig(
           experimental_distribute=DistributeConfig(
               train_distribute=mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus_per_worker=2)))
+                  ["/device:GPU:0", "/device:GPU:1"])))
     self.assertFalse(dc_training.should_run_distribute_coordinator(config))
 
   def test_init_run_config_duplicate_distribute(self):

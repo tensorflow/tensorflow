@@ -115,6 +115,11 @@ def restore_variables_on_create(save_path, map_func=None):
 
 class Saver(object):
   """A tf.train.Saver adapter for use when eager execution is enabled.
+
+  `Saver`'s name-based checkpointing strategy is fragile. Please switch to
+  `tf.train.Checkpoint` or `tf.keras.Model.save_weights`, which perform a more
+  robust object-based saving. These APIs will load checkpoints written by
+  `Saver`.
   """
 
   def __init__(self, var_list):
