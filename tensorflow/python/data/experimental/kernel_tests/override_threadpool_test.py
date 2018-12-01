@@ -22,6 +22,7 @@ import threading
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.experimental.ops import threadpool
 from tensorflow.python.data.experimental.ops import unique
@@ -55,21 +56,20 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
-      self.evaluate(iterator.initializer)
-      thread_ids = []
-      try:
-        while True:
-          thread_ids.append(self.evaluate(next_element))
-      except errors.OutOfRangeError:
-        pass
-      self.assertLen(thread_ids, len(set(thread_ids)))
-      self.assertNotEmpty(thread_ids)
-      if num_threads:
-        # NOTE(mrry): We don't control the thread pool scheduling, and
-        # so cannot guarantee that all of the threads in the pool will
-        # perform work.
-        self.assertLessEqual(len(thread_ids), num_threads)
+    self.evaluate(iterator.initializer)
+    thread_ids = []
+    try:
+      while True:
+        thread_ids.append(self.evaluate(next_element))
+    except errors.OutOfRangeError:
+      pass
+    self.assertLen(thread_ids, len(set(thread_ids)))
+    self.assertNotEmpty(thread_ids)
+    if num_threads:
+      # NOTE(mrry): We don't control the thread pool scheduling, and
+      # so cannot guarantee that all of the threads in the pool will
+      # perform work.
+      self.assertLessEqual(len(thread_ids), num_threads)
 
   @parameterized.named_parameters(
       ("1", 1, None),
@@ -123,6 +123,14 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
       return dataset.with_options(options)
 
     self._testNumThreadsHelper(num_threads, override_threadpool_fn)
+
+  def testMaxIntraOpParallelismAsGraphDefInternal(self):
+    dataset = dataset_ops.Dataset.from_tensors(0)
+    dataset = dataset_ops._MaxIntraOpParallelismDataset(dataset, 1)
+    graph = graph_pb2.GraphDef().FromString(
+        self.evaluate(dataset._as_serialized_graph()))
+    self.assertTrue(
+        any([node.op != "MaxIntraOpParallelismDataset" for node in graph.node]))
 
 
 if __name__ == "__main__":
