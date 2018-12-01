@@ -1585,7 +1585,8 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
   return sparse_merge_impl(sp_ids, sp_values, vocab_size, name, already_sorted)
 
 
-def sparse_merge_impl(sp_ids, sp_values, vocab_size, name=None, already_sorted=False):
+def sparse_merge_impl(sp_ids, sp_values, vocab_size,
+                      name=None, already_sorted=False):
   """Internal implementation for sparse_merge to avoid deprecation warnings."""
   if isinstance(sp_ids, sparse_tensor.SparseTensorValue) or isinstance(
       sp_ids, sparse_tensor.SparseTensor):
