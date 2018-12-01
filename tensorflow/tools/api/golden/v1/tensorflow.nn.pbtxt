@@ -154,7 +154,7 @@ tf_module {
   }
   member_method {
     name: "dropout"
-    argspec: "args=[\'x\', \'keep_prob\', \'noise_shape\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'x\', \'keep_prob\', \'noise_shape\', \'seed\', \'name\', \'rate\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "dynamic_rnn"
