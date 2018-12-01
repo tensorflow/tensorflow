@@ -102,6 +102,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":functional_ops",
         ":gradient_checker",
+        ":gradient_checker_v2",
         ":graph_util",
         ":histogram_ops",
         ":image_ops",
@@ -1086,6 +1087,7 @@ py_library(
         ":cond_v2",
         ":framework_test_lib",
         ":gradient_checker",
+        ":gradient_checker_v2",
         ":platform_test",
         ":util",
         ":while_v2",
@@ -3178,6 +3180,19 @@ py_library(
     ],
 )
 
+py_library(
+    name = "gradient_checker_v2",
+    srcs = ["ops/gradient_checker_v2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":framework_for_generated_wrappers",
+        ":gradients",
+        ":platform",
+        "//third_party/py/numpy",
+    ],
+)
+
 # This target is deprecated.
 py_library(
     name = "ops",
@@ -3231,6 +3246,22 @@ cuda_py_test(
     name = "gradient_checker_test",
     size = "medium",
     srcs = ["ops/gradient_checker_test.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":nn_grad",
+        ":nn_ops",
+        ":platform",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "gradient_checker_v2_test",
+    size = "medium",
+    srcs = ["ops/gradient_checker_v2_test.py"],
     additional_deps = [
         ":array_ops",
         ":client_testlib",
