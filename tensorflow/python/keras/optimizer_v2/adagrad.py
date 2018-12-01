@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
@@ -78,8 +80,8 @@ class Adagrad(optimizer_v2.OptimizerV2):
     functions.
     @end_compatibility
     """
-    if initial_accumulator_value <= 0.0:
-      raise ValueError('initial_accumulator_value must be positive: %s' %
+    if initial_accumulator_value < 0.0:
+      raise ValueError('initial_accumulator_value must be non-negative: %s' %
                        initial_accumulator_value)
     if epsilon < 1e-7:
       raise ValueError('epsilon must be larger than 1e-7: %s' % epsilon)
@@ -95,6 +97,38 @@ class Adagrad(optimizer_v2.OptimizerV2):
       init = init_ops.constant_initializer(
           self._initial_accumulator_value, dtype=dtype)
       self.add_slot(var, 'accumulator', init)
+
+  def set_weights(self, weights):
+    params = self.weights
+    # Override set_weights for backward compatibility of Keras V1 optimizer
+    # since it does not include iteration at head of the weight list. Set
+    # iteration to 0.
+    if len(params) == len(weights) + 1:
+      weights = [np.array(0)] + weights
+    super(Adagrad, self).set_weights(weights)
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    """Creates an optimizer from its config.
+
+    This method is the reverse of `get_config`,
+    capable of instantiating the same optimizer from the config
+    dictionary.
+
+    Arguments:
+        config: A Python dictionary, typically the output of get_config.
+        custom_objects: A Python dictionary mapping names to additional Python
+          objects used to create this optimizer, such as a function used for a
+          hyperparameter.
+
+    Returns:
+        An optimizer instance.
+    """
+    if 'initial_accumulator_value' not in config:
+      config['initial_accumulator_value'] = 0.
+    if 'lr' in config:
+      config['learning_rate'] = config.pop('lr')
+    return cls(**config)
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
