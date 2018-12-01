@@ -465,19 +465,18 @@ class MklConvOp : public OpKernel {
                                         filter.shape().DebugString()));
 
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(
-          context,
-          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
-          errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
+                                           std::numeric_limits<int>::max()),
+                  errors::InvalidArgument("filter too large"));
     }
 
     const int64 input_depth =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'C')
                             : GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(context, input_depth == filter.dim_size(2),
-                errors::InvalidArgument(
-                    "input and filter must have the same depth: ", input_depth,
-                    " vs ", filter.dim_size(2)));
+    OP_REQUIRES(
+        context, input_depth == filter.dim_size(2),
+        errors::InvalidArgument("input and filter must have the same depth: ",
+                                input_depth, " vs ", filter.dim_size(2)));
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
 
@@ -486,10 +485,9 @@ class MklConvOp : public OpKernel {
     const int64 input_rows_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'H')
                             : GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("Input rows too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("Input rows too large"));
     const int input_rows = static_cast<int>(input_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
 
@@ -498,10 +496,9 @@ class MklConvOp : public OpKernel {
     const int64 input_cols_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'W')
                             : GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("Input cols too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("Input cols too large"));
     const int input_cols = static_cast<int>(input_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 
@@ -509,10 +506,9 @@ class MklConvOp : public OpKernel {
     const int64 input_batch_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'N')
                             : GetTensorDim(input, data_format_, 'N');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_batch_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("batch is too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_batch_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("batch is too large"));
     const int batch = static_cast<int>(input_batch_raw);
 
     // For now we take the stride from the second and third dimensions only (we
@@ -893,17 +889,15 @@ class MklConvOp : public OpKernel {
       OP_REQUIRES(context, dilations_.size() == 5,
                   errors::InvalidArgument("Dilation rates field must "
                                           "specify 5 dimensions"));
-      OP_REQUIRES(context,
-                  (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
-                   GetTensorDim(dilations_, data_format_, 'C') == 1),
+      OP_REQUIRES(context, (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
+                            GetTensorDim(dilations_, data_format_, 'C') == 1),
                   errors::InvalidArgument(
                       "Current implementation does not yet support "
                       "dilations rates in the batch and depth dimensions."));
       OP_REQUIRES(
-          context,
-          (GetTensorDim(dilations_, data_format_, '0') > 0 &&
-           GetTensorDim(dilations_, data_format_, '1') > 0 &&
-           GetTensorDim(dilations_, data_format_, '2') > 0),
+          context, (GetTensorDim(dilations_, data_format_, '0') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '1') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '2') > 0),
           errors::InvalidArgument("Dilated rates should be larger than 0."));
     }
   }
@@ -1011,7 +1005,7 @@ class MklConvOp : public OpKernel {
       // get a conv2d fwd from primitive pool
       MklConvFwdPrimitive<float, Tinput, Tfilter, Tbias, Ttemp_output>*
           conv_fwd = nullptr;
-      if (biasEnabled) {
+      if (fuse_biasadd_) {
         memory::dims bias_dims = {};
         conv_utl.GetBiasSizeInMklOrder(kInputIndex_Bias, &bias_dims);
         MklConvFwdParams convFwdDims(src_dims, filter_dims, bias_dims,
@@ -1083,7 +1077,7 @@ class MklConvOp : public OpKernel {
       }
 
       // execute convolution
-      if (biasEnabled) {
+      if (fuse_biasadd_) {
         const Tensor& bias_tensor = MklGetInput(context, kInputIndex_Bias);
         Tbias* bias_data =
             this->GetBiasHandle(context, conv_fwd_pd, bias_tensor);
@@ -1105,6 +1099,12 @@ class MklConvOp : public OpKernel {
   }
 
  protected:
+  void FuseBiasAdd(bool fuse_bias_add) { fuse_biasadd_ = fuse_bias_add; }
+  void FuseRelu(bool fuse_relu) { fuse_relu_ = fuse_relu; }
+
+  // This method is called for the base class MklConvOp, which handles the
+  // floating point implementation of Conv. The quantized conv implementations
+  // will use overiddern versions of this method.
   virtual void ExtendConvFwdParams(OpKernelContext* context,
                                    MklConvFwdParams& params) {
     // Create a string from data types of input, filter, bias, and output.
@@ -1112,6 +1112,11 @@ class MklConvOp : public OpKernel {
     params.dtypes.append(typeid(Tfilter).name());
     params.dtypes.append(typeid(Tbias).name());
     params.dtypes.append(typeid(Toutput).name());
+
+    // Add fusions as post ops
+    if (fuse_relu_) {
+      params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+    }
   }
 
   virtual Tbias* GetBiasHandle(
@@ -1119,7 +1124,7 @@ class MklConvOp : public OpKernel {
       std::shared_ptr<mkldnn::convolution_forward::primitive_desc>&
           conv2d_fwd_pd,
       const Tensor& bias_tensor) {
-    if (biasEnabled) {
+    if (fuse_biasadd_) {
       return static_cast<Tbias*>(
           const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
     } else {
@@ -1165,6 +1170,11 @@ class MklConvOp : public OpKernel {
   std::vector<int32> dilations_;
   Padding padding_;
   TensorFormat data_format_;
+
+  // Initialize to value the template is instantiated with
+  bool fuse_biasadd_ = biasEnabled;
+  bool fuse_relu_ = false;
+
   const int kInputIndex_Src = 0, kInputIndex_Filter = 1, kInputIndex_Bias = 2;
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
   const int kDilationH = 0, kDilationW = 1;
@@ -1217,12 +1227,12 @@ class MklConvOp : public OpKernel {
     // Create convolution primitive and add it to net.
     std::vector<primitive> net;
     if (bias) {
-      DCHECK(biasEnabled);
+      DCHECK(fuse_biasadd_);
       net.push_back(convolution_forward(conv_prim_desc, src->GetOpMem(),
                                         filter->GetOpMem(), bias->GetOpMem(),
                                         output->GetOpMem()));
     } else {
-      DCHECK(!biasEnabled);
+      DCHECK(!fuse_biasadd_);
       net.push_back(convolution_forward(conv_prim_desc, src->GetOpMem(),
                                         filter->GetOpMem(),
                                         output->GetOpMem()));
@@ -1230,6 +1240,49 @@ class MklConvOp : public OpKernel {
 
     stream(stream::kind::eager).submit(net).wait();
   }
+};
+
+// Base class for fused convolution forward operations
+template <typename Device, typename Tinput, typename Tfilter, typename Tbias,
+          typename Toutput, typename Ttemp_output>
+class MklFusedConvOp : public MklConvOp<Device, Tinput, Tfilter, Tbias, Toutput,
+                                        Ttemp_output, false> {
+ public:
+  explicit MklFusedConvOp(OpKernelConstruction* context)
+      : MklConvOp<Device, Tinput, Tfilter, Tbias, Toutput, Ttemp_output, false>(
+            context) {
+    // Since we came here through the registration of _MklFusedConv2D then get
+    // all information from 'fused_ops' and 'num_args'
+    std::vector<string> fused_ops;
+    OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &fused_ops));
+
+    int num_args;
+    OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
+    OP_REQUIRES(context, (num_args == 0 || !fused_ops.empty()),
+                errors::InvalidArgument(
+                    "Fused Conv2D must have at least one fused op."));
+
+    if (fused_ops == {"BiasAdd"}) {
+      this->FuseBiasAdd(true);
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "Fused Conv2D must have one extra argument: bias."));
+    } else if (fused_ops == {"Relu"}) {
+      this->FuseRelu(true);
+    } else if (fused_ops == {"BiasAdd", "Relu"}) {
+      this->FuseBiasAdd(true);
+      this->FuseRelu(true);
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "Fused Conv2D must have one extra argument: bias."));
+    } else {
+      OP_REQUIRES(context, false,
+                  errors::Unimplemented("Fusion is not implemented: [",
+                                        str_util::Join(fused_ops, ","), "]"));
+    }
+  }
+
+  virtual ~MklFusedConvOp() {}
 };
 
 // We create new class for each verison of Quantized Convolution and inherit
@@ -1539,8 +1592,8 @@ class MklQuantizedConv2DSumReluOp
     const float max_filter =
         context->input(5 + bias_index_offset).flat<float>()(0);
 
-    reorder_sum_scale = 255.0 * 127.0 /
-                        (std::max(std::abs(max_input), std::abs(min_input)) *
+    reorder_sum_scale =
+        255.0 * 127.0 / (std::max(std::abs(max_input), std::abs(min_input)) *
                          std::max(std::abs(max_filter), std::abs(min_filter)));
     std::vector<float> scales;
     scales.push_back(reorder_sum_scale);
@@ -1810,6 +1863,17 @@ REGISTER_KERNEL_BUILDER(
                           MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D);
+
+#define REGISTER_MKL_CPU_2D_FUSED(T)                                \
+  REGISTER_KERNEL_BUILDER(Name("_MklFusedConv2D")                   \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklFusedConvOp<CPUDevice, T, T, T, T, T>);
+// Note we are registering _MklFusedConv2D.
+// We check the fused_ops attributes to decide if bias is enabled or not.
+
+TF_CALL_float(REGISTER_MKL_CPU_2D_FUSED);
 
 // Register 3D operations
 #define REGISTER_MKL_CPU_3D(T)                                      \

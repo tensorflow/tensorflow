@@ -6741,6 +6741,31 @@ tf_mkl_kernel_library(
     deps = NN_DEPS + mkl_deps() + [":cwise_op"],
 )
 
+tf_cc_test_mkl(
+    name = "mkl_fused_ops_test",
+    size = "small",
+    srcs = ["mkl_fused_ops_test.cc"],
+    linkstatic = 1,
+    deps = [
+        ":conv_ops",
+        ":image",
+        ":mkl_conv_op",
+        ":mkl_tfconv_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_mkl_kernel_library(
     name = "mkl_transpose_op",
     srcs = [
