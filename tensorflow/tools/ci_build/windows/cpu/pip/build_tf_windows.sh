@@ -58,7 +58,8 @@ PY_TEST_DIR="py_test_dir"
 SKIP_TEST=0
 RELEASE_BUILD=0
 TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..."
-EXTRA_BUILD_FLAGS=${EXTRA_BUILD_FLAGS:-}
+PROJECT_NAME=""
+EXTRA_BUILD_FLAGS=""
 
 # --skip_test            Skip running tests
 # --enable_remote_cache  Add options to enable remote cache for build and test
@@ -74,6 +75,20 @@ for ARG in "$@"; do
     --release_build) RELEASE_BUILD=1 ;;
     --test_core_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..." ;;
     --test_contrib_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/contrib/..." ;;
+    --extra_build_flags)
+      shift
+      if [[ -z "$1" ]]; then
+        break
+      fi
+      EXTRA_BUILD_FLAGS="$1"
+      ;;
+    --project_name)
+      shift
+      if [[ -z "$1" ]]; then
+        break
+      fi
+      PROJECT_NAME="$1"
+      ;;
     *)
   esac
 done
@@ -89,10 +104,10 @@ fi
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
   python tensorflow/tools/ci_build/update_version.py --nightly
-  if [ -z ${EXTRA_PIP_FLAGS} ]; then
+  if [ -z ${PROJECT_NAME} ]; then
     EXTRA_PIP_FLAGS="--nightly_flag"
   else
-    EXTRA_PIP_FLAGS="${EXTRA_PIP_FLAGS} --nightly_flag"
+    EXTRA_PIP_FLAGS="--project_name=${PROJECT_NAME} --nightly_flag"
   fi
 fi
 
