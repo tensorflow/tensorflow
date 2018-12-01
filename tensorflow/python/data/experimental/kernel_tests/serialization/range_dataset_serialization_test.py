@@ -71,36 +71,36 @@ class RangeDatasetSerializationTest(
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, _ = _build_graph(start, stop)
       with self.session(graph=g) as sess:
-        sess.run(variables.global_variables_initializer())
-        sess.run(init_op)
+        self.evaluate(variables.global_variables_initializer())
+        self.evaluate(init_op)
         for i in range(start, break_point):
-          self.assertEqual(i, sess.run(get_next))
-        sess.run(save_op)
+          self.assertEqual(i, self.evaluate(get_next))
+        self.evaluate(save_op)
 
     with ops.Graph().as_default() as g:
       init_op, get_next, _, restore_op = _build_graph(start, stop)
       with self.session(graph=g) as sess:
-        sess.run(init_op)
-        sess.run(restore_op)
+        self.evaluate(init_op)
+        self.evaluate(restore_op)
         for i in range(break_point, stop):
-          self.assertEqual(i, sess.run(get_next))
+          self.assertEqual(i, self.evaluate(get_next))
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+          self.evaluate(get_next)
 
     # Saving and restoring in same session.
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, restore_op = _build_graph(start, stop)
       with self.session(graph=g) as sess:
-        sess.run(variables.global_variables_initializer())
-        sess.run(init_op)
+        self.evaluate(variables.global_variables_initializer())
+        self.evaluate(init_op)
         for i in range(start, break_point):
-          self.assertEqual(i, sess.run(get_next))
-        sess.run(save_op)
-        sess.run(restore_op)
+          self.assertEqual(i, self.evaluate(get_next))
+        self.evaluate(save_op)
+        self.evaluate(restore_op)
         for i in range(break_point, stop):
-          self.assertEqual(i, sess.run(get_next))
+          self.assertEqual(i, self.evaluate(get_next))
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+          self.evaluate(get_next)
 
   def _build_range_dataset(self, start, stop):
     return dataset_ops.Dataset.range(start, stop)

@@ -35,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import parsing_ops
@@ -100,7 +101,7 @@ class SupervisorTest(test.TestCase):
       sv = supervisor.Supervisor(logdir=logdir)
       sess = sv.prepare_or_wait_for_session("")
       for _ in xrange(10):
-        sess.run(my_op)
+        self.evaluate(my_op)
       sess.close()
       sv.stop()
 
@@ -111,7 +112,7 @@ class SupervisorTest(test.TestCase):
       sv = supervisor.Supervisor(logdir=logdir)
       with sv.managed_session("") as sess:
         for _ in xrange(10):
-          sess.run(my_op)
+          self.evaluate(my_op)
       # Supervisor has been stopped.
       self.assertTrue(sv.should_stop())
 
@@ -128,7 +129,7 @@ class SupervisorTest(test.TestCase):
             if step == 1:
               raise RuntimeError("failing here")
             else:
-              sess.run(my_op)
+              self.evaluate(my_op)
       # Supervisor has been stopped.
       self.assertTrue(sv.should_stop())
       self.assertEqual(1, last_step)
@@ -146,7 +147,7 @@ class SupervisorTest(test.TestCase):
             raise errors_impl.OutOfRangeError(my_op.op.node_def, my_op.op,
                                               "all done")
           else:
-            sess.run(my_op)
+            self.evaluate(my_op)
       # Supervisor has been stopped.  OutOfRangeError was not thrown.
       self.assertTrue(sv.should_stop())
       self.assertEqual(3, last_step)
@@ -335,7 +336,7 @@ class SupervisorTest(test.TestCase):
       sess = sv.prepare_or_wait_for_session(
           "", config=config_pb2.ConfigProto(device_count={"CPU": 2}))
       for _ in xrange(10):
-        sess.run(my_op)
+        self.evaluate(my_op)
       sess.close()
       sv.stop()
 
@@ -420,6 +421,7 @@ class SupervisorTest(test.TestCase):
       with self.assertRaisesRegexp(RuntimeError, "requires a summary writer"):
         sv.summary_computed(sess, sess.run(summ))
 
+  @test_util.run_deprecated_v1
   def testLogdirButExplicitlyNoSummaryWriter(self):
     logdir = self._test_dir("explicit_no_summary_writer")
     with ops.Graph().as_default():
@@ -505,6 +507,7 @@ class SupervisorTest(test.TestCase):
       sv = supervisor.Supervisor(logdir="", session_manager=sm)
       sv.prepare_or_wait_for_session("")
 
+  @test_util.run_deprecated_v1
   def testInitOp(self):
     logdir = self._test_dir("default_init_op")
     with ops.Graph().as_default():
@@ -514,6 +517,7 @@ class SupervisorTest(test.TestCase):
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
       sv.stop()
 
+  @test_util.run_deprecated_v1
   def testInitFn(self):
     logdir = self._test_dir("default_init_op")
     with ops.Graph().as_default():
@@ -527,6 +531,7 @@ class SupervisorTest(test.TestCase):
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
       sv.stop()
 
+  @test_util.run_deprecated_v1
   def testInitOpWithFeedDict(self):
     logdir = self._test_dir("feed_dict_init_op")
     with ops.Graph().as_default():
@@ -540,6 +545,7 @@ class SupervisorTest(test.TestCase):
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
       sv.stop()
 
+  @test_util.run_deprecated_v1
   def testReadyForLocalInitOp(self):
     server = server_lib.Server.create_local_server()
     logdir = self._test_dir("default_ready_for_local_init_op")
@@ -582,6 +588,7 @@ class SupervisorTest(test.TestCase):
     sv0.stop()
     sv1.stop()
 
+  @test_util.run_deprecated_v1
   def testReadyForLocalInitOpRestoreFromCheckpoint(self):
     server = server_lib.Server.create_local_server()
     logdir = self._test_dir("ready_for_local_init_op_restore")
@@ -713,6 +720,7 @@ class SupervisorTest(test.TestCase):
                                    "Variables not initialized: w"):
         sv.prepare_or_wait_for_session(server.target)
 
+  @test_util.run_deprecated_v1
   def testSetupFail(self):
     logdir = self._test_dir("setup_fail")
     with ops.Graph().as_default():
@@ -723,6 +731,7 @@ class SupervisorTest(test.TestCase):
       variables.VariableV1([1.0, 2.0, 3.0], name="v")
       supervisor.Supervisor(logdir=logdir, is_chief=False)
 
+  @test_util.run_deprecated_v1
   def testDefaultGlobalStep(self):
     logdir = self._test_dir("default_global_step")
     with ops.Graph().as_default():
@@ -732,6 +741,7 @@ class SupervisorTest(test.TestCase):
       self.assertEquals(287, sess.run(sv.global_step))
       sv.stop()
 
+  @test_util.run_deprecated_v1
   def testRestoreFromMetaGraph(self):
     logdir = self._test_dir("restore_from_meta_graph")
     with ops.Graph().as_default():
@@ -753,6 +763,7 @@ class SupervisorTest(test.TestCase):
   # This test is based on the fact that the standard services start
   # right away and get to run once before sv.stop() returns.
   # We still sleep a bit to make the test robust.
+  @test_util.run_deprecated_v1
   def testStandardServicesWithoutGlobalStep(self):
     logdir = self._test_dir("standard_services_without_global_step")
     # Create a checkpoint.
@@ -799,10 +810,11 @@ class SupervisorTest(test.TestCase):
       v = variables.VariableV1([10.10], name="foo")
       sav = saver_lib.Saver([v])
       sav.restore(sess, save_path)
-      self.assertEqual(1.0, v.eval()[0])
+      self.assertEqual(1.0, self.evaluate(v)[0])
 
   # Same as testStandardServicesNoGlobalStep but with a global step.
   # We should get a summary about the step time.
+  @test_util.run_deprecated_v1
   def testStandardServicesWithGlobalStep(self):
     logdir = self._test_dir("standard_services_with_global_step")
     # Create a checkpoint.
@@ -863,7 +875,7 @@ class SupervisorTest(test.TestCase):
       v = variables.VariableV1([-12], name="global_step")
       sav = saver_lib.Saver([v])
       sav.restore(sess, save_path)
-      self.assertEqual(123, v.eval()[0])
+      self.assertEqual(123, self.evaluate(v)[0])
 
   def testNoQueueRunners(self):
     with ops.Graph().as_default(), self.cached_session() as sess:

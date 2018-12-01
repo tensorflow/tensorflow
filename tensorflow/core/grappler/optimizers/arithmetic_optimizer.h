@@ -73,14 +73,14 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
     bool remove_redundant_reshape = true;
-    bool reorder_cast_and_transpose = true;
+    bool reorder_cast_like_and_value_preserving = true;
     bool replace_mul_with_square = true;
     bool simplify_aggregation = true;
     bool convert_pow = true;
     bool convert_log1p = true;
     bool convert_expm1 = true;
     bool unary_ops_composition = true;
-    bool remove_stack_strided_slice_same_axis = false;
+    bool remove_stack_strided_slice_same_axis = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.

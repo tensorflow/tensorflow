@@ -19,8 +19,25 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.proto import topology_pb2
+
+
+def _tpu_device_name(job, task, device):
+  """Returns the device name for the TPU `device` on `task` of `job`."""
+  if job is None:
+    return "/task:%d/device:TPU:%d" % (task, device)
+  else:
+    return "/job:%s/task:%d/device:TPU:%d" % (job, task, device)
+
+
+def _tpu_host_device_name(job, task):
+  """Returns the device name for the CPU device on `task` of `job`."""
+  if job is None:
+    return "/task:%d/device:CPU:0" % task
+  else:
+    return "/job:%s/task:%d/device:CPU:0" % (job, task)
 
 
 class Topology(object):
@@ -71,6 +88,8 @@ class Topology(object):
         raise ValueError("`device_coordinates` must be a rank 3 int32 array "
                          "with minor dimension equal to the mesh shape rank")
 
+    self._topology_tasks, self._topology_devices = self._invert_topology()
+
   def _parse_topology(self, serialized):
     """Parses a serialized `TopologyProto` into `self`."""
     proto = topology_pb2.TopologyProto()
@@ -106,6 +125,17 @@ class Topology(object):
                              len(proto.mesh_shape)))
     self._device_coordinates = coords
 
+  def _invert_topology(self):
+    """Inverts a [task,device,axis] topology to [x,y,z] -> task/device maps."""
+    tasks = np.full(list(self.mesh_shape), -1, dtype=np.int32)
+    devices = np.full(list(self.mesh_shape), -1, dtype=np.int32)
+    for task in xrange(self.device_coordinates.shape[0]):
+      for device in xrange(self.device_coordinates.shape[1]):
+        x, y, z = self.device_coordinates[task, device, :]
+        tasks[x, y, z] = task
+        devices[x, y, z] = device
+    return tasks, devices
+
   @property
   def mesh_shape(self):
     """A rank 1 int32 array describing the shape of the TPU topology."""
@@ -129,6 +159,43 @@ class Topology(object):
       dimensions `(x, y, core number)`.
     """
     return self._device_coordinates
+
+  def task_ordinal_at_coordinates(self, device_coordinates):
+    """Returns the TensorFlow task number attached to `device_coordinates`.
+
+    Args:
+      device_coordinates: An integer sequence describing a device's physical
+        coordinates in the TPU fabric.
+
+    Returns:
+      Returns the TensorFlow task number that contains the TPU device with those
+      physical coordinates.
+    """
+    return self._topology_tasks[tuple(device_coordinates)]
+
+  def tpu_device_ordinal_at_coordinates(self, device_coordinates):
+    """Returns the TensorFlow device number at `device_coordinates`.
+
+    Args:
+      device_coordinates: An integer sequence describing a device's physical
+        coordinates in the TPU fabric.
+
+    Returns:
+      Returns the TensorFlow device number within the task corresponding to
+      attached to the device with those physical coordinates.
+    """
+    return self._topology_devices[tuple(device_coordinates)]
+
+  def cpu_device_name_at_coordinates(self, device_coordinates, job=None):
+    """Returns the CPU device attached to a logical core."""
+    return _tpu_host_device_name(
+        job, self._topology_tasks[tuple(device_coordinates)])
+
+  def tpu_device_name_at_coordinates(self, device_coordinates, job=None):
+    """Returns the name of the TPU device assigned to a logical core."""
+    return _tpu_device_name(job,
+                            self._topology_tasks[tuple(device_coordinates)],
+                            self._topology_devices[tuple(device_coordinates)])
 
   @property
   def num_tasks(self):

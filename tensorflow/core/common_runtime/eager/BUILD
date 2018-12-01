@@ -148,6 +148,7 @@ tf_cuda_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":attr_builder",
         "@farmhash_archive//:farmhash",
     ] + select({
         "//tensorflow:android": [
@@ -180,6 +181,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -219,7 +221,6 @@ tf_cuda_library(
     hdrs = ["attr_builder.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":kernel_and_device",
         "@farmhash_archive//:farmhash",
         # Only the TF_AttrType enum is required, so pull in just the C headers.
         # TODO(b/113535673): Break this dependency and avoid the C header completely.

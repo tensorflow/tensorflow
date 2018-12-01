@@ -32,6 +32,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -978,6 +979,26 @@ XLA_TEST_F(ReduceTest, OrReduceU64) {
   std::vector<uint64> expected = {0X3BFDFF7ABEFEFEF0LL, 0XFFFFFFFFFFFFFFF7LL,
                                   0xCAFEBEEFABABABABLL};
   ComputeAndCompareR1<uint64>(&builder, expected, {});
+}
+
+XLA_TEST_F(ReduceTest, R0ReduceInDisguise) {
+  XlaBuilder builder(TestName());
+  XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
+  constexpr int element_count = 127;
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {element_count, 1});
+  auto input = Parameter(&builder, 0, input_shape, "input");
+  auto zero = ConstantR0<float>(&builder, 0.0);
+  Reduce(input, zero, add_f32, /*dimensions_to_reduce=*/{0});
+
+  Array2D<float> input_data(element_count, 1);
+  input_data.FillRandom(3.0f);
+  Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
+  std::unique_ptr<GlobalData> input_global_data =
+      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+
+  float expected = absl::c_accumulate(input_data, 0.0f);
+  ComputeAndCompareR1<float>(&builder, {expected}, {input_global_data.get()},
+                             ErrorSpec(0.001));
 }
 
 }  // namespace

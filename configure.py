@@ -43,7 +43,7 @@ _DEFAULT_CUDA_PATH_WIN = ('C:/Program Files/NVIDIA GPU Computing '
 _TF_OPENCL_VERSION = '1.2'
 _DEFAULT_COMPUTECPP_TOOLKIT_PATH = '/usr/local/computecpp'
 _DEFAULT_TRISYCL_INCLUDE_DIR = '/usr/local/triSYCL/include'
-_SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15, 16]
+_SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15, 16, 17, 18]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
 
@@ -237,6 +237,13 @@ def setup_python(environ_cp):
   write_action_env_to_bazelrc('PYTHON_LIB_PATH', python_lib_path)
   write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
   environ_cp['PYTHON_BIN_PATH'] = python_bin_path
+
+  # If choosen python_lib_path is from a path specified in the PYTHONPATH
+  # variable, need to tell bazel to include PYTHONPATH
+  if environ_cp.get('PYTHONPATH'):
+    python_paths = environ_cp.get('PYTHONPATH').split(':')
+    if python_lib_path in python_paths:
+      write_action_env_to_bazelrc('PYTHONPATH', environ_cp.get('PYTHONPATH'))
 
   # Write tools/python_bin_path.sh
   with open(
@@ -445,11 +452,12 @@ def convert_version_to_int(version):
   return int(version_str)
 
 
-def check_bazel_version(min_version):
-  """Check installed bazel version is at least min_version.
+def check_bazel_version(min_version, max_version):
+  """Check installed bazel version is between min_version and max_version.
 
   Args:
     min_version: string for minimum bazel version.
+    max_version: string for maximum bazel version.
 
   Returns:
     The bazel version detected.
@@ -467,6 +475,7 @@ def check_bazel_version(min_version):
 
   min_version_int = convert_version_to_int(min_version)
   curr_version_int = convert_version_to_int(curr_version)
+  max_version_int = convert_version_to_int(max_version)
 
   # Check if current bazel version can be detected properly.
   if not curr_version_int:
@@ -478,6 +487,10 @@ def check_bazel_version(min_version):
 
   if curr_version_int < min_version_int:
     print('Please upgrade your bazel installation to version %s or higher to '
+          'build TensorFlow!' % min_version)
+    sys.exit(0)
+  if curr_version_int > max_version_int:
+    print('Please downgrade your bazel installation to version %s or lower to '
           'build TensorFlow!' % min_version)
     sys.exit(0)
   return curr_version
@@ -859,7 +872,7 @@ def set_tf_cuda_version(environ_cp):
     cuda_toolkit_paths_full = [
         os.path.join(cuda_toolkit_path, x) for x in cuda_rt_lib_paths
     ]
-    if any([os.path.exists(x) for x in cuda_toolkit_paths_full]):
+    if any(os.path.exists(x) for x in cuda_toolkit_paths_full):
       break
 
     # Reset and retry
@@ -1182,6 +1195,7 @@ def set_tf_nccl_install_path(environ_cp):
       if is_windows() or is_cygwin():
         nccl_install_path = cygpath(nccl_install_path)
 
+      nccl_lib_path = ''
       if is_windows():
         nccl_lib_path = 'lib/x64/nccl.lib'
       elif is_linux():
@@ -1417,11 +1431,16 @@ def set_mpi_home(environ_cp):
   def valid_mpi_path(mpi_home):
     exists = (
         os.path.exists(os.path.join(mpi_home, 'include')) and
-        os.path.exists(os.path.join(mpi_home, 'lib')))
+        (os.path.exists(os.path.join(mpi_home, 'lib')) or
+         os.path.exists(os.path.join(mpi_home, 'lib64')) or
+         os.path.exists(os.path.join(mpi_home, 'lib32'))))
     if not exists:
-      print('Invalid path to the MPI Toolkit. %s or %s cannot be found' %
-            (os.path.join(mpi_home, 'include'),
-             os.path.exists(os.path.join(mpi_home, 'lib'))))
+      print(
+          'Invalid path to the MPI Toolkit. %s or %s or %s or %s cannot be found'
+          % (os.path.join(mpi_home, 'include'),
+             os.path.exists(os.path.join(mpi_home, 'lib')),
+             os.path.exists(os.path.join(mpi_home, 'lib64')),
+             os.path.exists(os.path.join(mpi_home, 'lib32'))))
     return exists
 
   _ = prompt_loop_or_load_from_env(
@@ -1462,8 +1481,17 @@ def set_other_mpi_vars(environ_cp):
   if os.path.exists(os.path.join(mpi_home, 'lib/libmpi.so')):
     symlink_force(
         os.path.join(mpi_home, 'lib/libmpi.so'), 'third_party/mpi/libmpi.so')
+  elif os.path.exists(os.path.join(mpi_home, 'lib64/libmpi.so')):
+    symlink_force(
+        os.path.join(mpi_home, 'lib64/libmpi.so'), 'third_party/mpi/libmpi.so')
+  elif os.path.exists(os.path.join(mpi_home, 'lib32/libmpi.so')):
+    symlink_force(
+        os.path.join(mpi_home, 'lib32/libmpi.so'), 'third_party/mpi/libmpi.so')
+
   else:
-    raise ValueError('Cannot find the MPI library file in %s/lib' % mpi_home)
+    raise ValueError(
+        'Cannot find the MPI library file in %s/lib or %s/lib64 or %s/lib32' %
+        mpi_home, mpi_home, mpi_home)
 
 
 def set_system_libs_flag(environ_cp):
@@ -1537,9 +1565,12 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.15.0')
+  check_bazel_version('0.15.0', '0.19.2')
 
   reset_tf_configure_bazelrc()
+  # Explicitly import tools/bazel.rc, this is needed for Bazel 0.19.0 or later
+  write_to_bazelrc('import %workspace%/tools/bazel.rc')
+
   cleanup_makefile()
   setup_python(environ_cp)
 
@@ -1667,6 +1698,8 @@ def main():
   config_info_line('gdr', 'Build with GDR support.')
   config_info_line('verbs', 'Build with libverbs support.')
   config_info_line('ngraph', 'Build with Intel nGraph support.')
+  config_info_line('dynamic_kernels',
+                   '(Experimental) Build kernels into separate shared objects.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')
   config_info_line('noaws', 'Disable AWS S3 filesystem support.')
@@ -1674,8 +1707,8 @@ def main():
   config_info_line('nohdfs', 'Disable HDFS support.')
   config_info_line('noignite', 'Disable Apacha Ignite support.')
   config_info_line('nokafka', 'Disable Apache Kafka support.')
+  config_info_line('nonccl', 'Disable NVIDIA NCCL support.')
 
 
 if __name__ == '__main__':
   main()
-

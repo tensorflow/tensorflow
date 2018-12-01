@@ -332,6 +332,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create1dPlan(Stream *stream, uint64 num_x,
   // TODO(yangzihao): In the future, send error msg back to TensorFlow
   // so it can fail gracefully,
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x;
     LOG(FATAL) << "failed to initialize cufft 1d plan: "
                << status.error_message();
   }
@@ -346,6 +347,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create1dPlanWithScratchAllocator(
   port::Status status = fft_plan_ptr->Initialize(parent_, stream, 1, elem_count,
                                                  type, scratch_allocator);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x;
     LOG(FATAL)
         << "failed to initialize cufft 1d plan with customized allocator: "
         << status.error_message();
@@ -361,6 +363,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create2dPlan(Stream *stream, uint64 num_x,
   port::Status status = fft_plan_ptr->Initialize(
       parent_, stream, 1, elem_count, type, /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y;
     LOG(FATAL) << "failed to initialize cufft 2d plan: "
                << status.error_message();
   }
@@ -375,6 +378,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create2dPlanWithScratchAllocator(
   port::Status status = fft_plan_ptr->Initialize(parent_, stream, 2, elem_count,
                                                  type, scratch_allocator);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y;
     LOG(FATAL)
         << "failed to initialize cufft 2d plan with customized allocator: "
         << status.error_message();
@@ -391,6 +395,8 @@ std::unique_ptr<fft::Plan> CUDAFft::Create3dPlan(Stream *stream, uint64 num_x,
   port::Status status = fft_plan_ptr->Initialize(
       parent_, stream, 3, elem_count, type, /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y
+               << " num_z: " << num_z;
     LOG(FATAL) << "failed to initialize cufft 3d plan: "
                << status.error_message();
   }
@@ -405,6 +411,8 @@ std::unique_ptr<fft::Plan> CUDAFft::Create3dPlanWithScratchAllocator(
   port::Status status = fft_plan_ptr->Initialize(parent_, stream, 3, elem_count,
                                                  type, scratch_allocator);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y
+               << " num_z: " << num_z;
     LOG(FATAL)
         << "failed to initialize cufft 3d plan with customized allocator: "
         << status.error_message();
@@ -423,6 +431,15 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlan(
       input_distance, output_embed, output_stride, output_distance, type,
       batch_count, /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
+    LOG(ERROR) << "Initialize Params: rank: " << rank
+               << " elem_count: " << *elem_count
+               << " input_embed: " << *input_embed
+               << " input_stride: " << input_stride
+               << " input_distance: " << input_distance
+               << " output_embed: " << *output_embed
+               << " output_stride: " << output_stride
+               << " output_distance: " << output_distance
+               << " batch_count: " << batch_count;
     LOG(FATAL) << "failed to initialize batched cufft plan: "
                << status.error_message();
   }
@@ -441,6 +458,15 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlanWithScratchAllocator(
       input_distance, output_embed, output_stride, output_distance, type,
       batch_count, scratch_allocator);
   if (!status.ok()) {
+    LOG(ERROR) << "Initialize Params: rank: " << rank
+               << " elem_count: " << *elem_count
+               << " input_embed: " << *input_embed
+               << " input_stride: " << input_stride
+               << " input_distance: " << input_distance
+               << " output_embed: " << *output_embed
+               << " output_stride: " << output_stride
+               << " output_distance: " << output_distance
+               << " batch_count: " << batch_count;
     LOG(FATAL)
         << "failed to initialize batched cufft plan with customized allocator: "
         << status.error_message();

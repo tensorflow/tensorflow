@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
@@ -143,11 +143,23 @@ class Server(object):
     """
     self._server_def = _make_server_def(server_or_cluster_def,
                                         job_name, task_index, protocol, config)
-    with errors.raise_exception_on_not_ok_status() as status:
-      self._server = pywrap_tensorflow.PyServer_New(
-          self._server_def.SerializeToString(), status)
+    self._server = c_api.TF_NewServer(self._server_def.SerializeToString())
     if start:
       self.start()
+
+  def __del__(self):
+    try:
+      c_api.TF_ServerStop(self._server)
+      # Clean shutdown of servers is not yet implemented, so
+      # we leak instead of calling c_api.TF_DeleteServer here.
+      # See:
+      # https://github.com/tensorflow/tensorflow/blob/0495317a6e9dd4cac577b9d5cf9525e62b571018/tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h#L73
+    except errors.UnimplementedError:
+      pass
+    except AttributeError:
+      # At shutdown, `c_api` may have been garbage collected.
+      pass
+    self._server = None
 
   def start(self):
     """Starts this server.
@@ -156,8 +168,7 @@ class Server(object):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         starting the TensorFlow server.
     """
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.PyServer_Start(self._server, status)
+    c_api.TF_ServerStart(self._server)
 
   def join(self):
     """Blocks until the server has shut down.
@@ -168,8 +179,7 @@ class Server(object):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         joining the TensorFlow server.
     """
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.PyServer_Join(self._server, status)
+    c_api.TF_ServerJoin(self._server)
 
   @property
   def server_def(self):
@@ -198,7 +208,7 @@ class Server(object):
     Returns:
       A string containing a session target for this server.
     """
-    return self._server.target()
+    return c_api.TF_ServerTarget(self._server)
 
   @staticmethod
   def create_local_server(config=None, start=True):

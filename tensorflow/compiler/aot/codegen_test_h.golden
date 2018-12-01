@@ -22,7 +22,7 @@ extern "C" void entry_point(
     void* result, const xla::ExecutableRunOptions* run_options,
     const void** args, void** temps, tensorflow::int64* profile_counters);
 
-extern "C" char __tfcompile_foo_bar_MyClass_ProgramShape_protobuf_array_contents[];
+extern "C" char __tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[];
 
 
 namespace foo {
@@ -253,10 +253,10 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
   }
 
   // Shape of the args and results.
-  static const xla::ProgramShape* StaticProgramShape() {
-    static const xla::ProgramShape* kShape = []() {
-    xla::ProgramShape* proto = new xla::ProgramShape;
-    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShape_protobuf_array_contents[0], 52);
+  static const xla::ProgramShapeProto* StaticProgramShape() {
+    static const xla::ProgramShapeProto* kShape = []() {
+    xla::ProgramShapeProto* proto = new xla::ProgramShapeProto;
+    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 52);
     return proto;
   }();
     return kShape;

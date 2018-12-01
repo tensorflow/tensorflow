@@ -31,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import init_ops
@@ -549,13 +550,11 @@ def _serialize_slot_variables(checkpointable_objects, node_ids, object_names):
   return slot_variables
 
 
-def _serialize_checkpointables(
-    checkpointable_objects, node_ids, object_names, slot_variables,
-    saveables_cache):
-  """Name non-slot `Checkpointable`s and add them to `object_graph_proto`."""
-  object_graph_proto = (
-      checkpointable_object_graph_pb2.CheckpointableObjectGraph())
-  named_saveables = []
+def _add_attributes_to_object_graph(
+    checkpointable_objects, object_graph_proto, node_ids, object_names,
+    saveables_cache, object_map):
+  """Create SaveableObjects and corresponding SerializedTensor protos."""
+  named_saveable_objects = []
   if saveables_cache is None:
     # No SaveableObject caching. Either we're executing eagerly, or building a
     # static save which is specialized to the current Python state.
@@ -564,17 +563,21 @@ def _serialize_checkpointables(
     # If we are caching SaveableObjects, we need to build up a feed_dict with
     # functions computing volatile Python state to be saved with the checkpoint.
     feed_additions = {}
-  for checkpoint_id, checkpointable in enumerate(checkpointable_objects):
+  for checkpoint_id, (checkpointable, object_proto) in enumerate(
+      zip(checkpointable_objects, object_graph_proto.nodes)):
     assert node_ids[checkpointable] == checkpoint_id
-    object_proto = object_graph_proto.nodes.add()
-    object_proto.slot_variables.extend(slot_variables.get(checkpointable, ()))
     object_name = object_names[checkpointable]
+    if object_map:
+      object_to_save = object_map.get(checkpointable, checkpointable)
+    else:
+      object_to_save = checkpointable
     if saveables_cache is not None:
-      cached_attributes = saveables_cache.setdefault(checkpointable, {})
+      cached_attributes = saveables_cache.setdefault(object_to_save, {})
     else:
       cached_attributes = None
+
     for name, saveable_factory in (
-        checkpointable._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
+        object_to_save._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
       attribute = object_proto.attributes.add()
       attribute.name = name
       attribute.checkpoint_key = "%s/%s/%s" % (
@@ -640,14 +643,51 @@ def _serialize_checkpointables(
                      "value.")
                     % (checkpointable, new_feed_key))
             feed_additions.update(saveable_feed_dict)
-        named_saveables.append(saveable)
+        named_saveable_objects.append(saveable)
 
+  return named_saveable_objects, feed_additions
+
+
+def _make_object_graph_proto(checkpointable_objects, node_ids, slot_variables):
+  """Name non-slot `Checkpointable`s and add them to `object_graph_proto`."""
+  object_graph_proto = (
+      checkpointable_object_graph_pb2.CheckpointableObjectGraph())
+  for checkpoint_id, checkpointable in enumerate(checkpointable_objects):
+    assert node_ids[checkpointable] == checkpoint_id
+    object_proto = object_graph_proto.nodes.add()
+    object_proto.slot_variables.extend(slot_variables.get(checkpointable, ()))
     for child in checkpointable._checkpoint_dependencies:  # pylint: disable=protected-access
       child_proto = object_proto.children.add()
       child_proto.node_id = node_ids[child.ref]
       child_proto.local_name = child.name
+  return object_graph_proto
 
-  return named_saveables, object_graph_proto, feed_additions
+
+def _serialize_gathered_objects(
+    checkpointable_objects, path_to_root, saveables_cache, object_map):
+  """Create SaveableObjects and protos for gathered objects."""
+  object_names = _ObjectIdentityDictionary()
+  for obj, path in path_to_root.items():
+    object_names[obj] = _object_prefix_from_path(path)
+  node_ids = _ObjectIdentityDictionary()
+  for node_id, node in enumerate(checkpointable_objects):
+    node_ids[node] = node_id
+  slot_variables = _serialize_slot_variables(
+      checkpointable_objects=checkpointable_objects,
+      node_ids=node_ids,
+      object_names=object_names)
+  object_graph_proto = _make_object_graph_proto(
+      checkpointable_objects=checkpointable_objects,
+      node_ids=node_ids,
+      slot_variables=slot_variables)
+  named_saveable_objects, feed_additions = _add_attributes_to_object_graph(
+      checkpointable_objects=checkpointable_objects,
+      object_graph_proto=object_graph_proto,
+      node_ids=node_ids,
+      object_names=object_names,
+      saveables_cache=saveables_cache,
+      object_map=object_map)
+  return named_saveable_objects, object_graph_proto, feed_additions
 
 
 def _serialize_object_graph(root_checkpointable, saveables_cache):
@@ -680,6 +720,19 @@ def _serialize_object_graph(root_checkpointable, saveables_cache):
   """
   checkpointable_objects, path_to_root = (
       _breadth_first_checkpointable_traversal(root_checkpointable))
+  return _serialize_gathered_objects(
+      checkpointable_objects, path_to_root, saveables_cache, object_map=None)
+
+
+def named_saveables(root_checkpointable):
+  """Gather list of all SaveableObjects in the Checkpointable object."""
+  return _serialize_object_graph(root_checkpointable, None)[0]
+
+
+def _find_objects(root_checkpointable):
+  """Find and number objects which are dependencies of `root_checkpointable`."""
+  checkpointable_objects, path_to_root = (
+      _breadth_first_checkpointable_traversal(root_checkpointable))
   object_names = _ObjectIdentityDictionary()
   for obj, path in path_to_root.items():
     object_names[obj] = _object_prefix_from_path(path)
@@ -690,17 +743,7 @@ def _serialize_object_graph(root_checkpointable, saveables_cache):
       checkpointable_objects=checkpointable_objects,
       node_ids=node_ids,
       object_names=object_names)
-  return _serialize_checkpointables(
-      checkpointable_objects=checkpointable_objects,
-      node_ids=node_ids,
-      object_names=object_names,
-      slot_variables=slot_variables,
-      saveables_cache=saveables_cache)
-
-
-def named_saveables(root_checkpointable):
-  """Gather list of all SaveableObjects in the Checkpointable object."""
-  return _serialize_object_graph(root_checkpointable, None)[0]
+  return checkpointable_objects, node_ids, slot_variables
 
 
 def list_objects(root_checkpointable):
@@ -717,21 +760,16 @@ def list_objects(root_checkpointable):
   Returns:
     A flat list of objects.
   """
-  # TODO(allenl): Extract out gathering logic so the naming logic doesn't have
-  # to run.
-  checkpointable_objects, path_to_root = (
-      _breadth_first_checkpointable_traversal(root_checkpointable))
-  object_names = _ObjectIdentityDictionary()
-  for obj, path in path_to_root.items():
-    object_names[obj] = _object_prefix_from_path(path)
-  node_ids = _ObjectIdentityDictionary()
-  for node_id, node in enumerate(checkpointable_objects):
-    node_ids[node] = node_id
-  _serialize_slot_variables(
-      checkpointable_objects=checkpointable_objects,
-      node_ids=node_ids,
-      object_names=object_names)
+  checkpointable_objects, _, _ = _find_objects(root_checkpointable)
   return checkpointable_objects
+
+
+def make_object_graph_without_attributes(root_checkpointable):
+  """Construct a CheckpointableObjectGraph proto with no variable values."""
+  checkpointable_objects, node_ids, slot_variables = _find_objects(
+      root_checkpointable)
+  return _make_object_graph_proto(
+      checkpointable_objects, node_ids, slot_variables)
 
 
 def gather_initializers(root_checkpointable):
@@ -808,7 +846,7 @@ def capture_dependencies(template):
     """
     def _call_next_creator_renaming_initializer(initializer, **inner_kwargs):
       inner_kwargs.pop("name")  # Ignored; this is the scope-stripped name which
-                                # we don't want to propagate.
+      # we don't want to propagate.
       return next_creator(
           initial_value=initializer,
           name=name,
@@ -969,6 +1007,12 @@ class CheckpointLoadStatus(_LoadStatus):
         raise AssertionError(
             "Object not assigned a value from checkpoint: %s" % (node,))
     for checkpointable_object in list_objects(self._root_checkpointable):
+      # Remove data structures that do not contain any variables from
+      # restoration checks.
+      if (isinstance(checkpointable_object,
+                     data_structures.CheckpointableDataStructure) and
+          not checkpointable_object._checkpoint_dependencies):
+        continue
       self._checkpoint.all_python_objects.add(checkpointable_object)
     unused_python_objects = (
         _ObjectIdentitySet(self._checkpoint.all_python_objects)
@@ -1306,12 +1350,30 @@ class CheckpointableSaver(object):
             name=base.OBJECT_GRAPH_PROTO_KEY))
     return named_saveable_objects, graph_proto, feed_additions
 
-  def freeze(self):
+  def freeze(self, object_map=None, to_graph=None):
     """Creates a `tf.train.Saver` with the current object graph frozen."""
-    named_saveable_objects, _, _ = self._gather_saveables(
-        object_graph_tensor=None, saveable_object_cache=None)
-    return saver_lib.Saver(
-        var_list=named_saveable_objects, max_to_keep=None)
+    checkpointable_objects, path_to_root = (
+        _breadth_first_checkpointable_traversal(self._root_checkpointable))
+    if to_graph:
+      target_context = to_graph.as_default
+    else:
+      target_context = ops.NullContextmanager
+    with target_context():
+      named_saveable_objects, graph_proto, _ = _serialize_gathered_objects(
+          checkpointable_objects,
+          path_to_root,
+          saveables_cache=None,
+          object_map=object_map)
+      with ops.device("/cpu:0"):
+        object_graph_tensor = constant_op.constant(
+            graph_proto.SerializeToString(), dtype=dtypes.string)
+      named_saveable_objects.append(
+          base.NoRestoreSaveable(
+              tensor=object_graph_tensor,
+              name=base.OBJECT_GRAPH_PROTO_KEY))
+      # TODO(allenl, haoliang): Swap in a function-based saver here.
+      return saver_lib.Saver(
+          var_list=named_saveable_objects, max_to_keep=None)
 
   def _prepare_save(self,
                     object_graph_tensor=None,
@@ -1397,6 +1459,7 @@ class CheckpointableSaver(object):
     elif session is None:
       session = ops.get_default_session()
 
+    file_io.recursive_create_dir(os.path.dirname(file_prefix))
     with ops.device("/cpu:0"):
       save_path = saver.save(
           sess=_SessionWithFeedDictAdditions(

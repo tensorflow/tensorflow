@@ -28,6 +28,7 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import session_debug_testlib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -44,6 +45,7 @@ class SessionDebugFileTest(session_debug_testlib.SessionDebugTestBase):
     else:
       return os.path.join(self._dump_root, "run_%d" % run_number)
 
+  @test_util.run_deprecated_v1
   def testAllowsDifferentWatchesOnDifferentRuns(self):
     """Test watching different tensors on different runs of the same graph."""
 

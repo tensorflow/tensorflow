@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -198,7 +199,7 @@ def bucket_by_sequence_length(element_length_func,
       for shape in nest.flatten(shapes):
         shape = tensor_shape.TensorShape(shape)
         shape = [
-            none_filler if d.value is None else d
+            none_filler if tensor_shape.dimension_value(d) is None else d
             for d in shape
         ]
         padded.append(shape)
@@ -274,9 +275,9 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
     self._make_finalize_func(reducer.finalize_func)
 
   def _make_key_func(self, key_func, input_dataset):
-    """Make wrapping Defun for key_func."""
+    """Make wrapping defun for key_func."""
     wrapped_func = dataset_ops.StructuredFunctionWrapper(
-        key_func, "tf.data.experimental.group_by_reducer()", input_dataset)
+        key_func, self._transformation_name(), dataset=input_dataset)
     if not (
         wrapped_func.output_types == dtypes.int64 and
         wrapped_func.output_shapes.is_compatible_with(tensor_shape.scalar())):
@@ -287,10 +288,10 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
     self._key_func = wrapped_func.function
 
   def _make_init_func(self, init_func):
-    """Make wrapping Defun for init_func."""
+    """Make wrapping defun for init_func."""
     wrapped_func = dataset_ops.StructuredFunctionWrapper(
         init_func,
-        "tf.data.experimental.group_by_reducer()",
+        self._transformation_name(),
         input_classes=ops.Tensor,
         input_shapes=tensor_shape.scalar(),
         input_types=dtypes.int64)
@@ -300,7 +301,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
     self._state_types = wrapped_func.output_types
 
   def _make_reduce_func(self, reduce_func, input_dataset):
-    """Make wrapping Defun for reduce_func."""
+    """Make wrapping defun for reduce_func."""
 
     # Iteratively rerun the reduce function until reaching a fixed point on
     # `self._state_shapes`.
@@ -309,7 +310,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
       wrapped_func = dataset_ops.StructuredFunctionWrapper(
           reduce_func,
-          "tf.data.experimental.group_by_reducer()",
+          self._transformation_name(),
           input_classes=(self._state_classes, input_dataset.output_classes),
           input_shapes=(self._state_shapes, input_dataset.output_shapes),
           input_types=(self._state_types, input_dataset.output_types),
@@ -360,10 +361,10 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
     self._reduce_func.add_to_graph(ops.get_default_graph())
 
   def _make_finalize_func(self, finalize_func):
-    """Make wrapping Defun for finalize_func."""
+    """Make wrapping defun for finalize_func."""
     wrapped_func = dataset_ops.StructuredFunctionWrapper(
         finalize_func,
-        "tf.data.experimental.group_by_reducer()",
+        self._transformation_name(),
         input_classes=self._state_classes,
         input_shapes=self._state_shapes,
         input_types=self._state_types)
@@ -397,6 +398,9 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
         finalize_func=self._finalize_func,
         **dataset_ops.flat_structure(self))
 
+  def _transformation_name(self):
+    return "tf.data.experimental.group_by_reducer()"
+
 
 class _GroupByWindowDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that groups its input and performs a windowed reduction."""
@@ -412,12 +416,13 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
     self._make_window_size_func(window_size_func)
 
   def _make_window_size_func(self, window_size_func):
-    """Make wrapping Defun for window_size_func."""
+    """Make wrapping defun for window_size_func."""
+
     def window_size_func_wrapper(key):
       return ops.convert_to_tensor(window_size_func(key), dtype=dtypes.int64)
     wrapped_func = dataset_ops.StructuredFunctionWrapper(
         window_size_func_wrapper,
-        "tf.data.experimental.group_by_window()",
+        self._transformation_name(),
         input_classes=ops.Tensor,
         input_shapes=tensor_shape.scalar(),
         input_types=dtypes.int64)
@@ -429,12 +434,12 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
     self._window_size_func = wrapped_func.function
 
   def _make_key_func(self, key_func, input_dataset):
-    """Make wrapping Defun for key_func."""
+    """Make wrapping defun for key_func."""
+
     def key_func_wrapper(*args):
       return ops.convert_to_tensor(key_func(*args), dtype=dtypes.int64)
     wrapped_func = dataset_ops.StructuredFunctionWrapper(
-        key_func_wrapper, "tf.data.experimental.group_by_window()",
-        input_dataset)
+        key_func_wrapper, self._transformation_name(), dataset=input_dataset)
     if not (
         wrapped_func.output_types == dtypes.int64 and
         wrapped_func.output_shapes.is_compatible_with(tensor_shape.scalar())):
@@ -443,21 +448,25 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
     self._key_func = wrapped_func.function
 
   def _make_reduce_func(self, reduce_func, input_dataset):
-    """Make wrapping Defun for reduce_func."""
-    nested_dataset = dataset_ops._NestedDatasetComponent(input_dataset)  # pylint: disable=protected-access
+    """Make wrapping defun for reduce_func."""
+    nested_dataset = dataset_ops.DatasetStructure(
+        structure.Structure._from_legacy_structure(  # pylint: disable=protected-access
+            input_dataset.output_types, input_dataset.output_shapes,
+            input_dataset.output_classes))
     wrapped_func = dataset_ops.StructuredFunctionWrapper(
         reduce_func,
-        "tf.data.experimental.reduce_by_window()",
+        self._transformation_name(),
         input_classes=(ops.Tensor, nested_dataset),
         input_shapes=(tensor_shape.scalar(), nested_dataset),
-        input_types=(dtypes.int64, nested_dataset),
-        experimental_nested_dataset_support=True)
+        input_types=(dtypes.int64, nested_dataset))
     if not isinstance(
-        wrapped_func.output_classes, dataset_ops._NestedDatasetComponent):  # pylint: disable=protected-access
+        wrapped_func.output_structure, dataset_ops.DatasetStructure):
       raise TypeError("`reduce_func` must return a `Dataset` object.")
-    self._output_classes = wrapped_func.output_classes.output_classes
-    self._output_types = wrapped_func.output_types.output_types
-    self._output_shapes = wrapped_func.output_shapes.output_shapes
+    # pylint: disable=protected-access
+    element_structure = wrapped_func.output_structure._element_structure
+    self._output_classes = element_structure._to_legacy_output_classes()
+    self._output_types = element_structure._to_legacy_output_types()
+    self._output_shapes = element_structure._to_legacy_output_shapes()
     self._reduce_func = wrapped_func.function
 
   @property
@@ -482,6 +491,9 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
         reduce_func=self._reduce_func,
         window_size_func=self._window_size_func,
         **dataset_ops.flat_structure(self))
+
+  def _transformation_name(self):
+    return "tf.data.experimental.group_by_window()"
 
 
 @tf_export("data.experimental.Reducer")
@@ -521,10 +533,7 @@ class _MapXDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
 
     wrapped_func = dataset_ops.StructuredFunctionWrapper(
-        map_func,
-        "tf.data.experimental.map_x_dataset()",
-        input_dataset,
-        experimental_nested_dataset_support=True)
+        map_func, self._transformation_name(), dataset=input_dataset)
     self._output_classes = wrapped_func.output_classes
     self._output_shapes = wrapped_func.output_shapes
     self._output_types = wrapped_func.output_types
@@ -549,3 +558,6 @@ class _MapXDataset(dataset_ops.UnaryDataset):
   @property
   def output_types(self):
     return self._output_types
+
+  def _transformation_name(self):
+    return "tf.data.experimental.map_x_dataset()"

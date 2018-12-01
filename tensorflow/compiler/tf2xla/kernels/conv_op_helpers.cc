@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -65,60 +64,63 @@ xla::Shape ExpandedFilterShapeForDepthwiseConvolution(const xla::Shape& shape) {
 //   0 0 1 1 0 0   0 0 1 1 0 0
 //   0 0 0 0 1 1   0 0 0 0 1 1
 //
-// The first step is to create a one tensor, A, that is [3]
-//   0 1 2
+// The first step is to create a iota A with iota_dimension = 2
+//   0 0 0 0 0 0   0 0 0 0 0 0
+//   1 1 1 1 1 1   1 1 1 1 1 1
+//   2 2 2 2 2 2   2 2 2 2 2 2
 //
-// and another tensor, B,  that is [3 * 2]
-//   0 1 2 3 4 5
+//   0 0 0 0 0 0   0 0 0 0 0 0
+//   1 1 1 1 1 1   1 1 1 1 1 1
+//   2 2 2 2 2 2   2 2 2 2 2 2
 //
-// and divide B it by 2 to get
-//   0 0 1 1 2 2
+// and another iota B with iota_dimension = 3
+//   0 1 2 3 4 5  0 1 2 3 4 5
+//   0 1 2 3 4 5  0 1 2 3 4 5
+//   0 1 2 3 4 5  0 1 2 3 4 5
 //
-// then we broadcast the B to [2, 2, 3, 3 * 2]
-//   0 0 1 1 2 2   0 0 1 1 2 2
-//   0 0 1 1 2 2   0 0 1 1 2 2
-//   0 0 1 1 2 2   0 0 1 1 2 2
+//   0 1 2 3 4 5  0 1 2 3 4 5
+//   0 1 2 3 4 5  0 1 2 3 4 5
+//   0 1 2 3 4 5  0 1 2 3 4 5
 //
-//   0 0 1 1 2 2   0 0 1 1 2 2
-//   0 0 1 1 2 2   0 0 1 1 2 2
-//   0 0 1 1 2 2   0 0 1 1 2 2
+// and divide B by 2 to get
+//   0 0 1 1 2 2  0 0 1 1 2 2
+//   0 0 1 1 2 2  0 0 1 1 2 2
+//   0 0 1 1 2 2  0 0 1 1 2 2
 //
-// Finally compare A and broadcasted B in dimension 2 amd return the result at
-// the beginning of the comment.
+//   0 0 1 1 2 2  0 0 1 1 2 2
+//   0 0 1 1 2 2  0 0 1 1 2 2
+//   0 0 1 1 2 2  0 0 1 1 2 2
+//
+// Finally compare A and B and return the result at the beginning of the
+// comment.
 xla::XlaOp CreateExpandedFilterMask(const xla::Shape& filter_shape,
                                     xla::XlaBuilder* builder) {
   xla::Shape expanded_filter_shape =
       ExpandedFilterShapeForDepthwiseConvolution(filter_shape);
   int64 depthwise_multiplier =
       filter_shape.dimensions(filter_shape.dimensions_size() - 1);
-  int64 input_feature =
-      filter_shape.dimensions(filter_shape.dimensions_size() - 2);
 
-  // Create a M sized linspace and an M*N sized linspace that will be
-  // broadcasted into perpendicular dimensions and compared.
-  xla::XlaOp input_feature_iota = xla::Iota(builder, xla::S32, input_feature);
-  xla::XlaOp expanded_feature_iota =
-      xla::Iota(builder, xla::S32, input_feature * depthwise_multiplier);
+  // Create two iotas with the shape of the expanded filter, one of them with
+  // the iota dimension chosen as the feature dimension, and the other a iota
+  // with the iota dimension chosen as the expanded output feature dimension.
+  std::vector<int64> iota_dimensions(expanded_filter_shape.dimensions().begin(),
+                                     expanded_filter_shape.dimensions().end());
+  xla::Shape iota_shape = xla::ShapeUtil::MakeShape(xla::S32, iota_dimensions);
+  xla::XlaOp input_feature_iota = xla::Iota(
+      builder, iota_shape, /*iota_dimension=*/iota_dimensions.size() - 2);
+  xla::XlaOp expanded_feature_iota = xla::Iota(
+      builder, iota_shape, /*iota_dimension=*/iota_dimensions.size() - 1);
 
-  // Divide the M*N sized linspace by the depthwise_multiplier to create
-  // [0 0 1 1 2 2] in the example in the function comment.
+  // Divide 'expanded_feature_iota' by the depthwise_multiplier to create
+  // [0 0 1 1 2 2] ... in the example in the function comment.
   expanded_feature_iota =
       xla::Div(expanded_feature_iota,
                XlaHelpers::IntegerLiteral(builder, DataType::DT_INT32,
                                           depthwise_multiplier));
 
-  // Broadcast the N*M linspace to [H, W, ..., M, M*N].
-  std::vector<int64> expanded_feature_broadcast_dims(
-      expanded_filter_shape.dimensions().begin(),
-      expanded_filter_shape.dimensions().end());
-  expanded_feature_broadcast_dims.pop_back();
-  auto broadcasted_expanded_feature_iota =
-      xla::Broadcast(expanded_feature_iota, expanded_feature_broadcast_dims);
-
-  // Compare the broadcasted linspace to the input feature linspace in the
-  // input feature dimension to create a diagonal predicate.
-  return xla::Eq(broadcasted_expanded_feature_iota, input_feature_iota,
-                 {expanded_filter_shape.dimensions_size() - 2});
+  // Compare 'input_feature_iota' with 'expanded_feature_iota' to create a
+  // diagonal predicate.
+  return xla::Eq(expanded_feature_iota, input_feature_iota);
 }
 
 // Reshapes a filter of shape [H, W, ..., M, N] to [H, W, ..., 1, M*N]. Used to

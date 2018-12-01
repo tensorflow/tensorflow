@@ -25,6 +25,10 @@ filegroup(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 xla_proto_library(
     name = "backend_configs",
@@ -107,7 +111,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
@@ -459,7 +462,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:shape_inference",
-        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:test",
     ],
@@ -623,7 +626,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
     ],
 )
@@ -679,6 +682,7 @@ cc_library(
         ":partition_assignment",
         ":stream_assignment",
         ":stream_executor_util",
+        ":variadic_op_splitter",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -697,6 +701,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dce",
         "//tensorflow/compiler/xla/service:hlo_element_type_converter",
+        "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_proto",
@@ -844,7 +849,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/memory",
@@ -904,7 +908,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -978,5 +981,59 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+tf_cc_test(
+    name = "cudnn_fused_conv_rewriter_test",
+    srcs = ["cudnn_fused_conv_rewriter_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "variadic_op_splitter",
+    srcs = ["variadic_op_splitter.cc"],
+    hdrs = ["variadic_op_splitter.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "variadic_op_splitter_test",
+    srcs = ["variadic_op_splitter_test.cc"],
+    deps = [
+        ":ir_emission_utils",
+        ":variadic_op_splitter",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
     ],
 )

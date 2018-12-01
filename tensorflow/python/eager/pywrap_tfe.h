@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_
 #define TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_
 
+// Place `<locale>` before <Python.h> to avoid build failure in macOS.
+#include <locale>
+
+// The empty line above is on purpose as otherwise clang-format will
+// automatically move <Python.h> before <locale>.
 #include <Python.h>
 
 #include "tensorflow/c/eager/c_api.h"
@@ -176,6 +181,7 @@ void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable);
 // target.
 PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
                               PyObject* sources, PyObject* output_gradients,
+                              PyObject* unconnected_gradients,
                               TF_Status* status);
 
 // Execute a tensorflow operation assuming that all provided inputs are

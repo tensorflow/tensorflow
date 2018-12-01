@@ -439,6 +439,9 @@ Status WindowsFileSystem::DeleteFile(const string& fname) {
 Status WindowsFileSystem::CreateDir(const string& name) {
   Status result;
   std::wstring ws_name = Utf8ToWideChar(name);
+  if (ws_name.empty()) {
+    return errors::AlreadyExists(name);
+  }
   if (_wmkdir(ws_name.c_str()) != 0) {
     result = IOError("Failed to create a directory: " + name, errno);
   }

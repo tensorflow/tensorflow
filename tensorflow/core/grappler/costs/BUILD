@@ -41,9 +41,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":utils",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/grappler/utils:topological_sort",
-        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",

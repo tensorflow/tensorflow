@@ -16,8 +16,9 @@ limitations under the License.
 // Registers the XLA_CPU device, which is an XlaDevice instantiation that runs
 // operators using XLA via the XLA "Host" (CPU) backend.
 
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
-#include "tensorflow/compiler/jit/legacy_flags/xla_device_flags.h"
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
@@ -30,34 +31,39 @@ namespace tensorflow {
 class XlaCpuDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override;
+                       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
-Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& options,
-                                          const string& name_prefix,
-                                          std::vector<Device*>* devices) {
-  legacy_flags::XlaDeviceFlags* flags = legacy_flags::GetXlaDeviceFlags();
+Status XlaCpuDeviceFactory::CreateDevices(
+    const SessionOptions& session_options, const string& name_prefix,
+    std::vector<std::unique_ptr<Device>>* devices) {
+  XlaDeviceFlags* flags = GetXlaDeviceFlags();
   bool compile_on_demand = flags->tf_xla_compile_on_demand;
 
   XlaOpRegistry::DeviceRegistration registration;
   registration.compilation_device_name = DEVICE_CPU_XLA_JIT;
-  registration.requires_compilation = !compile_on_demand;
-  registration.enable_jit_by_default = false;
+  registration.autoclustering_policy =
+      compile_on_demand
+          ? XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested
+          : XlaOpRegistry::AutoclusteringPolicy::kAlways;
   registration.compile_resource_ops = true;
+  XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_CPU, registration);
 
   static XlaDeviceOpRegistrations* registrations =
       RegisterXlaDeviceKernels(DEVICE_XLA_CPU, DEVICE_CPU_XLA_JIT);
   (void)registrations;
 
-  std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create("Host", DEVICE_XLA_CPU, 0,
-                                       DEVICE_CPU_XLA_JIT, options, name_prefix,
-                                       registration,
-                                       /*transfer_as_literal=*/false,
-                                       /*use_multiple_streams=*/false,
-                                       /*shape_representation_fn=*/{},
-                                       /*padded_shape_fn=*/{}, &device));
-  devices->push_back(device.release());
+  TF_ASSIGN_OR_RETURN(auto platform,
+                      se::MultiPlatformManager::PlatformWithName("Host"));
+
+  XlaDevice::Options options;
+  options.platform = platform;
+  options.device_name_prefix = name_prefix;
+  options.device_name = DEVICE_XLA_CPU;
+  options.device_ordinal = 0;
+  options.compilation_device_name = DEVICE_CPU_XLA_JIT;
+  options.use_multiple_streams = false;
+  devices->push_back(absl::make_unique<XlaDevice>(session_options, options));
   return Status::OK();
 }
 

@@ -17,21 +17,23 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
@@ -245,10 +247,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status Initialize(IteratorContext* ctx) override {
-        AddConstantParameter(ctx, "parallelism", dataset()->cycle_length_);
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       // It is implemented so that it matches the deterministic interleave
@@ -359,6 +361,12 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeAsyncInterleaveManyNode(std::move(args),
+                                                  /*parameters=*/{});
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         // The order of locking is important here to avoid deadlock.
         mutex_lock l(mu_);
@@ -482,7 +490,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           for (size_t i = 0; i < dataset()->num_threads(); ++i) {
             std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
             worker_threads_.emplace_back(ctx->env()->StartThread(
-                {}, "worker_thread",
+                {}, strings::StrCat("tf_data_parallel_interleave_worker_", i),
                 [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
           }
         }
@@ -581,7 +589,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
             workers_[i].SetInputs(s, std::move(args));
             std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
             worker_threads_.emplace_back(ctx->env()->StartThread(
-                {}, "worker_thread",
+                {}, strings::StrCat("tf_data_parallel_interleave_worker_", i),
                 [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
             if (i < dataset()->cycle_length_) {
               interleave_indices_.push_back(i);
@@ -686,7 +694,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
               worker_thread_states_[thread_index].iterator_creation_status =
                   MakeIteratorFromInputElement(
                       ctx.get(), worker_thread_states_[thread_index].input,
-                      thread_index, dataset()->captured_func_.get(), prefix(),
+                      thread_index, *instantiated_captured_func_, prefix(),
                       &worker_thread_states_[thread_index].iterator);
               iterator_creation_status =
                   worker_thread_states_[thread_index].iterator_creation_status;
@@ -920,7 +928,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           std::unique_ptr<IteratorBase> iterator;
           Status s = MakeIteratorFromInputElement(
               ctx, worker_thread_states_[index].input, index,
-              dataset()->captured_func_.get(), prefix(), &iterator);
+              *instantiated_captured_func_, prefix(), &iterator);
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
           worker_thread_states_[index].iterator.swap(iterator);
         }
@@ -1025,6 +1033,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       // input_impl_ is reset when we have exhausted its input.
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
 
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
+
       // The WorkerState structs the worker threads operate on.
       // workers_ elements are in at most one of interleave_ and staging_.
       std::vector<WorkerState> workers_ GUARDED_BY(mu_);
@@ -1084,9 +1094,6 @@ REGISTER_KERNEL_BUILDER(Name("ParallelInterleaveDataset").Device(DEVICE_CPU),
 // The above design choices were made with automated optimizations in mind,
 // isolating the degree of parallelism as the single tunable knob of this
 // implementation.
-//
-// TODO(b/116852688): Make coordination between the performance model and this
-// transformation more robust.
 class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
  public:
   explicit ParallelInterleaveDatasetV2Op(OpKernelConstruction* ctx)
@@ -1094,6 +1101,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &interleave_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("sloppy", &sloppy_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -1126,9 +1134,10 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
         ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
                                       &captured_func));
 
-    *output = new Dataset(ctx, input, interleave_func_,
-                          std::move(captured_func), cycle_length, block_length,
-                          num_parallel_calls, output_types_, output_shapes_);
+    *output =
+        new Dataset(ctx, input, interleave_func_, std::move(captured_func),
+                    cycle_length, block_length, num_parallel_calls, sloppy_,
+                    output_types_, output_shapes_);
   }
 
  private:
@@ -1137,7 +1146,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
-            int64 block_length, int64 num_parallel_calls,
+            int64 block_length, int64 num_parallel_calls, bool sloppy,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : DatasetBase(DatasetContext(ctx)),
@@ -1147,6 +1156,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
           cycle_length_(cycle_length),
           block_length_(block_length),
           num_parallel_calls_(num_parallel_calls),
+          sloppy_(sloppy),
           output_types_(output_types),
           output_shapes_(output_shapes) {
       input_->Ref();
@@ -1156,8 +1166,10 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::ParallelInterleaveV2")}));
+      return MakeUnique<ParallelInterleaveIterator>(
+          ParallelInterleaveIterator::Params{
+              this, strings::StrCat(prefix, "::ParallelInterleaveV2")},
+          sloppy_);
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -1200,36 +1212,47 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
       b->BuildAttrValue(interleave_func_, &f);
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+      AttrValue sloppy_attr;
+      b->BuildAttrValue(sloppy_, &sloppy_attr);
 
-      TF_RETURN_IF_ERROR(b->AddDataset(
-          this,
-          {{0, input_node},
-           {2, cycle_length_node},
-           {3, block_length_node},
-           {4, num_parallel_calls_node}},
-          {{1, other_arguments}},
-          {{"f", f}, {"Targuments", other_arguments_types_attr}}, output));
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this,
+                        {{0, input_node},
+                         {2, cycle_length_node},
+                         {3, block_length_node},
+                         {4, num_parallel_calls_node}},
+                        {{1, other_arguments}},
+                        {{"f", f},
+                         {"Targuments", other_arguments_types_attr},
+                         {"sloppy", sloppy_attr}},
+                        output));
       return Status::OK();
     }
 
    private:
-    class Iterator : public DatasetIterator<Dataset> {
+    class ParallelInterleaveIterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Params& params)
+      explicit ParallelInterleaveIterator(const Params& params, bool sloppy)
           : DatasetIterator<Dataset>(params),
             mu_(std::make_shared<mutex>()),
             cond_var_(std::make_shared<condition_variable>()),
             num_parallel_calls_(std::make_shared<model::SharedState>(
                 params.dataset->num_parallel_calls_, mu_, cond_var_)),
+            sloppy_(sloppy),
             args_list_(params.dataset->cycle_length_),
             current_elements_(params.dataset->cycle_length_),
             element_in_use_(params.dataset->cycle_length_, false),
             thread_pool_(new thread::ThreadPool(
-                Env::Default(), ThreadOptions(), "parallel_interleave",
+                Env::Default(), ThreadOptions(),
+                "data_parallel_interleave_worker_pool",
                 dataset()->cycle_length_ /* num_threads */,
-                false /* low_latency_hint */)) {}
+                false /* low_latency_hint */)) {
+        std::vector<string> components =
+            str_util::Split(params.prefix, "::", str_util::SkipEmpty());
+        prefix_end_ = components.back();
+      }
 
-      ~Iterator() override {
+      ~ParallelInterleaveIterator() override {
         mutex_lock l(*mu_);
         // Cancel the runner thread.
         cancelled_ = true;
@@ -1243,16 +1266,13 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
         if (num_parallel_calls_->value == kAutoTune) {
-          num_parallel_calls_->value = 1;
-          AddTunableParameter(ctx, "parallelism", num_parallel_calls_, 1,
-                              dataset()->cycle_length_);
-        } else {
-          AddConstantParameter(ctx, "parallelism", num_parallel_calls_->value);
+          num_parallel_calls_->value = dataset()->cycle_length_;
+          num_parallel_calls_->tunable = true;
         }
-        AddConstantParameter(ctx, "cycle_length", dataset()->cycle_length_);
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -1260,23 +1280,19 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
                              bool* end_of_sequence) override {
         std::shared_ptr<InvocationResult> result;
         do {
+          result.reset();
           {
             mutex_lock l(*mu_);
             EnsureRunnerThreadStarted(ctx);
-            while (invocation_results_.empty() &&
-                   (!end_of_input_ || num_open_ > 0)) {
+            while (ShouldWait(&result)) {
               RecordStop(ctx);
               cond_var_->wait(l);
               RecordStart(ctx);
             }
-            if (!invocation_results_.empty()) {
-              std::swap(result, invocation_results_.front());
-              invocation_results_.pop_front();
-            } else {
+            if (!result) {
               *end_of_sequence = true;
               return Status::OK();
             }
-            cond_var_->notify_all();
           }
           RecordStop(ctx);
           result->notification.WaitForNotification();
@@ -1291,6 +1307,14 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeAsyncInterleaveManyNode(
+            std::move(args),
+            {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
+                                  /*max=*/dataset()->cycle_length_)});
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(*mu_);
         // Wait for all in-flight calls to complete.
@@ -1390,7 +1414,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
         if (!runner_thread_) {
           std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
           runner_thread_.reset(ctx->env()->StartThread(
-              {}, "runner_thread",
+              {}, "tf_data_parallel_interleave_runner",
               [this, new_ctx]() { RunnerThread(new_ctx); }));
         }
       }
@@ -1415,7 +1439,11 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
           if (end_of_input) {
             result->skip = true;
           }
-          result->notification.Notify();
+          {
+            mutex_lock l(*mu_);
+            result->notification.Notify();
+            cond_var_->notify_all();
+          }
           if (!result->status.ok()) {
             break;
           }
@@ -1429,6 +1457,12 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
         mutex_lock l(*mu_);
         element_in_use_[cycle_index] = false;
         num_calls_--;
+        const auto& stats_aggregator = ctx->stats_aggregator();
+        if (stats_aggregator) {
+          stats_aggregator->AddScalar(
+              strings::StrCat(prefix_end_, "::active_parallel_calls"),
+              static_cast<float>(num_calls_));
+        }
         if (end_of_input) {
           args_list_[cycle_index].clear();
           num_open_--;
@@ -1481,7 +1515,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
               if (!end_of_input_) {
                 Status status = MakeIteratorFromInputElement(
                     ctx.get(), args_list_[cycle_index_], cycle_index_,
-                    dataset()->captured_func_.get(), prefix(),
+                    *instantiated_captured_func_, prefix(),
                     &current_elements_[cycle_index_]);
                 if (!status.ok()) {
                   invocation_results_.emplace_back(new InvocationResult());
@@ -1505,13 +1539,52 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
               }
               num_calls_++;
               element_in_use_[cycle_index_] = true;
-              thread_pool_->Schedule(std::bind(&Iterator::FetchOutputs, this,
-                                               ctx, cycle_index_,
-                                               std::move(results)));
+              thread_pool_->Schedule(
+                  std::bind(&ParallelInterleaveIterator::FetchOutputs, this,
+                            ctx, cycle_index_, std::move(results)));
             }
             cycle_index_ = (cycle_index_ + 1) % dataset()->cycle_length_;
           }
+          const auto& stats_aggregator = ctx->stats_aggregator();
+          if (stats_aggregator) {
+            // TODO(shivaniagrawal): add `parallel_calls_utilization` in the
+            // monitoring code or as histogram at fixed time intervals.
+            stats_aggregator->AddScalar(
+                strings::StrCat(prefix_end_, "::active_parallel_calls"),
+                static_cast<float>(num_calls_));
+            stats_aggregator->AddScalar(
+                strings::StrCat(prefix_end_, "::num_parallel_calls"),
+                static_cast<float>(num_parallel_calls_->value));
+          }
           cond_var_->notify_all();
+        }
+      }
+
+      // Determines whether the caller needs to wait for a result. Upon
+      // returning false, `result` will either be NULL if end of input has been
+      // reached or point to the result.
+      bool ShouldWait(std::shared_ptr<InvocationResult>* result)
+          EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+        if (sloppy_) {
+          for (auto it = invocation_results_.begin();
+               it != invocation_results_.end(); ++it) {
+            if ((*it)->notification.HasBeenNotified()) {
+              std::swap(*result, *it);
+              invocation_results_.erase(it);
+              cond_var_->notify_all();
+              return false;
+            }
+          }
+          return !invocation_results_.empty() ||
+                 (!end_of_input_ || num_open_ > 0);
+        } else {
+          if (!invocation_results_.empty()) {
+            std::swap(*result, invocation_results_.front());
+            invocation_results_.pop_front();
+            cond_var_->notify_all();
+            return false;
+          }
+          return (!end_of_input_ || num_open_ > 0);
         }
       }
 
@@ -1589,7 +1662,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
                   &args_list_[idx][i]));
             }
             TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-                ctx, args_list_[idx], idx, dataset()->captured_func_.get(),
+                ctx, args_list_[idx], idx, *instantiated_captured_func_.get(),
                 prefix(), &current_elements_[idx]));
             TF_RETURN_IF_ERROR(
                 RestoreInput(ctx, reader, current_elements_[idx]));
@@ -1614,6 +1687,9 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
 
       // Identifies the maximum number of parallel calls.
       const std::shared_ptr<model::SharedState> num_parallel_calls_;
+
+      // Determines whether outputs can be produced in non-deterministic order.
+      const bool sloppy_;
 
       // Iterator for input elements.
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(*mu_);
@@ -1649,6 +1725,8 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
 
       // Identifies whether background activity should be cancelled.
       bool cancelled_ GUARDED_BY(*mu_) = false;
+      string prefix_end_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;
@@ -1657,10 +1735,12 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
     const int64 cycle_length_;
     const int64 block_length_;
     const int64 num_parallel_calls_;
+    const bool sloppy_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
   };
 
+  bool sloppy_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList interleave_func_;

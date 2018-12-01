@@ -61,7 +61,7 @@ def for_stmt(iter_, extra_test, body, init_state):
   """
   if tensor_util.is_tensor(iter_):
     return _known_len_for_stmt(iter_, extra_test, body, init_state)
-  elif isinstance(iter_, dataset_ops.Dataset):
+  elif isinstance(iter_, dataset_ops.DatasetV2):
     return _dataset_for_stmt(iter_, extra_test, body, init_state)
   else:
     return _py_for_stmt(iter_, extra_test, body, init_state)

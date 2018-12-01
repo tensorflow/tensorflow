@@ -112,7 +112,9 @@ class GANEstimator(estimator.Estimator):
                get_eval_metric_ops_fn=None,
                add_summaries=None,
                use_loss_summaries=True,
-               config=None):
+               config=None,
+               warm_start_from=None,
+               is_chief=True):
     """Initializes a GANEstimator instance.
 
     Args:
@@ -151,6 +153,10 @@ class GANEstimator(estimator.Estimator):
       use_loss_summaries: If `True`, add loss summaries. If `False`, does not.
         If `None`, uses defaults.
       config: `RunConfig` object to configure the runtime settings.
+      warm_start_from: A filepath to a checkpoint or saved model, or a
+        WarmStartSettings object to configure initialization.
+      is_chief: Whether or not this Estimator is running on a chief or worker.
+        Needs to be set appropriately if using SyncReplicasOptimizers.
 
     Raises:
       ValueError: If loss functions aren't callable.
@@ -184,10 +190,11 @@ class GANEstimator(estimator.Estimator):
       return _get_estimator_spec(
           mode, gan_model, generator_loss_fn, discriminator_loss_fn,
           get_eval_metric_ops_fn, generator_optimizer, discriminator_optimizer,
-          get_hooks_fn, use_loss_summaries)
+          get_hooks_fn, use_loss_summaries, is_chief)
 
     super(GANEstimator, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        warm_start_from=warm_start_from)
 
 
 def _get_gan_model(
@@ -211,7 +218,7 @@ def _get_gan_model(
 def _get_estimator_spec(
     mode, gan_model, generator_loss_fn, discriminator_loss_fn,
     get_eval_metric_ops_fn, generator_optimizer, discriminator_optimizer,
-    get_hooks_fn=None, use_loss_summaries=True):
+    get_hooks_fn=None, use_loss_summaries=True, is_chief=True):
   """Get the EstimatorSpec for the current mode."""
   if mode == model_fn_lib.ModeKeys.PREDICT:
     estimator_spec = model_fn_lib.EstimatorSpec(
@@ -232,7 +239,7 @@ def _get_estimator_spec(
               else discriminator_optimizer)
       get_hooks_fn = get_hooks_fn or tfgan_train.get_sequential_train_hooks()
       estimator_spec = _get_train_estimator_spec(
-          gan_model, gan_loss, gopt, dopt, get_hooks_fn)
+          gan_model, gan_loss, gopt, dopt, get_hooks_fn, is_chief=is_chief)
 
   return estimator_spec
 
@@ -317,11 +324,11 @@ def _get_eval_estimator_spec(gan_model, gan_loss, get_eval_metric_ops_fn=None,
 
 def _get_train_estimator_spec(
     gan_model, gan_loss, generator_optimizer, discriminator_optimizer,
-    get_hooks_fn, train_op_fn=tfgan_train.gan_train_ops):
+    get_hooks_fn, train_op_fn=tfgan_train.gan_train_ops, is_chief=True):
   """Return an EstimatorSpec for the train case."""
   scalar_loss = gan_loss.generator_loss + gan_loss.discriminator_loss
   train_ops = train_op_fn(gan_model, gan_loss, generator_optimizer,
-                          discriminator_optimizer)
+                          discriminator_optimizer, is_chief=is_chief)
   training_hooks = get_hooks_fn(train_ops)
   return model_fn_lib.EstimatorSpec(
       loss=scalar_loss,

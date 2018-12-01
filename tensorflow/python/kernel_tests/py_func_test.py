@@ -272,7 +272,7 @@ class PyFuncTest(test.TestCase):
 
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported numpy type"):
-        y.eval()
+        self.evaluate(y)
 
   def testBadReturnType(self):
     with self.cached_session():
@@ -285,7 +285,7 @@ class PyFuncTest(test.TestCase):
 
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported object type"):
-        z.eval()
+        self.evaluate(z)
 
   def testReturnInput(self):
     with self.cached_session():
@@ -307,9 +307,9 @@ class PyFuncTest(test.TestCase):
     with session_lib.Session() as sess:
       producer = iter(range(3))
       x, = script_ops.py_func(lambda: next(producer), [], [dtypes.int64])
-      self.assertEqual(sess.run(x), 0)
-      self.assertEqual(sess.run(x), 1)
-      self.assertEqual(sess.run(x), 2)
+      self.assertEqual(self.evaluate(x), 0)
+      self.assertEqual(self.evaluate(x), 1)
+      self.assertEqual(self.evaluate(x), 2)
 
   def testStateless(self):
     # Not using self.cached_session(), which disables optimization.
@@ -317,9 +317,9 @@ class PyFuncTest(test.TestCase):
       producer = iter(range(3))
       x, = script_ops.py_func(
           lambda: next(producer), [], [dtypes.int64], stateful=False)
-      self.assertEqual(sess.run(x), 0)
-      self.assertEqual(sess.run(x), 0)
-      self.assertEqual(sess.run(x), 0)
+      self.assertEqual(self.evaluate(x), 0)
+      self.assertEqual(self.evaluate(x), 0)
+      self.assertEqual(self.evaluate(x), 0)
 
   def testGradientFunction(self):
     # Input to tf.py_func is necessary, otherwise get_gradient_function()
@@ -335,7 +335,7 @@ class PyFuncTest(test.TestCase):
       val = [[1, 2], [3, 4]]
       x, = script_ops.py_func(lambda: np.array(val, order="F"), [],
                               [dtypes.int64])
-      self.assertAllEqual(val, x.eval())
+      self.assertAllEqual(val, self.evaluate(x))
 
   def testParallel(self):
     # Tests that tf.py_func's can run in parallel if they release the GIL.
@@ -390,7 +390,7 @@ class PyFuncTest(test.TestCase):
     f = script_ops.py_func(
         do_nothing, [constant_op.constant(3, dtypes.int64)], [], stateful=False)
     with self.cached_session() as sess:
-      self.assertEqual(sess.run(f), [])
+      self.assertEqual(self.evaluate(f), [])
 
   def _testExceptionHandling(self, py_exp, tf_exp, eager=False):
 
@@ -514,6 +514,7 @@ class PyFuncTest(test.TestCase):
       self.assertAllEqual(ret, [[3.0], [3.0], [3.0]])
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def testEagerExceptionHandling(self):
     with test_util.device(use_gpu=True):
       self._testExceptionHandling(
@@ -533,6 +534,7 @@ class PyFuncTest(test.TestCase):
       self._testExceptionHandling(WeirdError, errors.UnknownError, eager=True)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def testEagerReturningVariableRaisesError(self):
     def return_variable():
       return resource_variable_ops.ResourceVariable(0.0)
@@ -644,7 +646,7 @@ class PyFuncTest(test.TestCase):
       y = script_ops.eager_py_func(func=f, inp=[x], Tout=dtypes.float32)
       z = script_ops.eager_py_func(func=g, inp=[y], Tout=dtypes.float32)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       output = sess.run(z, feed_dict={x: 3.0})
       self.assertEqual(output, 18.0)
 

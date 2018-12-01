@@ -33,6 +33,7 @@ namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 using ::tensorflow::strings::StrAppend;
+using ::tensorflow::strings::StrCat;
 
 // A simple graph representation to mirror tensorflow::Graph. This structure
 // helps saving memory since segmenter modifies the graph in place, preventing
@@ -389,7 +390,7 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
 
 tensorflow::Status SegmentGraph(
     const tensorflow::Graph* tf_graph,
-    const std::function<bool(const tensorflow::Node*)>& candidate_fn,
+    const std::function<Status(const tensorflow::Node*)>& candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& input_candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& output_candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments) {
@@ -406,15 +407,42 @@ tensorflow::Status SegmentGraph(
   // Use a union-find to collect the nodes that belong to the same
   // segment. A node value of nullptr indicates that the node is not a candidate
   // for TRT.
+  std::unordered_set<string> unsupported_ops;
+  int num_unsupported_ops = 0;
   std::vector<UnionFind<SimpleNode*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     SimpleNode* node = graph->FindNodeId(i);
-    if (options.exclude_node_list.count(node->name()) != 0 ||
-        !candidate_fn(node->tf_node())) {
+    if (options.exclude_node_list.count(node->name()) != 0) {
+      VLOG(1) << "Not a TF-TRT candidate, "
+              << "(Op type: " << node->tf_node()->type_string() << "), "
+              << "(Op name: " << node->name() << "), "
+              << "(Reason: excluded by segmenter option)";
+      unsupported_ops.emplace(node->tf_node()->type_string());
+      num_unsupported_ops++;
       node = nullptr;
+    } else {
+      const Status status = candidate_fn(node->tf_node());
+      if (!status.ok()) {
+        VLOG(1) << "Not a TF-TRT candidate, "
+                << "(Op type: " << node->tf_node()->type_string() << "), "
+                << "(Op name: " << node->name() << "), "
+                << "(Reason: " << status << ")";
+        unsupported_ops.emplace(node->tf_node()->type_string());
+        num_unsupported_ops++;
+        node = nullptr;
+      }
     }
     node_segments.emplace_back(node);
   }
+  string msg = StrCat(
+      "There are ", num_unsupported_ops, " ops of ", unsupported_ops.size(),
+      " different types in the graph that", " are not converted to TensorRT: ");
+  for (const auto& elem : unsupported_ops) {
+    StrAppend(&msg, elem, ", ");
+  }
+  LOG(INFO) << msg << "(For more information see "
+            << "https://docs.nvidia.com/deeplearning"
+            << "/dgx/integrate-tf-trt/index.html#support-ops).";
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs

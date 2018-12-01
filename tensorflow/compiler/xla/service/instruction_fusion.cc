@@ -26,7 +26,9 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -101,7 +103,6 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSlice:
     case HloOpcode::kSubtract:
-    case HloOpcode::kAfterAll:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
     case HloOpcode::kTupleSelect:
@@ -114,7 +115,10 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kSin:
       return ShapeUtil::ElementIsComplex(instruction.shape());
 
-    // Expensive instructions.
+    // Expensive instructions or unusual instructions for which fusion is
+    // nonsensical.
+    case HloOpcode::kAddDependency:
+    case HloOpcode::kAfterAll:
     case HloOpcode::kAtan2:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
@@ -153,6 +157,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
+    case HloOpcode::kGetDimensionSize:
       return true;
   }
 
@@ -437,8 +442,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
 }  // namespace
 
 std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
-    HloComputation* computation,
-    const std::function<bool(HloInstruction*)>& skip_producer) {
+    HloComputation* computation) {
   return absl::make_unique<ReversePostOrderFusionQueue>(computation);
 }
 
@@ -451,14 +455,11 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   for (auto* computation : module->MakeNonfusionComputations()) {
     CHECK(!computation->IsFusionComputation());
     computation_ = computation;
-    reachability_ = computation_->ComputeReachability();
+    reachability_ = HloReachabilityMap::Build(computation_);
 
     HloInstructionSet do_not_duplicate =
         ComputeGloballyUnfusible(computation_->MakeInstructionPostOrder());
-    auto fusion_queue =
-        GetFusionQueue(computation_, [&](HloInstruction* producer) {
-          return do_not_duplicate.count(producer) > 0;
-        });
+    auto fusion_queue = GetFusionQueue(computation_);
 
     // Instruction fusion effectively fuses edges in the computation graph
     // (producer instruction -> consumer instruction) so we iterate over all
@@ -489,9 +490,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         HloInstruction* fusion_instruction;
         // Try "regular" fusion if the operand may be duplicated. Otherwise,
         // perform multi-output fusion, unless this creates a cycle.
-        // TODO(tjoerg): Consider making multi-output fusion the default.
-        if (ShouldFuse(instruction, i) &&
-            do_not_duplicate.count(operand) == 0) {
+        if (do_not_duplicate.count(operand) == 0 &&
+            ShouldFuse(instruction, i)) {
           fusion_queue->PreFusion(operand, instruction);
           fusion_instruction = Fuse(operand, instruction);
         } else if (ShouldFuseIntoMultiOutput(instruction, i) &&
@@ -565,15 +565,19 @@ HloInstruction* InstructionFusion::FuseIntoMultiOutput(
 
 bool InstructionFusion::MultiOutputFusionCreatesCycle(
     HloInstruction* producer, HloInstruction* consumer) {
-  return absl::c_any_of(
-      consumer->operands(), [&](const HloInstruction* consumer_operand) {
-        // The fusion algorithm traverses the HLO graph in reverse post order.
-        // Thus `cosumers` is visited before its operands (including
-        // `producer`). Therefore, consumer operands cannot have been fused yet.
-        // It is thus safe to use the pre-computed reachability map.
-        return consumer_operand != producer &&
-               reachability_->IsReachable(producer, consumer_operand);
-      });
+  auto is_reachable = [&](const HloInstruction* a, const HloInstruction* b) {
+    // A consumer operand may have been multii-output fused into a parallel
+    // consumer and thus be missing  from the oridinal reachability map.
+    if (!reachability_->IsPresent(a) || !reachability_->IsPresent(b)) {
+      reachability_ = HloReachabilityMap::Build(consumer->parent());
+    }
+    return reachability_->IsReachable(a, b);
+  };
+  return absl::c_any_of(consumer->operands(),
+                        [&](const HloInstruction* consumer_operand) {
+                          return consumer_operand != producer &&
+                                 is_reachable(producer, consumer_operand);
+                        });
 }
 
 bool InstructionFusion::ShouldFuse(HloInstruction* consumer,

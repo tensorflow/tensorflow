@@ -155,9 +155,9 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
           constant_op.constant(7))
       with self.cached_session():
         variables.global_variables_initializer().run()
-        self.assertEquals(0, counter.eval())
-        self.assertEquals(7, const_with_dep.eval())
-        self.assertEquals(1, counter.eval())
+        self.assertEquals(0, self.evaluate(counter))
+        self.assertEquals(7, self.evaluate(const_with_dep))
+        self.assertEquals(1, self.evaluate(counter))
 
   def testListDependencies(self):
     with ops.Graph().as_default():
@@ -169,9 +169,9 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
           constant_op.constant(7))
       with self.cached_session():
         variables.global_variables_initializer().run()
-        self.assertEquals(0, counter.eval())
-        self.assertEquals(7, const_with_dep.eval())
-        self.assertEquals(1, counter.eval())
+        self.assertEquals(0, self.evaluate(counter))
+        self.assertEquals(7, self.evaluate(const_with_dep))
+        self.assertEquals(1, self.evaluate(counter))
 
 
 class SwitchTestCase(test_util.TensorFlowTestCase):
@@ -209,9 +209,9 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       optimizer = momentum.MomentumOptimizer(0.1, 0.9)
       train_op = optimizer.minimize(cost)
       with self.cached_session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
-          sess.run([train_op])
+          self.evaluate([train_op])
 
   def testResourceReadInLoop(self):
     with ops.Graph().as_default():
@@ -232,8 +232,8 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
           cond, body, [constant_op.constant(0),
                        constant_op.constant(0.0)])
       with self.cached_session() as sess:
-        sess.run(variables.global_variables_initializer())
-        self.assertAllEqual(10.0, cost.eval())
+        self.evaluate(variables.global_variables_initializer())
+        self.assertAllEqual(10.0, self.evaluate(cost))
 
   def doTestIndexedSlicesGradientInCondInWhileLoop(self, use_resource=False):
     with ops.Graph().as_default():
@@ -269,8 +269,8 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
                                           static_grads.indices)
 
       with self.cached_session() as sess:
-        sess.run(variables.global_variables_initializer())
-        self.assertAllEqual(*sess.run([static_grads, dynamic_grads]))
+        self.evaluate(variables.global_variables_initializer())
+        self.assertAllEqual(*self.evaluate([static_grads, dynamic_grads]))
 
   def testIndexedSlicesGradientInCondInWhileLoop(self):
     self.doTestIndexedSlicesGradientInCondInWhileLoop(use_resource=False)
@@ -398,9 +398,9 @@ class CondTest(test_util.TensorFlowTestCase):
             pred=bool_var,
             true_fn=lambda: state_ops.assign(bool_var, False),
             false_fn=lambda: True)
-        sess.run(bool_var.initializer)
-        self.assertEquals(sess.run(cond_on_bool_var), False)
-        self.assertEquals(sess.run(cond_on_bool_var), True)
+        self.evaluate(bool_var.initializer)
+        self.assertEquals(self.evaluate(cond_on_bool_var), False)
+        self.assertEquals(self.evaluate(cond_on_bool_var), True)
 
   def testCondMissingArg1(self):
     with ops.Graph().as_default():
@@ -469,17 +469,28 @@ class ContextTest(test_util.TensorFlowTestCase):
     self._testWhileContextHelper(maximum_iterations=10)
 
   def testControlContextImportScope(self):
+    class NoABCControlFlowContext(control_flow_ops.ControlFlowContext):
+      """A noop wrapper around `ControlFlowContext`.
+
+      `ControlFlowContext` is an ABC and therefore cannot be instantiated.
+      """
+      # pylint: disable=useless-super-delegation
+
+      def to_control_flow_context_def(self, context_def, export_scope=None):
+        super(NoABCControlFlowContext, self).to_control_flow_context_def(
+            context_def, export_scope)
+
     with self.cached_session():
       constant_op.constant(0, name="a")
       constant_op.constant(2, name="test_scope/a")
       b1 = constant_op.constant(1, name="b")
       b2 = constant_op.constant(3, name="test_scope/b")
 
-      c = control_flow_ops.ControlFlowContext()
+      c = NoABCControlFlowContext()
       c._values = ["a", "b"]
       c._external_values = {"a": b1}
 
-      c_with_scope = control_flow_ops.ControlFlowContext(
+      c_with_scope = NoABCControlFlowContext(
           values_def=c._to_values_def(), import_scope="test_scope")
 
       # _values and _external_values should be have scope prepended.
@@ -519,7 +530,7 @@ def _raw_nested_shape(nested_shape):
 
   def _raw_shape(shape):
     if isinstance(shape, tensor_shape.TensorShape) and shape.ndims is not None:
-      return [x.value for x in shape]
+      return [x.value for x in shape.dims]
     else:
       return None
 
@@ -935,6 +946,16 @@ class CaseTest(test_util.TensorFlowTestCase):
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 4})
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCase_dict(self):
+    x = constant_op.constant(2)
+    conditions = {
+        math_ops.equal(x, 1): lambda: constant_op.constant(2),
+        math_ops.equal(x, 2): lambda: constant_op.constant(4)
+    }
+    output = control_flow_ops.case(conditions, exclusive=True)
+    self.assertEqual(4, self.evaluate(output))
 
 
 class WhileLoopTestCase(test_util.TensorFlowTestCase):

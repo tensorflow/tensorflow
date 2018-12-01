@@ -21,9 +21,12 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.contrib.framework.python.framework import experimental
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Tuner(object):
   """Tuner class is the interface for Experiment hyper-parameters tuning.
 
@@ -41,8 +44,6 @@ class Tuner(object):
 
     learn_runner.tune(experiment_fn=_create_my_experiment, tuner)
   """
-
-  __metaclass__ = abc.ABCMeta
 
   @experimental
   @abc.abstractmethod

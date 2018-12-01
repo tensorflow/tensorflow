@@ -25,7 +25,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
@@ -77,6 +77,7 @@ class _CuDNNRNN(RNN):
     self.constants_spec = None
     self._states = None
     self._num_constants = None
+    self._num_inputs = None
     self._vector_shape = constant_op.constant([-1])
 
   def _canonical_to_params(self, weights, biases):

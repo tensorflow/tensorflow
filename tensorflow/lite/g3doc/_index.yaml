@@ -1,0 +1,224 @@
+project_path: /lite/_project.yaml
+book_path: /lite/_book.yaml
+description: <!--no description-->
+landing_page:
+  custom_css_path: /site-assets/css/style.css
+  rows:
+  - heading: TensorFlow Lite is for mobile and embedded devices.
+    description: >
+      <p style="max-width: 75%;">
+        TensorFlow Lite is the official solution for running machine learning
+        models on mobile and embedded devices. It enables on&#8209;device machine
+        learning inference with low latency and a small binary size on Android,
+        iOS, and other operating systems.
+      </p>
+      <style>
+      .tfo-landing-row-heading {
+        padding-top: 0 !important;
+      }
+      .tfo-landing-row-heading h2 {
+        margin-top: 0 !important;
+      }
+      .tfo-landing-row-heading-list ol, .tfo-landing-row-heading-list ul {
+        margin-top: 0;
+      }
+      </style>
+
+  - classname: tfo-landing-row-heading tfo-landing-row-heading-list
+    heading: Many benefits
+    description: >
+      On-device ML inference is difficult because of the many constraints—TensorFlow Lite can solve these:
+    items:
+    - list:
+      - heading: Performance
+        description: >
+          TF Lite is fast with no noticeable accuracy loss—see the <a href="./performance">metrics</a>.
+        icon:
+          icon_name: lens
+          foreground: theme
+      - heading: Portability
+        description: >
+          <a href="https://developer.android.com/ndk/guides/neuralnetworks/" class="external">Android</a>,
+          iOS, and more specialized IoT devices.
+        icon:
+          icon_name: lens
+          foreground: theme
+    - list:
+      - heading: Low latency
+        description: >
+          Optimized float- and fixed-point CPU kernels, op&#8209;fusing, and more.
+        icon:
+          icon_name: lens
+          foreground: theme
+      - heading: Acceleration
+        description: >
+          Integration with GPU and internal/external accelerators.
+        icon:
+          icon_name: lens
+          foreground: theme
+    - list:
+      - heading: Small model size
+        description: >
+          Controlled dependencies, <a href="https://medium.com/tensorflow/introducing-the-model-optimization-toolkit-for-tensorflow-254aca1ba0a3" class="external">quantization</a>,
+          and op&nbsp;registration.
+        icon:
+          icon_name: lens
+          foreground: theme
+      - heading: Tooling
+        description: >
+          Conversion, compression, benchmarking, power-consumption, and more.
+        icon:
+          icon_name: lens
+          foreground: theme
+
+  - classname: devsite-landing-row-logos tfo-landing-row-heading
+    heading: Companies using TensorFlow Lite
+    items:
+    - custom_image:
+        path: ./images/landing-page/photos_logo.png
+      path: https://www.photos.google.com
+    - custom_image:
+        path: ./images/landing-page/gboard_logo.png
+      path: https://play.google.com/store/apps/details?id=com.google.android.inputmethod.latin&hl=en_US
+    - custom_image:
+        path: ./images/landing-page/gmail_logo.png
+      path: https://www.google.com/gmail/
+    - custom_image:
+        path: ./images/landing-page/assistant_logo.png
+      path: https://assistant.google.com/
+
+  - classname: devsite-landing-row-logos
+    items:
+    - custom_image:
+        path: ./images/landing-page/vsco_logo.png
+      path: https://vsco.co
+    - custom_image:
+        path: ./images/landing-page/shazam_logo.png
+      path: https://www.shazam.com/
+    - custom_image:
+        path: ./images/landing-page/nest_logo.png
+      path: https://nest.com/
+    - custom_image:
+        path: ./images/landing-page/loseit_logo.png
+      path: https://www.loseit.com/
+
+  - classname: devsite-landing-row-no-image-background devsite-landing-row-67
+    background: grey
+    items:
+    - description: >
+        <em>“TensorFlow Lite helped us introduce machine learning and AI into our
+        app in an easy and streamlined way. We could reduce the size of our
+        models while keeping the accuracy high. This helped us create an amazing
+        fishing experience for our users by allowing them to identify any fish
+        species with just a photo.”</em>
+      image_path: ./images/landing-page/fishbrain_logo_big.png
+
+  - heading: How it works
+    items:
+    - heading: Build
+      icon:
+        icon_name: build
+      description: >
+        Build a new model or retrain an existing one, such as using transfer learning.
+      buttons:
+      - label: Read the developer guide
+        path: /lite/devguide
+        classname: button button-primary tfo-button-primary
+    - heading: Convert
+      icon:
+        icon_name: autorenew
+      description: >
+        Convert a TensorFlow model into a compressed flat buffer with the
+        TensorFlow Lite Converter.
+      buttons:
+      - label: Read the converter guide
+        path: /lite/convert/
+        classname: button button-primary tfo-button-primary
+    - heading: Deploy
+      icon:
+        icon_name: bolt
+      description: >
+        Take the compressed <code>.tflite</code> file and load it into a mobile
+        or embedded device.<br/>
+        See the <a href="#build-your-first-tensorflow-lite-app">tutorials below</a> to build an app.
+
+  - heading: Build your first TensorFlow Lite app
+    background: grey
+    items:
+    - classname: tfo-landing-row-item-inset-white
+      heading: Get started
+      description: >
+        <ul>
+          <li>Beginner: <a href="https://codelabs.developers.google.com/codelabs/tensorflow-for-poets/" class="external">TensorFlow for Poets</a></li>
+          <li>Beginner: <a href="https://codelabs.developers.google.com/codelabs/tensorflow-for-poets-2-tflite/" class="external">TensorFlow for Poets 2: Android</a></li>
+          <li>Beginner: <a href="https://codelabs.developers.google.com/codelabs/tensorflow-for-poets-2-ios/" class="external">TensorFlow for Poets 2: iOS </a></li>
+          <li>Intermediate: <a href="https://medium.com/tensorflow/training-and-serving-a-realtime-mobile-object-detector-in-30-minutes-with-cloud-tpus-b78971cf1193" class="external">Object detection tutorial</a>
+        </ul>
+    - classname: tfo-landing-row-item-inset-white
+      heading: Share your TensorFlow Lite story
+      description: >
+        We love to hear what you're working on—it may even get highlighted on
+        our social media! <a href="https://groups.google.com/a/tensorflow.org/forum/#!forum/discuss" class="external">Tell us</a>.
+
+  - classname: devsite-landing-row-no-image-background devsite-landing-row-67
+    items:
+    - description: >
+        <p>
+          <em>“The release of TensorFlow Lite has allowed us to deploy an engaging
+          real-time experience to our users that eliminates the requirement
+          for a data connection. TensorFlow Lite’s ability to compress and
+          optimize the TensorFlow graph for mobile deployment has been
+          transformative in expanding the capabilities of Snap It.</em>
+        </p>
+        <p>
+          <em>Through TensorFlow Lite, our users can now enjoy a state of the
+          art, computer-vision-based food logging experience without worrying
+          about signal strength. We look forward to future collaborations
+          with the TensorFlow Lite team.”</em>
+        </p>
+      image_path: ./images/landing-page/loseit_logo_big.png
+
+  - classname: devsite-landing-row-cards
+    background: grey
+    heading: Updates
+    items:
+    - heading: "AI in motion: react in the real world"
+      image_path: ./images/landing-page/ai_in_motion.png
+      path: https://cloud.google.com/blog/products/ai-machine-learning/ai-motion-designing-simple-system-see-understand-and-react-real-world-part-ii
+      buttons:
+      - label: Read more
+        path: https://cloud.google.com/blog/products/ai-machine-learning/ai-motion-designing-simple-system-see-understand-and-react-real-world-part-ii
+    - heading: "Introducing the Model Optimization Toolkit"
+      image_path: /resources/images/tf-logo-card-16x9.png
+      path: https://medium.com/tensorflow/introducing-the-model-optimization-toolkit-for-tensorflow-254aca1ba0a3
+      buttons:
+      - label: Read on TensorFlow blog
+        path: https://medium.com/tensorflow/introducing-the-model-optimization-toolkit-for-tensorflow-254aca1ba0a3
+    - heading: "East Africa Cassava App"
+      image_path: ./images/landing-page/detect_crop_disease_in_africa.png
+      path: https://heartbeat.fritz.ai/community-spotlight-nuru-a-mobile-app-by-plantvillage-to-detect-crop-disease-in-africa-28d142bf63d5
+      buttons:
+      - label: Read more
+        path: https://heartbeat.fritz.ai/community-spotlight-nuru-a-mobile-app-by-plantvillage-to-detect-crop-disease-in-africa-28d142bf63d5
+
+  - classname: devsite-landing-row-cards
+    background: grey
+    items:
+    - heading: "Using TensorFlow Lite on Android"
+      image_path: /resources/images/tf-logo-card-16x9.png
+      path: https://medium.com/tensorflow/using-tensorflow-lite-on-android-9bbc9cb7d69d
+      buttons:
+      - label: Read on TensorFlow blog
+        path: https://medium.com/tensorflow/using-tensorflow-lite-on-android-9bbc9cb7d69d
+    - heading: "TensorFlow Lite at the Dev Summit"
+      youtube_id: FAMfy7izB6A
+      buttons:
+      - label: Watch the video
+        path: https://www.youtube.com/watch?v=FAMfy7izB6A
+    - heading: "TensorFlow Lite on GitHub"
+      image_path: /resources/images/github-card-16x9.png
+      path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite
+      buttons:
+      - label: View on GitHub
+        path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite
+    - classname: devsite-landing-row-item-hidden

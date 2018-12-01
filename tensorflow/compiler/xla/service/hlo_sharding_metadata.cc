@@ -169,14 +169,14 @@ Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
 // If user is a tuple instruction, return the tuple subsharding corresponding to
 // the operand matching the instruction argument, because that is the
 // subsharding corresponding to instruction.
-ShapeTree<HloSharding> GetShardingTreeFromUser(
+StatusOr<ShapeTree<HloSharding>> GetShardingTreeFromUser(
     const HloInstruction& instruction, const HloInstruction& user) {
   if (user.opcode() == HloOpcode::kTuple) {
     return user.sharding()
         .GetSubSharding(user.shape(), {user.operand_index(&instruction)})
-        .GetAsShapeTree(instruction.shape());
+        .AsShapeTree(instruction.shape());
   }
-  return user.sharding().GetAsShapeTree(user.shape());
+  return user.sharding().AsShapeTree(user.shape());
 }
 
 // Assign rhs to lhs. If rhs is unassigned (assigned to kUnassignedDevice)
@@ -253,7 +253,7 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
       instruction->shape(), HloSharding::AssignDevice(kUnassignedDevice));
   for (HloInstruction* user : instruction->users()) {
     if (user->opcode() == HloOpcode::kDomain &&
-        domain.exit_domains.count(const_cast<HloInstruction*>(user)) > 0) {
+        domain.exit_domains.count(user) > 0) {
       // If a user is a domain and it is registered in the domain exits, then
       // the instruction sharding is taken directly from the domain, and no
       // further users need to be visited.
@@ -264,8 +264,8 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
       continue;
     }
     AssignmentKind sub_assigned = AssignmentKind::kUnassigned;
-    ShapeTree<HloSharding> user_sharding_tree =
-        GetShardingTreeFromUser(*instruction, *user);
+    TF_ASSIGN_OR_RETURN(ShapeTree<HloSharding> user_sharding_tree,
+                        GetShardingTreeFromUser(*instruction, *user));
     if (ShapeUtil::IsTuple(instruction->shape())) {
       // For tuple-shaped instructions collect individual tuple subshardings
       // from the uses, and then combine them into the tuple sharding.

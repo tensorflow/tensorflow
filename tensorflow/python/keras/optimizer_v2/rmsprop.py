@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,158 +12,125 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""RMSprop optimizer for Tensorflow.
-
-rmsprop algorithm [tieleman2012rmsprop]
-
-A detailed description of rmsprop.
-
-- maintain a moving (discounted) average of the square of gradients
-- divide gradient by the root of this average
-
-mean_square = rho * mean_square{t-1} + (1-rho) * gradient ** 2
-mom = momentum * mom{t-1} + learning_rate * g_t / sqrt(mean_square)
-delta = - mom
-
-This implementation of RMSProp uses plain momentum, not Nesterov momentum.
-
-The centered version additionally maintains a moving (discounted) average of the
-gradients, and uses that average to estimate the variance:
-
-mean_grad = rho * mean_square{t-1} + (1-rho) * gradient
-mean_square = rho * mean_square{t-1} + (1-rho) * gradient ** 2
-mom = momentum * mom{t-1} + learning_rate * g_t /
-    sqrt(mean_square - mean_grad**2)
-delta = - mom
-"""
-
+"""RMSprop for TensorFlow."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.python.ops import array_ops
-
 from tensorflow.python.training import training_ops
 
 
-class RMSProp(optimizer_v2.OptimizerV2):
-  """RMSProp optimizer.
+class RMSprop(optimizer_v2.OptimizerV2):
+  r"""Optimizer that implements the RMSprop algorithm.
 
-  It is recommended to leave the parameters of this optimizer at their default
-  values (except the learning rate, which can be freely tuned).
+  A detailed description of rmsprop.
 
-  This optimizer is usually a good choice for recurrent neural networks.
+    - maintain a moving (discounted) average of the square of gradients
+    - divide gradient by the root of this average
 
-  Some of the args below are hyperparameters, where a hyperparameter is
-  defined as a scalar Tensor, a regular Python value, or a callable (which
-  will be evaluated when `apply_gradients` is called) returning a scalar
-  Tensor or a Python value.
+  $$mean_square_t = rho * mean_square{t-1} + (1-rho) * gradient ** 2$$
+  $$mom_t = momentum * mom_{t-1} + learning_rate * gradient / \sqrt{ /
+      mean_square_t + \epsilon}$$
+  $$variable_t := variable_{t-1} - mom_t
 
-  Note that in the dense implementation of this algorithm, variables and their
-  corresponding accumulators (momentum, gradient moving average, square
-  gradient moving average) will be updated even if the gradient is zero
-  (i.e. accumulators will decay, momentum will be applied). The sparse
-  implementation (used when the gradient is an `IndexedSlices` object,
-  typically because of `tf.gather` or an embedding lookup in the forward pass)
-  will not update variable slices or their accumulators unless those slices
-  were used in the forward pass (nor is there an "eventual" correction to
-  account for these omitted updates). This leads to more efficient updates for
-  large embedding lookup tables (where most of the slices are not accessed in
-  a particular graph execution), but differs from the published algorithm.
+  This implementation of RMSprop uses plain momentum, not Nesterov momentum.
 
-  Arguments:
-      learning_rate: A float hyperparameter >= 0. The learning rate.
-      rho: A float hyperparameter >= 0. Discounting factor for the
-        history/coming gradient.
-      momentum: A float hyperparameter >= 0.
-      epsilon: A float hyperparameter >= 0 . Small value to initialize the
-        average square gradient variable and avoid zero denominator.
-      centered: If True, gradients are normalized by the estimated variance of
-        the gradient; if False, by the uncentered second moment. Setting this to
-        True may help with training, but is slightly more expensive in terms of
-        computation and memory. Defaults to False.
-      name: Optional name prefix for the operations created when applying
-        gradients. Defaults to "RMSProp".
+  The centered version additionally maintains a moving average of the
+  gradients, and uses that average to estimate the variance:
+
+  $$mean_grad_t = rho * mean_grad_{t-1} + (1-rho) * gradient$$
+  $$mean_square_t = rho * mean_square_{t-1} + (1-rho) * gradient ** 2$$
+  $$mom_t = momentum * mom_{t-1} + learning_rate * gradient /
+      sqrt(mean_square_t - mean_grad_t**2 + epsilon)$$
+  $$variable_t := variable_{t-1} - mom_t
+
+  References
+    See ([pdf]
+      http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
   """
 
   def __init__(self,
                learning_rate=0.001,
                rho=0.9,
-               momentum=None,
-               epsilon=1e-10,
+               momentum=0.0,
+               epsilon=1e-7,
                centered=False,
-               name="RMSProp"):
-    super(RMSProp, self).__init__(name)
-    # Momentum default is `None` for consistency with SGD
-    # but underlying implementation uses `momentum` hyperparameter here
-    # regardless unlike SGD. Since extneral Keras RMSProp does not have
-    # a `momentum` weight, for compatibility with external Keras h5 files,
-    # when  `momentum` was set as `None` we should ignore the `momentum`
-    # variable in `get_weights` and not require it in `set_weights`.
-    if momentum is None:
-      momentum = 0.0
-    self._set_hyper("learning_rate", learning_rate)
-    self._set_hyper("rho", rho)
-    self._set_hyper("momentum", momentum)
-    self._set_hyper("epsilon", epsilon)
+               name="RMSprop",
+               **kwargs):
+    """Construct a new RMSprop optimizer.
 
+    Note that in the dense implementation of this algorithm, variables and their
+    corresponding accumulators (momentum, gradient moving average, square
+    gradient moving average) will be updated even if the gradient is zero
+    (i.e. accumulators will decay, momentum will be applied). The sparse
+    implementation (used when the gradient is an `IndexedSlices` object,
+    typically because of `tf.gather` or an embedding lookup in the forward pass)
+    will not update variable slices or their accumulators unless those slices
+    were used in the forward pass (nor is there an "eventual" correction to
+    account for these omitted updates). This leads to more efficient updates for
+    large embedding lookup tables (where most of the slices are not accessed in
+    a particular graph execution), but differs from the published algorithm.
+
+    Args:
+      learning_rate: A Tensor or a floating point value.  The learning rate.
+      rho: Discounting factor for the history/coming gradient
+      momentum: A scalar tensor.
+      epsilon: Small value to avoid zero denominator.
+      centered: If True, gradients are normalized by the estimated variance of
+        the gradient; if False, by the uncentered second moment. Setting this to
+        True may help with training, but is slightly more expensive in terms of
+        computation and memory. Defaults to False.
+      name: Optional name prefix for the operations created when applying
+        gradients. Defaults to "RMSprop".  @compatibility(eager) When eager
+        execution is enabled, `learning_rate`, `decay`, `momentum`, and
+        `epsilon` can each be a callable that takes no arguments and returns the
+        actual value to use. This can be useful for changing these values across
+        different invocations of optimizer functions. @end_compatibility
+      **kwargs: keyword arguments. Allowed to be {`decay`}
+    """
+    super(RMSprop, self).__init__(name, **kwargs)
+    self._set_hyper("learning_rate", learning_rate)
+    self._set_hyper("decay", self._initial_decay)
+    self._set_hyper("rho", rho)
+
+    self._momentum = False
+    if isinstance(momentum, ops.Tensor) or callable(momentum) or momentum > 0:
+      self._momentum = True
+    if isinstance(momentum, (int, float)) and (momentum < 0 or momentum > 1):
+      raise ValueError("`momentum` must be between [0, 1].")
+    self._set_hyper("momentum", momentum)
+
+    self._set_hyper("epsilon", epsilon)
     self._centered = centered
 
-  def _create_vars(self, var_list, state):
-    for v in var_list:
-      init_rms = state.get_hyper(
-          "epsilon", v.dtype.base_dtype) * array_ops.ones_like(v)
-      state.create_slot_with_initializer(v, init_rms, v.get_shape(),
-                                         v.dtype.base_dtype, "rms")
+  def _create_slots(self, var_list):
+    for var in var_list:
+      self.add_slot(var, "rms")
+      self.add_slot(var, "momentum")
       if self._centered:
-        state.zeros_slot(v, "mg")
-      state.zeros_slot(v, "momentum")
+        self.add_slot(var, "mg")
 
-  def _apply_dense(self, grad, var, state):
-    rms = state.get_slot(var, "rms")
-    mom = state.get_slot(var, "momentum")
+  def _resource_apply_dense(self, grad, var):
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
+    rms = self.get_slot(var, "rms")
+    mom = self.get_slot(var, "momentum")
+    rho = self._get_hyper("rho", var_dtype)
+    momentum = self._get_hyper("momentum", var_dtype)
+    epsilon = self._get_hyper("epsilon", var_dtype)
     if self._centered:
-      mg = state.get_slot(var, "mg")
-      return training_ops.apply_centered_rms_prop(
-          var,
-          mg,
-          rms,
-          mom,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("rho", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          # epsilon is now the rms initial value and is not added to the
-          # denominator anymore, hence calling the kernel op with epsilon=0.
-          0,
-          grad,
-          use_locking=self._use_locking).op
-    else:
-      return training_ops.apply_rms_prop(
-          var,
-          rms,
-          mom,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("rho", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          0,
-          grad,
-          use_locking=self._use_locking).op
-
-  def _resource_apply_dense(self, grad, var, state):
-    rms = state.get_slot(var, "rms")
-    mom = state.get_slot(var, "momentum")
-    if self._centered:
-      mg = state.get_slot(var, "mg")
+      mg = self.get_slot(var, "mg")
       return training_ops.resource_apply_centered_rms_prop(
           var.handle,
           mg.handle,
           rms.handle,
           mom.handle,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("rho", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          0,
+          lr_t,
+          rho,
+          momentum,
+          epsilon,
           grad,
           use_locking=self._use_locking)
     else:
@@ -171,46 +138,21 @@ class RMSProp(optimizer_v2.OptimizerV2):
           var.handle,
           rms.handle,
           mom.handle,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("rho", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          0,
+          lr_t,
+          rho,
+          momentum,
+          epsilon,
           grad,
           use_locking=self._use_locking)
 
-  def _apply_sparse(self, grad, var, state):
-    rms = state.get_slot(var, "rms")
-    mom = state.get_slot(var, "momentum")
-    if self._centered:
-      mg = state.get_slot(var, "mg")
-      return training_ops.sparse_apply_centered_rms_prop(
-          var,
-          mg,
-          rms,
-          mom,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("rho", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          0,
-          grad.values,
-          grad.indices,
-          use_locking=self._use_locking)
-    else:
-      return training_ops.sparse_apply_rms_prop(
-          var,
-          rms,
-          mom,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("rho", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          0,
-          grad.values,
-          grad.indices,
-          use_locking=self._use_locking)
-
-  def _resource_apply_sparse(self, grad, var, indices, state):
-    rms = state.get_slot(var, "rms")
-    mom = state.get_slot(var, "momentum")
+  def _resource_apply_sparse(self, grad, var, indices):
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
+    rms = self.get_slot(var, "rms")
+    mom = self.get_slot(var, "momentum")
+    rho = self._get_hyper("rho", var_dtype)
+    momentum = self._get_hyper("momentum", var_dtype)
+    epsilon = self._get_hyper("epsilon", var_dtype)
     if self._centered:
       mg = self.get_slot(var, "mg")
       return training_ops.resource_sparse_apply_centered_rms_prop(
@@ -218,10 +160,10 @@ class RMSProp(optimizer_v2.OptimizerV2):
           mg.handle,
           rms.handle,
           mom.handle,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("rho", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          0,
+          lr_t,
+          rho,
+          momentum,
+          epsilon,
           grad,
           indices,
           use_locking=self._use_locking)
@@ -230,21 +172,25 @@ class RMSProp(optimizer_v2.OptimizerV2):
           var.handle,
           rms.handle,
           mom.handle,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("rho", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          0,
+          lr_t,
+          rho,
+          momentum,
+          epsilon,
           grad,
           indices,
           use_locking=self._use_locking)
 
   def get_config(self):
-    config = super(RMSProp, self).get_config()
+    config = super(RMSprop, self).get_config()
     config.update({
         "learning_rate": self._serialize_hyperparameter("learning_rate"),
+        "decay": self._serialize_hyperparameter("decay"),
         "rho": self._serialize_hyperparameter("rho"),
         "momentum": self._serialize_hyperparameter("momentum"),
         "epsilon": self._serialize_hyperparameter("epsilon"),
-        "centered": self._centered
+        "centered": self._centered,
     })
     return config
+
+
+RMSProp = RMSprop

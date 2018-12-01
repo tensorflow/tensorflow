@@ -16,17 +16,17 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class ScanDatasetOp : public UnaryDatasetOpKernel {
@@ -143,7 +143,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -168,8 +169,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         state_and_output.reserve(dataset()->state_types_.size() +
                                  output_dtypes().size());
 
-        Status s = dataset()->captured_func_->Run(ctx, std::move(args),
-                                                  &state_and_output);
+        Status s = instantiated_captured_func_->Run(ctx, std::move(args),
+                                                    &state_and_output);
         if (s.ok()) {
           state_.clear();
           size_t i = 0;
@@ -211,6 +212,12 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
@@ -246,6 +253,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
       mutex mu_;
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::vector<Tensor> state_ GUARDED_BY(mu_);
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;

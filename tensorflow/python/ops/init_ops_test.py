@@ -46,8 +46,8 @@ class InitializersTest(test.TestCase):
       output = variable.numpy()
     else:
       sess = ops.get_default_session()
-      sess.run(variable.initializer)
-      output = sess.run(variable)
+      self.evaluate(variable.initializer)
+      output = self.evaluate(variable)
     lim = 3e-2
     if target_std is not None:
       self.assertGreater(lim, abs(output.std() - target_std))

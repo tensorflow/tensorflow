@@ -22,6 +22,8 @@ import socket
 import ssl
 import struct
 
+import six
+
 from tensorflow.contrib.ignite.python.ops import gen_dataset_ops
 from tensorflow.contrib.ignite.python.ops import ignite_op_loader  # pylint: disable=unused-import
 from tensorflow.python.data.ops import dataset_ops
@@ -30,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Readable(object):
   """Readable abstract class that exposes methods to do reading-related
 

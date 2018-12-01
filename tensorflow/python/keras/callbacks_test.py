@@ -404,6 +404,7 @@ class KerasCallbacksTest(test.TestCase):
           float(keras.backend.get_value(
               model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
 
+  @test_util.run_deprecated_v1
   def test_ReduceLROnPlateau(self):
     with self.cached_session():
       np.random.seed(1337)
@@ -422,8 +423,7 @@ class KerasCallbacksTest(test.TestCase):
             num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
         model.compile(
             loss='categorical_crossentropy',
-            optimizer=keras.optimizers.SGD(lr=0.1),
-            metrics=['accuracy'])
+            optimizer=keras.optimizers.SGD(lr=0.1))
         return model
 
       model = make_model()
@@ -673,9 +673,10 @@ class KerasCallbacksTest(test.TestCase):
           callbacks=cbks,
           epochs=20)
       loss = history.history['loss']
-      assert len(loss) == 1
-      assert loss[0] == np.inf
+      self.assertEqual(len(loss), 1)
+      self.assertEqual(loss[0], np.inf)
 
+  @test_util.run_deprecated_v1
   def test_TensorBoard(self):
     np.random.seed(1337)
 
@@ -779,6 +780,7 @@ class KerasCallbacksTest(test.TestCase):
           data_generator(True), len(x_train), epochs=2, callbacks=cbks)
       assert os.path.exists(temp_dir)
 
+  @test_util.run_deprecated_v1
   def test_TensorBoard_histogram_freq_must_have_validation_data(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
@@ -851,6 +853,7 @@ class KerasCallbacksTest(test.TestCase):
       # Make sure file writer cache is clear to avoid failures during cleanup.
       writer_cache.FileWriterCache.clear()
 
+  @test_util.run_deprecated_v1
   def test_TensorBoard_multi_input_output(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
@@ -922,6 +925,7 @@ class KerasCallbacksTest(test.TestCase):
                           callbacks=callbacks_factory(histogram_freq=1))
       assert os.path.isdir(filepath)
 
+  @test_util.run_deprecated_v1
   def test_Tensorboard_histogram_summaries_in_test_function(self):
 
     class FileWriterStub(object):
@@ -999,6 +1003,7 @@ class KerasCallbacksTest(test.TestCase):
 
       self.assertAllEqual(tsb.writer.steps_seen, [0, 0.5, 1, 1.5, 2, 2.5])
 
+  @test_util.run_deprecated_v1
   def test_Tensorboard_histogram_summaries_with_generator(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
@@ -1130,6 +1135,7 @@ class KerasCallbacksTest(test.TestCase):
 
       assert os.path.exists(temp_dir)
 
+  @test_util.run_deprecated_v1
   def test_Tensorboard_batch_logging(self):
 
     class FileWriterStub(object):
@@ -1164,6 +1170,7 @@ class KerasCallbacksTest(test.TestCase):
     self.assertEqual(tb_cbk.writer.summary_values, [0., 1., 2., 3., 4.])
     self.assertEqual(tb_cbk.writer.summary_tags, ['batch_acc'] * 5)
 
+  @test_util.run_deprecated_v1
   def test_Tensorboard_epoch_and_batch_logging(self):
 
     class FileWriterStub(object):
@@ -1235,6 +1242,7 @@ class KerasCallbacksTest(test.TestCase):
 
     self.assertTrue(os.path.exists(temp_dir))
 
+  @test_util.run_deprecated_v1
   def test_TensorBoard_update_freq(self):
 
     class FileWriterStub(object):
@@ -1326,6 +1334,7 @@ class KerasCallbacksTest(test.TestCase):
             callbacks=cbks,
             epochs=1)
 
+  @test_util.run_deprecated_v1
   def test_fit_generator_with_callback(self):
 
     class TestCallback(keras.callbacks.Callback):

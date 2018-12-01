@@ -155,16 +155,19 @@ def _embedding_lookup_and_transform(params,
         # Compute num_total_ids as the sum of dim-0 of params, then assign to
         # partitions based on a constant number of ids per partition. Optimize
         # if we already know the full shape statically.
-        dim_0_size = params[0].get_shape()[0]
+        dim_0_size = tensor_shape.Dimension(tensor_shape.dimension_value(
+            params[0].get_shape()[0]))
         for p in xrange(1, np):
-          dim_0_size += params[p].get_shape()[0]
+          dim_0_size += tensor_shape.Dimension(tensor_shape.dimension_value(
+              params[p].get_shape()[0]))
         if dim_0_size.value:
           num_total_ids = constant_op.constant(dim_0_size.value, flat_ids.dtype)
         else:
           dim_0_sizes = []
           for p in xrange(np):
-            if params[p].get_shape()[0].value is not None:
-              dim_0_sizes.append(params[p].get_shape()[0].value)
+            param_p_dim = tensor_shape.dimension_value(params[p].get_shape()[0])
+            if param_p_dim is not None:
+              dim_0_sizes.append(param_p_dim)
             else:
               with ops.colocate_with(params[p]):
                 dim_0_sizes.append(array_ops.shape(params[p])[0])
@@ -551,7 +554,10 @@ def safe_embedding_lookup_sparse(embedding_weights,
 
   dtype = sparse_weights.dtype if sparse_weights is not None else None
   embedding_weights = [
-      ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
+      w if (isinstance(w, resource_variable_ops.ResourceVariable)
+            and dtype in (None, w.dtype))
+      else ops.convert_to_tensor(w, dtype=dtype)
+      for w in embedding_weights
   ]
 
   with ops.name_scope(name, 'embedding_lookup',
@@ -559,11 +565,12 @@ def safe_embedding_lookup_sparse(embedding_weights,
                                            sparse_weights]) as scope:
     # Reshape higher-rank sparse ids and weights to linear segment ids.
     original_shape = sparse_ids.dense_shape
-    original_rank_dim = sparse_ids.dense_shape.get_shape()[0]
+    original_rank_dim = tensor_shape.dimension_value(
+        sparse_ids.dense_shape.get_shape()[0])
     original_rank = (
         array_ops.size(original_shape)
-        if original_rank_dim.value is None
-        else original_rank_dim.value)
+        if original_rank_dim is None
+        else original_rank_dim)
     sparse_ids = sparse_ops.sparse_reshape(sparse_ids, [
         math_ops.reduce_prod(
             array_ops.slice(original_shape, [0], [original_rank - 1])),
@@ -617,7 +624,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
             array_ops.slice(array_ops.shape(result), [1], [-1])
         ], 0))
     final_result.set_shape(tensor_shape.unknown_shape(
-        (original_rank_dim - 1).value).concatenate(result.get_shape()[1:]))
+        (tensor_shape.Dimension(original_rank_dim) - 1).value).concatenate(
+            result.get_shape()[1:]))
     return final_result
 
 

@@ -21,14 +21,14 @@ from __future__ import print_function
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
-from tensorflow.python.eager import function
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import versions
+from tensorflow.python.framework.func_graph import FuncGraph
 
 
 def function_def_to_graph(fdef, input_shapes=None):
-  """Converts a FunctionDef to a function.FuncGraph (sub-class Graph).
+  """Converts a FunctionDef to a FuncGraph (sub-class Graph).
 
   The returned FuncGraph's `name`, `inputs` and `outputs` fields will be set.
   The input tensors are represented as placeholders.
@@ -46,7 +46,7 @@ def function_def_to_graph(fdef, input_shapes=None):
   Returns:
     A FuncGraph.
   """
-  func_graph = function.FuncGraph(fdef.signature.name)
+  func_graph = FuncGraph(fdef.signature.name)
   graph_def, nested_to_flat_tensor_name = function_def_to_graph_def(
       fdef, input_shapes)
 
@@ -174,7 +174,9 @@ def function_def_to_graph_def(fdef, input_shapes=None):
   # Update inputs of all nodes in graph.
   for node_def in graph_def.node:
     for i in range(len(node_def.input)):
-      node_def.input[i] = nested_to_flat_tensor_name[node_def.input[i]]
+      # TODO(apassos): how can it not be there?
+      if node_def.input[i] in nested_to_flat_tensor_name:
+        node_def.input[i] = nested_to_flat_tensor_name[node_def.input[i]]
 
   return graph_def, nested_to_flat_tensor_name
 

@@ -22,12 +22,14 @@ from tensorflow.python.autograph.operators import control_flow
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
 class ForLoopTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_tensor(self):
     s = control_flow.for_stmt(
         constant_op.constant([1, 2, 3, 4]),
@@ -35,7 +37,7 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s + i,),
         init_state=(0,))
     with self.cached_session() as sess:
-      self.assertEqual((10,), sess.run(s))
+      self.assertEqual((10,), self.evaluate(s))
 
   def test_python(self):
     s = control_flow.for_stmt(
@@ -45,6 +47,7 @@ class ForLoopTest(test.TestCase):
         init_state=(0,))
     self.assertEqual(10, s)
 
+  @test_util.run_deprecated_v1
   def test_dataset(self):
     to_int32 = lambda i: math_ops.cast(i, dtypes.int32)
     s = control_flow.for_stmt(
@@ -53,11 +56,12 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s + i,),
         init_state=(0,))
     with self.cached_session() as sess:
-      self.assertEqual((10,), sess.run(s))
+      self.assertEqual((10,), self.evaluate(s))
 
 
 class WhileLoopTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_tensor(self):
     n = constant_op.constant(5)
     results = control_flow.while_stmt(
@@ -66,7 +70,7 @@ class WhileLoopTest(test.TestCase):
         init_state=(0, 0),
         extra_deps=(n,))
     with self.cached_session() as sess:
-      self.assertEqual((5, 10), sess.run(results))
+      self.assertEqual((5, 10), self.evaluate(results))
 
   def test_python(self):
     n = 5
@@ -87,23 +91,25 @@ class IfStmtTest(test.TestCase):
     return control_flow.if_stmt(
         cond=cond, body=lambda: (1, 2), orelse=lambda: (-1, -2))
 
+  @test_util.run_deprecated_v1
   def test_tensor(self):
     with self.cached_session() as sess:
       t = self.single_return_if_stmt(constant_op.constant(True))
-      self.assertEqual(1, sess.run(t))
+      self.assertEqual(1, self.evaluate(t))
       t = self.single_return_if_stmt(constant_op.constant(False))
-      self.assertEqual(-1, sess.run(t))
+      self.assertEqual(-1, self.evaluate(t))
 
   def test_python(self):
     self.assertEqual(1, self.single_return_if_stmt(True))
     self.assertEqual(-1, self.single_return_if_stmt(False))
 
+  @test_util.run_deprecated_v1
   def test_tensor_multiple_returns(self):
     with self.cached_session() as sess:
       t = self.multi_return_if_stmt(constant_op.constant(True))
-      self.assertAllEqual([1, 2], sess.run(t))
+      self.assertAllEqual([1, 2], self.evaluate(t))
       t = self.multi_return_if_stmt(constant_op.constant(False))
-      self.assertAllEqual([-1, -2], sess.run(t))
+      self.assertAllEqual([-1, -2], self.evaluate(t))
 
   def test_python_multiple_returns(self):
     self.assertEqual((1, 2), self.multi_return_if_stmt(True))

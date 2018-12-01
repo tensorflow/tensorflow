@@ -74,8 +74,8 @@ class ConstrainedMinimizationProblem(object):
 
     if (constraints_shape.ndims is None or
         proxy_constraints_shape.ndims is None or
-        any([ii is None for ii in constraints_shape.as_list()]) or
-        any([ii is None for ii in proxy_constraints_shape.as_list()])):
+        any(ii is None for ii in constraints_shape.as_list()) or
+        any(ii is None for ii in proxy_constraints_shape.as_list())):
       raise ValueError(
           "constraints and proxy_constraints must have fully-known shapes")
     if constraints_shape != proxy_constraints_shape:

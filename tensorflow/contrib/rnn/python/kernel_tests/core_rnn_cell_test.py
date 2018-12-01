@@ -757,9 +757,10 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
         m = array_ops.zeros([1, 4])
-        _, ml = rnn_cell_impl.MultiRNNCell(
+        multi_rnn_cell = rnn_cell_impl.MultiRNNCell(
             [rnn_cell_impl.GRUCell(2) for _ in range(2)],
-            state_is_tuple=False)(x, m)
+            state_is_tuple=False)
+        _, ml = multi_rnn_cell(x, m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(ml, {
             x.name: np.array([[1., 1.]]),
@@ -767,6 +768,9 @@ class RNNCellTest(test.TestCase):
         })
         # The numbers in results were not calculated, this is just a smoke test.
         self.assertAllClose(res, [[0.175991, 0.175991, 0.13248, 0.13248]])
+        self.assertEqual(len(multi_rnn_cell.weights), 2 * 4)
+        self.assertTrue(
+            [x.dtype == dtypes.float32 for x in multi_rnn_cell.weights])
 
   def testMultiRNNCellWithStateTuple(self):
     with self.cached_session() as sess:
@@ -902,7 +906,7 @@ class DropoutWrapperTest(test.TestCase):
 
   def testDropoutWrapperKeepNoOutput(self):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
-    keep_none = variable_scope.get_variable("none", initializer=1e-10)
+    keep_none = variable_scope.get_variable("none", initializer=1e-6)
     res = self._testDropoutWrapper(
         input_keep_prob=keep_all,
         output_keep_prob=keep_none,
@@ -918,7 +922,7 @@ class DropoutWrapperTest(test.TestCase):
 
   def testDropoutWrapperKeepNoStateExceptLSTMCellMemory(self):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
-    keep_none = variable_scope.get_variable("none", initializer=1e-10)
+    keep_none = variable_scope.get_variable("none", initializer=1e-6)
     # Even though we dropout state, by default DropoutWrapper never
     # drops out the memory ("c") term of an LSTMStateTuple.
     res = self._testDropoutWrapper(
@@ -939,7 +943,7 @@ class DropoutWrapperTest(test.TestCase):
 
   def testDropoutWrapperKeepNoInput(self):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
-    keep_none = variable_scope.get_variable("none", initializer=1e-10)
+    keep_none = variable_scope.get_variable("none", initializer=1e-6)
     true_full_output = np.array(
         [[[0.751109, 0.751109, 0.751109]], [[0.895509, 0.895509, 0.895509]]],
         dtype=np.float32)

@@ -69,7 +69,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
 
       wrapped_func = dataset_ops.StructuredFunctionWrapper(
           scan_func,
-          "tf.data.experimental.scan()",
+          self._transformation_name(),
           input_classes=(self._state_classes, input_dataset.output_classes),
           input_shapes=(self._state_shapes, input_dataset.output_shapes),
           input_types=(self._state_types, input_dataset.output_types),
@@ -148,6 +148,9 @@ class _ScanDataset(dataset_ops.UnaryDataset):
   @property
   def output_types(self):
     return self._output_types
+
+  def _transformation_name(self):
+    return "tf.data.experimental.scan()"
 
 
 @tf_export("data.experimental.scan")

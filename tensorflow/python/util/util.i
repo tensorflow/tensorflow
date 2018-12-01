@@ -31,6 +31,9 @@ limitations under the License.
 %unignore tensorflow::swig::RegisterType;
 %noexception tensorflow::swig::RegisterType;
 
+%unignore tensorflow::swig::IsTensor;
+%noexception tensorflow::swig::IsTensor;
+
 %feature("docstring") tensorflow::swig::IsSequence
 """Returns a true if its input is a collections.Sequence (except strings).
 
