@@ -88,7 +88,8 @@ class SparseDenseBinaryOpShared : public OpKernel {
     const auto rhs_dims = BCast::FromShape(dense_t->shape());
     BCast b(lhs_dims, rhs_dims, false);  // false for keeping the same num dims.
 
-    // True iff (size(lhs) >= size(rhs)) and all dims in lhs is smaller or equal to dims in rhs (from right to left).
+    // True iff (size(lhs) >= size(rhs)) and all dims in lhs is smaller or equal
+    // to dims in rhs (from right to left).
     auto VecGreaterEq = [](ArraySlice<int64> lhs, ArraySlice<int64> rhs) {
       if (lhs.size() < rhs.size()) return false;
       for (size_t i = 0; i < rhs.size(); ++i) {
