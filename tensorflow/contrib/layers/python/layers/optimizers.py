@@ -109,11 +109,12 @@ def optimize_loss(loss,
     gradient_multipliers: dict of variables or variable names to floats.
                           If present, gradients for specified
                           variables will be multiplied by given constant.
-    clip_gradients: float, callable or `None`. If float, is provided, a global
-      clipping is applied to prevent the norm of the gradient to exceed this
-      value. Alternatively, a callable can be provided e.g.: adaptive_clipping.
-      This callable takes a `list` of `(gradients, variables)` `tuple`s and
-      returns the same thing with the gradients modified.
+    clip_gradients: float, callable or `None`. If a float is provided, a global
+      clipping is applied to prevent the norm of the gradient from exceeding
+      this value. Alternatively, a callable can be provided e.g.,
+      adaptive_clipping_fn().  This callable takes a `list` of 
+      `(gradients, variables)` `tuple`s and returns the same thing with the 
+      gradients modified.
     learning_rate_decay_fn: function, takes `learning_rate` and `global_step`
                             `Tensor`s, returns `Tensor`.
                             Can be used to implement any learning rate decay
