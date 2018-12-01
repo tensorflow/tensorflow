@@ -1267,17 +1267,9 @@ class TestDistributionStrategyCorrectness(test.TestCase,
         # We have initialized the model to the same weight for the distribution
         # and non-distribution run.
         model.set_weights(initial_weights)
-        # TODO(b/120245072): Also use gradient_descent_keras.SGD for
-        # TPUStrategy.
-        # pylint: disable=line-too-long
-        if with_distribution and with_distribution.__class__.__name__ == 'TPUStrategy':
-        # pylint: enable=line-too-long
-          optimizer = gradient_descent.GradientDescentOptimizer(0.5)
-        else:
-          optimizer = gradient_descent_keras.SGD(0.5)
         model.compile(
             loss=keras.losses.mean_squared_error,
-            optimizer=optimizer,
+            optimizer=gradient_descent_keras.SGD(0.5),
             distribute=with_distribution)
 
         training_inputs, eval_inputs, predict_inputs = (
