@@ -35,6 +35,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@TFRecordWriter
 @@ThreadingOptions
 
+@@assume_finite
 @@bucket_by_sequence_length
 @@choose_from_datasets
 @@copy_to_device
@@ -82,6 +83,7 @@ from tensorflow.python.data.experimental.ops.grouping import bucket_by_sequence_
 from tensorflow.python.data.experimental.ops.grouping import group_by_reducer
 from tensorflow.python.data.experimental.ops.grouping import group_by_window
 from tensorflow.python.data.experimental.ops.grouping import Reducer
+from tensorflow.python.data.experimental.ops.has_indefinite_repeat import assume_finite
 from tensorflow.python.data.experimental.ops.interleave_ops import choose_from_datasets
 from tensorflow.python.data.experimental.ops.interleave_ops import parallel_interleave
 from tensorflow.python.data.experimental.ops.interleave_ops import sample_from_datasets
