@@ -83,7 +83,7 @@ class ListFilesTest(test_base.DatasetTestBase):
         path.join(self.tmp_dir, '*'), shuffle=True, seed=37)
 
     expected_filenames = [compat.as_bytes(path.join(self.tmp_dir, filename))
-                      for filename in filenames]
+                          for filename in filenames]
 
     all_actual_filenames = []
     for _ in range(3):
