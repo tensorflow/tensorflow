@@ -16,7 +16,7 @@
 # THIS IS A GENERATED DOCKERFILE.
 #
 # This file was assembled from multiple pieces, whose use is documented
-# throughout. Please refer to the the TensorFlow dockerfiles documentation
+# throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
 ARG UBUNTU_VERSION=16.04
