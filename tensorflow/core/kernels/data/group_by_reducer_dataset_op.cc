@@ -15,17 +15,17 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -191,11 +191,14 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Instantiate(ctx));
-        TF_RETURN_IF_ERROR(dataset()->captured_init_func_->Instantiate(ctx));
-        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Instantiate(ctx));
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_finalize_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Instantiate(
+            ctx, &instantiated_key_func_));
+        TF_RETURN_IF_ERROR(dataset()->captured_init_func_->Instantiate(
+            ctx, &instantiated_init_func_));
+        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Instantiate(
+            ctx, &instantiated_reduce_func_));
+        TF_RETURN_IF_ERROR(dataset()->captured_finalize_func_->Instantiate(
+            ctx, &instantiated_finalize_func_));
         return Status::OK();
       }
 
@@ -213,9 +216,8 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           if (!end_of_input_) {
             // Run the key function on the input element.
             std::vector<Tensor> key_func_output;
-            TF_RETURN_IF_ERROR(
-                dataset()->captured_key_func_->RunWithBorrowedArgs(
-                    ctx, next_input_element, &key_func_output));
+            TF_RETURN_IF_ERROR(instantiated_key_func_->RunWithBorrowedArgs(
+                ctx, next_input_element, &key_func_output));
 
             if (key_func_output.size() != 1 ||
                 key_func_output[0].dtype() != DT_INT64 ||
@@ -229,7 +231,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
             if (states_.find(key) == states_.end()) {
               // Run the init function to create the initial state.
               std::vector<Tensor> init_func_output;
-              TF_RETURN_IF_ERROR(dataset()->captured_init_func_->Run(
+              TF_RETURN_IF_ERROR(instantiated_init_func_->Run(
                   ctx, std::move(key_func_output), &init_func_output));
               states_[key] = init_func_output;
             }
@@ -243,7 +245,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
                       std::back_inserter(args));
 
             std::vector<Tensor> reduce_func_output;
-            TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Run(
+            TF_RETURN_IF_ERROR(instantiated_reduce_func_->Run(
                 ctx, std::move(args), &reduce_func_output));
             states_[key] = reduce_func_output;
           } else {
@@ -259,14 +261,18 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           *end_of_sequence = true;
           return Status::OK();
         }
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_finalize_func_->RunWithBorrowedArgs(
-                ctx, states_[keys_[keys_index_++]], out_tensors));
+        TF_RETURN_IF_ERROR(instantiated_finalize_func_->RunWithBorrowedArgs(
+            ctx, states_[keys_[keys_index_++]], out_tensors));
         *end_of_sequence = false;
         return Status::OK();
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeUnknownRatioNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
@@ -379,6 +385,10 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       std::map<int64, std::vector<Tensor>> states_ GUARDED_BY(mu_);
       std::vector<int64> keys_ GUARDED_BY(mu_);
       int64 keys_index_ GUARDED_BY(mu_) = 0;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_key_func_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_init_func_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_reduce_func_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_finalize_func_;
     };
 
     const NameAttrList& key_func() const { return captured_key_func_->func(); }

@@ -262,8 +262,8 @@ def batch_times_matrix(batch, matrix, adj_x=False, adj_y=False):
   assert matrix.get_shape().ndims == 2
   if adj_x:
     batch = array_ops.transpose(batch, [0, 2, 1])
-  batch_dimension = batch.get_shape()[0].value
-  first_dimension = batch.get_shape()[1].value
+  batch_dimension = batch.get_shape().dims[0].value
+  first_dimension = batch.get_shape().dims[1].value
   tensor_batch_shape = array_ops.shape(batch)
   if batch_dimension is None:
     batch_dimension = tensor_batch_shape[0]
@@ -802,7 +802,7 @@ class InputStatisticsFromMiniBatch(object):
             array_ops.shape(times)[1] - 1, self._dtype))
     # Co-locate updates with their variables to minimize race conditions when
     # updating statistics.
-    with ops.colocate_with(auxiliary_variables.max_time_seen):
+    with ops.device(auxiliary_variables.max_time_seen.device):
       # There is a race condition if this value is being updated from multiple
       # workers. However, it should eventually reach the correct value if the
       # last chunk is presented enough times.
@@ -810,16 +810,16 @@ class InputStatisticsFromMiniBatch(object):
           auxiliary_variables.max_time_seen,
           gen_math_ops.maximum(auxiliary_variables.max_time_seen,
                                math_ops.reduce_max(times)))
-    with ops.colocate_with(auxiliary_variables.chunk_count):
+    with ops.device(auxiliary_variables.chunk_count.device):
       chunk_count_assign = state_ops.assign_add(auxiliary_variables.chunk_count,
                                                 array_ops.shape(
                                                     times,
                                                     out_type=dtypes.int64)[0])
-    with ops.colocate_with(auxiliary_variables.inter_observation_duration_sum):
+    with ops.device(auxiliary_variables.inter_observation_duration_sum.device):
       inter_observation_duration_assign = state_ops.assign_add(
           auxiliary_variables.inter_observation_duration_sum,
           math_ops.reduce_sum(batch_inter_observation_duration))
-    with ops.colocate_with(auxiliary_variables.example_count):
+    with ops.device(auxiliary_variables.example_count.device):
       example_count_assign = state_ops.assign_add(
           auxiliary_variables.example_count,
           array_ops.size(times, out_type=dtypes.int64))
@@ -829,11 +829,11 @@ class InputStatisticsFromMiniBatch(object):
     # the series are then members of fewer chunks. For series which are much
     # longer than the chunk size (the usual/expected case), this effect becomes
     # irrelevant.
-    with ops.colocate_with(auxiliary_variables.overall_feature_sum):
+    with ops.device(auxiliary_variables.overall_feature_sum.device):
       overall_feature_sum_assign = state_ops.assign_add(
           auxiliary_variables.overall_feature_sum,
           math_ops.reduce_sum(values, axis=[0, 1]))
-    with ops.colocate_with(auxiliary_variables.overall_feature_sum_of_squares):
+    with ops.device(auxiliary_variables.overall_feature_sum_of_squares.device):
       overall_feature_sum_of_squares_assign = state_ops.assign_add(
           auxiliary_variables.overall_feature_sum_of_squares,
           math_ops.reduce_sum(values**2, axis=[0, 1]))
@@ -869,7 +869,7 @@ class InputStatisticsFromMiniBatch(object):
             state_ops.assign(statistics.series_start_moments.mean, mean),
             state_ops.assign(statistics.series_start_moments.variance,
                              variance))
-      with ops.colocate_with(statistics.start_time):
+      with ops.device(statistics.start_time.device):
         series_start_update = control_flow_ops.cond(
             # Update moments whenever we even match the lowest time seen so far,
             # to ensure that series start statistics are eventually updated to

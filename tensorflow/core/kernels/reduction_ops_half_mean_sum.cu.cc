@@ -53,7 +53,7 @@ typedef TTypes<float>::Tensor::Index Index;
 
 #define DEFINE_FOR_ALL_REDUCERS(T)                          \
   DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::SumReducer<T>); \
-  DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::MeanReducer<T>);
+  DEFINE_FOR_TYPE_AND_R(T, functor::MeanReducer<T>);
 
 DEFINE_FOR_ALL_REDUCERS(Eigen::half);
 #undef DEFINE_FOR_ALL_REDUCERS

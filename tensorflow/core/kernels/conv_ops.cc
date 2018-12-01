@@ -739,11 +739,16 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       To32Bit(transformed_filter.tensor<T, 4>()));
 
   Tensor transformed_output;
-  OP_REQUIRES_OK(
-      ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                              ShapeFromFormat(FORMAT_NCHW, out_batch, out_rows,
-                                              out_cols, out_depths),
-                              &transformed_output));
+  if (data_format == FORMAT_NHWC) {
+    // Only allocate temporary memory when a layout transformation is needed.
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                ShapeFromFormat(FORMAT_NCHW, out_batch,
+                                                out_rows, out_cols, out_depths),
+                                &transformed_output));
+  } else {
+    transformed_output = *output;
+  }
 
   auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
                                   input.template flat<T>().size());
@@ -851,47 +856,47 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         ") filter shape(", filter.shape().DebugString(), ")"));
   }
 
-  // Convert the output tensor back from NHWC to NCHW.
+  // Convert the output tensor back from NCHW to NHWC.
   if (data_format == FORMAT_NHWC) {
     functor::NCHWToNHWC<GPUDevice, T, 4>()(
         ctx->eigen_device<GPUDevice>(),
         const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),
         output->tensor<T, 4>());
-  } else {
-    *output = transformed_output;
   }
 }
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                  \
-  template <>                                                                \
-  void SpatialConvolution<GPUDevice, T>::operator()(                         \
-      const GPUDevice& d, typename TTypes<T, 4>::Tensor output,              \
-      typename TTypes<T, 4>::ConstTensor input,                              \
-      typename TTypes<T, 4>::ConstTensor filter, int row_stride,             \
-      int col_stride, int row_dilation, int col_dilation,                    \
-      const Eigen::PaddingType& padding);                                    \
-  extern template struct SpatialConvolution<GPUDevice, T>;                   \
-  template <>                                                                \
-  void MatMulConvFunctor<GPUDevice, T>::operator()(                          \
-      const GPUDevice& d, typename TTypes<T, 2>::Tensor out,                 \
-      typename TTypes<T, 2>::ConstTensor in0,                                \
-      typename TTypes<T, 2>::ConstTensor in1,                                \
-      const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair); \
-  extern template struct MatMulConvFunctor<GPUDevice, T>;                    \
-  template <>                                                                \
-  void TransformFilter<GPUDevice, T, int, 4>::operator()(                    \
-      const GPUDevice& d, FilterTensorFormat dst_filter_format,              \
-      typename TTypes<T, 4, int>::ConstTensor in,                            \
-      typename TTypes<T, 4, int>::Tensor out);                               \
-  extern template struct TransformFilter<GPUDevice, T, int, 4>;              \
-  template <>                                                                \
-  void PadInput<GPUDevice, T, int, 4>::operator()(                           \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,        \
-      const std::array<int, 2>& padding_left,                                \
-      const std::array<int, 2>& padding_right,                               \
-      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format);     \
+#define DECLARE_GPU_SPEC(T)                                                 \
+  template <>                                                               \
+  void SpatialConvolution<GPUDevice, T>::operator()(                        \
+      const GPUDevice& d, typename TTypes<T, 4>::Tensor output,             \
+      typename TTypes<T, 4>::ConstTensor input,                             \
+      typename TTypes<T, 4>::ConstTensor filter, int row_stride,            \
+      int col_stride, int row_dilation, int col_dilation,                   \
+      const Eigen::PaddingType& padding,                                    \
+      const Eigen::NoOpOutputKernel& output_kernel);                        \
+  extern template struct SpatialConvolution<GPUDevice, T>;                  \
+  template <>                                                               \
+  void MatMulConvFunctor<GPUDevice, T>::operator()(                         \
+      const GPUDevice& d, typename TTypes<T, 2>::Tensor out,                \
+      typename TTypes<T, 2>::ConstTensor in0,                               \
+      typename TTypes<T, 2>::ConstTensor in1,                               \
+      const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair, \
+      const Eigen::NoOpOutputKernel& output_kernel);                        \
+  extern template struct MatMulConvFunctor<GPUDevice, T>;                   \
+  template <>                                                               \
+  void TransformFilter<GPUDevice, T, int, 4>::operator()(                   \
+      const GPUDevice& d, FilterTensorFormat dst_filter_format,             \
+      typename TTypes<T, 4, int>::ConstTensor in,                           \
+      typename TTypes<T, 4, int>::Tensor out);                              \
+  extern template struct TransformFilter<GPUDevice, T, int, 4>;             \
+  template <>                                                               \
+  void PadInput<GPUDevice, T, int, 4>::operator()(                          \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,       \
+      const std::array<int, 2>& padding_left,                               \
+      const std::array<int, 2>& padding_right,                              \
+      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format);    \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
 DECLARE_GPU_SPEC(float);

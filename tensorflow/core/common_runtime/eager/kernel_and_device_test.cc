@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -37,12 +38,13 @@ namespace {
 class TestEnv {
  public:
   TestEnv() : flib_def_(OpRegistry::Global(), {}) {
-    Device* device =
-        DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
-    device_mgr_.reset(new DeviceMgr({device}));
-    flib_runtime_ = NewFunctionLibraryRuntime(device_mgr_.get(), Env::Default(),
-                                              device, TF_GRAPH_DEF_VERSION,
-                                              &flib_def_, nullptr, {}, nullptr);
+    std::vector<std::unique_ptr<Device>> devices;
+    devices.push_back(
+        DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
+    device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+    flib_runtime_ = NewFunctionLibraryRuntime(
+        device_mgr_.get(), Env::Default(), device_mgr_->ListDevices()[0],
+        TF_GRAPH_DEF_VERSION, &flib_def_, nullptr, {}, nullptr);
   }
 
   FunctionLibraryRuntime* function_library_runtime() const {
@@ -132,7 +134,7 @@ void BM_KernelAndDeviceRun(int iters) {
                                     nullptr, &kernel));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(kernel.Run(&inputs, &outputs, nullptr));
+    TF_CHECK_OK(kernel.Run(&inputs, &outputs, nullptr, nullptr, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

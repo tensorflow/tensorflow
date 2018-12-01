@@ -47,11 +47,11 @@ const double kF16max = 65504;
 
 // Creates and returns a schedule created using the order of the instructions in
 // the HloComputation::instructions() vectors in the module.
-HloSchedule ScheduleFromInstructionOrder(const HloModule* module) {
+HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
   HloSchedule schedule(module);
-  for (const HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations()) {
     if (!computation->IsFusionComputation()) {
-      for (const HloInstruction* instruction : computation->instructions()) {
+      for (HloInstruction* instruction : computation->instructions()) {
         schedule.GetOrCreateSequence(computation).push_back(instruction);
       }
     }
@@ -108,7 +108,7 @@ class HloParser {
   bool ParseInstructionList(HloComputation** computation,
                             const string& computation_name);
   bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
-  bool ParseInstruciontRhs(HloComputation::Builder* builder, const string& name,
+  bool ParseInstructionRhs(HloComputation::Builder* builder, const string& name,
                            LocTy name_loc);
   bool ParseControlPredecessors(HloInstruction* instruction);
   bool ParseLiteral(Literal* literal, const Shape& shape);
@@ -418,6 +418,18 @@ std::pair<HloInstruction*, HloParser::LocTy>* HloParser::FindInstruction(
     }
     return create_missing_instruction_(name, *shape);
   }
+
+  if (instr != nullptr && shape.has_value() &&
+      !ShapeUtil::Compatible(instr->first->shape(), shape.value())) {
+    Error(
+        lexer_.GetLoc(),
+        StrCat("The declared operand shape ",
+               ShapeUtil::HumanStringWithLayout(shape.value()),
+               " is not compatible with the shape of the operand instruction ",
+               ShapeUtil::HumanStringWithLayout(instr->first->shape()), "."));
+    return nullptr;
+  }
+
   return instr;
 }
 
@@ -596,10 +608,10 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     *root_name = name;
   }
 
-  return ParseInstruciontRhs(builder, name, name_loc);
+  return ParseInstructionRhs(builder, name, name_loc);
 }
 
-bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
+bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
                                     const string& name, LocTy name_loc) {
   Shape shape;
   HloOpcode opcode;
@@ -836,6 +848,15 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
         instruction =
             builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
       }
+      break;
+    }
+    case HloOpcode::kAddDependency: {
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateAddDependency(operands[0], operands[1]));
       break;
     }
     case HloOpcode::kSort: {
@@ -1089,8 +1110,8 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
           absl::Span<HloInstruction* const>(operands).subspan(
               0, operands.size() / 2),
           /*init_values=*/
-          absl::Span<HloInstruction* const>(operands).subspan(
-              operands.size() / 2, operands.size()),
+          absl::Span<HloInstruction* const>(operands).subspan(operands.size() /
+                                                              2),
           *dimensions_to_reduce, *reduce_computation));
       break;
     }
@@ -1535,6 +1556,18 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
+    case HloOpcode::kGetDimensionSize:
+      optional<std::vector<tensorflow::int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateGetDimensionSize(
+              shape, operands[0], (*dimensions)[0]));
+      break;
   }
 
   instruction->SetAndSanitizeName(name);
@@ -1794,6 +1827,10 @@ bool HloParser::SetValueInLiteral(tensorflow::int64 value,
     case U64:
       return SetValueInLiteralHelper<tensorflow::uint64>(value, linear_index,
                                                          literal);
+    case PRED:
+      // Bool type literals with rank >= 1 are printed in 0s and 1s.
+      return SetValueInLiteralHelper<bool>(static_cast<bool>(value),
+                                           linear_index, literal);
     default:
       LOG(FATAL) << "unknown integral primitive type "
                  << PrimitiveType_Name(shape.element_type());
@@ -2048,14 +2085,13 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         }
         if (lexer_.GetKind() == TokKind::kw_true ||
             lexer_.GetKind() == TokKind::kw_false) {
-          // TODO(congliu): bool type literals with rank >= 1 are actually
-          // printed in a compact form instead of "true" or "false". Fix that.
           if (!SetValueInLiteral(lexer_.GetKind() == TokKind::kw_true,
                                  linear_index++, literal)) {
             return false;
           }
           lexer_.Lex();
-        } else if (primitive_util::IsIntegralType(shape.element_type())) {
+        } else if (primitive_util::IsIntegralType(shape.element_type()) ||
+                   shape.element_type() == PRED) {
           LocTy loc = lexer_.GetLoc();
           tensorflow::int64 value;
           if (!ParseInt64(&value)) {
@@ -2693,7 +2729,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
 
   // The str is expected to have 3 items, lhs, rhs, out, and it must look like
   // lhs_rhs->out, that is, the first separator is "_" and the second is "->".
-  std::vector<string> split1 = absl::StrSplit(str, "_");
+  std::vector<string> split1 = absl::StrSplit(str, '_');
   if (split1.size() != 2) {
     LOG(FATAL) << "expects 3 items: lhs, rhs, and output dims, but sees "
                << str;
@@ -3374,7 +3410,7 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
     // e.g.
     //
     //  f32[10] fusion(...), calls={...}
-    if (!ParseInstruciontRhs(&builder, module->name(), lexer_.GetLoc())) {
+    if (!ParseInstructionRhs(&builder, module->name(), lexer_.GetLoc())) {
       return false;
     }
   } else {

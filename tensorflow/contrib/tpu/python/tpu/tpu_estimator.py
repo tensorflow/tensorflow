@@ -31,6 +31,7 @@ import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.contrib.tpu.python.tpu import tensor_tracer
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import error_handling
 from tensorflow.contrib.tpu.python.tpu import session_support
@@ -48,7 +49,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest as data_nest
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -107,6 +107,15 @@ ops.register_proto_function(
     proto_type=variable_pb2.VariableDef,
     to_proto=resource_variable_ops._to_proto_fn,  # pylint: disable=protected-access
     from_proto=resource_variable_ops._from_proto_fn)  # pylint: disable=protected-access
+
+
+def _is_iterable(obj):
+  """A Python 2 and 3 compatible util to check whether `obj` is iterable."""
+  try:
+    iter(obj)
+    return True
+  except TypeError:
+    return False
 
 
 def _create_global_step(graph):
@@ -289,9 +298,9 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
       host_calls['host_call'] = host_call
     _OutfeedHostCall.validate(host_calls)
 
-    training_hooks = list(training_hooks or [])
-    evaluation_hooks = list(evaluation_hooks or [])
-    prediction_hooks = list(prediction_hooks or [])
+    training_hooks = tuple(training_hooks or [])
+    evaluation_hooks = tuple(evaluation_hooks or [])
+    prediction_hooks = tuple(prediction_hooks or [])
 
     for hook in training_hooks + evaluation_hooks + prediction_hooks:
       if not isinstance(hook, session_run_hook.SessionRunHook):
@@ -326,7 +335,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
     hooks = None
     if self.host_call is not None:
       hooks = [_OutfeedHostCallHook(host_call_ret['host_call'])]
-    hooks = list(hooks or [])
+    hooks = tuple(hooks or [])
     scaffold = self.scaffold_fn() if self.scaffold_fn else None
     return model_fn_lib.EstimatorSpec(
         mode=self.mode,
@@ -1229,7 +1238,7 @@ class _InputPipeline(object):
     # first one.
     self._infeed_queue = infeed_queues[0]
     return enqueue_ops, [
-        estimator_util.MultiHostDatasetInitializerHook(all_dataset_initializers)
+        util_lib.MultiHostDatasetInitializerHook(all_dataset_initializers)
     ], run_infeed_loop_on_coordinator
 
   def _validate_input_pipeline(self):
@@ -1318,9 +1327,15 @@ class _ModelFnWrapper(object):
 
       captured_training_hooks.capture(estimator_spec.training_hooks)
 
+      tracing_ops = []
+      if tensor_tracer.TensorTracer.is_enabled():
+        tt = tensor_tracer.TensorTracer()
+        loss, tracing_ops = tt.trace_tpu(ops.get_default_graph(), loss,
+                                         self._ctx.num_replicas)
+
       # We must run train_op to update the variables prior to running the
       # outfeed.
-      with ops.control_dependencies([train_op]):
+      with ops.control_dependencies([train_op]+tracing_ops):
         host_call_outfeed_ops = []
         if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
             and estimator_spec.host_call is not None):
@@ -1448,7 +1463,7 @@ class _ModelFnWrapper(object):
       raise TypeError('TPUEstimatorSpec.predictions must be dict of Tensors.')
 
     for (key, tensor) in predictions.items():
-      if tensor.shape[0].value is None:
+      if tensor.shape.dims[0].value is None:
         raise ValueError(
             'The tensor with key ({}) in TPUEstimatorSpec.predictions has '
             'dynamic shape (should be static). Tensor: {}'.format(key, tensor))
@@ -2154,7 +2169,6 @@ class TPUEstimator(estimator_lib.Estimator):
                                builder,
                                input_receiver_fn_map,
                                checkpoint_path,
-                               strip_default_attrs,
                                save_variables=True,
                                mode=model_fn_lib.ModeKeys.PREDICT,
                                export_tags=None,
@@ -2169,7 +2183,6 @@ class TPUEstimator(estimator_lib.Estimator):
         builder,
         input_receiver_fn_map,
         checkpoint_path,
-        strip_default_attrs,
         save_variables,
         mode=mode,
         export_tags=export_tags,
@@ -2186,7 +2199,6 @@ class TPUEstimator(estimator_lib.Estimator):
           builder,
           input_receiver_fn_map,
           checkpoint_path,
-          strip_default_attrs,
           save_variables=False,
           mode=mode,
           export_tags=export_tags,
@@ -2251,8 +2263,7 @@ class TPUEstimator(estimator_lib.Estimator):
         # Only fetching `tpu_tensors_on_cpu` does not trigger
         # TPU computation and blocks, so we add the control dependency here.
         control_inputs = (
-            tpu_tensors_on_cpu if isinstance(tpu_tensors_on_cpu,
-                                             (list, tuple)) else
+            tpu_tensors_on_cpu if _is_iterable(tpu_tensors_on_cpu) else
             (tpu_tensors_on_cpu,))
         with ops.control_dependencies(control_inputs):
           new_tensors.append(array_ops.identity(t))
@@ -2609,10 +2620,6 @@ class TPUEstimator(estimator_lib.Estimator):
               total_loss,
               math_ops.cast(iterations_per_loop_var, dtype=total_loss.dtype))
 
-          # Creates a dummy metric update_op for all metrics. Estimator expects
-          # all metrics in eval_metric_ops have update_op and calls them one by
-          # one. The real metric update_ops are invoked in a separated thread.
-          # So, here give Estimator the dummy op for all metrics.
           with ops.control_dependencies([mean_loss]):
             # After TPU evaluation computation is done (the mean_loss tensor),
             # reads all variables back from TPU and updates the eval step
@@ -2620,16 +2627,30 @@ class TPUEstimator(estimator_lib.Estimator):
             internal_ops_to_run = _sync_variables_ops(ctx)
             internal_ops_to_run.append(
                 _increase_eval_step_op(iterations_per_loop_var))
-            with ops.control_dependencies(internal_ops_to_run):
-              dummy_update_op = control_flow_ops.no_op()
 
           host_call_ret = host_calls.create_tpu_hostcall()
           eval_metric_ops = {}
           eval_update_ops = []
 
-          for k, v in host_call_ret.get('eval_metrics', {}).items():
-            eval_metric_ops[k] = (v[0], dummy_update_op)
-            eval_update_ops.append(v[1])
+          eval_metrics = host_call_ret.get('eval_metrics', {})
+          if eval_metrics:
+            # Creates a dummy metric update_op for all metrics. Estimator
+            # expects all metrics in `eval_metric_ops` have update_op and calls
+            # them one by one. The real metric update_ops are invoked in a
+            # separated thread. So, here give Estimator the dummy op for all
+            # metrics.
+            with ops.control_dependencies(internal_ops_to_run):
+              dummy_update_op = control_flow_ops.no_op()
+
+            for k, v in eval_metrics.items():
+              eval_metric_ops[k] = (v[0], dummy_update_op)
+              eval_update_ops.append(v[1])
+          else:
+            # If no eval metrics are passed, create an identity node for the
+            # loss and add `internal_ops_to_run` to its dependencies. So
+            # `internal_ops_to_run` can be executed.
+            with ops.control_dependencies(internal_ops_to_run):
+              mean_loss = array_ops.identity(mean_loss)
 
           if 'host_call' not in host_call_ret:
             host_ops = []
@@ -2759,7 +2780,7 @@ def _export_output_to_tensors(export_output):
   elif isinstance(export_output, export_output_lib.RegressionOutput):
     return [export_output.value]
   elif isinstance(export_output, export_output_lib.PredictOutput):
-    return export_output.outputs.values()
+    return list(export_output.outputs.values())
   else:
     raise ValueError(
         '`export_output` must be have type `ClassificationOutput`, '
@@ -2989,6 +3010,12 @@ class _CapturingContext(control_flow_ops.ControlFlowContext):
     control_flow_ops.ControlFlowContext.__init__(self)
     self._message = message
 
+  def to_control_flow_context_def(self, context_def, export_scope=None):
+    # pylint: disable=useless-super-delegation
+    # NOTE(slebedev): the method is required by `ControlFlowContext`.
+    super(_CapturingContext, self).to_control_flow_context_def(
+        context_def, export_scope)
+
   def AddOp(self, op):  # pylint: disable=invalid-name
     for c in op.inputs:
       if tpu._TPU_REPLICATE_ATTR in c.op.node_def.attr:  # pylint: disable=protected-access
@@ -3029,7 +3056,7 @@ class _Inputs(object):
   @staticmethod
   def from_input_fn(return_values):
     """Returns an `_Inputs` instance according to `input_fn` return value."""
-    if isinstance(return_values, dataset_ops.Dataset):
+    if isinstance(return_values, dataset_ops.DatasetV2):
       dataset = return_values
       return _Inputs(dataset=dataset)
 

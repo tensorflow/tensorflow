@@ -50,6 +50,7 @@ class NodeBuilder {
   struct NodeOut {
     // For referencing an existing Node.
     NodeOut(Node* n, int32 i = 0);
+    NodeOut(OutputTensor t);
 
     // For referencing Nodes not in the graph being built. It is
     // useful when preparing a graph for ExtendSession or creating a
@@ -102,6 +103,9 @@ class NodeBuilder {
 
   // Sets the device name in the "assigned device" field in tensorflow::Node.
   NodeBuilder& AssignedDevice(StringPiece device);
+
+  // Sets the _XlaCluster attribute in created node to `xla_cluster`.
+  NodeBuilder& XlaCluster(StringPiece xla_cluster);
 
   // Set the value of an attr.  attr_name must match the name of one of
   // attrs defined by the Op, and value must have the corresponding type

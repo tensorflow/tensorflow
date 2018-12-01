@@ -33,110 +33,102 @@ from tensorflow.python.platform import test
 
 class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
 
+  def _ConstOp(self, shape):
+    return constant_op.constant(np.random.randn(*shape), dtype=dtypes.float32)
+
   def GetParams(self):
     """Testing conversion of BiasAdd MatMul in TF-TRT conversion."""
-    dtype = dtypes.float32
     input_name = "input"
-    input_dims = [48, 12]
+    input_matrix_rows = 4
+    input_matrix_columns = 144
+    # Note that tf.nn.bias_add supports up to 5 dimensions.
+    input_dims = [input_matrix_rows, input_matrix_columns]
     output_name = "output"
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
+      x = array_ops.placeholder(
+          dtype=dtypes.float32, shape=input_dims, name=input_name)
 
-      b = constant_op.constant(np.random.randn(12, 4), dtype=dtype)
+      b = self._ConstOp((input_matrix_columns, 4))
       x1 = math_ops.matmul(x, b)
-      b = constant_op.constant(np.random.randn(1, 4), dtype=dtype)
+      b = self._ConstOp((1, 4))
       x1 = x1 + b
 
-      b = constant_op.constant(np.random.randn(48, 4), dtype=dtype)
-      x2 = math_ops.matmul(x, b, transpose_a=True)
-      x2 = gen_array_ops.reshape(x2, [48, 1])
+      b = self._ConstOp((input_matrix_rows, 144))
+      x2 = self.trt_incompatible_op(x)
+      x2 = math_ops.matmul(x2, b, transpose_a=True)
+      x2 = gen_array_ops.reshape(x2, [4, -1])
+      x2 = self.trt_incompatible_op(x2)
 
-      b = constant_op.constant(np.random.randn(4, 12), dtype=dtype)
+      b = self._ConstOp((4, input_matrix_columns))
       x3 = math_ops.matmul(x, b, transpose_b=True)
 
-      b = constant_op.constant(np.random.randn(16, 48), dtype=dtype)
-      x4 = math_ops.matmul(x, b, transpose_b=True, transpose_a=True)
-      x4 = gen_array_ops.reshape(x4, [48, 4])
+      b = self._ConstOp((16, input_matrix_rows))
+      x4 = self.trt_incompatible_op(x)
+      x4 = math_ops.matmul(x4, b, transpose_b=True, transpose_a=True)
+      x4 = gen_array_ops.reshape(x4, [4, -1])
+      x4 = self.trt_incompatible_op(x4)
 
-      x5 = gen_array_ops.reshape(x, [4, 144])
-      b = constant_op.constant(np.random.randn(144, 48), dtype=dtype)
-      x5 = math_ops.matmul(x5, b)
-      b = constant_op.constant(np.random.randn(48), dtype=dtype)
+      b = self._ConstOp((input_matrix_columns, 48))
+      x5 = math_ops.matmul(x, b)
+      b = self._ConstOp((48,))
       x5 = nn.bias_add(x5, b)
-      x5 = gen_array_ops.reshape(x5, [48, 4])
+      x5 = gen_array_ops.reshape(x5, [4, -1])
 
-      x6 = gen_array_ops.reshape(x, [4, 12, 12])
-      b = constant_op.constant(np.random.randn(12), dtype=dtype)
+      x6 = gen_array_ops.reshape(x, [4, 24, 6])
+      b = self._ConstOp((6,))
       x6 = nn.bias_add(x6, b, data_format="NHWC")
-      x6 = gen_array_ops.reshape(x6, [48, -1])
+      x6 = gen_array_ops.reshape(x6, [4, -1])
 
-      x7 = gen_array_ops.reshape(x, [4, 12, 3, 4])
-      b = constant_op.constant(np.random.randn(4), dtype=dtype)
+      x7 = gen_array_ops.reshape(x, [4, 12, 4, 3])
+      b = self._ConstOp((3,))
       x7 = nn.bias_add(x7, b, data_format="NHWC")
-      x7 = gen_array_ops.reshape(x7, [48, -1])
+      x7 = gen_array_ops.reshape(x7, [4, -1])
 
-      x8 = gen_array_ops.reshape(x, [4, 12, 3, 2, 2])
-      b = constant_op.constant(np.random.randn(2), dtype=dtype)
+      x8 = gen_array_ops.reshape(x, [4, 4, 3, 2, 6])
+      b = self._ConstOp((6,))
       x8 = nn.bias_add(x8, b, data_format="NHWC")
-      x8 = gen_array_ops.reshape(x8, [48, -1])
+      x8 = gen_array_ops.reshape(x8, [4, -1])
 
       x9 = gen_array_ops.reshape(x, [4, 12, 3, 2, 2])
-      b = constant_op.constant(np.random.randn(3), dtype=dtype)
+      b = self._ConstOp((12,))
       x9 = nn.bias_add(x9, b, data_format="NCHW")
-      x9 = gen_array_ops.reshape(x9, [48, -1])
+      x9 = gen_array_ops.reshape(x9, [4, -1])
 
-      x10 = gen_array_ops.reshape(x, [4, 12, 3, 4])
-      b = constant_op.constant(np.random.randn(12), dtype=dtype)
+      x10 = gen_array_ops.reshape(x, [4, 3, 4, 12])
+      b = self._ConstOp((3,))
       x10 = nn.bias_add(x10, b, data_format="NCHW")
-      x10 = gen_array_ops.reshape(x10, [48, -1])
+      x10 = gen_array_ops.reshape(x10, [4, -1])
 
-      x11 = gen_array_ops.reshape(x, [4, 12, 12])
-      b = constant_op.constant(np.random.randn(4), dtype=dtype)
+      x11 = gen_array_ops.reshape(x, [4, 6, 24])
+      b = self._ConstOp((6,))
       x11 = nn.bias_add(x11, b, data_format="NCHW")
-      x11 = gen_array_ops.reshape(x11, [48, -1])
+      x11 = gen_array_ops.reshape(x11, [4, -1])
 
-      out = array_ops.concat(
-          [x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11], axis=-1)
+      out = array_ops.concat([x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11],
+                             axis=-1)
       out = array_ops.squeeze(out, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[input_dims],
         output_names=[output_name],
-        expected_output_dims=[(48, 89)])
+        expected_output_dims=[(4, 6680)])
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""
-    return super(BiasaddMatMulTest,
-                 self).GetConversionParams(run_params)._replace(
-                     max_batch_size=48, maximum_cached_engines=2)
-
-  def _ValidEngines(self):
-    """Engines expected to build and run."""
-    return [
-        "my_trt_op_0", "my_trt_op_1", "my_trt_op_2", "my_trt_op_6",
-        "my_trt_op_7", "my_trt_op_8", "my_trt_op_9"
-    ]
-
-  def _InvalidEngines(self):
-    """Engines that will cause conversion error at building time."""
-    return ["my_trt_op_3", "my_trt_op_4", "my_trt_op_5"]
+    conversion_params = super(BiasaddMatMulTest,
+                              self).GetConversionParams(run_params)
+    return conversion_params._replace(
+        max_batch_size=4,
+        maximum_cached_engines=1,
+        # Disable layout optimizer, since it will convert BiasAdd with NHWC
+        # format to NCHW format under four dimentional input.
+        rewriter_config=trt_test.OptimizerDisabledRewriterConfig())
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    # In dynamic engine mode the engines are built in execution time, not in
-    # conversion time, so build errors occurs later. Here three of the engines
-    # will be failed to built but the corresponding engine op are still created.
-    # TODO(aaroey, jjsjann123): fix this.
-    if (run_params.dynamic_engine and
-        not trt_test.IsQuantizationMode(run_params.precision_mode)):
-      return self._ValidEngines() + self._InvalidEngines()
-    return self._ValidEngines()
-
-  def ExpectedEnginesToRun(self, run_params):
-    """Return the expected engines to run."""
-    return self._ValidEngines()
+    return ["TRTEngineOp_0"]
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""

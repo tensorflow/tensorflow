@@ -20,7 +20,7 @@ on many GPUs on one machine. Essentially, we create copies of all variables in
 the model's layers on each device. We then use all-reduce to combine gradients
 across the devices before applying them to the variables to keep them in sync.
 * [`CollectiveAllReduceStrategy`](https://www.tensorflow.org/versions/master/api_docs/python/tf/contrib/distribute/CollectiveAllReduceStrategy):
-This is a version of `MirroredStrategy` for multi-working training. It uses
+This is a version of `MirroredStrategy` for multi-worker training. It uses
 a collective op to do all-reduce. This supports between-graph communication and
 synchronization, and delegates the specifics of the all-reduce implementation to
 the runtime (as opposed to encoding it in the graph). This allows it to perform
@@ -31,8 +31,8 @@ fault-tolerance to allow training to continue when there is worker failure.
 * [`ParameterServerStrategy`](https://www.tensorflow.org/versions/master/api_docs/python/tf/contrib/distribute/ParameterServerStrategy):
 This strategy supports using parameter servers either for multi-GPU local
 training or asynchronous multi-machine training. When used to train locally,
-variables are not mirrored, instead they placed on the CPU and operations are
-replicated across all local GPUs. In a multi-machine setting, some are
+variables are not mirrored, instead they are placed on the CPU and operations
+are replicated across all local GPUs. In a multi-machine setting, some are
 designated as workers and some as parameter servers. Each variable is placed on
 one parameter server. Computation operations are replicated across all GPUs of
 the workers.
@@ -46,6 +46,9 @@ Let's see how to scale to multiple GPUs on one machine using `MirroredStrategy` 
 Take a very simple model consisting of a single layer:
 
 ```python
+import tensorflow as tf
+from tensorflow import keras
+
 inputs = tf.keras.layers.Input(shape=(1,))
 predictions = tf.keras.layers.Dense(1)(inputs)
 model = tf.keras.models.Model(inputs=inputs, outputs=predictions)
@@ -90,8 +93,8 @@ Similarly, we can also call `evaluate` and `predict` as before using appropriate
 datasets.
 
 ```python
-model.evaluate(eval_dataset)
-model.predict(predict_dataset)
+model.evaluate(eval_dataset, steps=1)
+model.predict(predict_dataset, steps=1)
 ```
 
 That's all you need to train your model with Keras on multiple GPUs with
@@ -131,7 +134,7 @@ def model_fn(features, labels, mode):
     return tf.estimator.EstimatorSpec(mode, loss=loss)
 
   if mode == tf.estimator.ModeKeys.TRAIN:
-    train_op = tf.train.GradientDescentOptimizer(0.2).minimize(loss_fn())
+    train_op = tf.train.GradientDescentOptimizer(0.2).minimize(loss)
     return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
 ```
 
@@ -190,7 +193,7 @@ in the input function gives a solid boost in performance. When using
 For multi-worker training, no code change is required to the `Estimator` code.
 You can run the same model code for all tasks in your cluster including
 parameter servers and the evaluator. But you need to use
-`tf.estimator.train_and_evaluator`, explicitly specify `num_gpus_per_workers`
+`tf.estimator.train_and_evaluate`, explicitly specify `num_gpus_per_workers`
 for your strategy object, and set "TF\_CONFIG" environment variables for each
 binary running in your cluster. We'll provide a Kubernetes template in the
 [tensorflow/ecosystem](https://github.com/tensorflow/ecosystem) repo which sets
@@ -245,18 +248,16 @@ Let's use the same example for multi-worker. We'll start a cluster with 3
 workers doing synchronous all-reduce training. In the following code snippet, we
 start multi-worker training using `tf.estimator.train_and_evaluate`:
 
-
 ```python
 def model_main():
-  estimator = ...
   distribution = tf.contrib.distribute.CollectiveAllReduceStrategy(
       num_gpus_per_worker=2)
   config = tf.estimator.RunConfig(train_distribute=distribution)
+  estimator = tf.estimator.Estimator(model_fn=model_fn, config=config)
   train_spec = tf.estimator.TrainSpec(input_fn=input_fn)
   eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 ```
-
 
 **Note**: You don't have to set "TF\_CONFIG" manually if you use our provided
 Kubernetes template.
@@ -324,13 +325,13 @@ start training.
 On your laptop, you can run
 
 ```python
-estimator = ...
 distribution = tf.contrib.distribute.CollectiveAllReduceStrategy(
     num_gpus_per_worker=2)
 config = tf.estimator.RunConfig(
     experimental_distribute=tf.contrib.distribute.DistributeConfig(
         train_distribute=distribution,
         remote_cluster={"worker": ["host1:port", "host2:port", "host3:port"]}))
+estimator = tf.estimator.Estimator(model_fn=model_fn, config=config)
 train_spec = tf.estimator.TrainSpec(input_fn=input_fn)
 eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn)
 tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)

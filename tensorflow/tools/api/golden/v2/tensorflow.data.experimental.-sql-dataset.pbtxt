@@ -1,8 +1,8 @@
 path: "tensorflow.data.experimental.SqlDataset"
 tf_class {
-  is_instance: "<class \'tensorflow.python.data.experimental.ops.readers.SqlDataset\'>"
+  is_instance: "<class \'tensorflow.python.data.experimental.ops.readers.SqlDatasetV2\'>"
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetSource\'>"
-  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.Dataset\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV2\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "output_classes"
@@ -47,10 +47,6 @@ tf_class {
   member_method {
     name: "from_generator"
     argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "from_sparse_tensor_slices"
-    argspec: "args=[\'sparse_tensor\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_tensor_slices"
@@ -103,10 +99,6 @@ tf_class {
   member_method {
     name: "repeat"
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "shard"
-    argspec: "args=[\'self\', \'num_shards\', \'index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "shuffle"

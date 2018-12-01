@@ -52,12 +52,12 @@ class FilterBenchmark(test.Benchmark):
 
       with session.Session() as sess:
         for _ in range(10):
-          sess.run(next_element.op)
+          self.evaluate(next_element.op)
         deltas = []
         for _ in range(100):
           start = time.time()
           for _ in range(100):
-            sess.run(next_element.op)
+            self.evaluate(next_element.op)
           end = time.time()
           deltas.append(end - start)
 

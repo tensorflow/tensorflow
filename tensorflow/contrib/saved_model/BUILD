@@ -82,7 +82,6 @@ py_library(
     name = "keras_saved_model",
     srcs = ["python/saved_model/keras_saved_model.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -103,7 +102,10 @@ py_test(
     size = "medium",
     srcs = ["python/saved_model/keras_saved_model_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "no_oss",  # TODO(b/119349471): Re-enable
+        "no_windows",
+    ],
     deps = [
         ":keras_saved_model",
         "//tensorflow/python:client_testlib",

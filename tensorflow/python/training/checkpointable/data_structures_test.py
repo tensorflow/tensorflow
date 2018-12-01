@@ -24,6 +24,7 @@ import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
@@ -156,6 +157,23 @@ class ListTests(test.TestCase):
     with self.assertRaises(AttributeError):
       data_structures.List().pop()
 
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorConversion(self):
+
+    class ListToTensor(training.Model):
+
+      def __init__(self):
+        super(ListToTensor, self).__init__()
+        self.l = [1., 2., 3.]
+
+    self.assertAllEqual(
+        [1., 2., 3.],
+        self.evaluate(constant_op.constant(ListToTensor().l)))
+
+    self.assertAllEqual(
+        [1., 2., 3.],
+        self.evaluate(array_ops.pack(ListToTensor().l)))
+
   def testNesting(self):
     with context.graph_mode():
       inner = data_structures.List()
@@ -235,6 +253,13 @@ class ListTests(test.TestCase):
     l.append(1)
     self.assertEqual([1], l_wrapper)
 
+  def testLayerCollectionWithExternalMutation(self):
+    l = []
+    l_wrapper = data_structures._ListWrapper(l)
+    layer = core.Dense(1)
+    l.append(layer)
+    self.assertEqual([layer], l_wrapper.layers)
+
   def testHashing(self):
     has_sequences = set([data_structures.List(),
                          data_structures.List()])
@@ -305,6 +330,20 @@ class MappingTests(test.TestCase):
     mapping = data_structures.Mapping()
     with self.assertRaises(TypeError):
       mapping[1] = data_structures.List()
+
+  def testLayerCollectionWithExternalMutation(self):
+    d = {}
+    root = tracking.Checkpointable()
+    root.wrapper = d
+    self.assertEqual([], root.wrapper.layers)
+    self.assertEqual([], root.wrapper.trainable_weights)
+    layer1 = core.Dense(1)
+    layer2 = core.Dense(1)
+    d["a"] = layer1
+    d["b"] = layer2
+    self.assertEqual([layer1, layer2], root.wrapper.layers)
+    # The layers have still not created variables
+    self.assertEqual([], root.wrapper.trainable_weights)
 
   def testHashing(self):
     has_mappings = set([data_structures.Mapping(),

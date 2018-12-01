@@ -149,7 +149,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     np.testing.assert_allclose(output, actual_output, rtol=1e-3)
 
   # test training mode (e.g. useful for dropout tests)
-  model.compile(RMSPropOptimizer(0.01), 'mse')
+  model.compile(RMSPropOptimizer(0.01), 'mse', weighted_metrics=['acc'])
   model.train_on_batch(input_data, actual_output)
 
   # test as first layer in Sequential API

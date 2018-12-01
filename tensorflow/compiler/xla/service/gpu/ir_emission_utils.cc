@@ -38,10 +38,9 @@ namespace gpu {
 
 namespace {
 
-// Return whether the given shape is a matrix with no padding.
-bool IsRank2WithNoPadding(const Shape& shape, int64 batch_dimensions_size) {
-  return ShapeUtil::Rank(shape) == batch_dimensions_size + 2 &&
-         !LayoutUtil::IsPadded(shape);
+// Return whether the given shape is rank 2 excluding the batch dimensions.
+bool IsRank2(const Shape& shape, int64 batch_dimensions_size) {
+  return ShapeUtil::Rank(shape) == batch_dimensions_size + 2;
 }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
@@ -56,10 +55,9 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   bool type_is_allowed =
       (output_primitive_type == F16 || output_primitive_type == F32 ||
        output_primitive_type == F64 || output_primitive_type == C64);
-  return type_is_allowed &&
-         IsRank2WithNoPadding(lhs_shape, batch_dimensions_size) &&
-         IsRank2WithNoPadding(rhs_shape, batch_dimensions_size) &&
-         IsRank2WithNoPadding(output_shape, batch_dimensions_size) &&
+  return type_is_allowed && IsRank2(lhs_shape, batch_dimensions_size) &&
+         IsRank2(rhs_shape, batch_dimensions_size) &&
+         IsRank2(output_shape, batch_dimensions_size) &&
          !ShapeUtil::IsZeroElementArray(lhs_shape) &&
          !ShapeUtil::IsZeroElementArray(rhs_shape);
 }
@@ -93,7 +91,8 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
 
   if (hlo.opcode() == HloOpcode::kFusion &&
       hlo.fusion_kind() == HloInstruction::FusionKind::kOutput &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply) {
+      (hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply ||
+       hlo.fused_expression_root()->opcode() == HloOpcode::kAdd)) {
     // Try to find the dot inside the output fusion node.
     const HloInstruction* dot = hlo.fused_expression_root()->operand(0);
     if (dot->opcode() != HloOpcode::kDot) {

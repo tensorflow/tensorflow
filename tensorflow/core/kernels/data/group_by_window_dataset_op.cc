@@ -15,10 +15,10 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/window_dataset.h"
 #include "tensorflow/core/lib/random/random.h"
 
@@ -26,7 +26,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -175,10 +175,12 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Instantiate(ctx));
-        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Instantiate(ctx));
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_window_size_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Instantiate(
+            ctx, &instantiated_key_func_));
+        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Instantiate(
+            ctx, &instantiated_reduce_func_));
+        TF_RETURN_IF_ERROR(dataset()->captured_window_size_func_->Instantiate(
+            ctx, &instantiated_window_size_func_));
         return Status::OK();
       }
 
@@ -215,9 +217,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               // Run the key function on the input element to identify its
               // group.
               std::vector<Tensor> key_func_output;
-              TF_RETURN_IF_ERROR(
-                  dataset()->captured_key_func_->RunWithBorrowedArgs(
-                      ctx, next_input_element, &key_func_output));
+              TF_RETURN_IF_ERROR(instantiated_key_func_->RunWithBorrowedArgs(
+                  ctx, next_input_element, &key_func_output));
 
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||
@@ -232,7 +233,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 // Run the window size function on the key to identify its
                 // window size.
                 std::vector<Tensor> window_size_func_output;
-                TF_RETURN_IF_ERROR(dataset()->captured_window_size_func_->Run(
+                TF_RETURN_IF_ERROR(instantiated_window_size_func_->Run(
                     ctx, std::move(key_func_output), &window_size_func_output));
 
                 if (window_size_func_output.size() != 1 ||
@@ -281,6 +282,11 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeUnknownRatioNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
@@ -447,8 +453,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         std::vector<Tensor> args(
             {std::move(key_arg), std::move(group_dataset_arg)});
         std::vector<Tensor> return_values;
-        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Run(
-            ctx, std::move(args), &return_values));
+        TF_RETURN_IF_ERROR(instantiated_reduce_func_->Run(ctx, std::move(args),
+                                                          &return_values));
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_VARIANT &&
@@ -477,6 +483,10 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       std::map<int64, std::vector<std::vector<Tensor>>> groups_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> current_group_iterator_ GUARDED_BY(mu_);
       std::map<int64, int64> window_sizes_ GUARDED_BY(mu_);
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_key_func_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_reduce_func_;
+      std::unique_ptr<InstantiatedCapturedFunction>
+          instantiated_window_size_func_;
     };
 
     Status OtherArgumentsNodeAndType(

@@ -309,7 +309,7 @@ TEST(MapAndBatchFusionTest, NoChange) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  EXPECT_TRUE(graph_utils::Compare(*graph.GetGraph(), output));
+  EXPECT_TRUE(graph_utils::Compare(*graph.graph(), output));
 }
 
 }  // namespace

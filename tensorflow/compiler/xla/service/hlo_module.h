@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -103,11 +104,7 @@ class HloModule {
                                        HloCloneContext* context = nullptr);
 
   // Return a pointer to the entry computation of the module.
-  const HloComputation* entry_computation() const {
-    CHECK_NE(nullptr, entry_computation_);
-    return entry_computation_;
-  }
-  HloComputation* entry_computation() {
+  HloComputation* entry_computation() const {
     CHECK_NE(nullptr, entry_computation_);
     return entry_computation_;
   }
@@ -134,6 +131,12 @@ class HloModule {
   const ComputationLayout& entry_computation_layout() const {
     return config_.entry_computation_layout();
   }
+
+  // Generates a hash value of an HLO module. Hash considers
+  // information on opcode, shape, operands, and typically a root instruction.
+  // This function returns the same hash value for equivalent HLO modules,
+  // with respect to HloInstruction::Identical() method.
+  uint64 Hash() const { return entry_computation()->Hash(); }
 
   // Gets the computations in this module.
   //
@@ -232,28 +235,19 @@ class HloModule {
     return input_output_alias_config_;
   }
 
+  // DynamicParameterBinding holds the list of bindings that indicates which
+  // parameter dimensions are dynamic and which parameters represent their
+  // runtime value.
+  DynamicParameterBinding& dynamic_parameter_binding() {
+    return dynamic_parameter_binding_;
+  }
+  const DynamicParameterBinding& dynamic_parameter_binding() const {
+    return dynamic_parameter_binding_;
+  }
+
   // Returns an id that is unique to this module across all modules created over
   // the lifetime of this process.
   int unique_id() const { return unique_id_; }
-
-  // Returns a non-const version of the passed-in const HloInstruction*. This is
-  // safe on the argument that if you have a non-const module, then you can
-  // access all instructions in the module as non-const.
-  //
-  // Returns an error if the passed-in instruction is not from this module,
-  // except that it is allowed to pass in a null pointer.
-  //
-  // TODO(b/78350259): Eliminate const laundering. The argument above is not
-  // reliable since at any time someone could add or discover a way for a
-  // non-const module to transitively contain a const HloInstruction. The
-  // reliable way to do this would be to create a const laundering map from a
-  // module, mapping each encountered HloInstruction to its non-const version
-  // and then look up each instruction in need of laundering in that map, but
-  // this is much more expensive and complicated. This returns a Status instead
-  // of doing a CHECK-failure in part to make it strongly apparent that this is
-  // something that can fail.
-  StatusOr<HloInstruction*> LaunderConstInstructionFromModule(
-      const HloInstruction* hlo);
 
   // Sets the schedule of the module to the given schedule.
   Status set_schedule(HloSchedule schedule);
@@ -304,6 +298,9 @@ class HloModule {
   // alias_config indicates the alias information of input/output buffers that
   // are expected from the module.
   HloInputOutputAliasConfig input_output_alias_config_;
+
+  // Bindings for dynamic parameter mapping.
+  DynamicParameterBinding dynamic_parameter_binding_;
 };
 
 }  // namespace xla

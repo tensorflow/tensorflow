@@ -1,11 +1,7 @@
 path: "tensorflow.losses.Reduction"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.losses.losses_impl.Reduction\'>"
+  is_instance: "<class \'tensorflow.python.ops.losses.losses_impl.ReductionV2\'>"
   is_instance: "<type \'object\'>"
-  member {
-    name: "MEAN"
-    mtype: "<type \'str\'>"
-  }
   member {
     name: "NONE"
     mtype: "<type \'str\'>"
@@ -15,15 +11,7 @@ tf_class {
     mtype: "<type \'str\'>"
   }
   member {
-    name: "SUM_BY_NONZERO_WEIGHTS"
-    mtype: "<type \'str\'>"
-  }
-  member {
     name: "SUM_OVER_BATCH_SIZE"
-    mtype: "<type \'str\'>"
-  }
-  member {
-    name: "SUM_OVER_NONZERO_WEIGHTS"
     mtype: "<type \'str\'>"
   }
   member_method {

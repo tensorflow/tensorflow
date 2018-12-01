@@ -50,6 +50,7 @@ norm = linalg_ops.norm
 qr = linalg_ops.qr
 set_diag = array_ops.matrix_set_diag
 solve = linalg_ops.matrix_solve
+sqrtm = linalg_ops.matrix_square_root
 svd = linalg_ops.svd
 tensordot = math_ops.tensordot
 trace = math_ops.trace
@@ -87,7 +88,7 @@ def logdet(matrix, name=None):
     chol = gen_linalg_ops.cholesky(matrix)
     return 2.0 * math_ops.reduce_sum(
         math_ops.log(math_ops.real(array_ops.matrix_diag_part(chol))),
-        reduction_indices=[-1])
+        axis=[-1])
 
 
 @tf_export('linalg.adjoint')

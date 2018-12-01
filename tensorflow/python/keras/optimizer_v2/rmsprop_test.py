@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,19 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for rmsprop optimizer."""
+"""Tests for rmsprop."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import copy
+import itertools
 import math
-import types as python_types
 
-from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -39,35 +39,37 @@ from tensorflow.python.platform import test
 _DATA_TYPES = [dtypes.half, dtypes.float32]
 
 _TEST_PARAM_VALUES = [
-    # learning_rate, rho, momentum, epsilon, centered, use_resource
-    [0.5, 0.9, 0.0, 1.0, True, False],
-    [0.5, 0.9, 0.0, 1.0, False, False],
-    [0.5, 0.9, 0.0, 1.0, True, True],
-    [0.5, 0.9, 0.0, 1.0, False, True],
-    [0.1, 0.9, 0.0, 1.0, True, False],
-    [0.5, 0.95, 0.0, 1.0, False, False],
-    [0.5, 0.8, 0.0, 1e-3, True, False],
-    [0.5, 0.8, 0.9, 1e-3, True, False],
+    # learning_rate, rho, momentum, epsilon, centered
+    [0.05, 0.9, 0.0, 1e-3, True],
+    [0.05, 0.9, 0.0, 1e-3, False],
+    [0.1, 0.9, 0.0, 1e-3, True],
+    [0.01, 0.9, 0.0, 1e-5, True],
+    [0.01, 0.9, 0.9, 1e-5, True],
+]
+
+_TESTPARAMS = [
+    [data_type] + values
+    for data_type, values in itertools.product(_DATA_TYPES, _TEST_PARAM_VALUES)
 ]
 
 
-class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
+class RMSpropOptimizerTest(test.TestCase):
 
   def _rmsprop_update_numpy(self, var, g, mg, rms, mom, lr, rho, momentum,
-                            centered):
+                            epsilon, centered):
     rms_t = rms * rho + (1 - rho) * g * g
+    denom_t = rms_t + epsilon
     if centered:
       mg_t = mg * rho + (1 - rho) * g
-      denom_t = rms_t - mg_t * mg_t
+      denom_t -= mg_t * mg_t
     else:
       mg_t = mg
-      denom_t = rms_t
     mom_t = momentum * mom + lr * g / np.sqrt(denom_t, dtype=denom_t.dtype)
     var_t = var - mom_t
     return var_t, mg_t, rms_t, mom_t
 
   def _sparse_rmsprop_update_numpy(self, var, gindexs, gvalues, mg, rms, mom,
-                                   lr, rho, momentum, centered):
+                                   lr, rho, momentum, epsilon, centered):
     mg_t = copy.deepcopy(mg)
     rms_t = copy.deepcopy(rms)
     mom_t = copy.deepcopy(mom)
@@ -76,7 +78,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
       gindex = gindexs[i]
       gvalue = gvalues[i]
       rms_t[gindex] = rms[gindex] * rho + (1 - rho) * gvalue * gvalue
-      denom_t = rms_t[gindex]
+      denom_t = rms_t[gindex] + epsilon
       if centered:
         mg_t[gindex] = mg_t[gindex] * rho + (1 - rho) * gvalue
         denom_t -= mg_t[gindex] * mg_t[gindex]
@@ -84,382 +86,324 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
       var_t[gindex] = var[gindex] - mom_t[gindex]
     return var_t, mg_t, rms_t, mom_t
 
-  @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
-          dtype=_DATA_TYPES, param_value=_TEST_PARAM_VALUES))
-  def testDense(self, dtype, param_value):
-    (learning_rate, rho, momentum, epsilon, centered,
-     use_resource) = tuple(param_value)
-    with self.test_session(use_gpu=True):
-      # Initialize variables for numpy implementation.
-      var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
-      grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
-      var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
-      grads1_np = np.array([0.01, 0.2], dtype=dtype.as_numpy_dtype)
+  @test_util.run_deprecated_v1
+  def testDense(self):
+    for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
+      with test_util.use_gpu():
+        # Initialize variables for numpy implementation.
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        grads1_np = np.array([0.01, 0.2], dtype=dtype.as_numpy_dtype)
 
-      if use_resource:
-        var0 = resource_variable_ops.ResourceVariable(var0_np)
-        var1 = resource_variable_ops.ResourceVariable(var1_np)
-      else:
+        var0 = resource_variable_ops.ResourceVariable(var0_np, dtype=dtype)
+        var1 = resource_variable_ops.ResourceVariable(var1_np, dtype=dtype)
+        grads0 = constant_op.constant(grads0_np, dtype=dtype)
+        grads1 = constant_op.constant(grads1_np, dtype=dtype)
+        opt = rmsprop.RMSprop(
+            learning_rate=learning_rate,
+            rho=rho,
+            momentum=momentum,
+            epsilon=epsilon,
+            centered=centered)
+
+        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        self.evaluate(variables.global_variables_initializer())
+
+        if centered:
+          mg0 = opt.get_slot(var0, "mg")
+          mg1 = opt.get_slot(var1, "mg")
+        else:
+          mg0 = None
+          mg1 = None
+
+        rms0 = opt.get_slot(var0, "rms")
+        self.assertTrue(rms0 is not None)
+        rms1 = opt.get_slot(var1, "rms")
+        self.assertTrue(rms1 is not None)
+        mom0 = opt.get_slot(var0, "momentum")
+        self.assertTrue(mom0 is not None)
+        mom1 = opt.get_slot(var1, "momentum")
+        self.assertTrue(mom1 is not None)
+
+        mg0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        mg1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        rms0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        rms1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        mom0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        mom1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
+
+        # Run 4 steps of RMSprop
+        for _ in range(1, 5):
+          self.evaluate(update)
+
+          var0_np, mg0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(
+              var0_np, grads0_np, mg0_np, rms0_np, mom0_np, learning_rate, rho,
+              momentum, epsilon, centered)
+          var1_np, mg1_np, rms1_np, mom1_np = self._rmsprop_update_numpy(
+              var1_np, grads1_np, mg1_np, rms1_np, mom1_np, learning_rate, rho,
+              momentum, epsilon, centered)
+
+          # Validate updated params
+          if centered:
+            self.assertAllCloseAccordingToType(mg0_np, self.evaluate(mg0))
+            self.assertAllCloseAccordingToType(mg1_np, self.evaluate(mg1))
+          self.assertAllCloseAccordingToType(rms0_np, self.evaluate(rms0))
+          self.assertAllCloseAccordingToType(rms1_np, self.evaluate(rms1))
+          self.assertAllCloseAccordingToType(mom0_np, self.evaluate(mom0))
+          self.assertAllCloseAccordingToType(mom1_np, self.evaluate(mom1))
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+
+  @test_util.run_deprecated_v1
+  def testDenseWithLearningRateDecay(self):
+    var0_np = np.array([1.0, 2.0])
+    grads0_np = np.array([0.1, 0.2])
+    var1_np = np.array([3.0, 4.0])
+    grads1_np = np.array([0.01, 0.2])
+
+    var0 = resource_variable_ops.ResourceVariable(var0_np)
+    var1 = resource_variable_ops.ResourceVariable(var1_np)
+    grads0 = constant_op.constant(grads0_np)
+    grads1 = constant_op.constant(grads1_np)
+    learning_rate = 0.01
+    rho = 0.9
+    momentum = 0.0
+    epsilon = 1e-7
+    centered = False
+    decay = 0.5
+    opt = rmsprop.RMSprop(
+        learning_rate=learning_rate,
+        rho=rho,
+        momentum=momentum,
+        epsilon=epsilon,
+        centered=centered,
+        decay=decay)
+
+    update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+    self.evaluate(variables.global_variables_initializer())
+
+    rms0 = opt.get_slot(var0, "rms")
+    self.assertTrue(rms0 is not None)
+    rms1 = opt.get_slot(var1, "rms")
+    self.assertTrue(rms1 is not None)
+    mom0 = opt.get_slot(var0, "momentum")
+    self.assertTrue(mom0 is not None)
+    mom1 = opt.get_slot(var1, "momentum")
+    self.assertTrue(mom1 is not None)
+
+    mg0_np = np.array([0.0, 0.0])
+    mg1_np = np.array([0.0, 0.0])
+    rms0_np = np.array([0.0, 0.0])
+    rms1_np = np.array([0.0, 0.0])
+    mom0_np = np.array([0.0, 0.0])
+    mom1_np = np.array([0.0, 0.0])
+
+    # Fetch params to validate initial values
+    self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+    self.assertAllClose([3.0, 4.0], self.evaluate(var1))
+
+    # Run 4 steps of RMSprop
+    for t in range(2):
+      self.evaluate(update)
+
+      lr = learning_rate / (1 + decay * t)
+      var0_np, mg0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(
+          var0_np, grads0_np, mg0_np, rms0_np, mom0_np, lr, rho, momentum,
+          epsilon, centered)
+      var1_np, mg1_np, rms1_np, mom1_np = self._rmsprop_update_numpy(
+          var1_np, grads1_np, mg1_np, rms1_np, mom1_np, lr, rho, momentum,
+          epsilon, centered)
+
+      # Validate updated params
+      self.assertAllCloseAccordingToType(rms0_np, self.evaluate(rms0))
+      self.assertAllCloseAccordingToType(rms1_np, self.evaluate(rms1))
+      self.assertAllCloseAccordingToType(mom0_np, self.evaluate(mom0))
+      self.assertAllCloseAccordingToType(mom1_np, self.evaluate(mom1))
+      self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+      self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+
+  @test_util.run_deprecated_v1
+  def testMinimizeSparseResourceVariable(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
+        loss = pred * pred
+        sgd_op = rmsprop.RMSprop(
+            learning_rate=1.0,
+            rho=0.0,
+            momentum=0.0,
+            epsilon=0.0,
+            centered=False).minimize(
+                loss, var_list=[var0])
+        self.evaluate(variables.global_variables_initializer())
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
+        # Run 1 step of sgd
+        self.evaluate(sgd_op)
+        # Validate updated params
+        self.assertAllCloseAccordingToType([[0., 1.]],
+                                           self.evaluate(var0),
+                                           atol=0.01)
+
+  @test_util.run_deprecated_v1
+  def testMinimizeSparseResourceVariableCentered(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
+        loss = pred * pred
+        sgd_op = rmsprop.RMSprop(
+            learning_rate=1.0,
+            rho=0.0,
+            momentum=0.0,
+            epsilon=1.0,
+            centered=True).minimize(
+                loss, var_list=[var0])
+        self.evaluate(variables.global_variables_initializer())
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
+        # Run 1 step of sgd
+        self.evaluate(sgd_op)
+        # Validate updated params
+        self.assertAllCloseAccordingToType([[-111, -138]],
+                                           self.evaluate(var0),
+                                           atol=0.01)
+
+  @test_util.run_deprecated_v1
+  def testSparse(self):
+    for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
+      with test_util.use_gpu():
+        # Initialize variables for numpy implementation.
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        grads1_np = np.array([0.01], dtype=dtype.as_numpy_dtype)
+
         var0 = variables.Variable(var0_np)
         var1 = variables.Variable(var1_np)
-      grads0 = constant_op.constant(grads0_np)
-      grads1 = constant_op.constant(grads1_np)
-      opt = rmsprop.RMSProp(
-          learning_rate=learning_rate,
-          rho=rho,
-          momentum=momentum,
-          epsilon=epsilon,
-          centered=centered)
+        grads0_np_indices = np.array([0], dtype=np.int32)
+        grads0 = ops.IndexedSlices(
+            constant_op.constant(grads0_np),
+            constant_op.constant(grads0_np_indices), constant_op.constant([1]))
+        grads1_np_indices = np.array([1], dtype=np.int32)
+        grads1 = ops.IndexedSlices(
+            constant_op.constant(grads1_np),
+            constant_op.constant(grads1_np_indices), constant_op.constant([1]))
+        opt = rmsprop.RMSprop(
+            learning_rate=learning_rate,
+            rho=rho,
+            momentum=momentum,
+            epsilon=epsilon,
+            centered=centered)
+        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        self.evaluate(variables.global_variables_initializer())
 
-      update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      variables.global_variables_initializer().run()
-
-      mg0 = opt.get_slot(var0, "mg")
-      self.assertEqual(mg0 is not None, centered)
-      mg1 = opt.get_slot(var1, "mg")
-      self.assertEqual(mg1 is not None, centered)
-      rms0 = opt.get_slot(var0, "rms")
-      self.assertIsNotNone(rms0)
-      rms1 = opt.get_slot(var1, "rms")
-      self.assertIsNotNone(rms1)
-      mom0 = opt.get_slot(var0, "momentum")
-      self.assertIsNotNone(mom0)
-      mom1 = opt.get_slot(var1, "momentum")
-      self.assertIsNotNone(mom1)
-
-      mg0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-      mg1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-      rms0_np = np.array([epsilon, epsilon], dtype=dtype.as_numpy_dtype)
-      rms1_np = np.array([epsilon, epsilon], dtype=dtype.as_numpy_dtype)
-      mom0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-      mom1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-
-      # Fetch params to validate initial values
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([3.0, 4.0], var1.eval())
-
-      # Run 4 steps of RMSProp
-      for _ in range(4):
-        update.run()
-
-        var0_np, mg0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(
-            var0_np, grads0_np, mg0_np, rms0_np, mom0_np, learning_rate, rho,
-            momentum, centered)
-        var1_np, mg1_np, rms1_np, mom1_np = self._rmsprop_update_numpy(
-            var1_np, grads1_np, mg1_np, rms1_np, mom1_np, learning_rate, rho,
-            momentum, centered)
-
-        # Validate updated params
         if centered:
-          self.assertAllCloseAccordingToType(mg0_np, mg0.eval())
-          self.assertAllCloseAccordingToType(mg1_np, mg1.eval())
-        self.assertAllCloseAccordingToType(rms0_np, rms0.eval())
-        self.assertAllCloseAccordingToType(rms1_np, rms1.eval())
-        self.assertAllCloseAccordingToType(mom0_np, mom0.eval())
-        self.assertAllCloseAccordingToType(mom1_np, mom1.eval())
+          mg0 = opt.get_slot(var0, "mg")
+          self.assertEqual(mg0 is not None, centered)
+          mg1 = opt.get_slot(var1, "mg")
+          self.assertEqual(mg1 is not None, centered)
+        else:
+          mg0 = None
+          mg1 = None
+        rms0 = opt.get_slot(var0, "rms")
+        self.assertTrue(rms0 is not None)
+        rms1 = opt.get_slot(var1, "rms")
+        self.assertTrue(rms1 is not None)
+        mom0 = opt.get_slot(var0, "momentum")
+        self.assertTrue(mom0 is not None)
+        mom1 = opt.get_slot(var1, "momentum")
+        self.assertTrue(mom1 is not None)
+
+        mg0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        mg1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        rms0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        rms1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        mom0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        mom1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
+
+        # Run 4 steps of RMSprop
+        for _ in range(1, 5):
+          self.evaluate(update)
+
+          var0_np, mg0_np, rms0_np, mom0_np = self._sparse_rmsprop_update_numpy(
+              var0_np, grads0_np_indices, grads0_np, mg0_np, rms0_np, mom0_np,
+              learning_rate, rho, momentum, epsilon, centered)
+          var1_np, mg1_np, rms1_np, mom1_np = self._sparse_rmsprop_update_numpy(
+              var1_np, grads1_np_indices, grads1_np, mg1_np, rms1_np, mom1_np,
+              learning_rate, rho, momentum, epsilon, centered)
+
+          # Validate updated params
+          if centered:
+            self.assertAllCloseAccordingToType(mg0_np, self.evaluate(mg0))
+            self.assertAllCloseAccordingToType(mg1_np, self.evaluate(mg1))
+          self.assertAllCloseAccordingToType(rms0_np, self.evaluate(rms0))
+          self.assertAllCloseAccordingToType(rms1_np, self.evaluate(rms1))
+          self.assertAllCloseAccordingToType(mom0_np, self.evaluate(mom0))
+          self.assertAllCloseAccordingToType(mom1_np, self.evaluate(mom1))
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+
+  def testCallableParams(self):
+    with context.eager_mode():
+      for dtype in [dtypes.half, dtypes.float32]:
+        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
+        grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
+
+        learning_rate = lambda: 2.0
+        rho = lambda: 0.9
+        momentum = lambda: 0.0
+        epsilon = lambda: 1.0
+        opt = rmsprop.RMSprop(learning_rate, rho, momentum, epsilon)
+
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
+        # Step 1: the rms accumulators where 1. So we should see a normal
+        # update: v -= grad * learning_rate
+        opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        # Check the parameters.
         self.assertAllCloseAccordingToType(
-            var0_np, var0.eval(), half_rtol=0.01, half_atol=0.01)
+            np.array([
+                1.0 - (0.1 * 2.0 / math.sqrt(0.001 + 1.0)),
+                2.0 - (0.1 * 2.0 / math.sqrt(0.001 + 1.0))
+            ]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
-            var1_np, var1.eval(), half_rtol=0.01, half_atol=0.01)
-
-  @parameterized.parameters([dtypes.float32, dtypes.float64])
-  def testMinimizeSparseResourceVariable(self, dtype):
-    with self.cached_session():
-      var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
-      x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
-      pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
-      loss = pred * pred
-      sgd_op = rmsprop.RMSProp(
-          learning_rate=1.0, rho=0.0, momentum=0.0, epsilon=0.0,
-          centered=False).minimize(loss)
-      variables.global_variables_initializer().run()
-      # Fetch params to validate initial values
-      self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
-      # Run 1 step of sgd
-      sgd_op.run()
-      # Validate updated params
-      self.assertAllCloseAccordingToType(
-          [[0., 1.]], var0.eval(), atol=0.01)
-
-  @parameterized.parameters([dtypes.float32, dtypes.float64])
-  def testMinimizeSparseResourceVariableCentered(self, dtype):
-    with self.cached_session():
-      var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
-      x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
-      pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
-      loss = pred * pred
-      sgd_op = rmsprop.RMSProp(
-          learning_rate=1.0, rho=0.1, momentum=0.0, epsilon=1.0,
-          centered=True).minimize(loss)
-      variables.global_variables_initializer().run()
-      # Fetch params to validate initial values
-      self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
-      # Run 1 step of sgd
-      sgd_op.run()
-      # Validate updated params
-      self.assertAllCloseAccordingToType(
-          [[-7/3.0, -4/3.0]], var0.eval(), atol=0.01)
-
-  @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
-          dtype=_DATA_TYPES, param_value=_TEST_PARAM_VALUES))
-  def testSparse(self, dtype, param_value):
-    (learning_rate, rho, momentum, epsilon, centered, _) = tuple(param_value)
-    with self.test_session(use_gpu=True):
-      # Initialize variables for numpy implementation.
-      var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
-      grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
-      var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
-      grads1_np = np.array([0.01], dtype=dtype.as_numpy_dtype)
-
-      var0 = variables.Variable(var0_np)
-      var1 = variables.Variable(var1_np)
-      grads0_np_indices = np.array([0], dtype=np.int32)
-      grads0 = ops.IndexedSlices(
-          constant_op.constant(grads0_np),
-          constant_op.constant(grads0_np_indices), constant_op.constant([1]))
-      grads1_np_indices = np.array([1], dtype=np.int32)
-      grads1 = ops.IndexedSlices(
-          constant_op.constant(grads1_np),
-          constant_op.constant(grads1_np_indices), constant_op.constant([1]))
-      opt = rmsprop.RMSProp(
-          learning_rate=learning_rate,
-          rho=rho,
-          momentum=momentum,
-          epsilon=epsilon,
-          centered=centered)
-      update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      variables.global_variables_initializer().run()
-
-      mg0 = opt.get_slot(var0, "mg")
-      self.assertEqual(mg0 is not None, centered)
-      mg1 = opt.get_slot(var1, "mg")
-      self.assertEqual(mg1 is not None, centered)
-      rms0 = opt.get_slot(var0, "rms")
-      self.assertIsNotNone(rms0)
-      rms1 = opt.get_slot(var1, "rms")
-      self.assertIsNotNone(rms1)
-      mom0 = opt.get_slot(var0, "momentum")
-      self.assertIsNotNone(mom0)
-      mom1 = opt.get_slot(var1, "momentum")
-      self.assertIsNotNone(mom1)
-
-      mg0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-      mg1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-      rms0_np = np.array([epsilon, epsilon], dtype=dtype.as_numpy_dtype)
-      rms1_np = np.array([epsilon, epsilon], dtype=dtype.as_numpy_dtype)
-      mom0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-      mom1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-
-      # Fetch params to validate initial values
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([3.0, 4.0], var1.eval())
-
-      # Run 4 steps of RMSProp
-      for _ in range(4):
-        update.run()
-
-        var0_np, mg0_np, rms0_np, mom0_np = self._sparse_rmsprop_update_numpy(
-            var0_np, grads0_np_indices, grads0_np, mg0_np, rms0_np, mom0_np,
-            learning_rate, rho, momentum, centered)
-        var1_np, mg1_np, rms1_np, mom1_np = self._sparse_rmsprop_update_numpy(
-            var1_np, grads1_np_indices, grads1_np, mg1_np, rms1_np, mom1_np,
-            learning_rate, rho, momentum, centered)
-
-        # Validate updated params
-        if centered:
-          self.assertAllCloseAccordingToType(mg0_np, mg0.eval())
-          self.assertAllCloseAccordingToType(mg1_np, mg1.eval())
-        self.assertAllCloseAccordingToType(rms0_np, rms0.eval())
-        self.assertAllCloseAccordingToType(rms1_np, rms1.eval())
-        self.assertAllCloseAccordingToType(mom0_np, mom0.eval())
-        self.assertAllCloseAccordingToType(mom1_np, mom1.eval())
-        self.assertAllCloseAccordingToType(var0_np, var0.eval())
-        self.assertAllCloseAccordingToType(var1_np, var1.eval())
-
-  @parameterized.parameters(_DATA_TYPES)
-  def testWithoutMomentum(self, dtype):
-    with self.test_session(use_gpu=True):
-      var0 = variables.Variable([1.0, 2.0], dtype=dtype)
-      var1 = variables.Variable([3.0, 4.0], dtype=dtype)
-      grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
-      grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-      opt = rmsprop.RMSProp(
-          learning_rate=2.0, rho=0.9, momentum=0.0, epsilon=1.0)
-      update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      variables.global_variables_initializer().run()
-
-      rms0 = opt.get_slot(var0, "rms")
-      self.assertIsNotNone(rms0)
-      rms1 = opt.get_slot(var1, "rms")
-      self.assertIsNotNone(rms1)
-      mom0 = opt.get_slot(var0, "momentum")
-      self.assertIsNotNone(mom0)
-      mom1 = opt.get_slot(var1, "momentum")
-      self.assertIsNotNone(mom1)
-
-      # Fetch params to validate initial values
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([3.0, 4.0], var1.eval())
-      # Step 1: the rms accumulators where 1. So we should see a normal
-      # update: v -= grad * learning_rate
-      update.run()
-      # Check the root mean square accumulators.
-      self.assertAllCloseAccordingToType(
-          np.array([0.901, 0.901]), rms0.eval())
-      self.assertAllCloseAccordingToType(
-          np.array([0.90001, 0.90001]), rms1.eval())
-      # Check the parameters.
-      self.assertAllCloseAccordingToType(
-          np.array([
-              1.0 - (0.1 * 2.0 / math.sqrt(0.901)),
-              2.0 - (0.1 * 2.0 / math.sqrt(0.901))
-          ]), var0.eval())
-      self.assertAllCloseAccordingToType(
-          np.array([
-              3.0 - (0.01 * 2.0 / math.sqrt(0.90001)),
-              4.0 - (0.01 * 2.0 / math.sqrt(0.90001))
-          ]), var1.eval())
-      # Step 2: the root mean square accumulators contain the previous update.
-      update.run()
-      # Check the rms accumulators.
-      self.assertAllCloseAccordingToType(
-          np.array([0.901 * 0.9 + 0.001, 0.901 * 0.9 + 0.001]), rms0.eval())
-      self.assertAllCloseAccordingToType(
-          np.array([0.90001 * 0.9 + 1e-5, 0.90001 * 0.9 + 1e-5]), rms1.eval())
-      # Check the parameters.
-      self.assertAllCloseAccordingToType(
-          np.array([
-              1.0 - (0.1 * 2.0 / math.sqrt(0.901)) -
-              (0.1 * 2.0 / math.sqrt(0.901 * 0.9 + 0.001)),
-              2.0 - (0.1 * 2.0 / math.sqrt(0.901)) -
-              (0.1 * 2.0 / math.sqrt(0.901 * 0.9 + 0.001))
-          ]), var0.eval())
-      self.assertAllCloseAccordingToType(
-          np.array([
-              3.0 - (0.01 * 2.0 / math.sqrt(0.90001)) -
-              (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 1e-5)),
-              4.0 - (0.01 * 2.0 / math.sqrt(0.90001)) -
-              (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 1e-5))
-          ]), var1.eval())
-
-  @parameterized.parameters(_DATA_TYPES)
-  def testWithMomentum(self, dtype):
-    with self.test_session(use_gpu=True):
-      var0 = variables.Variable([1.0, 2.0], dtype=dtype)
-      var1 = variables.Variable([3.0, 4.0], dtype=dtype)
-      grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
-      grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-
-      opt = rmsprop.RMSProp(
-          learning_rate=2.0, rho=0.9, momentum=0.5, epsilon=1.0)
-      update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      variables.global_variables_initializer().run()
-
-      rms0 = opt.get_slot(var0, "rms")
-      self.assertIsNotNone(rms0)
-      rms1 = opt.get_slot(var1, "rms")
-      self.assertIsNotNone(rms1)
-      mom0 = opt.get_slot(var0, "momentum")
-      self.assertIsNotNone(mom0)
-      mom1 = opt.get_slot(var1, "momentum")
-      self.assertIsNotNone(mom1)
-
-      # Fetch params to validate initial values
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([3.0, 4.0], var1.eval())
-      # Step 1: rms = 1, mom = 0. So we should see a normal
-      # update: v -= grad * learning_rate
-      update.run()
-      # Check the root mean square accumulators.
-      self.assertAllCloseAccordingToType(
-          np.array([0.901, 0.901]), rms0.eval())
-      self.assertAllCloseAccordingToType(
-          np.array([0.90001, 0.90001]), rms1.eval())
-      # Check the momentum accumulators
-      self.assertAllCloseAccordingToType(
-          np.array([(0.1 * 2.0 / math.sqrt(0.901)),
-                    (0.1 * 2.0 / math.sqrt(0.901))]), mom0.eval())
-      self.assertAllCloseAccordingToType(
-          np.array([(0.01 * 2.0 / math.sqrt(0.90001)),
-                    (0.01 * 2.0 / math.sqrt(0.90001))]), mom1.eval())
-
-      # Check that the parameters.
-      self.assertAllCloseAccordingToType(
-          np.array([
-              1.0 - (0.1 * 2.0 / math.sqrt(0.901)),
-              2.0 - (0.1 * 2.0 / math.sqrt(0.901))
-          ]), var0.eval())
-      self.assertAllCloseAccordingToType(
-          np.array([
-              3.0 - (0.01 * 2.0 / math.sqrt(0.90001)),
-              4.0 - (0.01 * 2.0 / math.sqrt(0.90001))
-          ]), var1.eval())
-
-      # Step 2: the root mean square accumulators contain the previous update.
-      update.run()
-      # Check the rms accumulators.
-      self.assertAllCloseAccordingToType(
-          np.array([0.901 * 0.9 + 0.001, 0.901 * 0.9 + 0.001]), rms0.eval())
-      self.assertAllCloseAccordingToType(
-          np.array([0.90001 * 0.9 + 1e-5, 0.90001 * 0.9 + 1e-5]), rms1.eval())
-      self.assertAllCloseAccordingToType(
-          np.array([
-              0.5 * (0.1 * 2.0 / math.sqrt(0.901)) +
-              (0.1 * 2.0 / math.sqrt(0.901 * 0.9 + 0.001)),
-              0.5 * (0.1 * 2.0 / math.sqrt(0.901)) +
-              (0.1 * 2.0 / math.sqrt(0.901 * 0.9 + 0.001))
-          ]), mom0.eval())
-      self.assertAllCloseAccordingToType(
-          np.array([
-              0.5 * (0.01 * 2.0 / math.sqrt(0.90001)) +
-              (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 1e-5)),
-              0.5 * (0.01 * 2.0 / math.sqrt(0.90001)) +
-              (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 1e-5))
-          ]), mom1.eval())
-
-      # Check the parameters.
-      self.assertAllCloseAccordingToType(
-          np.array([
-              1.0 - (0.1 * 2.0 / math.sqrt(0.901)) -
-              (0.5 * (0.1 * 2.0 / math.sqrt(0.901)) +
-               (0.1 * 2.0 / math.sqrt(0.901 * 0.9 + 0.001))),
-              2.0 - (0.1 * 2.0 / math.sqrt(0.901)) -
-              (0.5 * (0.1 * 2.0 / math.sqrt(0.901)) +
-               (0.1 * 2.0 / math.sqrt(0.901 * 0.9 + 0.001)))
-          ]), var0.eval())
-
-      self.assertAllCloseAccordingToType(
-          np.array([
-              3.0 - (0.01 * 2.0 / math.sqrt(0.90001)) -
-              (0.5 * (0.01 * 2.0 / math.sqrt(0.90001)) +
-               (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 1e-5))),
-              4.0 - (0.01 * 2.0 / math.sqrt(0.90001)) -
-              (0.5 * (0.01 * 2.0 / math.sqrt(0.90001)) +
-               (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 1e-5)))
-          ]), var1.eval())
-
-  def testConfig(self):
-
-    def momentum():
-      return ops.convert_to_tensor(3.0)
-
-    opt = rmsprop.RMSProp(
-        learning_rate=1.0,
-        rho=2.0,
-        momentum=momentum,
-        epsilon=lambda: ops.convert_to_tensor(4.0),
-        centered=True)
-    config = opt.get_config()
-    opt2 = rmsprop.RMSProp.from_config(config)
-    self.assertEqual(opt._hyper["learning_rate"][1],
-                     opt2._hyper["learning_rate"][1])
-    self.assertEqual(opt._hyper["rho"][1], opt2._hyper["rho"][1])
-    self.assertEqual(opt._hyper["momentum"][1].__name__,
-                     opt2._hyper["momentum"][1].__name__)
-    self.assertIsInstance(opt2._hyper["epsilon"][1], python_types.LambdaType)
-    self.assertEqual(True, opt2._centered)
+            np.array([
+                3.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0)),
+                4.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0))
+            ]), self.evaluate(var1))
+        # Step 2: the root mean square accumulators contain the previous update.
+        opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        # Check the parameters.
+        self.assertAllCloseAccordingToType(
+            np.array([
+                1.0 - (0.1 * 2.0 / math.sqrt(0.001 + 1.0)) -
+                (0.1 * 2.0 / math.sqrt(0.001 * 0.9 + 0.001 + 1.0)),
+                2.0 - (0.1 * 2.0 / math.sqrt(0.001 + 1.0)) -
+                (0.1 * 2.0 / math.sqrt(0.001 * 0.9 + 0.001 + 1.0))
+            ]), self.evaluate(var0))
+        self.assertAllCloseAccordingToType(
+            np.array([
+                3.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0)) -
+                (0.01 * 2.0 / math.sqrt(0.00001 * 0.9 + 1e-5 + 1.0)),
+                4.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0)) -
+                (0.01 * 2.0 / math.sqrt(0.00001 * 0.9 + 1e-5 + 1.0))
+            ]), self.evaluate(var1))
 
 
 if __name__ == "__main__":

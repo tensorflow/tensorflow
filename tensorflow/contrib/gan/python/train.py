@@ -45,7 +45,6 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.distributions import distribution as ds
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
 from tensorflow.python.training import session_run_hook
@@ -115,7 +114,7 @@ def gan_model(
     discriminator_gen_outputs = discriminator_fn(generated_data,
                                                  generator_inputs)
   with variable_scope.variable_scope(dis_scope, reuse=True):
-    real_data = ops.convert_to_tensor(real_data)
+    real_data = _convert_tensor_or_l_or_d(real_data)
     discriminator_real_outputs = discriminator_fn(real_data, generator_inputs)
 
   if check_shapes:
@@ -925,6 +924,7 @@ def gan_train_ops(
     generator_optimizer,
     discriminator_optimizer,
     check_for_unused_update_ops=True,
+    is_chief=True,
     # Optional args to pass directly to the `create_train_op`.
     **kwargs):
   """Returns GAN train ops.
@@ -940,6 +940,8 @@ def gan_train_ops(
     discriminator_optimizer: The optimizer for the discriminator updates.
     check_for_unused_update_ops: If `True`, throws an exception if there are
       update ops outside of the generator or discriminator scopes.
+    is_chief: Specifies whether or not the training is being run by the primary
+      replica during replica training.
     **kwargs: Keyword args to pass directly to
       `training.create_train_op` for both the generator and
       discriminator train op.
@@ -981,6 +983,9 @@ def gan_train_ops(
       kwargs, model.generator_scope.name, model.discriminator_scope.name,
       check_for_unused_update_ops)
 
+  # Get the sync hooks if these are needed.
+  sync_hooks = []
+
   generator_global_step = None
   if isinstance(generator_optimizer,
                 sync_replicas_optimizer.SyncReplicasOptimizer):
@@ -996,6 +1001,7 @@ def gan_train_ops(
         trainable=False,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES])
     gen_update_ops += [generator_global_step.assign(global_step)]
+    sync_hooks.append(generator_optimizer.make_session_run_hook(is_chief))
   with ops.name_scope('generator_train'):
     gen_train_op = training.create_train_op(
         total_loss=loss.generator_loss,
@@ -1017,6 +1023,7 @@ def gan_train_ops(
         trainable=False,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES])
     dis_update_ops += [discriminator_global_step.assign(global_step)]
+    sync_hooks.append(discriminator_optimizer.make_session_run_hook(is_chief))
   with ops.name_scope('discriminator_train'):
     disc_train_op = training.create_train_op(
         total_loss=loss.discriminator_loss,
@@ -1026,7 +1033,8 @@ def gan_train_ops(
         update_ops=dis_update_ops,
         **kwargs)
 
-  return namedtuples.GANTrainOps(gen_train_op, disc_train_op, global_step_inc)
+  return namedtuples.GANTrainOps(gen_train_op, disc_train_op, global_step_inc,
+                                 sync_hooks)
 
 
 # TODO(joelshor): Implement a dynamic GAN train loop, as in `Real-Time Adaptive
@@ -1067,13 +1075,24 @@ def get_sequential_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
                                      train_steps.generator_train_steps)
     discriminator_hook = RunTrainOpsHook(train_ops.discriminator_train_op,
                                          train_steps.discriminator_train_steps)
-    return [generator_hook, discriminator_hook]
+    return [generator_hook, discriminator_hook] + list(train_ops.train_hooks)
 
   return get_hooks
 
 
+def _num_joint_steps(train_steps):
+  g_steps = train_steps.generator_train_steps
+  d_steps = train_steps.discriminator_train_steps
+  # Get the number of each type of step that should be run.
+  num_d_and_g_steps = min(g_steps, d_steps)
+  num_g_steps = g_steps - num_d_and_g_steps
+  num_d_steps = d_steps - num_d_and_g_steps
+
+  return num_d_and_g_steps, num_g_steps, num_d_steps
+
+
 def get_joint_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
-  """Returns a hooks function for sequential GAN training.
+  """Returns a hooks function for joint GAN training.
 
   When using these train hooks, IT IS RECOMMENDED TO USE `use_locking=True` ON
   ALL OPTIMIZERS TO AVOID RACE CONDITIONS.
@@ -1106,12 +1125,7 @@ def get_joint_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
   Returns:
     A function that takes a GANTrainOps tuple and returns a list of hooks.
   """
-  g_steps = train_steps.generator_train_steps
-  d_steps = train_steps.discriminator_train_steps
-  # Get the number of each type of step that should be run.
-  num_d_and_g_steps = min(g_steps, d_steps)
-  num_g_steps = g_steps - num_d_and_g_steps
-  num_d_steps = d_steps - num_d_and_g_steps
+  num_d_and_g_steps, num_g_steps, num_d_steps = _num_joint_steps(train_steps)
 
   def get_hooks(train_ops):
     g_op = train_ops.generator_train_op
@@ -1121,7 +1135,7 @@ def get_joint_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
     g_hook = RunTrainOpsHook(g_op, num_g_steps)
     d_hook = RunTrainOpsHook(d_op, num_d_steps)
 
-    return [joint_hook, g_hook, d_hook]
+    return [joint_hook, g_hook, d_hook] + list(train_ops.train_hooks)
 
   return get_hooks
 
@@ -1264,10 +1278,6 @@ def _validate_distributions(distributions_l, noise_l):
   if not isinstance(distributions_l, (tuple, list)):
     raise ValueError('`predicted_distributions` must be a list. Instead, found '
                      '%s.' % type(distributions_l))
-  for dist in distributions_l:
-    if not isinstance(dist, ds.Distribution):
-      raise ValueError('Every element in `predicted_distributions` must be a '
-                       '`tf.Distribution`. Instead, found %s.' % type(dist))
   if len(distributions_l) != len(noise_l):
     raise ValueError('Length of `predicted_distributions` %i must be the same '
                      'as the length of structured noise %i.' %

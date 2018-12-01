@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -26,6 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Optional(object):
   """Wraps a nested structure of tensors that may/may not be present at runtime.
 
@@ -169,12 +172,24 @@ class OptionalStructure(structure.Structure):
         not flat_value[0].shape.is_compatible_with(tensor_shape.scalar())):
       raise ValueError(
           "OptionalStructure corresponds to a single tf.variant scalar.")
+    return self._from_compatible_tensor_list(flat_value)
+
+  def _from_compatible_tensor_list(self, flat_value):
     # pylint: disable=protected-access
     return _OptionalImpl(flat_value[0], self._value_structure)
 
   @staticmethod
   def from_value(value):
     return OptionalStructure(value.value_structure)
+
+  def _to_legacy_output_types(self):
+    return self
+
+  def _to_legacy_output_shapes(self):
+    return self
+
+  def _to_legacy_output_classes(self):
+    return self
 
 
 # pylint: disable=protected-access

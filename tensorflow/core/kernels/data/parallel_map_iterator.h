@@ -22,31 +22,33 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// A function that transforms elements of one dataset into another
-// asynchronously. The arguments are:
-// 1. An `IteratorContext*` for the context in which the function should
-// execute.
-// 2. A `std::vector<Tensor>` containing the input element.
-// 3. A `std::vector<Tensor>*` to which the function will write the result.
-// 4. A `StatusCallback` that should be invoked when the function is complete.
-using ParallelMapIteratorFunction =
-    std::function<void(IteratorContext*, const string&, std::vector<Tensor>,
-                       std::vector<Tensor>*, StatusCallback)>;
+class ParallelMapFunctor {
+ public:
+  virtual ~ParallelMapFunctor() {}
 
-// Returns a new iterator that applies `map_func` to the elements of
-// `input_dataset` using the given degree of parallelism. `init_func` (if
-// specified) will be executed when the iterator is initialized (see
-// `IteratorBase::Initialize()`) and enables the user to specify error checking
-// logic that can fail early.
+  // A function that runs when the Iterator is initialized. It enables the user
+  // to specify error checking logic that can fail early.
+  virtual Status InitFunc(IteratorContext* ctx) { return Status::OK(); }
+
+  // A function that transforms elements of one dataset into another
+  // asynchronously. The arguments are:
+  // 1. An `IteratorContext*` for the context in which the function should
+  // execute.
+  // 2. A `std::vector<Tensor>` containing the input element.
+  // 3. A `std::vector<Tensor>*` to which the function will write the result.
+  // 4. A `StatusCallback` that should be invoked when the function is complete.
+  virtual void MapFunc(IteratorContext* ctx, const string& prefix,
+                       std::vector<Tensor> input, std::vector<Tensor>* output,
+                       StatusCallback callback) = 0;
+};
+
+// Returns a new iterator that uses `parallel_map_functor` to apply `MapFunc`
+// to the elements of `input_dataset` using the given degree of parallelism.
 std::unique_ptr<IteratorBase> NewParallelMapIterator(
     const DatasetBaseIterator::BaseParams& params,
     const DatasetBase* input_dataset,
-    std::function<Status(IteratorContext*)> init_func,
-    ParallelMapIteratorFunction map_func, int32 num_parallel_calls);
-std::unique_ptr<IteratorBase> NewParallelMapIterator(
-    const DatasetBaseIterator::BaseParams& params,
-    const DatasetBase* input_dataset, ParallelMapIteratorFunction map_func,
-    int32 num_parallel_calls);
+    std::unique_ptr<ParallelMapFunctor> parallel_map_functor,
+    int32 num_parallel_calls, bool sloppy);
 
 }  // namespace data
 }  // namespace tensorflow

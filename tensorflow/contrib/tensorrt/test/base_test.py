@@ -56,8 +56,9 @@ class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
             strides=[1, 2, 2, 1],
             padding="SAME",
             name="conv")
-        bias = constant_op.constant(
-            [4., 1.5, 2., 3., 5., 7.], name="bias", dtype=dtype)
+        bias = constant_op.constant([4., 1.5, 2., 3., 5., 7.],
+                                    name="bias",
+                                    dtype=dtype)
         added = nn.bias_add(conv, bias, name="bias_add")
         relu = nn.relu(added, "relu")
         identity = array_ops.identity(relu, "identity")
@@ -73,11 +74,12 @@ class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    # TODO(aaroey): LayoutOptimizer adds additional nodes to the graph which
-    # breaks the connection check, fix it.
-    # - my_trt_op_0 should have ["weights", "conv", "bias", "bias_add",
-    #   "relu", "identity", "max_pool"]
-    return ["my_trt_op_0"]
+    return {
+        "TRTEngineOp_0": [
+            "weights", "conv", "bias", "bias_add", "relu", "identity",
+            "max_pool"
+        ]
+    }
 
 
 class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
@@ -92,7 +94,7 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
     g = ops.Graph()
     with g.as_default():
       inp = array_ops.placeholder(
-          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
+          dtype=dtype, shape=input_dims, name=input_name)
       with g.device("/GPU:0"):
         conv_filter = constant_op.constant(
             [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
@@ -105,10 +107,10 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
             padding="SAME",
             name="conv")
         c1 = constant_op.constant(
-            np.random.randn(input_dims[0], 12, 12, 6), dtype=dtype, name="c1")
+            np.random.randn(12, 12, 6), dtype=dtype, name="c1")
         p = math_ops.mul(conv, c1, name="mul")
         c2 = constant_op.constant(
-            np.random.randn(input_dims[0], 12, 12, 6), dtype=dtype, name="c2")
+            np.random.randn(12, 12, 6), dtype=dtype, name="c2")
         q = math_ops.div(conv, c2, name="div")
 
         edge = self.trt_incompatible_op(q, name="incompatible")
@@ -129,12 +131,21 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    # TODO(aaroey): LayoutOptimizer adds additional nodes to the graph which
-    # breaks the connection check, fix it.
-    # - my_trt_op_0 should have ["mul", "sub", "div1", "mul1", "add1",
-    #   "add", "sub1"];
-    # - my_trt_op_1 should have ["weights","conv", "div"]
-    return ["my_trt_op_0", "my_trt_op_1"]
+    return {
+        "TRTEngineOp_0": [
+            "add", "add1", "c1", "div1", "mul", "mul1", "sub", "sub1"
+        ],
+        "TRTEngineOp_1": ["c2", "conv", "div", "weights"]
+    }
+
+  def GetConversionParams(self, run_params):
+    """Return a ConversionParams for test."""
+    return super(
+        SimpleMultiEnginesTest, self
+    ).GetConversionParams(run_params)._replace(
+        # Disable layout optimizer, since it'll add Transpose(Const, Const) to
+        # the graph and breaks the conversion check.
+        rewriter_config=trt_test.OptimizerDisabledRewriterConfig())
 
 
 class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
@@ -143,7 +154,7 @@ class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
     """Setup method."""
     super(PartiallyConvertedTestA, self).setUp()
     # Let it fail to build the second engine.
-    trt_convert.add_test_value("my_trt_op_1:CreateTRTNode", "fail")
+    trt_convert.add_test_value("TRTEngineOp_1:CreateTRTNode", "fail")
 
   def GetParams(self):
     """Create a graph containing two segment."""
@@ -180,14 +191,16 @@ class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     return {
         # Only the first engine is built.
-        "my_trt_op_0": ["c0", "c1", "add0", "add1", "mul0", "mul1"]
+        "TRTEngineOp_0": ["c0", "c1", "add0", "add1", "mul0", "mul1"]
     }
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
     # Disable the test in fp16 mode since multiple matmul and add ops together
     # can cause overflow.
-    return run_params.precision_mode != "FP16"
+    return ((run_params.precision_mode != "FP16") and
+            not (trt_test.IsQuantizationMode(run_params.precision_mode) and
+                 not run_params.use_calibration))
 
 
 class PartiallyConvertedTestB(PartiallyConvertedTestA):
@@ -197,13 +210,13 @@ class PartiallyConvertedTestB(PartiallyConvertedTestA):
     super(PartiallyConvertedTestB, self).setUp()
     # Let it fail to build the first engine.
     trt_convert.clear_test_values("")
-    trt_convert.add_test_value("my_trt_op_0:CreateTRTNode", "fail")
+    trt_convert.add_test_value("TRTEngineOp_0:CreateTRTNode", "fail")
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
         # Only the second engine is built.
-        "my_trt_op_1": ["c2", "c3", "add2", "add3", "mul2", "mul3"]
+        "TRTEngineOp_1": ["c2", "c3", "add2", "add3", "mul2", "mul3"]
     }
 
 
@@ -247,8 +260,8 @@ class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": ["add", "add1", "mul"],
-        "my_trt_op_1": ["add2", "add3", "mul1"]
+        "TRTEngineOp_0": ["add", "add1", "mul"],
+        "TRTEngineOp_1": ["add2", "add3", "mul1"]
     }
 
 
@@ -279,7 +292,7 @@ class ConstDataInputSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"my_trt_op_0": ["c", "add", "add1", "mul"]}
+    return {"TRTEngineOp_0": ["c", "add", "add1", "mul"]}
 
 
 class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
@@ -314,12 +327,12 @@ class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": ["add2", "add3", "mul1"],
+        "TRTEngineOp_0": ["add2", "add3", "mul1"],
         # Why segment ["add", "add1", "mul"] was assigned segment id 1
         # instead of 0: the parent node of this segment is actually const
         # node 'c', but it's removed later since it's const output of the
         # segment which is not allowed.
-        "my_trt_op_1": ["add", "add1", "mul"]
+        "TRTEngineOp_1": ["add", "add1", "mul"]
     }
 
 
@@ -363,8 +376,8 @@ class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": ["c1", "add", "add1", "mul"],
-        "my_trt_op_1": ["c2", "add2", "add3", "mul1"]
+        "TRTEngineOp_0": ["c1", "add", "add1", "mul"],
+        "TRTEngineOp_1": ["c2", "add2", "add3", "mul1"]
     }
 
 

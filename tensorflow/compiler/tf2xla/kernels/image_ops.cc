@@ -191,12 +191,11 @@ class AdjustContrastOpV2 : public XlaOpKernel {
     DataType type = context->input_type(0);
 
     const DataType accumulation_type = XlaHelpers::SumAccumulationType(type);
-    auto converted =
-        XlaHelpers::ConvertElementType(b, input, accumulation_type);
+    auto converted = XlaHelpers::ConvertElementType(input, accumulation_type);
     auto reduce = xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
                               *context->GetOrCreateAdd(accumulation_type),
                               {height_dim, width_dim});
-    auto output = XlaHelpers::ConvertElementType(b, reduce, type);
+    auto output = XlaHelpers::ConvertElementType(reduce, type);
     output =
         xla::Div(output, XlaHelpers::FloatLiteral(b, type, height * width));
 
@@ -563,7 +562,7 @@ class NonMaxSuppressionOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(
-    Name("NonMaxSuppressionV4").CompileTimeConstInput("max_output_size"),
+    Name("NonMaxSuppressionV4").CompileTimeConstantInput("max_output_size"),
     NonMaxSuppressionOp);
 
 }  // namespace

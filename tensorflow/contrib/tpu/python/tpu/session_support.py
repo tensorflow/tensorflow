@@ -177,7 +177,10 @@ class WorkerHeartbeatManager(object):
 def all_worker_devices(session):
   """Return a list of devices for each worker in the system."""
   devices = session.list_devices()
-  return [device.name for device in devices if ':CPU:' in device.name]
+  return [
+      device.name for device in devices
+      if ':CPU:' in device.name and 'coordinator' not in device.name
+  ]
 
 
 class WatchdogManager(threading.Thread):
@@ -217,45 +220,68 @@ class WatchdogManager(threading.Thread):
     self.ping_interval = ping_interval
     self.shutdown_timeout = shutdown_timeout
     self.daemon = True
+    self._target = session.sess_str
     self._running = False
+    self._devices = devices
+
+    self._graph = None
+    self._session = None
+    self._worker_manager = None
+
+  def _reset_manager(self):
+    """Reset the graph, session and worker manager."""
     self._graph = ops.Graph()
     self._session = session_lib.Session(
-        target=session.sess_str,
+        target=self._target,
         graph=self._graph,
     )
 
-    with self._graph.as_default():
-      if devices is None:
-        devices = all_worker_devices(self._session)
-      self._worker_manager = WorkerHeartbeatManager.from_devices(
-          self._session, devices)
+    if self._devices is None:
+      self._devices = all_worker_devices(self._session)
 
-  def configure_and_run(self):
-    logging.info('Enabling worker watchdog.')
-    self._running = True
+    with self._graph.as_default():
+      self._worker_manager = WorkerHeartbeatManager.from_devices(
+          self._session, self._devices)
+
     self._worker_manager.configure(
         event_pb2.WorkerHeartbeatRequest(
             watchdog_config=event_pb2.WatchdogConfig(
                 timeout_ms=self.shutdown_timeout * 1000,)))
 
+  def configure_and_run(self):
+    logging.info('Enabling watchdog timer with %d second timeout '
+                 'and %d second ping interval.',
+                 self.shutdown_timeout, self.ping_interval)
+    self._reset_manager()
+    self._running = True
     self.start()
 
-  def __enter__(self):
-    self.configure_and_run()
-
-  def __exit__(self, exc_type, exc_val, exc_tb):
-    logging.info('Disabling worker watchdog.')
+  def stop(self):
+    logging.info('Stopping worker watchdog.')
     self._worker_manager.configure(
         event_pb2.WorkerHeartbeatRequest(
             watchdog_config=event_pb2.WatchdogConfig(timeout_ms=-1,)))
     self._running = False
     self.join()
 
+  def __enter__(self):
+    self.configure_and_run()
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    self.stop()
+
   def run(self):
     # Don't fetch logs or adjust timing: just ping the watchdog.
+    #
+    # If we hit an exception, reset our session as it is likely broken.
     while self._running:
-      self._worker_manager.ping(request=None)
-      time.sleep(self.ping_interval)
+      try:
+        self._worker_manager.ping(request=None)
+        time.sleep(self.ping_interval)
+      except errors.OpError as e:
+        # Catch any TF errors that occur so we don't stop sending heartbeats
+        logging.debug('Caught error while sending heartbeat: %s', e)
+        self._reset_manager()
 
 
 def start_worker_watchdog(session,
@@ -267,8 +293,6 @@ def start_worker_watchdog(session,
   if _WATCHDOG is None:
     # Ensure we can send a few pings before we timeout!
     ping_interval = min(shutdown_timeout / 10., ping_interval)
-    logging.info('Enabling watchdog timer with %d second timeout',
-                 shutdown_timeout)
     _WATCHDOG = WatchdogManager(session, devices, ping_interval,
                                 shutdown_timeout)
     _WATCHDOG.configure_and_run()

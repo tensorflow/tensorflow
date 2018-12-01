@@ -58,7 +58,8 @@ StatusOr<std::unique_ptr<HloModule>> InterpreterCompiler::RunHloPasses(
 }
 
 Status InterpreterCompiler::RunHloPassesOnModuleGroup(
-    HloModuleGroup* module_group, se::StreamExecutor* executor,
+    HloModuleGroup* module_group,
+    absl::Span<se::StreamExecutor* const> executors,
     DeviceMemoryAllocator* device_allocator) {
   return Unimplemented("Module group compilation not supported on Interpreter");
 }
@@ -92,11 +93,30 @@ InterpreterCompiler::RunBackendOnModuleGroup(
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> InterpreterCompiler::Compile(
-    std::unique_ptr<HloModuleGroup> /*module_group*/,
-    std::vector<std::vector<se::StreamExecutor*>> /*stream_execs*/,
-    DeviceMemoryAllocator* /*device_allocator*/) {
-  return Unimplemented(
-      "Module group compilation is not supported on Interpreter.");
+    std::unique_ptr<HloModuleGroup> module_group,
+    std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+    DeviceMemoryAllocator* device_allocator) {
+  if (module_group->empty()) {
+    return std::vector<std::unique_ptr<Executable>>();
+  }
+  if (module_group->size() > 1) {
+    return tensorflow::errors::Unimplemented(
+        "Compilation of multiple HLO modules is not supported on Interpreter.");
+  }
+  if (stream_exec.size() != 1 || stream_exec[0].size() != 1) {
+    return tensorflow::errors::Unimplemented(
+        "Unexpected number of StreamExecutor's.");
+  }
+  auto hlo_modules = module_group->ConsumeModules();
+  TF_ASSIGN_OR_RETURN(auto module,
+                      RunHloPasses(std::move(hlo_modules[0]), stream_exec[0][0],
+                                   device_allocator));
+  TF_ASSIGN_OR_RETURN(
+      auto executable,
+      RunBackend(std::move(module), stream_exec[0][0], device_allocator));
+  std::vector<std::unique_ptr<Executable>> ret;
+  ret.push_back(std::move(executable));
+  return std::move(ret);
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>

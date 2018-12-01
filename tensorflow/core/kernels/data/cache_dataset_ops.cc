@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
@@ -23,7 +23,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level description of
+// See documentation in ../../ops/dataset_ops.cc for a high-level description of
 // the following op.
 
 class CacheDatasetOp : public UnaryDatasetOpKernel {
@@ -133,6 +133,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("mode"), mode_));
@@ -243,6 +249,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
+        std::shared_ptr<model::Node> CreateNode(
+            IteratorContext* ctx, model::Node::Args args) const override {
+          return model::MakeKnownRatioNode(std::move(args),
+                                           /*ratio=*/1);
+        }
+
         Status SaveInternal(IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
           if (iteration_completed_) {
@@ -468,6 +480,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
+        std::shared_ptr<model::Node> CreateNode(
+            IteratorContext* ctx, model::Node::Args args) const override {
+          return model::MakeKnownRatioNode(std::move(args),
+                                           /*ratio=*/1);
+        }
+
         Status SaveInternal(IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
           TF_RETURN_IF_ERROR(
@@ -683,6 +701,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("mode"), mode_));
@@ -799,6 +823,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
+        std::shared_ptr<model::Node> CreateNode(
+            IteratorContext* ctx, model::Node::Args args) const override {
+          return model::MakeKnownRatioNode(std::move(args),
+                                           /*ratio=*/1);
+        }
+
         Status SaveInternal(IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
           return SaveInput(writer, input_impl_);
@@ -825,6 +855,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
+        std::shared_ptr<model::Node> CreateNode(
+            IteratorContext* ctx, model::Node::Args args) const override {
+          return model::MakeKnownRatioNode(std::move(args),
+                                           /*ratio=*/1);
+        }
+
         Status SaveInternal(IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("index"), index_));

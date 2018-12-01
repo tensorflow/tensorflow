@@ -47,7 +47,8 @@ class InterpreterCompiler : public Compiler {
       std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec,
       DeviceMemoryAllocator* device_allocator) override;
   Status RunHloPassesOnModuleGroup(
-      HloModuleGroup* module_group, se::StreamExecutor* executor,
+      HloModuleGroup* module_group,
+      absl::Span<se::StreamExecutor* const> executors,
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(

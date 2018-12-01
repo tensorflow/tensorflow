@@ -158,6 +158,8 @@ class AdamParameters(_OptimizationParameters):
                beta1=0.9,
                beta2=0.999,
                epsilon=1e-08,
+               lazy_adam=True,
+               sum_inside_sqrt=True,
                use_gradient_accumulation=False,
                pipeline_execution_with_tensor_core=True):
     """Optimization parameters for Adam.
@@ -169,10 +171,14 @@ class AdamParameters(_OptimizationParameters):
       beta2: A float value.
         The exponential decay rate for the 2nd moment estimates.
       epsilon: A small constant for numerical stability.
+      lazy_adam: Use lazy Adam instead of Adam. Lazy Adam trains faster.
+        Please see `optimization_parameters.proto` for details.
+      sum_inside_sqrt: This improves training speed. Please see
+        `optimization_parameters.proto` for details.
       use_gradient_accumulation: setting this to `True` makes embedding
-         gradients calculation more accurate but slower. Please see
-         `optimization_parameters.proto` for details.
-         for details.
+        gradients calculation more accurate but slower. Please see
+        `optimization_parameters.proto` for details.
+        for details.
       pipeline_execution_with_tensor_core: setting this to `True` makes training
         faster, but trained model will be different if step N and step N+1
         involve the same set of embedding ID. Please see
@@ -184,6 +190,8 @@ class AdamParameters(_OptimizationParameters):
     self.beta1 = beta1
     self.beta2 = beta2
     self.epsilon = epsilon
+    self.lazy_adam = lazy_adam
+    self.sum_inside_sqrt = sum_inside_sqrt
 
 
 class StochasticGradientDescentParameters(_OptimizationParameters):
@@ -276,6 +284,8 @@ class TPUEmbedding(object):
   # could have a field to indicate that the feature should not be used to
   # update embedding table (cr/204852758, cr/204940540). Also, this can support
   # different combiners for different features within the same table.
+  # TODO(shizhiw, b/118512626): Remove `batch_size` from `__init__` and move it
+  # to `FeatureConfig`?
 
   # TODO(shizhiw): will it be cleaner to make `table_to_config_dict` and
   # `feature_to_table_dict` lists of `TableSpec` and `FeatureSpec` respectively?
@@ -309,7 +319,7 @@ class TPUEmbedding(object):
       mode: `TRAINING` or `INFERENCE`.
       optimization_parameters: `AdagradParameters`, `AdamParameters`,
         `Stochasticgradientdescentparameters`. Must be set in training and must
-        not be `None` in inference.
+        be `None` in inference.
       tpu_embedding_test: A `bool`. Only used for testing.
 
     Raises:
@@ -636,7 +646,7 @@ class TPUEmbedding(object):
         contiguous_device = device
 
   def _generate_enqueue_op(self, sparse_features, device_ordinal):
-    with ops.colocate_with(sparse_features.values()[0]):
+    with ops.colocate_with(list(sparse_features.values())[0]):
       sample_idcs, embedding_idcs, aggregation_weights = (
           self._format_for_tpu_embedding_sparse_batch(sparse_features))
       return tpu_ops.enqueue_tpu_embedding_sparse_batch(
@@ -884,6 +894,10 @@ class _AdamHandler(_OptimizerHandler):
         self._optimization_parameters.beta2)
     table_descriptor.optimization_parameters.adam.epsilon = (
         self._optimization_parameters.epsilon)
+    table_descriptor.optimization_parameters.adam.use_non_lazy_adam = (
+        not self._optimization_parameters.lazy_adam)
+    table_descriptor.optimization_parameters.adam.use_sum_inside_sqrt = (
+        self._optimization_parameters.sum_inside_sqrt)
 
   def create_variables_and_ops(self, table, variable_name, num_hosts,
                                table_config, table_variables,
@@ -1055,17 +1069,14 @@ def _create_partitioned_variables(name,
                      'As TPU embedding is not optimized for small tables, '
                      'please consider other ways for this embedding lookup.')
 
-  slicing = [num_hosts, 1]
-
-  # TODO(shizhiw): deprecated, use tf.get_variable()?
-  return partitioned_variables.create_partitioned_variables(
-      name=name,
-      slicing=slicing,
+  return list(variable_scope.get_variable(
+      name,
       shape=(vocabulary_size, embedding_dimension),
+      partitioner=partitioned_variables.fixed_size_partitioner(num_hosts),
       dtype=dtypes.float32,
       initializer=initializer,
       collections=collections,
-      trainable=False)
+      trainable=False))
 
 
 @ops.RegisterGradient('TPUEmbeddingActivations')

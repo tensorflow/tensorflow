@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 
 namespace xla {
 
@@ -226,6 +229,98 @@ optional<int64> ComputeWhileLoopTripCount(HloInstruction* while_op,
   }
 
   VLOG(2) << "Loop has unknown trip count.";
+  return nullopt;
+}
+
+// If the only user of this instruction is a get-tuple-element, return that
+// get-tuple-element, otherwise return null. If this runs before CSE/DCE, we may
+// get a false negative if there are several copies of the same GTE, or there
+// are unused GTEs, but we can live with this.
+static HloInstruction* GetOnlyGTE(HloInstruction* inst) {
+  if (inst->user_count() != 1) {
+    return nullptr;
+  }
+
+  HloInstruction* user = inst->users().back();
+  if (user->opcode() != HloOpcode::kGetTupleElement) {
+    return nullptr;
+  }
+  return user;
+}
+
+optional<int64> ComputeWhileLoopTripCountUpperBound(HloInstruction* while_op) {
+  // If we know the exact trip count, it's also the upper bound.
+  auto exact_trip_count = ComputeWhileLoopTripCount(while_op);
+  if (exact_trip_count) {
+    VLOG(2) << "Loop has exact trip count.";
+    return exact_trip_count;
+  }
+
+  // There is one more case we know how to handle. If the loop condition only
+  // looks at one element of the tuple, and the loop body sets this element to a
+  // constant, there are two options:
+  // 1) Evaluating the condition on this constant returns true. In this case,
+  // the loop either executes 0 times, or is an infinite loop, depending on the
+  // init value.
+  // 2) Evaluating the condition on this constant returns false. In this case,
+  // the loop executes 0 or 1 times, depending on the init value. This means
+  // that, regardless of the init value, the upper bound on the trip count is 1.
+
+  // Check whether the condition depends on a single parameter, and find out
+  // which.
+  auto* while_cond = while_op->while_condition();
+  auto* while_cond_param = while_cond->parameter_instruction(0);
+  auto* cond_gte = GetOnlyGTE(while_cond_param);
+  if (!cond_gte) {
+    VLOG(2) << "Induction variable not found in loop condition: "
+            << while_cond->root_instruction()->ToString();
+    return nullopt;
+  }
+
+  // Now check whether this gets set to a constant by the while body.
+  auto* while_body = while_op->while_body();
+  auto* while_body_root = while_body->root_instruction();
+  if (while_body_root->opcode() != HloOpcode::kTuple) {
+    VLOG(3) << "While body's root is not a tuple instruction: "
+            << while_body_root->ToString();
+    return nullopt;
+  }
+
+  int64 indvar_index = cond_gte->tuple_index();
+  auto* while_body_indvar = while_body_root->operand(indvar_index);
+  if (while_body_indvar->opcode() != HloOpcode::kConstant) {
+    VLOG(3) << "While body does not set the IV to a constant: "
+            << while_body_indvar->ToString();
+    return nullopt;
+  }
+
+  // We have a constant. Evaluate the condition on this constant.
+  HloEvaluator evaluator(/*max_loop_iterations=*/0);
+  Literal fake_input = Literal::CreateFromShape(while_cond_param->shape());
+  TF_CHECK_OK(fake_input.CopyFrom(while_body_indvar->literal(),
+                                  /*dest_shape_index=*/{indvar_index},
+                                  /*src_shape_index=*/{}));
+  StatusOr<Literal> eval_result =
+      evaluator.Evaluate<Literal>(*while_cond, {std::move(fake_input)});
+
+  if (!eval_result.ok()) {
+    VLOG(2) << "Couldn't evaluate while loop condition.";
+    return nullopt;
+  }
+
+  Literal cond_result_pred = std::move(eval_result.ValueOrDie());
+  CHECK(ShapeUtil::Equal(cond_result_pred.shape(),
+                         ShapeUtil::MakeShape(PRED, {})));
+
+  // Per the explanation above, if the evaluated condition returns false, the
+  // loop executes at most once.
+  bool cond_returns_true = cond_result_pred.GetFirstElement<bool>();
+  if (!cond_returns_true) {
+    VLOG(2) << "Upper bound on the trip count is 1";
+    return 1;
+  }
+
+  VLOG(2) << "Loop has no known upper bound on the trip count.";
   return nullopt;
 }
 

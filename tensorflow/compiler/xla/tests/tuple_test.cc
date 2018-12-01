@@ -515,7 +515,7 @@ class TupleHloTest : public HloTestBase {};
 // Disabled on the interpreter because bitcast doesn't exist on the interpreter.
 XLA_TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
   const char* testcase = R"(
-    HloModule m
+    HloModule m, is_scheduled=true
 
     ENTRY test {
       name.1 = (f32[3]{0}) parameter(0)

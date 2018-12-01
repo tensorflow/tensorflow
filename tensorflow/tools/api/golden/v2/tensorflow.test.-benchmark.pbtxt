@@ -7,6 +7,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "evaluate"
+    argspec: "args=[\'self\', \'tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "is_abstract"
     argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
   }

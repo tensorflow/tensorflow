@@ -86,8 +86,8 @@ string AttrSlice::SummarizeNode() const {
 string SummarizeNode(const Node& node) { return SummarizeNodeDef(node.def()); }
 
 string SummarizeNodeDef(const NodeDef& node_def) {
-  string ret = strings::StrCat(FormatNodeDefForError(node_def), " = ",
-                               node_def.op(), "[");
+  string ret = strings::StrCat(errors::FormatNodeNameForError(node_def.name()),
+                               " = ", node_def.op(), "[");
   strings::StrAppend(&ret, SummarizeAttrsHelper(node_def, node_def.device()));
   strings::StrAppend(&ret, "](");
 
@@ -102,11 +102,16 @@ string SummarizeNodeDef(const NodeDef& node_def) {
   return ret;
 }
 
+string SummarizeAttrs(const NodeDef& node_def) {
+  return SummarizeAttrsHelper(node_def, node_def.device());
+}
+
 string FormatNodeForError(const Node& node) {
   return FormatNodeDefForError(node.def());
 }
 
 string FormatNodeDefForError(const NodeDef& node_def) {
+  VLOG(1) << "Error in the node: " << SummarizeNodeDef(node_def);
   return errors::FormatNodeNameForError(node_def.name());
 }
 
@@ -419,9 +424,9 @@ Status NumOutputsForNode(const NodeDef& node_def, const OpDef& op_def,
 
 Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   if (node_def.op() != op_def.name()) {
-    return errors::InvalidArgument("NodeDef op '", node_def.op(),
-                                   "' does not match ", SummarizeOpDef(op_def),
-                                   "; NodeDef: ", SummarizeNodeDef(node_def));
+    return errors::InvalidArgument(
+        "NodeDef op '", node_def.op(), "' does not match ",
+        SummarizeOpDef(op_def), "; NodeDef: ", FormatNodeDefForError(node_def));
   }
 
   bool seen_control = false;
@@ -431,14 +436,14 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
     if (str_util::StartsWith(input, "^")) {
       seen_control = true;
       if (input.find(':') != string::npos) {
-        return errors::InvalidArgument(
-            "Control input '", input,
-            "' must not have ':' in NodeDef: ", SummarizeNodeDef(node_def));
+        return errors::InvalidArgument("Control input '", input,
+                                       "' must not have ':' in NodeDef: ",
+                                       FormatNodeDefForError(node_def));
       }
     } else if (seen_control) {
-      return errors::InvalidArgument(
-          "Non-control input '", input,
-          "' after control input in NodeDef: ", SummarizeNodeDef(node_def));
+      return errors::InvalidArgument("Non-control input '", input,
+                                     "' after control input in NodeDef: ",
+                                     FormatNodeDefForError(node_def));
     } else {
       ++num_inputs;
     }
@@ -468,13 +473,14 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
       // the binary producing it.
       return errors::InvalidArgument(
           "NodeDef mentions attr '", attr.first, "' not in ",
-          SummarizeOpDef(op_def), "; NodeDef: ", SummarizeNodeDef(node_def),
+          SummarizeOpDef(op_def),
+          "; NodeDef: ", FormatNodeDefForError(node_def),
           ". (Check whether your GraphDef-interpreting binary is up to date "
           "with your GraphDef-generating binary.).");
     }
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         ValidateAttrValue(attr.second, *iter->second),
-        "; NodeDef: ", SummarizeNodeDef(node_def), "; ",
+        "; NodeDef: ", FormatNodeDefForError(node_def), "; ",
         SummarizeOpDef(op_def));
     // Keep track of which attr names have (not) been found in the NodeDef.
     op_attrs.erase(iter);
@@ -487,10 +493,10 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
       if (!attrs.empty()) strings::StrAppend(&attrs, "', '");
       strings::StrAppend(&attrs, attr_pair.first);
     }
-    return errors::InvalidArgument("NodeDef missing attr",
-                                   op_attrs.size() == 1 ? " '" : "s '", attrs,
-                                   "' from ", SummarizeOpDef(op_def),
-                                   "; NodeDef: ", SummarizeNodeDef(node_def));
+    return errors::InvalidArgument(
+        "NodeDef missing attr", op_attrs.size() == 1 ? " '" : "s '", attrs,
+        "' from ", SummarizeOpDef(op_def),
+        "; NodeDef: ", FormatNodeDefForError(node_def));
   }
 
   // Validate the number of inputs.
@@ -501,7 +507,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
     return errors::InvalidArgument(
         "NodeDef expected inputs '", DataTypeVectorString(inputs),
         "' do not match ", num_inputs, " inputs specified; ",
-        SummarizeOpDef(op_def), "; NodeDef: ", SummarizeNodeDef(node_def));
+        SummarizeOpDef(op_def), "; NodeDef: ", FormatNodeDefForError(node_def));
   }
 
   return Status::OK();
@@ -657,7 +663,7 @@ Status ValidateExternalNodeDefSyntax(const NodeDef& node_def) {
 Status AttachDef(const Status& status, const NodeDef& node_def) {
   Status ret = status;
   errors::AppendToMessage(
-      &ret, strings::StrCat(" [[", SummarizeNodeDef(node_def), "]]"));
+      &ret, strings::StrCat(" [[", FormatNodeDefForError(node_def), "]]"));
   return ret;
 }
 

@@ -61,24 +61,24 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       self.evaluate(step.assign(100))
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
+  @test_util.run_deprecated_v1
   def testVariables(self):
-    with self.cached_session():
-      step = variables.VariableV1(1)
-      assign_1 = step.assign(1)
-      assign_2 = step.assign(2)
-      assign_100 = step.assign(100)
-      decayed_lr = learning_rate_decay.exponential_decay(.1, step, 3, 0.96,
-                                                         staircase=True)
-      variables.global_variables_initializer().run()
-      # No change to learning rate
-      assign_1.op.run()
-      self.assertAllClose(decayed_lr.eval(), .1, 1e-6)
-      assign_2.op.run()
-      self.assertAllClose(decayed_lr.eval(), .1, 1e-6)
-      # Decayed learning rate
-      assign_100.op.run()
-      expected = .1 * 0.96 ** (100 // 3)
-      self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+    step = variables.VariableV1(1)
+    assign_1 = step.assign(1)
+    assign_2 = step.assign(2)
+    assign_100 = step.assign(100)
+    decayed_lr = learning_rate_decay.exponential_decay(
+        .1, step, 3, 0.96, staircase=True)
+    self.evaluate(variables.global_variables_initializer())
+    # No change to learning rate
+    self.evaluate(assign_1.op)
+    self.assertAllClose(self.evaluate(decayed_lr), .1, 1e-6)
+    self.evaluate(assign_2.op)
+    self.assertAllClose(self.evaluate(decayed_lr), .1, 1e-6)
+    # Decayed learning rate
+    self.evaluate(assign_100.op)
+    expected = .1 * 0.96**(100 // 3)
+    self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
   @test_util.run_in_graph_and_eager_modes
   def testPiecewiseConstant(self):
@@ -101,6 +101,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
     self.assertAllClose(self.evaluate(decayed_lr), 0.001, 1e-6)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def testPiecewiseConstantEdgeCases(self):
     x_int = resource_variable_ops.ResourceVariable(
         0, dtype=variables.dtypes.int32)

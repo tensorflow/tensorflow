@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bitmap.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -1047,8 +1046,15 @@ Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   return Status::OK();
 }
 
-Status HloEvaluator::HandleAfterAll(HloInstruction* token) {
-  evaluated_[token] = LiteralUtil::CreateToken();
+Status HloEvaluator::HandleAfterAll(HloInstruction* after_all) {
+  evaluated_[after_all] = LiteralUtil::CreateToken();
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleAddDependency(HloInstruction* add_dependency) {
+  // AddDedendency just forwards its zero-th operand.
+  evaluated_[add_dependency] =
+      GetEvaluatedLiteralFor(add_dependency->operand(0)).Clone();
   return Status::OK();
 }
 
@@ -1280,10 +1286,10 @@ StatusOr<Literal> EvaluateSortInternal(HloInstruction* sort,
           key_value_vector.push_back(
               std::make_pair(keys_data[i], values_data[i]));
         }
-        std::sort(key_value_vector.begin(), key_value_vector.end(),
-                  [](const kv_pair& a, const kv_pair& b) {
-                    return SafeLess<KeyType>(a.first, b.first);
-                  });
+        std::stable_sort(key_value_vector.begin(), key_value_vector.end(),
+                         [](const kv_pair& a, const kv_pair& b) {
+                           return SafeLess<KeyType>(a.first, b.first);
+                         });
         std::vector<KeyType> result_keys;
         // We use a InlinedVector here because we need to convert it to an
         // absl::Span later, and this would not work with std::vector<bool>.

@@ -85,23 +85,19 @@ class CallTreesTest(converter_testing.TestCase):
       tc = TestClass()
       self.assertEquals(3, result.test_fn_2(tc, 1))
 
-  def test_py_func_no_retval(self):
+  def test_known_called_lambda(self):
+
+    l = lambda x: x
 
     def test_fn(a):
-      setattr(a, 'foo', 'bar')
+      return l(a)
 
-    with self.converted(test_fn, call_trees, {'setattr': setattr}) as result:
-      with self.cached_session() as sess:
+    ns = {'l': l}
+    node, ctx = self.prepare(test_fn, ns)
+    node = call_trees.transform(node, ctx)
 
-        class Dummy(object):
-          pass
-
-        a = Dummy()
-        result.test_fn(a)
-        py_func_op, = sess.graph.get_operations()
-        self.assertFalse(hasattr(a, 'foo'))
-        sess.run(py_func_op)
-        self.assertEquals('bar', a.foo)
+    with self.compiled(node, ns) as result:
+      self.assertEquals(1, result.test_fn(1))
 
   def test_py_func_known_function(self):
 
@@ -112,7 +108,7 @@ class CallTreesTest(converter_testing.TestCase):
                         dtypes.int64) as result:
       with self.cached_session() as sess:
         self.assertTrue(isinstance(result.test_fn(), ops.Tensor))
-        self.assertIn(sess.run(result.test_fn()), (0, 1, 2))
+        self.assertIn(self.evaluate(result.test_fn()), (0, 1, 2))
 
   def test_uncompiled_modules(self):
 
@@ -131,31 +127,21 @@ class CallTreesTest(converter_testing.TestCase):
     with self.compiled(node, ns) as result:
       with self.cached_session() as sess:
         result_tensor = result.test_fn(constant_op.constant(1))
-        self.assertEquals(sess.run(result_tensor), 3)
+        self.assertEquals(self.evaluate(result_tensor), 3)
 
-  def test_decorated_callee(self):
+  def test_call_to_decorated_function(self):
 
-    # Using this trick to prevent the Python loader from automatically expanding
-    # the decorator. This simulates the situation found when converting a
-    # function from within an actual decorator.
+    def decorator(f):
+      return f
 
-    def wrapper_fn():
+    @decorator
+    def called_fn(a):
+      return a
 
-      def dec(f):
-        return f
+    def test_fn(a):
+      return called_fn(a)
 
-      @dec
-      def called_fn(a):
-        return a
-
-      @dec
-      def test_fn(a):
-        return called_fn(a)
-
-      return test_fn
-
-    node, ctx = self.prepare(wrapper_fn, {})
-    node = node.body[2]
+    node, ctx = self.prepare(test_fn, {'called_fn': called_fn})
     node = call_trees.transform(node, ctx)
 
 

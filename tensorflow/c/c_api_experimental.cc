@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_experimental.h"
 
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
+#include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
@@ -50,8 +56,8 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
     // These XLA flags are needed to trigger XLA properly from C (more generally
     // non-Python) clients. If this API is called again with `enable` set to
     // false, it is safe to keep these flag values as is.
-    tensorflow::legacy_flags::MarkForCompilationPassFlags* flags =
-        tensorflow::legacy_flags::GetMarkForCompilationPassFlags();
+    tensorflow::MarkForCompilationPassFlags* flags =
+        tensorflow::GetMarkForCompilationPassFlags();
     flags->tf_xla_cpu_global_jit = true;
     flags->tf_xla_min_cluster_size = 1;
   } else {
@@ -70,8 +76,8 @@ TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
     // These XLA flags are needed to trigger XLA properly from C (more generally
     // non-Python) clients. If this API is called again with `enable` set to
     // false, it is safe to keep these flag values as is.
-    tensorflow::legacy_flags::MarkForCompilationPassFlags* flags =
-        tensorflow::legacy_flags::GetMarkForCompilationPassFlags();
+    tensorflow::MarkForCompilationPassFlags* flags =
+        tensorflow::GetMarkForCompilationPassFlags();
     flags->tf_xla_cpu_global_jit = true;
     flags->tf_xla_min_cluster_size = 1;
   } else {
@@ -8738,7 +8744,145 @@ void TFE_TensorHandlePrintDebugString(TFE_TensorHandle* handle) {
   TF_DeleteStatus(status);
 }
 
-TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
-                                                      const char* errMsg) {
+struct TFE_ExecuteOpNotification {
+  TFE_ExecuteOpNotification() : status(TF_NewStatus(), TF_DeleteStatus) {}
+  tensorflow::Notification n;
+  std::unique_ptr<tensorflow::Thread> thread;
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status;
+};
+
+TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(TFE_Op* op,
+                                                    TFE_TensorHandle** retvals,
+                                                    int* num_retvals,
+                                                    TF_Status* status) {
+  TFE_ExecuteOpNotification* n = new TFE_ExecuteOpNotification;
+
+  n->thread.reset(op->operation.EagerContext()->TFEnv()->StartThread(
+      tensorflow::ThreadOptions(), "ExecuteOpThread",
+      [op, retvals, num_retvals, n]() {
+        TFE_Execute(op, retvals, num_retvals, n->status.get());
+        n->n.Notify();
+      }));
+
+  return n;
+}
+
+void TFE_ExecuteOpNotificationWaitAndDelete(
+    TFE_ExecuteOpNotification* notification, TF_Status* status) {
+  if (notification == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Passed in notification is a nullptr.");
+
+    return;
+  }
+  if (notification->thread == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Passed in notification didn't start a thread correctly. Cleaning up "
+        "this notification. Please re-execute the operation to get a new "
+        "notification.");
+
+    delete notification;
+    return;
+  }
+
+  notification->n.WaitForNotification();
+
+  status->status = notification->status->status;
+
+  delete notification;
+}
+
+void TF_MakeInternalErrorStatus(TF_Status* status, const char* errMsg) {
   status->status = tensorflow::errors::Internal(errMsg);
+}
+
+// This builder is used in the eager API to build a NodeDef.
+struct TF_AttrBuilder : public tensorflow::AttrBuilder {
+  using tensorflow::AttrBuilder::AttrBuilder;
+  // The string buffers to make sure that any `attr_name` we pass into
+  // `builder->Set()` will outlive the subsequent
+  // `TF_AttrBuilderCheckCanRunOnDevice()` call(s) on the same `builder`.
+  std::set<std::string> attr_names;
+};
+
+TF_AttrBuilder* TF_NewAttrBuilder(const char* op_name) {
+  return new TF_AttrBuilder(op_name);
+}
+
+void TF_DeleteAttrBuilder(TF_AttrBuilder* builder) { delete builder; }
+
+void TF_AttrBuilderSetType(TF_AttrBuilder* builder, const char* attr_name,
+                           TF_DataType value) {
+  auto iter = builder->attr_names.insert(attr_name).first;
+  builder->Set((*iter).c_str(), static_cast<tensorflow::DataType>(value));
+}
+
+void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder, const char* attr_name,
+                               const TF_DataType* values, int num_values) {
+  auto iter = builder->attr_names.insert(attr_name).first;
+  builder->Set(
+      (*iter).c_str(),
+      tensorflow::gtl::ArraySlice<const tensorflow::DataType>(
+          reinterpret_cast<const tensorflow::DataType*>(values), num_values));
+}
+
+void TF_AttrBuilderCheckCanRunOnDevice(TF_AttrBuilder* builder,
+                                       const char* device_type,
+                                       TF_Status* status) {
+  status->status = tensorflow::FindKernelDef(
+      tensorflow::DeviceType(device_type), builder->BuildNodeDef(),
+      /* def = */ nullptr, /* kernel_class_name = */ nullptr);
+}
+
+const char* TF_GetNumberAttrForOpListInput(const char* op_name, int input_index,
+                                           TF_Status* status) {
+  const tensorflow::OpDef* op_def = nullptr;
+  status->status =
+      tensorflow::OpRegistry::Global()->LookUpOpDef(op_name, &op_def);
+  if (!status->status.ok()) return nullptr;
+
+  if (input_index >= op_def->input_arg_size() || input_index < 0) {
+    status->status = tensorflow::errors::InvalidArgument(
+        input_index, " out of range for ", op_name);
+    return nullptr;
+  }
+
+  const tensorflow::OpDef_ArgDef& input_arg = op_def->input_arg()[input_index];
+
+  if (input_arg.number_attr().empty()) {
+    status->status = tensorflow::errors::NotFound(
+        op_name, " does not have number_attr() defined.");
+    return nullptr;
+  }
+
+  // The returned string is owned by OpRegistry, so liveness is not a concern.
+  return input_arg.number_attr().c_str();
+}
+
+int TF_OpIsStateful(const char* op_type, TF_Status* status) {
+  const tensorflow::OpRegistrationData* op_reg_data;
+  status->status =
+      tensorflow::OpRegistry::Global()->LookUp(op_type, &op_reg_data);
+  if (!status->status.ok()) {
+    return 0;
+  }
+  return op_reg_data->op_def.is_stateful();
+}
+
+void TF_InitMain(const char* usage, int* argc, char*** argv) {
+  tensorflow::port::InitMain(usage, argc, argv);
+}
+
+int TF_PickUnusedPortOrDie() {
+  return tensorflow::internal::PickUnusedPortOrDie();
+}
+
+TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType dtype_arg,
+                                                void* data, size_t len) {
+  auto dtype = static_cast<tensorflow::DataType>(dtype_arg);
+  DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
+
+  tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
+  std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
+  return new TFE_TensorHandle(tensor, nullptr, nullptr);
 }

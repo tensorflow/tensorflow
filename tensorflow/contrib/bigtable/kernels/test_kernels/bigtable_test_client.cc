@@ -366,6 +366,39 @@ BigtableTestClient::MutateRows(
   return MakeUnique<MutateRowsResponse>(request.entries_size());
 }
 
+std::unique_ptr<grpc::ClientAsyncResponseReaderInterface<
+    google::bigtable::v2::MutateRowResponse>>
+BigtableTestClient::AsyncMutateRow(
+    grpc::ClientContext* context,
+    google::bigtable::v2::MutateRowRequest const& request,
+    grpc::CompletionQueue* cq) {
+  LOG(WARNING) << "Call to InMemoryDataClient::" << __func__
+               << "(); this will likely cause a crash!";
+  return nullptr;
+}
+
+std::unique_ptr<::grpc::ClientAsyncReaderInterface<
+    ::google::bigtable::v2::SampleRowKeysResponse>>
+BigtableTestClient::AsyncSampleRowKeys(
+    ::grpc::ClientContext* context,
+    const ::google::bigtable::v2::SampleRowKeysRequest& request,
+    ::grpc::CompletionQueue* cq, void* tag) {
+  LOG(WARNING) << "Call to InMemoryDataClient::" << __func__
+               << "(); this will likely cause a crash!";
+  return nullptr;
+}
+
+std::unique_ptr<::grpc::ClientAsyncReaderInterface<
+    ::google::bigtable::v2::MutateRowsResponse>>
+BigtableTestClient::AsyncMutateRows(
+    ::grpc::ClientContext* context,
+    const ::google::bigtable::v2::MutateRowsRequest& request,
+    ::grpc::CompletionQueue* cq, void* tag) {
+  LOG(WARNING) << "Call to InMemoryDataClient::" << __func__
+               << "(); this will likely cause a crash!";
+  return nullptr;
+}
+
 std::shared_ptr<grpc::Channel> BigtableTestClient::Channel() {
   LOG(WARNING) << "Call to InMemoryDataClient::Channel(); this will likely "
                   "cause a crash!";

@@ -830,6 +830,45 @@ TEST(Tensor_Scalar, Basics) {
   }
 }
 
+TEST(Tensor_HostScalar, Basics) {
+  {
+    Tensor t(true);
+    EXPECT_EQ(DT_BOOL, t.dtype());
+    EXPECT_EQ(1, t.NumElements());
+    auto Tt = t.scalar<bool>();
+    EXPECT_EQ(1, Tt.size());
+    EXPECT_EQ(0, Tt.rank());
+    EXPECT_TRUE(Tt());
+    Tt() = false;
+    EXPECT_FALSE(Tt());
+  }
+  {
+    Tensor t(123.45f);
+    EXPECT_EQ(DT_FLOAT, t.dtype());
+    EXPECT_EQ(1, t.NumElements());
+    auto Tt = t.scalar<float>();
+    EXPECT_EQ(1, Tt.size());
+    EXPECT_EQ(0, Tt.rank());
+    EXPECT_FLOAT_EQ(123.45f, Tt());
+    Tt() = 42.0f;
+    EXPECT_FLOAT_EQ(42.0f, Tt());
+  }
+  {
+    // NOTE(mrry): Use long enough strings so that the contents are dynamically
+    // allocated, and the absence of a call to the string destructor would
+    // cause a memory leak.
+    Tensor t("fooooooooooooooooooooooooooooooooooooo");
+    EXPECT_EQ(DT_STRING, t.dtype());
+    EXPECT_EQ(1, t.NumElements());
+    auto Tt = t.scalar<string>();
+    EXPECT_EQ(1, Tt.size());
+    EXPECT_EQ(0, Tt.rank());
+    EXPECT_EQ("fooooooooooooooooooooooooooooooooooooo", Tt());
+    Tt() = "baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaar";
+    EXPECT_EQ("baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaar", Tt());
+  }
+}
+
 TEST(Tensor_Float, Reshape_And_Slice_Assignment) {
   // A test to experiment with a way to assign to a subset of a tensor
   Tensor t(DT_FLOAT, TensorShape({10, 4, 3, 2}));

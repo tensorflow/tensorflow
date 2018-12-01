@@ -212,7 +212,7 @@ class _Merge(Layer):
     if len(mask) != len(inputs):
       raise ValueError('The lists `inputs` and `mask` '
                        'should have the same length.')
-    if all([m is None for m in mask]):
+    if all(m is None for m in mask):
       return None
     masks = [array_ops.expand_dims(m, axis=0) for m in mask if m is not None]
     return K.all(K.concatenate(masks, axis=0), axis=0, keepdims=False)
@@ -378,7 +378,7 @@ class Concatenate(_Merge):
     if not isinstance(input_shape, list) or len(input_shape) < 2:
       raise ValueError('A `Concatenate` layer should be called '
                        'on a list of at least 2 inputs')
-    if all([shape is None for shape in input_shape]):
+    if all(shape is None for shape in input_shape):
       return
     reduced_inputs_shapes = [list(shape) for shape in input_shape]
     shape_set = set()
@@ -418,7 +418,7 @@ class Concatenate(_Merge):
     if len(mask) != len(inputs):
       raise ValueError('The lists `inputs` and `mask` '
                        'should have the same length.')
-    if all([m is None for m in mask]):
+    if all(m is None for m in mask):
       return None
     # Make a list of masks while making sure
     # the dimensionality of each mask

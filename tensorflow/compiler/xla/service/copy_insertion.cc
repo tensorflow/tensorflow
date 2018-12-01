@@ -341,7 +341,8 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
   HloInstruction* root = entry->root_instruction();
 
   ShapeTree<bool> output_indices_to_copy(root->shape());
-  std::vector<ShapeTree<HloInstruction*>> copied_parameters;
+  std::vector<absl::optional<ShapeTree<HloInstruction*>>> copied_parameters(
+      entry->num_parameters());
   bool has_alias = false;
   for (auto* param : entry->parameter_instructions()) {
     bool param_has_alias = false;
@@ -361,6 +362,9 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
       continue;
     }
 
+    TF_RET_CHECK(param->parameter_number() < entry->num_parameters());
+    TF_RET_CHECK(!copied_parameters[param->parameter_number()]);
+
     has_alias = true;
     // Store a snapshot of users before DeepCopyInstruction, as
     // DeepCopyInstruction introduces new users of the instruction.
@@ -374,7 +378,7 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
       TF_RETURN_IF_ERROR(param->ReplaceUseWith(user, copied));
     }
 
-    copied_parameters.push_back(param_copy_tree);
+    copied_parameters[param->parameter_number()] = param_copy_tree;
   }
 
   if (!has_alias) {
@@ -393,8 +397,11 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
   TF_RETURN_IF_ERROR(module->input_output_alias_config().ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index, int64 param_number,
           const ShapeIndex& input_index) -> Status {
+        if (!copied_parameters[param_number]) {
+          return Status::OK();
+        }
         HloInstruction* from =
-            copied_parameters[param_number].element(input_index);
+            copied_parameters[param_number]->element(input_index);
         HloInstruction* to = output_copy_tree.element(output_index);
 
         TF_RET_CHECK(from != nullptr);
@@ -435,7 +442,6 @@ class CopyRemover {
               const HloOrdering& ordering, HloModule* module)
       : module_(module),
         alias_analysis_(alias_analysis),
-        ordering_(ordering),
         buffer_value_tracker_(*module, alias_analysis, ordering) {}
 
   // Try to elide the given copy. The copy is elided if the instruction is not
@@ -996,7 +1002,6 @@ class CopyRemover {
 
   HloModule* module_;
   const HloAliasAnalysis& alias_analysis_;
-  const HloOrdering& ordering_;
 
   // Object tracking the HLO values contained in each HLO buffer.
   BufferValueTracker buffer_value_tracker_;

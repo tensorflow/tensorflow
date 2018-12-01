@@ -14,10 +14,12 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
+        "//knowledge/cerebra/sense/im2query:__subpackages__",
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
         "//medical/pathology:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//vr/perception:__subpackages__",
     ],
 )
 
@@ -69,8 +71,6 @@ py_library(
     deps = [
         ":async_checkpoint",
         ":tpu_lib",
-        "//tensorflow/compiler/xla/experimental/xla_sharding",
-        "//tensorflow/compiler/xla/python_api:xla_shape",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -175,6 +175,7 @@ tf_custom_op_py_library(
     deps = [
         ":profiler",
         ":tpu_ops",
+        "//tensorflow/contrib/compiler:xla",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -209,11 +210,13 @@ py_library(
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
-        "//third_party/cloud_tpu/models/keras:__subpackages__",
+        "//third_party/cloud_tpu/models/keras_colab:__subpackages__",
+        "//third_party/cloud_tpu/models/mnist_keras:__subpackages__",
+        "//third_party/cloud_tpu/models/resnet50_keras:__subpackages__",
     ],
     deps = [
         ":tpu_lib",
-        "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
         "//tensorflow/contrib/distribute",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
@@ -244,6 +247,7 @@ py_library(
         "python/tpu/bfloat16.py",
         "python/tpu/device_assignment.py",
         "python/tpu/session_support.py",
+        "python/tpu/tensor_tracer.py",
         "python/tpu/topology.py",
         "python/tpu/tpu.py",
         "python/tpu/tpu_feed.py",
@@ -258,7 +262,10 @@ py_library(
         ":datasets",
         ":profiler",
         ":tpu_py",
-        "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
+        "//tensorflow/compiler/xla/python_api:xla_shape",
+        "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
+        "//tensorflow/contrib/compiler:xla",
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/contrib/tpu/proto:optimization_parameters_proto_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
@@ -348,17 +355,6 @@ tf_py_test(
     name = "tpu_infeed_test",
     size = "small",
     srcs = ["python/tpu/tpu_infeed_test.py"],
-    additional_deps = [
-        ":tpu",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-tf_py_test(
-    name = "tpu_function_test",
-    size = "small",
-    srcs = ["python/tpu/tpu_function_test.py"],
     additional_deps = [
         ":tpu",
         "//tensorflow/python:framework",

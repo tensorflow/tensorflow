@@ -23,6 +23,7 @@ py_library(
         ":constants",
         ":loader",
         ":main_op",
+        ":save",
         ":signature_constants",
         ":signature_def_utils",
         ":simple_save",
@@ -82,6 +83,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
+        ":signature_def_utils",
         ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -113,6 +115,7 @@ py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -260,6 +263,39 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_library(
+    name = "save",
+    srcs = [
+        "save.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":loader",
+        ":signature_constants",
+        ":signature_def_utils",
+        ":utils",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_test(
+    name = "save_test",
+    srcs = ["save_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":save",
+        ":signature_constants",
+        ":tag_constants",
+        "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

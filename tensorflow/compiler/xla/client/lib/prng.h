@@ -25,7 +25,7 @@ namespace xla {
 
 // Returns a tensor containing 'shape' random values uniformly distributed in
 // the range [minval, maxval). Requires 2 32-bit integer seeds.
-// Currently only 'shape's of type F32 are implemented.
+// Currently only 'shape's of type F32, S32 and S64 are implemented.
 XlaOp StatelessRngUniform(std::array<XlaOp, 2> seeds, const Shape& shape,
                           XlaOp minval, XlaOp maxval);
 

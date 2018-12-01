@@ -630,7 +630,7 @@ class ConvolutionTest(test.TestCase):
       expected_size = [None, num_filters, None, None]
       expected_size_dynamic = [5, num_filters, 7, 9]
 
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         images = array_ops.placeholder(np.float32,
                                        [None, input_size[1], None, None])
         output = layers_lib.convolution2d(
@@ -721,7 +721,7 @@ class Convolution2dTransposeTests(test.TestCase):
   def testOutputSizeWithStrideOneSamePaddingNCHW(self):
     # `NCHW` data format is only supported for `GPU` device.
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 10, 12]
         expected_size = [5, num_filters, 10, 12]
@@ -740,7 +740,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWithStrideOneValidPaddingNCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 10, 12]
         expected_size = [5, num_filters, 12, 14]
@@ -759,7 +759,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWithStrideTwoValidPaddingNCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 9, 11]
         expected_size = [5, num_filters, 19, 23]
@@ -779,7 +779,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWith1x1StrideTwoSamePaddingNCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 1, 1]
         expected_size = [1, num_filters, 2, 2]
@@ -799,7 +799,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWith1x1StrideTwoValidPaddingNCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 1, 1]
         expected_size = [1, num_filters, 2, 2]
@@ -817,7 +817,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWith2x2StrideTwoSamePaddingNCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 2, 2]
         expected_size = [1, num_filters, 4, 4]
@@ -835,7 +835,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWith2x2StrideTwoValidPaddingNCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 2, 2]
         expected_size = [1, num_filters, 4, 4]
@@ -853,7 +853,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWithStride2x1NCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
         expected_size = [1, num_filters, 6, 5]
@@ -871,7 +871,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWithStride2x4NCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
         expected_size = [1, num_filters, 6, 8]
@@ -889,7 +889,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWithStride2x5NCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
         expected_size = [1, num_filters, 6, 10]
@@ -2056,7 +2056,7 @@ class BatchNormTest(test.TestCase):
     channels = 3
     np.random.seed(1)
     use_gpu = fused
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if data_format == 'NHWC':
         image_shape = (batch_size, height, width, channels)
         axis = (0, 1, 2)
@@ -2140,7 +2140,7 @@ class BatchNormTest(test.TestCase):
     channels = 3
     np.random.seed(1)
     use_gpu = fused
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if data_format == 'NHWC':
         image_shape = (batch_size, height, width, channels)
         axis = (0, 1, 2)
@@ -2344,7 +2344,7 @@ class BatchNormTest(test.TestCase):
     np.random.seed(1)
     use_gpu = fused
     np.random.seed(1)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if data_format == 'NHWC':
         image_shape = (batch_size, height, width, channels)
         axis = (0, 1, 2)
@@ -2491,7 +2491,7 @@ class BatchNormTest(test.TestCase):
     channels = 3
     np.random.seed(1)
     use_gpu = fused
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if data_format == 'NHWC':
         image_shape = (batch_size, height, width, channels)
         axis = (0, 1, 2)
@@ -2576,7 +2576,7 @@ class BatchNormTest(test.TestCase):
     channels = 32
     np.random.seed(1)
     use_gpu = fused
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if data_format == 'NHWC':
         image_shape = (batch_size, height, width, channels)
         axis = (0, 1, 2)
@@ -2674,7 +2674,7 @@ class BatchNormTest(test.TestCase):
 
   def _runBatchNormalizationWithFormat(self, shape, data_format, is_training):
     channels = shape[-1]
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       images = np.arange(np.product(shape), dtype=np.float32).reshape(shape)
       beta = init_ops.constant_initializer(
           np.arange(2, channels + 2, dtype=np.float32))
@@ -2776,7 +2776,7 @@ class BatchNormTest(test.TestCase):
             'moving_variance': variance,
         },
         data_format='NCHW')
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       sess.run(variables_lib.global_variables_initializer())
       return sess.run(output)
 
@@ -3811,7 +3811,7 @@ class UnitNormTests(test.TestCase):
       image = random_ops.random_uniform((height, width, 3))
       output = _layers.unit_norm(image, dim=dim, epsilon=1e-6)
       norms = math_ops.sqrt(
-          math_ops.reduce_sum(math_ops.square(output), reduction_indices=dim))
+          math_ops.reduce_sum(math_ops.square(output), axis=dim))
 
       shape = [height, width, 3]
       del shape[dim]
@@ -3847,7 +3847,7 @@ class UnitNormTests(test.TestCase):
       image = array_ops.placeholder(dtypes.float32, (None, None, 3))
       output = _layers.unit_norm(image, dim=dim, epsilon=1e-6)
       norms = math_ops.sqrt(
-          math_ops.reduce_sum(math_ops.square(output), reduction_indices=dim))
+          math_ops.reduce_sum(math_ops.square(output), axis=dim))
 
       with self.cached_session():
         actual = norms.eval({image: placeholder_value})

@@ -154,13 +154,13 @@ class AttentionWrapperTest(test.TestCase):
 
     if attention_layer_sizes is not None:
       # Compute sum of attention_layer_sizes. Use encoder_output_depth if None.
-      attention_depth = sum([attention_layer_size or encoder_output_depth
-                             for attention_layer_size in attention_layer_sizes])
+      attention_depth = sum(attention_layer_size or encoder_output_depth
+                            for attention_layer_size in attention_layer_sizes)
     elif attention_layers is not None:
       # Compute sum of attention_layers output depth.
       attention_depth = sum(
           attention_layer.compute_output_shape(
-              [batch_size, cell_depth + encoder_output_depth])[-1].value
+              [batch_size, cell_depth + encoder_output_depth]).dims[-1].value
           for attention_layer in attention_layers)
     else:
       attention_depth = encoder_output_depth * len(create_attention_mechanisms)

@@ -35,6 +35,19 @@ from tensorflow.python.platform import test as test_lib
 # os.environ["TF_MATMUL_AUTOTUNE_ENABLE"] = "1" to enable it.
 
 
+class MatVecTest(test_lib.TestCase):
+  """Simple test for matvec, which is sugar on top of matmul."""
+
+  def testTwoByTwoCase(self):
+    a = np.array([[1, 2], [3, 4]])
+    b = np.array([5, 6])
+    with self.cached_session():
+      c = math_ops.matvec(a, b)
+      self.assertAllEqual((2,), c.shape)
+      c_ = self.evaluate(c)
+    self.assertAllEqual([5 + 2 * 6, 3 * 5 + 4 * 6], c_)
+
+
 def _AddTest(test, op_name, testcase_name, fn):
   test_name = "_".join(["test", op_name, testcase_name])
   if hasattr(test, test_name):
@@ -72,12 +85,12 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     # np.matrix(a_np_) * np.matrix(b_np_)
     effective_a_np = _GetTransposedMatrices(a_np_, "a", kwargs_)
     effective_b_np = _GetTransposedMatrices(b_np_, "b", kwargs_)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if use_static_shape_:
         a = constant_op.constant(effective_a_np)
         b = constant_op.constant(effective_b_np)
         res = math_ops.matmul(a, b, **kwargs_)
-        tf_val = res.eval()
+        tf_val = self.evaluate(res)
       else:
         a = array_ops.placeholder(a_np_.dtype)
         b = array_ops.placeholder(b_np_.dtype)
@@ -102,7 +115,7 @@ class MatMulGradientTest(test_lib.TestCase):
 def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
   def Test(self):
-    if not use_static_shape_ or a_np_.dtype in (np.int32, np.float16):
+    if not use_static_shape_ or a_np_.dtype in (np.int32, np.int64, np.float16):
       self.skipTest("Skipping infeasible gradient test.")
 
     # Transpose and possibly conjugate a_np_ and b_np_ according to the
@@ -115,7 +128,7 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     epsilon = np.finfo(a_np_.dtype).eps
     delta = epsilon**(1.0 / 3.0)
     tol = 20 * delta
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       a = constant_op.constant(effective_a_np)
       b = constant_op.constant(effective_b_np)
       res = math_ops.matmul(a, b, **kwargs_)
@@ -181,6 +194,7 @@ except AttributeError:
 
 class MatMulInfixOperatorTest(test_lib.TestCase):
 
+  @test_util.run_deprecated_v1
   def testMismatchedShape(self):
     with self.assertRaisesWithPredicateMatch(ValueError,
                                              lambda e: "Shape must" in str(e)):
@@ -188,6 +202,7 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
           ops.convert_to_tensor([10.0, 20.0, 30.0]),
           ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
+  @test_util.run_deprecated_v1
   def testMismatchedDimensions(self):
     with self.assertRaisesWithPredicateMatch(
         ValueError, lambda e: "Dimensions must" in str(e)):
@@ -195,28 +210,30 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
           ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
           ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
+  @test_util.run_deprecated_v1
   def testInfixMatmulIsTfMatmul(self):
     a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
     b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
     c = infix_matmul(a, b)
     self.assertEqual(c.op.type, "MatMul")
 
+  @test_util.run_deprecated_v1
   def testInfixMatmulDoesDotProduct(self):
     a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
     b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
     c = infix_matmul(a, b)
     d = math_ops.matmul(a, b)
     with self.cached_session():
-      self.assertAllEqual(c.eval(), d.eval())
+      self.assertAllEqual(c.eval(), self.evaluate(d))
 
 
 if __name__ == "__main__":
   sizes = [1, 3, 5]
   trans_options = [[False, False], [True, False], [False, True]]
   for use_static_shape in [False, True]:
-    for dtype in (np.int32, np.float16, np.float32, np.float64, np.complex64,
-                  np.complex128):
-      if not use_static_shape and dtype == np.int32:
+    for dtype in (np.int32, np.int64, np.float16, np.float32, np.float64,
+                  np.complex64, np.complex128):
+      if not use_static_shape and (dtype == np.int32 or dtype == np.int64):
         # TODO(rmlarsen): Re-enable this test when we have fixed the underlying
         # bug in Windows (b/35935459).
         continue

@@ -33,6 +33,9 @@ Status HloInputOutputAliasConfig::SetUpAlias(const ShapeIndex& output_index,
       alias_.element(output_index)->second.ToString());
   (*alias_.mutable_element(output_index)) =
       std::make_pair(param_number, param_index);
+  VLOG(4) << "Set up alias between output index " << output_index.ToString()
+          << " and parameter " << param_index << " at index "
+          << param_index.ToString();
   return Status::OK();
 }
 
@@ -145,7 +148,9 @@ Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
       });
 }
 
-Status HloInputOutputAliasConfig::Verify(const HloModule& module) const {
+Status HloInputOutputAliasConfig::Verify(
+    const HloModule& module,
+    std::function<int64(const Shape&)> size_func) const {
   std::vector<ShapeTree<bool>> param_has_seen;
   const HloComputation* entry = module.entry_computation();
   for (int64 i = 0; i < entry->num_parameters(); ++i) {
@@ -157,12 +162,32 @@ Status HloInputOutputAliasConfig::Verify(const HloModule& module) const {
                                     const ShapeIndex& param_index) -> Status {
     const HloInstruction* root = entry->root_instruction();
 
+    TF_RET_CHECK(0 <= param_number);
+    TF_RET_CHECK(entry->num_parameters() > param_number);
     const Shape& param_shape =
         entry->parameter_instruction(param_number)->shape();
     const Shape& output_shape = root->shape();
-    TF_RET_CHECK(entry->num_parameters() > param_number);
     TF_RET_CHECK(ShapeUtil::IndexIsValid(param_shape, param_index));
     TF_RET_CHECK(ShapeUtil::IndexIsValid(output_shape, output_index));
+
+    const Shape& param_subshape =
+        ShapeUtil::GetSubshape(param_shape, param_index);
+    const Shape& output_subshape =
+        ShapeUtil::GetSubshape(output_shape, output_index);
+    TF_RET_CHECK(LayoutUtil::IsDenseArray(param_subshape));
+    TF_RET_CHECK(LayoutUtil::IsDenseArray(output_subshape));
+
+    if (size_func(param_subshape) != size_func(output_subshape)) {
+      return InternalError(
+          "Expected aliased input %lld at index %s and output at index %s to "
+          "have the same size. Input sub-shape is %s with size %lld, output "
+          "sub-shape is %s with size %lld",
+          param_number, param_index.ToString(), output_index.ToString(),
+          ShapeUtil::HumanStringWithLayout(param_subshape),
+          size_func(param_subshape),
+          ShapeUtil::HumanStringWithLayout(output_subshape),
+          size_func(output_subshape));
+    }
 
     // Check each param_number and param_index pair only show up once. No
     // input can be aliased with output buffers.

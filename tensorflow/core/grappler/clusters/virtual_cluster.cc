@@ -34,8 +34,11 @@ VirtualCluster::VirtualCluster(
 
 VirtualCluster::VirtualCluster(
     const std::unordered_map<string, DeviceProperties>& devices,
-    OpLevelCostEstimator* node_estimator, ReadyNodeManager* node_manager)
-    : Cluster(0), node_estimator_(node_estimator), node_manager_(node_manager) {
+    std::unique_ptr<OpLevelCostEstimator> node_estimator,
+    std::unique_ptr<ReadyNodeManager> node_manager)
+    : Cluster(0),
+      node_estimator_(std::move(node_estimator)),
+      node_manager_(std::move(node_manager)) {
   devices_ = devices;
 }
 

@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_SHAPE_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_SHAPE_UTIL_H_
 
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"

@@ -50,7 +50,7 @@ class SvdOpTest(test.TestCase):
       linalg_ops.svd(vector)
 
   def testConcurrentExecutesWithoutError(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       all_ops = []
       for compute_uv_ in True, False:
         for full_matrices_ in True, False:
@@ -68,7 +68,7 @@ class SvdOpTest(test.TestCase):
             s2 = linalg_ops.svd(
                 matrix2, compute_uv=compute_uv_, full_matrices=full_matrices_)
             all_ops += [s1, s2]
-      val = sess.run(all_ops)
+      val = self.evaluate(all_ops)
       for i in range(2):
         s = 6 * i
         self.assertAllEqual(val[s], val[s + 3])  # s1 == s2
@@ -123,7 +123,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
     xx = math_ops.matmul(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
-    self.assertAllClose(identity.eval(), xx.eval(), atol=tol)
+    self.assertAllClose(identity.eval(), self.evaluate(xx), atol=tol)
 
   def Test(self):
     is_complex = dtype_ in (np.complex64, np.complex128)
@@ -140,7 +140,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       if use_static_shape_:
         x_tf = constant_op.constant(x_np)
       else:
@@ -150,7 +150,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         s_tf, u_tf, v_tf = linalg_ops.svd(
             x_tf, compute_uv=compute_uv_, full_matrices=full_matrices_)
         if use_static_shape_:
-          s_tf_val, u_tf_val, v_tf_val = sess.run([s_tf, u_tf, v_tf])
+          s_tf_val, u_tf_val, v_tf_val = self.evaluate([s_tf, u_tf, v_tf])
         else:
           s_tf_val, u_tf_val, v_tf_val = sess.run(
               [s_tf, u_tf, v_tf], feed_dict={x_tf: x_np})
@@ -158,7 +158,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         s_tf = linalg_ops.svd(
             x_tf, compute_uv=compute_uv_, full_matrices=full_matrices_)
         if use_static_shape_:
-          s_tf_val = sess.run(s_tf)
+          s_tf_val = self.evaluate(s_tf)
         else:
           s_tf_val = sess.run(s_tf, feed_dict={x_tf: x_np})
 
@@ -229,7 +229,7 @@ def _GetSvdGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
       tol = 3e-2
     else:
       tol = 1e-6
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       tf_a = constant_op.constant(a)
       if compute_uv_:
         tf_s, tf_u, tf_v = _NormalizingSvd(tf_a)

@@ -63,7 +63,7 @@ class ProcessState {
   MemDesc PtrType(const void* ptr);
 
   // Returns the one CPUAllocator used for the given numa_node.
-  // TEMPORARY: ignores numa_node.
+  // Treats numa_node == kNUMANoAffinity as numa_node == 0.
   Allocator* GetCPUAllocator(int numa_node);
 
   // Registers alloc visitor for the CPU allocator(s).
@@ -87,18 +87,18 @@ class ProcessState {
 
   // Helper method for unit tests to reset the ProcessState singleton by
   // cleaning up everything. Never use in production.
-  virtual void TestOnlyReset();
+  void TestOnlyReset();
 
   static ProcessState* instance_;
   bool numa_enabled_;
 
   mutex mu_;
 
+  // Indexed by numa_node.  If we want numa-specific allocators AND a
+  // non-specific allocator, maybe should index by numa_node+1.
   std::vector<Allocator*> cpu_allocators_ GUARDED_BY(mu_);
   std::vector<SubAllocator::Visitor> cpu_alloc_visitors_ GUARDED_BY(mu_);
   std::vector<SubAllocator::Visitor> cpu_free_visitors_ GUARDED_BY(mu_);
-
-  virtual ~ProcessState();
 
   // Optional RecordingAllocators that wrap the corresponding
   // Allocators for runtime attribute use analysis.

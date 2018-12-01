@@ -21,6 +21,7 @@ from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -322,7 +323,7 @@ class _CudnnRNN(base_layer.Layer):
       raise ValueError("The last dimension of the inputs to `CudnnRNN` "
                        "should be defined. Found `None`.")
     self._input_size = input_shape[-1].value
-    self.input_spec = base_layer.InputSpec(ndim=3, axes={-1: self._input_size})
+    self.input_spec = input_spec.InputSpec(ndim=3, axes={-1: self._input_size})
 
     self._set_scope(None)
 
@@ -356,7 +357,8 @@ class _CudnnRNN(base_layer.Layer):
             "Partitioner is not supported for Cudnn RNN layer variables, using "
             "it will create forward-compatibility issues with future "
             "CUDA/CuDNN generations.")
-      # Initialize opaque params with a tensor.
+      # Initialize opaque params with a tensor with unknown shape, thus couldn't
+      # use self.add_variable(name, shape, initializer, ...)
       self.kernel = vs.get_variable(
           "opaque_kernel", dtype=self._plain_dtype,
           initializer=opaque_params_t, validate_shape=False)
@@ -387,11 +389,11 @@ class _CudnnRNN(base_layer.Layer):
       output_states: a tuple of tensor(s) of the same shape and structure as
         `initial_state`.
     Raises:
-      ValueError: initial_state is not a tuple.
+      TypeError: initial_state is not a tuple.
     """
     if initial_state is not None and not isinstance(initial_state, tuple):
-      raise ValueError("Invalid initial_state type: %s, expecting tuple.",
-                       type(initial_state))
+      raise TypeError("Invalid initial_state type: %s, expecting tuple." %
+                      initial_state)
     dtype = self.dtype
     inputs = ops.convert_to_tensor(inputs, dtype=dtype)
 
