@@ -133,8 +133,11 @@ struct VectorTypeKeyInfo : DenseMapInfo<VectorTypeStorage *> {
 struct RankedTensorTypeKeyInfo : DenseMapInfo<RankedTensorTypeStorage *> {
   // Ranked tensors are uniqued based on their element type and shape.
   using KeyTy = std::pair<Type, ArrayRef<int>>;
-  using DenseMapInfo<RankedTensorTypeStorage *>::getHashValue;
   using DenseMapInfo<RankedTensorTypeStorage *>::isEqual;
+
+  static unsigned getHashValue(RankedTensorTypeStorage *key) {
+    return getHashValue(KeyTy(key->elementType, key->getShape()));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
