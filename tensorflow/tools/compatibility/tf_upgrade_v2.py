@@ -47,14 +47,17 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.expand_dims": {
             "dim": "axis",
         },
-        "tf.batch_to_space_nd": {
+        "tf.batch_to_space": {
             "block_size": "block_shape",
         },
         "tf.constant": {
-            "verify_shapes": "verify_shapes_is_now_always_true",
+            "verify_shape": "verify_shape_is_now_always_true",
         },
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
+        },
+        "tf.nn.softmax_cross_entropy_with_logits_v2": {
+            "dim": "axis"
         },
         "tf.linalg.l2_normalize": {
             "dim": "axis",
@@ -131,9 +134,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "m": "mean",
             "v": "variance",
         },
-        "tf.manip.batch_to_space_nd": {
-            "block_size": "block_shape",
-        },
         "tf.nn.dilation2d": {
             "filter": "filters",
             "rates": "dilations",
@@ -187,8 +187,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "newpath": "dst",
         },
         "tf.gfile.Rename": {
-            "oldpath": "src",
-            "newpath": "dst",
+            "oldname": "src",
+            "newname": "dst",
         },
         "tf.gfile.Walk": {
             "in_order": "topdown",
@@ -293,6 +293,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.manual_symbol_renames = {
         "tf.batch_to_space_nd":
             "tf.batch_to_space",
+        "tf.extract_image_patches":
+            "tf.image.extract_image_patches",
         "tf.gfile.Copy":
             "tf.io.gfile.copy",
         "tf.gfile.DeleteRecursively":
@@ -409,10 +411,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.batch_to_space",
         "tf.quantize_v2":
             "tf.quantization.quantize",
+        "tf.sparse_add":
+            "tf.sparse.add",
         "tf.sparse_concat":
             "tf.sparse.concat",
         "tf.sparse_split":
             "tf.sparse.split",
+        "tf.random.stateless_multinomial":
+            "tf.random.stateless_categorical",
         "tf.string_to_hash_bucket":
             "tf.strings.to_hash_bucket",
         "tf.string_to_number":
@@ -421,6 +427,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.random.categorical",
         "tf.random.multinomial":
             "tf.random.categorical",
+        "tf.reduce_join":
+            "tf.strings.reduce_join",
         "tf.load_file_system_library":
             "tf.load_library",
         "tf.pywrap_tensorflow":
@@ -437,6 +445,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.data.Iterator",
         "tf.nn.fused_batch_norm":
             "tf.compat.v1.nn.fused_batch_norm",
+        "tf.nn.softmax_cross_entropy_with_logits_v2":
+            "tf.nn.softmax_cross_entropy_with_logits",
         "tf.losses.Reduction.MEAN":
             "tf.compat.v1.losses.Reduction.MEAN",
         "tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS":
@@ -480,7 +490,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "input", "filter", "strides", "padding", "rate", "name",
             "data_format"
         ],
-        "tf.manip.batch_to_space_nd": ["input", "crops", "block_size", "name"],
         "tf.multinomial": [
             "logits", "num_samples", "seed", "name", "output_dtype"
         ],
@@ -736,6 +745,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "was renamed to \"filters\"",
         "tf.nn.erosion2d":
         "WARNING: <function name> now requires a data_format argument",
+        "tf.nn.nce_loss":
+        "WARNING: `partition_strategy` has been removed from `tf.nn.nce_loss` "
+        " The 'div' strategy is used by default.",
         "tf.zeros_like": tf_01s_like_no_optimize_comment,
         "tf.ones_like": tf_01s_like_no_optimize_comment,
     }

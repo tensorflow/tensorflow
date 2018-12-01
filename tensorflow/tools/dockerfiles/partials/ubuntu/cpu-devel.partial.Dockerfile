@@ -1,5 +1,4 @@
-ARG UBUNTU_VERSION=16.04
-FROM ubuntu:${UBUNTU_VERSION}
+FROM ubuntu:${UBUNTU_VERSION} AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
@@ -11,7 +10,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpng12-dev \
         libzmq3-dev \
         pkg-config \
-        python-dev \
         rsync \
         software-properties-common \
         unzip \
@@ -22,3 +20,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+ 
+ENV CI_BUILD_PYTHON python
+

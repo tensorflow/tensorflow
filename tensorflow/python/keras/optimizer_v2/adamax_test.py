@@ -359,9 +359,8 @@ class AdamaxOptimizerTest(test.TestCase):
       v2 = resource_variable_ops.ResourceVariable(1.)
       opt = adamax.Adamax(1.)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
-      # There should be iteration, hyper variables, and two unique slot
-      # variables for v1 and v2 respectively.
-      self.assertEqual(10, len(set(opt.variables())))
+      # There should be iteration, and two unique slot variables for v1 and v2.
+      self.assertEqual(5, len(set(opt.variables())))
 
 
 if __name__ == "__main__":

@@ -16,30 +16,13 @@
 # THIS IS A GENERATED DOCKERFILE.
 #
 # This file was assembled from multiple pieces, whose use is documented
-# below. Please refer to the the TensorFlow dockerfiles documentation for
-# more information. Build args are documented as their default value.
-#
-# Ubuntu-based, Nvidia-GPU-enabled environment for using TensorFlow, with Jupyter included.
-#
-# NVIDIA with CUDA and CuDNN, no dev stuff
-# --build-arg UBUNTU_VERSION=16.04
-#    ( no description )
-#
-# Python is required for TensorFlow and other libraries.
-# --build-arg USE_PYTHON_3_NOT_2=True
-#    Install python 3 over Python 2
-#
-# Install the TensorFlow Python package.
-# --build-arg TF_PACKAGE=tensorflow-gpu (tensorflow|tensorflow-gpu|tf-nightly|tf-nightly-gpu)
-#    The specific TensorFlow Python package to install
-#
-# Configure TensorFlow's shell prompt and login tools.
-#
-# Launch Jupyter on execution instead of a bash prompt.
+# throughout. Please refer to the the TensorFlow dockerfiles documentation
+# for more information.
 
-FROM nvidia/cuda:9.0-base-ubuntu16.04
+ARG UBUNTU_VERSION=16.04
 
-# Pick up some TF dependencies
+FROM nvidia/cuda:9.0-base-ubuntu${UBUNTU_VERSION} as base
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         cuda-command-line-tools-9-0 \
@@ -48,6 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cuda-curand-9-0 \
         cuda-cusolver-9-0 \
         cuda-cusparse-9-0 \
+        curl \
         libcudnn7=7.2.1.38-1+cuda9.0 \
         libnccl2=2.2.13-1+cuda9.0 \
         libfreetype6-dev \
@@ -55,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpng12-dev \
         libzmq3-dev \
         pkg-config \
+        rsync \
         software-properties-common \
         unzip \
         && \
@@ -66,7 +51,10 @@ RUN apt-get update && \
         apt-get update && \
         apt-get install libnvinfer4=4.1.2-1+cuda9.0
 
-ARG USE_PYTHON_3_NOT_2=True
+# For CUDA profiling, TensorFlow requires CUPTI.
+ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+
+ARG USE_PYTHON_3_NOT_2
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
 ARG PYTHON=python${_PY_SUFFIX}
 ARG PIP=pip${_PY_SUFFIX}
@@ -78,21 +66,20 @@ RUN apt-get update && apt-get install -y \
     ${PYTHON} \
     ${PYTHON}-pip
 
-RUN ${PIP} install --upgrade \
+RUN ${PIP} --no-cache-dir install --upgrade \
     pip \
     setuptools
 
-ARG TF_PACKAGE=tensorflow-gpu
+# Some TF tools expect a "python" binary
+RUN ln -s $(which ${PYTHON}) /usr/local/bin/python 
+
+# Options:
+#   tensorflow
+#   tensorflow-gpu
+#   tf-nightly
+#   tf-nightly-gpu
+ARG TF_PACKAGE=tensorflow
 RUN ${PIP} install ${TF_PACKAGE}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
-
-RUN ${PIP} install jupyter
-
-RUN mkdir /notebooks && chmod a+rwx /notebooks
-RUN mkdir /.local && chmod a+rwx /.local
-WORKDIR /notebooks
-EXPOSE 8888
-
-CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/notebooks --ip 0.0.0.0 --no-browser --allow-root"]

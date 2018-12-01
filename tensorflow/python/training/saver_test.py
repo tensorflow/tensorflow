@@ -3042,7 +3042,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
       self.assertEqual(before_second_restore_ops,
                        restore_graph.get_operations())
       with self.assertRaisesRegexp(errors.NotFoundError,
-                                   "could not find a_variable"):
+                                   "Could not find some variables"):
         saver.restore(sess=sess, save_path=second_path)
 
   def testLoadFromObjectBasedEager(self):

@@ -82,7 +82,8 @@ class CollectiveAllReduceStrategyTestBase(
         instance_key_with_id_start=num_gpus * 10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
     distribution.extended._collective_keys = collective_keys
-    distribution.extended._cross_device_ops._collective_keys = collective_keys
+    distribution.extended._inferred_cross_device_ops._collective_keys = (
+        collective_keys)
     if task_type and task_id is not None:
       return distribution, 'grpc://' + self._cluster_spec[task_type][
           task_id], session_config

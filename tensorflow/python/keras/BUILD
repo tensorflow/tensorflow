@@ -515,14 +515,15 @@ py_test(
 )
 
 cuda_py_test(
-    name = "unified_rnn_test",
+    name = "unified_lstm_test",
     size = "medium",
-    srcs = ["layers/unified_rnn_test.py"],
+    srcs = ["layers/unified_lstm_test.py"],
     additional_deps = [
         ":keras",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
 )
 
 py_test(

@@ -450,6 +450,17 @@ class DropoutTest(test_lib.TestCase):
     with self.assertRaises(ValueError):
       nn_ops.dropout(t, array_ops.placeholder(dtypes.float32, shape=[2]))
 
+  def testInvalidRate(self):
+    x_dim = 40
+    y_dim = 30
+    t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+    with self.assertRaises(ValueError):
+      nn_ops.dropout_v2(t, -1.0)
+    with self.assertRaises(ValueError):
+      nn_ops.dropout_v2(t, 1.1)
+    with self.assertRaises(ValueError):
+      nn_ops.dropout_v2(t, [0.0, 1.0])
+
   @test_util.run_deprecated_v1
   def testShapedDropoutShapeError(self):
     # Runs shaped dropout and verifies an error is thrown on misshapen noise.
@@ -471,12 +482,13 @@ class DropoutTest(test_lib.TestCase):
     _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
     _ = nn_ops.dropout(t, keep_prob, noise_shape=[1, 1])
 
-  @test_util.run_deprecated_v1
   def testNoDropoutFast(self):
     x = array_ops.zeros((5,))
-    for p in 1, constant_op.constant(1.0):
-      y = nn_ops.dropout(x, keep_prob=p)
-      self.assertTrue(x is y)
+    y = nn_ops.dropout(x, keep_prob=1)
+    self.assertTrue(x is y)
+
+    y = nn_ops.dropout_v2(x, rate=0)
+    self.assertTrue(x is y)
 
   def testDropoutWithIntegerInputs(self):
     x = constant_op.constant([1, 1, 1, 1, 1])
@@ -790,7 +802,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     exp_nce_loss = np.sum(
         _SigmoidCrossEntropyWithLogits(exp_logits, exp_labels), 1)
 
-    got_nce_loss = nn_impl.nce_loss(
+    got_nce_loss = nn_impl.nce_loss_v2(
         weights=constant_op.constant(weights),
         biases=constant_op.constant(biases),
         labels=constant_op.constant(labels, shape=(batch_size, 1)),
@@ -798,15 +810,14 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
         num_sampled=4,
         num_classes=num_classes,
         num_true=1,
-        sampled_values=sampled_vals,
-        partition_strategy="div")
+        sampled_values=sampled_vals)
 
     self.assertAllClose(exp_nce_loss, self.evaluate(got_nce_loss), 1e-4)
 
     # Test with sharded weights and sharded biases.
     weight_shards, bias_shards = self._ShardTestEmbeddings(
         weights, biases, num_shards=3)
-    got_nce_loss = nn_impl.nce_loss(
+    got_nce_loss = nn_impl.nce_loss_v2(
         weights=[constant_op.constant(shard) for shard in weight_shards],
         biases=[constant_op.constant(shard) for shard in bias_shards],
         labels=constant_op.constant(labels, shape=(batch_size, 1)),
@@ -814,8 +825,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
         num_sampled=4,
         num_classes=num_classes,
         num_true=1,
-        sampled_values=sampled_vals,
-        partition_strategy="div")
+        sampled_values=sampled_vals)
 
     self.assertAllClose(exp_nce_loss, self.evaluate(got_nce_loss), 1e-4)
 

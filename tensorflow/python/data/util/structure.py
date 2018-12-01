@@ -316,15 +316,23 @@ class NestedStructure(Structure):
                        % (len(self._flat_types), len(flat_value)))
 
     flat_ret = []
-    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
-      flat_ret.append(structure._from_tensor_list([sub_value]))
+    i = 0
+    for structure in self._flat_nested_structure:
+      num_flat_values = len(structure._flat_types)
+      sub_value = flat_value[i:i + num_flat_values]
+      flat_ret.append(structure._from_tensor_list(sub_value))
+      i += num_flat_values
 
     return nest.pack_sequence_as(self._nested_structure, flat_ret)
 
   def _from_compatible_tensor_list(self, flat_value):
     flat_ret = []
-    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
-      flat_ret.append(structure._from_compatible_tensor_list([sub_value]))
+    i = 0
+    for structure in self._flat_nested_structure:
+      num_flat_values = len(structure._flat_types)
+      sub_value = flat_value[i:i + num_flat_values]
+      flat_ret.append(structure._from_compatible_tensor_list(sub_value))
+      i += num_flat_values
 
     return nest.pack_sequence_as(self._nested_structure, flat_ret)
 
