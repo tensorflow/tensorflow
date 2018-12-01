@@ -51,10 +51,10 @@ _graph_options = config_pb2.GraphOptions(rewrite_options=_rewrites)
 _config = config_pb2.ConfigProto(graph_options=_graph_options)
 
 
-class UnifiedRNNTest(test.TestCase):
+class UnifiedLSTMTest(test.TestCase):
 
   @test_util.run_deprecated_v1
-  def test_unifiedRNN(self):
+  def test_unifiedLSTM(self):
     input_shape = 10
     rnn_state_size = 8
     output_shape = 8
@@ -99,7 +99,7 @@ class UnifiedRNNTest(test.TestCase):
         existing_loss = loss_value
 
   @test_util.run_deprecated_v1
-  def test_unifiedRNN_with_cond(self):
+  def test_unifiedLSTM_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under
     # the condition that the function returns different number of internal
     # states.
@@ -590,7 +590,7 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
 
-class UnifiedRNNPerformanceTest(test.TestCase):
+class UnifiedLSTMPerformanceTest(test.TestCase):
 
   def _measure_performance(self, test_config, model, x_train, y_train):
     batch = test_config['batch']
