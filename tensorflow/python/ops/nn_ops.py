@@ -2915,11 +2915,15 @@ def _get_noise_shape(x, noise_shape):
 
 
 @tf_export(v1=["nn.dropout"])
-def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: disable=invalid-name
+@deprecation.deprecated_args(None, "Please use `rate` instead of `keep_prob`. "
+                             "Rate should be set to `rate = 1 - keep_prob`.",
+                             "keep_prob")
+def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
+            rate=None):  # pylint: disable=invalid-name
   """Computes dropout.
 
-  With probability `keep_prob`, outputs the input element scaled up by
-  `1 / keep_prob`, otherwise outputs `0`.  The scaling is so that the expected
+  For each element of `x`, with probability `rate`, outputs `0`, and otherwise
+  scales up the input by `1 / (1-rate)`. The scaling is such that the expected
   sum is unchanged.
 
   By default, each element is kept or dropped independently.  If `noise_shape`
@@ -2932,48 +2936,34 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
 
   Args:
     x: A floating point tensor.
-    keep_prob: A scalar `Tensor` with the same type as x. The probability
-      that each element is kept.
+    keep_prob: (deprecated) A deprecated alias for `(1-rate)`.
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.set_random_seed` for behavior.
     name: A name for this operation (optional).
+    rate: A scalar `Tensor` with the same type as `x`. The probability that each
+      element of `x` is discarded.
 
   Returns:
     A Tensor of the same shape of `x`.
 
   Raises:
-    ValueError: If `keep_prob` is not in `(0, 1]` or if `x` is not a floating
+    ValueError: If `rate` is not in `[0, 1)` or if `x` is not a floating
       point tensor.
   """
-  with ops.name_scope(name, "dropout", [x]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    if not x.dtype.is_floating:
-      raise ValueError("x has to be a floating point tensor since it's going to"
-                       " be scaled. Got a %s tensor instead." % x.dtype)
-    if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
-      raise ValueError("keep_prob must be a scalar tensor or a float in the "
-                       "range (0, 1], got %g" % keep_prob)
+  try:
+    keep = 1. - keep_prob if keep_prob is not None else None
+  except TypeError:
+    raise ValueError("keep_prob must be a floating point number or Tensor "
+                     "(got %r)" % keep_prob)
 
-    # Early return if nothing needs to be dropped.
-    if isinstance(keep_prob, float) and keep_prob == 1:
-      return x
-    if context.executing_eagerly():
-      if isinstance(keep_prob, ops.EagerTensor):
-        if keep_prob.numpy() == 1:
-          return x
-    else:
-      keep_prob = ops.convert_to_tensor(
-          keep_prob, dtype=x.dtype, name="keep_prob")
-      keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+  rate = deprecation.deprecated_argument_lookup(
+      "rate", rate,
+      "keep_prob", keep)
 
-      # Do nothing if we know keep_prob == 1
-      if tensor_util.constant_value(keep_prob) == 1:
-        return x
-
-    rate = 1 - keep_prob
+  if rate is None:
+    raise ValueError("You must provide a rate to dropout.")
 
   return dropout_v2(x, rate, noise_shape=noise_shape, seed=seed, name=name)
 
@@ -3018,12 +3008,12 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):  # pylint: disa
     if not x.dtype.is_floating:
       raise ValueError("x has to be a floating point tensor since it's going to"
                        " be scaled. Got a %s tensor instead." % x.dtype)
-    if isinstance(rate, numbers.Real) and not 0 <= rate < 1:
+    if isinstance(rate, numbers.Real) and not (rate >= 0 and rate < 1):
       raise ValueError("rate must be a scalar tensor or a float in the "
                        "range [0, 1), got %g" % rate)
 
     # Early return if nothing needs to be dropped.
-    if isinstance(rate, float) and rate == 0:
+    if isinstance(rate, numbers.Real) and rate == 0:
       return x
     if context.executing_eagerly():
       if isinstance(rate, ops.EagerTensor):

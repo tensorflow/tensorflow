@@ -450,6 +450,17 @@ class DropoutTest(test_lib.TestCase):
     with self.assertRaises(ValueError):
       nn_ops.dropout(t, array_ops.placeholder(dtypes.float32, shape=[2]))
 
+  def testInvalidRate(self):
+    x_dim = 40
+    y_dim = 30
+    t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+    with self.assertRaises(ValueError):
+      nn_ops.dropout_v2(t, -1.0)
+    with self.assertRaises(ValueError):
+      nn_ops.dropout_v2(t, 1.1)
+    with self.assertRaises(ValueError):
+      nn_ops.dropout_v2(t, [0.0, 1.0])
+
   @test_util.run_deprecated_v1
   def testShapedDropoutShapeError(self):
     # Runs shaped dropout and verifies an error is thrown on misshapen noise.
@@ -471,12 +482,13 @@ class DropoutTest(test_lib.TestCase):
     _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
     _ = nn_ops.dropout(t, keep_prob, noise_shape=[1, 1])
 
-  @test_util.run_deprecated_v1
   def testNoDropoutFast(self):
     x = array_ops.zeros((5,))
-    for p in 1, constant_op.constant(1.0):
-      y = nn_ops.dropout(x, keep_prob=p)
-      self.assertTrue(x is y)
+    y = nn_ops.dropout(x, keep_prob=1)
+    self.assertTrue(x is y)
+
+    y = nn_ops.dropout_v2(x, rate=0)
+    self.assertTrue(x is y)
 
   def testDropoutWithIntegerInputs(self):
     x = constant_op.constant([1, 1, 1, 1, 1])
