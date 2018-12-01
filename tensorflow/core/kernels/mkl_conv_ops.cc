@@ -1114,9 +1114,7 @@ class MklConvOp : public OpKernel {
     params.dtypes.append(typeid(Toutput).name());
 
     // Add fusions as post ops
-    if (fuse_relu_) {
-      params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
-    }
+    if (fuse_relu_) params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
   }
 
   virtual Tbias* GetBiasHandle(
@@ -1179,6 +1177,11 @@ class MklConvOp : public OpKernel {
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
   const int kDilationH = 0, kDilationW = 1;
 
+  // Helper function to compare fused_ops attributes strings
+  bool CompareFusedOps(const std::vector<string>& fused_ops,
+                       const std::vector<string>& expected) {
+    return fused_ops == expected;
+  }
   // Allocate filter output tensor.
   void AllocateFilterOutputTensor(
       OpKernelContext* context,
@@ -1262,14 +1265,14 @@ class MklFusedConvOp : public MklConvOp<Device, Tinput, Tfilter, Tbias, Toutput,
                 errors::InvalidArgument(
                     "Fused Conv2D must have at least one fused op."));
 
-    if (fused_ops == {"BiasAdd"}) {
+    if (CompareFusedOps(fused_ops, {"BiasAdd"})) {
       this->FuseBiasAdd(true);
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
-    } else if (fused_ops == {"Relu"}) {
+    } else if (CompareFusedOps(fused_ops, {"Relu"})) {
       this->FuseRelu(true);
-    } else if (fused_ops == {"BiasAdd", "Relu"}) {
+    } else if (CompareFusedOps(fused_ops, {"BiasAdd", "Relu"})) {
       this->FuseBiasAdd(true);
       this->FuseRelu(true);
       OP_REQUIRES(context, num_args == 1,
