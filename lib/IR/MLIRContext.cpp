@@ -49,8 +49,11 @@ namespace {
 struct FunctionTypeKeyInfo : DenseMapInfo<FunctionTypeStorage *> {
   // Functions are uniqued based on their inputs and results.
   using KeyTy = std::pair<ArrayRef<Type>, ArrayRef<Type>>;
-  using DenseMapInfo<FunctionTypeStorage *>::getHashValue;
   using DenseMapInfo<FunctionTypeStorage *>::isEqual;
+
+  static unsigned getHashValue(FunctionTypeStorage *key) {
+    return getHashValue(KeyTy(key->getInputs(), key->getResults()));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
@@ -114,8 +117,11 @@ struct IntegerSetKeyInfo : DenseMapInfo<IntegerSet> {
 struct VectorTypeKeyInfo : DenseMapInfo<VectorTypeStorage *> {
   // Vectors are uniqued based on their element type and shape.
   using KeyTy = std::pair<Type, ArrayRef<int>>;
-  using DenseMapInfo<VectorTypeStorage *>::getHashValue;
   using DenseMapInfo<VectorTypeStorage *>::isEqual;
+
+  static unsigned getHashValue(VectorTypeStorage *key) {
+    return getHashValue(KeyTy(key->elementType, key->getShape()));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
@@ -156,8 +162,12 @@ struct MemRefTypeKeyInfo : DenseMapInfo<MemRefTypeStorage *> {
   // MemRefs are uniqued based on their element type, shape, affine map
   // composition, and memory space.
   using KeyTy = std::tuple<Type, ArrayRef<int>, ArrayRef<AffineMap>, unsigned>;
-  using DenseMapInfo<MemRefTypeStorage *>::getHashValue;
   using DenseMapInfo<MemRefTypeStorage *>::isEqual;
+
+  static unsigned getHashValue(MemRefTypeStorage *key) {
+    return getHashValue(KeyTy(key->elementType, key->getShape(),
+                              key->getAffineMaps(), key->memorySpace));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
@@ -178,8 +188,11 @@ struct MemRefTypeKeyInfo : DenseMapInfo<MemRefTypeStorage *> {
 struct FloatAttrKeyInfo : DenseMapInfo<FloatAttributeStorage *> {
   // Float attributes are uniqued based on wrapped APFloat.
   using KeyTy = std::pair<Type, APFloat>;
-  using DenseMapInfo<FloatAttributeStorage *>::getHashValue;
   using DenseMapInfo<FloatAttributeStorage *>::isEqual;
+
+  static unsigned getHashValue(FloatAttributeStorage *key) {
+    return getHashValue(KeyTy(key->type, key->getValue()));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(key.first, llvm::hash_value(key.second));
@@ -195,8 +208,11 @@ struct FloatAttrKeyInfo : DenseMapInfo<FloatAttributeStorage *> {
 struct IntegerAttrKeyInfo : DenseMapInfo<IntegerAttributeStorage *> {
   // Integer attributes are uniqued based on wrapped APInt.
   using KeyTy = std::pair<Type, APInt>;
-  using DenseMapInfo<IntegerAttributeStorage *>::getHashValue;
   using DenseMapInfo<IntegerAttributeStorage *>::isEqual;
+
+  static unsigned getHashValue(IntegerAttributeStorage *key) {
+    return getHashValue(KeyTy(key->type, key->getValue()));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(key.first, llvm::hash_value(key.second));
@@ -214,8 +230,11 @@ struct IntegerAttrKeyInfo : DenseMapInfo<IntegerAttributeStorage *> {
 struct ArrayAttrKeyInfo : DenseMapInfo<ArrayAttributeStorage *> {
   // Array attributes are uniqued based on their elements.
   using KeyTy = ArrayRef<Attribute>;
-  using DenseMapInfo<ArrayAttributeStorage *>::getHashValue;
   using DenseMapInfo<ArrayAttributeStorage *>::isEqual;
+
+  static unsigned getHashValue(ArrayAttributeStorage *key) {
+    return getHashValue(KeyTy(key->value));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine_range(key.begin(), key.end());
@@ -231,8 +250,11 @@ struct ArrayAttrKeyInfo : DenseMapInfo<ArrayAttributeStorage *> {
 struct AttributeListKeyInfo : DenseMapInfo<AttributeListStorage *> {
   // Array attributes are uniqued based on their elements.
   using KeyTy = ArrayRef<NamedAttribute>;
-  using DenseMapInfo<AttributeListStorage *>::getHashValue;
   using DenseMapInfo<AttributeListStorage *>::isEqual;
+
+  static unsigned getHashValue(AttributeListStorage *key) {
+    return getHashValue(KeyTy(key->getElements()));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine_range(key.begin(), key.end());
@@ -247,8 +269,11 @@ struct AttributeListKeyInfo : DenseMapInfo<AttributeListStorage *> {
 
 struct DenseElementsAttrInfo : DenseMapInfo<DenseElementsAttributeStorage *> {
   using KeyTy = std::pair<VectorOrTensorType, ArrayRef<char>>;
-  using DenseMapInfo<DenseElementsAttributeStorage *>::getHashValue;
   using DenseMapInfo<DenseElementsAttributeStorage *>::isEqual;
+
+  static unsigned getHashValue(DenseElementsAttributeStorage *key) {
+    return getHashValue(KeyTy(key->type, key->data));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
@@ -265,8 +290,11 @@ struct DenseElementsAttrInfo : DenseMapInfo<DenseElementsAttributeStorage *> {
 
 struct OpaqueElementsAttrInfo : DenseMapInfo<OpaqueElementsAttributeStorage *> {
   using KeyTy = std::pair<VectorOrTensorType, StringRef>;
-  using DenseMapInfo<OpaqueElementsAttributeStorage *>::getHashValue;
   using DenseMapInfo<OpaqueElementsAttributeStorage *>::isEqual;
+
+  static unsigned getHashValue(OpaqueElementsAttributeStorage *key) {
+    return getHashValue(KeyTy(key->type, key->bytes));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
@@ -285,8 +313,11 @@ struct FusedLocKeyInfo : DenseMapInfo<FusedLocationStorage *> {
   // Fused locations are uniqued based on their held locations and an optional
   // metadata attribute.
   using KeyTy = std::pair<ArrayRef<Location>, Attribute>;
-  using DenseMapInfo<FusedLocationStorage *>::getHashValue;
   using DenseMapInfo<FusedLocationStorage *>::isEqual;
+
+  static unsigned getHashValue(FusedLocationStorage *key) {
+    return getHashValue(KeyTy(key->getLocations(), key->metadata));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(hash_combine_range(key.first.begin(), key.first.end()),
