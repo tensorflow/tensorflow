@@ -278,7 +278,7 @@ def _SparseSoftmaxGrad(op, grad):
       indices, sp_output.values * sp_grad.values, shape)
 
   # [..., B, 1], dense.
-  sum_reduced = -sparse_ops.sparse_reduce_sum(sp_product, [-1], keep_dims=True)
+  sum_reduced = -sparse_ops.sparse_reduce_sum(sp_product, [-1], keepdims=True)
   # sparse [..., B, C] + dense [..., B, 1] with broadcast; outputs sparse.
   sp_sum = sparse_ops.sparse_dense_cwise_add(sp_grad, sum_reduced)
 
