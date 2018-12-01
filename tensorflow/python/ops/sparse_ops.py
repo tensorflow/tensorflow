@@ -1479,7 +1479,7 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
     sp_values = sparse_tensor.SparseTensor(sp_input.indices, new_values,
                                            sp_input.dense_shape)
 
-    sp_new = sparse_merge(sp_input, sp_values, vocab_size, name)
+    sp_new = sparse_merge_impl(sp_input, sp_values, vocab_size, name)
 
     # validate_indices may be False because we allow duplicates in new_indices:
     # repeated indices are allowed when creating an indicator matrix.
@@ -1582,6 +1582,11 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
       `vocab_size` is not a or list thereof and `sp_ids` is a list.
     ValueError: If `sp_ids` and `vocab_size` are lists of different lengths.
   """
+  return sparse_merge_impl(sp_ids, sp_values, vocab_size, name, already_sorted)
+
+
+def sparse_merge_impl(sp_ids, sp_values, vocab_size, name=None, already_sorted=False):
+  """Internal implementation for sparse_merge to avoid deprecation warnings."""
   if isinstance(sp_ids, sparse_tensor.SparseTensorValue) or isinstance(
       sp_ids, sparse_tensor.SparseTensor):
     sp_ids = [sp_ids]
