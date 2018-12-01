@@ -210,7 +210,7 @@ tf_module {
   }
   member_method {
     name: "nce_loss"
-    argspec: "args=[\'weights\', \'biases\', \'labels\', \'inputs\', \'num_sampled\', \'num_classes\', \'num_true\', \'sampled_values\', \'remove_accidental_hits\', \'partition_strategy\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'None\', \'False\', \'mod\', \'nce_loss\'], "
+    argspec: "args=[\'weights\', \'biases\', \'labels\', \'inputs\', \'num_sampled\', \'num_classes\', \'num_true\', \'sampled_values\', \'remove_accidental_hits\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'None\', \'False\', \'nce_loss\'], "
   }
   member_method {
     name: "normalize_moments"
