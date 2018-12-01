@@ -5393,7 +5393,7 @@ def inside_function():
   return get_default_graph().building_function
 
 
-@tf_export("enable_eager_execution")
+@tf_export(v1=["enable_eager_execution"])
 def enable_eager_execution(config=None,
                            device_policy=None,
                            execution_mode=None):
@@ -5464,6 +5464,17 @@ def enable_eager_execution(config=None,
         server_def=None)
 
 
+@tf_export(v1=["disable_eager_execution"])
+def disable_eager_execution():
+  """Disables eager execution.
+
+  This function can only be called before any Graphs, Ops, or Tensors have been
+  created. It can be used at the beginning of the program for complex migration
+  projects from TensorFlow 1.x to 2.x.
+  """
+  context.default_execution_mode = context.GRAPH_MODE
+
+
 def enable_eager_execution_internal(config=None,
                                     device_policy=None,
                                     execution_mode=None,
@@ -5471,6 +5482,7 @@ def enable_eager_execution_internal(config=None,
   """Enables eager execution for the lifetime of this program.
 
   Most of the doc string for enable_eager_execution is relevant here as well.
+
   Args:
     config: See enable_eager_execution doc string
     device_policy: See enable_eager_execution doc string
