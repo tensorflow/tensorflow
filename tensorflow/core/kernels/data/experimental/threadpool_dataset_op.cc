@@ -248,7 +248,7 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            int max_intra_op_parallelism)
+            int64 max_intra_op_parallelism)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           max_intra_op_parallelism_(max_intra_op_parallelism) {
@@ -332,7 +332,7 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const int max_intra_op_parallelism_;
+    const int64 max_intra_op_parallelism_;
   };
 };
 
