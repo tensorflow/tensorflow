@@ -39,7 +39,7 @@ def is_free_function(py_object, full_name, index):
   """Check if input is a free function (and not a class- or static method).
 
   Args:
-    py_object: The the object in question.
+    py_object: The object in question.
     full_name: The full name of the object, like `tf.module.symbol`.
     index: The {full_name:py_object} dictionary for the public API.
 
