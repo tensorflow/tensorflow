@@ -262,7 +262,7 @@ tf_module {
   }
   member_method {
     name: "softmax_cross_entropy_with_logits"
-    argspec: "args=[\'labels\', \'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "softplus"

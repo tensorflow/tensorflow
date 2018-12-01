@@ -437,6 +437,13 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testSoftMaxCrossEntropyWithLogitsV2(self):
+    text = "tf.nn.softmax_cross_entropy_with_logits_v2(labels, logits, dim=2)"
+    expected_text = (
+        "tf.nn.softmax_cross_entropy_with_logits(labels, logits, axis=2)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

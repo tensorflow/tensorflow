@@ -36,13 +36,14 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
-
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.deprecation import deprecated_argument_lookup
+
 from tensorflow.python.util.tf_export import tf_export
 
 # Aliases for some automatically-generated names.
@@ -2308,9 +2309,8 @@ def _ensure_xent_args(name, sentinel, labels, logits):
     raise ValueError("Both labels and logits must be provided.")
 
 
-@tf_export("nn.softmax_cross_entropy_with_logits",
-           v1=["nn.softmax_cross_entropy_with_logits_v2"])
-def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
+@tf_export("nn.softmax_cross_entropy_with_logits", v1=[])
+def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
   """Computes softmax cross entropy between `logits` and `labels`.
 
   Measures the probability error in discrete classification tasks in which the
@@ -2332,7 +2332,7 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
 
   A common use case is to have logits and labels of shape
   `[batch_size, num_classes]`, but higher dimensions are supported, with
-  the `dim` argument specifying the class dimension.
+  the `axis` argument specifying the class dimension.
 
   `logits` and `labels` must have the same dtype (either `float16`, `float32`,
   or `float64`).
@@ -2350,8 +2350,64 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
       probability distribution.
     logits: Unscaled log probabilities.
-    dim: The class dimension. Defaulted to -1 which is the last dimension.
+    axis: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` that contains the softmax cross entropy loss. Its type is the
+    same as `logits` and its shape is the same as `labels` except that it does
+    not have the last dimension of `labels`.
+  """
+  return softmax_cross_entropy_with_logits_v2_helper(
+      labels=labels, logits=logits, axis=axis, name=name)
+
+
+@tf_export(v1=["nn.softmax_cross_entropy_with_logits_v2"])
+@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
+def softmax_cross_entropy_with_logits_v2_helper(
+    labels, logits, axis=-1, name=None, dim=None):
+  """Computes softmax cross entropy between `logits` and `labels`.
+
+  Measures the probability error in discrete classification tasks in which the
+  classes are mutually exclusive (each entry is in exactly one class).  For
+  example, each CIFAR-10 image is labeled with one and only one label: an image
+  can be a dog or a truck, but not both.
+
+  **NOTE:**  While the classes are mutually exclusive, their probabilities
+  need not be.  All that is required is that each row of `labels` is
+  a valid probability distribution.  If they are not, the computation of the
+  gradient will be incorrect.
+
+  If using exclusive `labels` (wherein one and only
+  one class is true at a time), see `sparse_softmax_cross_entropy_with_logits`.
+
+  **WARNING:** This op expects unscaled logits, since it performs a `softmax`
+  on `logits` internally for efficiency.  Do not call this op with the
+  output of `softmax`, as it will produce incorrect results.
+
+  A common use case is to have logits and labels of shape
+  `[batch_size, num_classes]`, but higher dimensions are supported, with
+  the `axis` argument specifying the class dimension.
+
+  `logits` and `labels` must have the same dtype (either `float16`, `float32`,
+  or `float64`).
+
+  Backpropagation will happen into both `logits` and `labels`.  To disallow
+  backpropagation into `labels`, pass label tensors through `tf.stop_gradient`
+  before feeding it to this function.
+
+  **Note that to avoid confusion, it is required to pass only named arguments to
+  this function.**
+
+  Args:
+    labels: Each vector along the class dimension should hold a valid
+      probability distribution e.g. for the case in which labels are of shape
+      `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
+      probability distribution.
+    logits: Unscaled log probabilities.
+    axis: The class dimension. Defaulted to -1 which is the last dimension.
+    name: A name for the operation (optional).
+    dim: Deprecated alias for axis.
 
   Returns:
     A `Tensor` that contains the softmax cross entropy loss. Its type is the
@@ -2361,6 +2417,8 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
   # TODO(pcmurray) Raise an error when the labels do not sum to 1. Note: This
   # could break users who call this with bad labels, but disregard the bad
   # results.
+  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
+  del dim
 
   with ops.name_scope(name, "softmax_cross_entropy_with_logits",
                       [logits, labels]) as name:
@@ -2377,7 +2435,7 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
     shape = logits.get_shape()
 
     # Move the dim to the end if dim is not the last dimension.
-    if dim is not -1:
+    if axis != -1:
 
       def _move_dim_to_end(tensor, dim_index, rank):
         return array_ops.transpose(
@@ -2387,8 +2445,8 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
                 math_ops.range(dim_index + 1, rank), [dim_index]
             ], 0))
 
-      precise_logits = _move_dim_to_end(precise_logits, dim, input_rank)
-      labels = _move_dim_to_end(labels, dim, input_rank)
+      precise_logits = _move_dim_to_end(precise_logits, axis, input_rank)
+      labels = _move_dim_to_end(labels, axis, input_rank)
 
     input_shape = array_ops.shape(precise_logits)
 
@@ -2402,7 +2460,7 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
     cost, unused_backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
         precise_logits, labels, name=name)
 
-    # The output cost shape should be the input minus dim.
+    # The output cost shape should be the input minus axis.
     output_shape = array_ops.slice(input_shape, [0],
                                    [math_ops.subtract(input_rank, 1)])
     cost = array_ops.reshape(cost, output_shape)
@@ -2412,7 +2470,7 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
     if not context.executing_eagerly(
     ) and shape is not None and shape.dims is not None:
       shape = shape.as_list()
-      del shape[dim]
+      del shape[axis]
       cost.set_shape(shape)
 
     if convert_to_float32:
@@ -2490,7 +2548,7 @@ def softmax_cross_entropy_with_logits(
     labels = array_ops.stop_gradient(labels, name="labels_stop_gradient")
 
   return softmax_cross_entropy_with_logits_v2(
-      labels=labels, logits=logits, dim=dim, name=name)
+      labels=labels, logits=logits, axis=dim, name=name)
 
 
 @tf_export("nn.sparse_softmax_cross_entropy_with_logits")
