@@ -16,28 +16,12 @@
 # THIS IS A GENERATED DOCKERFILE.
 #
 # This file was assembled from multiple pieces, whose use is documented
-# below. Please refer to the the TensorFlow dockerfiles documentation for
-# more information. Build args are documented as their default value.
-#
-# Ubuntu-based, Nvidia-GPU-enabled environment for developing changes for TensorFlow, with Jupyter included.
-#
-# Start from Nvidia's Ubuntu base image with CUDA and CuDNN, with TF development
-# packages.
-# --build-arg UBUNTU_VERSION=16.04
-#    ( no description )
-#
-# Python is required for TensorFlow and other libraries.
-# --build-arg USE_PYTHON_3_NOT_2=True
-#    Install python 3 over Python 2
-#
-# Install the latest version of Bazel and Python development tools.
-#
-# Configure TensorFlow's shell prompt and login tools.
-#
-# Launch Jupyter on execution instead of a bash prompt.
+# throughout. Please refer to the the TensorFlow dockerfiles documentation
+# for more information.
 
 ARG UBUNTU_VERSION=16.04
-FROM nvidia/cuda:9.0-base-ubuntu${UBUNTU_VERSION}
+
+FROM nvidia/cuda:9.0-base-ubuntu${UBUNTU_VERSION} as base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
@@ -60,6 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpng12-dev \
         libzmq3-dev \
         pkg-config \
+        python-dev \
         rsync \
         software-properties-common \
         unzip \
@@ -82,11 +67,19 @@ RUN mkdir /usr/local/cuda-9.0/lib &&  \
     ln -s /usr/lib/x86_64-linux-gnu/libnccl.so.2 /usr/local/cuda/lib/libnccl.so.2 && \
     ln -s /usr/include/nccl.h /usr/local/cuda/include/nccl.h
 
-# TODO(tobyboyd): Remove after license is excluded from BUILD file.
-RUN gunzip /usr/share/doc/libnccl2/NCCL-SLA.txt.gz && \
-    cp /usr/share/doc/libnccl2/NCCL-SLA.txt /usr/local/cuda/
+# Configure the build for our CUDA configuration.
+ENV CI_BUILD_PYTHON python
+ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+ENV TF_NEED_CUDA 1
+ENV TF_NEED_TENSORRT 1
+ENV TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2,6.0,6.1,7.0
+ENV TF_CUDA_VERSION=9.0
+ENV TF_CUDNN_VERSION=7
 
-ARG USE_PYTHON_3_NOT_2=True
+# NCCL 2.x
+ENV TF_NCCL_VERSION=2
+
+ARG USE_PYTHON_3_NOT_2
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
 ARG PYTHON=python${_PY_SUFFIX}
 ARG PIP=pip${_PY_SUFFIX}
@@ -98,9 +91,12 @@ RUN apt-get update && apt-get install -y \
     ${PYTHON} \
     ${PYTHON}-pip
 
-RUN ${PIP} install --upgrade \
+RUN ${PIP} --no-cache-dir install --upgrade \
     pip \
     setuptools
+
+# Some TF tools expect a "python" binary
+RUN ln -s $(which ${PYTHON}) /usr/local/bin/python 
 
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -109,6 +105,20 @@ RUN apt-get update && apt-get install -y \
     openjdk-8-jdk \
     ${PYTHON}-dev \
     swig
+
+RUN ${PIP} --no-cache-dir install \
+    Pillow \
+    h5py \
+    keras_applications \
+    keras_preprocessing \
+    matplotlib \
+    mock \
+    numpy \
+    scipy \
+    sklearn \
+    pandas \
+    && test "${USE_PYTHON_3_NOT_2}" -eq 1 && true || ${PIP} --no-cache-dir install \
+    enum34
 
 # Install bazel
 RUN echo "deb [arch=amd64] http://storage.googleapis.com/bazel-apt stable jdk1.8" | tee /etc/apt/sources.list.d/bazel.list && \
@@ -119,11 +129,19 @@ RUN echo "deb [arch=amd64] http://storage.googleapis.com/bazel-apt stable jdk1.8
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
-RUN ${PIP} install jupyter
+RUN ${PIP} install jupyter matplotlib
 
-RUN mkdir /notebooks && chmod a+rwx /notebooks
+RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
 RUN mkdir /.local && chmod a+rwx /.local
-WORKDIR /notebooks
+RUN apt-get install -y --no-install-recommends wget
+WORKDIR /tf/tensorflow-tutorials
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/basic_classification.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/basic_text_classification.ipynb
+COPY readme-for-jupyter.md README.md
+RUN apt-get autoremove -y && apt-get remove -y wget
+WORKDIR /tf
 EXPOSE 8888
 
-CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/notebooks --ip 0.0.0.0 --no-browser --allow-root"]
+RUN ${PYTHON} -m ipykernel.kernelspec
+
+CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/tf --ip 0.0.0.0 --no-browser --allow-root"]
