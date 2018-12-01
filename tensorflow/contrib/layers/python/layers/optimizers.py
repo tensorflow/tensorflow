@@ -111,7 +111,7 @@ def optimize_loss(loss,
                           variables will be multiplied by given constant.
     clip_gradients: float, callable or `None`. If a float is provided, a global
       clipping is applied to prevent the norm of the gradient from exceeding
-      this value. Alternatively, a callable can be provided e.g.,
+      this value. Alternatively, a callable can be provided, e.g.,
       adaptive_clipping_fn().  This callable takes a `list` of 
       `(gradients, variables)` `tuple`s and returns the same thing with the 
       gradients modified.
