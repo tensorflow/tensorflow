@@ -29,6 +29,16 @@ py_library(
 )
 
 py_library(
+    name = "has_indefinite_repeat",
+    srcs = ["has_indefinite_repeat.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
     name = "iterator_ops",
     srcs = [
         "iterator_ops.py",
@@ -428,6 +438,7 @@ py_library(
         ":filter_for_shard_ops",
         ":get_single_element",
         ":grouping",
+        ":has_indefinite_repeat",
         ":indexed_dataset_ops",
         ":interleave_ops",
         ":map_defun",
