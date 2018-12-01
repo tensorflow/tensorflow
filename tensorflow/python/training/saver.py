@@ -1077,16 +1077,28 @@ class Saver(object):
     @compatibility(eager)
     When eager execution is enabled, `var_list` must specify a `list` or `dict`
     of variables to save. Otherwise, a `RuntimeError` will be raised.
+
+    Although Saver works in some cases when executing eagerly, it is
+    fragile. Please switch to `tf.train.Checkpoint` or
+    `tf.keras.Model.save_weights`, which perform a more robust object-based
+    saving. These APIs will load checkpoints written by `Saver`.
     @end_compatibility
     """
     if defer_build and var_list:
       raise ValueError(
           "If `var_list` is provided then build cannot be deferred. "
           "Either set defer_build=False or var_list=None.")
-    if context.executing_eagerly() and var_list is None:
-      raise RuntimeError(
-          "When eager execution is enabled, `var_list` must specify a list or "
-          "dict of variables to save")
+    if context.executing_eagerly():
+      logging.warning(
+          "Saver is deprecated, please switch to tf.train.Checkpoint or "
+          "tf.keras.Model.save_weights for training checkpoints. When "
+          "executing eagerly variables do not necessarily have unique names, "
+          "and so the variable.name-based lookups Saver performs are "
+          "error-prone.")
+      if var_list is None:
+        raise RuntimeError(
+            "When eager execution is enabled, `var_list` must specify a list "
+            "or dict of variables to save")
     self._var_list = var_list
     self._reshape = reshape
     self._sharded = sharded
