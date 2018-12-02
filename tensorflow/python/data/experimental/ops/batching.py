@@ -34,7 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.util.tf_export import tf_export
@@ -365,7 +365,7 @@ class _UnbatchDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.unbatch_dataset(
+    return ged_ops.experimental_unbatch_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         **dataset_ops.flat_structure(self))
 
@@ -455,7 +455,7 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
     self._row_shape = row_shape
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.dense_to_sparse_batch_dataset(
+    return ged_ops.experimental_dense_to_sparse_batch_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._batch_size,
         row_shape=convert.partial_shape_to_tensor(self._row_shape),
@@ -589,7 +589,7 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
     input_resource = self._input_dataset._as_variant_tensor()
-    return gen_dataset_ops.map_and_batch_dataset_v2(
+    return ged_ops.experimental_map_and_batch_dataset(
         input_resource,
         self._map_func.captured_inputs,
         f=self._map_func,

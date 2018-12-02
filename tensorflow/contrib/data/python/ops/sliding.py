@@ -22,7 +22,7 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util import deprecation
 
 
@@ -41,7 +41,7 @@ class _SlideDataset(dataset_ops.UnaryDataset):
         window_shift, dtype=dtypes.int64, name="window_shift")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.slide_dataset(
+    return ged_ops.experimental_sliding_window_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         window_size=self._window_size,
         window_shift=self._window_shift,
