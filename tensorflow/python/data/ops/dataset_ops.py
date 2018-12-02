@@ -2992,7 +2992,7 @@ class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
     self._counter_prefix = counter_prefix
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.set_stats_aggregator_dataset(
+    return ged_ops.experimental_set_stats_aggregator_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._stats_aggregator._resource,  # pylint: disable=protected-access
         self._prefix,
