@@ -25,7 +25,7 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.FtrlOptimizer")
+@tf_export(v1=["train.FtrlOptimizer"])
 class FtrlOptimizer(optimizer.Optimizer):
   """Optimizer that implements the FTRL algorithm.
 

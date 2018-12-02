@@ -46,7 +46,7 @@ def _maybe_name(obj):
     return "<no name for %s>" % type(obj)
 
 
-@tf_export("train.SessionManager")
+@tf_export(v1=["train.SessionManager"])
 class SessionManager(object):
   """Training helper that restores from checkpoint and creates session.
 

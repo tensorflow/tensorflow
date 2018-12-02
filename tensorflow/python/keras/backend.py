@@ -2325,7 +2325,7 @@ def concatenate(tensors, axis=-1):
     else:
       axis = 0
 
-  if py_all([is_sparse(x) for x in tensors]):
+  if py_all(is_sparse(x) for x in tensors):
     return sparse_ops.sparse_concat(axis, tensors)
   else:
     return array_ops.concat([to_dense(x) for x in tensors], axis)
@@ -3188,7 +3188,7 @@ def function(inputs, outputs, updates=None, name=None, **kwargs):
   Raises:
       ValueError: if invalid kwargs are passed in or if in eager execution.
   """
-  if context.executing_eagerly():
+  if ops.executing_eagerly_outside_functions():
     if kwargs:
       raise ValueError('Session keyword arguments are not support during '
                        'eager execution. You passed: %s' % (kwargs,))
@@ -3347,9 +3347,9 @@ def rnn(step_function,
     assert not nest.is_sequence(input_t)
     rank_diff = len(input_t.shape) - len(mask_t.shape)
     for _ in range(rank_diff):
-      mask_t = array_ops.expand_dims(mask_t)
-    expand_dims = [1] * fixed_dim + input_t.shape.as_list()[fixed_dim:]
-    return array_ops.tile(mask_t, expand_dims)
+      mask_t = array_ops.expand_dims(mask_t, -1)
+    multiples = [1] * fixed_dim + input_t.shape.as_list()[fixed_dim:]
+    return array_ops.tile(mask_t, multiples)
 
   if unroll:
     if not time_steps:

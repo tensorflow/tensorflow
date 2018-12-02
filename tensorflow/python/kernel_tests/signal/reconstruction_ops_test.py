@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -62,6 +63,7 @@ class ReconstructionOpsTest(test.TestCase):
 
       self.assertAllClose(output, expected_output)
 
+  @test_util.run_deprecated_v1
   def test_simple(self):
     def make_input(frame_length, num_frames=3):
       """Generate a tensor of num_frames frames of frame_length."""
@@ -133,6 +135,7 @@ class ReconstructionOpsTest(test.TestCase):
       self.assertEqual(output.shape, (1, 9))
       self.assertEqual(string_output, self.expected_string)
 
+  @test_util.run_deprecated_v1
   def test_gradient(self):
     configurations = [
         ((1, 128), 1),
@@ -154,6 +157,7 @@ class ReconstructionOpsTest(test.TestCase):
         gradient = sess.run(gradients_impl.gradients([loss], [signal])[0])
         self.assertTrue((gradient == 1.0).all())
 
+  @test_util.run_deprecated_v1
   def test_gradient_batch(self):
     with self.session(use_gpu=True) as sess:
       signal = array_ops.zeros((2, 10, 10))
@@ -176,6 +180,7 @@ class ReconstructionOpsTest(test.TestCase):
           np.reshape(np.arange(100).astype(np.float32), (10, 10))])
       self.assertAllEqual(expected_gradient, gradient)
 
+  @test_util.run_deprecated_v1
   def test_gradient_numerical(self):
     with self.session(use_gpu=True):
       shape = (2, 10, 10)

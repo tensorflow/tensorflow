@@ -453,7 +453,7 @@ class PartitionedCallOp : public AsyncOpKernel {
         },
         rendez, std::move(done), std::placeholders::_1);
     auto* refcounted_done = new ReffedStatusCallback(std::move(callback));
-    for (int i = 1; i < handles->size(); ++i) {
+    for (int i = 0; i < handles->size(); ++i) {
       refcounted_done->Ref();
     }
 
@@ -507,6 +507,7 @@ class PartitionedCallOp : public AsyncOpKernel {
             });
       }
     }
+    refcounted_done->Unref();
   }
 
   string UniquifyFunctionName(const FunctionLibraryDefinition* function_library,

@@ -1,9 +1,13 @@
 # TensorFlow Dockerfiles
 
-This directory houses TensorFlow's Dockerfiles. **DO NOT EDIT THE DOCKERFILES
-MANUALLY!** They are maintained by `assembler.py`, which builds Dockerfiles from
-the files in `partials/` and the rules in `spec.yml`. See [the Contributing
-section](#contributing) for more information.
+This directory houses TensorFlow's Dockerfiles and the infrastructure used to
+create and deploy them to
+[Docker Hub](https://hub.docker.com/r/tensorflow/tensorflow).
+
+**DO NOT EDIT THE DOCKERFILES/ DIRECTORY MANUALLY!** The files within are
+maintained by `assembler.py`, which builds Dockerfiles from the files in
+`partials/` and the rules in `spec.yml`. See
+[the Contributing section](#contributing) for more information.
 
 These Dockerfiles are planned to replace the Dockerfiles used to generate
 [TensorFlow's official Docker images](https://hub.docker.com/r/tensorflow/tensorflow).
@@ -20,10 +24,10 @@ $ docker build -f ./dockerfiles/cpu.Dockerfile -t tf .
 Each Dockerfile has its own set of available `--build-arg`s which are documented
 in the Dockerfile itself.
 
-## Running
+## Running Locally Built Images
 
 After building the image with the tag `tf` (for example), use `docker run` to
-run the images. Examples are below.
+run the images.
 
 Note for new Docker users: the `-v` and `-u` flags share directories between
 the Docker container and your machine, and very important. Without
@@ -42,8 +46,10 @@ $ docker run -u $(id -u):$(id -g) -v $(pwd):/my-devel -it tf
 # GPU-based images (set up nvidia-docker2 first)
 $ docker run --runtime=nvidia -u $(id -u):$(id -g) -v $(pwd):/my-devel -it tf
 
-# Images with Jupyter run on port 8888, and needs a volume for notebooks
-$ docker run --user $(id -u):$(id -g) -p 8888:8888 -v $(pwd):/notebooks -it tf
+# Images with Jupyter run on port 8888 and need a volume for your notebooks
+# You can change $(PWD) to the full path to a directory if your notebooks
+# live outside the current directory.
+$ docker run --user $(id -u):$(id -g) -p 8888:8888 -v $(PWD):/tf/notebooks -it tf
 ```
 
 These images do not come with the TensorFlow source code -- but the development
@@ -60,11 +66,32 @@ You can use the `Dockerfile` in this directory to build an editing environment
 that has all of the Python dependencies you'll need:
 
 ```bash
-$ docker build -t tf-assembler -f assembler.Dockerfile .
+# Build the tools-helper image so you can run the assembler
+$ docker build -t tf-tools -f tools.Dockerfile .
 
 # Set --user to set correct permissions on generated files
-$ docker run --user $(id -u):$(id -g) -it -v $(pwd):/tf tf-assembler bash 
+$ docker run --user $(id -u):$(id -g) -it -v $(pwd):/tf tf-tools bash
 
-# In the container...
-/tf $ python3 ./assembler.py -o dockerfiles -s spec.yml
+# Next you can make a handy alias depending on what you're doing. When building
+# Docker images, you need to run as root with docker.sock mounted so that the
+# container can run Docker commands. When assembling Dockerfiles, though, you'll
+# want to run as your user so that new files have the right permissions.
+
+# If you're BUILDING OR DEPLOYING DOCKER IMAGES, run as root with docker.sock:
+$ alias asm_images="docker run --rm -v $(pwd):/tf -v /var/run/docker.sock:/var/run/docker.sock tf-tools python3 assembler.py "
+
+# If you're REBUILDING OR ADDING DOCKERFILES, remove docker.sock and add -u:
+$ alias asm_dockerfiles="docker run --rm -u $(id -u):$(id -g) -v $(pwd):/tf tf-tools python3 assembler.py "
+
+# Check flags
+$ asm_dockerfiles --help
+
+# Assemble all of the Dockerfiles
+$ asm_dockerfiles --release ubuntu-dockerfiles --construct_dockerfiles
+
+# Build all of the "nightly" images on your local machine:
+$ asm_images --release nightly --build_images
+
+# Build version release for version 99.0, except "gpu" tags:
+$ asm_images --release versioned --arg _TAG_PREFIX=99.0 --build_images --exclude_tags_matching '*.gpu.*'
 ```

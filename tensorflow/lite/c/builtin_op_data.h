@@ -35,10 +35,20 @@ typedef enum {
   kTfLitePaddingValid,
 } TfLitePadding;
 
+typedef enum {
+  kTfLiteMirrorPaddingUnknown = 0,
+  kTfLiteMirrorPaddingReflect,
+  kTfLiteMirrorPaddingSymmetric,
+} TfLiteMirrorPaddingMode;
+
 typedef struct {
   int width;
   int height;
 } TfLitePaddingValues;
+
+typedef struct {
+  TfLiteMirrorPaddingMode mode;
+} TfLiteMirrorPaddingParams;
 
 // Possible fused activation functions.
 // TODO(aselle): rename to TfLiteActivation
@@ -266,6 +276,10 @@ typedef struct {
 typedef struct {
   int num_splits;
 } TfLiteSplitParams;
+
+typedef struct {
+  int num_splits;
+} TfLiteSplitVParams;
 
 typedef struct {
   // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.

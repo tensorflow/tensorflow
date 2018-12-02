@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import image_ops
@@ -47,6 +48,7 @@ class ResizeNearestNeighborOpTest(test.TestCase):
         resize_out = self.evaluate(resize_out)
       self.assertEqual(out_shape, list(resize_out.shape))
 
+  @test_util.run_deprecated_v1
   def testGradFromResizeToLargerInBothDims(self):
     in_shape = [1, 2, 3, 1]
     out_shape = [1, 4, 6, 1]
@@ -62,6 +64,7 @@ class ResizeNearestNeighborOpTest(test.TestCase):
             input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
       self.assertLess(err, 1e-3)
 
+  @test_util.run_deprecated_v1
   def testGradFromResizeToSmallerInBothDims(self):
     in_shape = [1, 4, 6, 1]
     out_shape = [1, 2, 3, 1]
@@ -77,6 +80,7 @@ class ResizeNearestNeighborOpTest(test.TestCase):
             input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
       self.assertLess(err, 1e-3)
 
+  @test_util.run_deprecated_v1
   def testCompareGpuVsCpu(self):
     in_shape = [1, 4, 6, 3]
     out_shape = [1, 8, 16, 3]
@@ -116,6 +120,7 @@ class ResizeBilinearOpTest(test.TestCase):
       resize_out = self.evaluate(resize_out)
       self.assertEqual(out_shape, list(resize_out.shape))
 
+  @test_util.run_deprecated_v1
   def testGradFromResizeToLargerInBothDims(self):
     in_shape = [1, 2, 3, 1]
     out_shape = [1, 4, 6, 1]
@@ -129,6 +134,7 @@ class ResizeBilinearOpTest(test.TestCase):
           input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
     self.assertLess(err, 1e-3)
 
+  @test_util.run_deprecated_v1
   def testGradFromResizeToSmallerInBothDims(self):
     in_shape = [1, 4, 6, 1]
     out_shape = [1, 2, 3, 1]
@@ -142,6 +148,7 @@ class ResizeBilinearOpTest(test.TestCase):
           input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
     self.assertLess(err, 1e-3)
 
+  @test_util.run_deprecated_v1
   def testCompareGpuVsCpu(self):
     in_shape = [2, 4, 6, 3]
     out_shape = [2, 8, 16, 3]
@@ -160,6 +167,7 @@ class ResizeBilinearOpTest(test.TestCase):
 
       self.assertAllClose(grad[False], grad[True], rtol=1e-4, atol=1e-4)
 
+  @test_util.run_deprecated_v1
   def testTypes(self):
     in_shape = [1, 4, 6, 1]
     out_shape = [1, 2, 3, 1]
@@ -199,6 +207,7 @@ class ResizeBicubicOpTest(test.TestCase):
         resize_out = self.evaluate(resize_out)
         self.assertEqual(out_shape, list(resize_out.shape))
 
+  @test_util.run_deprecated_v1
   def testGradFromResizeToLargerInBothDims(self):
     in_shape = [1, 2, 3, 1]
     out_shape = [1, 4, 6, 1]
@@ -214,6 +223,7 @@ class ResizeBicubicOpTest(test.TestCase):
             input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
       self.assertLess(err, 1e-3)
 
+  @test_util.run_deprecated_v1
   def testGradFromResizeToSmallerInBothDims(self):
     in_shape = [1, 4, 6, 1]
     out_shape = [1, 2, 3, 1]
@@ -229,6 +239,7 @@ class ResizeBicubicOpTest(test.TestCase):
             input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
       self.assertLess(err, 1e-3)
 
+  @test_util.run_deprecated_v1
   def testGradOnUnsupportedType(self):
     in_shape = [1, 4, 6, 1]
     out_shape = [1, 2, 3, 1]
@@ -306,6 +317,7 @@ class CropAndResizeOpTest(test.TestCase):
         samples.append(sample)
     return samples
 
+  @test_util.run_deprecated_v1
   def testGradRandomBoxes(self):
     """Test that the gradient is correct for randomly generated boxes.
 

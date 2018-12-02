@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import gc
 
 import numpy as np
@@ -28,6 +29,7 @@ from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import variables
@@ -43,6 +45,7 @@ class TestResource(str):
 
 class ApiTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_decorator_recurses(self):
 
     class TestClass(object):
@@ -65,6 +68,7 @@ class ApiTest(test.TestCase):
           constant_op.constant(-2))
       self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
+  @test_util.run_deprecated_v1
   def test_decorator_does_not_recurse(self):
 
     class TestClass(object):
@@ -85,6 +89,7 @@ class ApiTest(test.TestCase):
           constant_op.constant(-2))
       self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
+  @test_util.run_deprecated_v1
   def test_decorator_calls_unconverted_graph(self):
 
     class TestClass(object):
@@ -106,6 +111,7 @@ class ApiTest(test.TestCase):
           constant_op.constant(-2))
       self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
+  @test_util.run_deprecated_v1
   def test_decorator_calls_unconverted_py_func(self):
 
     class TestClass(object):
@@ -132,6 +138,7 @@ class ApiTest(test.TestCase):
           constant_op.constant(-2))
       self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
+  @test_util.run_deprecated_v1
   def test_decorator_calls_decorated(self):
 
     class TestClass(object):
@@ -171,6 +178,7 @@ class ApiTest(test.TestCase):
         list(tf_inspect.getfullargspec(tc.called_member)),
         list(tf_inspect.getfullargspec(tc.called_member_converted)))
 
+  @test_util.run_deprecated_v1
   def test_convert_call_site_decorator(self):
 
     class TestClass(object):
@@ -209,6 +217,26 @@ class ApiTest(test.TestCase):
       x = api.converted_call(test_fn, None, converter.ConversionOptions(),
                              constant_op.constant(-1))
       self.assertEqual(1, self.evaluate(x))
+
+  def test_converted_call_functools_partial(self):
+
+    def test_fn(x, y, z):
+      if x < 0:
+        return -x, -y, -z
+      return x, y, z
+
+    x = api.converted_call(
+        functools.partial(test_fn, constant_op.constant(-1), z=-3),
+        None, converter.ConversionOptions(),
+        constant_op.constant(-2))
+    self.assertEqual((1, 2, 3), self.evaluate(x))
+
+    x = api.converted_call(
+        functools.partial(
+            functools.partial(test_fn, constant_op.constant(-1)), z=-3),
+        None, converter.ConversionOptions(),
+        constant_op.constant(-2))
+    self.assertEqual((1, 2, 3), self.evaluate(x))
 
   def test_converted_call_method_explicit_owner(self):
     # TODO(mdan): Implement.
@@ -305,6 +333,7 @@ class ApiTest(test.TestCase):
                              constant_op.constant(0))
       self.assertTrue(self.evaluate(x))
 
+  @test_util.run_deprecated_v1
   def test_converted_call_no_user_code(self):
 
     def f(x):
@@ -379,6 +408,7 @@ class ApiTest(test.TestCase):
       self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual(True, self.evaluate(x))
 
+  @test_util.run_deprecated_v1
   def test_to_graph_basic(self):
 
     def test_fn(x, s):
@@ -392,6 +422,7 @@ class ApiTest(test.TestCase):
       x = compiled_fn(constant_op.constant([4, 8]), 4)
       self.assertListEqual([1, 2], self.evaluate(x).tolist())
 
+  @test_util.run_deprecated_v1
   def test_to_graph_with_defaults(self):
 
     foo = 4

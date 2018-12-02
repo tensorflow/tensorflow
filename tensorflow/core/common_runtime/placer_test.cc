@@ -92,7 +92,7 @@ class FakeDevice : public Device {
 class DummyFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override {
+                       std::vector<std::unique_ptr<Device>>* devices) override {
     return Status::OK();
   }
 };

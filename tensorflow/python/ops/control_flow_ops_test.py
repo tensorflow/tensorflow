@@ -211,7 +211,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       with self.cached_session() as sess:
         self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
-          sess.run([train_op])
+          self.evaluate([train_op])
 
   def testResourceReadInLoop(self):
     with ops.Graph().as_default():
@@ -270,7 +270,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
 
       with self.cached_session() as sess:
         self.evaluate(variables.global_variables_initializer())
-        self.assertAllEqual(*sess.run([static_grads, dynamic_grads]))
+        self.assertAllEqual(*self.evaluate([static_grads, dynamic_grads]))
 
   def testIndexedSlicesGradientInCondInWhileLoop(self):
     self.doTestIndexedSlicesGradientInCondInWhileLoop(use_resource=False)

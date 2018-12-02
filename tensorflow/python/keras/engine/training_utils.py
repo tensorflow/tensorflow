@@ -35,6 +35,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
@@ -58,10 +59,10 @@ def _map_nested(data, func):
 def _nested_all(data, cond_func):
   """Checks if all elements in a nested structure satisfy cond_func."""
   if isinstance(data, (tuple, list)):
-    return all([_nested_all(nested_data, cond_func) for nested_data in data])
+    return all(_nested_all(nested_data, cond_func) for nested_data in data)
   elif isinstance(data, dict):
     return all(
-        [_nested_all(nested_data, cond_func) for nested_data in data.values()])
+        _nested_all(nested_data, cond_func) for nested_data in data.values())
   else:
     return cond_func(data)
 
@@ -69,7 +70,7 @@ def _nested_all(data, cond_func):
 def _nested_any(data, cond_func):
   """Checks if any nested_elements in a nested structure satisfy cond_func."""
   if isinstance(data, (tuple, list)):
-    return any([_nested_any(nested_data, cond_func) for nested_data in data])
+    return any(_nested_any(nested_data, cond_func) for nested_data in data)
   elif isinstance(data, dict):
     return any(
         [_nested_any(nested_data, cond_func) for nested_data in data.values()])
@@ -632,15 +633,14 @@ def weighted_masked_objective(fn):
         weights = mask
       else:
         # Update dimensions of weights to match with mask if possible.
-        mask, _, weights = metrics_module.squeeze_or_expand_dimensions(
-            mask, None, weights)
+        mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
         weights *= mask
 
     # Apply sample weighting.
     if weights is not None:
 
       # Update dimensions of weights to match with values if possible.
-      score_array, _, weights = metrics_module.squeeze_or_expand_dimensions(
+      score_array, _, weights = squeeze_or_expand_dimensions(
           score_array, None, weights)
       try:
         # Broadcast weights if possible.
@@ -838,10 +838,20 @@ def call_metric_function(metric_fn, y_true, y_pred, weights=None, mask=None):
     return metric_fn(y_true, y_pred, sample_weight=mask)
 
   # Update dimensions of weights to match with mask.
-  mask, _, weights = metrics_module.squeeze_or_expand_dimensions(
-      mask, None, weights)
+  mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
   weights *= mask
   return metric_fn(y_true, y_pred, sample_weight=weights)
+
+
+def get_loss_function(loss):
+  """Returns the loss function corresponding to the given loss input."""
+  if loss is None or isinstance(loss, losses.Loss):
+    return loss
+
+  # TODO(psv): After we have added all V2 losses, update this function.
+  if loss in ['mse', 'MSE', 'mean_squared_error']:
+    return losses.MeanSquaredError()
+  return losses.get(loss)
 
 
 def validate_iterator_input(x, y, sample_weight, validation_split=None):

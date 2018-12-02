@@ -37,7 +37,7 @@ _TENSORFLOW_DOC_SOURCES = {
     'app': DocSource(docstring_module_name='platform.app'),
     'bitwise': DocSource(docstring_module_name='ops.bitwise_ops'),
     'compat': DocSource(docstring_module_name='util.compat'),
-    'distribute': DocSource(docstring_module_name='training.distribute'),
+    'distribute': DocSource(docstring_module_name='distribute.distribute_lib'),
     'distributions': DocSource(
         docstring_module_name='ops.distributions.distributions'),
     'errors': DocSource(docstring_module_name='framework.errors'),

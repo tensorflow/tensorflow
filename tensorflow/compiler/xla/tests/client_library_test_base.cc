@@ -107,7 +107,7 @@ StatusOr<Literal> ClientLibraryTestBase::ExecuteAndTransfer(
   ExecutionOptions execution_options = execution_options_;
   if (shape_with_output_layout != nullptr) {
     *execution_options.mutable_shape_with_output_layout() =
-        *shape_with_output_layout;
+        shape_with_output_layout->ToProto();
   }
   return client_->ExecuteAndTransfer(computation, arguments,
                                      &execution_options);
@@ -127,7 +127,7 @@ StatusOr<Literal> ClientLibraryTestBase::ExecuteAndTransferReference(
   ExecutionOptions execution_options = execution_options_;
   if (shape_with_output_layout != nullptr) {
     *execution_options.mutable_shape_with_output_layout() =
-        *shape_with_output_layout;
+        shape_with_output_layout->ToProto();
   }
   execution_options.clear_device_handles();
   return ref_client_->ExecuteAndTransfer(computation, arguments,

@@ -21,6 +21,8 @@ from __future__ import print_function
 import os
 import sys
 
+import numpy
+
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -29,8 +31,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.layers import merge
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import loader
@@ -214,6 +219,19 @@ class SaveTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "call.*second_function"):
       save.save(model, save_dir)
 
+  def test_subclassed_no_signature(self):
+
+    class Subclassed(training.Model):
+
+      def call(self, inputs):
+        return inputs * 2.
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    model = Subclassed()
+    with self.assertRaisesRegexp(
+        ValueError, "no @tf.function-decorated methods"):
+      save.save(model, save_dir)
+
   def test_docstring(self):
 
     class Adder(util.Checkpoint):
@@ -253,6 +271,46 @@ class SaveTest(test.TestCase):
           node for node in func.definition.node_def if node.op == "Complex"]
       self.assertNotIn("T", complex_node.attr)
       self.assertNotIn("Tout", complex_node.attr)
+
+  def test_export_functional_keras_model(self):
+    x = input_layer.Input((4,), name="x")
+    y = core.Dense(4, name="out")(x)
+    model = training.Model(x, y)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(model, save_dir)
+    self.assertAllClose(
+        {"out": model(array_ops.ones([1, 4]))},
+        self._import_and_infer(save_dir, {"x": [[1., 1., 1., 1.]]}))
+
+  @test_util.run_deprecated_v1
+  def test_export_functional_keras_model_after_fit(self):
+    x = input_layer.Input((1,))
+    y = core.Dense(1, name="y")(x)
+    model = training.Model(x, y)
+    model.compile(optimizer="sgd", loss="mse")
+    model.fit(x=numpy.array([[1.]]),
+              y=numpy.array([2.]), epochs=2)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(model, save_dir)
+    self.assertAllClose(
+        {"y": model(constant_op.constant([[1.], [2.]]))},
+        self._import_and_infer(save_dir, {"input_1": [[1.], [2.]]}))
+
+  def test_export_multi_input_functional_keras_model(self):
+    x1 = input_layer.Input((2,), name="x1")
+    x2 = input_layer.Input((2,), name="x2")
+    y1 = core.Dense(4)(merge.Add()([x1, x2]))
+    y2 = core.Dense(4)(merge.Multiply()([x1, x2]))
+    model = training.Model([x1, x2], [y1, y2])
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(model, save_dir)
+    outputs = model([array_ops.ones([1, 2]), 2. * array_ops.ones([1, 2])])
+    self.assertAllClose(
+        {"dense": outputs[0], "dense_1": outputs[1]},
+        self._import_and_infer(
+            save_dir,
+            {"x1": [[1., 1.]],
+             "x2": [[2., 2.]]}))
 
 
 class MemoryTests(test.TestCase):

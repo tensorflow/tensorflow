@@ -51,7 +51,7 @@ message HloInstructionProto {
 
   string name = 1;
   string opcode = 2;
-  xla.Shape shape = 3;
+  xla.ShapeProto shape = 3;
 
   xla.OpMetadata metadata = 7;
 
@@ -132,7 +132,7 @@ message HloInstructionProto {
   string custom_call_opaque = 53;
 
   // Shape of outfeed request.
-  xla.Shape outfeed_shape = 29;
+  xla.ShapeProto outfeed_shape = 29;
 
   // Describes the dimension numbers used for a dot operation
   xla.DotDimensionNumbers dot_dimension_numbers = 30;
@@ -190,7 +190,7 @@ message HloInstructionProto {
   // 'operand_shapes_with_layout' must contain a shape with layout for each
   // operand.
   bool constrain_layout = 56;
-  repeated Shape operand_shapes_with_layout = 57;
+  repeated xla.ShapeProto operand_shapes_with_layout = 57;
 }
 
 // Serialization of HloComputation.
@@ -205,7 +205,8 @@ message HloComputationProto {
   repeated HloInstructionProto instructions = 2;
 
   // The program shape (with layout) of this computation.
-  xla.ProgramShape program_shape = 4;
+
+  xla.ProgramShapeProto program_shape = 4;
 
   // The id of this computation.
   int64 id = 5;
@@ -297,7 +298,7 @@ message HloModuleProto {
   repeated HloComputationProto computations = 3;
 
   // The host program shape (with layout) of the entry computation.
-  xla.ProgramShape host_program_shape = 4;
+  xla.ProgramShapeProto host_program_shape = 4;
 
   // The id of this module.
   int64 id = 5;

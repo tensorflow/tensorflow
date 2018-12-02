@@ -82,6 +82,7 @@ from tensorflow.python.autograph.pyct.static_analysis import live_values
 from tensorflow.python.autograph.pyct.static_analysis import liveness
 from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.python.autograph.pyct.static_analysis import type_info
+from tensorflow.python.eager import function
 
 # TODO(mdan): These contexts can be refactored into first class objects.
 # For example, we could define Program and Entity abstractions that hold on
@@ -96,7 +97,7 @@ class Verbosity(IntEnum):
   Attributes:
    * BRIEF: No logging, minimal error messages.
    * VERBOSE: Detailed logging of generated code, detailed error messages.
- """
+  """
   BRIEF = 0
   VERBOSE = 1
 
@@ -151,7 +152,7 @@ class ConversionOptions(object):
                optional_features=Feature.ALL):
     self.recursive = recursive
     self.verbose = verbose
-    self.strip_decorators = strip_decorators or ()
+    self._strip_decorators = strip_decorators or ()
     self.force_conversion = force_conversion
     # TODO(mdan): Rename to conversion_recursion_depth?
     self.internal_convert_user_code = internal_convert_user_code
@@ -160,6 +161,12 @@ class ConversionOptions(object):
       optional_features = (optional_features,)
     optional_features = frozenset(optional_features)
     self.optional_features = optional_features
+
+  @property
+  def strip_decorators(self):
+    # A few decorators are included by default.
+    # TODO(mdan): Revert if function.defun becomes a public symbol.
+    return self._strip_decorators + (function.defun,)
 
   def uses(self, feature):
     return (Feature.ALL in self.optional_features or
@@ -216,7 +223,7 @@ class ConversionOptions(object):
             as_qualified_name(ConversionOptions)),
         recursive_val=parser.parse_expression(str(self.recursive)),
         verbose_val=parser.parse_expression(str(int(self.verbose))),
-        strip_decorators_val=list_of_names(self.strip_decorators),
+        strip_decorators_val=list_of_names(self._strip_decorators),
         force_conversion_val=parser.parse_expression(
             str(self.force_conversion)),
         internal_convert_user_code_val=parser.parse_expression(

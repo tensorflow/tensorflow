@@ -221,6 +221,7 @@ def json_to_tflite(name, src, out):
 # generated_test_models_failing().
 def generated_test_models():
     return [
+        "abs",
         "add",
         "arg_min_max",
         "avg_pool",
@@ -242,6 +243,7 @@ def generated_test_models():
         "fully_connected",
         "fused_batch_norm",
         "gather",
+        "gather_buggy",
         "global_batch_norm",
         "greater",
         "greater_equal",
@@ -269,6 +271,7 @@ def generated_test_models():
         "pack",
         "pad",
         "padv2",
+        "placeholder_with_default",
         "prelu",
         "pow",
         "range",
@@ -291,12 +294,14 @@ def generated_test_models():
         "space_to_depth",
         "sparse_to_dense",
         "split",
+        "splitv",
         "sqrt",
         "square",
         "squared_difference",
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
+        "strided_slice_buggy",
         "sub",
         "tile",
         "topk",

@@ -147,6 +147,7 @@ class AdadeltaOptimizerTest(test.TestCase):
     with context.eager_mode():
       self.doTestBasic(use_resource=True, use_callable_params=True)
 
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():

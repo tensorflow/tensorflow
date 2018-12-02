@@ -28,6 +28,7 @@ import zlib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
@@ -140,147 +141,147 @@ class TFCompressionTestCase(test.TestCase):
 
 class IdentityReaderTest(test.TestCase):
 
-  def _ExpectRead(self, sess, key, value, expected):
-    k, v = sess.run([key, value])
+  def _ExpectRead(self, key, value, expected):
+    k, v = self.evaluate([key, value])
     self.assertAllEqual(expected, k)
     self.assertAllEqual(expected, v)
 
+  @test_util.run_deprecated_v1
   def testOneEpoch(self):
-    with self.cached_session() as sess:
-      reader = io_ops.IdentityReader("test_reader")
-      work_completed = reader.num_work_units_completed()
-      produced = reader.num_records_produced()
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      queued_length = queue.size()
-      key, value = reader.read(queue)
+    reader = io_ops.IdentityReader("test_reader")
+    work_completed = reader.num_work_units_completed()
+    produced = reader.num_records_produced()
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    queued_length = queue.size()
+    key, value = reader.read(queue)
 
-      self.assertAllEqual(0, self.evaluate(work_completed))
-      self.assertAllEqual(0, self.evaluate(produced))
-      self.assertAllEqual(0, self.evaluate(queued_length))
+    self.assertAllEqual(0, self.evaluate(work_completed))
+    self.assertAllEqual(0, self.evaluate(produced))
+    self.assertAllEqual(0, self.evaluate(queued_length))
 
-      queue.enqueue_many([["A", "B", "C"]]).run()
-      queue.close().run()
-      self.assertAllEqual(3, self.evaluate(queued_length))
+    self.evaluate(queue.enqueue_many([["A", "B", "C"]]))
+    self.evaluate(queue.close())
+    self.assertAllEqual(3, self.evaluate(queued_length))
 
-      self._ExpectRead(sess, key, value, b"A")
-      self.assertAllEqual(1, self.evaluate(produced))
+    self._ExpectRead(key, value, b"A")
+    self.assertAllEqual(1, self.evaluate(produced))
 
-      self._ExpectRead(sess, key, value, b"B")
+    self._ExpectRead(key, value, b"B")
 
-      self._ExpectRead(sess, key, value, b"C")
-      self.assertAllEqual(3, self.evaluate(produced))
-      self.assertAllEqual(0, self.evaluate(queued_length))
+    self._ExpectRead(key, value, b"C")
+    self.assertAllEqual(3, self.evaluate(produced))
+    self.assertAllEqual(0, self.evaluate(queued_length))
 
-      with self.assertRaisesOpError("is closed and has insufficient elements "
-                                    "\\(requested 1, current size 0\\)"):
-        sess.run([key, value])
+    with self.assertRaisesOpError("is closed and has insufficient elements "
+                                  "\\(requested 1, current size 0\\)"):
+      self.evaluate([key, value])
 
-      self.assertAllEqual(3, self.evaluate(work_completed))
-      self.assertAllEqual(3, self.evaluate(produced))
-      self.assertAllEqual(0, self.evaluate(queued_length))
+    self.assertAllEqual(3, self.evaluate(work_completed))
+    self.assertAllEqual(3, self.evaluate(produced))
+    self.assertAllEqual(0, self.evaluate(queued_length))
 
+  @test_util.run_deprecated_v1
   def testMultipleEpochs(self):
-    with self.cached_session() as sess:
-      reader = io_ops.IdentityReader("test_reader")
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      enqueue = queue.enqueue_many([["DD", "EE"]])
-      key, value = reader.read(queue)
+    reader = io_ops.IdentityReader("test_reader")
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    enqueue = queue.enqueue_many([["DD", "EE"]])
+    key, value = reader.read(queue)
 
-      enqueue.run()
-      self._ExpectRead(sess, key, value, b"DD")
-      self._ExpectRead(sess, key, value, b"EE")
-      enqueue.run()
-      self._ExpectRead(sess, key, value, b"DD")
-      self._ExpectRead(sess, key, value, b"EE")
-      enqueue.run()
-      self._ExpectRead(sess, key, value, b"DD")
-      self._ExpectRead(sess, key, value, b"EE")
-      queue.close().run()
-      with self.assertRaisesOpError("is closed and has insufficient elements "
-                                    "\\(requested 1, current size 0\\)"):
-        sess.run([key, value])
+    self.evaluate(enqueue)
+    self._ExpectRead(key, value, b"DD")
+    self._ExpectRead(key, value, b"EE")
+    self.evaluate(enqueue)
+    self._ExpectRead(key, value, b"DD")
+    self._ExpectRead(key, value, b"EE")
+    self.evaluate(enqueue)
+    self._ExpectRead(key, value, b"DD")
+    self._ExpectRead(key, value, b"EE")
+    self.evaluate(queue.close())
+    with self.assertRaisesOpError("is closed and has insufficient elements "
+                                  "\\(requested 1, current size 0\\)"):
+      self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testSerializeRestore(self):
-    with self.cached_session() as sess:
-      reader = io_ops.IdentityReader("test_reader")
-      produced = reader.num_records_produced()
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      queue.enqueue_many([["X", "Y", "Z"]]).run()
-      key, value = reader.read(queue)
+    reader = io_ops.IdentityReader("test_reader")
+    produced = reader.num_records_produced()
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    self.evaluate(queue.enqueue_many([["X", "Y", "Z"]]))
+    key, value = reader.read(queue)
 
-      self._ExpectRead(sess, key, value, b"X")
-      self.assertAllEqual(1, self.evaluate(produced))
-      state = reader.serialize_state().eval()
+    self._ExpectRead(key, value, b"X")
+    self.assertAllEqual(1, self.evaluate(produced))
+    state = self.evaluate(reader.serialize_state())
 
-      self._ExpectRead(sess, key, value, b"Y")
-      self._ExpectRead(sess, key, value, b"Z")
-      self.assertAllEqual(3, self.evaluate(produced))
+    self._ExpectRead(key, value, b"Y")
+    self._ExpectRead(key, value, b"Z")
+    self.assertAllEqual(3, self.evaluate(produced))
 
-      queue.enqueue_many([["Y", "Z"]]).run()
-      queue.close().run()
-      reader.restore_state(state).run()
-      self.assertAllEqual(1, self.evaluate(produced))
-      self._ExpectRead(sess, key, value, b"Y")
-      self._ExpectRead(sess, key, value, b"Z")
-      with self.assertRaisesOpError("is closed and has insufficient elements "
-                                    "\\(requested 1, current size 0\\)"):
-        sess.run([key, value])
-      self.assertAllEqual(3, self.evaluate(produced))
+    self.evaluate(queue.enqueue_many([["Y", "Z"]]))
+    self.evaluate(queue.close())
+    self.evaluate(reader.restore_state(state))
+    self.assertAllEqual(1, self.evaluate(produced))
+    self._ExpectRead(key, value, b"Y")
+    self._ExpectRead(key, value, b"Z")
+    with self.assertRaisesOpError("is closed and has insufficient elements "
+                                  "\\(requested 1, current size 0\\)"):
+      self.evaluate([key, value])
+    self.assertAllEqual(3, self.evaluate(produced))
 
-      self.assertEqual(bytes, type(state))
+    self.assertEqual(bytes, type(state))
 
-      with self.assertRaises(ValueError):
-        reader.restore_state([])
+    with self.assertRaises(ValueError):
+      reader.restore_state([])
 
-      with self.assertRaises(ValueError):
-        reader.restore_state([state, state])
+    with self.assertRaises(ValueError):
+      reader.restore_state([state, state])
 
-      with self.assertRaisesOpError(
-          "Could not parse state for IdentityReader 'test_reader'"):
-        reader.restore_state(state[1:]).run()
+    with self.assertRaisesOpError(
+        "Could not parse state for IdentityReader 'test_reader'"):
+      self.evaluate(reader.restore_state(state[1:]))
 
-      with self.assertRaisesOpError(
-          "Could not parse state for IdentityReader 'test_reader'"):
-        reader.restore_state(state[:-1]).run()
+    with self.assertRaisesOpError(
+        "Could not parse state for IdentityReader 'test_reader'"):
+      self.evaluate(reader.restore_state(state[:-1]))
 
-      with self.assertRaisesOpError(
-          "Could not parse state for IdentityReader 'test_reader'"):
-        reader.restore_state(state + b"ExtraJunk").run()
+    with self.assertRaisesOpError(
+        "Could not parse state for IdentityReader 'test_reader'"):
+      self.evaluate(reader.restore_state(state + b"ExtraJunk"))
 
-      with self.assertRaisesOpError(
-          "Could not parse state for IdentityReader 'test_reader'"):
-        reader.restore_state(b"PREFIX" + state).run()
+    with self.assertRaisesOpError(
+        "Could not parse state for IdentityReader 'test_reader'"):
+      self.evaluate(reader.restore_state(b"PREFIX" + state))
 
-      with self.assertRaisesOpError(
-          "Could not parse state for IdentityReader 'test_reader'"):
-        reader.restore_state(b"BOGUS" + state[5:]).run()
+    with self.assertRaisesOpError(
+        "Could not parse state for IdentityReader 'test_reader'"):
+      self.evaluate(reader.restore_state(b"BOGUS" + state[5:]))
 
+  @test_util.run_deprecated_v1
   def testReset(self):
-    with self.cached_session() as sess:
-      reader = io_ops.IdentityReader("test_reader")
-      work_completed = reader.num_work_units_completed()
-      produced = reader.num_records_produced()
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      queued_length = queue.size()
-      key, value = reader.read(queue)
+    reader = io_ops.IdentityReader("test_reader")
+    work_completed = reader.num_work_units_completed()
+    produced = reader.num_records_produced()
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    queued_length = queue.size()
+    key, value = reader.read(queue)
 
-      queue.enqueue_many([["X", "Y", "Z"]]).run()
-      self._ExpectRead(sess, key, value, b"X")
-      self.assertLess(0, self.evaluate(queued_length))
-      self.assertAllEqual(1, self.evaluate(produced))
+    self.evaluate(queue.enqueue_many([["X", "Y", "Z"]]))
+    self._ExpectRead(key, value, b"X")
+    self.assertLess(0, self.evaluate(queued_length))
+    self.assertAllEqual(1, self.evaluate(produced))
 
-      self._ExpectRead(sess, key, value, b"Y")
-      self.assertLess(0, self.evaluate(work_completed))
-      self.assertAllEqual(2, self.evaluate(produced))
+    self._ExpectRead(key, value, b"Y")
+    self.assertLess(0, self.evaluate(work_completed))
+    self.assertAllEqual(2, self.evaluate(produced))
 
-      reader.reset().run()
-      self.assertAllEqual(0, self.evaluate(work_completed))
-      self.assertAllEqual(0, self.evaluate(produced))
-      self.assertAllEqual(1, self.evaluate(queued_length))
-      self._ExpectRead(sess, key, value, b"Z")
+    self.evaluate(reader.reset())
+    self.assertAllEqual(0, self.evaluate(work_completed))
+    self.assertAllEqual(0, self.evaluate(produced))
+    self.assertAllEqual(1, self.evaluate(queued_length))
+    self._ExpectRead(key, value, b"Z")
 
-      queue.enqueue_many([["K", "L"]]).run()
-      self._ExpectRead(sess, key, value, b"K")
+    self.evaluate(queue.enqueue_many([["K", "L"]]))
+    self._ExpectRead(key, value, b"K")
 
 
 class WholeFileReaderTest(test.TestCase):
@@ -301,44 +302,44 @@ class WholeFileReaderTest(test.TestCase):
       os.remove(fn)
     super(WholeFileReaderTest, self).tearDown()
 
-  def _ExpectRead(self, sess, key, value, index):
-    k, v = sess.run([key, value])
+  def _ExpectRead(self, key, value, index):
+    k, v = self.evaluate([key, value])
     self.assertAllEqual(compat.as_bytes(self._filenames[index]), k)
     self.assertAllEqual(self._content[index], v)
 
+  @test_util.run_deprecated_v1
   def testOneEpoch(self):
-    with self.cached_session() as sess:
-      reader = io_ops.WholeFileReader("test_reader")
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      queue.enqueue_many([self._filenames]).run()
-      queue.close().run()
-      key, value = reader.read(queue)
+    reader = io_ops.WholeFileReader("test_reader")
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    self.evaluate(queue.enqueue_many([self._filenames]))
+    self.evaluate(queue.close())
+    key, value = reader.read(queue)
 
-      self._ExpectRead(sess, key, value, 0)
-      self._ExpectRead(sess, key, value, 1)
-      self._ExpectRead(sess, key, value, 2)
+    self._ExpectRead(key, value, 0)
+    self._ExpectRead(key, value, 1)
+    self._ExpectRead(key, value, 2)
 
-      with self.assertRaisesOpError("is closed and has insufficient elements "
-                                    "\\(requested 1, current size 0\\)"):
-        sess.run([key, value])
+    with self.assertRaisesOpError("is closed and has insufficient elements "
+                                  "\\(requested 1, current size 0\\)"):
+      self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testInfiniteEpochs(self):
-    with self.cached_session() as sess:
-      reader = io_ops.WholeFileReader("test_reader")
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      enqueue = queue.enqueue_many([self._filenames])
-      key, value = reader.read(queue)
+    reader = io_ops.WholeFileReader("test_reader")
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    enqueue = queue.enqueue_many([self._filenames])
+    key, value = reader.read(queue)
 
-      enqueue.run()
-      self._ExpectRead(sess, key, value, 0)
-      self._ExpectRead(sess, key, value, 1)
-      enqueue.run()
-      self._ExpectRead(sess, key, value, 2)
-      self._ExpectRead(sess, key, value, 0)
-      self._ExpectRead(sess, key, value, 1)
-      enqueue.run()
-      self._ExpectRead(sess, key, value, 2)
-      self._ExpectRead(sess, key, value, 0)
+    self.evaluate(enqueue)
+    self._ExpectRead(key, value, 0)
+    self._ExpectRead(key, value, 1)
+    self.evaluate(enqueue)
+    self._ExpectRead(key, value, 2)
+    self._ExpectRead(key, value, 0)
+    self._ExpectRead(key, value, 1)
+    self.evaluate(enqueue)
+    self._ExpectRead(key, value, 2)
+    self._ExpectRead(key, value, 0)
 
 
 class TextLineReaderTest(test.TestCase):
@@ -366,47 +367,48 @@ class TextLineReaderTest(test.TestCase):
     return filenames
 
   def _testOneEpoch(self, files):
-    with self.cached_session() as sess:
-      reader = io_ops.TextLineReader(name="test_reader")
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      key, value = reader.read(queue)
+    reader = io_ops.TextLineReader(name="test_reader")
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    key, value = reader.read(queue)
 
-      queue.enqueue_many([files]).run()
-      queue.close().run()
-      for i in range(self._num_files):
-        for j in range(self._num_lines):
-          k, v = sess.run([key, value])
-          self.assertAllEqual("%s:%d" % (files[i], j + 1), compat.as_text(k))
-          self.assertAllEqual(self._LineText(i, j), v)
+    self.evaluate(queue.enqueue_many([files]))
+    self.evaluate(queue.close())
+    for i in range(self._num_files):
+      for j in range(self._num_lines):
+        k, v = self.evaluate([key, value])
+        self.assertAllEqual("%s:%d" % (files[i], j + 1), compat.as_text(k))
+        self.assertAllEqual(self._LineText(i, j), v)
 
-      with self.assertRaisesOpError("is closed and has insufficient elements "
-                                    "\\(requested 1, current size 0\\)"):
-        k, v = sess.run([key, value])
+    with self.assertRaisesOpError("is closed and has insufficient elements "
+                                  "\\(requested 1, current size 0\\)"):
+      k, v = self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testOneEpochLF(self):
     self._testOneEpoch(self._CreateFiles(crlf=False))
 
+  @test_util.run_deprecated_v1
   def testOneEpochCRLF(self):
     self._testOneEpoch(self._CreateFiles(crlf=True))
 
+  @test_util.run_deprecated_v1
   def testSkipHeaderLines(self):
     files = self._CreateFiles()
-    with self.cached_session() as sess:
-      reader = io_ops.TextLineReader(skip_header_lines=1, name="test_reader")
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      key, value = reader.read(queue)
+    reader = io_ops.TextLineReader(skip_header_lines=1, name="test_reader")
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    key, value = reader.read(queue)
 
-      queue.enqueue_many([files]).run()
-      queue.close().run()
-      for i in range(self._num_files):
-        for j in range(self._num_lines - 1):
-          k, v = sess.run([key, value])
-          self.assertAllEqual("%s:%d" % (files[i], j + 2), compat.as_text(k))
-          self.assertAllEqual(self._LineText(i, j + 1), v)
+    self.evaluate(queue.enqueue_many([files]))
+    self.evaluate(queue.close())
+    for i in range(self._num_files):
+      for j in range(self._num_lines - 1):
+        k, v = self.evaluate([key, value])
+        self.assertAllEqual("%s:%d" % (files[i], j + 2), compat.as_text(k))
+        self.assertAllEqual(self._LineText(i, j + 1), v)
 
-      with self.assertRaisesOpError("is closed and has insufficient elements "
-                                    "\\(requested 1, current size 0\\)"):
-        k, v = sess.run([key, value])
+    with self.assertRaisesOpError("is closed and has insufficient elements "
+                                  "\\(requested 1, current size 0\\)"):
+      k, v = self.evaluate([key, value])
 
 
 class FixedLengthRecordReaderTest(TFCompressionTestCase):
@@ -522,56 +524,55 @@ class FixedLengthRecordReaderTest(TFCompressionTestCase):
   # gap_bytes=hop_bytes-record_bytes
   def _TestOneEpoch(self, files, num_records, gap_bytes, encoding=None):
     hop_bytes = 0 if gap_bytes == 0 else self._record_bytes + gap_bytes
-    with self.cached_session() as sess:
-      reader = io_ops.FixedLengthRecordReader(
-          header_bytes=self._header_bytes,
-          record_bytes=self._record_bytes,
-          footer_bytes=self._footer_bytes,
-          hop_bytes=hop_bytes,
-          encoding=encoding,
-          name="test_reader")
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      key, value = reader.read(queue)
+    reader = io_ops.FixedLengthRecordReader(
+        header_bytes=self._header_bytes,
+        record_bytes=self._record_bytes,
+        footer_bytes=self._footer_bytes,
+        hop_bytes=hop_bytes,
+        encoding=encoding,
+        name="test_reader")
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    key, value = reader.read(queue)
 
-      queue.enqueue_many([files]).run()
-      queue.close().run()
-      for i in range(self._num_files):
-        for j in range(num_records):
-          k, v = sess.run([key, value])
-          self.assertAllEqual("%s:%d" % (files[i], j), compat.as_text(k))
-          self.assertAllEqual(self._Record(i, j), v)
+    self.evaluate(queue.enqueue_many([files]))
+    self.evaluate(queue.close())
+    for i in range(self._num_files):
+      for j in range(num_records):
+        k, v = self.evaluate([key, value])
+        self.assertAllEqual("%s:%d" % (files[i], j), compat.as_text(k))
+        self.assertAllEqual(self._Record(i, j), v)
 
-      with self.assertRaisesOpError("is closed and has insufficient elements "
-                                    "\\(requested 1, current size 0\\)"):
-        k, v = sess.run([key, value])
+    with self.assertRaisesOpError("is closed and has insufficient elements "
+                                  "\\(requested 1, current size 0\\)"):
+      k, v = self.evaluate([key, value])
 
   def _TestOneEpochWithHopBytes(self,
                                 files,
                                 num_overlapped_records,
                                 encoding=None):
-    with self.cached_session() as sess:
-      reader = io_ops.FixedLengthRecordReader(
-          header_bytes=self._header_bytes,
-          record_bytes=self._record_bytes,
-          footer_bytes=self._footer_bytes,
-          hop_bytes=self._hop_bytes,
-          encoding=encoding,
-          name="test_reader")
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      key, value = reader.read(queue)
+    reader = io_ops.FixedLengthRecordReader(
+        header_bytes=self._header_bytes,
+        record_bytes=self._record_bytes,
+        footer_bytes=self._footer_bytes,
+        hop_bytes=self._hop_bytes,
+        encoding=encoding,
+        name="test_reader")
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    key, value = reader.read(queue)
 
-      queue.enqueue_many([files]).run()
-      queue.close().run()
-      for i in range(self._num_files):
-        for j in range(num_overlapped_records):
-          k, v = sess.run([key, value])
-          self.assertAllEqual("%s:%d" % (files[i], j), compat.as_text(k))
-          self.assertAllEqual(self._OverlappedRecord(i, j), v)
+    self.evaluate(queue.enqueue_many([files]))
+    self.evaluate(queue.close())
+    for i in range(self._num_files):
+      for j in range(num_overlapped_records):
+        k, v = self.evaluate([key, value])
+        self.assertAllEqual("%s:%d" % (files[i], j), compat.as_text(k))
+        self.assertAllEqual(self._OverlappedRecord(i, j), v)
 
-      with self.assertRaisesOpError("is closed and has insufficient elements "
-                                    "\\(requested 1, current size 0\\)"):
-        k, v = sess.run([key, value])
+    with self.assertRaisesOpError("is closed and has insufficient elements "
+                                  "\\(requested 1, current size 0\\)"):
+      k, v = self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testOneEpoch(self):
     for num_records in [0, 7]:
       # gap_bytes=0: hop_bytes=0
@@ -580,6 +581,7 @@ class FixedLengthRecordReaderTest(TFCompressionTestCase):
         files = self._CreateFiles(num_records, gap_bytes)
         self._TestOneEpoch(files, num_records, gap_bytes)
 
+  @test_util.run_deprecated_v1
   def testGzipOneEpoch(self):
     for num_records in [0, 7]:
       # gap_bytes=0: hop_bytes=0
@@ -588,6 +590,7 @@ class FixedLengthRecordReaderTest(TFCompressionTestCase):
         files = self._CreateGzipFiles(num_records, gap_bytes)
         self._TestOneEpoch(files, num_records, gap_bytes, encoding="GZIP")
 
+  @test_util.run_deprecated_v1
   def testZlibOneEpoch(self):
     for num_records in [0, 7]:
       # gap_bytes=0: hop_bytes=0
@@ -596,17 +599,20 @@ class FixedLengthRecordReaderTest(TFCompressionTestCase):
         files = self._CreateZlibFiles(num_records, gap_bytes)
         self._TestOneEpoch(files, num_records, gap_bytes, encoding="ZLIB")
 
+  @test_util.run_deprecated_v1
   def testOneEpochWithHopBytes(self):
     for num_overlapped_records in [0, 2]:
       files = self._CreateOverlappedRecordFiles(num_overlapped_records)
       self._TestOneEpochWithHopBytes(files, num_overlapped_records)
 
+  @test_util.run_deprecated_v1
   def testGzipOneEpochWithHopBytes(self):
     for num_overlapped_records in [0, 2]:
       files = self._CreateGzipOverlappedRecordFiles(num_overlapped_records,)
       self._TestOneEpochWithHopBytes(
           files, num_overlapped_records, encoding="GZIP")
 
+  @test_util.run_deprecated_v1
   def testZlibOneEpochWithHopBytes(self):
     for num_overlapped_records in [0, 2]:
       files = self._CreateZlibOverlappedRecordFiles(num_overlapped_records)
@@ -619,90 +625,91 @@ class TFRecordReaderTest(TFCompressionTestCase):
   def setUp(self):
     super(TFRecordReaderTest, self).setUp()
 
+  @test_util.run_deprecated_v1
   def testOneEpoch(self):
     files = self._CreateFiles()
-    with self.cached_session() as sess:
-      reader = io_ops.TFRecordReader(name="test_reader")
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      key, value = reader.read(queue)
+    reader = io_ops.TFRecordReader(name="test_reader")
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    key, value = reader.read(queue)
 
-      queue.enqueue_many([files]).run()
-      queue.close().run()
-      for i in range(self._num_files):
-        for j in range(self._num_records):
-          k, v = sess.run([key, value])
-          self.assertTrue(compat.as_text(k).startswith("%s:" % files[i]))
-          self.assertAllEqual(self._Record(i, j), v)
+    self.evaluate(queue.enqueue_many([files]))
+    self.evaluate(queue.close())
+    for i in range(self._num_files):
+      for j in range(self._num_records):
+        k, v = self.evaluate([key, value])
+        self.assertTrue(compat.as_text(k).startswith("%s:" % files[i]))
+        self.assertAllEqual(self._Record(i, j), v)
 
-      with self.assertRaisesOpError("is closed and has insufficient elements "
-                                    "\\(requested 1, current size 0\\)"):
-        k, v = sess.run([key, value])
+    with self.assertRaisesOpError("is closed and has insufficient elements "
+                                  "\\(requested 1, current size 0\\)"):
+      k, v = self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testReadUpTo(self):
     files = self._CreateFiles()
-    with self.cached_session() as sess:
-      reader = io_ops.TFRecordReader(name="test_reader")
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      batch_size = 3
-      key, value = reader.read_up_to(queue, batch_size)
+    reader = io_ops.TFRecordReader(name="test_reader")
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    batch_size = 3
+    key, value = reader.read_up_to(queue, batch_size)
 
-      queue.enqueue_many([files]).run()
-      queue.close().run()
-      num_k = 0
-      num_v = 0
+    self.evaluate(queue.enqueue_many([files]))
+    self.evaluate(queue.close())
+    num_k = 0
+    num_v = 0
 
-      while True:
-        try:
-          k, v = sess.run([key, value])
-          # Test reading *up to* batch_size records
-          self.assertLessEqual(len(k), batch_size)
-          self.assertLessEqual(len(v), batch_size)
-          num_k += len(k)
-          num_v += len(v)
-        except errors_impl.OutOfRangeError:
-          break
+    while True:
+      try:
+        k, v = self.evaluate([key, value])
+        # Test reading *up to* batch_size records
+        self.assertLessEqual(len(k), batch_size)
+        self.assertLessEqual(len(v), batch_size)
+        num_k += len(k)
+        num_v += len(v)
+      except errors_impl.OutOfRangeError:
+        break
 
-      # Test that we have read everything
-      self.assertEqual(self._num_files * self._num_records, num_k)
-      self.assertEqual(self._num_files * self._num_records, num_v)
+    # Test that we have read everything
+    self.assertEqual(self._num_files * self._num_records, num_k)
+    self.assertEqual(self._num_files * self._num_records, num_v)
 
+  @test_util.run_deprecated_v1
   def testReadZlibFiles(self):
     options = tf_record.TFRecordOptions(TFRecordCompressionType.ZLIB)
     files = self._CreateFiles(options)
 
-    with self.cached_session() as sess:
-      reader = io_ops.TFRecordReader(name="test_reader", options=options)
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      key, value = reader.read(queue)
+    reader = io_ops.TFRecordReader(name="test_reader", options=options)
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    key, value = reader.read(queue)
 
-      queue.enqueue_many([files]).run()
-      queue.close().run()
-      for i in range(self._num_files):
-        for j in range(self._num_records):
-          k, v = sess.run([key, value])
-          self.assertTrue(compat.as_text(k).startswith("%s:" % files[i]))
-          self.assertAllEqual(self._Record(i, j), v)
+    self.evaluate(queue.enqueue_many([files]))
+    self.evaluate(queue.close())
+    for i in range(self._num_files):
+      for j in range(self._num_records):
+        k, v = self.evaluate([key, value])
+        self.assertTrue(compat.as_text(k).startswith("%s:" % files[i]))
+        self.assertAllEqual(self._Record(i, j), v)
 
+  @test_util.run_deprecated_v1
   def testReadGzipFiles(self):
     options = tf_record.TFRecordOptions(TFRecordCompressionType.GZIP)
     files = self._CreateFiles(options)
 
-    with self.cached_session() as sess:
-      reader = io_ops.TFRecordReader(name="test_reader", options=options)
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      key, value = reader.read(queue)
+    reader = io_ops.TFRecordReader(name="test_reader", options=options)
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    key, value = reader.read(queue)
 
-      queue.enqueue_many([files]).run()
-      queue.close().run()
-      for i in range(self._num_files):
-        for j in range(self._num_records):
-          k, v = sess.run([key, value])
-          self.assertTrue(compat.as_text(k).startswith("%s:" % files[i]))
-          self.assertAllEqual(self._Record(i, j), v)
+    self.evaluate(queue.enqueue_many([files]))
+    self.evaluate(queue.close())
+    for i in range(self._num_files):
+      for j in range(self._num_records):
+        k, v = self.evaluate([key, value])
+        self.assertTrue(compat.as_text(k).startswith("%s:" % files[i]))
+        self.assertAllEqual(self._Record(i, j), v)
 
 
 class AsyncReaderTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testNoDeadlockFromQueue(self):
     """Tests that reading does not block main execution threads."""
     config = config_pb2.ConfigProto(
@@ -733,7 +740,7 @@ class AsyncReaderTest(test.TestCase):
         fname = os.path.join(self.get_temp_dir(), "deadlock.%s.txt" % i)
         with open(fname, "wb") as f:
           f.write(("file-%s" % i).encode())
-        d.queue.enqueue_many([[fname]]).run()
+        self.evaluate(d.queue.enqueue_many([[fname]]))
         d.thread.join()
         self.assertEqual([[("file-%s" % i).encode()]], d.output)
 
@@ -751,24 +758,25 @@ class LMDBReaderTest(test.TestCase):
     self.db_path = os.path.join(self.get_temp_dir(), "data.mdb")
     shutil.copy(path, self.db_path)
 
+  @test_util.run_deprecated_v1
   def testReadFromFile(self):
-    with self.cached_session() as sess:
-      reader = io_ops.LMDBReader(name="test_read_from_file")
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      key, value = reader.read(queue)
+    reader = io_ops.LMDBReader(name="test_read_from_file")
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    key, value = reader.read(queue)
 
-      queue.enqueue([self.db_path]).run()
-      queue.close().run()
-      for i in range(10):
-        k, v = sess.run([key, value])
-        self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
-        self.assertAllEqual(
-            compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + i))))
+    self.evaluate(queue.enqueue([self.db_path]))
+    self.evaluate(queue.close())
+    for i in range(10):
+      k, v = self.evaluate([key, value])
+      self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
+      self.assertAllEqual(
+          compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + i))))
 
-      with self.assertRaisesOpError("is closed and has insufficient elements "
-                                    "\\(requested 1, current size 0\\)"):
-        k, v = sess.run([key, value])
+    with self.assertRaisesOpError("is closed and has insufficient elements "
+                                  "\\(requested 1, current size 0\\)"):
+      k, v = self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testReadFromSameFile(self):
     with self.cached_session() as sess:
       reader1 = io_ops.LMDBReader(name="test_read_from_same_file1")
@@ -782,30 +790,31 @@ class LMDBReaderTest(test.TestCase):
       threads = queue_runner_impl.start_queue_runners(sess, coord=coord)
       for _ in range(3):
         for _ in range(10):
-          k1, v1, k2, v2 = sess.run([key1, value1, key2, value2])
+          k1, v1, k2, v2 = self.evaluate([key1, value1, key2, value2])
           self.assertAllEqual(compat.as_bytes(k1), compat.as_bytes(k2))
           self.assertAllEqual(compat.as_bytes(v1), compat.as_bytes(v2))
       coord.request_stop()
       coord.join(threads)
 
+  @test_util.run_deprecated_v1
   def testReadFromFolder(self):
-    with self.cached_session() as sess:
-      reader = io_ops.LMDBReader(name="test_read_from_folder")
-      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-      key, value = reader.read(queue)
+    reader = io_ops.LMDBReader(name="test_read_from_folder")
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    key, value = reader.read(queue)
 
-      queue.enqueue([self.db_path]).run()
-      queue.close().run()
-      for i in range(10):
-        k, v = sess.run([key, value])
-        self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
-        self.assertAllEqual(
-            compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + i))))
+    self.evaluate(queue.enqueue([self.db_path]))
+    self.evaluate(queue.close())
+    for i in range(10):
+      k, v = self.evaluate([key, value])
+      self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
+      self.assertAllEqual(
+          compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + i))))
 
-      with self.assertRaisesOpError("is closed and has insufficient elements "
-                                    "\\(requested 1, current size 0\\)"):
-        k, v = sess.run([key, value])
+    with self.assertRaisesOpError("is closed and has insufficient elements "
+                                  "\\(requested 1, current size 0\\)"):
+      k, v = self.evaluate([key, value])
 
+  @test_util.run_deprecated_v1
   def testReadFromFileRepeatedly(self):
     with self.cached_session() as sess:
       reader = io_ops.LMDBReader(name="test_read_from_file_repeated")
@@ -819,7 +828,7 @@ class LMDBReaderTest(test.TestCase):
       for _ in range(3):
         # Go over all 10 records each time.
         for j in range(10):
-          k, v = sess.run([key, value])
+          k, v = self.evaluate([key, value])
           self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(j)))
           self.assertAllEqual(
               compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + j))))

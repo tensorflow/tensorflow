@@ -850,6 +850,15 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       break;
     }
+    case HloOpcode::kAddDependency: {
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateAddDependency(operands[0], operands[1]));
+      break;
+    }
     case HloOpcode::kSort: {
       optional<std::vector<tensorflow::int64>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,

@@ -57,8 +57,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 
 TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
                                   TfLiteDelegate* delegate,
-                                  TfLiteBufferHandle buffer_handle, void* data,
-                                  size_t size) {
+                                  TfLiteBufferHandle buffer_handle,
+                                  TfLiteTensor* output) {
   BufferMap* buffer_map =
       reinterpret_cast<DelegateData*>(delegate->data_)->GetBufferMap(context);
 
@@ -70,13 +70,13 @@ TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
   tensorflow::Tensor t = buffer_map->GetTensor(buffer_handle);
   tensorflow::StringPiece t_data = t.tensor_data();
 
-  if (size != t_data.size()) {
+  if (output->bytes != t_data.size()) {
     context->ReportError(
         context, "Not enough space to store TensorFlow's aligned buffer.");
     return kTfLiteError;
   }
 
-  memcpy(data, t_data.data(), t_data.size());
+  memcpy(output->data.raw, t_data.data(), t_data.size());
   return kTfLiteOk;
 }
 
@@ -104,14 +104,13 @@ std::unique_ptr<FlexDelegate> FlexDelegate::Create() {
 }
 
 FlexDelegate::FlexDelegate(std::unique_ptr<flex::DelegateData> delegate_data)
-    : TfLiteDelegate{
-          /*data_=*/delegate_data.get(),
-          /*nullptr,*/ &flex::delegate::Prepare,
-          /*CopyFromBufferHandle=*/&flex::delegate::CopyFromBufferHandle,
-          /*CopyToBufferHandle=*/nullptr,
-          /*FreeBufferHandle=*/nullptr,
-          /*flags=*/kTfLiteDelegateFlagsAllowDynamicTensors},
-      delegate_data_(std::move(delegate_data)) {}
+    : TfLiteDelegate(TfLiteDelegateCreate()),
+      delegate_data_(std::move(delegate_data)) {
+  data_ = delegate_data_.get();
+  Prepare = &flex::delegate::Prepare;
+  CopyFromBufferHandle = &flex::delegate::CopyFromBufferHandle;
+  flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+}
 
 FlexDelegate::~FlexDelegate() {}
 

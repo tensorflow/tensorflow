@@ -81,7 +81,7 @@ def _infer_ranking_train_input_fn():
 _QUANTILE_REGRESSION_SIZE = 1000
 
 
-def _quantile_regression_input_fns():
+def _quantile_regression_input_fns(two_dimension=False):
   # The data generation is taken from
   # http://scikit-learn.org/stable/auto_examples/ensemble/plot_gradient_boosting_quantile.html
   np.random.seed(1)
@@ -90,20 +90,28 @@ def _quantile_regression_input_fns():
     """The function to predict."""
     return x * np.sin(x)
 
+  def g(x):
+    """The function to predict."""
+    return x * np.cos(x)
+
   #  Training data.
   x = np.atleast_2d(np.random.uniform(0, 10.0,
                                       size=_QUANTILE_REGRESSION_SIZE)).T
   x = x.astype(np.float32)
 
   # Labels.
-  y = f(x).ravel()
+  if not two_dimension:
+    y = f(x).ravel()
+  else:
+    y = np.column_stack((f(x).ravel(), g(x).ravel()))
 
   # Add random noise.
   dy = 1.5 + 1.0 * np.random.random(y.shape)
   noise = np.random.normal(0, dy)
   y += noise
   y_original = y.astype(np.float32)
-  y = y.reshape(_QUANTILE_REGRESSION_SIZE, 1)
+  if not two_dimension:
+    y = y.reshape(_QUANTILE_REGRESSION_SIZE, 1)
 
   train_input_fn = numpy_io.numpy_input_fn(
       x=x,
@@ -439,6 +447,78 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
     self.assertTrue(frac_above_lower >= 0.92)
     self.assertTrue(frac_above_lower <= 0.98)
 
+  # Multi-dimensional quantile regression.
+  def testQuantileRegressionMultiDimLabel(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 3
+    learner_config.growing_mode = learner_pb2.LearnerConfig.WHOLE_TREE
+    learner_config.constraints.min_node_weight = 1 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.l2 = 1.0 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.l1 = 1.0 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.tree_complexity = (
+        1.0 / _QUANTILE_REGRESSION_SIZE)
+
+    train_input_fn, test_input_fn, y = _quantile_regression_input_fns(
+        two_dimension=True)
+
+    # 95% percentile.
+    model_upper = estimator.GradientBoostedDecisionTreeQuantileRegressor(
+        quantiles=[0.95],
+        learner_config=learner_config,
+        label_dimension=2,
+        num_trees=100,
+        examples_per_layer=_QUANTILE_REGRESSION_SIZE,
+        center_bias=False)
+
+    model_upper.fit(input_fn=train_input_fn, steps=1000)
+    result_iter = model_upper.predict(input_fn=test_input_fn)
+    upper = []
+    for prediction_dict in result_iter:
+      upper.append(prediction_dict["scores"])
+
+    count_below_upper = np.count_nonzero(upper > y, axis=0)
+    count_both_below_upper = np.count_nonzero(np.prod(upper > y, axis=1))
+    frac_below_upper_0 = round(1. * count_below_upper[0] / len(y), 3)
+    frac_below_upper_1 = round(1. * count_below_upper[1] / len(y), 3)
+    frac_both_below_upper = round(1. * count_both_below_upper / len(y), 3)
+    # +/- 3%
+    self.assertTrue(frac_below_upper_0 >= 0.92)
+    self.assertTrue(frac_below_upper_0 <= 0.98)
+    self.assertTrue(frac_below_upper_1 >= 0.92)
+    self.assertTrue(frac_below_upper_1 <= 0.98)
+    self.assertTrue(frac_both_below_upper >= 0.92)
+    self.assertTrue(frac_both_below_upper <= 0.98)
+
+    train_input_fn, test_input_fn, _ = _quantile_regression_input_fns(
+        two_dimension=True)
+    model_lower = estimator.GradientBoostedDecisionTreeQuantileRegressor(
+        quantiles=[0.05],
+        learner_config=learner_config,
+        label_dimension=2,
+        num_trees=100,
+        examples_per_layer=_QUANTILE_REGRESSION_SIZE,
+        center_bias=False)
+
+    model_lower.fit(input_fn=train_input_fn, steps=1000)
+    result_iter = model_lower.predict(input_fn=test_input_fn)
+    lower = []
+    for prediction_dict in result_iter:
+      lower.append(prediction_dict["scores"])
+
+    count_above_lower = np.count_nonzero(lower < y, axis=0)
+    count_both_aboce_lower = np.count_nonzero(np.prod(lower < y, axis=1))
+    frac_above_lower_0 = round(1. * count_above_lower[0] / len(y), 3)
+    frac_above_lower_1 = round(1. * count_above_lower[1] / len(y), 3)
+    frac_both_above_lower = round(1. * count_both_aboce_lower / len(y), 3)
+    # +/- 3%
+    self.assertTrue(frac_above_lower_0 >= 0.92)
+    self.assertTrue(frac_above_lower_0 <= 0.98)
+    self.assertTrue(frac_above_lower_1 >= 0.92)
+    self.assertTrue(frac_above_lower_1 <= 0.98)
+    self.assertTrue(frac_both_above_lower >= 0.92)
+    self.assertTrue(frac_both_above_lower <= 0.98)
+
 
 class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
 
@@ -684,6 +764,79 @@ class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
     # +/- 3%
     self.assertTrue(frac_above_lower >= 0.92)
     self.assertTrue(frac_above_lower <= 0.98)
+
+  # Multi-dimensional quantile regression.
+  def testQuantileRegressionMultiDimLabel(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 3
+    learner_config.growing_mode = learner_pb2.LearnerConfig.WHOLE_TREE
+    learner_config.constraints.min_node_weight = 1 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.l2 = 1.0 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.l1 = 1.0 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.tree_complexity = (
+        1.0 / _QUANTILE_REGRESSION_SIZE)
+
+    train_input_fn, test_input_fn, y = _quantile_regression_input_fns(
+        two_dimension=True)
+    y = y.reshape(_QUANTILE_REGRESSION_SIZE, 2)
+
+    # 95% percentile.
+    model_upper = estimator.CoreGradientBoostedDecisionTreeQuantileRegressor(
+        quantiles=[0.95],
+        learner_config=learner_config,
+        num_trees=100,
+        label_dimension=2,
+        examples_per_layer=_QUANTILE_REGRESSION_SIZE,
+        center_bias=False)
+
+    model_upper.train(input_fn=train_input_fn, steps=1000)
+    result_iter = model_upper.predict(input_fn=test_input_fn)
+    upper = []
+    for prediction_dict in result_iter:
+      upper.append(prediction_dict["predictions"])
+
+    count_below_upper = np.count_nonzero(upper > y, axis=0)
+    count_both_below_upper = np.count_nonzero(np.prod(upper > y, axis=1))
+    frac_below_upper_0 = round(1. * count_below_upper[0] / len(y), 3)
+    frac_below_upper_1 = round(1. * count_below_upper[1] / len(y), 3)
+    frac_both_below_upper = round(1. * count_both_below_upper / len(y), 3)
+    # +/- 3%
+    self.assertTrue(frac_below_upper_0 >= 0.92)
+    self.assertTrue(frac_below_upper_0 <= 0.98)
+    self.assertTrue(frac_below_upper_1 >= 0.92)
+    self.assertTrue(frac_below_upper_1 <= 0.98)
+    self.assertTrue(frac_both_below_upper >= 0.92)
+    self.assertTrue(frac_both_below_upper <= 0.98)
+
+    train_input_fn, test_input_fn, _ = _quantile_regression_input_fns(
+        two_dimension=True)
+    model_lower = estimator.CoreGradientBoostedDecisionTreeQuantileRegressor(
+        quantiles=[0.05],
+        learner_config=learner_config,
+        num_trees=100,
+        label_dimension=2,
+        examples_per_layer=_QUANTILE_REGRESSION_SIZE,
+        center_bias=False)
+
+    model_lower.train(input_fn=train_input_fn, steps=1000)
+    result_iter = model_lower.predict(input_fn=test_input_fn)
+    lower = []
+    for prediction_dict in result_iter:
+      lower.append(prediction_dict["predictions"])
+
+    count_above_lower = np.count_nonzero(lower < y, axis=0)
+    count_both_aboce_lower = np.count_nonzero(np.prod(lower < y, axis=1))
+    frac_above_lower_0 = round(1. * count_above_lower[0] / len(y), 3)
+    frac_above_lower_1 = round(1. * count_above_lower[1] / len(y), 3)
+    frac_both_above_lower = round(1. * count_both_aboce_lower / len(y), 3)
+    # +/- 3%
+    self.assertTrue(frac_above_lower_0 >= 0.92)
+    self.assertTrue(frac_above_lower_0 <= 0.98)
+    self.assertTrue(frac_above_lower_1 >= 0.92)
+    self.assertTrue(frac_above_lower_1 <= 0.98)
+    self.assertTrue(frac_both_above_lower >= 0.92)
+    self.assertTrue(frac_both_above_lower <= 0.98)
 
 
 if __name__ == "__main__":

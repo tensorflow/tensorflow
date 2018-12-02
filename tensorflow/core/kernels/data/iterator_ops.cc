@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/iterator.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
@@ -58,25 +60,25 @@ class IteratorResource : public ResourceBase {
                    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
                    FunctionLibraryRuntime* lib)
       : device_mgr_(std::move(device_mgr)),
-        flib_def_(std::move(flib_def)),
-        pflr_(std::move(pflr)),
-        lib_(lib),
-        iterator_(nullptr),
+        iterator_state_(
+            new State(std::move(flib_def), std::move(pflr), lib, nullptr)),
         output_dtypes_(output_dtypes),
         output_shapes_(output_shapes) {}
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) {
-    IteratorContext::Params params(ctx);
-    std::shared_ptr<IteratorBase> captured_iterator;
+    std::shared_ptr<State> captured_state;
     {
       tf_shared_lock l(mu_);
-      captured_iterator = iterator_;
-      params.lib = lib_;
+      captured_state = iterator_state_;
     }
-    if (captured_iterator) {
-      return captured_iterator->GetNext(IteratorContext(std::move(params)),
-                                        out_tensors, end_of_sequence);
+    if (captured_state->iterator) {
+      IteratorContext::Params params(ctx);
+      params.lib = captured_state->lib;
+      params.function_handle_cache =
+          captured_state->function_handle_cache.get();
+      return captured_state->iterator->GetNext(
+          IteratorContext(std::move(params)), out_tensors, end_of_sequence);
     } else {
       return errors::FailedPrecondition(
           "GetNext() failed because the iterator has not been initialized. "
@@ -91,13 +93,13 @@ class IteratorResource : public ResourceBase {
   }
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
-    std::shared_ptr<IteratorBase> captured_iterator;
+    std::shared_ptr<State> captured_state;
     {
       tf_shared_lock l(mu_);
-      captured_iterator = iterator_;
+      captured_state = iterator_state_;
     }
-    if (captured_iterator) {
-      return captured_iterator->Save(ctx, writer);
+    if (captured_state) {
+      return captured_state->iterator->Save(ctx, writer);
     } else {
       return errors::FailedPrecondition(
           "Save() failed because the iterator has not been initialized. "
@@ -129,64 +131,62 @@ class IteratorResource : public ResourceBase {
     // because some of the OpKernels in the graph might call functions that are
     // only defined in the loaded GraphDef.
     FunctionLibraryRuntime* lib;
-    std::unique_ptr<DeviceMgr> device_mgr(nullptr);
     std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
     TF_RETURN_IF_ERROR(ctx->function_library()->Clone(&flib_def, &pflr, &lib));
     TF_RETURN_IF_ERROR(flib_def->AddLibrary(graph_def.library()));
+    std::unique_ptr<State> new_state(
+        new State(std::move(flib_def), std::move(pflr), lib, nullptr));
 
     TF_RETURN_IF_ERROR(
-        graph_runner.Run(&graph, lib, {}, {output_node}, &outputs));
+        graph_runner.Run(&graph, new_state->lib, {}, {output_node}, &outputs));
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
 
-    std::unique_ptr<IteratorBase> iterator;
-    {
-      IteratorContext::Params params(ctx);
-      params.lib = lib;
-      TF_RETURN_IF_ERROR(dataset->MakeIterator(
-          IteratorContext(std::move(params)), "Iterator", &iterator));
-    }
+    IteratorContext::Params params(ctx);
+    params.lib = new_state->lib;
+    params.function_handle_cache = new_state->function_handle_cache.get();
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
+                                             "Iterator", &new_state->iterator));
     TF_RETURN_IF_ERROR(
-        VerifyTypesMatch(output_dtypes_, iterator->output_dtypes()));
-    TF_RETURN_IF_ERROR(
-        VerifyShapesCompatible(output_shapes_, iterator->output_shapes()));
+        VerifyTypesMatch(output_dtypes_, new_state->iterator->output_dtypes()));
+    TF_RETURN_IF_ERROR(VerifyShapesCompatible(
+        output_shapes_, new_state->iterator->output_shapes()));
 
     {
       IteratorContext::Params params(ctx);
-      params.lib = lib;
-      DeviceBase* device = lib->device();
+      params.lib = new_state->lib;
+      params.function_handle_cache = new_state->function_handle_cache.get();
+      DeviceBase* device = new_state->lib->device();
       params.allocator_getter = [device](AllocatorAttributes attrs) {
         return device->GetAllocator(attrs);
       };
       IteratorContext iter_ctx(std::move(params));
-      TF_RETURN_IF_ERROR(iterator->Restore(&iter_ctx, reader));
+      TF_RETURN_IF_ERROR(new_state->iterator->Restore(&iter_ctx, reader));
     }
 
-    std::shared_ptr<IteratorBase> old_iterator;
-    {
-      mutex_lock l(mu_);
-      std::swap(device_mgr_, device_mgr);
-      std::swap(flib_def_, flib_def);
-      std::swap(pflr_, pflr);
-      lib_ = lib;
-      old_iterator = iterator_;
-      iterator_ = std::move(iterator);
-    }
-
+    mutex_lock l(mu_);
+    iterator_state_ = std::move(new_state);
     return Status::OK();
   }
 
   Status AddLibrary(const FunctionLibraryDefinition& flib_def) {
     mutex_lock l(mu_);
-    return flib_def_->AddLibrary(flib_def);
+    return iterator_state_->flib_def->AddLibrary(flib_def);
   }
 
   Status SetIteratorFromDataset(OpKernelContext* ctx, DatasetBase* dataset) {
-    mutex_lock l(mu_);
+    std::shared_ptr<State> new_state;
+    {
+      tf_shared_lock l(mu_);
+      new_state.reset(new State(iterator_state_->flib_def,
+                                iterator_state_->pflr, iterator_state_->lib,
+                                nullptr, nullptr));
+    }
+
     // Ensure that the iterator has access to all functions in the current
     // subgraph, because some functions may have been defined after the resource
     // was initially created.
-    Status s = flib_def_->AddLibrary(
+    Status s = new_state->flib_def->AddLibrary(
         *ctx->function_library()->GetFunctionLibraryDefinition());
 
     if (!s.ok()) {
@@ -195,29 +195,33 @@ class IteratorResource : public ResourceBase {
       // executing graph. In that case, we create a new function runtime for
       // this iterator, based on the current `OpKernelContext`, which will have
       // the functions we need.
-      iterator_.reset();
       FunctionLibraryRuntime* lib;
-      std::unique_ptr<DeviceMgr> device_mgr(nullptr);
       std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
       std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
       TF_RETURN_IF_ERROR(
           ctx->function_library()->Clone(&flib_def, &pflr, &lib));
-      std::swap(device_mgr_, device_mgr);
-      std::swap(flib_def_, flib_def);
-      std::swap(pflr_, pflr);
-      lib_ = lib;
+      new_state->flib_def = std::move(flib_def);
+      new_state->pflr = std::move(pflr);
+      new_state->lib = lib;
     }
 
+    new_state->function_handle_cache.reset(
+        new FunctionHandleCache(new_state->lib));
+    // Create new iterator.
     std::unique_ptr<IteratorBase> iterator;
     IteratorContext::Params params(ctx);
-    params.lib = lib_;
+    params.lib = new_state->lib;
+    params.function_handle_cache = new_state->function_handle_cache.get();
     TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
                                              "Iterator", &iterator));
     TF_RETURN_IF_ERROR(
         VerifyTypesMatch(output_dtypes_, iterator->output_dtypes()));
     TF_RETURN_IF_ERROR(
         VerifyShapesCompatible(output_shapes_, iterator->output_shapes()));
-    iterator_.reset(iterator.release());
+    std::swap(new_state->iterator, iterator);
+
+    mutex_lock l(mu_);
+    std::swap(iterator_state_, new_state);
     return Status::OK();
   }
 
@@ -230,12 +234,37 @@ class IteratorResource : public ResourceBase {
   }
 
  private:
+  struct State {
+    State(std::shared_ptr<FunctionLibraryDefinition> flib_def,
+          std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
+          FunctionLibraryRuntime* lib, std::unique_ptr<IteratorBase> iterator)
+        : flib_def(flib_def),
+          pflr(pflr),
+          lib(lib),
+          function_handle_cache(absl::make_unique<FunctionHandleCache>(lib)),
+          iterator(std::move(iterator)) {}
+
+    State(std::shared_ptr<FunctionLibraryDefinition> flib_def,
+          std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
+          FunctionLibraryRuntime* lib,
+          std::unique_ptr<FunctionHandleCache> function_handle_cache,
+          std::unique_ptr<IteratorBase> iterator)
+        : flib_def(flib_def),
+          pflr(pflr),
+          lib(lib),
+          function_handle_cache(std::move(function_handle_cache)),
+          iterator(std::move(iterator)) {}
+
+    std::shared_ptr<FunctionLibraryDefinition> flib_def;
+    std::shared_ptr<ProcessFunctionLibraryRuntime> pflr;
+    FunctionLibraryRuntime* lib = nullptr;  // not owned.
+    std::unique_ptr<FunctionHandleCache> function_handle_cache;
+    std::unique_ptr<IteratorBase> iterator;
+  };
+
   mutex mu_;
-  std::unique_ptr<DeviceMgr> device_mgr_ GUARDED_BY(mu_);
-  std::unique_ptr<FunctionLibraryDefinition> flib_def_ GUARDED_BY(mu_);
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_ GUARDED_BY(mu_);
-  FunctionLibraryRuntime* lib_ GUARDED_BY(mu_) = nullptr;  // not owned.
-  std::shared_ptr<IteratorBase> iterator_ GUARDED_BY(mu_);
+  const std::unique_ptr<DeviceMgr> device_mgr_ GUARDED_BY(mu_);
+  std::shared_ptr<State> iterator_state_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
@@ -545,10 +574,9 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
   // in its resource manager. The existing device will outlive the
   // IteratorResource, because we are storing the IteratorResource
   // in that device's resource manager.
-  Device* wrapped_device = RenamedDevice::NewRenamedDevice(
+  *device_mgr = absl::make_unique<DeviceMgr>(RenamedDevice::NewRenamedDevice(
       ctx->device()->name(), down_cast<Device*>(ctx->device()),
-      false /* owns_underlying */, false /* isolate_session_state */);
-  device_mgr->reset(new DeviceMgr({wrapped_device}));
+      false /* owns_underlying */, false /* isolate_session_state */));
   flib_def->reset(new FunctionLibraryDefinition(
       *ctx->function_library()->GetFunctionLibraryDefinition()));
   pflr->reset(new ProcessFunctionLibraryRuntime(
@@ -641,10 +669,15 @@ class ToSingleElementOp : public AsyncOpKernel {
       OP_REQUIRES_OK_ASYNC(
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
       std::unique_ptr<IteratorBase> iterator;
+      IteratorContext::Params params(ctx);
+      std::unique_ptr<FunctionHandleCache> function_handle_cache(
+          new FunctionHandleCache(params.lib));
+      params.function_handle_cache = function_handle_cache.get();
+      IteratorContext iter_ctx(std::move(params));
+
       OP_REQUIRES_OK_ASYNC(
           ctx,
-          dataset->MakeIterator(IteratorContext(ctx), "SingleElementIterator",
-                                &iterator),
+          dataset->MakeIterator(&iter_ctx, "SingleElementIterator", &iterator),
           done);
 
       // NOTE(jsimsa): We must destroy the iterator before calling `done()`, to
@@ -658,8 +691,8 @@ class ToSingleElementOp : public AsyncOpKernel {
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence = false;
 
-      Status s = raw_iterator->GetNext(IteratorContext(ctx), &components,
-                                       &end_of_sequence);
+      Status s =
+          raw_iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
       if (!s.ok()) {
         ctx->SetStatus(s);
         return;
@@ -674,8 +707,8 @@ class ToSingleElementOp : public AsyncOpKernel {
       }
 
       components.clear();
-      Status s2 = raw_iterator->GetNext(IteratorContext(ctx), &components,
-                                        &end_of_sequence);
+      Status s2 =
+          raw_iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
       if (!s2.ok()) {
         ctx->SetStatus(s2);
         return;
@@ -724,8 +757,16 @@ class ReduceDatasetOp : public AsyncOpKernel {
                                    use_inter_op_parallelism_, &captured_func),
           done);
 
-      IteratorContext iter_ctx(ctx);
-      OP_REQUIRES_OK_ASYNC(ctx, captured_func->Instantiate(&iter_ctx), done);
+      IteratorContext::Params params(ctx);
+      std::unique_ptr<FunctionHandleCache> function_handle_cache(
+          new FunctionHandleCache(params.lib));
+      params.function_handle_cache = function_handle_cache.get();
+      IteratorContext iter_ctx(std::move(params));
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func;
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          captured_func->Instantiate(&iter_ctx, &instantiated_captured_func),
+          done);
 
       std::unique_ptr<IteratorBase> iterator;
       OP_REQUIRES_OK_ASYNC(
@@ -759,8 +800,8 @@ class ReduceDatasetOp : public AsyncOpKernel {
                   std::back_inserter(args));
 
         std::vector<Tensor> reduce_func_output;
-        status =
-            captured_func->Run(&iter_ctx, std::move(args), &reduce_func_output);
+        status = instantiated_captured_func->Run(&iter_ctx, std::move(args),
+                                                 &reduce_func_output);
         if (!status.ok()) {
           break;
         }
@@ -1231,50 +1272,60 @@ class DeserializeIteratorOp : public OpKernel {
 
 
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_CPU).Priority(2),
                         IteratorHandleOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_GPU).Priority(1),
                         IteratorHandleOp);
-REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU).Priority(2),
                         MakeIteratorOp);
 REGISTER_KERNEL_BUILDER(
-    Name("MakeIterator").Device(DEVICE_GPU).HostMemory("dataset"),
+    Name("MakeIterator").Device(DEVICE_GPU).Priority(1).HostMemory("dataset"),
     MakeIteratorOp);
-REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE_CPU),
-                        AnonymousIteratorHandleOp);
-REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE_GPU),
-                        AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("AnonymousIterator").Device(DEVICE_CPU).Priority(2),
+    AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("AnonymousIterator").Device(DEVICE_GPU).Priority(1),
+    AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),
                         ToSingleElementOp);
 REGISTER_KERNEL_BUILDER(Name("ReduceDataset").Device(DEVICE_CPU),
                         ReduceDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("OneShotIterator").Device(DEVICE_CPU),
                         OneShotIteratorOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU).Priority(2),
                         IteratorGetNextOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_GPU).Priority(1),
                         IteratorGetNextOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE_CPU),
-                        IteratorGetNextSyncOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE_GPU),
-                        IteratorGetNextSyncOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorGetNextAsOptional").Device(DEVICE_CPU),
-                        IteratorGetNextAsOptionalOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorGetNextAsOptional").Device(DEVICE_GPU),
-                        IteratorGetNextAsOptionalOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle").Device(DEVICE_CPU),
-                        IteratorToStringHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("IteratorGetNextSync").Device(DEVICE_CPU).Priority(2),
+    IteratorGetNextSyncOp);
+REGISTER_KERNEL_BUILDER(
+    Name("IteratorGetNextSync").Device(DEVICE_GPU).Priority(1),
+    IteratorGetNextSyncOp);
+REGISTER_KERNEL_BUILDER(
+    Name("IteratorGetNextAsOptional").Device(DEVICE_CPU).Priority(2),
+    IteratorGetNextAsOptionalOp);
+REGISTER_KERNEL_BUILDER(
+    Name("IteratorGetNextAsOptional").Device(DEVICE_GPU).Priority(1),
+    IteratorGetNextAsOptionalOp);
+REGISTER_KERNEL_BUILDER(
+    Name("IteratorToStringHandle").Device(DEVICE_CPU).Priority(2),
+    IteratorToStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle")
                             .Device(DEVICE_GPU)
-                            .HostMemory("string_handle"),
+                            .HostMemory("string_handle")
+                            .Priority(1),
                         IteratorToStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandle").Device(DEVICE_CPU),
                         IteratorFromStringHandleOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandleV2").Device(DEVICE_CPU),
-                        IteratorFromStringHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("IteratorFromStringHandleV2").Device(DEVICE_CPU).Priority(2),
+    IteratorFromStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandleV2")
                             .Device(DEVICE_GPU)
-                            .HostMemory("string_handle"),
+                            .HostMemory("string_handle")
+                            .Priority(1),
                         IteratorFromStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
                         SerializeIteratorOp);

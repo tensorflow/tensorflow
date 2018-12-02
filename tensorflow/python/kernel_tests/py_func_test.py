@@ -514,6 +514,7 @@ class PyFuncTest(test.TestCase):
       self.assertAllEqual(ret, [[3.0], [3.0], [3.0]])
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def testEagerExceptionHandling(self):
     with test_util.device(use_gpu=True):
       self._testExceptionHandling(
@@ -533,6 +534,7 @@ class PyFuncTest(test.TestCase):
       self._testExceptionHandling(WeirdError, errors.UnknownError, eager=True)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def testEagerReturningVariableRaisesError(self):
     def return_variable():
       return resource_variable_ops.ResourceVariable(0.0)

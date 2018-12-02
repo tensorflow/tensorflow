@@ -86,6 +86,18 @@ REGISTER_OP("ExperimentalMapDataset")
     .Attr("use_inter_op_parallelism: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ExperimentalMatchingFilesDataset")
+    .Input("patterns: string")
+    .Output("handle: variant")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `patterns` must be a scalar or a vector.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("ExperimentalNonSerializableDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
@@ -119,26 +131,21 @@ REGISTER_OP("ExperimentalIteratorGetDevice")
     .Output("device: string")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("ExperimentalFunctionBufferingResource")
-    .Input("string_arg: string")
-    .Input("target_device: string")
-    .Output("resource: resource")
-    .Attr("shared_name: string")
-    .Attr("container: string")
-    .Attr("f: func")
-    .Attr("buffer_size: int")
-    .Attr("output_types: list(type)")
-    .SetShapeFn(shape_inference::UnknownShape);
+REGISTER_OP("ExperimentalMaxIntraOpParallelismDataset")
+    .Input("input_dataset: variant")
+    .Input("max_intra_op_parallelism: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("ExperimentalFunctionBufferingResourceGetNext")
-    .Input("function_buffer_resource: resource")
-    .Attr("output_types: list(type)")
-    .Output("output: output_types")
-    .SetShapeFn(shape_inference::UnknownShape);
-
-REGISTER_OP("ExperimentalFunctionBufferingResourceReset")
-    .Input("function_buffer_resource: resource")
-    .SetShapeFn(shape_inference::UnknownShape);
+REGISTER_OP("ExperimentalPrivateThreadPoolDataset")
+    .Input("input_dataset: variant")
+    .Input("num_threads: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalThreadPoolDataset")
     .Input("input_dataset: variant")

@@ -25,6 +25,29 @@ namespace testing {
 
 bool FlexModelTest::Invoke() { return interpreter_->Invoke() == kTfLiteOk; }
 
+void FlexModelTest::SetStringValues(int tensor_index,
+                                    const std::vector<string>& values) {
+  DynamicBuffer dynamic_buffer;
+  for (const string& s : values) {
+    dynamic_buffer.AddString(s.data(), s.size());
+  }
+  dynamic_buffer.WriteToTensor(interpreter_->tensor(tensor_index),
+                               /*new_shape=*/nullptr);
+}
+
+std::vector<string> FlexModelTest::GetStringValues(int tensor_index) const {
+  std::vector<string> result;
+
+  TfLiteTensor* tensor = interpreter_->tensor(tensor_index);
+  auto num_strings = GetStringCount(tensor->data.raw);
+  for (size_t i = 0; i < num_strings; ++i) {
+    auto ref = GetString(tensor->data.raw, i);
+    result.push_back(string(ref.str, ref.len));
+  }
+
+  return result;
+}
+
 void FlexModelTest::SetShape(int tensor_index, const std::vector<int>& values) {
   ASSERT_EQ(interpreter_->ResizeInputTensor(tensor_index, values), kTfLiteOk);
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
@@ -95,12 +118,22 @@ void FlexModelTest::AddTfOp(TfOpType op, const std::vector<int>& inputs,
     return " attr{ key: '" + key + "' value {" + value + "}}";
   };
 
-  // Crude type attribution, will need fleshing out as more tests are added.
-  // TODO(b/113613439): Use nodedef string utilities to properly handle
-  // all types.
-  string type_attribute = attr("T", "type: DT_FLOAT");
-  if (interpreter_->tensor(inputs[0])->type == kTfLiteInt32) {
-    type_attribute = attr("T", "type: DT_INT32");
+  string type_attribute;
+  switch (interpreter_->tensor(inputs[0])->type) {
+    case kTfLiteInt32:
+      type_attribute = attr("T", "type: DT_INT32");
+      break;
+    case kTfLiteFloat32:
+      type_attribute = attr("T", "type: DT_FLOAT");
+      break;
+    case kTfLiteString:
+      type_attribute = attr("T", "type: DT_STRING");
+      break;
+    default:
+      // TODO(b/113613439): Use nodedef string utilities to properly handle all
+      // types.
+      LOG(FATAL) << "Type not supported";
+      break;
   }
 
   if (op == kUnpack) {

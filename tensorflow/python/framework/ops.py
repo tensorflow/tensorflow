@@ -36,6 +36,7 @@ from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import tape
@@ -747,6 +748,18 @@ class _EagerTensorBase(Tensor):
   def _numpy(self):
     raise NotImplementedError()
 
+  @property
+  def backing_device(self):
+    """Returns the name of the device holding this tensor's memory.
+
+    `.backing_device` is usually the same as `.device`, which returns
+    the device on which the kernel of the operation that produced this tensor
+    ran. However, some operations can produce tensors on a different device
+    (e.g., an operation that executes on the GPU but produces output tensors
+    in host memory).
+    """
+    raise NotImplementedError()
+
   def __copy__(self):
     # Eager Tensors are immutable so it's safe to return themselves as a copy.
     return self
@@ -897,13 +910,7 @@ class _EagerTensorBase(Tensor):
     return self._copy(context.context(), "GPU:" + str(gpu_index))
 
   def __bool__(self):
-    if self._shape_tuple() != ():  # pylint: disable=g-explicit-bool-comparison
-      raise ValueError(
-          "Non-scalar tensor %s cannot be converted to boolean." % repr(self))
-    if self.dtype != dtypes.bool:
-      raise ValueError(
-          "Non-boolean tensor %s cannot be converted to boolean." % repr(self))
-    return bool(self.cpu().numpy())
+    return bool(self.numpy())
 
   def __nonzero__(self):
     return self.__bool__()
@@ -1023,12 +1030,12 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
       `preferred_dtype` is not possible, this argument has no effect.
 
   Returns:
-    An `Output` based on `value`.
+    An `Tensor` based on `value`.
 
   Raises:
-    TypeError: If no conversion function is registered for `value`.
+    TypeError: If no conversion function is registered for `value` to `dtype`.
     RuntimeError: If a registered conversion function returns an invalid value.
-
+    ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
   """
   return convert_to_tensor_v2(value, dtype, preferred_dtype, name)
 
@@ -1076,12 +1083,12 @@ def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
     name: Optional name to use if a new `Tensor` is created.
 
   Returns:
-    An `Output` based on `value`.
+    An `Tensor` based on `value`.
 
   Raises:
-    TypeError: If no conversion function is registered for `value`.
+    TypeError: If no conversion function is registered for `value` to `dtype`.
     RuntimeError: If a registered conversion function returns an invalid value.
-
+    ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
   """
   return internal_convert_to_tensor(
       value=value,
@@ -1102,42 +1109,7 @@ def internal_convert_to_tensor(value,
                                preferred_dtype=None,
                                ctx=None,
                                accept_symbolic_tensors=True):
-  """Converts the given `value` to an `Tensor`.
-
-  This function converts Python objects of various types to `Tensor`
-  objects. It accepts `Tensor` objects, numpy arrays, Python lists,
-  and Python scalars. For example:
-
-  This function can be useful when composing a new operation in Python
-  All standard Python op constructors apply this function to each of their
-  Tensor-valued inputs, which allows those ops to accept numpy arrays, Python
-  lists, and scalars in addition to `Tensor` objects.
-
-  Args:
-    value: An object whose type has a registered `Tensor` conversion function.
-    dtype: Optional element type for the returned tensor. If missing, the
-      type is inferred from the type of `value`.
-    name: Optional name to use if a new `Tensor` is created.
-    as_ref: True if we want the mutable view of Variables, if applicable.
-    preferred_dtype: Optional element type for the returned tensor,
-      used when dtype is None. In some cases, a caller may not have a
-      dtype in mind when converting to a tensor, so preferred_dtype
-      can be used as a soft preference.  If the conversion to
-      `preferred_dtype` is not possible, this argument has no effect.
-    ctx: Optional: The value of context.context().
-    accept_symbolic_tensors: Whether Keras graph tensors should be accepted as
-      a valid tensor type during eager execution.
-      If False, this function will raise an exception if it is passed such
-      a tensor during eager eager execution.
-
-  Returns:
-    A `Tensor` based on `value`.
-
-  Raises:
-    TypeError: If no conversion function is registered for `value`.
-    RuntimeError: If a registered conversion function returns an invalid value.
-
-  """
+  """Implementation of the public convert_to_tensor."""
   if ctx is None: ctx = context.context()
   if isinstance(value, EagerTensor):
     if ctx.executing_eagerly():
@@ -2148,6 +2120,23 @@ class Operation(object):
     """Removes any control inputs to this operation."""
     c_api.RemoveAllControlInputs(self._graph._c_graph, self._c_op)  # pylint: disable=protected-access
 
+  def _add_outputs(self, types, shapes):
+    """Adds new Tensors to self.outputs.
+
+    Note: this is generally unsafe to use. This is used in certain situations in
+    conjunction with _set_type_list_attr.
+
+    Arguments:
+      types: list of DTypes
+      shapes: list of TensorShapes
+    """
+    assert len(types) == len(shapes)
+    orig_num_outputs = len(self.outputs)
+    for i in range(len(types)):
+      t = Tensor(self, orig_num_outputs + i, types[i])
+      self._outputs.append(t)
+      t.set_shape(shapes[i])
+
   def __str__(self):
     return str(self.node_def)
 
@@ -2360,6 +2349,25 @@ class Operation(object):
     finally:
       c_api.TF_DeleteBuffer(buf)
 
+  def _set_func_attr(self, attr_name, func_name):
+    """Private method used to set a function attribute in the node_def."""
+    func = attr_value_pb2.NameAttrList(name=func_name)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(func=func))
+
+  def _set_type_list_attr(self, attr_name, types):
+    """Private method used to set a function attribute in the node_def."""
+    if not types: return
+    if isinstance(types[0], dtypes.DType):
+      types = [dt.as_datatype_enum for dt in types]
+    types_list = attr_value_pb2.AttrValue.ListValue(type=types)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(list=types_list))
+
+  def _set_shape_list_attr(self, attr_name, shapes):
+    """Private method used to set a function attribute in the node_def."""
+    shapes = [s.as_proto() for s in shapes]
+    shapes_list = attr_value_pb2.AttrValue.ListValue(shape=shapes)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(list=shapes_list))
+
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
 
@@ -2372,7 +2380,7 @@ class Operation(object):
     Raises:
       ValueError: If this op does not have an attr with the given `name`.
     """
-    fields = ["s", "i", "f", "b", "type", "shape", "tensor", "func"]
+    fields = ("s", "i", "f", "b", "type", "shape", "tensor", "func")
     try:
       with c_api_util.tf_buffer() as buf:
         c_api.TF_OperationGetAttrValueProto(self._c_op, name, buf)
@@ -2383,25 +2391,21 @@ class Operation(object):
     x = attr_value_pb2.AttrValue()
     x.ParseFromString(data)
 
-    # Treat an empty oneof value as an empty list.
-    if not x.WhichOneof("value"):
+    oneof_value = x.WhichOneof("value")
+    if oneof_value is None:
       return []
-    if x.HasField("list"):
+    if oneof_value == "list":
       for f in fields:
         if getattr(x.list, f):
           if f == "type":
-            return [dtypes.as_dtype(x) for x in list(getattr(x.list, f))]
+            return [dtypes.as_dtype(t) for t in x.list.type]
           else:
             return list(getattr(x.list, f))
       return []
-    else:
-      for f in fields:
-        if x.HasField(f):
-          if f == "type":
-            return dtypes.as_dtype(getattr(x, f))
-          else:
-            return getattr(x, f)
-      assert False, "Unsupported field type in " + str(x)
+    if oneof_value == "type":
+      return dtypes.as_dtype(x.type)
+    assert oneof_value in fields, "Unsupported field type in " + str(x)
+    return getattr(x, oneof_value)
 
   def run(self, feed_dict=None, session=None):
     """Runs this operation in a `Session`.
@@ -2811,8 +2815,8 @@ class Graph(object):
     self._stack_state_is_thread_local = False
     self._thread_local = threading.local()
     # Functions that will be applied to choose a device if none is specified.
-    # After switch_to_thread_local(), self._thread_local._device_function_stack
-    # is used instead.
+    # In TF2.x or after switch_to_thread_local(),
+    # self._thread_local._device_function_stack is used instead.
     self._graph_device_function_stack = traceable_stack.TraceableStack()
     # Default original_op applied to new ops.
     self._default_original_op = None
@@ -2820,7 +2824,7 @@ class Graph(object):
     # WhileContext defined in ops/control_flow_ops.py
     self._control_flow_context = None
     # A new node will depend of the union of all of the nodes in the stack.
-    # After switch_to_thread_local(),
+    # In TF2.x or after switch_to_thread_local(),
     # self._thread_local._control_dependencies_stack is used instead.
     self._graph_control_dependencies_stack = []
     # Arbitrary collections of objects.
@@ -2844,7 +2848,7 @@ class Graph(object):
         producer=versions.GRAPH_DEF_VERSION,
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
     self._building_function = False
-    # Stack of colocate_with ops. After switch_to_thread_local(),
+    # Stack of colocate_with ops. In TF2.x or after switch_to_thread_local(),
     # self._thread_local._colocation_stack is used instead.
     self._graph_colocation_stack = traceable_stack.TraceableStack()
     # Set of tensors that are dangerous to feed!
@@ -2877,6 +2881,8 @@ class Graph(object):
     # requirement (many custom ops do not have shape functions, and we don't
     # want to break these existing cases).
     c_api.SetRequireShapeInferenceFns(self._c_graph, False)
+    if tf2.enabled():
+      self.switch_to_thread_local()
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
@@ -5387,7 +5393,7 @@ def inside_function():
   return get_default_graph().building_function
 
 
-@tf_export("enable_eager_execution")
+@tf_export(v1=["enable_eager_execution"])
 def enable_eager_execution(config=None,
                            device_policy=None,
                            execution_mode=None):
@@ -5458,6 +5464,17 @@ def enable_eager_execution(config=None,
         server_def=None)
 
 
+@tf_export(v1=["disable_eager_execution"])
+def disable_eager_execution():
+  """Disables eager execution.
+
+  This function can only be called before any Graphs, Ops, or Tensors have been
+  created. It can be used at the beginning of the program for complex migration
+  projects from TensorFlow 1.x to 2.x.
+  """
+  context.default_execution_mode = context.GRAPH_MODE
+
+
 def enable_eager_execution_internal(config=None,
                                     device_policy=None,
                                     execution_mode=None,
@@ -5465,6 +5482,7 @@ def enable_eager_execution_internal(config=None,
   """Enables eager execution for the lifetime of this program.
 
   Most of the doc string for enable_eager_execution is relevant here as well.
+
   Args:
     config: See enable_eager_execution doc string
     device_policy: See enable_eager_execution doc string
@@ -5557,7 +5575,7 @@ def eager_run(main=None, argv=None):
   app.run(main, argv)
 
 
-@tf_export("reset_default_graph")
+@tf_export(v1=["reset_default_graph"])
 def reset_default_graph():
   """Clears the default graph stack and resets the global default graph.
 

@@ -64,7 +64,8 @@ def while_loop(cond,
                loop_vars,
                shape_invariants=None,
                maximum_iterations=None,
-               name=None):
+               name=None,
+               return_same_structure=True):
   """Like tf.while_loop, except emits a single While op."""
   maximum_iterations = _validate_and_convert_to_tensor(maximum_iterations)
   # Keep the original loop_vars around to know which args were TensorArrays.
@@ -257,6 +258,9 @@ def while_loop(cond,
   # First var is loop counter.
   outputs = _pack_sequence_as(orig_loop_vars,
                               outputs[1:1 + num_flattened_outputs])
+
+  if return_same_structure:
+    return outputs
 
   flattened_outputs = nest.flatten(outputs)
   if len(flattened_outputs) == 1:
@@ -509,7 +513,7 @@ def _grad_fn(ys, xs, args, func_graph):
 
   # TODO(b/118712257): Handle the case when grad_outs has None's e.g. when there
   # is a tf.StopGradient in the loop body.
-  assert all([g is not None for g in grad_outs])
+  assert all(g is not None for g in grad_outs)
   counter = args[0]
   total_iters = args[1]
   return [counter + 1, total_iters] + grad_outs
@@ -838,6 +842,10 @@ def _is_tensor_array_handle(tensor):
 
   # TODO(b/118452219): add test coverage for this.
   tensor = func_graph_module.maybe_captured(tensor)
+
+  if isinstance(tensor, ops.EagerTensor):
+    # Eager execution doesn't quite support legacy tensorarray
+    return False
 
   return tensor.op.type in TENSOR_ARRAY_HANDLE_OPS
 

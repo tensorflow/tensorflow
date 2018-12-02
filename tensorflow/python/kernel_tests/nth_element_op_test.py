@@ -22,6 +22,7 @@ import numpy as np
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
@@ -111,17 +112,20 @@ class NthElementTest(test.TestCase):
     self._testEnumerateN([10, 10, 10])
     self._testEnumerateN([10, 10, 10, 10])
 
+  @test_util.run_deprecated_v1
   def testInvalidInput(self):
     with self.assertRaisesRegexp(ValueError,
                                  "at least rank 1 but is rank 0"):
       nn_ops.nth_element(5, 0)
 
+  @test_util.run_deprecated_v1
   def testInvalidInputAtEval(self):
     with self.session(use_gpu=False):
       v = array_ops.placeholder(dtype=dtypes.float32)
       with self.assertRaisesOpError("Input must be >= 1-D"):
         nn_ops.nth_element(v, 0).eval(feed_dict={v: 5.0})
 
+  @test_util.run_deprecated_v1
   def testInvalidN(self):
     with self.assertRaisesRegexp(ValueError,
                                  "non-negative but is -1"):
@@ -130,6 +134,7 @@ class NthElementTest(test.TestCase):
                                  "scalar but has rank 1"):
       nn_ops.nth_element([5, 6, 3], [1])
 
+  @test_util.run_deprecated_v1
   def testInvalidNAtEval(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
     with self.session(use_gpu=False):
@@ -138,12 +143,14 @@ class NthElementTest(test.TestCase):
       with self.assertRaisesOpError("Need n >= 0, got -7"):
         values.eval(feed_dict={n: -7})
 
+  @test_util.run_deprecated_v1
   def testNTooLarge(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
     with self.assertRaisesRegexp(ValueError,
                                  "must have last dimension > n = 2"):
       nn_ops.nth_element(inputs, 2)
 
+  @test_util.run_deprecated_v1
   def testNTooLargeAtEval(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
     with self.session(use_gpu=False):
@@ -152,6 +159,7 @@ class NthElementTest(test.TestCase):
       with self.assertRaisesOpError(r"Input must have at least n\+1 columns"):
         values.eval(feed_dict={n: 2})
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     with self.session(use_gpu=False) as sess:
       inputs = array_ops.placeholder(dtypes.float32, shape=[3, 5])

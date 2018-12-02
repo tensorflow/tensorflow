@@ -147,9 +147,10 @@ TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name)
 }
 
 TfLiteDriver::~TfLiteDriver() {
-  for (TfLiteTensor* t : tensors_to_deallocate_) {
-    free(t->data.raw);
+  for (auto t : tensors_to_deallocate_) {
+    DeallocateStringTensor(t.second);
   }
+  interpreter_.reset();
 }
 
 void TfLiteDriver::AllocateTensors() {
@@ -242,12 +243,10 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
     case kTfLiteString: {
       string s = absl::HexStringToBytes(csv_values);
 
-      tensor->data.raw = reinterpret_cast<char*>(malloc(s.size()));
-      tensor->bytes = s.size();
+      DeallocateStringTensor(tensors_to_deallocate_[id]);
+      AllocateStringTensor(id, s.size(), tensor);
       memcpy(tensor->data.raw, s.data(), s.size());
 
-      // We must remember to free the memory we allocated above.
-      tensors_to_deallocate_.push_back(tensor);
       break;
     }
     default:

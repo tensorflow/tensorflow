@@ -195,6 +195,17 @@ def converted_call(f, owner, options, *args, **kwargs):
   if not options.internal_convert_user_code:
     return f(*args, **kwargs)
 
+  # Unwrap functools.partial objects
+  # TODO(allenl, mdan): Consider sharing unwrapping logic with tf_inspect.
+  while isinstance(f, functools.partial):
+    args = f.args + args
+    new_kwargs = {}
+    if f.keywords is not None:
+      new_kwargs.update(f.keywords)
+    new_kwargs.update(kwargs)
+    kwargs = new_kwargs
+    f = f.func
+
   if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
     # Regular functions
     target_entity = f

@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader
@@ -53,6 +54,7 @@ class SimpleSaveTest(test.TestCase):
       self.assertEqual(actual_tensor_info.tensor_shape.dim[i].size,
                        expected_tensor.shape[i])
 
+  @test_util.run_deprecated_v1
   def testSimpleSave(self):
     """Test simple_save that uses the default parameters."""
     export_dir = os.path.join(test.get_temp_dir(),

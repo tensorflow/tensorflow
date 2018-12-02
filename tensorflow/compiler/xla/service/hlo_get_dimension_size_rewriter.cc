@@ -39,7 +39,7 @@ StatusOr<bool> ReplaceGetSize(HloInstruction* instr) {
   uint32 size = instr->operand(0)->shape().dimensions(instr->dimension());
   HloInstruction* new_instr = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(size)));
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(instr, new_instr));
+  TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
   return true;
 }
 
@@ -50,12 +50,7 @@ StatusOr<bool> HloGetDimensionSizeRewriter::Run(HloModule* module) {
   HloProto proto;
   *proto.mutable_hlo_module() = module->ToProto();
   for (auto* computation : module->computations()) {
-    // Replacing instructions will change the instruction list in the
-    // computation. So instead of iterating computation->instructions()
-    // directly, we make a copy of the list to avoid use-after-free.
-    std::vector<HloInstruction*> instrs(computation->instruction_count());
-    absl::c_copy(computation->instructions(), instrs.begin());
-    for (auto instruction : instrs) {
+    for (auto instruction : computation->instructions()) {
       TF_ASSIGN_OR_RETURN(bool replaced, ReplaceGetSize(instruction));
       changed = changed || replaced;
     }

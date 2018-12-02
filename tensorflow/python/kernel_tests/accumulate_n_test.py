@@ -32,6 +32,7 @@ from tensorflow.python.platform import googletest
 class AccumulateNV2Test(test_util.TensorFlowTestCase):
   """Tests of the new, differentiable version of accumulate_n."""
 
+  @test_util.run_deprecated_v1
   def testFloat(self):
     np.random.seed(12345)
     x = [np.random.random((1, 2, 3, 4, 5)) - 0.5 for _ in range(5)]
@@ -41,6 +42,7 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
       self.assertAllClose(x[0] * 5,
                           math_ops.accumulate_n([tf_x[0]] * 5).eval())
 
+  @test_util.run_deprecated_v1
   def testInt(self):
     np.random.seed(54321)
     x = [np.random.randint(-128, 128, (5, 4, 3, 2, 1)) for _ in range(6)]
@@ -50,12 +52,14 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
       self.assertAllEqual(x[0] * 6,
                           math_ops.accumulate_n([tf_x[0]] * 6).eval())
 
+  @test_util.run_deprecated_v1
   def testUnknownShape(self):
     with self.session(use_gpu=True):
       x0 = array_ops.placeholder(dtype=dtypes_lib.int32, shape=[None])
       acc = math_ops.accumulate_n([x0, x0], shape=[None])
       self.assertAllEqual([2, 4], acc.eval(feed_dict={x0: [1, 2]}))
 
+  @test_util.run_deprecated_v1
   def testGrad(self):
     np.random.seed(42)
     for num_inputs in range(1, 10):

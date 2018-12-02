@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -80,6 +81,7 @@ class LinearOperatorDiagTest(
       with self.assertRaisesOpError("non-positive real.*not positive definite"):
         operator.assert_positive_definite().run()
 
+  @test_util.run_deprecated_v1
   def test_assert_positive_definite_does_not_raise_if_pd_and_complex(self):
     with self.cached_session():
       x = [1., 2.]
@@ -96,6 +98,7 @@ class LinearOperatorDiagTest(
       with self.assertRaisesOpError("Singular operator"):
         operator.assert_non_singular().run()
 
+  @test_util.run_deprecated_v1
   def test_assert_non_singular_does_not_raise_for_complex_nonsingular(self):
     with self.cached_session():
       x = [1., 0.]
@@ -113,6 +116,7 @@ class LinearOperatorDiagTest(
       with self.assertRaisesOpError("imaginary.*not self-adjoint"):
         operator.assert_self_adjoint().run()
 
+  @test_util.run_deprecated_v1
   def test_assert_self_adjoint_does_not_raise_for_diag_with_zero_imag(self):
     with self.cached_session():
       x = [1., 0.]
@@ -147,12 +151,12 @@ class LinearOperatorDiagTest(
       operator_matmul = operator.matmul(x)
       mat_matmul = math_ops.matmul(mat, x)
       self.assertAllEqual(operator_matmul.get_shape(), mat_matmul.get_shape())
-      self.assertAllClose(*sess.run([operator_matmul, mat_matmul]))
+      self.assertAllClose(*self.evaluate([operator_matmul, mat_matmul]))
 
       operator_solve = operator.solve(x)
       mat_solve = linalg_ops.matrix_solve(mat, x)
       self.assertAllEqual(operator_solve.get_shape(), mat_solve.get_shape())
-      self.assertAllClose(*sess.run([operator_solve, mat_solve]))
+      self.assertAllClose(*self.evaluate([operator_solve, mat_solve]))
 
   def test_diag_matmul(self):
     operator1 = linalg_lib.LinearOperatorDiag([2., 3.])

@@ -79,13 +79,13 @@ bool ShapeIndexView::StartsWith(ShapeIndexView prefix) const {
          indices_.subspan(0, prefix.size()) == prefix.indices_;
 }
 
-namespace {
-
-// Returns whether the given primitive type corresponds to an array shape.
-bool IsArrayPrimitiveType(PrimitiveType primitive_type) {
+/* static */ bool ShapeUtil::IsArrayPrimitiveType(
+    PrimitiveType primitive_type) {
   return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
          primitive_type != OPAQUE && primitive_type != TOKEN;
 }
+
+namespace {
 
 // Recursive helper for comparing the equality of two shapes. Returns true if
 // the shapes are the same. If compare_layouts is true, then layouts must also
@@ -119,6 +119,23 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
       if (!absl::c_equal(LayoutUtil::MinorToMajor(lhs),
                          LayoutUtil::MinorToMajor(rhs))) {
         VLOG(3) << "CompareShapes: lhs layout != rhs layout";
+        return false;
+      }
+
+      const auto& lhs_tiles = lhs.layout().tiles();
+      const auto& rhs_tiles = rhs.layout().tiles();
+      if (lhs_tiles.size() != rhs_tiles.size()) {
+        return false;
+      }
+      for (int64 i = 0; i < lhs_tiles.size(); i++) {
+        if (!absl::c_equal(lhs_tiles[i].dimensions(),
+                           rhs_tiles[i].dimensions())) {
+          return false;
+        }
+      }
+
+      if (lhs.layout().element_size_in_bits() !=
+          rhs.layout().element_size_in_bits()) {
         return false;
       }
     }
@@ -203,7 +220,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 /* static */ ProgramShape ShapeUtil::MakeProgramShape(
     std::initializer_list<Shape> parameters, Shape result) {
   ProgramShape program_shape;
-  for (const auto& shape : parameters) {
+  for (const Shape& shape : parameters) {
     *program_shape.add_parameters() = shape;
   }
   *program_shape.mutable_result() = std::move(result);
@@ -272,7 +289,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ Shape ShapeUtil::MakeTupleShape(absl::Span<const Shape> shapes) {
   Shape result;
   result.set_element_type(TUPLE);
-  result.mutable_tuple_shapes()->Reserve(shapes.size());
+  result.mutable_tuple_shapes()->reserve(shapes.size());
   for (const auto& shape : shapes) {
     AppendShapeToTuple(shape, &result);
   }
@@ -1596,7 +1613,8 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 /* static */ Shape ShapeUtil::DeleteDimension(int64 dim_to_delete,
                                               Shape shape) {
   CHECK(IsArray(shape));
-  shape.mutable_dimensions()->erase(shape.dimensions().begin() + dim_to_delete);
+  shape.mutable_dimensions()->erase(shape.mutable_dimensions()->begin() +
+                                    dim_to_delete);
   if (LayoutUtil::HasLayout(shape)) {
     Layout* layout = shape.mutable_layout();
     layout->set_format(DENSE);
@@ -1628,11 +1646,6 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     shape = DeleteDimension(dim, shape);
   }
   return shape;
-}
-
-std::ostream& operator<<(std::ostream& out, const Shape& shape) {
-  out << ShapeUtil::HumanStringWithLayout(shape);
-  return out;
 }
 
 /*static*/ size_t ShapeUtil::Hash(const Shape& shape) {

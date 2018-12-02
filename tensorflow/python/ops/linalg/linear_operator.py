@@ -690,7 +690,7 @@ class LinearOperator(object):
         "  Requires conversion to a dense matrix and O(N^3) operations.")
     if self._can_use_cholesky():
       diag = array_ops.matrix_diag_part(linalg_ops.cholesky(self.to_dense()))
-      return 2 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
+      return 2 * math_ops.reduce_sum(math_ops.log(diag), axis=[-1])
     _, log_abs_det = linalg.slogdet(self.to_dense())
     return log_abs_det
 

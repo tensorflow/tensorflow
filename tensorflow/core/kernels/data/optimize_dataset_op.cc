@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -56,8 +58,13 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
         ctx, ParseVectorArgument<string>(ctx, "optimizations", &optimizations));
     Dataset* dataset =
         new Dataset(ctx, input, optimizations, output_types_, output_shapes_);
-    OP_REQUIRES_OK(ctx, dataset->Optimize(ctx));
-    *output = dataset;
+    Status s = dataset->Optimize(ctx);
+    if (s.ok()) {
+      *output = dataset;
+    } else {
+      dataset->Unref();
+      OP_REQUIRES_OK(ctx, s);
+    }
   }
 
  private:
@@ -68,6 +75,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : DatasetBase(DatasetContext(ctx)),
+          optimized_input_(nullptr),
           input_(input),
           optimizations_(optimizations),
           output_types_(output_types),
@@ -77,7 +85,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override {
       input_->Unref();
-      optimized_input_->Unref();
+      if (optimized_input_) {
+        optimized_input_->Unref();
+      }
     }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
@@ -114,6 +124,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       // using the optimized function library.
       TF_RETURN_IF_ERROR(
           ctx->function_library()->Clone(&flib_def_, &pflr_, &lib_));
+
+      // Create a FunctionHandleCache.
+      function_handle_cache_.reset(new FunctionHandleCache(lib_));
 
       // Some functions may have been modified without having their names
       // changed (for example, nested dataset graphs from FlatMap or
@@ -167,6 +180,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         IteratorContext::Params params(ctx);
         params.lib = dataset()->lib_;
+        params.function_handle_cache = dataset()->function_handle_cache_.get();
         return dataset()->optimized_input_->MakeIterator(
             IteratorContext(std::move(params)), prefix(), &input_impl_);
       }
@@ -176,6 +190,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
                              bool* end_of_sequence) override {
         IteratorContext::Params params(ctx);
         params.lib = dataset()->lib_;
+        params.function_handle_cache = dataset()->function_handle_cache_.get();
         return input_impl_->GetNext(IteratorContext(std::move(params)),
                                     out_tensors, end_of_sequence);
       }
@@ -275,6 +290,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
     FunctionLibraryRuntime* lib_ = nullptr;
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_ = nullptr;
     std::unique_ptr<FunctionLibraryDefinition> flib_def_ = nullptr;
+    std::unique_ptr<FunctionHandleCache> function_handle_cache_ = nullptr;
     const DatasetBase* input_;
     const std::vector<string> optimizations_;
     const DataTypeVector output_types_;

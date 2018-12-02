@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import monitored_session
@@ -46,6 +47,7 @@ class GlobalStepTest(test.TestCase):
     self.assertRaisesRegexp(TypeError, 'does not have integer type',
                             training_util.get_global_step, g)
 
+  @test_util.run_deprecated_v1
   def test_invalid_shape(self):
     with ops.Graph().as_default() as g:
       self.assertIsNone(training_util.get_global_step())
@@ -70,6 +72,7 @@ class GlobalStepTest(test.TestCase):
                               training_util.create_global_step, g)
       self._assert_global_step(training_util.create_global_step(ops.Graph()))
 
+  @test_util.run_deprecated_v1
   def test_get_global_step(self):
     with ops.Graph().as_default() as g:
       self.assertIsNone(training_util.get_global_step())
