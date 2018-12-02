@@ -274,11 +274,16 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
       dataset = dataset.map(_to_sparse_tensor)
       return dataset
 
-    def _compute_expected_batches():
+    def _compute_expected_batches(drop_remainder):
       """Computes expected batch outputs and stores in a set."""
       all_expected_sparse_tensors = set()
       for bucket_start_len in range(min_len, max_len, bucket_size):
-        for batch_offset in range(0, bucket_size, batch_size):
+        if drop_remainder:
+          batch_offsets = [0]
+        else:
+          batch_offsets = range(0, bucket_size, batch_size)
+
+        for batch_offset in batch_offsets:
           batch_start_len = bucket_start_len + batch_offset
           batch_end_len = min(batch_start_len + batch_size,
                               bucket_start_len + bucket_size)
@@ -306,16 +311,18 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
             all_sparse_tensors.add(sprs_tensor)
       return all_sparse_tensors
 
-    dataset = _build_dataset()
-    boundaries = range(min_len + bucket_size + 1, max_len, bucket_size)
-    dataset = dataset.apply(grouping.bucket_by_sequence_length(
-        _element_length_fn,
-        boundaries,
-        [batch_size] * (len(boundaries) + 1),
-        no_padding=True))
-    batches = _compute_batches(dataset)
-    expected_batches = _compute_expected_batches()
-    self.assertEqual(batches, expected_batches)
+    for drop_remainder in (True, False):
+      dataset = _build_dataset()
+      boundaries = range(min_len + bucket_size + 1, max_len, bucket_size)
+      dataset = dataset.apply(grouping.bucket_by_sequence_length(
+          _element_length_fn,
+          boundaries,
+          [batch_size] * (len(boundaries) + 1),
+          no_padding=True,
+          drop_remainder=drop_remainder))
+      batches = _compute_batches(dataset)
+      expected_batches = _compute_expected_batches()
+      self.assertEqual(batches, expected_batches)
 
 
 if __name__ == "__main__":
