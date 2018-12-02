@@ -91,11 +91,15 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
     # <seq-length>: [batch1_size, ..., batchN_size]
     expected_batch_sizes = dict()
 
-    for length, batch_size, bucket_elements in zip(lengths, batch_sizes, n_bucket_elements):
+    for length, batch_size, bucket_elements in zip(lengths,
+                                                   batch_sizes,
+                                                   n_bucket_elements):
       # Calculate the expected sum across all batches of a specific sequence length.
-      expected_sums[length] = (bucket_elements - bucket_elements % batch_size) * length
+      expected_sums[length] = \
+          (bucket_elements - bucket_elements % batch_size) * length
       # Calculate the expected occurrence of individual batch sizes.
-      expected_batch_sizes[length] = [batch_size] * (bucket_elements // batch_size)
+      expected_batch_sizes[length] = \
+          [batch_size] * (bucket_elements // batch_size)
       # Calculate the expected occurence of individual sequence lengths.
       expected_lengths.extend([length] * (bucket_elements // batch_size))
 
@@ -146,11 +150,13 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
       # <seq-length>: [<batch_size>, ...]
       generated_batch_sizes = dict()
 
-      for length, batch_size, bucket_elements in zip(lengths, batch_sizes, n_bucket_elements):
-          # Initialize the sum across all batches.
-          expected_sums[length] = 0
-          # Initialize the individual batch sizes.
-          expected_batch_sizes[length] = []
+      for length, batch_size, bucket_elements in zip(lengths,
+                                                     batch_sizes,
+                                                     n_bucket_elements):
+        # Initialize the sum across all batches.
+        expected_sums[length] = 0
+        # Initialize the individual batch sizes.
+        expected_batch_sizes[length] = []
 
       for batch in batches:
         shape = batch.dense_shape if no_padding else batch.shape
@@ -165,19 +171,26 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
 
       for l in lengths:
         # Make sure the sum of the batch contents is correct for the individual sequence lengths.
-        self.assertEqual(generated_sums[l], expected_sums[l],
-                         'Tensor sums did not match! expected: {}, generated: {}'
+        self.assertEqual(generated_sums[l],
+                         expected_sums[l],
+                         'Tensor sums did not match! '
+                         'expected: {}, generated: {}'
                          .format(expected_sums, generated_sums))
 
         # Make sure the individual batch sizes are generated as expected.
-        self.assertEqual(sorted(generated_batch_sizes[l]), sorted(expected_batch_sizes[l]),
-                         'Batch-sizes did not match! expected: {}, generated: {}'
-                         .format(sorted(expected_batch_sizes[l]), sorted(generated_batch_sizes[l])))
+        self.assertEqual(sorted(generated_batch_sizes[l]),
+                         sorted(expected_batch_sizes[l]),
+                         'Batch-sizes did not match! '
+                         'expected: {}, generated: {}'
+                         .format(sorted(expected_batch_sizes[l]),
+                                 sorted(generated_batch_sizes[l])))
 
       # Make sure the generated sequence lengths appear as often as expected.
       self.assertEqual(sorted(generated_lengths), sorted(expected_lengths),
-                       'The generated sequence lengths did not match! expected: {}, generated: {}'
-                       .format(sorted(expected_lengths), sorted(generated_lengths)))
+                       'The generated sequence lengths did not match! '
+                       'expected: {}, generated: {}'
+                       .format(sorted(expected_lengths),
+                               sorted(generated_lengths)))
 
     for no_padding in (True, False):
       _test_bucket_by_padding(no_padding)
@@ -432,7 +445,7 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
           no_padding=True,
           drop_remainder=drop_remainder))
       batches = _compute_batches(dataset)
-      expected_batches = _compute_expected_batches()
+      expected_batches = _compute_expected_batches(drop_remainder)
       self.assertEqual(batches, expected_batches)
 
 
