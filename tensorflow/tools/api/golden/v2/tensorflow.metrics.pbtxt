@@ -1,0 +1,47 @@
+path: "tensorflow.metrics"
+tf_module {
+  member {
+    name: "Accuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BinaryAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FalseNegatives"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FalsePositives"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Mean"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Precision"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Recall"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseCategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TrueNegatives"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TruePositives"
+    mtype: "<type \'type\'>"
+  }
+}

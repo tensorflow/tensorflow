@@ -52,6 +52,7 @@ tf_custom_op_library(
     deps = [
         ":mpi_defines",
         ":mpi_message_proto_cc",
+        "//tensorflow/stream_executor:stream_executor_headers_lib",
         "//third_party/mpi",
     ],
 )
@@ -125,16 +126,4 @@ tf_py_test(
         ":python/ops/_mpi_ops.so",
     ],
     tags = ["manual"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -31,7 +31,8 @@ END
   summary: "Computes the eigen decomposition of one or more square self-adjoint matrices."
   description: <<END
 Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
-`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.
+`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`. The eigenvalues
+are sorted in non-decreasing order.
 
 ```python
 # a is a tensor.

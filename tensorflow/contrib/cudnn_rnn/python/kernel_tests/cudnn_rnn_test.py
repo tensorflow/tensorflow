@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import argparse
 import collections
+import functools
 import itertools
 import os
 import sys
@@ -34,7 +35,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework.test_util import TensorFlowTestCase
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -57,6 +58,7 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import momentum
 from tensorflow.python.training import rmsprop
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 CUDNN_LSTM = cudnn_rnn_ops.CUDNN_LSTM
@@ -265,7 +267,7 @@ def _CreateCudnnCompatibleCanonicalRNN(rnn, inputs, is_bidi=False, scope=None):
     return outputs, (output_state_fw, output_state_bw)
 
 
-class CudnnRNNTestBasic(TensorFlowTestCase):
+class CudnnRNNTestBasic(test_util.TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
@@ -458,7 +460,7 @@ class CudnnRNNTestBasic(TensorFlowTestCase):
       grad, = gradients.gradients(
           math_ops.reduce_sum(accumulation), (original_input,))
     init_op = variables.global_variables_initializer()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       accumulation_eval, grad_eval = sess.run((accumulation, grad))
       self.assertAllEqual([28, 100, 100], accumulation_eval.shape)
@@ -467,7 +469,7 @@ class CudnnRNNTestBasic(TensorFlowTestCase):
 
 # TODO(jamesqin): Transform to parameterized test after it is included in the
 # TF open source codebase.
-class CudnnRNNTestSaveRestore(TensorFlowTestCase):
+class CudnnRNNTestSaveRestore(test_util.TensorFlowTestCase):
 
   def _CompareWeights(self, lhs, rhs):
     self.assertEqual(len(lhs), len(rhs))
@@ -534,7 +536,9 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
       save_path = os.path.join(self.get_temp_dir(),
                                "save-restore-variable-test")
       saver = saver_lib.Saver()
-      weights, biases = model.rnn.saveable._OpaqueParamsToCanonical()
+      weights, biases = (
+          model.rnn.saveable.format_converter._opaque_to_cu_canonical(
+              model.rnn.saveable._variables))
       opaque_params = rnn.trainable_variables[0]
       # CudnnTestModel() creates CudnnOpaqueParamsSaveable that helps saver save
       # Cudnn vars in canonical format.
@@ -581,8 +585,12 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
             dtype=dtype)
       opaque_params = (model1.rnn.trainable_variables[0],
                        model2.rnn.trainable_variables[0])
-      weights1, biases1 = model1.rnn.saveable._OpaqueParamsToCanonical()
-      weights2, biases2 = model2.rnn.saveable._OpaqueParamsToCanonical()
+      saveable1 = model1.rnn.saveable
+      weights1, biases1 = saveable1.format_converter._opaque_to_cu_canonical(
+          saveable1._variables)
+      saveable2 = model1.rnn.saveable
+      weights2, biases2 = saveable2.format_converter._opaque_to_cu_canonical(
+          saveable2._variables)
       reset_params = [
           state_ops.assign(params,
                            array_ops.zeros_like(params, dtype=dtype))
@@ -701,9 +709,146 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
     self._TestSaveRestoreHelper(CUDNN_RNN_RELU)
 
 
+class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
+
+  def _VerifyCheckpoint(
+      self, checkpoint_path, compatible_cell_fn, cudnn_cell_fn,
+      num_layers, input_size, expected_variable_values, num_applications=3):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    with ops.device("gpu:0"):
+      cudnn_layer = cudnn_cell_fn()
+      cudnn_checkpoint = checkpointable_utils.Checkpoint(cell=cudnn_layer)
+      status = cudnn_checkpoint.restore(checkpoint_path)
+      inputs = 3. * array_ops.ones([num_applications, num_layers, input_size],
+                                   dtype=dtypes.float32)
+      cudnn_output, _ = cudnn_layer(inputs)
+      status.run_restore_ops()
+    second_save_path = cudnn_checkpoint.save(checkpoint_prefix)
+    restore_layer = compatible_cell_fn()
+    restore_layer_checkpoint = checkpointable_utils.Checkpoint(
+        cell=restore_layer)
+    status = restore_layer_checkpoint.restore(second_save_path)
+    current_state = restore_layer.zero_state(1, dtypes.float32)
+    for _ in range(num_applications):
+      restore_layer_output, current_state = restore_layer(
+          inputs=3. * array_ops.ones([1, input_size]),
+          state=current_state)
+    status.run_restore_ops()
+    self.assertTrue(restore_layer.variables)
+    for variable, expected_value in zip(
+        restore_layer.variables, expected_variable_values):
+      self.assertAllClose(expected_value, self.evaluate(variable))
+    self.assertAllClose(self.evaluate(restore_layer_output),
+                        self.evaluate(cudnn_output)[-1, -1:, ...])
+
+  def _CheckpointableSingleCellUnidirectionalTestTemplate(
+      self, single_cell_fn, cudnn_cell_fn):
+    # Single-layer cuDNN cells with object-based checkpointing should be
+    # checkpoint compatible with either single CudnnCompatible cells or
+    # MultiRnnCells with one cell.
+    input_size = 3
+    save_cell_layer = single_cell_fn()
+    save_cell_layer(
+        inputs=array_ops.ones([1, input_size]),
+        state=save_cell_layer.zero_state(1, dtypes.float32))
+    self.assertTrue(save_cell_layer.variables)
+    expected_values = []
+    np.random.seed(10)
+    for variable in save_cell_layer.variables:
+      value = np.random.normal(size=variable.shape)
+      expected_values.append(value)
+      self.evaluate(variable.assign(value))
+    save_checkpoint = checkpointable_utils.Checkpoint(cell=save_cell_layer)
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    first_save_path = save_checkpoint.save(checkpoint_prefix)
+    self._VerifyCheckpoint(
+        checkpoint_path=first_save_path,
+        compatible_cell_fn=
+        lambda: rnn_cell_impl.MultiRNNCell([single_cell_fn()]),
+        cudnn_cell_fn=cudnn_cell_fn,
+        num_layers=1,
+        expected_variable_values=expected_values,
+        input_size=input_size)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  @test_util.run_in_graph_and_eager_modes
+  def testLSTMCheckpointableSingleLayer(self):
+    num_units = 2
+    direction = CUDNN_RNN_UNIDIRECTION
+    self._CheckpointableSingleCellUnidirectionalTestTemplate(
+        single_cell_fn=functools.partial(
+            cudnn_rnn_ops.CudnnCompatibleLSTMCell, num_units=num_units),
+        cudnn_cell_fn=functools.partial(
+            cudnn_rnn.CudnnLSTM, num_layers=1, num_units=num_units,
+            direction=direction, name="awesome_lstm"))
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  @test_util.run_in_graph_and_eager_modes
+  def testGRUCheckpointableSingleLayer(self):
+    num_units = 2
+    direction = CUDNN_RNN_UNIDIRECTION
+    with self.assertRaises(NotImplementedError):
+      # TODO(allenl): Implement object-based saving for GRUs and other cells.
+      self._CheckpointableSingleCellUnidirectionalTestTemplate(
+          single_cell_fn=functools.partial(
+              cudnn_rnn_ops.CudnnCompatibleGRUCell, num_units=num_units),
+          cudnn_cell_fn=functools.partial(
+              cudnn_rnn.CudnnGRU, num_layers=1, num_units=num_units,
+              direction=direction, name="awesome_gru"))
+
+  def _CheckpointableMultiLayerTestTemplate(
+      self, single_cell_fn, cudnn_cell_fn, num_layers):
+
+    def _MultiCellFn():
+      return rnn_cell_impl.MultiRNNCell(
+          [single_cell_fn() for _ in range(num_layers)])
+    input_size = 3
+    save_graph = ops.Graph()
+    with save_graph.as_default(), self.session(graph=save_graph):
+      save_layer = _MultiCellFn()
+      save_layer(inputs=array_ops.ones([1, input_size]),
+                 state=save_layer.zero_state(1, dtypes.float32))
+      self.assertTrue(save_layer.variables)
+      expected_values = []
+      np.random.seed(10)
+      for variable in save_layer.variables:
+        value = np.random.normal(size=variable.shape)
+        expected_values.append(value)
+        self.evaluate(variable.assign(value))
+      save_checkpoint = checkpointable_utils.Checkpoint(cell=save_layer)
+      checkpoint_directory = self.get_temp_dir()
+      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+      first_save_path = save_checkpoint.save(checkpoint_prefix)
+    self._VerifyCheckpoint(
+        checkpoint_path=first_save_path,
+        compatible_cell_fn=_MultiCellFn, cudnn_cell_fn=cudnn_cell_fn,
+        num_layers=num_layers,
+        expected_variable_values=expected_values,
+        input_size=input_size)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  @test_util.run_in_graph_and_eager_modes
+  def testCudnnCompatibleLSTMCheckpointablMultiLayer(self):
+    num_units = 2
+    num_layers = 3
+    direction = CUDNN_RNN_UNIDIRECTION
+    self._CheckpointableMultiLayerTestTemplate(
+        single_cell_fn=functools.partial(
+            cudnn_rnn_ops.CudnnCompatibleLSTMCell, num_units=num_units),
+        cudnn_cell_fn=functools.partial(
+            cudnn_rnn.CudnnLSTM, num_layers=num_layers, num_units=num_units,
+            direction=direction, name="awesome_lstm"),
+        num_layers=num_layers)
+
+
 # TODO(jamesqin): Transform to parameterized test after it is included in the
 # TF open source codebase.
-class CudnnRNNTestCompatibleRNNCells(TensorFlowTestCase):
+class CudnnRNNTestCompatibleRNNCells(test_util.TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
@@ -884,7 +1029,7 @@ class CudnnRNNTestCompatibleRNNCells(TensorFlowTestCase):
                               rtol=2e-5)
 
 
-class CudnnRNNTestParamsSize(TensorFlowTestCase):
+class CudnnRNNTestParamsSize(test_util.TensorFlowTestCase):
 
   def _TestOpaqueParamsSize(self, rnn_mode, num_layers, num_units, input_size,
                             dtype, direction):
@@ -900,8 +1045,8 @@ class CudnnRNNTestParamsSize(TensorFlowTestCase):
 
     # Min param size estimate = sum(weights.size) + sum(biases.size)
     min_params_size = (
-        np.sum(map(np.prod, rnn.canonical_weight_shapes)) +
-        np.sum([sp[0] for sp in rnn.canonical_bias_shapes]))
+        sum(map(np.prod, rnn.canonical_weight_shapes)) +
+        sum(sp[0] for sp in rnn.canonical_bias_shapes))
 
     opaque_params = rnn.trainable_variables[0]
     with self.test_session(use_gpu=True, graph=ops.get_default_graph()):
@@ -931,7 +1076,18 @@ class CudnnRNNTestParamsSize(TensorFlowTestCase):
                                    dtype, direction)
 
 
-class CudnnRNNTestTraining(TensorFlowTestCase):
+class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(CudnnRNNTestTraining, self).setUp()
+    self._reset_rnd_gen_state = os.environ.get("TF_CUDNN_RESET_RND_GEN_STATE",
+                                               str(False))
+    self._rnn_use_v2 = os.environ.get("TF_CUDNN_RNN_USE_V2", "0")
+
+  def tearDown(self):
+    super(CudnnRNNTestTraining, self).tearDown()
+    os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = self._reset_rnd_gen_state
+    os.environ["TF_CUDNN_RNN_USE_V2"] = self._rnn_use_v2
 
   def _ComputeNumericGrad(self, sess, y, x, delta=1e-4, step=1):
     """Compute the numeric gradient of y wrt to x.
@@ -1034,7 +1190,8 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
     num_grads = [self._ComputeNumericGrad(sess, y, x, delta) for x in xs]
     self.assertEqual(len(sym_grads), len(num_grads))
-    for sym, num in zip(sym_grads, num_grads):
+    for x, sym, num in zip(xs, sym_grads, num_grads):
+      logging.info("Comparing gradients for input: %s", x.name)
       self.assertFalse(np.any(np.isnan(sym)))
       self.assertFalse(np.any(np.isnan(num)))
       self.assertAllClose(sym, num, atol=tolerance, rtol=tolerance)
@@ -1045,11 +1202,10 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
   def _TestOneSimpleTraining(self, rnn_mode, num_layers, num_units, input_size,
                              batch_size, seq_length, dir_count, dropout, dtype,
-                             delta, tolerance):
+                             use_v2, delta, tolerance):
     # Gradient checking runs two forward ops with almost the same input. Need to
     # make sure the drop patterns across the two runs are the same.
     logging.info("Training test with config: %s", locals())
-    old_env_state = os.environ.get("TF_CUDNN_RESET_RND_GEN_STATE", str(False))
     os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = str(True)
 
     np.random.seed(1234)
@@ -1057,6 +1213,10 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
     has_input_c = (rnn_mode == CUDNN_LSTM)
     direction = (CUDNN_RNN_UNIDIRECTION
                  if dir_count == 1 else CUDNN_RNN_BIDIRECTION)
+    if use_v2:
+      os.environ["TF_CUDNN_RNN_USE_V2"] = "1"
+    else:
+      os.environ["TF_CUDNN_RNN_USE_V2"] = "0"
     model = CudnnTestModel(
         rnn_mode,
         num_layers,
@@ -1072,18 +1232,18 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
     params = rnn.trainable_variables[0]
 
     inputs = variables.Variable(
-        random_ops.random_uniform(
-            [seq_length, batch_size, input_size], dtype=dtype),
-        dtype=dtype)
+        random_ops.random_uniform([seq_length, batch_size, input_size],
+                                  dtype=dtype),
+        dtype=dtype).read_value()
     input_h = variables.Variable(
         random_ops.random_uniform(
             [num_layers * dir_count, batch_size, num_units], dtype=dtype),
-        dtype=dtype)
+        dtype=dtype).read_value()
     if has_input_c:
       input_c = variables.Variable(
           random_ops.random_uniform(
               [num_layers * dir_count, batch_size, num_units], dtype=dtype),
-          dtype=dtype)
+          dtype=dtype).read_value()
       initial_state = (input_h, input_c)
     else:
       initial_state = (input_h,)
@@ -1106,22 +1266,25 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
           self._GradientCheck(
               sess, total_sum, all_inputs,
               tolerance=tolerance, delta=delta)
-      os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = old_env_state
 
   def _TestSimpleTrainingHelper(self, rnn_mode, test_configs):
     dropouts = [0, 0.5, 1.]
-    for config, dropout in itertools.product(test_configs, dropouts):
+    v2_options = [False, True]
+    for config, dropout, use_v2 in itertools.product(test_configs, dropouts,
+                                                     v2_options):
       dtype = config.get("dtype", dtypes.float32)
       delta = config.get("delta", 1e-4)
       tolerance = config.get("tolerance", 1e-6)
       dir_count = config.get("dir_count", 1)
       shape = config["shape"]
+      if dtype == dtypes.float64:
+        # TODO(jamesqin): b/117848763
+        use_v2 = False
       with ops.Graph().as_default():
-        self._TestOneSimpleTraining(rnn_mode, shape["num_layers"],
-                                    shape["num_units"], shape["input_size"],
-                                    shape["batch_size"], shape["seq_length"],
-                                    dir_count, dropout, dtype, delta,
-                                    tolerance)
+        self._TestOneSimpleTraining(
+            rnn_mode, shape["num_layers"], shape["num_units"],
+            shape["input_size"], shape["batch_size"], shape["seq_length"],
+            dir_count, dropout, dtype, use_v2, delta, tolerance)
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
@@ -1366,7 +1529,7 @@ if __name__ == "__main__":
   parser.add_argument(
       "--grad_check_num_samples",
       type=int,
-      default=5,
+      default=1,
       help="Number of samples to run for gradient check.")
   FLAGS, unparsed = parser.parse_known_args()
   sys.argv = [argv0] + unparsed

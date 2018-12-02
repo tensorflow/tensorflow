@@ -35,7 +35,7 @@
 #
 # Arguments:
 # whl_file_location: URL from which the TensorFlow whl file will be acquired.
-#   E.g.: https://ci.tensorflow.org/view/Nightly/job/nightly-matrix-cpu/TF_BUILD_IS_OPT=OPT,TF_BUILD_IS_PIP=PIP,TF_BUILD_PYTHON_VERSION=PYTHON2,label=cpu-slave/lastSuccessfulBuild/artifact/pip_test/whl/tensorflow-0.11.0rc1-cp27-none-linux_x86_64.whl
+#   E.g.: https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0-cp27-none-linux_x86_64.whl
 #   E.g.: /path/to/folder/tensorflow-0.11.0rc1-cp27-none-linux_x86_64.whl
 #
 # --leave_container_running:  Do not stop the docker-in-docker container after
@@ -64,9 +64,6 @@ die() {
 # Configurations
 DOCKER_IMG_NAME="tensorflow/tf-dist-test-local-cluster"
 
-# Use TensorFlow v1.5.0 for Python 2.7 and CPU only as we set num_gpus to 0 in the below
-DEFAULT_WHL_FILE_LOCATION="https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0-cp27-none-linux_x86_64.whl"
-
 # Parse input arguments
 LEAVE_CONTAINER_RUNNING=0
 MODEL_NAME=""
@@ -77,8 +74,7 @@ SYNC_REPLICAS_FLAG=""
 
 WHL_FILE_LOCATION=${1}
 if [[ -z "${WHL_FILE_LOCATION}" ]]; then
-  WHL_FILE_LOCATION=${DEFAULT_WHL_FILE_LOCATION}
-  echo "use default whl file location"
+  echo "WARNING: No wheel url passed. Will use latest tf-nightly cpu p2 wheel."
 fi
 
 while true; do
@@ -131,7 +127,11 @@ echo "Building in temporary directory: ${BUILD_DIR}"
 cp -r ${DIR}/* "${BUILD_DIR}"/ || \
   die "Failed to copy files to ${BUILD_DIR}"
 
-if [[ $WHL_FILE_LOCATION =~ 'http://' || $WHL_FILE_LOCATION =~ 'https://' ]]; then
+# Download whl file into the build context directory.
+if [[ -z "${WHL_FILE_LOCATION}" ]]; then
+  pip2 download --no-deps tf-nightly
+  cp tf-nightly-*.whl "${BUILD_DIR}"/tensorflow-none-any.whl
+elif [[ $WHL_FILE_LOCATION =~ 'http://' || $WHL_FILE_LOCATION =~ 'https://' ]]; then
     # Download whl file into the build context directory.
     wget -P "${BUILD_DIR}" "${WHL_FILE_LOCATION}" || \
         die "Failed to download tensorflow whl file from URL: ${WHL_FILE_LOCATION}"

@@ -19,8 +19,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/stream.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 bool CUDAStream::Init() {
@@ -59,5 +58,4 @@ CUstream AsCUDAStreamValue(Stream *stream) {
 }
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

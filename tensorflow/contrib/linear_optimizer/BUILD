@@ -41,6 +41,10 @@ py_test(
     size = "medium",
     srcs = ["python/kernel_tests/sdca_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_gpu",
+        "no_pip_gpu",
+    ],
     deps = [
         ":sdca_ops_py",
         ":sparse_feature_column_py",
@@ -137,15 +141,4 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

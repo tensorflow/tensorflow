@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_FUNCTION_OPTIMIZER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_FUNCTION_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_FUNCTION_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_FUNCTION_OPTIMIZER_H_
 
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -25,8 +26,9 @@ namespace grappler {
 // operations to make the overall graph more efficient.
 class FunctionOptimizer : public GraphOptimizer {
  public:
-  FunctionOptimizer() {}
-  ~FunctionOptimizer() override {}
+  explicit FunctionOptimizer(RewriterConfig::Toggle opt_level)
+      : opt_level_(opt_level) {}
+  ~FunctionOptimizer() override = default;
 
   string name() const override { return "function_optimizer"; };
 
@@ -35,9 +37,22 @@ class FunctionOptimizer : public GraphOptimizer {
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimized_graph, double result) override;
+
+ private:
+  friend class FunctionOptimizerTest;
+
+  struct FunctionOptimizerOptions {
+    bool enable_function_inlining = true;
+    bool enable_function_specialization = true;
+    bool enable_symbolic_gradient_inlining = true;
+    bool enable_trim_function_library = true;
+  };
+
+  RewriterConfig::Toggle opt_level_;
+  FunctionOptimizerOptions options_;
 };
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_FUNCTION_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_FUNCTION_OPTIMIZER_H_

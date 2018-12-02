@@ -22,11 +22,6 @@ limitations under the License.
 namespace tensorflow {
 namespace testing {
 
-std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv) {
-  LOG(FATAL) << "CreateSubProcess NOT IMPLEMENTED for Windows yet ! ";
-  return nullptr;
-}
-
 int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }
 
 string TensorFlowSrcRoot() {

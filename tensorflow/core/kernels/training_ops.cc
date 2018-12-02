@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #define EIGEN_USE_THREADS
-
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 
 #include <algorithm>
@@ -153,8 +152,10 @@ struct ApplyAdagrad<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::ConstScalar lr,
-                  typename TTypes<T>::ConstFlat grad) {
-    accum.device(d) += grad.square();
+                  typename TTypes<T>::ConstFlat grad, bool update_slots) {
+    if (update_slots) {
+      accum.device(d) += grad.square();
+    }
     var.device(d) -= grad * lr() * accum.rsqrt();
   }
 };
@@ -199,7 +200,7 @@ struct ApplyFtrlV2<CPUDevice, T> {
                   typename TTypes<T>::ConstScalar l2_shrinkage,
                   typename TTypes<T>::ConstScalar lr_power) {
     auto grad_with_shrinkage = grad + static_cast<T>(2) * l2_shrinkage() * var;
-    auto new_accum = accum + grad_with_shrinkage.square();
+    auto new_accum = accum + grad * grad;
     // special case for which lr_power=-0.5.
     if (lr_power() == static_cast<T>(-0.5)) {
       linear.device(d) +=
@@ -224,7 +225,7 @@ struct ApplyFtrlV2<CPUDevice, T> {
       var.device(d) = (linear.abs() > linear.constant(l1()))
                           .select(pre_shrink, var.constant(static_cast<T>(0)));
     }
-    accum.device(d) += grad_with_shrinkage.square();
+    accum.device(d) += grad * grad;
   }
 };
 
@@ -329,6 +330,27 @@ struct ApplyAdamSYCL {
 
 template <typename T>
 struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
+
+template <typename Device, typename T>
+struct ApplyAdaMaxNonCuda {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
+                  typename TTypes<T>::ConstScalar beta1_power,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar beta1,
+                  typename TTypes<T>::ConstScalar beta2,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad) {
+    m.device(d) += (grad - m) * (T(1) - beta1());
+    // Here v is u in section 7.1
+    v.device(d) = (beta2() * v).cwiseMax(grad.abs());
+    // var is θ in section 7.1
+    var.device(d) -= lr() / (T(1) - beta1_power()) * (m / (v + epsilon()));
+  }
+};
+
+template <typename T>
+struct ApplyAdaMax<CPUDevice, T> : ApplyAdaMaxNonCuda<CPUDevice, T> {};
 
 template <typename T>
 struct ApplyRMSProp<CPUDevice, T> {
@@ -539,7 +561,9 @@ class ApplyAdadeltaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    mutex* mu = GetTrainingVariableMutex(ctx, 0);
+    Var* resource;
+    mutex* mu = GetTrainingVariableMutex(ctx, 0, &resource);
+    core::ScopedUnref scoped_unref(resource);
     if (use_exclusive_lock_ && mu != nullptr) {
       mutex_lock l1(*mu);
       // Don't try to acquire a lock on the second ref as they share the same
@@ -688,7 +712,9 @@ class SparseApplyAdadeltaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    mutex* mu = GetTrainingVariableMutex(ctx, 0);
+    Var* var;
+    mutex* mu = GetTrainingVariableMutex(ctx, 0, &var);
+    core::ScopedUnref scoped_unref(var);
     // mu_accum is actually the same mutex as mu_var since currently we use a
     // global mutex.
     //
@@ -1053,6 +1079,7 @@ class ApplyAdagradOp : public OpKernel {
  public:
   explicit ApplyAdagradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -1090,13 +1117,15 @@ class ApplyAdagradOp : public OpKernel {
 
     const Device& device = ctx->template eigen_device<Device>();
     functor::ApplyAdagrad<Device, T>()(device, var.flat<T>(), accum.flat<T>(),
-                                       lr.scalar<T>(), grad.flat<T>());
+                                       lr.scalar<T>(), grad.flat<T>(),
+                                       update_slots_);
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
 
  private:
   bool use_exclusive_lock_;
+  bool update_slots_;
 };
 
 #define REGISTER_KERNELS(D, T)                                        \
@@ -1124,7 +1153,7 @@ namespace functor {
   void ApplyAdagrad<GPUDevice, T>::operator()(                            \
       const GPUDevice& d, typename TTypes<T>::Flat var,                   \
       typename TTypes<T>::Flat accum, typename TTypes<T>::ConstScalar lr, \
-      typename TTypes<T>::ConstFlat grad);                                \
+      typename TTypes<T>::ConstFlat grad, bool update_slots);             \
   extern template struct ApplyAdagrad<GPUDevice, T>;
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
@@ -1245,6 +1274,7 @@ class SparseApplyAdagradOp : public OpKernel {
  public:
   explicit SparseApplyAdagradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
@@ -1318,7 +1348,9 @@ class SparseApplyAdagradOp : public OpKernel {
           auto a = accum_flat.template chip<0>(index);
           auto g = grad_flat.template chip<0>(i);
           auto v = var_flat.template chip<0>(index);
-          a += g.square();
+          if (update_slots_) {
+            a += g.square();
+          }
           v -= g.constant(lr_scalar) * g * a.rsqrt();
         }
       } else {
@@ -1337,7 +1369,9 @@ class SparseApplyAdagradOp : public OpKernel {
                                           " in indices is out of range")));
           T& a = accum_flat(index);
           const T& g = grad_flat(i);
-          a += g * g;
+          if (update_slots_) {
+            a += g * g;
+          }
           var_flat(index) -= lr_scalar * g / Eigen::numext::sqrt(a);
         }
       }
@@ -1348,6 +1382,7 @@ class SparseApplyAdagradOp : public OpKernel {
 
  private:
   bool use_exclusive_lock_;
+  bool update_slots_;
 };
 
 #define REGISTER_KERNELS(T, Tindices)                                \
@@ -2135,15 +2170,15 @@ class SparseApplyFtrlOp : public OpKernel {
 
 // Use a macro to implement the computation here due to the templating of the
 // eigen tensor library.
-#define COMPUTE_FTRL(grad_to_use)                                              \
-  auto new_accum = accum + grad_to_use.square();                               \
+#define COMPUTE_FTRL(grad, grad_maybe_with_shrinkage)                          \
+  auto new_accum = accum + grad.square();                                      \
   if (lr_power_scalar == static_cast<T>(-0.5)) {                               \
-    linear +=                                                                  \
-        grad_to_use - (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;     \
+    linear += grad_maybe_with_shrinkage -                                      \
+              (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;             \
   } else {                                                                     \
-    linear += grad_to_use - (new_accum.pow(-lr_power_scalar) -                 \
-                             accum.pow(-lr_power_scalar)) /                    \
-                                lr_scalar * var;                               \
+    linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) -   \
+                                           accum.pow(-lr_power_scalar)) /      \
+                                              lr_scalar * var;                 \
   }                                                                            \
   auto l1_reg_adjust = linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar);        \
   auto x = l1_reg_adjust - linear;                                             \
@@ -2156,14 +2191,14 @@ class SparseApplyFtrlOp : public OpKernel {
              linear.constant(static_cast<T>(2) * l2_scalar);                   \
     var = x / y;                                                               \
   }                                                                            \
-  accum += grad_to_use.square();
+  accum += grad.square();
 
           if (has_l2_shrinkage) {
             auto grad_with_shrinkage =
                 grad + static_cast<T>(2) * l2_shrinkage_scalar * var;
-            COMPUTE_FTRL(grad_with_shrinkage);
+            COMPUTE_FTRL(grad, grad_with_shrinkage);
           } else {
-            COMPUTE_FTRL(grad);
+            COMPUTE_FTRL(grad, grad);
           }
         }
 #undef COMPUTE_FTRL
@@ -2196,12 +2231,12 @@ class SparseApplyFtrlOp : public OpKernel {
           T g;
           if (has_l2_shrinkage) {
             g = grad_flat(i) +
-                (static_cast<T>(2) * l2_shrinkage_scalar * var_flat(i));
+                (static_cast<T>(2) * l2_shrinkage_scalar * var_flat(index));
           } else {
             g = grad_flat(i);
           }
 
-          T updated_a = a + g * g;
+          T updated_a = a + grad_flat(i) * grad_flat(i);
           using Eigen::numext::pow;
           T sigma = pow(updated_a, -lr_power_scalar) - pow(a, -lr_power_scalar);
           sigma /= lr_scalar;
@@ -2738,6 +2773,134 @@ namespace functor {
       typename TTypes<T>::ConstScalar epsilon,                \
       typename TTypes<T>::ConstFlat grad, bool use_nesterov); \
   extern template struct ApplyAdam<GPUDevice, T>;
+DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half);
+REGISTER_KERNELS(GPU, float);
+REGISTER_KERNELS(GPU, double);
+#endif
+#undef REGISTER_CPU_KERNELS
+#undef REGISTER_KERNELS
+
+template <typename Device, typename T>
+class ApplyAdaMaxOp : public OpKernel {
+ public:
+  explicit ApplyAdaMaxOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
+
+    Tensor var;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
+    Tensor m;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &m));
+    Tensor v;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 2, use_exclusive_lock_, false, &v));
+    OP_REQUIRES(
+        ctx, var.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(0)));
+    OP_REQUIRES(
+        ctx, m.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(1)));
+    OP_REQUIRES(
+        ctx, v.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(2)));
+
+    const Tensor& beta1_power = ctx->input(3);
+    const Tensor& lr = ctx->input(4);
+    const Tensor& beta1 = ctx->input(5);
+    const Tensor& beta2 = ctx->input(6);
+    const Tensor& epsilon = ctx->input(7);
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_power.shape()),
+                errors::InvalidArgument("beta1_power is not a scalar: ",
+                                        beta1_power.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
+                errors::InvalidArgument("lr is not a scalar : ",
+                                        lr.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1.shape()),
+                errors::InvalidArgument("beta1 is not a scalar: ",
+                                        beta1.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2.shape()),
+                errors::InvalidArgument("beta2 is not a scalar: ",
+                                        beta2.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon.shape()),
+                errors::InvalidArgument("epsilon is not a scalar: ",
+                                        epsilon.shape().DebugString()));
+
+    const Tensor& grad = ctx->input(8);
+    OP_REQUIRES(ctx, var.shape().IsSameSize(m.shape()),
+                errors::InvalidArgument("var and m do not have the same shape",
+                                        var.shape().DebugString(), " ",
+                                        m.shape().DebugString()));
+    OP_REQUIRES(ctx, var.shape().IsSameSize(v.shape()),
+                errors::InvalidArgument("var and v do not have the same shape",
+                                        var.shape().DebugString(), " ",
+                                        v.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(grad.shape()),
+        errors::InvalidArgument("var and grad do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                grad.shape().DebugString()));
+
+    const Device& device = ctx->template eigen_device<Device>();
+    functor::ApplyAdaMax<Device, T>()(
+        device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
+        beta1_power.scalar<T>(), lr.scalar<T>(), beta1.scalar<T>(),
+        beta2.scalar<T>(), epsilon.scalar<T>(), grad.flat<T>());
+
+    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
+  }
+
+ private:
+  bool use_exclusive_lock_;
+};
+
+#define REGISTER_KERNELS(D, T)                                       \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("ApplyAdaMax").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyAdaMaxOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyAdaMax")                \
+                              .HostMemory("var")                     \
+                              .HostMemory("m")                       \
+                              .HostMemory("v")                       \
+                              .Device(DEVICE_##D)                    \
+                              .TypeConstraint<T>("T"),               \
+                          ApplyAdaMaxOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
+
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#if GOOGLE_CUDA
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T)                                   \
+  template <>                                                 \
+  void ApplyAdaMax<GPUDevice, T>::operator()(                 \
+      const GPUDevice& d, typename TTypes<T>::Flat var,       \
+      typename TTypes<T>::Flat m, typename TTypes<T>::Flat v, \
+      typename TTypes<T>::ConstScalar beta1_power,            \
+      typename TTypes<T>::ConstScalar lr,                     \
+      typename TTypes<T>::ConstScalar beta1,                  \
+      typename TTypes<T>::ConstScalar beta2,                  \
+      typename TTypes<T>::ConstScalar epsilon,                \
+      typename TTypes<T>::ConstFlat grad);                    \
+  extern template struct ApplyAdaMax<GPUDevice, T>;
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_MUTEX_H_
-#define TENSORFLOW_PLATFORM_MUTEX_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_MUTEX_H_
+#define TENSORFLOW_CORE_PLATFORM_MUTEX_H_
 
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
@@ -50,4 +50,4 @@ ConditionResult WaitForMilliseconds(mutex_lock* mu, condition_variable* cv,
                                     int64 ms);
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_MUTEX_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_MUTEX_H_

@@ -31,7 +31,6 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-@test_util.with_c_api
 class ScalarTest(test.TestCase):
 
   def check(self, op, args, error, correct=None):
@@ -54,7 +53,7 @@ class ScalarTest(test.TestCase):
     for version in strict + lenient:
       with ops.Graph().as_default() as g:
         test_util.set_producer_version(g, version)
-        with self.test_session(graph=g) as sess:
+        with self.session(graph=g) as sess:
           feed = {}
           xs = placeholders(args, feed)
           x = op(*xs)

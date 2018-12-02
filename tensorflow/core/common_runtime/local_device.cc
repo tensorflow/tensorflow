@@ -18,10 +18,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
+#include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_feature_guard.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -29,23 +32,52 @@ namespace tensorflow {
 
 /* static */
 bool LocalDevice::use_global_threadpool_ = true;
+mutex LocalDevice::global_tp_mu_;
+gtl::InlinedVector<LocalDevice::EigenThreadPoolInfo*, 4>
+    LocalDevice::global_tp_info_;
 
 struct LocalDevice::EigenThreadPoolInfo {
-  explicit EigenThreadPoolInfo(const SessionOptions& options) {
+  // Wrapper so we can provide the CPUAllocator to Eigen for use
+  // when ops need extra tmp memory.
+  class EigenAllocator : public Eigen::Allocator {
+   public:
+    explicit EigenAllocator(tensorflow::Allocator* a) : allocator_(a) {}
+    void* allocate(size_t num_bytes) const override {
+      return allocator_->AllocateRaw(64, num_bytes);
+    }
+    void deallocate(void* buffer) const override {
+      allocator_->DeallocateRaw(buffer);
+    }
+    tensorflow::Allocator* allocator_;
+  };
+
+  explicit EigenThreadPoolInfo(const SessionOptions& options, int numa_node,
+                               Allocator* allocator) {
     int32 intra_op_parallelism_threads =
         options.config.intra_op_parallelism_threads();
     if (intra_op_parallelism_threads == 0) {
       intra_op_parallelism_threads = port::NumSchedulableCPUs();
+      if (numa_node != port::kNUMANoAffinity) {
+        // Assume that CPUs are equally distributed over available NUMA nodes.
+        // This may not be true, but there isn't currently a better way of
+        // determining the number of CPUs specific to the requested node.
+        intra_op_parallelism_threads /= port::NUMANumNodes();
+      }
     }
-    VLOG(1) << "Local device intra op parallelism threads: "
-            << intra_op_parallelism_threads;
+    ThreadOptions thread_opts;
+    thread_opts.numa_node = numa_node;
     eigen_worker_threads_.num_threads = intra_op_parallelism_threads;
     eigen_worker_threads_.workers = new thread::ThreadPool(
-        options.env, "Eigen", intra_op_parallelism_threads);
+        options.env, thread_opts, strings::StrCat("numa_", numa_node, "_Eigen"),
+        intra_op_parallelism_threads);
     eigen_threadpool_wrapper_.reset(
         new EigenThreadPoolWrapper(eigen_worker_threads_.workers));
+    if (allocator) {
+      eigen_allocator_.reset(new EigenAllocator(allocator));
+    }
     eigen_device_.reset(new Eigen::ThreadPoolDevice(
-        eigen_threadpool_wrapper_.get(), eigen_worker_threads_.num_threads));
+        eigen_threadpool_wrapper_.get(), eigen_worker_threads_.num_threads,
+        eigen_allocator_.get()));
   }
 
   ~EigenThreadPoolInfo() {
@@ -57,6 +89,7 @@ struct LocalDevice::EigenThreadPoolInfo {
   DeviceBase::CpuWorkerThreads eigen_worker_threads_;
   std::unique_ptr<Eigen::ThreadPoolInterface> eigen_threadpool_wrapper_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
+  std::unique_ptr<EigenAllocator> eigen_allocator_;
 };
 
 LocalDevice::LocalDevice(const SessionOptions& options,
@@ -67,15 +100,34 @@ LocalDevice::LocalDevice(const SessionOptions& options,
   port::InfoAboutUnusedCPUFeatures();
   LocalDevice::EigenThreadPoolInfo* tp_info;
   if (use_global_threadpool_) {
-    // All ThreadPoolDevices in the process will use this single fixed
-    // sized threadpool for numerical computations.
-    static LocalDevice::EigenThreadPoolInfo* global_tp_info =
-        new LocalDevice::EigenThreadPoolInfo(options);
-    tp_info = global_tp_info;
+    mutex_lock l(global_tp_mu_);
+    if (options.config.experimental().use_numa_affinity()) {
+      int numa_node = attributes.locality().numa_node();
+      int num_numa_nodes = port::NUMANumNodes();
+      DCHECK_LT(numa_node, num_numa_nodes);
+      Allocator* numa_allocator =
+          ProcessState::singleton()->GetCPUAllocator(numa_node);
+      while (numa_node >= global_tp_info_.size()) {
+        global_tp_info_.push_back(nullptr);
+      }
+      if (!global_tp_info_[numa_node]) {
+        global_tp_info_[numa_node] = new LocalDevice::EigenThreadPoolInfo(
+            options, numa_node, numa_allocator);
+      }
+      tp_info = global_tp_info_[numa_node];
+    } else {
+      if (global_tp_info_.empty()) {
+        global_tp_info_.push_back(new LocalDevice::EigenThreadPoolInfo(
+            options, port::kNUMANoAffinity, nullptr));
+      }
+      tp_info = global_tp_info_[0];
+    }
   } else {
     // Each LocalDevice owns a separate ThreadPoolDevice for numerical
     // computations.
-    owned_tp_info_.reset(new LocalDevice::EigenThreadPoolInfo(options));
+    // TODO(tucker): NUMA for these too?
+    owned_tp_info_.reset(new LocalDevice::EigenThreadPoolInfo(
+        options, port::kNUMANoAffinity, nullptr));
     tp_info = owned_tp_info_.get();
   }
   set_tensorflow_cpu_worker_threads(&tp_info->eigen_worker_threads_);

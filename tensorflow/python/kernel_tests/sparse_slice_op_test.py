@@ -21,13 +21,16 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import sparse_ops
+import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
 class SparseSliceOpTest(test.TestCase):
 
-  def _SparseTensor_4x6(self):
+  def _SparseTensor_4x6(self, val_dtype=np.int64):
     # [0 |  |2 |  |4 |5 ]
     # [  |11|  |13|14|  ]
     # [20|  |  |23|  |25]
@@ -37,7 +40,7 @@ class SparseSliceOpTest(test.TestCase):
                     [2, 3], [2, 5], [3, 0], [3, 2], [3, 3], [3, 5]]).astype(
                         np.int64)
     val = np.array([0, 2, 4, 5, 11, 13, 14, 20, 23, 25, 30, 32, 33, 35]).astype(
-        np.int64)
+        val_dtype)
     shape = np.array([4, 6]).astype(np.int64)
     return sparse_tensor.SparseTensor(ind, val, shape)
 
@@ -77,8 +80,9 @@ class SparseSliceOpTest(test.TestCase):
     return sparse_tensor.SparseTensor.from_value(
         self._SparseTensorValue_3x4x2())
 
+  @test_util.run_deprecated_v1
   def testSliceMatrixRows(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_input = self._SparseTensor_4x6()
       sp_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [2, 6])
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [2, 0], [3, 7])
@@ -94,8 +98,9 @@ class SparseSliceOpTest(test.TestCase):
                           [20, 23, 25, 30, 32, 33, 35])
       self.assertAllEqual(sp_tensor1.dense_shape.eval(), [2, 6])
 
+  @test_util.run_deprecated_v1
   def testSliceMatrixUnevenCols(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_input = self._SparseTensor_5x7()
       sp_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [5, 3])
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [0, 3], [5, 2])
@@ -135,8 +140,9 @@ class SparseSliceOpTest(test.TestCase):
       self.assertAllEqual(sp_tensor3.values.eval(), [16, 46])
       self.assertAllEqual(sp_tensor3.dense_shape.eval(), [5, 1])
 
+  @test_util.run_deprecated_v1
   def testSliceMatrixUnevenRows(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_input = self._SparseTensor_5x7()
       sp_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [3, 7])
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [3, 0], [3, 7])
@@ -171,8 +177,9 @@ class SparseSliceOpTest(test.TestCase):
       self.assertAllEqual(sp_tensor2.dense_shape.eval(), [1, 7])
     return
 
+  @test_util.run_deprecated_v1
   def testSliceAllRows(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_input = self._SparseTensor_4x6()
       sp_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [1, 6])
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [1, 0], [1, 6])
@@ -193,8 +200,9 @@ class SparseSliceOpTest(test.TestCase):
       self.assertAllEqual(sp_tensor3.values.eval(), [30, 32, 33, 35])
       self.assertAllEqual(sp_tensor3.dense_shape.eval(), [1, 6])
 
+  @test_util.run_deprecated_v1
   def testSliceColumns(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_input = self._SparseTensor_4x6()
       sparse_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [4, 2])
       sparse_tensor1 = sparse_ops.sparse_slice(sp_input, [0, 2], [5, 2])
@@ -213,8 +221,9 @@ class SparseSliceOpTest(test.TestCase):
       self.assertAllEqual(sparse_tensor2.values.eval(), [4, 5, 14, 25, 35])
       self.assertAllEqual(sparse_tensor2.dense_shape.eval(), [4, 2])
 
+  @test_util.run_deprecated_v1
   def testSliceAllColumns(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_input = self._SparseTensor_4x6()
       sparse_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [4, 1])
       sparse_tensor1 = sparse_ops.sparse_slice(sp_input, [0, 1], [4, 1])
@@ -243,6 +252,23 @@ class SparseSliceOpTest(test.TestCase):
                           [[0, 0], [2, 0], [3, 0]])
       self.assertAllEqual(sparse_tensor5.values.eval(), [5, 25, 35])
       self.assertAllEqual(sparse_tensor5.dense_shape.eval(), [4, 1])
+
+  @test_util.run_deprecated_v1
+  def testGradients(self):
+    sp_input = self._SparseTensor_4x6(val_dtype=np.float32)
+    start_and_size = [([0, 0], [4, 2]),
+                      ([0, 2], [5, 2]),
+                      ([0, 4], [5, 3])]
+
+    with self.session(use_gpu=False):
+      for start, size in start_and_size:
+        sp_output = sparse_ops.sparse_slice(sp_input, start, size)
+        nnz_in = len(sp_input.values.eval())
+        nnz_out = len(sp_output.values.eval())
+
+        err = gradient_checker.compute_gradient_error(
+            [sp_input.values], [(nnz_in,)], sp_output.values, (nnz_out,))
+        self.assertLess(err, 1e-3)
 
 
 if __name__ == '__main__':

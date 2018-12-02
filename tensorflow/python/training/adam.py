@@ -29,7 +29,7 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.AdamOptimizer")
+@tf_export(v1=["train.AdamOptimizer"])
 class AdamOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adam algorithm.
 
@@ -43,23 +43,19 @@ class AdamOptimizer(optimizer.Optimizer):
 
     Initialization:
 
-    ```
-    m_0 <- 0 (Initialize initial 1st moment vector)
-    v_0 <- 0 (Initialize initial 2nd moment vector)
-    t <- 0 (Initialize timestep)
-    ```
+    $$m_0 := 0 \text{(Initialize initial 1st moment vector)}$$
+    $$v_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
+    $$t := 0 \text{(Initialize timestep)}$$
 
     The update rule for `variable` with gradient `g` uses an optimization
     described at the end of section2 of the paper:
 
-    ```
-    t <- t + 1
-    lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+    $$t := t + 1$$
+    $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
 
-    m_t <- beta1 * m_{t-1} + (1 - beta1) * g
-    v_t <- beta2 * v_{t-1} + (1 - beta2) * g * g
-    variable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)
-    ```
+    $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
+    $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
+    $$variable := variable - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
 
     The default value of 1e-8 for epsilon might not be a good default in
     general. For example, when training an Inception network on ImageNet a
@@ -89,6 +85,13 @@ class AdamOptimizer(optimizer.Optimizer):
       use_locking: If True use locks for update operations.
       name: Optional name for the operations created when applying gradients.
         Defaults to "Adam".
+
+    @compatibility(eager)
+    When eager execution is enabled, `learning_rate`, `beta1`, `beta2`, and
+    `epsilon` can each be a callable that takes no arguments and returns the
+    actual value to use. This can be useful for changing these values across
+    different invocations of optimizer functions.
+    @end_compatibility
     """
     super(AdamOptimizer, self).__init__(use_locking, name)
     self._lr = learning_rate
@@ -106,12 +109,13 @@ class AdamOptimizer(optimizer.Optimizer):
     self._updated_lr = None
 
   def _get_beta_accumulators(self):
-    if context.executing_eagerly():
-      graph = None
-    else:
-      graph = ops.get_default_graph()
-    return (self._get_non_slot_variable("beta1_power", graph=graph),
-            self._get_non_slot_variable("beta2_power", graph=graph))
+    with ops.init_scope():
+      if context.executing_eagerly():
+        graph = None
+      else:
+        graph = ops.get_default_graph()
+      return (self._get_non_slot_variable("beta1_power", graph=graph),
+              self._get_non_slot_variable("beta2_power", graph=graph))
 
   def _create_slots(self, var_list):
     # Create the beta1 and beta2 accumulators on the same device as the first
@@ -132,10 +136,15 @@ class AdamOptimizer(optimizer.Optimizer):
       self._zeros_slot(v, "v", self._name)
 
   def _prepare(self):
-    self._lr_t = ops.convert_to_tensor(self._lr, name="learning_rate")
-    self._beta1_t = ops.convert_to_tensor(self._beta1, name="beta1")
-    self._beta2_t = ops.convert_to_tensor(self._beta2, name="beta2")
-    self._epsilon_t = ops.convert_to_tensor(self._epsilon, name="epsilon")
+    lr = self._call_if_callable(self._lr)
+    beta1 = self._call_if_callable(self._beta1)
+    beta2 = self._call_if_callable(self._beta2)
+    epsilon = self._call_if_callable(self._epsilon)
+
+    self._lr_t = ops.convert_to_tensor(lr, name="learning_rate")
+    self._beta1_t = ops.convert_to_tensor(beta1, name="beta1")
+    self._beta2_t = ops.convert_to_tensor(beta2, name="beta2")
+    self._epsilon_t = ops.convert_to_tensor(epsilon, name="epsilon")
 
   def _apply_dense(self, grad, var):
     m = self.get_slot(var, "m")

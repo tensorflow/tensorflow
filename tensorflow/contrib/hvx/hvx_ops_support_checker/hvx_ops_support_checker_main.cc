@@ -115,7 +115,7 @@ static void CheckOpsSupport(const GraphDef& graph_def,
       HexagonOpsDefinitions::getInstance();
   LOG(INFO) << "Checking " << graph_def.node_size() << " nodes";
   LOG(INFO) << "dump_all_nodes = " << dump_all_nodes
-            << ", dump_shape_and_tpye = " << dump_shape_and_type;
+            << ", dump_shape_and_type = " << dump_shape_and_type;
 
   std::unordered_set<string> unsupported_ops;
   bool all_supported = true;

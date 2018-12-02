@@ -21,7 +21,10 @@ import os
 import shutil
 import tempfile
 
+import numpy as np
+
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -87,7 +90,11 @@ class LocalCLIDebuggerWrapperSessionForTest(
   def _prep_cli_for_run_start(self):
     pass
 
-  def _prep_debug_cli_for_run_end(self, debug_dump, tf_error, passed_filter):
+  def _prep_debug_cli_for_run_end(self,
+                                  debug_dump,
+                                  tf_error,
+                                  passed_filter,
+                                  passed_filter_exclude_op_names):
     self.observers["debug_dumps"].append(debug_dump)
     self.observers["tf_errors"].append(tf_error)
 
@@ -125,8 +132,8 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def setUp(self):
     self._tmp_dir = tempfile.mktemp()
 
-    self.v = variables.Variable(10.0, name="v")
-    self.w = variables.Variable(21.0, name="w")
+    self.v = variables.VariableV1(10.0, name="v")
+    self.w = variables.VariableV1(21.0, name="w")
     self.delta = constant_op.constant(1.0, name="delta")
     self.inc_v = state_ops.assign_add(self.v, self.delta, name="inc_v")
 
@@ -145,7 +152,13 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
         dtypes.float32, shape=([5, 5]), name="sparse_placeholder")
     self.sparse_add = sparse_ops.sparse_add(self.sparse_ph, self.sparse_ph)
 
-    self.sess = session.Session()
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=True,
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+        dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+    graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+    config_proto = config_pb2.ConfigProto(graph_options=graph_options)
+    self.sess = session.Session(config=config_proto)
 
     # Initialize variable.
     self.sess.run(variables.global_variables_initializer())
@@ -345,7 +358,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testDebuggingMakeCallableTensorRunnerWorks(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"], ["run"]], self.sess, dump_root=self._tmp_dir)
-    v = variables.Variable(42)
+    v = variables.VariableV1(42)
     tensor_runner = wrapped_sess.make_callable(v)
     self.sess.run(v.initializer)
 
@@ -369,7 +382,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testDebuggingMakeCallableOperationRunnerWorks(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"], ["run"]], self.sess, dump_root=self._tmp_dir)
-    v = variables.Variable(10.0)
+    v = variables.VariableV1(10.0)
     inc_v = state_ops.assign_add(v, 1.0)
     op_runner = wrapped_sess.make_callable(inc_v.op)
     self.sess.run(v.initializer)
@@ -388,6 +401,113 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     self.assertAllClose(42.0, tensor_runner(41.0, 1.0))
     self.assertEqual(1, len(wrapped_sess.observers["debug_dumps"]))
+
+  def testDebuggingMakeCallableFromOptionsWithZeroFeedWorks(self):
+    variable_1 = variables.VariableV1(
+        10.5, dtype=dtypes.float32, name="variable_1")
+    a = math_ops.add(variable_1, variable_1, "callable_a")
+    math_ops.add(a, a, "callable_b")
+    self.sess.run(variable_1.initializer)
+
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"]] * 3, self.sess, dump_root=self._tmp_dir)
+    callable_options = config_pb2.CallableOptions()
+    callable_options.fetch.append("callable_b")
+    sess_callable = wrapped_sess._make_callable_from_options(callable_options)
+
+    for _ in range(2):
+      callable_output = sess_callable()
+      self.assertAllClose(np.array(42.0, dtype=np.float32), callable_output[0])
+
+    debug_dumps = wrapped_sess.observers["debug_dumps"]
+    self.assertEqual(2, len(debug_dumps))
+    for debug_dump in debug_dumps:
+      node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
+      self.assertItemsEqual(
+          ["callable_a", "callable_b", "variable_1", "variable_1/read"],
+          node_names)
+
+  def testDebuggingMakeCallableFromOptionsWithOneFeedWorks(self):
+    ph1 = array_ops.placeholder(dtypes.float32, name="callable_ph1")
+    a = math_ops.add(ph1, ph1, "callable_a")
+    math_ops.add(a, a, "callable_b")
+
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"]] * 3, self.sess, dump_root=self._tmp_dir)
+    callable_options = config_pb2.CallableOptions()
+    callable_options.feed.append("callable_ph1")
+    callable_options.fetch.append("callable_b")
+    sess_callable = wrapped_sess._make_callable_from_options(callable_options)
+
+    ph1_value = np.array([10.5, -10.5], dtype=np.float32)
+
+    for _ in range(2):
+      callable_output = sess_callable(ph1_value)
+      self.assertAllClose(
+          np.array([42.0, -42.0], dtype=np.float32), callable_output[0])
+
+    debug_dumps = wrapped_sess.observers["debug_dumps"]
+    self.assertEqual(2, len(debug_dumps))
+    for debug_dump in debug_dumps:
+      node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
+      self.assertItemsEqual(["callable_a", "callable_b"], node_names)
+
+  def testDebuggingMakeCallableFromOptionsWithTwoFeedsWorks(self):
+    ph1 = array_ops.placeholder(dtypes.float32, name="callable_ph1")
+    ph2 = array_ops.placeholder(dtypes.float32, name="callable_ph2")
+    a = math_ops.add(ph1, ph2, "callable_a")
+    math_ops.add(a, a, "callable_b")
+
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"]] * 3, self.sess, dump_root=self._tmp_dir)
+    callable_options = config_pb2.CallableOptions()
+    callable_options.feed.append("callable_ph1")
+    callable_options.feed.append("callable_ph2")
+    callable_options.fetch.append("callable_b")
+    sess_callable = wrapped_sess._make_callable_from_options(callable_options)
+
+    ph1_value = np.array(5.0, dtype=np.float32)
+    ph2_value = np.array(16.0, dtype=np.float32)
+
+    for _ in range(2):
+      callable_output = sess_callable(ph1_value, ph2_value)
+      self.assertAllClose(np.array(42.0, dtype=np.float32), callable_output[0])
+
+    debug_dumps = wrapped_sess.observers["debug_dumps"]
+    self.assertEqual(2, len(debug_dumps))
+    for debug_dump in debug_dumps:
+      node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
+      self.assertItemsEqual(["callable_a", "callable_b"], node_names)
+
+  def testDebugMakeCallableFromOptionsWithCustomOptionsAndMetadataWorks(self):
+    variable_1 = variables.VariableV1(
+        10.5, dtype=dtypes.float32, name="variable_1")
+    a = math_ops.add(variable_1, variable_1, "callable_a")
+    math_ops.add(a, a, "callable_b")
+    self.sess.run(variable_1.initializer)
+
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"], ["run"]], self.sess, dump_root=self._tmp_dir)
+    callable_options = config_pb2.CallableOptions()
+    callable_options.fetch.append("callable_b")
+    callable_options.run_options.trace_level = config_pb2.RunOptions.FULL_TRACE
+
+    sess_callable = wrapped_sess._make_callable_from_options(callable_options)
+
+    run_metadata = config_pb2.RunMetadata()
+    # Call the callable with a custom run_metadata.
+    callable_output = sess_callable(run_metadata=run_metadata)
+    # Verify that step_stats is populated in the custom run_metadata.
+    self.assertTrue(run_metadata.step_stats)
+    self.assertAllClose(np.array(42.0, dtype=np.float32), callable_output[0])
+
+    debug_dumps = wrapped_sess.observers["debug_dumps"]
+    self.assertEqual(1, len(debug_dumps))
+    debug_dump = debug_dumps[0]
+    node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
+    self.assertItemsEqual(
+        ["callable_a", "callable_b", "variable_1", "variable_1/read"],
+        node_names)
 
   def testRuntimeErrorShouldBeCaught(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
@@ -408,7 +528,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testRuntimeErrorBeforeGraphExecutionIsRaised(self):
     # Use an impossible device name to cause an error before graph execution.
     with ops.device("/device:GPU:1337"):
-      w = variables.Variable([1.0] * 10, name="w")
+      w = variables.VariableV1([1.0] * 10, name="w")
 
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"]], self.sess, dump_root=self._tmp_dir)
@@ -450,6 +570,36 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(2, len(wrapped_sess.observers["debug_dumps"]))
     self.assertEqual([None, None], wrapped_sess.observers["tf_errors"])
+
+  def testRunTillFilterPassesWithExcludeOpNames(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run", "-f", "greater_than_twelve",
+          "--filter_exclude_node_names", "inc_v.*"],
+         ["run"], ["run"]],
+        self.sess,
+        dump_root=self._tmp_dir)
+
+    def greater_than_twelve(datum, tensor):
+      del datum  # Unused.
+      return tensor > 12.0
+
+    # Verify that adding the same tensor filter more than once is tolerated
+    # (i.e., as if it were added only once).
+    wrapped_sess.add_tensor_filter("greater_than_twelve", greater_than_twelve)
+
+    # run five times.
+    wrapped_sess.run(self.inc_v)
+    wrapped_sess.run(self.inc_v)
+    wrapped_sess.run(self.inc_v)
+    wrapped_sess.run(self.inc_v)
+
+    self.assertAllClose(14.0, self.sess.run(self.v))
+
+    self.assertEqual([1], wrapped_sess.observers["run_start_cli_run_numbers"])
+
+    # Due to the --filter_exclude_op_names flag, the run-end CLI should show up
+    # not after run 3, but after run 4.
+    self.assertEqual([4], wrapped_sess.observers["run_end_cli_run_numbers"])
 
   def testRunTillFilterPassesWorksInConjunctionWithOtherNodeNameFilter(self):
     """Test that --.*_filter flags work in conjunction with -f.

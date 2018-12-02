@@ -15,13 +15,27 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bfloat16.h"
 
+#include "absl/base/casts.h"
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
+
+TEST(Bfloat16Test, DefaultValueIsZero) {
+  EXPECT_EQ(0.0f, static_cast<float>(bfloat16()));
+}
+
+TEST(Bfloat16Test, RepresentableFloatsRoundTripViaBfloat16) {
+  const std::vector<float> values = {
+      -std::numeric_limits<float>::infinity(), -1.0, -0.5, -0.0, 0.0, 0.5, 1.0,
+      std::numeric_limits<float>::infinity(),
+  };
+  for (float v : values) {
+    EXPECT_EQ(v, static_cast<float>(static_cast<bfloat16>(v)));
+  }
+}
 
 TEST(Bfloat16Test, Simple) {
   bfloat16 a(12);
@@ -31,25 +45,34 @@ TEST(Bfloat16Test, Simple) {
 
 float BinaryToFloat(uint32_t sign, uint32_t exponent, uint32_t high_mantissa,
                     uint32_t low_mantissa) {
-  return bit_cast<float>((sign << 31) + (exponent << 23) +
-                         (high_mantissa << 16) + low_mantissa);
+  return absl::bit_cast<float>((sign << 31) + (exponent << 23) +
+                               (high_mantissa << 16) + low_mantissa);
 }
 
 struct Bfloat16TestParam {
   float input;
-  float expected;
+  float expected_truncation;
+  float expected_rounding;
 };
 
 class Bfloat16Test : public ::testing::Test,
                      public ::testing::WithParamInterface<Bfloat16TestParam> {};
 
 TEST_P(Bfloat16Test, TruncateTest) {
-  bfloat16 a(GetParam().input);
+  bfloat16 truncated = bfloat16::truncate_to_bfloat16((GetParam().input));
+
   if (std::isnan(GetParam().input)) {
-    EXPECT_TRUE(std::isnan(float(a)) || std::isinf(float(a)));
+    EXPECT_TRUE(std::isnan(float(truncated)) || std::isinf(float(truncated)));
     return;
   }
-  EXPECT_EQ(GetParam().expected, float(a));
+  EXPECT_EQ(GetParam().expected_truncation, float(truncated));
+
+  bfloat16 rounded = bfloat16::round_to_bfloat16((GetParam().input));
+  if (std::isnan(GetParam().input)) {
+    EXPECT_TRUE(std::isnan(float(rounded)) || std::isinf(float(rounded)));
+    return;
+  }
+  EXPECT_EQ(GetParam().expected_rounding, float(rounded));
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -57,37 +80,48 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Values(
         Bfloat16TestParam{
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b1111010111000011),
-            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
+            BinaryToFloat(0, 0b10000000, 0b1001001, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(1, 0b10000000, 0b1001000, 0b1111010111000011),
-            BinaryToFloat(1, 0b10000000, 0b1001000, 0b0000000000000000)},
+            BinaryToFloat(1, 0b10000000, 0b1001000, 0b0000000000000000),
+            BinaryToFloat(1, 0b10000000, 0b1001001, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b1000000000000000),
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b11111111, 0b0000000, 0b0000000000000001),
-            BinaryToFloat(0, 0b11111111, 0b0000000, 0b0000000000000000)},
+            BinaryToFloat(0, 0b11111111, 0b0000000, 0b0000000000000000),
+            BinaryToFloat(0, 0b11111111, 0b1000000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b11111111, 0b1111111, 0b1111111111111111),
-            BinaryToFloat(0, 0b11111111, 0b1111111, 0b0000000000000000)},
+            BinaryToFloat(0, 0b11111111, 0b1111111, 0b0000000000000000),
+            BinaryToFloat(0, 0b11111111, 0b1000000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(1, 0b10000000, 0b1001000, 0b1100000000000000),
-            BinaryToFloat(1, 0b10000000, 0b1001000, 0b0000000000000000)},
+            BinaryToFloat(1, 0b10000000, 0b1001000, 0b0000000000000000),
+            BinaryToFloat(1, 0b10000000, 0b1001001, 0b0000000000000000)},
         Bfloat16TestParam{
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0100000000000000),
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b1000000000000000),
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b00000000, 0b1001000, 0b1000000000000000),
+            BinaryToFloat(0, 0b00000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b00000000, 0b1001000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b00000000, 0b1111111, 0b1100000000000000),
-            BinaryToFloat(0, 0b00000000, 0b1111111, 0b0000000000000000)}));
+            BinaryToFloat(0, 0b00000000, 0b1111111, 0b0000000000000000),
+            BinaryToFloat(0, 0b00000001, 0b0000000, 0b0000000000000000)}));
 
 TEST(Bfloat16Test, Conversion) {
   float a[100];

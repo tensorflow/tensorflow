@@ -40,9 +40,8 @@ int64* NewMask(int64 word) {
 int64* before_mask = NewMask(0xabababababababab);
 int64* after_mask = NewMask(0xcdcdcdcdcdcdcdcd);
 
-bool CheckMask(perftools::gputools::StreamExecutor* exec, void* ptr,
-               int64* mask) {
-  gpu::DeviceMemory<int64> gpu_ptr{gpu::DeviceMemoryBase{ptr, MASK_BYTES}};
+bool CheckMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
+  se::DeviceMemory<int64> gpu_ptr{se::DeviceMemoryBase{ptr, MASK_BYTES}};
   int64 tmp[MASK_WORDS];
 
   if (!exec->SynchronousMemcpy(&tmp, gpu_ptr, MASK_BYTES)) {
@@ -62,9 +61,8 @@ bool CheckMask(perftools::gputools::StreamExecutor* exec, void* ptr,
   return ok;
 }
 
-void InitMask(perftools::gputools::StreamExecutor* exec, void* ptr,
-              int64* mask) {
-  gpu::DeviceMemory<int64> gpu_ptr{gpu::DeviceMemoryBase{ptr, MASK_BYTES}};
+void InitMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
+  se::DeviceMemory<int64> gpu_ptr{se::DeviceMemoryBase{ptr, MASK_BYTES}};
   if (!exec->SynchronousMemcpy(&gpu_ptr, mask, MASK_BYTES)) {
     LOG(FATAL) << "Could not copy debug mask";
   }
@@ -75,18 +73,19 @@ void InitMask(perftools::gputools::StreamExecutor* exec, void* ptr,
 // -----------------------------------------------------------------------------
 // GPUDebugAllocator
 // -----------------------------------------------------------------------------
-GPUDebugAllocator::GPUDebugAllocator(VisitableAllocator* allocator,
-                                     CudaGpuId cuda_gpu_id)
+GPUDebugAllocator::GPUDebugAllocator(Allocator* allocator,
+                                     PlatformGpuId platform_gpu_id)
     : base_allocator_(allocator) {
-  stream_exec_ = GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+  stream_exec_ =
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 }
 
 GPUDebugAllocator::~GPUDebugAllocator() { delete base_allocator_; }
 
 void* GPUDebugAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   num_bytes += (2 * MASK_BYTES);
-
   void* allocated_ptr = base_allocator_->AllocateRaw(alignment, num_bytes);
+  if (allocated_ptr == nullptr) return allocated_ptr;
 
   // Return the pointer after the header
   void* rv = static_cast<char*>(allocated_ptr) + MASK_BYTES;
@@ -102,21 +101,15 @@ void* GPUDebugAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   return rv;
 }
 void GPUDebugAllocator::DeallocateRaw(void* ptr) {
-  CHECK(CheckHeader(ptr)) << "before_mask has been overwritten";
-  CHECK(CheckFooter(ptr)) << "after_mask has been overwritten";
+  if (ptr != nullptr) {
+    CHECK(CheckHeader(ptr)) << "before_mask has been overwritten";
+    CHECK(CheckFooter(ptr)) << "after_mask has been overwritten";
 
-  // Backtrack to the beginning of the header.
-  ptr = static_cast<void*>(static_cast<char*>(ptr) - MASK_BYTES);
+    // Backtrack to the beginning of the header.
+    ptr = static_cast<void*>(static_cast<char*>(ptr) - MASK_BYTES);
+  }
   // Deallocate the memory
   base_allocator_->DeallocateRaw(ptr);
-}
-
-void GPUDebugAllocator::AddAllocVisitor(Visitor visitor) {
-  return base_allocator_->AddAllocVisitor(visitor);
-}
-
-void GPUDebugAllocator::AddFreeVisitor(Visitor visitor) {
-  return base_allocator_->AddFreeVisitor(visitor);
 }
 
 bool GPUDebugAllocator::TracksAllocationSizes() { return true; }
@@ -158,22 +151,25 @@ bool GPUDebugAllocator::CheckFooter(void* ptr) {
 // -----------------------------------------------------------------------------
 // GPUNanResetAllocator
 // -----------------------------------------------------------------------------
-GPUNanResetAllocator::GPUNanResetAllocator(VisitableAllocator* allocator,
-                                           CudaGpuId cuda_gpu_id)
+GPUNanResetAllocator::GPUNanResetAllocator(Allocator* allocator,
+                                           PlatformGpuId platform_gpu_id)
     : base_allocator_(allocator) {
-  stream_exec_ = GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+  stream_exec_ =
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 }
 
 GPUNanResetAllocator::~GPUNanResetAllocator() { delete base_allocator_; }
 
 void* GPUNanResetAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   void* allocated_ptr = base_allocator_->AllocateRaw(alignment, num_bytes);
+  if (allocated_ptr == nullptr) return allocated_ptr;
 
   // Initialize the buffer to Nans
   size_t req_size = base_allocator_->RequestedSize(allocated_ptr);
-  std::vector<float> nans(req_size / sizeof(float), std::nanf(""));
-  gpu::DeviceMemory<float> nan_ptr{
-      gpu::DeviceMemoryBase{static_cast<float*>(allocated_ptr), req_size}};
+  std::vector<float> nans((req_size + sizeof(float) - 1) / sizeof(float),
+                          std::nanf(""));
+  se::DeviceMemory<float> nan_ptr{
+      se::DeviceMemoryBase{static_cast<float*>(allocated_ptr), req_size}};
 
   if (!stream_exec_->SynchronousMemcpy(&nan_ptr, &nans[0], req_size)) {
     LOG(ERROR) << "Could not initialize to NaNs";
@@ -182,25 +178,20 @@ void* GPUNanResetAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   return allocated_ptr;
 }
 void GPUNanResetAllocator::DeallocateRaw(void* ptr) {
-  // Reset the buffer to Nans
-  size_t req_size = base_allocator_->RequestedSize(ptr);
-  std::vector<float> nans(req_size / sizeof(float), std::nanf(""));
-  gpu::DeviceMemory<float> nan_ptr{
-      gpu::DeviceMemoryBase{static_cast<float*>(ptr), req_size}};
-  if (!stream_exec_->SynchronousMemcpy(&nan_ptr, &nans[0], req_size)) {
-    LOG(ERROR) << "Could not initialize to NaNs";
+  if (ptr != nullptr) {
+    // Reset the buffer to Nans
+    size_t req_size = base_allocator_->RequestedSize(ptr);
+    std::vector<float> nans((req_size + sizeof(float) - 1) / sizeof(float),
+                            std::nanf(""));
+    se::DeviceMemory<float> nan_ptr{
+        se::DeviceMemoryBase{static_cast<float*>(ptr), req_size}};
+    if (!stream_exec_->SynchronousMemcpy(&nan_ptr, &nans[0], req_size)) {
+      LOG(ERROR) << "Could not initialize to NaNs";
+    }
   }
 
   // Deallocate the memory
   base_allocator_->DeallocateRaw(ptr);
-}
-
-void GPUNanResetAllocator::AddAllocVisitor(Visitor visitor) {
-  return base_allocator_->AddAllocVisitor(visitor);
-}
-
-void GPUNanResetAllocator::AddFreeVisitor(Visitor visitor) {
-  return base_allocator_->AddFreeVisitor(visitor);
 }
 
 size_t GPUNanResetAllocator::RequestedSize(const void* ptr) {

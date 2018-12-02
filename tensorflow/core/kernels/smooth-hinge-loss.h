@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SMOOTH_HINGE_LOSS_H_
-#define TENSORFLOW_KERNELS_SMOOTH_HINGE_LOSS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SMOOTH_HINGE_LOSS_H_
+#define TENSORFLOW_CORE_KERNELS_SMOOTH_HINGE_LOSS_H_
 
 #include <limits>
 
@@ -110,5 +110,5 @@ class SmoothHingeLossUpdater : public DualLossUpdater {
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_CORE_KERNELS_SMOOTH_HINGE_LOSS_H_
 // TENSORFLOW_KERNELS_SMOOTH_HINGE_LOSS_H_

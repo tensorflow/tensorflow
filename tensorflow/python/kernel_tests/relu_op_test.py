@@ -21,8 +21,12 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -53,28 +57,58 @@ class ReluTest(test.TestCase):
             np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7,
                                                      0.9]])))
 
-  def _testRelu(self, np_features, use_gpu=False):
+  def _testRelu(self, np_features):
     np_relu = self._npRelu(np_features)
-    with self.test_session(use_gpu=use_gpu):
-      relu = nn_ops.relu(np_features)
-      tf_relu = relu.eval()
+    tf_relu = nn_ops.relu(np_features)
     self.assertAllClose(np_relu, tf_relu)
-    self.assertShapeEqual(np_relu, relu)
+    self.assertShapeEqual(np_relu, tf_relu)
 
-  def testNumbers(self):
+  def testNumbersCPU(self):
     for t in [np.int32, np.int64, np.float16, np.float32, np.float64]:
-      self._testRelu(
-          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
-          use_gpu=False)
-      if t in [np.float16, np.float32, np.float64]:
+      # Force execution on CPU even if a GPU kernel is available for the type.
+      with ops.device("/device:CPU:0"):
         self._testRelu(
-            np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
-            use_gpu=True)
+            np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
+
+  def testNumbersGPU(self):
+    if not test.is_gpu_available():
+      self.skipTest("No GPU available")
+    for t in [np.float16, np.float32, np.float64]:
+      self._testRelu(
+          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
+
+  def testReluInt8x4GoodShape(self):
+    if not test.is_gpu_available(cuda_only=True):
+      self.skipTest("No GPU available")
+    inputs = np.array([[-50, 7, 23, 0], [-1, -5, 6, 11]])
+    np_relu = self._npRelu(inputs)
+    tf_relu = nn_ops.relu(constant_op.constant(inputs, dtypes.qint8))
+    self.assertAllClose(np_relu, tf_relu)
+    self.assertShapeEqual(np_relu, tf_relu)
+
+  def testReluInt8x4BadShape(self):
+    if not test.is_gpu_available(cuda_only=True):
+      self.skipTest("No GPU available")
+    inputs = constant_op.constant(
+        np.array([[-50, 7, 23], [0, 1, -5], [6, -2, 11]]), dtypes.qint8)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Tensor size must be a multiple of 4 for Relu<qint8>. Got 9"):
+      self.evaluate(nn_ops.relu(inputs))
+
+    inputs = constant_op.constant(
+        np.array([1, -2, 3, -4, 5, -6, 7, -8, 9, -8, 7, -6, 5, -4, 3, -2, 1]),
+        dtypes.qint8)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Tensor size must be a multiple of 4 for Relu<qint8>. Got 17"):
+      self.evaluate(nn_ops.relu(inputs))
 
   # The gradient test for ReLU is a bit tricky as the derivative is not well
   # defined at around zero and we want to avoid that in terms of input values.
+  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -92,8 +126,9 @@ class ReluTest(test.TestCase):
   # The gradient for fp16 is inaccurate due to the low-precision.
   # Instead of relying on compute_gradient_error, we compare the fp16 analytical
   # gradient against their fp32 counterpart.
+  @test_util.run_deprecated_v1
   def testGradientFloat16(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       # Randomly construct a 1D shape from [1, 40)
       shape = random_ops.random_uniform(
           [1], minval=1, maxval=40, dtype=dtypes.int32)
@@ -115,11 +150,12 @@ class ReluTest(test.TestCase):
       # Repeat the experiment for 100 times. All tensor shapes and its tensor
       # values are randomly generated for each run.
       for _ in xrange(100):
-        dx_f32_v, dx_f16_v = sess.run([dx_f32, dx_f16])
+        dx_f32_v, dx_f16_v = self.evaluate([dx_f32, dx_f16])
         self.assertAllClose(dx_f32_v, dx_f16_v, atol=3e-4)
 
+  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -135,8 +171,9 @@ class ReluTest(test.TestCase):
     print("relu (float64) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -152,8 +189,9 @@ class ReluTest(test.TestCase):
     print("relu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -171,15 +209,15 @@ class ReluTest(test.TestCase):
     self.assertLess(err, 1e-10)
 
   def testGradientScalar(self):
-    with self.test_session() as sess:
-      x = variables.Variable(100.)
-      y = nn_ops.relu(x)
-      loss = y**2
-      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.25)
-      train_op = optimizer.minimize(loss)
-      sess.run(variables.global_variables_initializer())
-      sess.run(train_op)
-      self.assertAllClose(x.eval(), 50.0)
+    x = variables.Variable(100.)
+
+    def loss():
+      return nn_ops.relu(x)**2
+
+    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.25)
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(optimizer.minimize(loss))
+    self.assertAllClose(x.read_value(), 50.0)
 
 
 class Relu6Test(test.TestCase):
@@ -197,29 +235,32 @@ class Relu6Test(test.TestCase):
             np.array([[-0.9, 0.7, -0.5, 0.3, 6.0], [0.1, -0.3, 6.5, -0.7,
                                                     0.9]])))
 
-  def _testRelu6(self, np_features, use_gpu=False):
+  def _testRelu6(self, np_features):
     np_relu6 = self._npRelu6(np_features)
-    with self.test_session(use_gpu=use_gpu):
-      relu6 = nn_ops.relu6(np_features)
-      tf_relu6 = relu6.eval()
+    tf_relu6 = nn_ops.relu6(np_features)
     self.assertAllClose(np_relu6, tf_relu6)
-    self.assertShapeEqual(np_relu6, relu6)
+    self.assertShapeEqual(np_relu6, tf_relu6)
 
-  def testNumbers(self):
+  def testNumbersCPU(self):
     for t in [np.int32, np.int64, np.float16, np.float32, np.float64]:
-      self._testRelu6(
-          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
-          use_gpu=False)
-      if t in [np.float16, np.float, np.double]:
+      # Force execution on CPU even if a GPU kernel is available for the type.
+      with ops.device("/device:CPU:0"):
         self._testRelu6(
-            np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
-            use_gpu=True)
+            np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
+
+  def testNumbersGPU(self):
+    if not test.is_gpu_available():
+      self.skipTest("No GPU available")
+    for t in [np.float16, np.float, np.double]:
+      self._testRelu6(
+          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 
   # The gradient test for ReLU6 is a bit tricky as the derivative is
   # not well defined at around zero and six and we want to avoid that
   # in terms of input values.
+  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 6.1, 6.3, 6.5, 6.7, 6.9],
           shape=[2, 5],
@@ -234,8 +275,9 @@ class Relu6Test(test.TestCase):
     print("relu6 (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 6.1, 6.3, 6.5, 6.7, 6.9],
           shape=[2, 5],
@@ -252,6 +294,131 @@ class Relu6Test(test.TestCase):
     self.assertLess(err, 1e-10)
 
 
+class LeakyReluTest(test.TestCase):
+
+  def _npLeakyRelu(self, np_features, alpha=0.1):
+    return np.maximum(np_features, alpha * np_features)
+
+  def testNpLeakyRelu(self):
+    self.assertAllClose(
+        np.array([[-0.09, 0.7, -0.05, 0.3, -0.01],
+                  [0.1, -0.03, 0.5, -0.07, 0.9]]),
+        self._npLeakyRelu(
+            np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7,
+                                                     0.9]]),
+            alpha=0.1))
+
+  def _testLeakyRelu(self, np_features, alpha):
+    np_leaky_relu = self._npLeakyRelu(np_features, alpha)
+    tf_leaky_relu = nn_ops.leaky_relu(np_features, alpha)
+    self.assertAllClose(np_leaky_relu, tf_leaky_relu)
+    self.assertShapeEqual(np_leaky_relu, tf_leaky_relu)
+
+  def testNumbersCPU(self):
+    for t in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+      # Force execution on CPU even if a GPU kernel is available for the type.
+      with ops.device("/device:CPU:0"):
+        self._testLeakyRelu(
+            np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
+            alpha=0.2)
+
+  def testNumbersGPU(self):
+    if not test.is_gpu_available():
+      self.skipTest("No GPU available")
+    for t in [np.float16, np.float32, np.float64]:
+      self._testLeakyRelu(
+          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
+          alpha=0.1)
+
+  # The gradient test for Leaky ReLU is a bit tricky as the derivative is not
+  # well defined at around zero and we want to avoid that in terms of input
+  # values.
+  @test_util.run_deprecated_v1
+  def testGradientFloat32(self):
+    with self.test_session():
+      x = constant_op.constant(
+          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
+          shape=[2, 5],
+          name="x")
+      y = nn_ops.leaky_relu(x, alpha=0.1, name="leaky_relu")
+      x_init = np.asarray(
+          [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+          dtype=np.float32,
+          order="F")
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], y, [2, 5], x_init_value=x_init)
+    print("leaky_relu (float32) gradient err = ", err)
+    self.assertLess(err, 1e-4)
+
+  @test_util.run_deprecated_v1
+  def testGradientFloat64(self):
+    with self.test_session():
+      x = constant_op.constant(
+          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
+          shape=[2, 5],
+          dtype=dtypes.float64,
+          name="x")
+      y = nn_ops.leaky_relu(x, alpha=0.2, name="leaky_relu")
+      x_init = np.asarray(
+          [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+          dtype=np.float64,
+          order="F")
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], y, [2, 5], x_init_value=x_init)
+    print("leaky_relu (float64) gradient err = ", err)
+    self.assertLess(err, 1e-10)
+
+  @test_util.run_deprecated_v1
+  def testGradGradFloat32(self):
+    with compat.forward_compatibility_horizon(2018, 11, 2):
+      with self.test_session():
+        x = constant_op.constant(
+            [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
+            shape=[2, 5],
+            name="x")
+        y = nn_ops.leaky_relu(x, alpha=0.1, name="leaky_relu")
+        z = gradients_impl.gradients(y, x)
+        x_init = np.asarray(
+            [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+            dtype=np.float32,
+            order="F")
+        err = gradient_checker.compute_gradient_error(
+            x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+      print("leaky_relu (float32) gradient of gradient err = ", err)
+      self.assertLess(err, 1e-4)
+
+  @test_util.run_deprecated_v1
+  def testGradGradFloat64(self):
+    with compat.forward_compatibility_horizon(2018, 11, 2):
+      with self.test_session():
+        x = constant_op.constant(
+            [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
+            shape=[2, 5],
+            dtype=dtypes.float64,
+            name="x")
+        y = nn_ops.leaky_relu(x, alpha=0.02, name="leaky_relu")
+        z = gradients_impl.gradients(y, x)
+        x_init = np.asarray(
+            [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+            dtype=np.float64,
+            order="F")
+        err = gradient_checker.compute_gradient_error(
+            x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+      print("leaky_relu (float64) gradient of gradient err = ", err)
+      self.assertLess(err, 1e-10)
+
+  def testGradientScalar(self):
+    x = variables.Variable(-100.)
+
+    def loss():
+      return nn_ops.leaky_relu(x, 0.05)**2
+
+    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.2)
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(optimizer.minimize(loss))
+    self.assertAllClose(x.read_value(), -99.9)
+
+
 class EluTest(test.TestCase):
 
   def _npElu(self, np_features):
@@ -265,25 +432,28 @@ class EluTest(test.TestCase):
             np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7,
                                                      0.9]])))
 
-  def _testElu(self, np_features, use_gpu=False):
+  def _testElu(self, np_features):
     np_elu = self._npElu(np_features)
-    with self.test_session(use_gpu=use_gpu):
-      elu = nn_ops.elu(np_features)
-      tf_elu = elu.eval()
+    tf_elu = nn_ops.elu(np_features)
     self.assertAllClose(np_elu, tf_elu)
-    self.assertShapeEqual(np_elu, elu)
+    self.assertShapeEqual(np_elu, tf_elu)
 
-  def testNumbers(self):
+  def testNumbersCPU(self):
     for t in [np.float16, np.float32, np.float64]:
-      self._testElu(
-          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
-          use_gpu=False)
-      self._testElu(
-          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
-          use_gpu=True)
+      # Force execution on CPU even if a GPU kernel is available for the type.
+      with ops.device("/device:CPU:0"):
+        self._testElu(
+            np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 
+  def testNumbersGPU(self):
+    if not test.is_gpu_available():
+      self.skipTest("No GPU available")
+    for t in [np.float16, np.float32, np.float64]:
+      self._testElu(np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
+
+  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
       x = constant_op.constant(x_val, name="x")
       y = nn_ops.elu(x, name="elu")
@@ -293,8 +463,9 @@ class EluTest(test.TestCase):
     print("elu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
       x = constant_op.constant(x_val, dtype=dtypes.float64, name="x")
       y = nn_ops.elu(x, name="elu")
@@ -304,8 +475,9 @@ class EluTest(test.TestCase):
     print("elu (float64) gradient err = ", err)
     self.assertLess(err, 1e-6)
 
+  @test_util.run_deprecated_v1
   def testGradGrad(self):
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
       elu = nn_ops.elu(x)
       g, = gradients_impl.gradients(elu, x)
@@ -315,8 +487,9 @@ class EluTest(test.TestCase):
         err = np.abs(gg.eval(feed_dict={x: x_val}) - _elu_grad_grad(x_val))
         self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -332,8 +505,9 @@ class EluTest(test.TestCase):
     print("elu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -367,25 +541,24 @@ class SeluTest(test.TestCase):
             np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7,
                                                      0.9]])))
 
-  def _testSelu(self, np_features, use_gpu=False):
+  def _testSelu(self, np_features):
     np_selu = self._npSelu(np_features)
-    with self.test_session(use_gpu=use_gpu):
-      selu = nn_ops.selu(np_features)
-      tf_selu = selu.eval()
+    tf_selu = nn_ops.selu(np_features)
     self.assertAllClose(np_selu, tf_selu)
-    self.assertShapeEqual(np_selu, selu)
+    self.assertShapeEqual(np_selu, tf_selu)
 
   def testNumbers(self):
     for t in [np.float16, np.float32, np.float64]:
       self._testSelu(
-          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
-          use_gpu=False)
-      self._testSelu(
-          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
-          use_gpu=True)
+          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
+      # Force executed on CPU in case GPU kernels are avaiable.
+      with ops.device("/device:CPU:0"):
+        self._testSelu(
+            np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 
+  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
       x = constant_op.constant(x_val, name="x")
       y = nn_ops.selu(x, name="selu")
@@ -395,8 +568,9 @@ class SeluTest(test.TestCase):
     print("selu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
       x = constant_op.constant(x_val, dtype=dtypes.float64, name="x")
       y = nn_ops.selu(x, name="selu")
@@ -406,8 +580,9 @@ class SeluTest(test.TestCase):
     print("selu (float64) gradient err = ", err)
     self.assertLess(err, 1e-6)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -423,8 +598,9 @@ class SeluTest(test.TestCase):
     print("selu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -449,46 +625,44 @@ class CreluTest(test.TestCase):
     t = nn_ops.crelu(f)
     self.assertEqual([50, 5, 7, 20], t.get_shape())
 
-  def _testCrelu(self, np_features, use_gpu=False):
+  def _testCrelu(self, np_features):
     np_relu = np.maximum(np_features, np.zeros_like(np_features))
     np_neg_relu = np.maximum(-np_features, np.zeros_like(np_features))
     np_crelu = np.concatenate((np_relu, np_neg_relu),
                               len(np_features.shape) - 1)
 
-    with self.test_session(use_gpu=use_gpu):
-      crelu = nn_ops.crelu(np_features)
-      tf_relu = crelu.eval()
+    tf_crelu = nn_ops.crelu(np_features)
 
-    self.assertAllClose(np_crelu, tf_relu)
-    self.assertShapeEqual(np_crelu, crelu)
+    self.assertAllClose(np_crelu, tf_crelu)
+    self.assertShapeEqual(np_crelu, tf_crelu)
 
-  def testNumbers(self):
+  def testNumbersCPU(self):
     for t in [np.int32, np.int64, np.float16, np.float32, np.float64]:
-      self._testCrelu(
-          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
-          use_gpu=False)
-      if t in [np.float16, np.float32, np.float64]:
+      # Force execution on CPU even if a GPU kernel is available for the type.
+      with ops.device("/device:CPU:0"):
         self._testCrelu(
-            np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
-            use_gpu=True)
+            np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
+
+  def testNumbersGPU(self):
+    if not test.is_gpu_available():
+      self.skipTest("No GPU available")
+    for t in [np.float16, np.float32, np.float64]:
+      self._testCrelu(
+          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 
   def testNumbersWithAxis0(self):
-    with self.test_session():
-      crelu = nn_ops.crelu(
-          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]), axis=0)
-      tf_relu = crelu.eval()
-      np_crelu = np.array([[0, 7, 0, 3, 0], [1, 0, 5, 0, 9], [9, 0, 5, 0, 1],
-                           [0, 3, 0, 7, 0]])
-      self.assertAllEqual(np_crelu, tf_relu)
+    tf_crelu = nn_ops.crelu(
+        np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]), axis=0)
+    np_crelu = np.array([[0, 7, 0, 3, 0], [1, 0, 5, 0, 9], [9, 0, 5, 0, 1],
+                         [0, 3, 0, 7, 0]])
+    self.assertAllEqual(np_crelu, tf_crelu)
 
   def testNumbersWithAxis1(self):
-    with self.test_session():
-      crelu = nn_ops.crelu(
-          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]), axis=1)
-      tf_relu = crelu.eval()
-      np_crelu = np.array([[0, 7, 0, 3, 0, 9, 0, 5, 0, 1],
-                           [1, 0, 5, 0, 9, 0, 3, 0, 7, 0]])
-      self.assertAllEqual(np_crelu, tf_relu)
+    tf_crelu = nn_ops.crelu(
+        np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]), axis=1)
+    np_crelu = np.array([[0, 7, 0, 3, 0, 9, 0, 5, 0, 1],
+                         [1, 0, 5, 0, 9, 0, 3, 0, 7, 0]])
+    self.assertAllEqual(np_crelu, tf_crelu)
 
 
 if __name__ == "__main__":

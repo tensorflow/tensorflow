@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -213,6 +215,14 @@ NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
       cast_builder.Attr("_start_time", start_time);
     }
     cast_builder.Attr("DstT", cast_dtype);
+
+    if (cast_dtype == DT_BFLOAT16) {
+      // the below attribute specifies that the cast to bfloat16 should use
+      // truncation. This is needed to retain legacy behavior when we change
+      // the default bfloat16 casts to use rounding instead of truncation
+      cast_builder.Attr("Truncate", true);
+    }
+
     NodeDef* cast = gdef->add_node();
     *status = cast_builder.Finalize(cast);
     if (!status->ok()) return nullptr;
@@ -372,7 +382,7 @@ string ControlLoopName(const string& name) {
 
 bool IsControlLoop(const Node* node) {
   const string& name = node->name();
-  return StringPiece(name).starts_with("_cloop");
+  return str_util::StartsWith(name, "_cloop");
 }
 
 // An enter node for control flow.
@@ -784,7 +794,7 @@ Status TopologicalSortNodesWithTimePriority(
   for (int n = 0; n < gdef->node_size(); ++n) {
     const NodeDef* ndef = &gdef->node(n);
     for (int i = 0; i < ndef->input_size(); ++i) {
-      node_to_output_nodes[ParseTensorName(ndef->input(i)).first.ToString()]
+      node_to_output_nodes[string(ParseTensorName(ndef->input(i)).first)]
           .push_back(ndef);
     }
     int64 start_time;
@@ -1177,7 +1187,8 @@ Status Partition(const PartitionOptions& opts, Graph* g,
   for (auto& it : *partitions) {
     GraphDef* gdef = &it.second;
     *gdef->mutable_versions() = g->versions();
-    *gdef->mutable_library() = flib_def->ToProto();
+    // Prune unreachable functions from `flib_def` before adding them to `gdef`.
+    *gdef->mutable_library() = flib_def->ReachableDefinitions(*gdef).ToProto();
 
     // Traverse the graph to fill every send/recv op's incarnation
     // information.

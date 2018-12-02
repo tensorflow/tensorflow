@@ -16,138 +16,565 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 #include <algorithm>
-#include <deque>
 #include <ostream>
 #include <set>
 #include <unordered_set>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
-using tensorflow::str_util::CEscape;
-using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
+using absl::CEscape;
+using absl::StrAppend;
+using absl::StrCat;
+using absl::StrJoin;
 
 /* static */
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
-    HloModule* module, const HloInstructionProto& proto,
-    const tensorflow::gtl::FlatMap<string, HloInstruction*>& instruction_map,
-    const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
-    const std::function<void(std::unique_ptr<HloComputation>)>&
-        add_fused_computation) {
+    const HloInstructionProto& proto,
+    const absl::flat_hash_map<int64, HloInstruction*>& instruction_map,
+    const absl::flat_hash_map<int64, HloComputation*>& computation_map) {
   TF_RET_CHECK(!proto.opcode().empty());
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(proto.opcode()));
   TF_RET_CHECK(proto.has_shape());
 
-  auto instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
-  for (const string& operand_name : proto.operand_names()) {
-    TF_RET_CHECK(ContainsKey(instruction_map, operand_name))
-        << "No instruction named " << operand_name;
-    instruction->AppendOperand(instruction_map.at(operand_name));
-  }
-  for (const string& predecessor_name : proto.control_predecessor_names()) {
-    TF_RET_CHECK(ContainsKey(instruction_map, predecessor_name))
-        << "No instruction named " << predecessor_name;
-    TF_RETURN_IF_ERROR(instruction_map.at(predecessor_name)
-                           ->AddControlDependencyTo(instruction.get()));
-  }
+  std::unique_ptr<HloInstruction> instruction;
+  const auto operands = [&instruction_map, &proto](int index) {
+    return instruction_map.at(proto.operand_ids(index));
+  };
+  const auto all_operands = [&instruction_map, &proto]() {
+    std::vector<HloInstruction*> result(proto.operand_ids_size());
+    std::transform(proto.operand_ids().begin(), proto.operand_ids().end(),
+                   result.begin(), [&instruction_map](int64 operand_id) {
+                     return instruction_map.at(operand_id);
+                   });
+    return result;
+  };
+  const auto computations = [&computation_map, &proto](int index) {
+    return computation_map.at(proto.called_computation_ids(index));
+  };
 
-  // In the proto, fused computations are held exclusively within the
-  // HloInstructionProto and do not appear as an HloComputationProto within the
-  // HloModuleProto.
-  if (instruction->opcode() == HloOpcode::kFusion) {
-    TF_RET_CHECK(proto.has_fused_instructions_computation());
-    TF_RET_CHECK(!proto.fusion_kind().empty());
-    TF_ASSIGN_OR_RETURN(instruction->fusion_kind_,
-                        StringToFusionKind(proto.fusion_kind()));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> fused_computation,
-                        HloComputation::CreateFromProto(
-                            module, proto.fused_instructions_computation(),
-                            computation_map, add_fused_computation,
-                            /*fusion_instruction=*/instruction.get()));
-    instruction->called_computations_.push_back(fused_computation.get());
-    add_fused_computation(std::move(fused_computation));
-  } else {
-    for (const string& computation_name : proto.called_computation_names()) {
-      TF_RET_CHECK(ContainsKey(computation_map, computation_name))
-          << "No computation named " << computation_name;
-      instruction->called_computations_.push_back(
-          computation_map.at(computation_name));
+  TF_RET_CHECK(std::all_of(
+      proto.operand_ids().begin(), proto.operand_ids().end(),
+      [&instruction_map](int64 id) { return instruction_map.contains(id); }))
+      << proto.name() << " instruction contains invalid operand id(s)";
+
+  TF_RET_CHECK(std::all_of(
+      proto.called_computation_ids().begin(),
+      proto.called_computation_ids().end(),
+      [&computation_map](int64 id) { return computation_map.contains(id); }))
+      << proto.name() << " instruction references invalid computation id(s)";
+
+  Shape shape(proto.shape());
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+
+  switch (opcode) {
+    // Ops migrated to subclasses.
+    case HloOpcode::kBatchNormTraining:
+      TF_RET_CHECK(proto.operand_ids_size() == 3)
+          << "BatchNormTraining instruction should have 3 operands but sees "
+          << proto.operand_ids_size();
+      instruction =
+          CreateBatchNormTraining(shape, operands(0), operands(1), operands(2),
+                                  proto.epsilon(), proto.feature_index());
+      break;
+    case HloOpcode::kBatchNormInference:
+      TF_RET_CHECK(proto.operand_ids_size() == 5)
+          << "BatchNormInference instruction should have 5 operands but sees "
+          << proto.operand_ids_size();
+      instruction = CreateBatchNormInference(
+          shape, operands(0), operands(1), operands(2), operands(3),
+          operands(4), proto.epsilon(), proto.feature_index());
+      break;
+    case HloOpcode::kBatchNormGrad:
+      TF_RET_CHECK(proto.operand_ids_size() == 5)
+          << "BatchNormGrad instruction should have 5 operands but sees "
+          << proto.operand_ids_size();
+      instruction = CreateBatchNormGrad(shape, operands(0), operands(1),
+                                        operands(2), operands(3), operands(4),
+                                        proto.epsilon(), proto.feature_index());
+      break;
+    case HloOpcode::kFft: {
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "Fft instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      std::vector<int64> fft_length(proto.fft_length().begin(),
+                                    proto.fft_length().end());
+      instruction = CreateFft(shape, operands(0), proto.fft_type(),
+                              absl::Span<const int64>(fft_length));
+      break;
+    }
+    case HloOpcode::kSend:
+      TF_RET_CHECK(proto.operand_ids_size() == 2)
+          << "Send instruction should have 2 operand but sees "
+          << proto.operand_ids_size();
+      instruction = CreateSend(operands(0), operands(1), proto.channel_id(),
+                               proto.is_host_transfer());
+      break;
+    case HloOpcode::kSendDone:
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "SendDone instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      instruction = CreateSendDone(operands(0), proto.is_host_transfer());
+      break;
+    case HloOpcode::kRecv:
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "Recv instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      instruction = CreateRecv(shape.tuple_shapes(0), operands(0),
+                               proto.channel_id(), proto.is_host_transfer());
+      break;
+    case HloOpcode::kRecvDone:
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "RecvDone instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      instruction = CreateRecvDone(operands(0), proto.is_host_transfer());
+      break;
+    case HloOpcode::kReverse:
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "Reverse instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      instruction = CreateReverse(shape, operands(0),
+                                  std::vector<int64>(proto.dimensions().begin(),
+                                                     proto.dimensions().end()));
+      break;
+    case HloOpcode::kConcatenate:
+      TF_RET_CHECK(proto.dimensions_size() == 1)
+          << "Concatenate instruction should have 1 dimension but sees "
+          << proto.dimensions_size();
+      instruction =
+          CreateConcatenate(shape, all_operands(), proto.dimensions(0));
+      break;
+    case HloOpcode::kReduce:
+      TF_RET_CHECK(proto.operand_ids_size() % 2 == 0)
+          << "Reduce instruction should have an even number of operands but "
+             "sees "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Reduce instruction should have 1 called computation but sees "
+          << proto.called_computation_ids_size();
+      {
+        const auto reduce_operands = all_operands();
+        auto inputs = absl::MakeSpan(reduce_operands)
+                          .subspan(0, reduce_operands.size() / 2);
+        auto init_values =
+            absl::MakeSpan(reduce_operands)
+                .subspan(reduce_operands.size() / 2, reduce_operands.size());
+        instruction =
+            CreateReduce(shape, inputs, init_values,
+                         std::vector<int64>(proto.dimensions().begin(),
+                                            proto.dimensions().end()),
+                         computations(0));
+      }
+      break;
+    case HloOpcode::kSort: {
+      TF_RET_CHECK(proto.operand_ids_size() >= 1)
+          << "Sort instruction should have at least 1 operand but has "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.dimensions().size() == 1)
+          << "Sort instruction should have 1 dimension";
+      auto sort_operands = all_operands();
+      HloInstruction* keys = sort_operands[0];
+      instruction = CreateSort(
+          shape, proto.dimensions(0), keys,
+          absl::Span<HloInstruction* const>(sort_operands).subspan(1));
+      break;
+    }
+    case HloOpcode::kTranspose:
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "Transpose instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      instruction =
+          CreateTranspose(shape, operands(0),
+                          std::vector<int64>(proto.dimensions().begin(),
+                                             proto.dimensions().end()));
+      break;
+    case HloOpcode::kBroadcast:
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "Broadcast instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      instruction =
+          CreateBroadcast(shape, operands(0),
+                          std::vector<int64>(proto.dimensions().begin(),
+                                             proto.dimensions().end()));
+      break;
+    case HloOpcode::kMap:
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Map instruction should have 1 called computation but sees "
+          << proto.called_computation_ids_size();
+      instruction = CreateMap(shape, all_operands(), computations(0));
+      break;
+    case HloOpcode::kSlice: {
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "Slice instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      std::vector<int64> slice_starts, slice_limits, slice_strides;
+      for (const HloInstructionProto::SliceDimensions& slice_dimensions :
+           proto.slice_dimensions()) {
+        slice_starts.push_back(slice_dimensions.start());
+        slice_limits.push_back(slice_dimensions.limit());
+        slice_strides.push_back(slice_dimensions.stride());
+      }
+      instruction = CreateSlice(shape, operands(0), slice_starts, slice_limits,
+                                slice_strides);
+      break;
+    }
+    case HloOpcode::kConstant: {
+      // TODO(b/110214922): Revert this to CHECK(proto.has_literal()).
+      if (proto.has_literal()) {
+        TF_ASSIGN_OR_RETURN(auto literal,
+                            Literal::CreateFromProto(proto.literal()));
+        instruction = CreateConstant(std::move(literal));
+      } else {
+        instruction = absl::make_unique<HloConstantInstruction>(shape);
+      }
+      break;
+    }
+    case HloOpcode::kTrace: {
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "Trace instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.has_literal());
+      TF_ASSIGN_OR_RETURN(auto literal,
+                          Literal::CreateFromProto(proto.literal()));
+      instruction = CreateTrace(literal.GetR1U8AsString(), operands(0));
+      break;
+    }
+    case HloOpcode::kFusion: {
+      // In the proto, fused computations are held exclusively within the
+      // HloInstructionProto and do not appear as an HloComputationProto within
+      // the HloModuleProto.
+      TF_RET_CHECK(!proto.fusion_kind().empty());
+      TF_ASSIGN_OR_RETURN(FusionKind fusion_kind,
+                          StringToFusionKind(proto.fusion_kind()));
+
+      // Find the fused computation and set its fusion instruction.
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Expect 1 called computation for fusion instruction but sees "
+          << proto.called_computation_ids_size();
+      const int64 fusion_id = proto.called_computation_ids(0);
+      auto* fused_computation =
+          tensorflow::gtl::FindPtrOrNull(computation_map, fusion_id);
+      TF_RET_CHECK(fused_computation != nullptr)
+          << "No fusion computation with id " << fusion_id;
+      instruction =
+          CreateFusion(shape, fusion_kind, all_operands(), fused_computation);
+      break;
+    }
+    case HloOpcode::kRng:
+      instruction = CreateRng(shape, proto.distribution(), all_operands());
+      break;
+    case HloOpcode::kParameter:
+      instruction =
+          CreateParameter(proto.parameter_number(), shape, proto.name());
+      break;
+    case HloOpcode::kGetTupleElement:
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "GetTupleElement instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      instruction =
+          CreateGetTupleElement(shape, operands(0), proto.tuple_index());
+      break;
+    case HloOpcode::kReducePrecision:
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "ReducePrecision instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      instruction = CreateReducePrecision(
+          shape, operands(0), proto.exponent_bits(), proto.mantissa_bits());
+      break;
+    case HloOpcode::kInfeed: {
+      TF_RET_CHECK(ShapeUtil::IsTuple(shape) &&
+                   (ShapeUtil::TupleElementCount(shape) == 2))
+          << "Infeed should have a tuple shape with 2 operands, but has: "
+          << shape;
+      const Shape& data_shape = ShapeUtil::GetTupleElementShape(shape, 0);
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "Infeed instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      instruction =
+          CreateInfeed(data_shape, operands(0), proto.infeed_config());
+    } break;
+    case HloOpcode::kOutfeed: {
+      TF_RET_CHECK(proto.operand_ids_size() == 2)
+          << "Outfeed instruction should have 2 operands but sees "
+          << proto.operand_ids_size();
+      Shape outfeed_shape(proto.outfeed_shape());
+      TF_RETURN_IF_ERROR(
+          ShapeUtil::ValidateShapeWithOptionalLayout(outfeed_shape));
+      instruction = CreateOutfeed(outfeed_shape, operands(0), operands(1),
+                                  proto.outfeed_config());
+      break;
+    }
+    case HloOpcode::kCrossReplicaSum: {
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "CrossReplicaSum should have 1 called computation but sees "
+          << proto.called_computation_ids_size();
+      absl::optional<int64> all_reduce_id;
+      if (proto.all_reduce_id() > 0) {
+        all_reduce_id = proto.all_reduce_id();
+      }
+      instruction = CreateCrossReplicaSum(
+          shape, all_operands(), computations(0),
+          /*replica_groups=*/
+          std::vector<ReplicaGroup>(proto.replica_groups().begin(),
+                                    proto.replica_groups().end()),
+          /*barrier=*/proto.cross_replica_sum_barrier(),
+          /*all_reduce_id=*/all_reduce_id);
+      break;
+    }
+    case HloOpcode::kAllToAll: {
+      instruction = CreateAllToAll(
+          shape, all_operands(),
+          /*replica_groups=*/
+          std::vector<ReplicaGroup>(proto.replica_groups().begin(),
+                                    proto.replica_groups().end()));
+      break;
+    }
+    case HloOpcode::kCollectivePermute: {
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "CollectivePermute instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      std::vector<std::pair<int64, int64>> source_target_pairs(
+          proto.source_target_pairs_size());
+      for (int i = 0; i < source_target_pairs.size(); i++) {
+        source_target_pairs[i].first = proto.source_target_pairs(i).source();
+        source_target_pairs[i].second = proto.source_target_pairs(i).target();
+      }
+      instruction =
+          CreateCollectivePermute(shape, operands(0), source_target_pairs);
+      break;
+    }
+    case HloOpcode::kConvolution: {
+      TF_RET_CHECK(proto.operand_ids_size() == 2)
+          << "Convolution instruction should have 2 operands but sees "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.has_window());
+      TF_RET_CHECK(proto.has_convolution_dimension_numbers());
+      PrecisionConfig precision_config = proto.precision_config();
+      precision_config.mutable_operand_precision()->Resize(
+          proto.operand_ids_size(), PrecisionConfig::DEFAULT);
+      instruction = CreateConvolve(
+          shape, operands(0), operands(1),
+          std::max<int64>(proto.feature_group_count(), 1), proto.window(),
+          proto.convolution_dimension_numbers(), precision_config);
+      break;
+    }
+    case HloOpcode::kReduceWindow:
+      TF_RET_CHECK(proto.operand_ids_size() == 2)
+          << "ReduceWindow instruction should have 2 operands but sees "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "ReduceWindow should have 1 called computation but sees "
+          << proto.called_computation_ids_size();
+      instruction = CreateReduceWindow(shape, operands(0), operands(1),
+                                       proto.window(), computations(0));
+      break;
+    case HloOpcode::kSelectAndScatter:
+      TF_RET_CHECK(proto.operand_ids_size() == 3)
+          << "SelectAndScatter instruction should have 3 operands but sees "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.called_computation_ids_size() == 2)
+          << "SelectAndScatter should have 2 called computations but sees "
+          << proto.called_computation_ids_size();
+      instruction = CreateSelectAndScatter(shape, operands(0), computations(0),
+                                           proto.window(), operands(1),
+                                           operands(2), computations(1));
+      break;
+    case HloOpcode::kCustomCall:
+      if (proto.constrain_layout()) {
+        // A proto RepeatedPtrField cannot be converted to a Span (it is a
+        // vector of pointers essentially) so create a vector of shapes to pass
+        // in.
+        std::vector<Shape> operand_shapes;
+        for (const ShapeProto& shape_proto :
+             proto.operand_shapes_with_layout()) {
+          operand_shapes.emplace_back(shape_proto);
+        }
+        instruction =
+            CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
+                             operand_shapes, proto.custom_call_opaque());
+      } else {
+        instruction =
+            CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
+                             proto.custom_call_opaque());
+      }
+      if (proto.has_window()) {
+        static_cast<HloCustomCallInstruction*>(instruction.get())
+            ->set_window(proto.window());
+      }
+      if (proto.has_convolution_dimension_numbers()) {
+        static_cast<HloCustomCallInstruction*>(instruction.get())
+            ->set_convolution_dimension_numbers(
+                proto.convolution_dimension_numbers());
+      }
+      static_cast<HloCustomCallInstruction*>(instruction.get())
+          ->set_feature_group_count(
+              std::max(static_cast<int64>(proto.feature_group_count()), 1LL));
+      break;
+    case HloOpcode::kPad:
+      TF_RET_CHECK(proto.operand_ids_size() == 2)
+          << "Pad instruction should have 2 operands but sees "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.has_padding_config());
+      instruction =
+          CreatePad(shape, operands(0), operands(1), proto.padding_config());
+      break;
+    case HloOpcode::kDynamicSlice: {
+      TF_RET_CHECK(proto.operand_ids_size() == 2)
+          << "DynamicSlice instruction should have 2 operands but sees "
+          << proto.operand_ids_size();
+      std::vector<int64> slice_sizes(proto.dynamic_slice_sizes_size());
+      absl::c_copy(proto.dynamic_slice_sizes(), slice_sizes.begin());
+      instruction =
+          CreateDynamicSlice(shape, operands(0), operands(1), slice_sizes);
+      break;
+    }
+    case HloOpcode::kGather: {
+      TF_RET_CHECK(proto.operand_ids_size() == 2)
+          << "Gather instruction should have 2 operands but sees "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.has_gather_dimension_numbers())
+          << "Gather instruction should have GatherDimensionNumbers set.";
+      std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers =
+          absl::make_unique<GatherDimensionNumbers>(
+              proto.gather_dimension_numbers());
+      std::vector<int64> gather_slice_sizes;
+      for (int64 bound : proto.gather_slice_sizes()) {
+        gather_slice_sizes.push_back(bound);
+      }
+      instruction = CreateGather(shape, operands(0), operands(1),
+                                 *gather_dimension_numbers, gather_slice_sizes);
+      break;
+    }
+    case HloOpcode::kScatter: {
+      TF_RET_CHECK(proto.operand_ids_size() == 3)
+          << "Scatter instruction should have 3 operands but sees "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.has_scatter_dimension_numbers())
+          << "Scatter instruction should have ScatterDimensionNumbers set.";
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Scatter instruction should have 1 called computation but sees "
+          << proto.called_computation_ids_size();
+      auto scatter_dimension_numbers =
+          absl::make_unique<ScatterDimensionNumbers>(
+              proto.scatter_dimension_numbers());
+      instruction = CreateScatter(shape, operands(0), operands(1), operands(2),
+                                  computations(0), *scatter_dimension_numbers);
+      break;
+    }
+    case HloOpcode::kIota:
+      TF_RET_CHECK(proto.dimensions_size() == 1)
+          << "Iota instruction should have 1 dimension but sees "
+          << proto.dimensions_size();
+      instruction = CreateIota(shape, proto.dimensions(0));
+      break;
+    case HloOpcode::kDot: {
+      TF_RET_CHECK(proto.has_dot_dimension_numbers())
+          << "Dot instruction should have dot_dimension_numbers.";
+      TF_RET_CHECK(proto.operand_ids_size() == 2)
+          << "Dot instruction should have 2 operands but sees "
+          << proto.operand_ids_size();
+      PrecisionConfig precision_config = proto.precision_config();
+      precision_config.mutable_operand_precision()->Resize(
+          proto.operand_ids_size(), PrecisionConfig::DEFAULT);
+      instruction = absl::make_unique<HloDotInstruction>(
+          shape, operands(0), operands(1), proto.dot_dimension_numbers(),
+          precision_config);
+      break;
+    }
+    case HloOpcode::kDomain: {
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "Domain instruction should have 1 operands but sees "
+          << proto.operand_ids_size();
+      std::shared_ptr<const HloSharding> entry_hlo_sharding;
+      std::shared_ptr<const HloSharding> exit_hlo_sharding;
+      if (proto.has_domain_entry_sharding()) {
+        TF_ASSIGN_OR_RETURN(
+            HloSharding sharding,
+            HloSharding::FromProto(proto.domain_entry_sharding()));
+        entry_hlo_sharding = std::make_shared<const HloSharding>(sharding);
+      }
+      if (proto.has_domain_exit_sharding()) {
+        TF_ASSIGN_OR_RETURN(
+            HloSharding sharding,
+            HloSharding::FromProto(proto.domain_exit_sharding()));
+        exit_hlo_sharding = std::make_shared<const HloSharding>(sharding);
+      }
+      instruction = absl::make_unique<HloDomainInstruction>(
+          shape, operands(0),
+          absl::make_unique<ShardingMetadata>(entry_hlo_sharding),
+          absl::make_unique<ShardingMetadata>(exit_hlo_sharding));
+      break;
+    }
+    case HloOpcode::kGetDimensionSize:
+      TF_RET_CHECK(proto.operand_ids_size() == 1);
+      TF_RET_CHECK(proto.dimensions_size() == 1);
+      instruction =
+          CreateGetDimensionSize(shape, operands(0), proto.dimensions(0));
+      break;
+    default: {
+      instruction = absl::WrapUnique(new HloInstruction(opcode, shape));
+      for (const int64 operand_id : proto.operand_ids()) {
+        instruction->AppendOperand(instruction_map.at(operand_id));
+      }
+      if (instruction->opcode() != HloOpcode::kFusion) {
+        for (const int64 computation_id : proto.called_computation_ids()) {
+          instruction->called_computations_.push_back(
+              computation_map.at(computation_id));
+        }
+      }
+      TF_RET_CHECK(!proto.has_precision_config())
+          << instruction->opcode() << proto.DebugString();
+      TF_RET_CHECK(!proto.has_dot_dimension_numbers()) << instruction->opcode();
+      break;
     }
   }
 
+  for (const int64 predecessor_id : proto.control_predecessor_ids()) {
+    TF_RET_CHECK(ContainsKey(instruction_map, predecessor_id))
+        << "No instruction with id " << predecessor_id;
+    TF_RETURN_IF_ERROR(instruction_map.at(predecessor_id)
+                           ->AddControlDependencyTo(instruction.get()));
+  }
+
   TF_RET_CHECK(!proto.name().empty());
-  instruction->name_ = proto.name();
-
+  instruction->SetAndSanitizeName(proto.name());
   instruction->metadata_ = proto.metadata();
-  if (proto.has_literal()) {
-    TF_ASSIGN_OR_RETURN(instruction->literal_,
-                        Literal::CreateFromProto(proto.literal()));
-  }
-  instruction->parameter_number_ = proto.parameter_number();
+  instruction->backend_config_ = proto.backend_config();
+  instruction->unique_id_ = proto.id();
 
-  instruction->tuple_index_ = proto.tuple_index();
-  for (int64 dimension : proto.dimensions()) {
-    instruction->dimensions_.push_back(dimension);
-  }
-  if (proto.has_window()) {
-    instruction->window_ = MakeUnique<Window>(proto.window());
-  }
-  if (proto.has_convolution_dimension_numbers()) {
-    instruction->convolution_dimension_numbers_ =
-        MakeUnique<ConvolutionDimensionNumbers>(
-            proto.convolution_dimension_numbers());
-  }
-  if (proto.has_dot_dimension_numbers()) {
-    instruction->dot_dimension_numbers_ =
-        MakeUnique<DotDimensionNumbers>(proto.dot_dimension_numbers());
-  }
-  for (const HloInstructionProto::SliceDimensions& slice_dimensions :
-       proto.slice_dimensions()) {
-    instruction->slice_starts_.push_back(slice_dimensions.start());
-    instruction->slice_limits_.push_back(slice_dimensions.limit());
-    instruction->slice_strides_.push_back(slice_dimensions.stride());
-  }
-  instruction->exponent_bits_ = proto.exponent_bits();
-  instruction->mantissa_bits_ = proto.mantissa_bits();
-  for (int64 dynamic_slice_size : proto.dynamic_slice_sizes()) {
-    instruction->dynamic_slice_sizes_.push_back(dynamic_slice_size);
-  }
-  if (proto.has_padding_config()) {
-    instruction->padding_config_ =
-        MakeUnique<PaddingConfig>(proto.padding_config());
-  }
-  instruction->outfeed_config_ = proto.outfeed_config();
-  instruction->distribution_ = proto.distribution();
-  instruction->epsilon_ = proto.epsilon();
-  instruction->feature_index_ = proto.feature_index();
-  instruction->channel_id_ = proto.channel_id();
-  instruction->infeed_config_ = proto.infeed_config();
-  instruction->custom_call_target_ = proto.custom_call_target();
-  instruction->outfeed_shape_ = proto.outfeed_shape();
-  instruction->fft_type_ = proto.fft_type();
-  for (int64 fft_len : proto.fft_length()) {
-    instruction->fft_length_.push_back(fft_len);
+  if (proto.has_sharding()) {
+    TF_ASSIGN_OR_RETURN(const auto& sharding,
+                        HloSharding::FromProto(proto.sharding()));
+    instruction->set_sharding(sharding);
   }
 
   return std::move(instruction);
@@ -155,61 +582,46 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateParameter(
     int64 parameter_number, const Shape& shape, const string& name) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kParameter, shape));
-  instruction->parameter_number_ = parameter_number;
-  instruction->name_ = name;
-  return instruction;
+  return absl::make_unique<HloParameterInstruction>(parameter_number, shape,
+                                                    name);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTrace(
     const string& tag, HloInstruction* operand) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()));
-  instruction->operands_.push_back(operand);
-  instruction->literal_ = Literal::CreateR1U8(tag);
-  return instruction;
+  return absl::make_unique<HloTraceInstruction>(tag, operand);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConstant(
-    std::unique_ptr<Literal> literal) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kConstant, literal->shape()));
-  instruction->literal_ = std::move(literal);
-  return instruction;
+    Literal literal) {
+  return absl::make_unique<HloConstantInstruction>(std::move(literal));
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateIota(
+    const Shape& shape, int64 iota_dimension) {
+  return absl::make_unique<HloIotaInstruction>(shape, iota_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateGetTupleElement(const Shape& shape,
                                       HloInstruction* operand, int64 index) {
-  CHECK(ShapeUtil::IsTuple(operand->shape()));
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kGetTupleElement, shape));
-  instruction->tuple_index_ = index;
-  instruction->AppendOperand(operand);
-  return instruction;
+  return absl::make_unique<HloGetTupleElementInstruction>(shape, operand,
+                                                          index);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRng(
     const Shape& shape, RandomDistribution distribution,
-    tensorflow::gtl::ArraySlice<HloInstruction*> parameters) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kRng, shape));
-  instruction->distribution_ = distribution;
-  instruction->shape_ = shape;
-  for (HloInstruction* param : parameters) {
-    instruction->AppendOperand(param);
-  }
-  return instruction;
+    absl::Span<HloInstruction* const> parameters) {
+  return absl::make_unique<HloRngInstruction>(shape, distribution, parameters);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateNary(
     const Shape& shape, HloOpcode opcode,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+    absl::Span<HloInstruction* const> operands) {
   if (opcode == HloOpcode::kCopy) {
     // It is impossible to copy an opaque shape, we don't know how big it is.
     CHECK(!ShapeUtil::IsOpaque(shape));
   }
-  auto instruction = WrapUnique(new HloInstruction(opcode, shape));
+  auto instruction = absl::WrapUnique(new HloInstruction(opcode, shape));
   for (auto operand : operands) {
     instruction->AppendOperand(operand);
   }
@@ -227,17 +639,19 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
+    case HloOpcode::kClz:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
-    case HloOpcode::kSort:
     case HloOpcode::kTanh:
       break;
     default:
@@ -257,7 +671,6 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kAtan2:
     case HloOpcode::kDivide:
     case HloOpcode::kComplex:
-    case HloOpcode::kDot:
     case HloOpcode::kEq:
     case HloOpcode::kGe:
     case HloOpcode::kGt:
@@ -272,6 +685,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kSubtract:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -289,8 +703,9 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
   // Only certain opcodes are supported with CreateTernary: opcodes of ternary
   // instructions with no auxiliary fields.
   switch (opcode) {
-    case (HloOpcode::kClamp):
-    case (HloOpcode::kSelect):
+    case HloOpcode::kClamp:
+    case HloOpcode::kSelect:
+    case HloOpcode::kTupleSelect:
       break;
     default:
       LOG(FATAL) << "Invalid ternary instruction opcode "
@@ -301,77 +716,40 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateVariadic(
     const Shape& shape, HloOpcode opcode,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+    absl::Span<HloInstruction* const> operands) {
   CHECK_EQ(HloOpcode::kTuple, opcode);
   return CreateNary(shape, opcode, operands);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateMap(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* map_computation,
-    tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) {
-  CHECK(static_operands.empty()) << "static_operands not yet supported";
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kMap, shape));
-  for (auto operand : operands) {
-    instruction->AppendOperand(operand);
-  }
-  instruction->called_computations_.push_back(map_computation);
-  return instruction;
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* map_computation) {
+  return absl::make_unique<HloMapInstruction>(shape, operands, map_computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConvolve(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    const Window& window,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kConvolution, shape));
-  if (window_util::HasBaseDilation(window)) {
-    instruction->name_ = instruction->name() + "-base-dilated";
-  }
-  if (window_util::HasWindowDilation(window)) {
-    instruction->name_ = instruction->name() + "-window-dilated";
-  }
-  instruction->AppendOperand(lhs);
-  instruction->AppendOperand(rhs);
-  instruction->window_ = MakeUnique<Window>(window);
-  instruction->convolution_dimension_numbers_ =
-      MakeUnique<ConvolutionDimensionNumbers>(dimension_numbers);
-  return instruction;
+    int64 feature_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config) {
+  return absl::make_unique<HloConvolutionInstruction>(
+      shape, lhs, rhs, feature_group_count, window, dimension_numbers,
+      precision_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
     const Shape& shape, HloInstruction* operand, FftType fft_type,
-    tensorflow::gtl::ArraySlice<int64> fft_length) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFft, shape));
-  instruction->AppendOperand(operand);
-  instruction->fft_type_ = fft_type;
-  instruction->fft_length_.assign(fft_length.begin(), fft_length.end());
-  return instruction;
+    absl::Span<const int64> fft_length) {
+  return absl::make_unique<HloFftInstruction>(shape, operand, fft_type,
+                                              fft_length);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDot(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    const DotDimensionNumbers& dimension_numbers) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kDot, shape));
-  instruction->AppendOperand(lhs);
-  instruction->AppendOperand(rhs);
-  instruction->dot_dimension_numbers_ =
-      MakeUnique<DotDimensionNumbers>(dimension_numbers);
-  return instruction;
-}
-
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCanonicalDot(
-    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs) {
-  CHECK_EQ(ShapeUtil::Rank(lhs->shape()), 2);
-  CHECK_EQ(ShapeUtil::Rank(rhs->shape()), 2);
-
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kDot, shape));
-  instruction->AppendOperand(lhs);
-  instruction->AppendOperand(rhs);
-  instruction->dot_dimension_numbers_ = MakeUnique<DotDimensionNumbers>();
-  instruction->dot_dimension_numbers_->add_lhs_contracting_dimensions(1);
-  instruction->dot_dimension_numbers_->add_rhs_contracting_dimensions(0);
-  return instruction;
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config) {
+  return absl::make_unique<HloDotInstruction>(
+      shape, lhs, rhs, dimension_numbers, precision_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -379,100 +757,119 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
                                       HloInstruction* operand,
                                       const int exponent_bits,
                                       const int mantissa_bits) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kReducePrecision, shape));
-  instruction->AppendOperand(operand);
-  instruction->exponent_bits_ = exponent_bits;
-  instruction->mantissa_bits_ = mantissa_bits;
-  return instruction;
+  return absl::make_unique<HloReducePrecisionInstruction>(
+      shape, operand, exponent_bits, mantissa_bits);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCrossReplicaSum(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  return CreateNary(shape, HloOpcode::kCrossReplicaSum, operands);
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* reduce_computation,
+    const std::vector<ReplicaGroup>& replica_groups, absl::string_view barrier,
+    const absl::optional<int64>& all_reduce_id) {
+  return absl::make_unique<HloAllReduceInstruction>(
+      shape, operands, reduce_computation, replica_groups, barrier,
+      all_reduce_id);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    const std::vector<ReplicaGroup>& replica_groups) {
+  return absl::make_unique<HloAllToAllInstruction>(shape, operands,
+                                                   replica_groups);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateCollectivePermute(
+    const Shape& shape, HloInstruction* operand,
+    const std::vector<std::pair<int64, int64>>& source_target_pairs) {
+  return absl::make_unique<HloCollectivePermuteInstruction>(
+      shape, operand, source_target_pairs);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
-    const Shape& shape, const string& config) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kInfeed, shape));
-  instruction->set_infeed_config(config);
-  return instruction;
+    const Shape& infeed_shape, HloInstruction* token_operand,
+    const string& config) {
+  return absl::make_unique<HloInfeedInstruction>(infeed_shape, token_operand,
+                                                 config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
-    const Shape& shape, HloInstruction* operand,
-    tensorflow::StringPiece outfeed_config) {
-  std::unique_ptr<HloInstruction> instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeNil()));
-  CHECK(ShapeUtil::Compatible(operand->shape(), shape))
-      << "Outfeed shape " << shape << " must be compatible with operand shape "
-      << operand->shape();
-  instruction->AppendOperand(operand);
-  instruction->outfeed_config_ = outfeed_config.ToString();
-  instruction->outfeed_shape_ = shape;
-  return instruction;
+    const Shape& outfeed_shape, HloInstruction* operand,
+    HloInstruction* token_operand, absl::string_view outfeed_config) {
+  return absl::make_unique<HloOutfeedInstruction>(
+      outfeed_shape, operand, token_operand, outfeed_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
-    HloInstruction* operand, int64 channel_id) {
-  // Send instruction produces a tuple of {aliased operand, U32 context}.
-  Shape output_shape = ShapeUtil::MakeTupleShape(
-      {operand->shape(), ShapeUtil::MakeShape(U32, {})});
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kSend, output_shape));
-  instruction->AppendOperand(operand);
-  instruction->channel_id_ = channel_id;
-  return instruction;
+    HloInstruction* operand, HloInstruction* token, int64 channel_id,
+    bool is_host_transfer) {
+  return absl::make_unique<HloSendInstruction>(operand, token, channel_id,
+                                               is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSendDone(
-    HloInstruction* operand) {
-  CHECK(operand->opcode() == HloOpcode::kSend)
+    HloInstruction* operand, bool is_host_transfer) {
+  auto send_operand = DynCast<HloSendInstruction>(operand);
+  CHECK(send_operand != nullptr)
       << "SendDone must take the context operand from Send";
-  auto instruction = WrapUnique(
-      new HloInstruction(HloOpcode::kSendDone, ShapeUtil::MakeNil()));
-  instruction->AppendOperand(operand);
-  instruction->channel_id_ = operand->channel_id();
-  return instruction;
+  return absl::make_unique<HloSendDoneInstruction>(send_operand,
+                                                   is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecv(
-    const Shape& shape, int64 channel_id) {
-  // Recv instruction produces a tuple of {receive buffer, U32 context}.
-  Shape output_shape =
-      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})});
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kRecv, output_shape));
-  instruction->channel_id_ = channel_id;
-  return instruction;
+    const Shape& shape, HloInstruction* token, int64 channel_id,
+    bool is_host_transfer) {
+  return absl::make_unique<HloRecvInstruction>(shape, token, channel_id,
+                                               is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecvDone(
-    HloInstruction* operand) {
-  CHECK(operand->opcode() == HloOpcode::kRecv)
+    HloInstruction* operand, bool is_host_transfer) {
+  auto recv_operand = DynCast<HloRecvInstruction>(operand);
+  CHECK(recv_operand != nullptr)
       << "RecvDone must take the context operand from Recv";
-  Shape output_shape = ShapeUtil::GetTupleElementShape(operand->shape(), 0);
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kRecvDone, output_shape));
-  instruction->AppendOperand(operand);
-  instruction->channel_id_ = operand->channel_id();
-  return instruction;
+  return absl::make_unique<HloRecvDoneInstruction>(recv_operand,
+                                                   is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReverse(
     const Shape& shape, HloInstruction* operand,
-    tensorflow::gtl::ArraySlice<int64> dimensions) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kReverse, shape));
-  instruction->AppendOperand(operand);
-  instruction->dimensions_.assign(dimensions.begin(), dimensions.end());
+    absl::Span<const int64> dimensions) {
+  return absl::make_unique<HloReverseInstruction>(shape, operand, dimensions);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAfterAll(
+    absl::Span<HloInstruction* const> operands) {
+  CHECK(!operands.empty());
+  auto instruction = absl::WrapUnique(
+      new HloInstruction(HloOpcode::kAfterAll, ShapeUtil::MakeTokenShape()));
+  for (auto operand : operands) {
+    instruction->AppendOperand(operand);
+  }
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateToken() {
+  return absl::WrapUnique(
+      new HloInstruction(HloOpcode::kAfterAll, ShapeUtil::MakeTokenShape()));
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateAddDependency(HloInstruction* data_operand,
+                                    HloInstruction* token_operand) {
+  auto instruction = absl::WrapUnique(
+      new HloInstruction(HloOpcode::kAddDependency, data_operand->shape()));
+  instruction->AppendOperand(data_operand);
+  instruction->AppendOperand(token_operand);
   return instruction;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateWhile(
     const Shape& shape, HloComputation* condition, HloComputation* body,
     HloInstruction* init) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kWhile, shape));
+  auto instruction =
+      absl::WrapUnique(new HloInstruction(HloOpcode::kWhile, shape));
   instruction->AppendOperand(init);
   // Body comes before condition computation in the vector.
   instruction->called_computations_.push_back(body);
@@ -485,7 +882,7 @@ HloInstruction::CreateCrossReplicaSum(
     HloInstruction* true_computation_arg, HloComputation* true_computation,
     HloInstruction* false_computation_arg, HloComputation* false_computation) {
   auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kConditional, shape));
+      absl::WrapUnique(new HloInstruction(HloOpcode::kConditional, shape));
   instruction->AppendOperand(pred);
   instruction->AppendOperand(true_computation_arg);
   instruction->AppendOperand(false_computation_arg);
@@ -499,33 +896,17 @@ HloInstruction::CreateCrossReplicaSum(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSlice(
     const Shape& shape, HloInstruction* operand,
-    tensorflow::gtl::ArraySlice<int64> start_indices,
-    tensorflow::gtl::ArraySlice<int64> limit_indices,
-    tensorflow::gtl::ArraySlice<int64> strides) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kSlice, shape));
-  instruction->AppendOperand(operand);
-  instruction->slice_starts_.assign(start_indices.begin(), start_indices.end());
-  instruction->slice_limits_.assign(limit_indices.begin(), limit_indices.end());
-  instruction->slice_strides_.assign(strides.begin(), strides.end());
-  // For backward compatibility with old serialized computations: if there are
-  // no strides, assume all strides are 1.
-  // TODO(b/63317920): remove this code.
-  if (instruction->slice_strides_.empty()) {
-    instruction->slice_strides_ = std::vector<int64>(start_indices.size(), 1LL);
-  }
-  return instruction;
+    absl::Span<const int64> start_indices,
+    absl::Span<const int64> limit_indices, absl::Span<const int64> strides) {
+  return absl::make_unique<HloSliceInstruction>(shape, operand, start_indices,
+                                                limit_indices, strides);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDynamicSlice(
     const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
-    tensorflow::gtl::ArraySlice<int64> slice_sizes) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kDynamicSlice, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(start_indices);
-  instruction->dynamic_slice_sizes_.assign(slice_sizes.begin(),
-                                           slice_sizes.end());
-  return instruction;
+    absl::Span<const int64> slice_sizes) {
+  return absl::make_unique<HloDynamicSliceInstruction>(
+      shape, operand, start_indices, slice_sizes);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -533,8 +914,8 @@ HloInstruction::CreateDynamicUpdateSlice(const Shape& shape,
                                          HloInstruction* operand,
                                          HloInstruction* update,
                                          HloInstruction* start_indices) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kDynamicUpdateSlice, shape));
+  auto instruction = absl::WrapUnique(
+      new HloInstruction(HloOpcode::kDynamicUpdateSlice, shape));
   instruction->AppendOperand(operand);
   instruction->AppendOperand(update);
   instruction->AppendOperand(start_indices);
@@ -542,20 +923,16 @@ HloInstruction::CreateDynamicUpdateSlice(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConcatenate(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     int64 dimension) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kConcatenate, shape));
-  for (auto operand : operands) {
-    instruction->AppendOperand(operand);
-  }
-  instruction->dimensions_.push_back(dimension);
-  return instruction;
+  return absl::make_unique<HloConcatenateInstruction>(shape, operands,
+                                                      dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConvert(
     const Shape& shape, HloInstruction* operand) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kConvert, shape));
+  auto instruction =
+      absl::WrapUnique(new HloInstruction(HloOpcode::kConvert, shape));
   instruction->AppendOperand(operand);
   return instruction;
 }
@@ -564,34 +941,38 @@ HloInstruction::CreateDynamicUpdateSlice(const Shape& shape,
 HloInstruction::CreateBitcastConvert(const Shape& shape,
                                      HloInstruction* operand) {
   auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kBitcastConvert, shape));
+      absl::WrapUnique(new HloInstruction(HloOpcode::kBitcastConvert, shape));
   instruction->AppendOperand(operand);
   return instruction;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
-    const Shape& shape, HloInstruction* arg, HloInstruction* init_value,
-    tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
+    const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
+    absl::Span<const int64> dimensions_to_reduce,
     HloComputation* reduce_computation) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kReduce, shape));
-  instruction->AppendOperand(arg);
-  instruction->AppendOperand(init_value);
-  instruction->dimensions_.assign(dimensions_to_reduce.begin(),
-                                  dimensions_to_reduce.end());
-  instruction->called_computations_.push_back(reduce_computation);
-  return instruction;
+  auto instruction = absl::WrapUnique(new HloReduceInstruction(
+      shape, {operand, init_value}, dimensions_to_reduce, reduce_computation));
+  return std::move(instruction);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::Span<HloInstruction* const> init_values,
+    absl::Span<const int64> dimensions_to_reduce,
+    HloComputation* reduce_computation) {
+  std::vector<HloInstruction*> all_args;
+  all_args.reserve(operands.size() * 2);
+  all_args.insert(all_args.end(), operands.begin(), operands.end());
+  all_args.insert(all_args.end(), init_values.begin(), init_values.end());
+  return absl::make_unique<HloReduceInstruction>(
+      shape, all_args, dimensions_to_reduce, reduce_computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduceWindow(
     const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
     const Window& window, HloComputation* reduce_computation) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kReduceWindow, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(init_value);
-  instruction->called_computations_.push_back(reduce_computation);
-  instruction->window_ = MakeUnique<Window>(window);
-  return instruction;
+  return absl::make_unique<HloReduceWindowInstruction>(
+      shape, operand, init_value, window, reduce_computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -600,14 +981,8 @@ HloInstruction::CreateBatchNormTraining(const Shape& shape,
                                         HloInstruction* scale,
                                         HloInstruction* offset, float epsilon,
                                         int64 feature_index) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kBatchNormTraining, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(scale);
-  instruction->AppendOperand(offset);
-  instruction->epsilon_ = epsilon;
-  instruction->feature_index_ = feature_index;
-  return instruction;
+  return absl::make_unique<HloBatchNormTrainingInstruction>(
+      shape, operand, scale, offset, epsilon, feature_index);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -615,16 +990,8 @@ HloInstruction::CreateBatchNormInference(
     const Shape& shape, HloInstruction* operand, HloInstruction* scale,
     HloInstruction* offset, HloInstruction* mean, HloInstruction* variance,
     float epsilon, int64 feature_index) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kBatchNormInference, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(scale);
-  instruction->AppendOperand(offset);
-  instruction->AppendOperand(mean);
-  instruction->AppendOperand(variance);
-  instruction->epsilon_ = epsilon;
-  instruction->feature_index_ = feature_index;
-  return instruction;
+  return absl::make_unique<HloBatchNormInferenceInstruction>(
+      shape, operand, scale, offset, mean, variance, epsilon, feature_index);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -633,16 +1000,9 @@ HloInstruction::CreateBatchNormGrad(const Shape& shape, HloInstruction* operand,
                                     HloInstruction* variance,
                                     HloInstruction* grad_output, float epsilon,
                                     int64 feature_index) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kBatchNormGrad, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(scale);
-  instruction->AppendOperand(mean);
-  instruction->AppendOperand(variance);
-  instruction->AppendOperand(grad_output);
-  instruction->epsilon_ = epsilon;
-  instruction->feature_index_ = feature_index;
-  return instruction;
+  return absl::make_unique<HloBatchNormGradInstruction>(
+      shape, operand, scale, mean, variance, grad_output, epsilon,
+      feature_index);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -650,27 +1010,23 @@ HloInstruction::CreateSelectAndScatter(
     const Shape& shape, HloInstruction* operand, HloComputation* select,
     const Window& window, HloInstruction* source, HloInstruction* init_value,
     HloComputation* scatter) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kSelectAndScatter, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(source);
-  instruction->AppendOperand(init_value);
-  // Select comes before scatter in the vector.
-  instruction->called_computations_.push_back(select);
-  instruction->called_computations_.push_back(scatter);
-  instruction->window_ = MakeUnique<Window>(window);
-  return instruction;
+  return absl::make_unique<HloSelectAndScatterInstruction>(
+      shape, operand, select, window, source, init_value, scatter);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateBroadcast(
     const Shape& shape, HloInstruction* operand,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kBroadcast, shape));
-  instruction->AppendOperand(operand);
-  instruction->dimensions_.assign(broadcast_dimensions.begin(),
-                                  broadcast_dimensions.end());
-  return instruction;
+    absl::Span<const int64> broadcast_dimensions) {
+  return absl::make_unique<HloBroadcastInstruction>(shape, operand,
+                                                    broadcast_dimensions);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateGetDimensionSize(const Shape& shape,
+                                       HloInstruction* operand,
+                                       int64 dimension) {
+  return absl::make_unique<HloGetDimensionSizeInstruction>(shape, operand,
+                                                           dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -728,11 +1084,8 @@ HloInstruction::CreateBroadcastSequence(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreatePad(
     const Shape& shape, HloInstruction* operand, HloInstruction* padding_value,
     const PaddingConfig& padding_config) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kPad, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(padding_value);
-  instruction->padding_config_ = MakeUnique<PaddingConfig>(padding_config);
-  return instruction;
+  return absl::make_unique<HloPadInstruction>(shape, operand, padding_value,
+                                              padding_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReshape(
@@ -741,351 +1094,62 @@ HloInstruction::CreateBroadcastSequence(
            ShapeUtil::ElementsIn(operand->shape()))
       << "shape: " << ShapeUtil::HumanString(shape)
       << " operand: " << ShapeUtil::HumanString(operand->shape());
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kReshape, shape));
+  auto instruction =
+      absl::WrapUnique(new HloInstruction(HloOpcode::kReshape, shape));
   instruction->AppendOperand(operand);
   return instruction;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTranspose(
     const Shape& shape, HloInstruction* operand,
-    tensorflow::gtl::ArraySlice<int64> dimensions) {
-  CHECK_EQ(shape.dimensions().size(), dimensions.size());
-  CHECK_EQ(shape.dimensions().size(), operand->shape().dimensions().size());
-  CHECK(std::equal(operand->shape().dimensions().begin(),
-                   operand->shape().dimensions().end(),
-                   Permute(dimensions, shape.dimensions()).begin()))
-      << "shape: " << ShapeUtil::HumanString(shape)
-      << ", operand->shape(): " << ShapeUtil::HumanString(shape)
-      << ", dimensions: {" << Join(dimensions, ", ") << "}";
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kTranspose, shape));
-  instruction->AppendOperand(operand);
-  instruction->dimensions_.assign(dimensions.begin(), dimensions.end());
-  return instruction;
+    absl::Span<const int64> dimensions) {
+  return absl::make_unique<HloTransposeInstruction>(shape, operand, dimensions);
 }
 
-// We put the fusion kind into the instruction's name for transpose-dot fusions,
-// since those fusions are really just describing a type of dot rather than
-// generating a novel computation.
-static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
-  switch (fusion_kind) {
-    case HloInstruction::FusionKind::kTransposeDot:
-      return "dot_fusion";
-    default:
-      return "fusion";
-  }
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSort(
+    const Shape& shape, int64 dimension, HloInstruction* keys,
+    absl::Span<HloInstruction* const> values) {
+  return absl::make_unique<HloSortInstruction>(shape, dimension, keys, values);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
-  instruction->fusion_kind_ = fusion_kind;
-  instruction->name_ = FusionNodeName(fusion_kind);
-  instruction->set_parent(fused_root->parent());
-  instruction->set_metadata(fused_root->metadata());
-  instruction->CloneAndFuseInternal(fused_root);
-  return instruction;
+  return absl::make_unique<HloFusionInstruction>(shape, fusion_kind,
+                                                 fused_root);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    absl::Span<HloInstruction* const> operands,
     HloComputation* fusion_computation) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
-  for (auto operand : operands) {
-    instruction->AppendOperand(operand);
-  }
-  instruction->fusion_kind_ = fusion_kind;
-  instruction->name_ = FusionNodeName(fusion_kind);
-  instruction->called_computations_.push_back(fusion_computation);
-  fusion_computation->SetFusionInstruction(instruction.get());
-  return instruction;
+  return absl::make_unique<HloFusionInstruction>(shape, fusion_kind, operands,
+                                                 fusion_computation);
 }
 
-HloInstruction* HloInstruction::AddFusionOperand(HloInstruction* new_operand) {
-  CHECK_EQ(opcode(), HloOpcode::kFusion);
-  CHECK_EQ(operand_count(),
-           fused_instructions_computation()->parameter_instructions().size());
-  const int64 param_no = operand_count();
-  // Name the parameter after the instruction it represents in the outer
-  // (non-fusion) computation.
-  string param_name = StrCat(new_operand->name(), ".param_", param_no);
-  HloInstruction* fused_parameter =
-      fused_instructions_computation()->AddParameter(
-          HloInstruction::CreateParameter(param_no, new_operand->shape(),
-                                          param_name));
-  AppendOperand(new_operand);
-  return fused_parameter;
-}
-
-void HloInstruction::MergeFusionInstruction(
-    HloInstruction* instruction_to_merge) {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-  CHECK_EQ(instruction_to_merge->opcode(), HloOpcode::kFusion);
-  CHECK(std::find(operands().begin(), operands().end(), instruction_to_merge) !=
-        operands().end());
-  // Clone the instruction from which to merge fused instructions.
-  std::unique_ptr<HloInstruction> clone = instruction_to_merge->Clone();
-  // Replace uses of fused parameters with the corresponding operand of the
-  // fusion.  Add all non-parameter fused instructions to 'unfused_instructions'
-  // to be merged into 'this'.  This is done in reverse post order.
-  std::vector<HloInstruction*> unfused_instructions;
-  auto fused_instructions =
-      clone->fused_instructions_computation()->MakeInstructionPostOrder();
-  for (auto fused_it = fused_instructions.rbegin();
-       fused_it != fused_instructions.rend(); ++fused_it) {
-    auto fused_instruction = *fused_it;
-    if (fused_instruction->opcode() == HloOpcode::kParameter) {
-      TF_CHECK_OK(fused_instruction->ReplaceAllUsesWith(
-          clone->mutable_operand(fused_instruction->parameter_number())));
-    } else {
-      unfused_instructions.push_back(fused_instruction);
-    }
-  }
-  CHECK(unfused_instructions.front() == clone->fused_expression_root());
-  // Replace instruction_to_merge use of 'this' with unfused_root.
-  TF_CHECK_OK(
-      instruction_to_merge->ReplaceUseWith(this, unfused_instructions.front()));
-  // Fuse 'unfused_instructions' into 'this'.
-  for (auto& instruction : unfused_instructions) {
-    FuseInstruction(instruction);
-    instruction->DetachFromOperands();
-  }
-  CHECK_EQ(0, clone->user_count());
-  clone->DetachFromOperands();
-  TF_CHECK_OK(parent()->parent()->RemoveEmbeddedComputation(
-      clone->fused_instructions_computation()));
-}
-
-void HloInstruction::MergeFusionInstructionIntoMultiOutput(
-    HloInstruction* instruction_to_merge) {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-  CHECK_EQ(instruction_to_merge->opcode(), HloOpcode::kFusion);
-  // Add all non-parameter fused instructions to 'unfused_instructions' to be
-  // merged into 'this'. `old_to_new' maps the instructions in the fused node
-  // to the disaseembled fusion instructions.
-  // Note that we add the unfused instructions to this->parent_ computation.
-  // This is necessary because the unique_id needs for an instruction and
-  // it's only added when inserting to the computation.
-  tensorflow::gtl::FlatMap<HloInstruction*, HloInstruction*> old_to_new;
-  std::vector<HloInstruction*> unfused_instructions;
-  auto computation_to_merge =
-      instruction_to_merge->fused_instructions_computation();
-  auto post_order = computation_to_merge->MakeInstructionPostOrder();
-  for (auto rit = post_order.rbegin(); rit != post_order.rend(); ++rit) {
-    auto fused_instruction = *rit;
-    if (fused_instruction->opcode() == HloOpcode::kParameter) {
-      InsertOrDie(&old_to_new, fused_instruction,
-                  instruction_to_merge->mutable_operand(
-                      fused_instruction->parameter_number()));
-      continue;
-    }
-
-    // Here we clone the insertion and call FuseInstructionIntoMultiOutput()
-    // which clones again. This can be improved.
-    auto cloned_instruction =
-        parent_->AddInstruction(fused_instruction->Clone());
-    unfused_instructions.push_back(cloned_instruction);
-    InsertOrDie(&old_to_new, fused_instruction, cloned_instruction);
-  }
-  for (auto unfused_instruction : unfused_instructions) {
-    for (int64 index = 0; index < unfused_instruction->operand_count();
-         index++) {
-      auto new_operand =
-          FindOrDie(old_to_new, unfused_instruction->mutable_operand(index));
-      TF_CHECK_OK(unfused_instruction->ReplaceOperandWith(index, new_operand));
-    }
-  }
-
-  HloInstruction* unfused_root = unfused_instructions.front();
-  TF_CHECK_OK(instruction_to_merge->ReplaceAllUsesWith(unfused_root));
-
-  TF_CHECK_OK(
-      instruction_to_merge->parent()->RemoveInstruction(instruction_to_merge));
-  if (GetModule()) {
-    TF_CHECK_OK(GetModule()->RemoveEmbeddedComputation(computation_to_merge));
-  }
-
-  // Fuse the root instruction and generate multiple outputs.
-  FuseInstructionIntoMultiOutput(unfused_root);
-  TF_CHECK_OK(unfused_root->parent()->RemoveInstruction(unfused_root));
-  // The rest instructions are of normal fusing.
-  for (int64 i = 1; i < unfused_instructions.size(); i++) {
-    auto instruction = unfused_instructions[i];
-    FuseInstruction(instruction);
-    TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
-  }
-}
-
-HloInstruction* HloInstruction::FuseInstructionInternal(
-    HloInstruction* instruction_to_fuse, bool add_output) {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-
-  // When add_output is false, this fusion instruction must be a user of
-  // instruction_to_fuse.
-  if (!add_output) {
-    CHECK(IsUserOf(instruction_to_fuse));
-  }
-  HloInstruction* fused_instruction =
-      CloneAndFuseInternal(instruction_to_fuse, add_output);
-  return fused_instruction;
-}
-
-HloInstruction* HloInstruction::CloneAndFuseInternal(
-    HloInstruction* instruction_to_fuse, bool add_output) {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-  CHECK(instruction_to_fuse->IsFusable()) << instruction_to_fuse->ToString();
-  VLOG(3) << "CloneAndFuseInternal:\n" << instruction_to_fuse->ToString();
-  HloInstruction* clone = nullptr;
-  if (called_computations_.empty()) {
-    // New fusion instruction. It should not be a multioutput instruction.
-    CHECK(!add_output);
-    auto builder = HloComputation::Builder("fused_computation", this);
-    builder.AddInstruction(instruction_to_fuse->Clone(/*suffix=*/""));
-    called_computations_.push_back(
-        CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build()));
-    clone = fused_expression_root();
+void HloInstruction::set_single_sharding(const HloSharding& sharding) {
+  CHECK(!sharding.IsTuple()) << sharding;
+  if (ShapeUtil::IsTuple(shape())) {
+    set_sharding(HloSharding::Tuple(sharding.GetAsShapeTree(shape())));
   } else {
-    clone = fused_instructions_computation()->AddInstruction(
-        instruction_to_fuse->Clone(/*suffix=*/""));
-    // When add_output is false, instruction_to_fuse is necessarily an operand
-    // of the fusion instruction. After fusion this will no longer be the case.
-    // Remove the operand from the operand list and remove its corresponding
-    // fused parameter instruction. Renumber parameters as necessary to make
-    // parameter numbers consistent with their index in the
-    // fused_parameter_ vector.
-    bool in_operand_list = std::find(operands_.begin(), operands_.end(),
-                                     instruction_to_fuse) != operands_.end();
-    CHECK(add_output || in_operand_list);
-    const std::vector<HloInstruction*>& fused_parameters =
-        fused_instructions_computation()->parameter_instructions();
-    for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
-      if (instruction_to_fuse == operands_[operand_num]) {
-        // replace the fused parameter instruction's uses with the clone.
-        HloInstruction* fused_parameter = fused_parameters[operand_num];
-        TF_CHECK_OK(fused_parameter->ReplaceAllUsesWith(clone));
-
-        // Remove the corresponding fused parameter and operand from their
-        // respective vectors.
-        TF_CHECK_OK(
-            fused_instructions_computation()->RemoveParameter(operand_num));
-        operands_.erase(operands_.begin() + operand_num);
-        break;
-      }
-    }
-    // We've cloned instruction_to_fuse into this fusion instruction, so this
-    // fusion instruction is no longer a use of instruction_to_fuse.
-    if (in_operand_list) {
-      instruction_to_fuse->RemoveUser(this);
-      // When the instruction_to_fuse does not have other users, we don't need
-      // to generate a multioutput fusion instruction.
-      if (instruction_to_fuse->user_count() == 0) {
-        add_output = false;
-      }
-    }
+    set_sharding(sharding);
   }
-
-  // Reread the parameters in the computation.
-  const std::vector<HloInstruction*>& fused_parameters =
-      fused_instructions_computation()->parameter_instructions();
-
-  // Add each operand of the clone as an operand of the fusion instruction. A
-  // complication is that some clone operands may already be operands of the
-  // fusion instruction.
-  for (int64 operand_num = 0; operand_num < clone->operand_count();
-       ++operand_num) {
-    HloInstruction* operand = clone->mutable_operand(operand_num);
-
-    // See if this operand is already an operand of the fusion node.
-    CHECK_EQ(operands_.size(), fused_parameters.size());
-    HloInstruction* fused_param = nullptr;
-    for (int64 i = 0; i < operands_.size(); ++i) {
-      if (operands_[i] == operand) {
-        fused_param = fused_parameters[i];
-        break;
-      }
-    }
-
-    if (fused_param == nullptr) {
-      // Clone's operand was not already an operand of the fusion
-      // instruction. Add it as an operand and add a corresponding fused
-      // parameter instruction.
-      fused_param = AddFusionOperand(operand);
-    }
-    TF_CHECK_OK(clone->ReplaceOperandWith(operand_num, fused_param));
-  }
-
-  if (add_output) {
-    CHECK_GT(instruction_to_fuse->user_count(), 0);
-    // If this is already a multioutput fusion instruction, expand the root
-    // tuple by 1.
-    HloInstruction* fused_root = fused_expression_root();
-    HloInstruction::InstructionVector tuple_elements;
-    bool newly_created_tuple_instr = false;
-    if (fused_root->opcode() == HloOpcode::kTuple) {
-      tuple_elements = fused_root->operands();
-    } else {
-      tuple_elements.push_back(fused_root);
-      newly_created_tuple_instr = true;
-    }
-    if (clone->opcode() == HloOpcode::kTuple) {
-      for (auto inst : clone->operands()) {
-        tuple_elements.push_back(inst);
-      }
-    } else {
-      tuple_elements.push_back(clone);
-    }
-    HloInstruction* new_root = fused_instructions_computation()->AddInstruction(
-        HloInstruction::CreateTuple(tuple_elements));
-    fused_instructions_computation()->set_root_instruction(new_root);
-    shape_ = new_root->shape();
-    if (fused_root->opcode() == HloOpcode::kTuple) {
-      TF_CHECK_OK(
-          fused_instructions_computation()->RemoveInstruction(fused_root));
-    }
-
-    // If this is a newly created multioutput instruction, we need to update
-    // the use of the original fusion instruction.
-    if (newly_created_tuple_instr) {
-      HloInstruction* new_instr = parent_->AddInstruction(
-          HloInstruction::CreateGetTupleElement(fused_root->shape(), this, 0));
-      TF_CHECK_OK(ReplaceAllUsesWith(new_instr));
-    }
-    int64 index = tuple_elements.size();
-    if (instruction_to_fuse->opcode() == HloOpcode::kTuple) {
-      index -= instruction_to_fuse->operand_count();
-      std::vector<HloInstruction*> to_be_removed;
-      for (auto old_gte : instruction_to_fuse->users()) {
-        CHECK_EQ(old_gte->opcode(), HloOpcode::kGetTupleElement);
-        int64 old_tuple_index = old_gte->tuple_index();
-        HloInstruction* new_gte =
-            parent_->AddInstruction(HloInstruction::CreateGetTupleElement(
-                old_gte->shape(), this, index + old_tuple_index));
-        TF_CHECK_OK(old_gte->ReplaceAllUsesWith(new_gte));
-        to_be_removed.push_back(old_gte);
-      }
-      for (auto old_gte : to_be_removed) {
-        TF_CHECK_OK(parent_->RemoveInstruction(old_gte));
-      }
-      TF_CHECK_OK(fused_instructions_computation()->RemoveInstruction(clone));
-    } else {
-      HloInstruction* new_gte =
-          parent_->AddInstruction(HloInstruction::CreateGetTupleElement(
-              clone->shape(), this, index - 1));
-      TF_CHECK_OK(instruction_to_fuse->ReplaceAllUsesWith(new_gte));
-    }
-  }
-
-  VLOG(2) << "New clone:\n" << clone->ToString();
-  return clone;
 }
 
-RandomDistribution HloInstruction::random_distribution() const {
-  CHECK_EQ(opcode_, HloOpcode::kRng);
-  return distribution_;
+void HloInstruction::SetupDerivedInstruction(
+    HloInstruction* derived_instruction) const {
+  if (sharding_ != nullptr && ShapeUtil::CompatibleIgnoringElementType(
+                                  shape_, derived_instruction->shape())) {
+    // Only copy sharding if the shape of the two instruction is compatible
+    // because copying it between differently shaped instructions can produce
+    // invalid shardings.
+    derived_instruction->set_sharding(*sharding_);
+  } else {
+    derived_instruction->clear_sharding();
+  }
+  derived_instruction->set_metadata(metadata_);
 }
 
-bool HloInstruction::HasSideEffect() const {
+bool HloInstruction::HasSideEffectNoRecurse() const {
   switch (opcode_) {
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
@@ -1095,25 +1159,32 @@ bool HloInstruction::HasSideEffect() const {
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
-    case HloOpcode::kHostCompute:
       return true;
-    default: {
-      // Check if any of the called computations has a side effect.
-      for (const auto& computation : called_computations()) {
-        if (computation->HasSideEffect()) {
-          return true;
-        }
-      }
+    case HloOpcode::kCrossReplicaSum:
+      return all_reduce_id().has_value();
+    default:
       return false;
-    }
   }
 }
 
+bool HloInstruction::HasSideEffect() const {
+  if (HasSideEffectNoRecurse()) {
+    return true;
+  }
+  // Check if any of the called computations has a side effect.
+  for (const auto& computation : called_computations()) {
+    if (computation->HasSideEffect()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCall(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* computation) {
   std::unique_ptr<HloInstruction> instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kCall, shape));
+      absl::WrapUnique(new HloInstruction(HloOpcode::kCall, shape));
   for (auto operand : operands) {
     instruction->AppendOperand(operand);
   }
@@ -1122,32 +1193,23 @@ bool HloInstruction::HasSideEffect() const {
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    tensorflow::StringPiece custom_call_target) {
-  std::unique_ptr<HloInstruction> instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kCustomCall, shape));
-  for (auto operand : operands) {
-    instruction->AppendOperand(operand);
-  }
-  instruction->custom_call_target_ = custom_call_target.ToString();
-  return instruction;
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::string_view custom_call_target, absl::string_view opaque) {
+  return absl::make_unique<HloCustomCallInstruction>(
+      shape, operands, custom_call_target, opaque);
 }
 
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateHostCompute(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    tensorflow::StringPiece channel_name, const int64 cost_estimate_ns) {
-  std::unique_ptr<HloInstruction> instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kHostCompute, shape));
-  for (auto operand : operands) {
-    instruction->AppendOperand(operand);
-  }
-  instruction->channel_name_ = channel_name.ToString();
-  instruction->cost_estimate_ns_ = cost_estimate_ns;
-  return instruction;
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::string_view custom_call_target,
+    absl::Span<const Shape> operand_shapes_with_layout,
+    absl::string_view opaque) {
+  return absl::make_unique<HloCustomCallInstruction>(
+      shape, operands, custom_call_target, opaque, operand_shapes_with_layout);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
-    tensorflow::gtl::ArraySlice<HloInstruction*> elements) {
+    absl::Span<HloInstruction* const> elements) {
   std::vector<Shape> element_shapes;
   for (auto element : elements) {
     element_shapes.push_back(element->shape());
@@ -1157,43 +1219,35 @@ bool HloInstruction::HasSideEffect() const {
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateGather(
-    const Shape& shape, HloInstruction* operand, HloInstruction* gather_indices,
+    const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
     const GatherDimensionNumbers& gather_dim_numbers,
-    tensorflow::gtl::ArraySlice<int64> window_bounds) {
-  std::unique_ptr<HloInstruction> instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kGather, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(gather_indices);
-  instruction->gather_dimension_numbers_ =
-      MakeUnique<GatherDimensionNumbers>(gather_dim_numbers);
-  c_copy(window_bounds, std::back_inserter(instruction->gather_window_bounds_));
-  return instruction;
+    absl::Span<const int64> slice_sizes) {
+  return absl::make_unique<HloGatherInstruction>(
+      shape, operand, start_indices, gather_dim_numbers, slice_sizes);
 }
 
-/* static */ GatherDimensionNumbers HloInstruction::MakeGatherDimNumbers(
-    tensorflow::gtl::ArraySlice<int64> output_window_dims,
-    tensorflow::gtl::ArraySlice<int64> elided_window_dims,
-    tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims,
-    int64 index_vector_dim) {
-  GatherDimensionNumbers gather_dim_numbers;
-  for (int64 output_window_dim : output_window_dims) {
-    gather_dim_numbers.add_output_window_dims(output_window_dim);
-  }
-  for (int64 elided_window_dim : elided_window_dims) {
-    gather_dim_numbers.add_elided_window_dims(elided_window_dim);
-  }
-  for (int64 gather_dim_to_input_dim : gather_dims_to_operand_dims) {
-    gather_dim_numbers.add_gather_dims_to_operand_dims(gather_dim_to_input_dim);
-  }
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateScatter(
+    const Shape& shape, HloInstruction* operand,
+    HloInstruction* scatter_indices, HloInstruction* updates,
+    HloComputation* update_computation,
+    const ScatterDimensionNumbers& scatter_dim_numbers) {
+  return absl::make_unique<HloScatterInstruction>(
+      shape, operand, scatter_indices, updates, update_computation,
+      scatter_dim_numbers);
+}
 
-  gather_dim_numbers.set_index_vector_dim(index_vector_dim);
-  return gather_dim_numbers;
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDomain(
+    const Shape& shape, HloInstruction* operand,
+    std::unique_ptr<DomainMetadata> operand_side_metadata,
+    std::unique_ptr<DomainMetadata> user_side_metadata) {
+  return absl::make_unique<HloDomainInstruction>(
+      shape, operand, std::move(operand_side_metadata),
+      std::move(user_side_metadata));
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
-    HloModule* module) const {
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
   VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
   VLOG(3) << "  new operands:";
   for (const HloInstruction* new_operand : new_operands) {
@@ -1201,29 +1255,74 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   }
 
   std::unique_ptr<HloInstruction> clone;
-
   // Explicitly call the factory for the instruction type. This is more robust
   // in the face of code changes than copying fields explicitly. This also
   // properly sets the user fields of the operands.
   switch (opcode_) {
+    // Ops migrated to subclasses.
+    // TODO(b/80131774): Remove this switch when migration is complete.
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kFft:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kReverse:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kReduce:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kMap:
+    case HloOpcode::kSlice:
+    case HloOpcode::kConstant:
+    case HloOpcode::kTrace:
+    case HloOpcode::kFusion:
+    case HloOpcode::kRng:
+    case HloOpcode::kParameter:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kReducePrecision:
+    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kPad:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kSort:
+    case HloOpcode::kGather:
+    case HloOpcode::kScatter:
+    case HloOpcode::kIota:
+    case HloOpcode::kDot:
+    case HloOpcode::kDomain:
+    case HloOpcode::kGetDimensionSize:
+      clone = CloneWithNewOperandsImpl(shape, new_operands, context);
+      break;
     // Unary ops.
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
+    case HloOpcode::kClz:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kFloor:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
-    case HloOpcode::kSort:
     case HloOpcode::kTanh:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateUnary(shape, opcode_, new_operands[0]);
@@ -1247,6 +1346,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kRemainder:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -1256,27 +1356,14 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     // Ternary ops.
     case HloOpcode::kClamp:
     case HloOpcode::kSelect:
+    case HloOpcode::kTupleSelect:
       CHECK_EQ(new_operands.size(), 3);
       clone = CreateTernary(shape, opcode_, new_operands[0], new_operands[1],
                             new_operands[2]);
       break;
     // Other supported ops.
-    case HloOpcode::kBroadcast:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateBroadcast(shape, new_operands[0], dimensions_);
-      break;
     case HloOpcode::kCall:
       clone = CreateCall(shape, new_operands, to_apply());
-      break;
-    case HloOpcode::kCustomCall:
-      clone = CreateCustomCall(shape, new_operands, custom_call_target_);
-      break;
-    case HloOpcode::kHostCompute:
-      clone = CreateHostCompute(shape, new_operands, channel_name_,
-                                cost_estimate_ns_);
-      break;
-    case HloOpcode::kConcatenate:
-      clone = CreateConcatenate(shape, new_operands, dimensions(0));
       break;
     case HloOpcode::kConvert:
       CHECK_EQ(new_operands.size(), 1);
@@ -1286,83 +1373,14 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateBitcastConvert(shape, new_operands[0]);
       break;
-    case HloOpcode::kReducePrecision:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateReducePrecision(shape, new_operands[0], exponent_bits_,
-                                    mantissa_bits_);
-      break;
-    case HloOpcode::kConvolution:
-      CHECK_EQ(new_operands.size(), 2);
-      clone = CreateConvolve(shape, new_operands[0], new_operands[1], *window_,
-                             *convolution_dimension_numbers_);
-      break;
-    case HloOpcode::kDot:
-      CHECK_EQ(new_operands.size(), 2);
-      clone = CreateDot(shape, new_operands[0], new_operands[1],
-                        *dot_dimension_numbers_);
-      break;
-    case HloOpcode::kFft:
-      CHECK_EQ(new_operands.size(), 1);
-      return CreateFft(shape, new_operands[0], fft_type_, fft_length_);
-    case HloOpcode::kCrossReplicaSum:
-      clone = CreateCrossReplicaSum(shape, new_operands);
-      break;
-    case HloOpcode::kGetTupleElement:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateGetTupleElement(shape, new_operands[0], tuple_index());
-      break;
-    case HloOpcode::kMap:
-      clone = CreateMap(shape, new_operands, to_apply());
-      break;
-    case HloOpcode::kPad:
-      CHECK_EQ(new_operands.size(), 2);
-      clone =
-          CreatePad(shape, new_operands[0], new_operands[1], *padding_config_);
-      break;
-    case HloOpcode::kReduce:
-      CHECK_EQ(new_operands.size(), 2);
-      clone = CreateReduce(shape, new_operands[0], new_operands[1], dimensions_,
-                           to_apply());
-      break;
-    case HloOpcode::kReduceWindow:
-      CHECK_EQ(new_operands.size(), 2);
-      clone = CreateReduceWindow(shape, new_operands[0], new_operands[1],
-                                 *window_, to_apply());
-      break;
-    case HloOpcode::kSelectAndScatter:
-      CHECK_EQ(new_operands.size(), 3);
-      clone =
-          CreateSelectAndScatter(shape, new_operands[0], select(), *window_,
-                                 new_operands[1], new_operands[2], scatter());
-      break;
-    case HloOpcode::kReverse:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateReverse(shape, new_operands[0], dimensions_);
-      break;
-    case HloOpcode::kRng:
-      clone = CreateRng(shape, distribution_, new_operands);
-      break;
     case HloOpcode::kReshape:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateReshape(shape, new_operands[0]);
-      break;
-    case HloOpcode::kSlice:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateSlice(shape, new_operands[0], slice_starts_, slice_limits_,
-                          slice_strides_);
-      break;
-    case HloOpcode::kDynamicSlice:
-      clone = CreateDynamicSlice(shape, new_operands[0], new_operands[1],
-                                 dynamic_slice_sizes_);
       break;
     case HloOpcode::kDynamicUpdateSlice:
       CHECK_EQ(new_operands.size(), 3);
       clone = CreateDynamicUpdateSlice(shape, new_operands[0], new_operands[1],
                                        new_operands[2]);
-      break;
-    case HloOpcode::kTranspose:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateTranspose(shape, new_operands[0], dimensions_);
       break;
     case HloOpcode::kTuple:
       clone = CreateTuple(new_operands);
@@ -1373,87 +1391,67 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone =
           CreateWhile(shape, while_condition(), while_body(), new_operands[0]);
       break;
-    case HloOpcode::kConstant:
-      clone = CreateConstant(literal_->CloneToUnique());
-      break;
-    case HloOpcode::kFusion:
-      clone = CloneFusionWithNewOperands(shape, new_operands, module);
-      break;
-    case HloOpcode::kParameter:
-      clone = CreateParameter(parameter_number_, shape, name_);
-      break;
-    case HloOpcode::kBatchNormTraining:
-      CHECK_EQ(new_operands.size(), 3);
-      clone =
-          CreateBatchNormTraining(shape, new_operands[0], new_operands[1],
-                                  new_operands[2], epsilon(), feature_index());
-      break;
-    case HloOpcode::kBatchNormInference:
-      CHECK_EQ(new_operands.size(), 5);
-      clone = CreateBatchNormInference(
-          shape, new_operands[0], new_operands[1], new_operands[2],
-          new_operands[3], new_operands[4], epsilon(), feature_index());
-      break;
-    case HloOpcode::kInfeed:
-      CHECK_EQ(new_operands.size(), 0);
-      clone = CreateInfeed(shape, infeed_config());
-      break;
-    case HloOpcode::kOutfeed:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateOutfeed(outfeed_shape_, new_operands[0], outfeed_config());
-      break;
-    case HloOpcode::kBatchNormGrad:
-      CHECK_EQ(new_operands.size(), 5);
-      clone = CreateBatchNormGrad(shape, new_operands[0], new_operands[1],
-                                  new_operands[2], new_operands[3],
-                                  new_operands[4], epsilon(), feature_index());
-      break;
     case HloOpcode::kConditional:
       CHECK_EQ(new_operands.size(), 3);
       clone = CreateConditional(shape, new_operands[0], new_operands[1],
                                 true_computation(), new_operands[2],
                                 false_computation());
       break;
-    case HloOpcode::kSend:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateSend(new_operands[0], channel_id());
+    case HloOpcode::kAfterAll:
+      if (new_operands.empty()) {
+        clone = CreateToken();
+      } else {
+        clone = CreateAfterAll(new_operands);
+      }
       break;
-    case HloOpcode::kSendDone:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateSendDone(new_operands[0]);
-      break;
-    case HloOpcode::kRecv:
-      CHECK_EQ(new_operands.size(), 0);
-      // The shape is a tuple, but CreateRecv() wants the raw data shape.
-      clone =
-          CreateRecv(ShapeUtil::GetTupleElementShape(shape, 0), channel_id());
-      break;
-    case HloOpcode::kRecvDone:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateRecvDone(new_operands[0]);
-      break;
-    case HloOpcode::kGather:
+    case HloOpcode::kAddDependency:
       CHECK_EQ(new_operands.size(), 2);
-      clone = CreateGather(shape, new_operands[0], new_operands[1],
-                           *gather_dimension_numbers_, gather_window_bounds_);
+      clone = CreateAddDependency(new_operands[0], new_operands[1]);
       break;
-    case HloOpcode::kTrace:
-      LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
-  clone->set_metadata(metadata_);
-  if (has_sharding()) {
-    clone->set_sharding(sharding());
-  }
+  // SetupDerivedInstruction will setup the precision_config_ field.
+  SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
+  clone->set_raw_backend_config_string(backend_config_);
+  if (context != nullptr) {
+    context->MapInstruction(this, clone.get());
+    clone->ReplaceCalledComputations([&](HloComputation* callee) {
+      return callee->parent() != context->module()
+                 ? context->module()->DeepCloneComputation(callee, context)
+                 : callee;
+    });
+  }
   return clone;
 }
 
-HloInstruction::~HloInstruction() {}
+HloInstruction::~HloInstruction() {
+  // Detach from operands. An instruction may be repeated as an operand. To
+  // avoid calling RemoveUser twice on the same operand, check before remove.
+  for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
+    HloInstruction* operand = operands_[operand_num];
+    if (operand == nullptr) {
+      continue;
+    }
+    if (operand->user_set_.find(this) != operand->user_set_.end()) {
+      operand->RemoveUser(this);
+    }
+    operands_[operand_num] = nullptr;
+  }
 
-std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix,
-                                                      HloModule* module) const {
+  // Update users. Set `nullptr` to the correpsonding operand slot for users.
+  for (auto& user : this->users()) {
+    for (int i = 0; i < user->operand_count(); ++i) {
+      if (user->operands_[i] == this) {
+        user->operands_[i] = nullptr;
+      }
+    }
+  }
+}
+
+std::unique_ptr<HloInstruction> HloInstruction::Clone(
+    const string& suffix, HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
-      CloneWithNewOperands(shape_, operands_, module);
+      CloneWithNewOperands(shape_, operands_, context);
   if (suffix.empty()) {
     clone->name_ = name();
   } else {
@@ -1477,7 +1475,7 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix,
         // If names ends with .suffix[0-9]+ then replace with a suffix with the
         // numeric value incremented.
         int64 numeric_suffix;
-        if (tensorflow::strings::safe_strto64(after_suffix, &numeric_suffix)) {
+        if (absl::SimpleAtoi(after_suffix, &numeric_suffix)) {
           clone->name_ =
               StrCat(name().substr(0, index), dot_suffix, numeric_suffix + 1);
         } else {
@@ -1488,71 +1486,6 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix,
     }
   }
   return clone;
-}
-
-std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloModule* module) const {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-  CHECK(parent() != nullptr);
-
-  auto new_instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
-  // Add the operands to our new fusion instruction.
-  for (HloInstruction* new_operand : operands) {
-    new_instruction->AppendOperand(new_operand);
-  }
-  // Clone all the fused instructions for the new fusion instruction.
-  HloInstructionMap<HloInstruction*> old_to_new;
-  std::list<std::unique_ptr<HloInstruction>> new_fused_instructions;
-  // Create the list of fused parameters by mapping through the cloned,
-  // fused instructions.
-  for (HloInstruction* old_fused_parameter :
-       fused_instructions_computation()->parameter_instructions()) {
-    new_fused_instructions.push_back(
-        old_fused_parameter->Clone("clone", module));
-    HloInstruction* new_fusion_parameter = new_fused_instructions.back().get();
-    InsertOrDie(&old_to_new, old_fused_parameter, new_fusion_parameter);
-  }
-  for (auto old_fused_instruction :
-       fused_instructions_computation()->MakeInstructionPostOrder()) {
-    if (old_fused_instruction->opcode() == HloOpcode::kParameter) {
-      FindOrDie(old_to_new, old_fused_instruction);
-      continue;
-    }
-    std::vector<HloInstruction*> new_operands;
-    for (int64 operand_idx = 0;
-         operand_idx < old_fused_instruction->operand_count(); ++operand_idx) {
-      HloInstruction* old_operand =
-          old_fused_instruction->mutable_operand(operand_idx);
-      new_operands.push_back(FindOrDie(old_to_new, old_operand));
-    }
-    new_fused_instructions.push_back(
-        old_fused_instruction->CloneWithNewOperands(
-            old_fused_instruction->shape(), new_operands, module));
-    HloInstruction* new_fused_instruction = new_fused_instructions.back().get();
-    new_fused_instruction->set_parent(parent_);
-    InsertOrDie(&old_to_new, old_fused_instruction, new_fused_instruction);
-  }
-  new_instruction->fusion_kind_ = fusion_kind_;
-  auto computation_builder = HloComputation::Builder(
-      fused_instructions_computation()->name() + ".clone",
-      new_instruction.get());
-  // We iterated the fusion instructions in reverse post order which means
-  // that we must reverse our new list of fusion instructions.
-  for (auto new_fused_instruction_iter = new_fused_instructions.rbegin();
-       new_fused_instruction_iter != new_fused_instructions.rend();
-       ++new_fused_instruction_iter) {
-    computation_builder.AddInstruction(std::move(*new_fused_instruction_iter));
-  }
-  if (module == nullptr) {
-    module = GetModule();
-  }
-  auto fused_root_ = fused_expression_root();
-  new_instruction->called_computations_.push_back(
-      CHECK_NOTNULL(module)->AddEmbeddedComputation(
-          computation_builder.Build(FindOrDie(old_to_new, fused_root_))));
-  return new_instruction;
 }
 
 std::pair<const HloInstruction*, ShapeIndex>
@@ -1578,38 +1511,6 @@ const HloInstruction* HloInstruction::LatestNonGteAncestor() const {
   return hlo;
 }
 
-const Literal& HloInstruction::literal() const {
-  CHECK_EQ(HloOpcode::kConstant, opcode_);
-  return *literal_;
-}
-
-bool HloInstruction::CanHaveDimensionsField() const {
-  return (opcode() == HloOpcode::kReverse ||
-          opcode() == HloOpcode::kConcatenate ||
-          opcode() == HloOpcode::kReduce || opcode() == HloOpcode::kBroadcast ||
-          opcode() == HloOpcode::kTranspose);
-}
-
-const std::vector<int64>& HloInstruction::dimensions() const {
-  CHECK(CanHaveDimensionsField());
-  return dimensions_;
-}
-
-int64 HloInstruction::dimensions(int64 index) const {
-  return dimensions()[index];
-}
-
-int64 HloInstruction::concatenate_dimension() const {
-  CHECK(opcode() == HloOpcode::kConcatenate);
-  CHECK_EQ(1, dimensions_.size());
-  return dimensions(0);
-}
-
-int64 HloInstruction::tuple_index() const {
-  CHECK_EQ(HloOpcode::kGetTupleElement, opcode_);
-  return tuple_index_;
-}
-
 const HloInstruction* HloInstruction::operand(int64 i) const {
   return operands_[i];
 }
@@ -1628,6 +1529,17 @@ int64 HloInstruction::operand_index(const HloInstruction* target) const {
   LOG(FATAL) << "target was not an operand: " << target->ToString();
 }
 
+HloInstruction::InstructionVector HloInstruction::unique_operands() const {
+  InstructionVector unique;
+  absl::flat_hash_set<const HloInstruction*> seen;
+  for (HloInstruction* operand : operands()) {
+    if (seen.insert(operand).second) {
+      unique.push_back(operand);
+    }
+  }
+  return unique;
+}
+
 Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
   TF_RET_CHECK(instruction->parent() == parent());
   if (std::find(control_successors_.begin(), control_successors_.end(),
@@ -1642,14 +1554,35 @@ Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
 }
 
 Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
-  auto succ_it = std::find(control_successors_.begin(),
-                           control_successors_.end(), instruction);
-  TF_RET_CHECK(succ_it != control_successors_.end());
-  control_successors_.erase(succ_it);
-  auto pred_it = std::find(instruction->control_predecessors_.begin(),
-                           instruction->control_predecessors_.end(), this);
-  TF_RET_CHECK(pred_it != instruction->control_predecessors_.end());
-  instruction->control_predecessors_.erase(pred_it);
+  TF_RET_CHECK(instruction->parent() == parent());
+  TF_RETURN_IF_ERROR(EraseElementFromVector(&control_successors_, instruction));
+  TF_RETURN_IF_ERROR(
+      EraseElementFromVector(&instruction->control_predecessors_, this));
+  return Status::OK();
+}
+
+Status HloInstruction::DropAllControlDeps() {
+  for (auto* ctrl_succ : control_successors_) {
+    TF_RETURN_IF_ERROR(
+        EraseElementFromVector(&ctrl_succ->control_predecessors_, this));
+  }
+  for (auto* ctrl_pred : control_predecessors_) {
+    TF_RETURN_IF_ERROR(
+        EraseElementFromVector(&ctrl_pred->control_successors_, this));
+  }
+  control_successors_.clear();
+  control_predecessors_.clear();
+  return Status::OK();
+}
+
+Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
+  for (auto* ctrl_pred : inst->control_predecessors()) {
+    TF_RETURN_IF_ERROR(ctrl_pred->AddControlDependencyTo(this));
+  }
+
+  for (auto* ctrl_succ : inst->control_successors()) {
+    TF_RETURN_IF_ERROR(this->AddControlDependencyTo(ctrl_succ));
+  }
 
   return Status::OK();
 }
@@ -1659,15 +1592,35 @@ void HloInstruction::AppendOperand(HloInstruction* operand) {
   operand->AddUser(this);
 }
 
+void HloInstruction::RemoveOperandsAtAscendingIndices(
+    absl::Span<const int> ascending_indices) {
+  if (ascending_indices.empty()) {
+    return;
+  }
+  int next_index = 0;
+  int removed_count = 0;
+  for (int to_remove : ascending_indices) {
+    while (next_index < to_remove) {
+      operands_[next_index - removed_count] = operands_[next_index];
+      ++next_index;
+    }
+    CHECK_LT(to_remove, operands_.size());
+    ++removed_count;
+    ++next_index;
+  }
+  while (next_index < operands_.size()) {
+    operands_[next_index - removed_count] = operands_[next_index];
+    ++next_index;
+  }
+  CHECK_EQ(removed_count, ascending_indices.size());
+  operands_.resize(operands_.size() - removed_count);
+}
+
 void HloInstruction::AddUser(HloInstruction* user) {
   if (!ContainsKey(user_set_, user)) {
     user_set_.insert(user);
     users_.push_back(user);
   }
-}
-
-bool HloInstruction::IsConstant() const {
-  return opcode_ == HloOpcode::kConstant;
 }
 
 bool HloInstruction::HasConstantOperand() const {
@@ -1682,25 +1635,28 @@ bool HloInstruction::HasConstantOperand() const {
 bool HloInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations,
-    const std::function<bool(const Shape&, const Shape&)>& eq_shapes) const {
+        eq_computations) const {
   // Perform opcode specific checks.
   switch (opcode()) {
     // The result of these instructions only depend upon their opcode and
     // operands.
     case HloOpcode::kAbs:
     case HloOpcode::kAtan2:
-    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kAdd:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kClz:
     case HloOpcode::kComplex:
+    case HloOpcode::kConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
-    case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kDivide:
+    case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kEq:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kGe:
     case HloOpcode::kGt:
@@ -1708,9 +1664,11 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kAnd:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -1720,6 +1678,8 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
+    case HloOpcode::kReshape:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
@@ -1729,144 +1689,96 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
+    case HloOpcode::kTupleSelect:
       return true;
 
-    case HloOpcode::kFusion:
-      return fusion_kind() == other.fusion_kind() &&
-             eq_computations(fused_instructions_computation(),
-                             other.fused_instructions_computation());
-
-    // These opcodes have complex or special behavior so just return false.
-    case HloOpcode::kRng:
-    case HloOpcode::kTrace:
-    case HloOpcode::kWhile:
+    // This opcode has complex or special behavior so just return false.
+    case HloOpcode::kAfterAll:
+    case HloOpcode::kAddDependency:
       return false;
 
-    case HloOpcode::kParameter:
-      return parameter_number() == other.parameter_number() &&
-             // Check the shape too because `this` and `other` may be in
-             // different HloComputations.
-             eq_shapes(shape(), other.shape());
-
-    case HloOpcode::kBatchNormTraining:
-    case HloOpcode::kBatchNormInference:
-    case HloOpcode::kBatchNormGrad:
-      return feature_index() == other.feature_index() &&
-             epsilon() == other.epsilon();
-
-    // A constant is defined by the value in the literal.
-    case HloOpcode::kConstant:
-      return literal() == other.literal();
-
-    // A convert result is determined by the primitive type that the operand is
-    // converted into.
-    case HloOpcode::kConvert:
-    case HloOpcode::kBitcastConvert:
-      return shape().element_type() == other.shape().element_type();
-
-    // A reduce-precision operation is determined by the bit sizes.
-    case HloOpcode::kReducePrecision:
-      return exponent_bits() == other.exponent_bits() &&
-             mantissa_bits() == other.mantissa_bits();
-
-    // Convolution has a window and dimensions.
-    case HloOpcode::kConvolution:
-      return protobuf_util::ProtobufEquals(window(), other.window()) &&
-             protobuf_util::ProtobufEquals(
-                 convolution_dimension_numbers(),
-                 other.convolution_dimension_numbers());
-    // Check dot dimension numbers.
-    case HloOpcode::kDot:
-      return protobuf_util::ProtobufEquals(dot_dimension_numbers(),
-                                           other.dot_dimension_numbers());
-
-    case HloOpcode::kGather:
-      return protobuf_util::ProtobufEquals(gather_dimension_numbers(),
-                                           other.gather_dimension_numbers()) &&
-             gather_window_bounds() == other.gather_window_bounds();
-
-    // FFT has various types & lengths.
-    case HloOpcode::kFft:
-      return fft_type() == other.fft_type() &&
-             fft_length() == other.fft_length();
-
-    // Reduction results are determined by the reduction dimension and the
-    // reduction computation.
-    case HloOpcode::kReduce:
-      return dimensions() == other.dimensions() &&
-             eq_computations(to_apply(), other.to_apply());
-    case HloOpcode::kReduceWindow:
-      return eq_computations(to_apply(), other.to_apply()) &&
-             protobuf_util::ProtobufEquals(window(), other.window());
-
-    // SelectAndScatter is determined by both select and scatter
-    // computation as well as the window configuration.
-    case HloOpcode::kSelectAndScatter:
-      return eq_computations(select(), other.select()) &&
-             eq_computations(scatter(), other.scatter()) &&
-             protobuf_util::ProtobufEquals(window(), other.window());
-
-    case HloOpcode::kReshape:
-      return eq_shapes(shape(), other.shape());
-
-    // Transpose result is determined by the final shape and the permutation.
-    case HloOpcode::kTranspose:
-      return eq_shapes(shape(), other.shape()) &&
-             dimensions() == other.dimensions();
-
     // Remaining instructions with special values.
-    case HloOpcode::kBitcast:
-      return eq_shapes(shape(), other.shape());
-    case HloOpcode::kBroadcast:
-      return eq_shapes(shape(), other.shape()) &&
-             dimensions() == other.dimensions();
-    case HloOpcode::kConcatenate:
-      return dimensions() == other.dimensions();
-    case HloOpcode::kGetTupleElement:
-      return tuple_index() == other.tuple_index();
-    case HloOpcode::kPad:
-      return protobuf_util::ProtobufEquals(padding_config(),
-                                           other.padding_config());
-    case HloOpcode::kSlice:
-      return slice_starts_ == other.slice_starts_ &&
-             slice_limits_ == other.slice_limits_ &&
-             slice_strides_ == other.slice_strides_;
-    case HloOpcode::kDynamicSlice:
-      return eq_shapes(shape(), other.shape()) &&
-             dynamic_slice_sizes_ == other.dynamic_slice_sizes_;
-    case HloOpcode::kDynamicUpdateSlice:
-      return eq_shapes(shape(), other.shape());
     case HloOpcode::kCall:
-    case HloOpcode::kMap:
       return eq_computations(to_apply(), other.to_apply());
-    case HloOpcode::kCustomCall:
-      return custom_call_target_ == other.custom_call_target_;
-    case HloOpcode::kReverse:
-      return dimensions() == other.dimensions();
     case HloOpcode::kConditional:
       return eq_computations(true_computation(), other.true_computation()) &&
              eq_computations(false_computation(), other.false_computation());
 
-    // These opcodes are not yet supported.
-    case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
-    case HloOpcode::kSort:
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
+    case HloOpcode::kWhile: {
+      if (eq_computations(while_body(), other.while_body()) &&
+          eq_computations(while_condition(), other.while_condition())) {
+        return true;
+      }
+      return false;
+    }
+
+    // Ops migrated to subclasses should never come to this line.
+    // TODO(b/80131774): Remove this switch when migration is complete.
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kFft:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
-    case HloOpcode::kHostCompute:
-      return false;
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kReverse:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kReduce:
+    case HloOpcode::kSort:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kMap:
+    case HloOpcode::kSlice:
+    case HloOpcode::kConstant:
+    case HloOpcode::kIota:
+    case HloOpcode::kTrace:
+    case HloOpcode::kFusion:
+    case HloOpcode::kRng:
+    case HloOpcode::kParameter:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kReducePrecision:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kPad:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kGather:
+    case HloOpcode::kScatter:
+    case HloOpcode::kDot:
+    case HloOpcode::kDomain:
+    case HloOpcode::kGetDimensionSize:
+      LOG(FATAL) << "Base class impl called for opcode with subclass: "
+                 << opcode();
   }
+  return false;
 }
 
-bool HloInstruction::IsRank2Transpose() const {
-  return (opcode_ == HloOpcode::kTranspose) &&
-         dimensions_ == std::vector<int64>({1, 0}) &&
-         shape_.dimensions_size() == 2 &&
-         std::equal(shape_.dimensions().begin(), shape_.dimensions().end(),
-                    operands_[0]->shape_.dimensions().rbegin());
+uint64 HloInstruction::Hash() const {
+  using tensorflow::Hash64Combine;
+
+  uint64 hash_value = Hash64Combine(0, static_cast<uint64>(opcode()));
+  hash_value = Hash64Combine(hash_value, ShapeUtil::Hash(shape()));
+
+  if (!IsCrossModuleAllReduce()) {
+    if (!operands().empty()) {
+      for (size_t i = 0; i < operands().size(); ++i) {
+        hash_value = Hash64Combine(hash_value, operand(i)->Hash());
+      }
+    }
+  }
+
+  hash_value = Hash64Combine(hash_value, InnerHash());
+  return hash_value;
 }
+
+uint64 HloInstruction::InnerHash() const { return 13; }
 
 void HloInstruction::RemoveUser(HloInstruction* user) {
   auto set_it = user_set_.find(user);
@@ -1897,6 +1809,10 @@ Status HloInstruction::ReplaceUseWith(HloInstruction* user,
   std::replace(user->operands_.begin(), user->operands_.end(), this,
                new_producer);
   new_producer->AddUser(user);
+  if (user->opcode() == HloOpcode::kFusion) {
+    TF_RETURN_IF_ERROR(
+        Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
+  }
   return Status::OK();
 }
 
@@ -1905,10 +1821,14 @@ Status HloInstruction::ReplaceOperandWith(int64 operand_num,
   TF_RET_CHECK(operand_num >= 0);
   TF_RET_CHECK(operand_num < operand_count());
   HloInstruction* old_operand = mutable_operand(operand_num);
+  if (old_operand == new_operand) {
+    return Status::OK();
+  }
+
   TF_RET_CHECK(ShapeUtil::CompatibleIgnoringFpPrecision(old_operand->shape(),
                                                         new_operand->shape()))
-      << old_operand->shape().ShortDebugString() << " is not compatible with "
-      << new_operand->shape().ShortDebugString();
+      << old_operand->shape() << " is not compatible with "
+      << new_operand->shape();
   operands_[operand_num] = new_operand;
 
   VLOG(3) << "Replacing operand " << operand_num << " of " << name() << " with "
@@ -1935,6 +1855,10 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
       std::replace(user->operands_.begin(), user->operands_.end(), this,
                    new_producer);
       new_producer->AddUser(user);
+      if (user->opcode() == HloOpcode::kFusion) {
+        TF_RETURN_IF_ERROR(
+            Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
+      }
     }
   }
   users_.clear();
@@ -1949,28 +1873,14 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
   return Status::OK();
 }
 
-void HloInstruction::DetachFromOperands() {
-  VLOG(3) << "DetachFromOperands:\n  " << ToString();
-  CHECK_EQ(0, user_count());
-  // An instruction may be repeated as an operand. To avoid calling RemoveUser
-  // twice on the same operand, keep a set of already detached operands.
-  std::set<HloInstruction*> detached_operands;
-  for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
-    HloInstruction* operand = operands_[operand_num];
-    if (!ContainsKey(detached_operands, operand)) {
-      operand->RemoveUser(this);
-      detached_operands.insert(operand);
-    }
-    operands_[operand_num] = nullptr;
-  }
-}
-
 HloComputation* HloInstruction::to_apply() const {
   switch (opcode_) {
     case HloOpcode::kCall:
     case HloOpcode::kMap:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
+    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kScatter:
       CHECK_EQ(called_computations_.size(), 1);
       return called_computations_[0];
     default:
@@ -1988,6 +1898,8 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
     case HloOpcode::kMap:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
+    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kScatter:
       CHECK_EQ(called_computations_.size(), 1);
       called_computations_[0] = computation;
       break;
@@ -1995,16 +1907,6 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
       LOG(FATAL) << "Invalid opcode for to_apply(): "
                  << HloOpcodeString(opcode());
   }
-}
-
-const string& HloInstruction::custom_call_target() const {
-  CHECK_EQ(opcode_, HloOpcode::kCustomCall);
-  return custom_call_target_;
-}
-
-const string& HloInstruction::outfeed_config() const {
-  CHECK_EQ(opcode_, HloOpcode::kOutfeed);
-  return outfeed_config_;
 }
 
 HloComputation* HloInstruction::while_condition() const {
@@ -2033,30 +1935,9 @@ void HloInstruction::set_while_body(HloComputation* computation) {
   called_computations_[kBodyComputationIndex] = computation;
 }
 
-HloComputation* HloInstruction::select() const {
-  CHECK_EQ(HloOpcode::kSelectAndScatter, opcode_);
-  return called_computations_[kSelectComputationIndex];
-}
-
-HloComputation* HloInstruction::scatter() const {
-  CHECK_EQ(HloOpcode::kSelectAndScatter, opcode_);
-  return called_computations_[kScatterComputationIndex];
-}
-
-void HloInstruction::set_select(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
-  CHECK_EQ(HloOpcode::kSelectAndScatter, opcode_);
-  called_computations_[kSelectComputationIndex] = computation;
-}
-
-void HloInstruction::set_scatter(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
-  CHECK_EQ(HloOpcode::kSelectAndScatter, opcode_);
-  called_computations_[kScatterComputationIndex] = computation;
+HloInstruction* HloInstruction::while_init() const {
+  CHECK_EQ(HloOpcode::kWhile, opcode_);
+  return operands_[0];
 }
 
 HloComputation* HloInstruction::true_computation() const {
@@ -2087,7 +1968,7 @@ void HloInstruction::set_false_computation(HloComputation* false_computation) {
 
 string HloInstruction::SignatureString() const {
   string operands =
-      Join(operands_, ", ", [](string* out, HloInstruction* operand) {
+      StrJoin(operands_, ", ", [](string* out, HloInstruction* operand) {
         StrAppend(out, ShapeUtil::HumanString(operand->shape()));
       });
   return StrCat("(", operands, ") -> ", ShapeUtil::HumanString(shape()));
@@ -2102,131 +1983,173 @@ string PrintName(const string& name, const HloPrintOptions& options) {
 }  // namespace
 
 string HloInstruction::ToString(const HloPrintOptions& options) const {
-  string result =
-      StrCat(PrintName(name(), options), " = ",
-             ShapeUtil::HumanStringWithLayout(shape()), " ",
-             HloOpcodeString(opcode()), "(", OperandsToString(options), ")");
+  CanonicalNameMap new_map;
+  return ToStringWithCanonicalNameMap(options, &new_map);
+}
+
+bool HloInstruction::IsElementwiseImpl(
+    const absl::optional<int64>& operand_idx) const {
+  switch (opcode_) {
+    // Unary elementwise operations.
+    case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kCeil:
+    case HloOpcode::kClz:
+    case HloOpcode::kConvert:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kCopy:
+    case HloOpcode::kCos:
+    case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
+    case HloOpcode::kFloor:
+    case HloOpcode::kImag:
+    case HloOpcode::kIsFinite:
+    case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
+    case HloOpcode::kNot:
+    case HloOpcode::kNegate:
+    case HloOpcode::kReal:
+    case HloOpcode::kReducePrecision:
+    case HloOpcode::kSign:
+    case HloOpcode::kSin:
+    case HloOpcode::kTanh:
+      CHECK_EQ(1, operand_count());
+      return true;
+
+    // Binary elementwise operations, the same as in IsElementwiseBinary().
+    case HloOpcode::kAdd:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kComplex:
+    case HloOpcode::kDivide:
+    case HloOpcode::kEq:
+    case HloOpcode::kGe:
+    case HloOpcode::kGt:
+    case HloOpcode::kLe:
+    case HloOpcode::kLt:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kNe:
+    case HloOpcode::kPower:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+      CHECK_EQ(2, operand_count());
+      return true;
+
+    // Ternary elementwise operations.
+    case HloOpcode::kSelect:
+    case HloOpcode::kClamp:
+      return true;
+
+    case HloOpcode::kDynamicUpdateSlice:
+      return operand_idx.has_value() && operand_idx.value() == 0;
+
+    default:
+      return false;
+  }
+}
+
+bool HloInstruction::IsCrossModuleAllReduce() const {
+  return opcode() == HloOpcode::kCrossReplicaSum && all_reduce_id();
+}
+
+string HloInstruction::ToStringWithCanonicalNameMap(
+    const HloPrintOptions& options,
+    CanonicalNameMap* canonical_name_map) const {
+  string result = "";
+
+  // Logic to print the instruction name (e.g. "%foo = ").
+  if (options.canonicalize_instruction_names()) {
+    if (options.is_in_nested_computation()) {
+      // If we are canonicalizing instruction names and this is a top-level
+      // HloInstruction::ToString() call, don't print an instruction name.
+      StrAppend(&result,
+                PrintName(canonical_name_map->LookupOrInsert(name()), options),
+                " = ");
+    }
+  } else {
+    StrAppend(&result, PrintName(name(), options), " = ");
+  }
+
+  // Print opcode, operand(s) and shape.
+  StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()), " ",
+            HloOpcodeString(opcode()), "(",
+            OperandsToStringWithCanonicalNameMap(options, canonical_name_map),
+            ")");
+
+  // Print additional attributes. If an instruction contains a subcomputation,
+  // the subcomputation is also printed here.
   for (const string& extra : ExtraAttributesToString(options)) {
     StrAppend(&result, ", ", extra);
   }
+
   if (options.print_metadata() &&
       (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
        !metadata_.source_file().empty())) {
     StrAppend(&result, ", metadata={", xla::OpMetadataToString(metadata_), "}");
   }
+  if (options.print_backend_config() && !backend_config_.empty()) {
+    StrAppend(&result, ", backend_config=\"", CEscape(backend_config_), "\"");
+  }
   return result;
 }
 
 string HloInstruction::OperandsToString(const HloPrintOptions& options) const {
+  CanonicalNameMap new_map;
+  return OperandsToStringWithCanonicalNameMap(options, &new_map);
+}
+
+string HloInstruction::OperandsToStringWithCanonicalNameMap(
+    const HloPrintOptions& options,
+    CanonicalNameMap* canonical_name_map) const {
   string operands;
-  if (opcode() == HloOpcode::kConstant) {
-    // For constants, show the actual value in place of an empty operand list.
-    if ((!ShapeUtil::IsTuple(shape()) &&
-         ShapeUtil::ElementsIn(shape()) <= 10) ||
-        options.print_large_constants()) {
-      // Literal::ToString emits multidimensional arrays over multiple
-      // lines. Compact this into one line by stripping out white space.
-      string tmp = literal().ToString();
-      std::replace(tmp.begin(), tmp.end(), '\n', ' ');
-      std::vector<string> v = tensorflow::str_util::Split(tmp, ' ');
-      bool first = true;
-      // Concatenate elements in "v" with spaces separating them, but ignoring
-      // empty entries.
-      for (const auto& s : v) {
-        if (s.empty()) {
-          continue;
-        }
-        StrAppend(&operands, (first ? "" : " "), s);
-        first = false;
-      }
-    } else {
-      // Do not show large constants or tuples.
-      operands = "{...}";
+  absl::Span<HloInstruction* const> slice(operands_);
+  const int64 kMaxOperandsToShowIfCompact = 4;
+  if (options.compact_operands() &&
+      slice.size() > kMaxOperandsToShowIfCompact) {
+    slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
+  }
+  operands = StrJoin(slice, ", ", [&](string* out, HloInstruction* operand) {
+    // If operand is already been deleted, put `null` to the string output.
+    if (operand == nullptr) {
+      StrAppend(out, "null ");
+      return;
     }
-  } else if (opcode() == HloOpcode::kParameter) {
-    StrAppend(&operands, parameter_number_);
-  } else {
-    tensorflow::gtl::ArraySlice<HloInstruction*> slice(operands_);
-    const int64 kMaxOperandsToShowIfCompact = 4;
-    if (options.compact_operands() &&
-        slice.size() > kMaxOperandsToShowIfCompact) {
-      slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
+    std::vector<string> str;
+    if (options.print_operand_shape()) {
+      str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
     }
-    operands = Join(slice, ", ", [&](string* out, HloInstruction* operand) {
-      std::vector<string> str;
-      if (options.print_operand_shape()) {
-        str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
-      }
-      if (!options.compact_operands()) {
-        str.push_back(PrintName(operand->name(), options));
-      }
-      StrAppend(out, Join(str, " "));
-    });
-    const int64 remaining = operands_.size() - slice.size();
-    if (slice.size() != operands_.size()) {
-      StrAppend(&operands, ", ...(+", remaining, ")");
+
+    // In a top-level HloInstruction::ToString() call, the operand name is not
+    // part of the canonical string.
+    if (options.canonicalize_instruction_names() &&
+        options.is_in_nested_computation()) {
+      str.push_back(PrintName(
+          canonical_name_map->LookupOrInsert(operand->name()), options));
+    } else if (options.print_operand_names()) {
+      str.push_back(PrintName(operand->name(), options));
     }
+    StrAppend(out, StrJoin(str, " "));
+  });
+  const int64 remaining = operands_.size() - slice.size();
+  if (slice.size() != operands_.size()) {
+    StrAppend(&operands, ", ...(+", remaining, ")");
   }
   return operands;
 }
 
 std::vector<string> HloInstruction::ExtraAttributesToString(
     const HloPrintOptions& options) const {
-  std::vector<string> extra;
-  if (opcode() == HloOpcode::kFusion) {
-    extra.push_back(StrCat("kind=", xla::ToString(fusion_kind())));
-  }
-  if (CanHaveDimensionsField()) {
-    extra.push_back(StrCat("dimensions={", Join(dimensions(), ","), "}"));
-  }
-  if (window_ != nullptr && window_->dimensions_size() != 0) {
-    extra.push_back(StrCat("window={", window_util::ToString(*window_), "}"));
-  }
-  if (padding_config_ != nullptr) {
-    extra.push_back(
-        StrCat("padding=", xla::PaddingConfigToString(*padding_config_)));
-  }
-  if (opcode() == HloOpcode::kSlice) {
-    std::vector<string> bounds;
-    bounds.reserve(slice_starts_.size());
-    const bool omit_stride =
-        std::all_of(slice_strides_.begin(), slice_strides_.end(),
-                    [](int64 stride) { return stride == 1; });
-    for (int i = 0; i < slice_starts_.size(); ++i) {
-      string stride_str = omit_stride ? "" : StrCat(":", slice_strides_[i]);
-      bounds.push_back(StrCat("[", slice_starts_[i], ":", slice_limits_[i],
-                              stride_str, "]"));
-    }
-    extra.push_back(StrCat("slice={", Join(bounds, ", "), "}"));
-  }
-  if (opcode() == HloOpcode::kDynamicSlice) {
-    extra.push_back(
-        StrCat("dynamic_slice_sizes={", Join(dynamic_slice_sizes(), ","), "}"));
-  }
-  if (opcode() == HloOpcode::kBatchNormTraining ||
-      opcode() == HloOpcode::kBatchNormInference ||
-      opcode() == HloOpcode::kBatchNormGrad) {
-    extra.push_back(StrCat("epsilon=", epsilon()));
-    extra.push_back(StrCat("feature_index=", feature_index()));
-  }
+  std::vector<string> extra = ExtraAttributesToStringImpl(options);
 
-  if (convolution_dimension_numbers_ != nullptr) {
-    extra.push_back(ConvolutionDimensionNumbersToString());
-  }
-  if (dot_dimension_numbers_ != nullptr) {
-    extra.push_back(DotDimensionNumbersToString());
-  }
-  if (gather_dimension_numbers_ != nullptr) {
-    extra.push_back(GatherDimensionNumbersToString());
-    extra.push_back(
-        StrCat("window_bounds={", Join(gather_window_bounds(), ","), "}"));
-  }
-  if (opcode() == HloOpcode::kFft) {
-    extra.push_back(StrCat("fft_type=", FftType_Name(fft_type())));
-    extra.push_back(StrCat("fft_length={", Join(fft_length(), ","), "}"));
-  }
-
-  if (options.print_subcomputation_references()) {
+  if (options.print_subcomputation_mode() ==
+      HloPrintOptions::PrintSubcomputationMode::kNameOnly) {
     if (opcode() == HloOpcode::kWhile) {
       extra.push_back(
           StrCat("condition=", PrintName(while_condition()->name(), options)));
@@ -2243,150 +2166,112 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                              PrintName(false_computation()->name(), options)));
     } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
                opcode() == HloOpcode::kReduceWindow ||
-               opcode() == HloOpcode::kReduce) {
+               opcode() == HloOpcode::kReduce ||
+               opcode() == HloOpcode::kCrossReplicaSum ||
+               opcode() == HloOpcode::kScatter) {
       extra.push_back(
           StrCat("to_apply=", PrintName(to_apply()->name(), options)));
     } else if (!called_computations().empty()) {
       extra.push_back(StrCat(
-          "calls=", Join(called_computations(), ", ",
-                         [&](string* out, const HloComputation* computation) {
-                           StrAppend(out,
-                                     PrintName(computation->name(), options));
-                         })));
+          "calls=",
+          StrJoin(called_computations(), ", ",
+                  [&](string* out, const HloComputation* computation) {
+                    StrAppend(out, PrintName(computation->name(), options));
+                  })));
+    }
+  } else if (options.print_subcomputation_mode() ==
+             HloPrintOptions::PrintSubcomputationMode::kFullBodies) {
+    HloPrintOptions new_options = options;
+    new_options.set_is_in_nested_computation(true);
+    switch (opcode()) {
+      case HloOpcode::kWhile:
+        extra.push_back(
+            StrCat("condition=\n", while_condition()->ToString(new_options)));
+        extra.push_back(StrCat("body=\n", while_body()->ToString(new_options)));
+        break;
+      case HloOpcode::kSelectAndScatter:
+        extra.push_back(StrCat("select=\n", select()->ToString(new_options)));
+        extra.push_back(StrCat("scatter=\n", scatter()->ToString(new_options)));
+        break;
+      case HloOpcode::kConditional:
+        extra.push_back(StrCat("true_computation=\n",
+                               true_computation()->ToString(new_options)));
+        extra.push_back(StrCat("false_computation=\n",
+                               false_computation()->ToString(new_options)));
+        break;
+      case HloOpcode::kCall:
+      case HloOpcode::kMap:
+      case HloOpcode::kReduceWindow:
+      case HloOpcode::kReduce:
+      case HloOpcode::kCrossReplicaSum:
+      case HloOpcode::kScatter:
+        extra.push_back(
+            StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+        break;
+      default:
+        if (!called_computations().empty()) {
+          extra.push_back(StrCat(
+              "calls=\n",
+              StrJoin(called_computations(), ", ",
+                      [&](string* out, const HloComputation* computation) {
+                        StrAppend(out, computation->ToString(new_options));
+                      })));
+        }
+        break;
     }
   }
 
-  if (opcode() == HloOpcode::kSend || opcode() == HloOpcode::kRecv ||
-      opcode() == HloOpcode::kSendDone || opcode() == HloOpcode::kRecvDone) {
-    extra.push_back(StrCat("channel_id=", channel_id_));
-  }
-
-  if (opcode() == HloOpcode::kGetTupleElement) {
-    extra.push_back(StrCat("index=", tuple_index()));
-  }
   if (has_sharding()) {
     extra.push_back(StrCat("sharding=", sharding().ToString()));
   }
-  if (!control_predecessors_.empty()) {
+  if (options.print_control_dependencies() && !control_predecessors_.empty()) {
     extra.push_back(StrCat("control-predecessors={",
-                           Join(control_predecessors_, ", ",
-                                [&](string* out, HloInstruction* pre) {
-                                  StrAppend(out,
-                                            PrintName(pre->name(), options));
-                                }),
+                           StrJoin(control_predecessors_, ", ",
+                                   [&](string* out, HloInstruction* pre) {
+                                     StrAppend(out,
+                                               PrintName(pre->name(), options));
+                                   }),
                            "}"));
   }
-  if (opcode() == HloOpcode::kInfeed && !infeed_config_.empty()) {
-    extra.push_back(StrCat("infeed_config=\"", CEscape(infeed_config_), "\""));
-  }
-  if (opcode() == HloOpcode::kOutfeed && !outfeed_config_.empty()) {
-    extra.push_back(
-        StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
-  }
-  if (opcode() == HloOpcode::kRng) {
-    extra.push_back(
-        StrCat("distribution=", RandomDistributionToString(distribution_)));
-  }
-  if (opcode() == HloOpcode::kReducePrecision) {
-    extra.push_back(StrCat("exponent_bits=", exponent_bits_));
-    extra.push_back(StrCat("mantissa_bits=", mantissa_bits_));
-  }
 
-  // By contract, we print the custom call target even if
-  // !options.print_subcomputation_references(), because the call target is not
-  // an HloComputation.
-  if (opcode() == HloOpcode::kCustomCall) {
-    extra.push_back(
-        StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
-  }
   return extra;
 }
 
 string HloInstruction::ToShortString() const {
   return StrCat("%", name(), " = ", HloOpcodeString(opcode()), "(",
-                Join(operands_, ", ",
-                     [](string* out, HloInstruction* operand) {
-                       StrAppend(out, "%", operand->name());
-                     }),
+                StrJoin(operands_, ", ",
+                        [](string* out, HloInstruction* operand) {
+                          StrAppend(out, "%", operand->name());
+                        }),
                 ")");
 }
 
 HloInstructionProto HloInstruction::ToProto() const {
   HloInstructionProto proto;
+  CHECK(unique_id_ != -1)
+      << "This instruction does not have a valid id. Please make sure the "
+         "instruction is inside a module before dumping it.";
+  proto.set_id(unique_id_);
   proto.set_name(name_);
   proto.set_opcode(HloOpcodeString(opcode_));
-  *proto.mutable_shape() = shape_;
+  *proto.mutable_shape() = shape_.ToProto();
   for (const HloInstruction* operand : operands_) {
-    *proto.add_operand_names() = operand->name();
+    proto.add_operand_ids(operand->unique_id());
   }
   for (const HloInstruction* control : control_predecessors_) {
-    *proto.add_control_predecessor_names() = control->name();
+    proto.add_control_predecessor_ids(control->unique_id());
   }
 
   *proto.mutable_metadata() = metadata_;
-  if (literal_ != nullptr) {
-    *proto.mutable_literal() = literal_->ToProto();
-  }
-  proto.set_parameter_number(parameter_number_);
-  if (opcode() == HloOpcode::kFusion) {
-    proto.set_fusion_kind(xla::ToString(fusion_kind()));
-    *proto.mutable_fused_instructions_computation() =
-        fused_instructions_computation()->ToProto();
-  } else {
+  proto.set_backend_config(backend_config_);
+  if (opcode() != HloOpcode::kFusion) {
     for (const HloComputation* computation : called_computations_) {
-      *proto.add_called_computation_names() = computation->name();
+      proto.add_called_computation_ids(computation->unique_id());
     }
   }
 
-  proto.set_tuple_index(tuple_index_);
-  for (int64 dimension : dimensions_) {
-    proto.add_dimensions(dimension);
-  }
-  if (window_ != nullptr) {
-    *proto.mutable_window() = *window_;
-  }
-  if (convolution_dimension_numbers_ != nullptr) {
-    *proto.mutable_convolution_dimension_numbers() =
-        *convolution_dimension_numbers_;
-  }
-  if (dot_dimension_numbers_ != nullptr) {
-    *proto.mutable_dot_dimension_numbers() = *dot_dimension_numbers_;
-  }
-  if (gather_dimension_numbers_ != nullptr) {
-    *proto.mutable_gather_dimension_numbers() = *gather_dimension_numbers_;
-  }
-  if (opcode() == HloOpcode::kGather) {
-    for (int64 bound : gather_window_bounds()) {
-      proto.add_gather_window_bounds(bound);
-    }
-  }
-  for (int i = 0; i < slice_starts_.size(); ++i) {
-    auto* slice_dimension = proto.add_slice_dimensions();
-    slice_dimension->set_start(slice_starts_[i]);
-    slice_dimension->set_limit(slice_limits_[i]);
-    slice_dimension->set_stride(slice_strides_[i]);
-  }
-  proto.set_exponent_bits(exponent_bits_);
-  proto.set_mantissa_bits(mantissa_bits_);
-  for (int64 slice_size : dynamic_slice_sizes_) {
-    proto.add_dynamic_slice_sizes(slice_size);
-  }
-  if (padding_config_ != nullptr) {
-    *proto.mutable_padding_config() = *padding_config_;
-  }
-  proto.set_outfeed_config(outfeed_config_);
-  if (opcode() == HloOpcode::kRng) {
-    proto.set_distribution(distribution_);
-  }
-  proto.set_epsilon(epsilon_);
-  proto.set_feature_index(feature_index_);
-  proto.set_channel_id(channel_id_);
-  proto.set_infeed_config(infeed_config_);
-  proto.set_custom_call_target(custom_call_target_);
-  *proto.mutable_outfeed_shape() = outfeed_shape_;
-  proto.set_fft_type(fft_type_);
-  for (int64 fft_len : fft_length_) {
-    proto.add_fft_length(fft_len);
+  if (has_sharding()) {
+    *proto.mutable_sharding() = sharding().ToProto();
   }
 
   return proto;
@@ -2396,37 +2281,6 @@ string HloInstruction::ToCategory() const {
   if (opcode() == HloOpcode::kTranspose || opcode() == HloOpcode::kCopy ||
       opcode() == HloOpcode::kReshape) {
     return "data formatting";
-  }
-
-  if (opcode() == HloOpcode::kConvolution) {
-    string category = "convolution";
-    if (window_util::HasBaseDilation(window())) {
-      category += " base-dilated";
-    }
-    if (window_util::HasWindowDilation(window())) {
-      category += " window-dilated";
-    }
-    return category;
-  }
-
-  // Give transpose-dot and backwards-conv fusions the categories "dot" and
-  // "convolution" so they match the categories of proper kDot and kConvolution
-  // ops.  These fusion categories are really just a way of expressing a
-  // particular kind of dot or conv, so they should have the same category as a
-  // vanilla dot/conv.
-  if (opcode() == HloOpcode::kFusion) {
-    switch (fusion_kind()) {
-      case FusionKind::kLoop:
-        return "loop fusion";
-      case FusionKind::kInput:
-        return "input fusion";
-      case FusionKind::kOutput:
-        return "output fusion";
-      case FusionKind::kTransposeDot:
-        return "dot";
-      case FusionKind::kCustom:
-        return "custom fusion";
-    }
   }
 
   if (IsElementwise()) {
@@ -2442,70 +2296,22 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
   trace_instruction_ = trace_instruction;
 }
 
-string HloInstruction::TracingTag() const {
-  CHECK_EQ(HloOpcode::kTrace, opcode());
-  CHECK(literal_ != nullptr);
-  return literal_->GetR1U8AsString();
-}
-
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
 
-bool HloInstruction::IsFusable() const {
+bool HloInstruction::IsFusible() const {
   // Instructions which are traced should not be fused.
   if (tracing()) {
     return false;
   }
   // Some kinds of instructions don't make sense to fuse.
   switch (opcode_) {
+    case HloOpcode::kDomain:
     case HloOpcode::kParameter:
       return false;
     // Side effecting instrutions cannot be fused.
     default:
       return !HasSideEffect();
   }
-}
-
-HloComputation* HloInstruction::fused_instructions_computation() const {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-  CHECK(!called_computations_.empty());
-  auto* fused_instructions_computation = called_computations_.front();
-  CHECK(fused_instructions_computation->IsFusionComputation());
-  return fused_instructions_computation;
-}
-
-HloInstruction* HloInstruction::fused_expression_root() const {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-  return fused_instructions_computation()->root_instruction();
-}
-
-HloInstruction* HloInstruction::fused_parameter(int64 parameter_number) const {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-  return fused_instructions_computation()->parameter_instruction(
-      parameter_number);
-}
-
-const std::vector<HloInstruction*>& HloInstruction::fused_parameters() const {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-  return fused_instructions_computation()->parameter_instructions();
-}
-
-const tensorflow::gtl::iterator_range<UnwrappingIterator<
-    std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
-HloInstruction::fused_instructions() const {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-  const HloComputation* subcomp = fused_instructions_computation();
-  return subcomp->instructions();
-}
-
-const tensorflow::gtl::iterator_range<
-    UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
-HloInstruction::fused_instructions() {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-  return fused_instructions_computation()->instructions();
-}
-
-int64 HloInstruction::fused_instruction_count() const {
-  return fused_instructions_computation()->instruction_count();
 }
 
 HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
@@ -2562,6 +2368,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleAnd(this);
     case HloOpcode::kOr:
       return visitor->HandleOr(this);
+    case HloOpcode::kXor:
+      return visitor->HandleXor(this);
     case HloOpcode::kShiftLeft:
       return visitor->HandleShiftLeft(this);
     case HloOpcode::kShiftRightArithmetic:
@@ -2586,12 +2394,18 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleRemainder(this);
     case HloOpcode::kSelect:
       return visitor->HandleSelect(this);
+    case HloOpcode::kTupleSelect:
+      return visitor->HandleTupleSelect(this);
     case HloOpcode::kConvolution:
       return visitor->HandleConvolution(this);
     case HloOpcode::kFft:
       return visitor->HandleFft(this);
     case HloOpcode::kCrossReplicaSum:
       return visitor->HandleCrossReplicaSum(this);
+    case HloOpcode::kAllToAll:
+      return visitor->HandleAllToAll(this);
+    case HloOpcode::kCollectivePermute:
+      return visitor->HandleCollectivePermute(this);
     case HloOpcode::kTuple:
       return visitor->HandleTuple(this);
     case HloOpcode::kMap:
@@ -2608,12 +2422,18 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleNegate(this);
     case HloOpcode::kExp:
       return visitor->HandleExp(this);
+    case HloOpcode::kExpm1:
+      return visitor->HandleExpm1(this);
     case HloOpcode::kFloor:
       return visitor->HandleFloor(this);
     case HloOpcode::kCeil:
       return visitor->HandleCeil(this);
+    case HloOpcode::kClz:
+      return visitor->HandleClz(this);
     case HloOpcode::kLog:
       return visitor->HandleLog(this);
+    case HloOpcode::kLog1p:
+      return visitor->HandleLog1p(this);
     case HloOpcode::kTanh:
       return visitor->HandleTanh(this);
     case HloOpcode::kCos:
@@ -2654,8 +2474,6 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleInfeed(this);
     case HloOpcode::kOutfeed:
       return visitor->HandleOutfeed(this);
-    case HloOpcode::kHostCompute:
-      return visitor->HandleHostCompute(this);
     case HloOpcode::kRng:
       return visitor->HandleRng(this);
     case HloOpcode::kWhile:
@@ -2678,6 +2496,18 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSendDone(this);
     case HloOpcode::kGather:
       return visitor->HandleGather(this);
+    case HloOpcode::kScatter:
+      return visitor->HandleScatter(this);
+    case HloOpcode::kDomain:
+      return visitor->HandleDomain(this);
+    case HloOpcode::kAfterAll:
+      return visitor->HandleAfterAll(this);
+    case HloOpcode::kAddDependency:
+      return visitor->HandleAddDependency(this);
+    case HloOpcode::kIota:
+      return visitor->HandleIota(this);
+    case HloOpcode::kGetDimensionSize:
+      return visitor->HandleGetDimensionSize(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:
@@ -2686,15 +2516,14 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
   return InternalError(
       "Unhandled HloOpcode for DfsHloVisitor: %s. This should not happen - "
       "please file a bug for XLA.",
-      HloOpcodeString(opcode_).c_str());
+      HloOpcodeString(opcode_));
 }
 
 // Explicit instantiations.
 template Status HloInstruction::Visit(DfsHloVisitor* visitor);
 template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
-using DFSStack =
-    tensorflow::gtl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
+using DFSStack = absl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
 
 // Push "child" onto the dfs_stack if not already visited.  Returns false if a
 // cycle was detected, and true otherwise.
@@ -2725,7 +2554,7 @@ template <typename Visitor>
 static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
                            const InternalCompareFunction* operand_order,
                            bool ignore_control_predecessors) {
-  visitor->ReserveVisitStates(root->GetModule()->NumUniqueInstructionIds());
+  visitor->ReserveVisitStates(root->GetModule()->instruction_count());
 
   // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
   //
@@ -2770,7 +2599,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
       if (!TF_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
         return FailedPrecondition(
             "A cycle is detected while visiting instruction %s",
-            current_node->ToString().c_str());
+            current_node->ToString());
       }
     }
 
@@ -2779,7 +2608,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
         if (!TF_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
           return FailedPrecondition(
               "A cycle is detected while visiting instruction %s",
-              current_node->ToString().c_str());
+              current_node->ToString());
         }
       }
     }
@@ -2836,36 +2665,6 @@ Status HloInstruction::AcceptWithOperandOrder(
   return Status::OK();
 }
 
-namespace {
-
-// Returns true if the given order is a topological sort of the instructions
-// it contains.
-bool OrderIsTopologicalSort(const std::vector<const HloInstruction*>& order) {
-  // Create a map from instruction to its position in 'order'.
-  std::unordered_map<const HloInstruction*, int> order_position;
-  for (int i = 0; i < order.size(); i++) {
-    if (!order_position.insert({order[i], i}).second) {
-      // Instruction order[i] is duplicated in the order.
-      return false;
-    }
-  }
-  // Verify that the operand of each instruction in the order is also in the
-  // order *and* the operand's position is earlier (defs are before uses for
-  // all ops).
-  for (auto* instruction : order) {
-    for (auto* operand : instruction->operands()) {
-      if (!ContainsKey(order_position, operand) ||
-          order_position.at(operand) >= order_position.at(instruction)) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-}  // namespace
-
 Status HloInstruction::Accept(
     const std::function<Status(HloInstruction*)>& visitor_func) {
   FunctionVisitor visitor(visitor_func);
@@ -2878,55 +2677,7 @@ Status HloInstruction::Accept(
   return this->Accept(&visitor);
 }
 
-Status HloInstruction::AcceptOrdered(
-    DfsHloVisitor* visitor, const std::vector<const HloInstruction*>& order) {
-  VLOG(2) << "HloInstruction::AcceptOrdered(%" << name() << ")";
-  TF_RET_CHECK(OrderIsTopologicalSort(order));
-
-  // Compute the predecessors of this instruction.
-  std::unordered_set<const HloInstruction*> predecessors;
-  TF_RETURN_IF_ERROR(this->Accept([&predecessors](HloInstruction* instruction) {
-    predecessors.insert(instruction);
-    return Status::OK();
-  }));
-
-  for (auto* const_instruction : order) {
-    if (!ContainsKey(predecessors, const_instruction)) {
-      // Instruction is not a predecessors of 'this'.
-      continue;
-    }
-
-    // The visitor can mark instructions as visited to skip particular
-    // instructions.
-    if (visitor->DidVisit(*const_instruction)) {
-      VLOG(3) << "Not visiting HLO %" << const_instruction->name()
-              << " as it was already visited.";
-      continue;
-    }
-
-    HloInstruction* instruction =
-        const_cast<HloInstruction*>(const_instruction);
-
-    TF_RETURN_IF_ERROR(visitor->Preprocess(instruction));
-    VLOG(2) << "Visiting HLO %" << instruction->name();
-    TF_RETURN_IF_ERROR(instruction->Visit(visitor));
-    visitor->SetVisited(*instruction);
-    TF_RETURN_IF_ERROR(visitor->Postprocess(instruction));
-  }
-
-  return visitor->FinishVisit(this);
-}
-
-const Shape& HloInstruction::outfeed_shape() const {
-  DCHECK_EQ(opcode_, HloOpcode::kOutfeed);
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
-  return outfeed_shape_;
-}
-
-const Shape& HloInstruction::shape() const {
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
-  return shape_;
-}
+const Shape& HloInstruction::shape() const { return shape_; }
 
 std::vector<int64> HloInstruction::OperandIndices(
     const HloInstruction* operand) const {
@@ -2944,139 +2695,16 @@ bool HloInstruction::IsElementwiseBinary() const {
 }
 
 bool HloInstruction::IsElementwise() const {
-  switch (opcode_) {
-    // Nullary elementwise operations.
-    case HloOpcode::kConstant:
-      return true;
-
-    // Unary elementwise operations.
-    case HloOpcode::kAbs:
-    case HloOpcode::kRoundNearestAfz:
-    case HloOpcode::kCeil:
-    case HloOpcode::kConvert:
-    case HloOpcode::kBitcastConvert:
-    case HloOpcode::kCopy:
-    case HloOpcode::kCos:
-    case HloOpcode::kExp:
-    case HloOpcode::kFloor:
-    case HloOpcode::kImag:
-    case HloOpcode::kIsFinite:
-    case HloOpcode::kLog:
-    case HloOpcode::kNot:
-    case HloOpcode::kNegate:
-    case HloOpcode::kReal:
-    case HloOpcode::kReducePrecision:
-    case HloOpcode::kSign:
-    case HloOpcode::kSin:
-    case HloOpcode::kTanh:
-      CHECK_EQ(1, operand_count());
-      return true;
-
-    // Binary elementwise operations, the same as in IsElementwiseBinary().
-    case HloOpcode::kAdd:
-    case HloOpcode::kAtan2:
-    case HloOpcode::kComplex:
-    case HloOpcode::kDivide:
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
-    case HloOpcode::kMaximum:
-    case HloOpcode::kMinimum:
-    case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
-    case HloOpcode::kPower:
-    case HloOpcode::kRemainder:
-    case HloOpcode::kSubtract:
-    case HloOpcode::kAnd:
-    case HloOpcode::kOr:
-    case HloOpcode::kShiftLeft:
-    case HloOpcode::kShiftRightArithmetic:
-    case HloOpcode::kShiftRightLogical:
-      CHECK_EQ(2, operand_count());
-      return true;
-
-    // Ternary elementwise operations.
-    case HloOpcode::kSelect:
-      return !ShapeUtil::IsTuple(shape_);
-    case HloOpcode::kClamp:
-      return true;
-
-    // Other operations.
-    case HloOpcode::kRng:
-    case HloOpcode::kMap:
-      return true;
-    case HloOpcode::kFusion:
-      if (fusion_kind() != FusionKind::kLoop) {
-        return false;
-      }
-      for (auto* fused : fused_instructions()) {
-        if (fused->opcode() != HloOpcode::kParameter &&
-            !fused->IsElementwise()) {
-          return false;
-        }
-      }
-      return true;
-
-    default:
-      return false;
-  }
+  return IsElementwiseImpl(absl::nullopt);
 }
 
 bool HloInstruction::ImplicitlyBroadcastsOperand(int64 operand_idx) const {
   CHECK(IsElementwise());
-  return !ShapeUtil::Equal(shape(), operand(operand_idx)->shape());
+  return !ShapeUtil::SameDimensions(shape(), operand(operand_idx)->shape());
 }
-
-namespace {
-bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
-                                       const HloInstruction* operand) {
-  std::vector<int64> operand_indices = instruction->OperandIndices(operand);
-  return std::all_of(
-      operand_indices.begin(), operand_indices.end(),
-      [instruction](int64 operand_index) {
-        return instruction->IsElementwiseOnOperand(operand_index);
-      });
-}
-}  // namespace
 
 bool HloInstruction::IsElementwiseOnOperand(int64 operand_idx) const {
-  // For all instructions other than kFusion, being elementwise on one of the
-  // operands is equivalent to being elementwise on all the operands.
-  if (opcode() != HloOpcode::kFusion) {
-    return IsElementwise();
-  }
-
-  CHECK_EQ(HloOpcode::kFusion, opcode());
-  if (fusion_kind() != FusionKind::kLoop) {
-    return false;
-  }
-
-  // A loop-fusion is elementwise on an operand if all operations (computed
-  // using BFS) between the operand and the fused root are elementwise.
-  std::deque<HloInstruction*> worklist;
-  std::unordered_set<const HloInstruction*> visited;
-  worklist.push_back(fused_parameter(operand_idx));
-  visited.insert(fused_parameter(operand_idx));
-  while (!worklist.empty()) {
-    HloInstruction* operand = worklist.front();
-    worklist.pop_front();
-    for (HloInstruction* user : operand->users()) {
-      CHECK_GE(user->unique_id(), 0);
-      if (ContainsKey(visited, user)) {
-        continue;
-      }
-      if (user->IsElementwise() ||
-          IsInstructionElementwiseOnOperand(user, operand)) {
-        worklist.push_back(user);
-        visited.insert(user);
-      } else {
-        return false;
-      }
-    }
-  }
-  return true;
+  return IsElementwiseImpl(operand_idx);
 }
 
 // A helper class for memoized, recursive computation of HloOpcode::kFusion
@@ -3090,16 +2718,18 @@ class HloInstruction::FusionReusesParamElements {
   // the value of this parameter, which would save stack space but not allow us
   // to finish early if we find a reuse.
   static UseKind Compute(int64 i, const HloInstruction& hlo) {
-    tensorflow::gtl::FlatMap<const HloInstruction*, UseKind> memoization_cache;
+    absl::flat_hash_map<const HloInstruction*, UseKind> memoization_cache;
     return ComputeInternal(i, hlo, &memoization_cache);
   }
 
  private:
   static UseKind ComputeInternal(
       int64 i, const HloInstruction& hlo,
-      tensorflow::gtl::FlatMap<const HloInstruction*, UseKind>* cache) {
-    if (hlo.opcode_ == HloOpcode::kParameter && hlo.parameter_number_ == i) {
-      return UseKind::kUse;
+      absl::flat_hash_map<const HloInstruction*, UseKind>* cache) {
+    if (auto hlo_param = DynCast<HloParameterInstruction>(&hlo)) {
+      if (hlo_param->parameter_number() == i) {
+        return UseKind::kUse;
+      }
     }
 
     auto p = cache->emplace(&hlo, UseKind{});
@@ -3153,10 +2783,13 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
     case HloOpcode::kTranspose:
       return UseKind::kUsePermutingElements;
     case HloOpcode::kPad:
-    case HloOpcode::kReduce:
       // Pad reuses the padding value but not the padded array elements.
-      // Reduce reuses the init value but not the operand array elements.
       return i > 0 ? UseKind::kReuse : UseKind::kUsePermutingElements;
+    case HloOpcode::kReduce:
+      // Reduce reuses the init values but not the operand array elements.
+      return i >= Cast<HloReduceInstruction>(this)->input_count()
+                 ? UseKind::kReuse
+                 : UseKind::kUsePermutingElements;
     case HloOpcode::kFusion:
       // Uses the memoizing, recursive computation defined above.
       return FusionReusesParamElements::Compute(i, *fused_expression_root());
@@ -3202,8 +2835,6 @@ string ToString(HloInstruction::FusionKind kind) {
       return "kInput";
     case HloInstruction::FusionKind::kOutput:
       return "kOutput";
-    case HloInstruction::FusionKind::kTransposeDot:
-      return "kTransposeDot";
     case HloInstruction::FusionKind::kCustom:
       return "kCustom";
   }
@@ -3220,13 +2851,10 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
   if (kind_name == "kOutput") {
     return HloInstruction::FusionKind::kOutput;
   }
-  if (kind_name == "kTransposeDot") {
-    return HloInstruction::FusionKind::kTransposeDot;
-  }
   if (kind_name == "kCustom") {
     return HloInstruction::FusionKind::kCustom;
   }
-  return InvalidArgument("Unknown fusion kind: %s", kind_name.c_str());
+  return InvalidArgument("Unknown fusion kind: %s", kind_name);
 }
 
 string PaddingConfigToString(const PaddingConfig& padding) {
@@ -3235,7 +2863,7 @@ string PaddingConfigToString(const PaddingConfig& padding) {
                   [](const PaddingConfig::PaddingConfigDimension& dim) {
                     return dim.interior_padding() != 0;
                   });
-  return Join(
+  return StrJoin(
       padding.dimensions(), "x",
       [&](string* out, const PaddingConfig::PaddingConfigDimension& dim) {
         StrAppend(
@@ -3259,49 +2887,19 @@ string OpMetadataToString(const OpMetadata& metadata) {
   if (metadata.source_line() != 0) {
     result.push_back(StrCat("source_line=", metadata.source_line()));
   }
-  return Join(result, " ");
+  return StrJoin(result, " ");
 }
 
 string RandomDistributionToString(const RandomDistribution& distribution) {
-  return tensorflow::str_util::Lowercase(RandomDistribution_Name(distribution));
+  return absl::AsciiStrToLower(RandomDistribution_Name(distribution));
 }
 
-StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
-  static std::unordered_map<string, RandomDistribution>* map = [] {
-    static auto* map = new std::unordered_map<string, RandomDistribution>;
-    for (int i = 0; i < RandomDistribution_ARRAYSIZE; i++) {
-      if (RandomDistribution_IsValid(i)) {
-        auto value = static_cast<RandomDistribution>(i);
-        (*map)[RandomDistributionToString(value)] = value;
-      }
-    }
-    return map;
-  }();
-  auto found = map->find(tensorflow::str_util::Lowercase(name));
-  if (found == map->end()) {
-    return InvalidArgument("Unknown distribution");
-  }
-  return found->second;
+string PrecisionToString(const PrecisionConfig::Precision& precision) {
+  return absl::AsciiStrToLower(PrecisionConfig::Precision_Name(precision));
 }
 
-std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {
-  return os << ToString(kind);
-}
-
-string HloInstruction::ConvolutionDimensionNumbersToString() const {
-  string result;
-  if (convolution_dimension_numbers_ == nullptr) {
-    return result;
-  }
-  const ConvolutionDimensionNumbers& dnums = *convolution_dimension_numbers_;
-  // Show the given dimension labels in order of major to minor based on the
-  // shape's layout.
-  const auto append_dims = [&](const std::vector<string>& dims,
-                               const Shape& shape) {
-    CHECK_EQ(dims.size(), ShapeUtil::Rank(shape));
-    StrAppend(&result, Join(dims, ""));
-  };
-
+string ConvolutionDimensionNumbersToString(
+    const ConvolutionDimensionNumbers& dnums) {
   // lhs_dims[i] is the symbol of the logical dimension i for the lhs
   // operand. E.g. if batch has dimension number 2, then lhs_dims[2] == "b".
   std::vector<string> lhs_dims(2 + dnums.input_spatial_dimensions().size());
@@ -3325,62 +2923,69 @@ string HloInstruction::ConvolutionDimensionNumbersToString() const {
     output_dims[dnums.output_spatial_dimensions(i)] = StrCat(i);
   }
 
-  result += "dim_labels=";
-  append_dims(lhs_dims, operand(0)->shape());
-  result += "_";
-  append_dims(rhs_dims, operand(1)->shape());
-  result += "->";
-
-  // A convolution can be represented as a kConvolution HLO or as a CustomCall
-  // that returns a tuple, the first element of which is the result of the
-  // convolution.
-  Shape this_shape =
-      ShapeUtil::IsTuple(shape()) ? shape().tuple_shapes(0) : shape();
-  append_dims(output_dims, this_shape);
-  return result;
+  return StrCat(StrJoin(lhs_dims, ""), "_", StrJoin(rhs_dims, ""), "->",
+                StrJoin(output_dims, ""));
 }
 
-string HloInstruction::DotDimensionNumbersToString() const {
-  std::vector<string> result;
-  if (dot_dimension_numbers_ == nullptr) {
-    return "";
+StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
+  static std::unordered_map<string, RandomDistribution>* map = [] {
+    static auto* map = new std::unordered_map<string, RandomDistribution>;
+    for (int i = 0; i < RandomDistribution_ARRAYSIZE; i++) {
+      if (RandomDistribution_IsValid(i)) {
+        auto value = static_cast<RandomDistribution>(i);
+        (*map)[RandomDistributionToString(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = map->find(absl::AsciiStrToLower(name));
+  if (found == map->end()) {
+    return InvalidArgument("Unknown distribution");
   }
-  const DotDimensionNumbers& dnums = *dot_dimension_numbers_;
-  if (!dnums.lhs_batch_dimensions().empty()) {
-    result.push_back(StrCat("lhs_batch_dims={",
-                            Join(dnums.lhs_batch_dimensions(), ","), "}"));
-  }
-  result.push_back(StrCat("lhs_contracting_dims={",
-                          Join(dnums.lhs_contracting_dimensions(), ","), "}"));
-
-  if (!dnums.rhs_batch_dimensions().empty()) {
-    result.push_back(StrCat("rhs_batch_dims={",
-                            Join(dnums.rhs_batch_dimensions(), ","), "}"));
-  }
-  result.push_back(StrCat("rhs_contracting_dims={",
-                          Join(dnums.rhs_contracting_dimensions(), ","), "}"));
-
-  return Join(result, ", ");
+  return found->second;
 }
 
-string HloInstruction::GatherDimensionNumbersToString() const {
-  CHECK_NE(gather_dimension_numbers_.get(), nullptr);
-  string output_window_dims =
-      StrCat("output_window_dims={",
-             Join(gather_dimension_numbers_->output_window_dims(), ","), "}");
-  string elided_window_dims =
-      StrCat("elided_window_dims={",
-             Join(gather_dimension_numbers_->elided_window_dims(), ","), "}");
-  string gather_dims_to_operand_dims = StrCat(
-      "gather_dims_to_operand_dims={",
-      Join(gather_dimension_numbers_->gather_dims_to_operand_dims(), ","), "}");
-  string index_vector_dim = StrCat(
-      "index_vector_dim=", gather_dimension_numbers_->index_vector_dim());
+StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name) {
+  static std::unordered_map<string, PrecisionConfig::Precision>* map = [] {
+    static auto* map =
+        new std::unordered_map<string, PrecisionConfig::Precision>;
+    for (int i = 0; i < PrecisionConfig::Precision_ARRAYSIZE; i++) {
+      if (PrecisionConfig::Precision_IsValid(i)) {
+        auto value = static_cast<PrecisionConfig::Precision>(i);
+        (*map)[PrecisionToString(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = map->find(absl::AsciiStrToLower(name));
+  if (found == map->end()) {
+    return InvalidArgument("Unknown distribution");
+  }
+  return found->second;
+}
 
-  return Join<std::initializer_list<string>>(
-      {output_window_dims, elided_window_dims, gather_dims_to_operand_dims,
-       index_vector_dim},
-      ", ");
+std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {
+  return os << ToString(kind);
+}
+
+bool HloPtrComparator::operator()(const HloInstruction* const& lhs,
+                                  const HloInstruction* const& rhs) const {
+  if (rhs == nullptr) {
+    // Nothing compares less than nullptr.
+    return false;
+  }
+  if (lhs == nullptr) {
+    return true;
+  }
+  auto lhs_module = lhs->GetModule();
+  auto rhs_module = rhs->GetModule();
+  CHECK((lhs_module == nullptr && rhs_module == nullptr) ||
+        (lhs_module != nullptr && rhs_module != nullptr));
+  if (lhs_module != nullptr &&
+      lhs_module->unique_id() != rhs_module->unique_id()) {
+    return lhs_module->unique_id() < rhs_module->unique_id();
+  }
+  return lhs->unique_id() < rhs->unique_id();
 }
 
 bool HloInstruction::CouldBeBitcast() const {
@@ -3392,6 +2997,51 @@ bool HloInstruction::CouldBeBitcast() const {
     default:
       return false;
   }
+}
+
+Status HloInstruction::GetBackendConfigInternal(
+    tensorflow::protobuf::Message* proto) const {
+  proto->Clear();
+
+  // Empty string does not parse as valid JSON, but it's a valid backend config,
+  // corresponding to the empty proto.
+  if (backend_config_.empty()) {
+    return Status::OK();
+  }
+  return tensorflow::HumanReadableJsonToProto(backend_config_, proto);
+}
+
+Status HloInstruction::set_backend_config(
+    const tensorflow::protobuf::Message& proto) {
+  TF_ASSIGN_OR_RETURN(backend_config_, BackendConfigToRawString(proto));
+  return Status::OK();
+}
+
+/* static */ StatusOr<string> HloInstruction::BackendConfigToRawString(
+    const tensorflow::protobuf::Message& proto) {
+  string ret;
+  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(proto, &ret));
+  return ret;
+}
+
+const PrecisionConfig& HloInstruction::precision_config() const {
+  if (auto* convolution = DynCast<HloConvolutionInstruction>(this)) {
+    return convolution->precision_config();
+  }
+  if (auto* dot = DynCast<HloDotInstruction>(this)) {
+    return dot->precision_config();
+  }
+  LOG(FATAL) << "Unimplemented method.";
+}
+
+PrecisionConfig* HloInstruction::mutable_precision_config() {
+  if (auto* convolution = DynCast<HloConvolutionInstruction>(this)) {
+    return convolution->mutable_precision_config();
+  }
+  if (auto* dot = DynCast<HloDotInstruction>(this)) {
+    return dot->mutable_precision_config();
+  }
+  LOG(FATAL) << "Unimplemented method.";
 }
 
 HloModule* HloInstruction::GetModule() const {
@@ -3411,21 +3061,307 @@ void HloInstruction::set_outer_dimension_partitions(
   outer_dimension_partitions_ = outer_dimension_partitions;
 }
 
+// TODO(b/80131774): Remove these temporary methods after transition.
+int64 HloInstruction::feature_index() const {
+  return Cast<HloBatchNormInstruction>(this)->feature_index();
+}
+
+float HloInstruction::epsilon() const {
+  return Cast<HloBatchNormInstruction>(this)->epsilon();
+}
+
+FftType HloInstruction::fft_type() const {
+  return Cast<HloFftInstruction>(this)->fft_type();
+}
+
+const std::vector<int64>& HloInstruction::fft_length() const {
+  return Cast<HloFftInstruction>(this)->fft_length();
+}
+
+int64 HloInstruction::channel_id() const {
+  return Cast<HloSendRecvInstruction>(this)->channel_id();
+}
+
+int64 HloInstruction::concatenate_dimension() const {
+  return Cast<HloConcatenateInstruction>(this)->concatenate_dimension();
+}
+
+int64 HloInstruction::dimension() const {
+  return Cast<HloGetDimensionSizeInstruction>(this)->dimension();
+}
+
+bool HloInstruction::IsRank2Transpose() const {
+  auto transpose = DynCast<HloTransposeInstruction>(this);
+  return transpose != nullptr && transpose->IsRank2Transpose();
+}
+
+int64 HloInstruction::slice_starts(int64 dimension) const {
+  return Cast<HloSliceInstruction>(this)->slice_starts(dimension);
+}
+
+const std::vector<int64>& HloInstruction::slice_starts() const {
+  return Cast<HloSliceInstruction>(this)->slice_starts();
+}
+
+int64 HloInstruction::slice_limits(int64 dimension) const {
+  return Cast<HloSliceInstruction>(this)->slice_limits(dimension);
+}
+
+const std::vector<int64>& HloInstruction::slice_limits() const {
+  return Cast<HloSliceInstruction>(this)->slice_limits();
+}
+
+int64 HloInstruction::slice_strides(int64 dimension) const {
+  return Cast<HloSliceInstruction>(this)->slice_strides(dimension);
+}
+
+const std::vector<int64>& HloInstruction::slice_strides() const {
+  return Cast<HloSliceInstruction>(this)->slice_strides();
+}
+
+const Literal& HloInstruction::literal() const {
+  return Cast<HloConstantInstruction>(this)->literal();
+}
+
+bool HloInstruction::IsConstant() const {
+  return DynCast<HloConstantInstruction>(this) != nullptr;
+}
+
 void HloInstruction::RelayoutConstant(const Layout& new_layout,
                                       const ShapeIndex& shape_index) {
-  CHECK_EQ(opcode(), HloOpcode::kConstant);
-  Shape* mutable_array_subshape =
-      ShapeUtil::GetMutableSubshape(mutable_shape(), shape_index);
-  CHECK(ShapeUtil::IsArray(*mutable_array_subshape));
+  Cast<HloConstantInstruction>(this)->RelayoutConstant(new_layout, shape_index);
+}
 
-  // Normally array_subshape will always have a layout, but this invariant is
-  // temporarily broken in LayoutAssignment::AssignLayouts.
+string HloInstruction::TracingTag() const {
+  return Cast<HloTraceInstruction>(this)->TracingTag();
+}
 
-  if (!mutable_array_subshape->has_layout() ||
-      !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
-    literal_ = literal_->Relayout(new_layout, shape_index);
-    *mutable_array_subshape->mutable_layout() = new_layout;
+HloInstruction* HloInstruction::AddFusionOperand(HloInstruction* new_operand) {
+  return Cast<HloFusionInstruction>(this)->AddFusionOperand(new_operand);
+}
+
+// Delegates to HloFusionInstruction::MergeFusionInstruction.
+void HloInstruction::MergeFusionInstruction(
+    HloInstruction* instruction_to_merge) {
+  return Cast<HloFusionInstruction>(this)->MergeFusionInstruction(
+      Cast<HloFusionInstruction>(instruction_to_merge));
+}
+
+// Delegates to HloFusionInstruction::MergeFusionInstructionIntoMultiOutput.
+void HloInstruction::MergeFusionInstructionIntoMultiOutput(
+    HloInstruction* instruction_to_merge) {
+  return Cast<HloFusionInstruction>(this)
+      ->MergeFusionInstructionIntoMultiOutput(
+          Cast<HloFusionInstruction>(instruction_to_merge));
+}
+
+HloInstruction* HloInstruction::FuseInstruction(
+    HloInstruction* instruction_to_fuse) {
+  return Cast<HloFusionInstruction>(this)->FuseInstruction(instruction_to_fuse);
+}
+
+HloInstruction* HloInstruction::FuseInstructionIntoMultiOutput(
+    HloInstruction* instruction_to_fuse) {
+  return Cast<HloFusionInstruction>(this)->FuseInstructionIntoMultiOutput(
+      instruction_to_fuse);
+}
+
+HloComputation* HloInstruction::fused_instructions_computation() const {
+  return Cast<HloFusionInstruction>(this)->fused_instructions_computation();
+}
+
+HloInstruction* HloInstruction::fused_expression_root() const {
+  return Cast<HloFusionInstruction>(this)->fused_expression_root();
+}
+
+const tensorflow::gtl::iterator_range<UnwrappingIterator<
+    std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
+HloInstruction::fused_instructions() const {
+  return Cast<HloFusionInstruction>(this)->fused_instructions();
+}
+
+const tensorflow::gtl::iterator_range<
+    UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
+HloInstruction::fused_instructions() {
+  return Cast<HloFusionInstruction>(this)->fused_instructions();
+}
+
+int64 HloInstruction::fused_instruction_count() const {
+  return Cast<HloFusionInstruction>(this)->fused_instruction_count();
+}
+
+HloInstruction* HloInstruction::fused_parameter(int64 parameter_number) const {
+  return Cast<HloFusionInstruction>(this)->fused_parameter(parameter_number);
+}
+
+const std::vector<HloInstruction*>& HloInstruction::fused_parameters() const {
+  return Cast<HloFusionInstruction>(this)->fused_parameters();
+}
+
+const bool HloInstruction::IsMultiOutputFusion() const {
+  const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(this);
+  return fusion != nullptr && fusion->IsMultiOutputFusion();
+}
+
+HloInstruction::FusionKind HloInstruction::fusion_kind() const {
+  return Cast<HloFusionInstruction>(this)->fusion_kind();
+}
+
+void HloInstruction::set_fusion_kind(FusionKind kind) {
+  return Cast<HloFusionInstruction>(this)->set_fusion_kind(kind);
+}
+
+RandomDistribution HloInstruction::random_distribution() const {
+  return Cast<HloRngInstruction>(this)->random_distribution();
+}
+
+int64 HloInstruction::parameter_number() const {
+  return Cast<HloParameterInstruction>(this)->parameter_number();
+}
+
+int64 HloInstruction::tuple_index() const {
+  return Cast<HloGetTupleElementInstruction>(this)->tuple_index();
+}
+
+int32 HloInstruction::exponent_bits() const {
+  return Cast<HloReducePrecisionInstruction>(this)->exponent_bits();
+}
+
+int32 HloInstruction::mantissa_bits() const {
+  return Cast<HloReducePrecisionInstruction>(this)->mantissa_bits();
+}
+
+string HloInstruction::infeed_config() const {
+  return Cast<HloInfeedInstruction>(this)->infeed_config();
+}
+
+void HloInstruction::set_infeed_config(const string& config) {
+  return Cast<HloInfeedInstruction>(this)->set_infeed_config(config);
+}
+
+const Shape& HloInstruction::outfeed_shape() const {
+  return Cast<HloOutfeedInstruction>(this)->outfeed_shape();
+}
+
+const string& HloInstruction::outfeed_config() const {
+  return Cast<HloOutfeedInstruction>(this)->outfeed_config();
+}
+
+const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
+  return Cast<HloCollectiveInstruction>(this)->replica_groups();
+}
+
+const std::vector<std::pair<int64, int64>>&
+HloInstruction::source_target_pairs() const {
+  return Cast<HloCollectivePermuteInstruction>(this)->source_target_pairs();
+}
+
+string HloInstruction::cross_replica_sum_barrier() const {
+  return Cast<HloAllReduceInstruction>(this)->cross_replica_sum_barrier();
+}
+
+void HloInstruction::set_cross_replica_sum_barrier(const string& barrier) {
+  return Cast<HloAllReduceInstruction>(this)->set_cross_replica_sum_barrier(
+      barrier);
+}
+
+absl::optional<int64> HloInstruction::all_reduce_id() const {
+  return Cast<HloAllReduceInstruction>(this)->all_reduce_id();
+}
+
+void HloInstruction::set_all_reduce_id(
+    const absl::optional<int64>& all_reduce_id) {
+  return Cast<HloAllReduceInstruction>(this)->set_all_reduce_id(all_reduce_id);
+}
+
+const ConvolutionDimensionNumbers&
+HloInstruction::convolution_dimension_numbers() const {
+  if (auto convolution = DynCast<HloConvolutionInstruction>(this)) {
+    return convolution->convolution_dimension_numbers();
+  }
+  if (auto custom_call = DynCast<HloCustomCallInstruction>(this)) {
+    return custom_call->convolution_dimension_numbers();
+  }
+  LOG(FATAL) << "Unimplemented method.";
+}
+
+void HloInstruction::set_convolution_dimension_numbers(
+    const ConvolutionDimensionNumbers& dnums) {
+  if (auto convolution = DynCast<HloConvolutionInstruction>(this)) {
+    convolution->set_convolution_dimension_numbers(dnums);
+  } else if (auto custom_call = DynCast<HloCustomCallInstruction>(this)) {
+    custom_call->set_convolution_dimension_numbers(dnums);
+  } else {
+    LOG(FATAL) << "Unimplemented method.";
   }
 }
 
+int64 HloInstruction::feature_group_count() const {
+  if (auto convolution = DynCast<HloConvolutionInstruction>(this)) {
+    return convolution->feature_group_count();
+  }
+  return Cast<HloCustomCallInstruction>(this)->feature_group_count();
+}
+
+void HloInstruction::set_feature_group_count(int64 feature_group_count) {
+  Cast<HloCustomCallInstruction>(this)->set_feature_group_count(
+      feature_group_count);
+}
+
+HloComputation* HloInstruction::select() const {
+  return Cast<HloSelectAndScatterInstruction>(this)->select();
+}
+
+HloComputation* HloInstruction::scatter() const {
+  return Cast<HloSelectAndScatterInstruction>(this)->scatter();
+}
+
+void HloInstruction::set_select(HloComputation* computation) {
+  return Cast<HloSelectAndScatterInstruction>(this)->set_select(computation);
+}
+
+void HloInstruction::set_scatter(HloComputation* computation) {
+  return Cast<HloSelectAndScatterInstruction>(this)->set_scatter(computation);
+}
+
+const string& HloInstruction::custom_call_target() const {
+  return Cast<HloCustomCallInstruction>(this)->custom_call_target();
+}
+
+const PaddingConfig& HloInstruction::padding_config() const {
+  return Cast<HloPadInstruction>(this)->padding_config();
+}
+
+int64 HloInstruction::slice_sizes(int64 dimension) const {
+  return Cast<HloDynamicSliceInstruction>(this)->slice_sizes(dimension);
+}
+
+const std::vector<int64>& HloInstruction::dynamic_slice_sizes() const {
+  return Cast<HloDynamicSliceInstruction>(this)->dynamic_slice_sizes();
+}
+
+const GatherDimensionNumbers& HloInstruction::gather_dimension_numbers() const {
+  return Cast<HloGatherInstruction>(this)->gather_dimension_numbers();
+}
+
+absl::Span<const int64> HloInstruction::gather_slice_sizes() const {
+  return Cast<HloGatherInstruction>(this)->gather_slice_sizes();
+}
+
+const ScatterDimensionNumbers& HloInstruction::scatter_dimension_numbers()
+    const {
+  return Cast<HloScatterInstruction>(this)->scatter_dimension_numbers();
+}
+
+const DotDimensionNumbers& HloInstruction::dot_dimension_numbers() const {
+  return Cast<HloDotInstruction>(this)->dot_dimension_numbers();
+}
+
+const DomainMetadata& HloInstruction::operand_side_metadata() const {
+  return Cast<HloDomainInstruction>(this)->operand_side_metadata();
+}
+
+const DomainMetadata& HloInstruction::user_side_metadata() const {
+  return Cast<HloDomainInstruction>(this)->user_side_metadata();
+}
 }  // namespace xla

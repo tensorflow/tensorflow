@@ -35,14 +35,14 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import training as train
 
 
-@test_util.with_c_api
 class MemoryOptimizerSwapTest(test.TestCase):
   """Tests the Grappler memory optimizer."""
 
+  @test_util.run_deprecated_v1
   def testNoSwapping(self):
     """Make sure the graph is preserved when there is nothing to swap."""
-    a = variables.Variable(10, name='a')
-    b = variables.Variable(20, name='b')
+    a = variables.VariableV1(10, name='a')
+    b = variables.VariableV1(20, name='b')
     c = math_ops.add_n([a, b], name='c')
     d = math_ops.add_n([b, c], name='d')
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
@@ -51,19 +51,22 @@ class MemoryOptimizerSwapTest(test.TestCase):
     graph_size = len(mg.graph_def.node)
     nodes = [node.name for node in mg.graph_def.node]
 
-    rewriter_config = rewriter_config_pb2.RewriterConfig(
-        disable_model_pruning=True,
-        constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
-        memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL)
-    graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.CopyFrom(
+        rewriter_config_pb2.RewriterConfig(
+            disable_model_pruning=True,
+            constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+            memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL))
+    graph = tf_optimizer.OptimizeGraph(config, mg)
 
     self.assertEqual(len(graph.node), graph_size)
     self.assertItemsEqual([node.name for node in graph.node], nodes)
 
+  @test_util.run_deprecated_v1
   def testSimpleSwap(self):
     """Check that the swap annotations are followed."""
-    a = variables.Variable(10, name='a')
-    b = variables.Variable(20, name='b')
+    a = variables.VariableV1(10, name='a')
+    b = variables.VariableV1(20, name='b')
     c = math_ops.add_n([a, b], name='c')
     d = math_ops.add_n([b, c], name='d')
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
@@ -74,11 +77,15 @@ class MemoryOptimizerSwapTest(test.TestCase):
     mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
     graph_size = len(mg.graph_def.node)
 
-    rewriter_config = rewriter_config_pb2.RewriterConfig(
-        disable_model_pruning=True,
-        constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
-        memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL)
-    graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.CopyFrom(
+        rewriter_config_pb2.RewriterConfig(
+            disable_model_pruning=True,
+            meta_optimizer_iterations=rewriter_config_pb2.RewriterConfig.ONE,
+            constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+            memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL,
+            min_graph_nodes=-1))
+    graph = tf_optimizer.OptimizeGraph(config, mg)
 
     self.assertEqual(len(graph.node), graph_size + 2)
     self.assertTrue(
@@ -95,7 +102,6 @@ class MemoryOptimizerSwapTest(test.TestCase):
         self.assertEqual('c', node.input[1])
 
 
-@test_util.with_c_api
 class MemoryOptimizerRecomputeTest(test.TestCase):
   """Tests the Python interface to recomputation rewrites.
 
@@ -128,15 +134,18 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
   def testRewritingDefaultGradientNames(self):
     """Tests that rewriting occurs with default gradient names."""
     (original_metagraph, _, _, _) = self._GetMetaGraph()
-    rewritten_graph_def = tf_optimizer.OptimizeGraph(
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.CopyFrom(
         rewriter_config_pb2.RewriterConfig(
             disable_model_pruning=True,
             constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
             dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
-            memory_optimization=rewriter_config_pb2.RewriterConfig.
-            RECOMPUTATION_HEURISTICS), original_metagraph)
+            min_graph_nodes=-1,
+            memory_optimization=(
+                rewriter_config_pb2.RewriterConfig.RECOMPUTATION_HEURISTICS)))
+    rewritten_graph_def = tf_optimizer.OptimizeGraph(config, original_metagraph)
     self.assertGreater(
         len(rewritten_graph_def.node),
         len(original_metagraph.graph_def.node))
@@ -153,18 +162,20 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
     """Tests that rewriting occurs with non-standard gradient names."""
     (original_metagraph, _, _, _) = self._GetMetaGraph(
         optimizer_scope_name='optimizer')
-    rewritten_graph_def = tf_optimizer.OptimizeGraph(
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.CopyFrom(
         rewriter_config_pb2.RewriterConfig(
             disable_model_pruning=True,
             constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
             dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
-            memory_optimization=rewriter_config_pb2.RewriterConfig.
-            RECOMPUTATION_HEURISTICS,
+            min_graph_nodes=-1,
+            memory_optimization=rewriter_config_pb2.RewriterConfig
+            .RECOMPUTATION_HEURISTICS,
             # Checks that name scope "gradients/" also match sub-scope.
-            memory_optimizer_target_node_name_scope='gradients/'),
-        original_metagraph)
+            memory_optimizer_target_node_name_scope='gradients/'))
+    rewritten_graph_def = tf_optimizer.OptimizeGraph(config, original_metagraph)
     self.assertGreater(
         len(rewritten_graph_def.node),
         len(original_metagraph.graph_def.node))
@@ -181,18 +192,19 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
     """Tests that rewriting occurs with non-standard gradient names."""
     (original_metagraph, _, _,
      _) = self._GetMetaGraph(optimizer_scope_name='foo/bar')
-    rewritten_graph_def = tf_optimizer.OptimizeGraph(
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.CopyFrom(
         rewriter_config_pb2.RewriterConfig(
             disable_model_pruning=True,
             constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
             dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
-            memory_optimization=rewriter_config_pb2.RewriterConfig.
-            RECOMPUTATION_HEURISTICS,
+            memory_optimization=rewriter_config_pb2.RewriterConfig
+            .RECOMPUTATION_HEURISTICS,
             # This should not match anything.
-            memory_optimizer_target_node_name_scope='r/gradients/'),
-        original_metagraph)
+            memory_optimizer_target_node_name_scope='r/gradients/'))
+    rewritten_graph_def = tf_optimizer.OptimizeGraph(config, original_metagraph)
     self.assertEqual(
         len(rewritten_graph_def.node), len(original_metagraph.graph_def.node))
     self.assertEqual(0,
@@ -222,10 +234,10 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
       train_op = graph.get_operation_by_name(train_op_name)
       loss_op = graph.get_tensor_by_name(loss_op_name)
       with session.Session(config=config, graph=graph) as sess:
-        sess.run(init_op)
-        sess.run(train_op)
-        sess.run(train_op)
-        return sess.run(loss_op)
+        self.evaluate(init_op)
+        self.evaluate(train_op)
+        self.evaluate(train_op)
+        return self.evaluate(loss_op)
 
   def testRecomputationRewritingNoErrors(self):
     """Tests that graph output is not significantly different with rewriting."""
@@ -243,7 +255,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
         init_op_name=init_op_name,
         train_op_name=train_op_name,
         loss_op_name=loss_op_name)
-    self.assertAllClose(original_loss, memory_optimized_loss, rtol=1e-4)
+    self.assertAllClose(original_loss, memory_optimized_loss, rtol=1e-2)
 
   def _annotated_graph(self):
     graph = ops.Graph()
@@ -286,8 +298,8 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
           rewrite_options=manual_memory_config)
       session_config = config_pb2.ConfigProto(graph_options=graph_options)
       with session.Session(config=session_config) as sess:
-        sess.run(init_op)
-        sess.run(train_op)
+        self.evaluate(init_op)
+        self.evaluate(train_op)
 
   def testHintDoesRewrite(self):
     graph = self._annotated_graph()[0]
@@ -297,10 +309,12 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
         0,
         len([node for node in metagraph.graph_def.node
              if 'Recomputed/' in node.name]))
-    rewritten_graph_def = tf_optimizer.OptimizeGraph(
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.CopyFrom(
         rewriter_config_pb2.RewriterConfig(
-            memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL),
-        metagraph)
+            min_graph_nodes=-1,
+            memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL))
+    rewritten_graph_def = tf_optimizer.OptimizeGraph(config, metagraph)
     self.assertEqual(
         9,
         len([node for node in rewritten_graph_def.node

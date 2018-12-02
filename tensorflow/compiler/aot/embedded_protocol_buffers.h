@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_AOT_EMBEDDED_PROTOCOL_BUFFERS_H_
 #define TENSORFLOW_COMPILER_AOT_EMBEDDED_PROTOCOL_BUFFERS_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -27,45 +28,63 @@ namespace tensorflow {
 namespace tfcompile {
 using xla::StatusOr;
 
-// Represents a protocol buffer embedded into an object file and describes a way
-// to access it at runtime.
-struct EmbeddedProtocolBuffer {
-  // cpp_shim_expression is a C++ expression that creates an instance of said
-  // protocol buffer when executed.
-  string cpp_shim_expression;
+// Represents a set of protocol buffers embedded into an object file and
+// describes how to access them at runtime.
+struct EmbeddedProtocolBuffers {
+  // Each instance CPPShim describes how to generate C++ code to instantiate a
+  // protobuf instance from the corresponding static data emitted into the
+  // object file.
+  struct CPPShim {
+    // `expression` is a C++ expression that creates an instance of said
+    // protocol buffer when executed.
+    string expression;
 
-  // cpp_variable_decl is an "extern C" array declaration that is used in
-  // cpp_shim_expression.  It must be visible wherever cpp_shim_expression is
-  // emitted.
-  string cpp_variable_decl;
+    // `variable_decl` is an "extern C" array declaration that is used in
+    // `expression`.  It must be visible wherever `expression` is emitted.
+    string variable_decl;
+  };
 
-  // The contents of the object (".o") file the protocol buffer is embbed in.
-  // This needs to be linked in to any program that wants to execute
-  // cpp_variable_decl .
+  // Each cpp_shim corresponds to one embedded protocol buffer.
+  std::vector<CPPShim> cpp_shims;
+
+  // The contents of the object (".o") file the protocol buffers are embbed in.
+  // This needs to be linked in to any program that wants to execute any of the
+  // expressions in `cpp_shims`.
   string object_file_data;
 };
 
-// Creates an object file that contains `proto`.
-//
-// `proto` is allowed to be nullptr, in which case the generated C++ shim
-// expression is just `nullptr`, and the generated object file does not define
-// any symbols.
+// Describes a protocol buffer to embed into an object file.
+struct ProtobufToEmbed {
+  // `symbol_prefix` is prefix that is guaranteed to be unique across the binary
+  // or DSO the generated object file will be linked into.
+  string symbol_prefix;
+
+  // `qualified_cpp_protobuf_name` is a qualified ("qualified" as in C++
+  // namespace qualified) protocol buffer name.  This is only used in
+  // CPPShim::expression so relatively qualified names are fine as long as
+  // they're valid wherever CPPShim::expression is emitted.
+  string qualified_cpp_protobuf_name;
+
+  // `message` is the protocol buffer to be embedded.  It is allowed to be
+  // nullptr, in which case the generated C++ shim expression is just `nullptr`,
+  // and the generated object file does not define any symbols.
+  const ::tensorflow::protobuf::MessageLite* message;
+};
+
+// Embeds a sequence of protocol buffers into an object file.
 //
 // `target_triple` is the target triple for the target architecture for the
 // generated object file.
 //
-// `symbol_prefix` is prefix that is guaranteed to be unique across the binary
-// or DSO the generated object file will be linked into.
-//
-// `qualified_cpp_protobuf_name` is a qualified ("qualified" as in C++
-// namespace qualified) protocol buffer name.  This needs is only used in
-// EmbeddedProtocolBuffer::cpp_shim_expression so relatively qualified
-// names are fine as long as they're valid wherever cpp_shim_expression
-// is emitted.
-StatusOr<EmbeddedProtocolBuffer> CreateEmbeddedProtocolBuffer(
-    StringPiece target_triple, StringPiece symbol_prefix,
-    StringPiece qualified_cpp_protobuf_name,
-    const ::tensorflow::protobuf::MessageLite* proto);
+// `protobufs_to_embed` describes the protocol buffers to embed into the
+// resulting object file.  The C++ shim for protobufs_to_embed[i] is
+// cpp_shims[i] in the returned EmbeddedProtocolBuffers instance.  The contents
+// of all the protocol buffers are embedded into a single .o file whose content
+// is stored in the object_file_data field in the returned
+// EmbeddedProtocolBuffers instance.
+StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
+    absl::string_view target_triple,
+    absl::Span<const ProtobufToEmbed> protobufs_to_embed);
 
 }  // namespace tfcompile
 }  // namespace tensorflow

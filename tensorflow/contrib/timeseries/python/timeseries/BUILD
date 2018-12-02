@@ -88,10 +88,13 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/estimator:export",
+        "//tensorflow/python/feature_column",
     ],
 )
 
@@ -103,9 +106,11 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     tags = [
+        "no_mac",
         "no_pip_gpu",  # b/63391119
         "nomsan",  # Takes too long to run.
         "notsan",  # b/67865658
+        "optonly",  # Takes too long to run without optimization.
     ],
     deps = [
         ":ar_model",
@@ -132,7 +137,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":feature_keys",
-        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -141,36 +145,46 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/estimator:export",
-        "//tensorflow/python/estimator:head",
-        "//tensorflow/python/estimator:metric_keys",
     ],
 )
 
 py_test(
     name = "head_test",
+    size = "large",
     srcs = [
         "head_test.py",
     ],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip_gpu"],  # b/63391119
     deps = [
+        ":estimators",
         ":feature_keys",
         ":head",
+        ":input_pipeline",
         ":model",
         ":state_management",
+        "//tensorflow/contrib/timeseries/examples:lstm",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
+        "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
     ],
 )
 
@@ -233,6 +247,7 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "no_pip",  # b/64527635
         "no_pip_gpu",  # b/63391119
     ],
@@ -440,16 +455,4 @@ py_test(
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

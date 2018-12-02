@@ -112,7 +112,7 @@ bool ExplicitVectorMatrixOptimization<Eigen::half>(
 template <typename Device, typename T>
 struct LaunchMatMulBase {
 #if GOOGLE_CUDA
-  typedef perftools::gputools::blas::AlgorithmType AlgorithmType;
+  typedef se::blas::AlgorithmType AlgorithmType;
 #else
   typedef int64 AlgorithmType;
 #endif  // GOOGLE_CUDA
@@ -160,15 +160,12 @@ namespace {
 
 template <typename T>
 struct LaunchBlasGemv {
-  static void Compute(
-      OpKernelContext* ctx, perftools::gputools::Stream* stream, bool trans,
-      uint64 m, uint64 n, const perftools::gputools::DeviceMemory<T>& a,
-      const perftools::gputools::DeviceMemory<T>& b,
-      perftools::gputools::DeviceMemory<T>* c,
-      perftools::gputools::blas::ProfileResult* output_profile) {
-    const auto blas_trans =
-        trans ? perftools::gputools::blas::Transpose::kTranspose
-              : perftools::gputools::blas::Transpose::kNoTranspose;
+  static void Compute(OpKernelContext* ctx, se::Stream* stream, bool trans,
+                      uint64 m, uint64 n, const se::DeviceMemory<T>& a,
+                      const se::DeviceMemory<T>& b, se::DeviceMemory<T>* c,
+                      se::blas::ProfileResult* output_profile) {
+    const auto blas_trans = trans ? se::blas::Transpose::kTranspose
+                                  : se::blas::Transpose::kNoTranspose;
     if (output_profile == nullptr) {
       bool blas_launch_status =
           stream
@@ -198,11 +195,10 @@ struct LaunchBlasGemv {
 
 template <>
 void LaunchBlasGemv<Eigen::half>::Compute(
-    OpKernelContext* ctx, perftools::gputools::Stream* stream, bool trans,
-    uint64 m, uint64 n, const perftools::gputools::DeviceMemory<Eigen::half>& a,
-    const perftools::gputools::DeviceMemory<Eigen::half>& b,
-    perftools::gputools::DeviceMemory<Eigen::half>* c,
-    perftools::gputools::blas::ProfileResult* output_profile) {
+    OpKernelContext* ctx, se::Stream* stream, bool trans, uint64 m, uint64 n,
+    const se::DeviceMemory<Eigen::half>& a,
+    const se::DeviceMemory<Eigen::half>& b, se::DeviceMemory<Eigen::half>* c,
+    se::blas::ProfileResult* output_profile) {
   ctx->SetStatus(errors::Internal(
       "Blas GEMV launch failed: GEMV is not implemented for float16."));
 }
@@ -219,10 +215,9 @@ bool ShouldUseGemv(uint64 n) {
 
 }  // namespace
 
-bool GetCublasAutotuneComputationType(
-    const DataType& dtype,
-    perftools::gputools::blas::ComputationType* compute_type) {
-  using perftools::gputools::blas::ComputationType;
+bool GetCublasAutotuneComputationType(const DataType& dtype,
+                                      se::blas::ComputationType* compute_type) {
+  using se::blas::ComputationType;
   bool use_f32_for_f16_computation = MatmulDoFP32ComputationFP16Input();
   switch (dtype) {
     case DT_HALF:
@@ -250,7 +245,7 @@ struct MatmulAutoTuneGroup {
   static string name() { return "Matmul"; }
 };
 typedef AutoTuneSingleton<MatmulAutoTuneGroup, MatmulParameters,
-                          perftools::gputools::blas::AlgorithmConfig>
+                          se::blas::AlgorithmConfig>
     AutoTuneMatmul;
 
 template <typename T>
@@ -259,14 +254,14 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
       OpKernelContext* ctx, const Tensor& a, const Tensor& b,
       const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
       std::vector<int64>* algorithms, bool use_autotune, Tensor* out) {
-    using perftools::gputools::blas::AlgorithmConfig;
-    using perftools::gputools::blas::ComputationType;
-    using perftools::gputools::blas::kDefaultAlgorithm;
-    using perftools::gputools::blas::kDefaultBlasGemm;
-    using perftools::gputools::blas::kDefaultBlasGemv;
-    using perftools::gputools::blas::kNoAlgorithm;
-    using perftools::gputools::blas::ProfileResult;
-    using perftools::gputools::blas::Transpose;
+    using se::blas::AlgorithmConfig;
+    using se::blas::ComputationType;
+    using se::blas::kDefaultAlgorithm;
+    using se::blas::kDefaultBlasGemm;
+    using se::blas::kDefaultBlasGemv;
+    using se::blas::kNoAlgorithm;
+    using se::blas::ProfileResult;
+    using se::blas::Transpose;
     Transpose trans[] = {Transpose::kNoTranspose, Transpose::kTranspose};
     const uint64 m = a.dim_size(1 - dim_pair[0].first);
     const uint64 k = a.dim_size(dim_pair[0].first);
@@ -458,10 +453,14 @@ class MatMulOp : public OpKernel {
     const Tensor& b = ctx->input(1);
 
     // Check that the dimensions of the two matrices are valid.
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a.shape()),
-                errors::InvalidArgument("In[0] is not a matrix"));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b.shape()),
-                errors::InvalidArgument("In[1] is not a matrix"));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(a.shape()),
+        errors::InvalidArgument("In[0] is not a matrix. Instead it has shape ",
+                                a.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(b.shape()),
+        errors::InvalidArgument("In[1] is not a matrix. Instead it has shape ",
+                                b.shape().DebugString()));
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
     dim_pair[0].first = transpose_a_ ? 0 : 1;
     dim_pair[0].second = transpose_b_ ? 1 : 0;
@@ -493,8 +492,31 @@ class MatMulOp : public OpKernel {
       return;
     }
 
-    LaunchMatMul<Device, T, USE_CUBLAS>::launch(
-        ctx, a, b, dim_pair, &algorithms_, use_autotune_, out);
+    if (std::is_same<T, bfloat16>::value) {
+      bool is_cpu = std::is_same<Device, CPUDevice>::value;
+      OP_REQUIRES(ctx, is_cpu,
+                  errors::Internal("bfloat16 matmul is not supported by GPU"));
+      Tensor a_float, b_float, out_float;
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, a.shape(), &a_float));
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, b.shape(), &b_float));
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(DT_FLOAT, out->shape(), &out_float));
+
+      // TODO: Avoid extra copy to make bfloat16 matmul efficient on CPU.
+      BFloat16ToFloat(a.flat<bfloat16>().data(), a_float.flat<float>().data(),
+                      a.NumElements());
+      BFloat16ToFloat(b.flat<bfloat16>().data(), b_float.flat<float>().data(),
+                      b.NumElements());
+
+      LaunchMatMul<Device, float, USE_CUBLAS>::launch(
+          ctx, a_float, b_float, dim_pair, &algorithms_, use_autotune_,
+          &out_float);
+      FloatToBFloat16(out_float.flat<float>().data(),
+                      out->flat<bfloat16>().data(), out->NumElements());
+    } else {
+      LaunchMatMul<Device, T, USE_CUBLAS>::launch(
+          ctx, a, b, dim_pair, &algorithms_, use_autotune_, out);
+    }
   }
 
  private:
@@ -556,35 +578,56 @@ struct MatMulFunctor<SYCLDevice, T> {
                               .Label("cublas"),                    \
                           MatMulOp<GPUDevice, T, true /* cublas */>)
 
-#if defined(INTEL_MKL)
-// MKL does not support half and int32 types for matrix-multiplication, so
-// register the kernel to use default Eigen based implementations for these
-// types. Registration for NO-LABEL version is in mkl_matmul_op.cc
-TF_CALL_float(REGISTER_CPU_EIGEN);
-TF_CALL_double(REGISTER_CPU_EIGEN);
-TF_CALL_half(REGISTER_CPU);
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 
+// MKL supports float, double, complex64 and complex128 types for
+// matrix-multiplication, and these kernels are registered in mkl_matmul_op.cc.
+// MKL does not support half, bfloat16, int32 and int64 types for
+// matrix-multiplication, so register the kernel to use default Eigen based
+// implementations for these types. REGISTER_CPU defines two versions - Eigen
+// label and NO-LABEL
+TF_CALL_half(REGISTER_CPU);
+TF_CALL_bfloat16(REGISTER_CPU);
 TF_CALL_int32(REGISTER_CPU);
+TF_CALL_int64(REGISTER_CPU);
+
+// Float is supported in both MKL DNN as well as in MKL ML
+// Registration for NO-LABEL version is in mkl_matmul_op.cc for types supported
+// by MKL. However we define Eigen label version here just to pass a few unit
+// tests
+TF_CALL_float(REGISTER_CPU_EIGEN);
+
+// MKL DNN does not support complex64/complex128/double, if user specifies
+// to use only opensource MKL DNN then use default implementation for these
+// types otherwise use GEMM from MKL ML binary
+
+#if defined(INTEL_MKL_DNN_ONLY)
+TF_CALL_complex64(REGISTER_CPU);
+TF_CALL_complex128(REGISTER_CPU);
+TF_CALL_double(REGISTER_CPU);
+#else  // INTEL_MKL_DNN_ONLY
 TF_CALL_complex64(REGISTER_CPU_EIGEN);
 TF_CALL_complex128(REGISTER_CPU_EIGEN);
-#else
+TF_CALL_double(REGISTER_CPU_EIGEN);
+#endif  // INTEL_MKL_DNN_ONLY
+
+#else   // INTEL_MKL && ENABLE_MKL
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_half(REGISTER_CPU);
-
+TF_CALL_bfloat16(REGISTER_CPU);
 TF_CALL_int32(REGISTER_CPU);
+TF_CALL_int64(REGISTER_CPU);
 TF_CALL_complex64(REGISTER_CPU);
 TF_CALL_complex128(REGISTER_CPU);
-#endif
+#endif  // INTEL_MKL && ENABLE_MKL
 
 #if GOOGLE_CUDA
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
-#if CUDA_VERSION >= 7050
 TF_CALL_half(REGISTER_GPU);
-#endif
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL

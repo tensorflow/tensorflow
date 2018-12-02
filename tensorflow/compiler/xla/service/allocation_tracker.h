@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -45,14 +46,13 @@ class AllocationTracker {
   // Registers a shaped buffer of device memory, and returns a corresponding
   // handle that can be used for talking to XLA clients. The given shaped buffer
   // will be treated as the buffer corresponding to the only replica.
-  StatusOr<GlobalDataHandle> Register(
-      std::unique_ptr<ShapedBuffer> shaped_buffer, const string& tag);
+  StatusOr<GlobalDataHandle> Register(ScopedShapedBuffer shaped_buffer,
+                                      const string& tag);
 
   // Registers a vector of shaped buffers of device memory, one per replica, and
   // returns a corresponding handle that can be used for talking to XLA clients.
   StatusOr<GlobalDataHandle> RegisterReplicatedBuffers(
-      std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers,
-      const string& tag);
+      std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag);
 
   // Unregister the allocation for the given data handle.
   Status Unregister(const GlobalDataHandle& data);
@@ -65,22 +65,19 @@ class AllocationTracker {
   // replica, or provide an error status to say whether any of those buffers
   // were not found (or found, but found deallocated).
   StatusOr<std::vector<const ShapedBuffer*>> Resolve(
-      const GlobalDataHandle& data);
+      const GlobalDataHandle& data) const;
 
   // Resolves a handle from an XLA client and replica id to a shaped buffer, or
   // provide an error status to say whether it was not found (or found, but
   // found deallocated).
   StatusOr<const ShapedBuffer*> ResolveForReplica(const GlobalDataHandle& data,
-                                                  int replica_id);
+                                                  int replica_id) const;
 
  private:
   // Data structure encapsulating single memory allocation on the device.
   struct Allocation {
     // The pointer to this allocation.
-    perftools::gputools::DeviceMemoryBase device_memory;
-
-    // The device that the memory is allocated on.
-    int device_ordinal;
+    OwningDeviceMemory device_memory;
 
     // This is the number of times this memory allocation is referred to by
     // registered data handles.
@@ -88,35 +85,35 @@ class AllocationTracker {
   };
 
   // Internal helper which resolves the given GlobalDataHandle to a
-  // ShapedBuffer.
+  // list of ScopedShapedBuffers.
   StatusOr<std::vector<const ShapedBuffer*>> ResolveInternal(
-      const GlobalDataHandle& data) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      const GlobalDataHandle& data) const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Internal helper which registers a vector of shaped buffers, one per
-  // replica.
+  // replica.  ShapedBufferTy is either ScopedShapedBuffer or ShapedBuffer.  If
+  // it's ShapedBuffer, all of the given buffers must already be tracked by this
+  // object -- presumably this is a call from DeconstructTuple.
+  template <typename ShapedBufferTy>
   StatusOr<GlobalDataHandle> RegisterInternal(
-      std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers,
-      const string& tag) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  // Resets the shaped buffers corresponding to the given handle.
-  Status Reset(const GlobalDataHandle& data) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      std::vector<ShapedBufferTy> replicated_buffers, const string& tag)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Adds the given device address to the allocation tracker, or if it already
-  // exists, then increment it's reference count.
-  void AddAllocationOrIncrementRefCount(
-      perftools::gputools::DeviceMemoryBase device_memory, int device_ordinal)
+  // exists, then increment its reference count.
+  void AddAllocationOrIncrementRefCount(se::DeviceMemoryBase device_memory,
+                                        int device_ordinal)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Decrements the reference count of the given device memory. Then, if it is
   // zero, deallocate the memory.
-  Status DecrementRefCount(perftools::gputools::DeviceMemoryBase device_memory,
+  Status DecrementRefCount(se::DeviceMemoryBase device_memory,
                            int device_ordinal) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // A map from device memory opaque value to allocation. One such map is
   // maintained per device ordinal.
-  using AllocationMap = tensorflow::gtl::FlatMap<const void*, Allocation>;
+  using AllocationMap = absl::flat_hash_map<const void*, Allocation>;
 
-  tensorflow::mutex mutex_;
+  mutable tensorflow::mutex mutex_;
 
   // Backend to use with this tracker. The backend supplies the memory allocator
   // to use when deallocating memory.
@@ -127,12 +124,27 @@ class AllocationTracker {
   int64 next_handle_ GUARDED_BY(mutex_);
 
   // A map from device ordinal to AllocationMap.
-  tensorflow::gtl::FlatMap<int, AllocationMap> opaque_to_allocation_map_
+  absl::flat_hash_map<int, AllocationMap> opaque_to_allocation_map_
       GUARDED_BY(mutex_);
 
   // A map from data handle to a vector of shaped buffers that represent the
   // buffers for different replicas.
-  tensorflow::gtl::FlatMap<int64, std::vector<std::unique_ptr<ShapedBuffer>>>
+  //
+  // The ShapedBuffers in this map's vectors need to be unique_ptrs, because our
+  // public API returns pointers to them.  We expect the concrete class to be
+  // ShapedBuffer and never ScopedShapedBuffer; deallocation of buffers is
+  // handled by opaque_to_allocation_map_.
+  //
+  // The elements of the vectors need to be unique_ptrs because we return
+  // pointers to them.  (In theory we could use std::list or something instead,
+  // but we also want to be able to null out these elements.)
+  //
+  // The reason that the elements can't be unique_ptr<ScopedShapedBuffer>s is
+  // the existence of DeconstructTuple().  This function allows us to create a
+  // non-owning "view" into a tuple's sub-buffers.  The sub-buffers are then
+  // free'd when both the view *and* the original tuple are Unregistered.  This
+  // refcounting is managed in opaque_to_allocation_map_.
+  absl::flat_hash_map<int64, std::vector<std::unique_ptr<ShapedBuffer>>>
       handle_to_shaped_buffers_ GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(AllocationTracker);

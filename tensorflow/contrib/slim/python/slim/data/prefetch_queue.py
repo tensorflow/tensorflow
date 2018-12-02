@@ -36,9 +36,9 @@ def prefetch_queue(tensors,
                    dynamic_pad=False,
                    shared_name=None,
                    name=None):
-  """Creates a queue to prefetech tensors from `tensors`.
+  """Creates a queue to prefetch tensors from `tensors`.
 
-  A queue runner for enqueing tensors into the prefetch_queue is automatically
+  A queue runner for enqueuing tensors into the prefetch_queue is automatically
   added to the TF QueueRunners collection.
 
   Example:

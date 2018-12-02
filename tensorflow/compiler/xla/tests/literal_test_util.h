@@ -21,219 +21,132 @@ limitations under the License.
 #include <random>
 #include <string>
 
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
+#include "tensorflow/compiler/xla/error_spec.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
-// Structure describing permissible absolute and relative error bounds.
-struct ErrorSpec {
-  explicit ErrorSpec(float aabs, float arel = 0, bool relaxed_nans = false)
-      : abs(aabs), rel(arel), relaxed_nans(relaxed_nans) {}
-
-  float abs;  // Absolute error bound.
-  float rel;  // Relative error bound.
-
-  // If relaxed_nans is true then any result is valid if we are expecting NaNs.
-  // In effect, this allows the tested operation to produce incorrect results
-  // for inputs outside its mathematical domain.
-  bool relaxed_nans;
-};
-
 // Utility class for making expectations/assertions related to XLA literals.
 class LiteralTestUtil {
  public:
   // Asserts that the given shapes have the same rank, dimension sizes, and
   // primitive types.
-  static ::testing::AssertionResult EqualShapes(const Shape& expected,
-                                                const Shape& actual);
-  static void AssertEqualShapes(const Shape& expected, const Shape& actual);
+  static ::testing::AssertionResult EqualShapes(
+      const Shape& expected, const Shape& actual) TF_MUST_USE_RESULT;
 
   // Asserts that the provided shapes are equal as defined in AssertEqualShapes
   // and that they have the same layout.
-  static void AssertEqualShapesAndLayouts(const Shape& expected,
-                                          const Shape& actual);
+  static ::testing::AssertionResult EqualShapesAndLayouts(
+      const Shape& expected, const Shape& actual) TF_MUST_USE_RESULT;
 
-  // If the given literal's data type is bfloat16, converts it to a float
-  // literal; otherwise, returns a copy of it. If the literal is a tuple,
-  // recursively converts its elements.
-  static std::unique_ptr<Literal> ConvertBF16ToF32(const Literal& bf16_literal);
-
-  // If the given literal's data type is float, converts it to a bfloat16
-  // literal; otherwise, returns a copy of it. If the literal is a tuple,
-  // recursively converts its elements.
-  static std::unique_ptr<Literal> ConvertF32ToBF16(const Literal& f32_literal);
-
-  // Asserts that the expected and actual literals are (bitwise) equal for all
-  // elements in the literal. Also, asserts that the rank, dimensions sizes, and
-  // primitive type are equal.
-  static ::testing::AssertionResult Equal(
-      const Literal& expected, const Literal& actual) TF_MUST_USE_RESULT;
-
-  // Expects that expected and actual are Equal.
-  static void ExpectEqual(const Literal& expected, const Literal& actual,
-                          const string& message = "");
-
-  // Expects that expected and actual are Not Equal.
-  static void ExpectNotEqual(const Literal& expected, const Literal& actual);
+  static ::testing::AssertionResult Equal(const LiteralSlice& expected,
+                                          const LiteralSlice& actual)
+      TF_MUST_USE_RESULT;
 
   // Asserts the given literal are (bitwise) equal to given expected values.
   template <typename NativeT>
-  static void ExpectR0Equal(NativeT expected, const Literal& actual);
+  static void ExpectR0Equal(NativeT expected, const LiteralSlice& actual);
+
   template <typename NativeT>
-  static void ExpectR1Equal(tensorflow::gtl::ArraySlice<NativeT> expected,
-                            const Literal& actual);
+  static void ExpectR1Equal(absl::Span<const NativeT> expected,
+                            const LiteralSlice& actual);
   template <typename NativeT>
   static void ExpectR2Equal(
       std::initializer_list<std::initializer_list<NativeT>> expected,
-      const Literal& actual);
+      const LiteralSlice& actual);
+
   template <typename NativeT>
   static void ExpectR3Equal(
       std::initializer_list<
           std::initializer_list<std::initializer_list<NativeT>>>
           expected,
-      const Literal& actual);
+      const LiteralSlice& actual);
 
   // Asserts the given literal are (bitwise) equal to given array.
   template <typename NativeT>
   static void ExpectR2EqualArray2D(const Array2D<NativeT>& expected,
-                                   const Literal& actual);
+                                   const LiteralSlice& actual);
   template <typename NativeT>
   static void ExpectR3EqualArray3D(const Array3D<NativeT>& expected,
-                                   const Literal& actual);
+                                   const LiteralSlice& actual);
   template <typename NativeT>
   static void ExpectR4EqualArray4D(const Array4D<NativeT>& expected,
-                                   const Literal& actual);
+                                   const LiteralSlice& actual);
 
-  // Asserts that the expected and actual literals are within the given error
-  // bound for all elements. Also, asserts that the rank, dimensions sizes, and
-  // bounds are equivalent.
+  // Decorates literal_comparison::Near() with an AssertionResult return type.
   //
-  // Tuples are matched recursively.  When comparing tensors of
-  // non-floating-point type, checks for exact equality, ignoring the ErroSpec.
-  //
-  // If the shape of the literals is neither a complex/floating-point tensor nor
-  // a tuple which contains a complex/floating-point tensor, Near() is
-  // equivalent to Equal().  We don't raise an error in this case, because we
-  // want to allow callers to call Near() even if they have no preconceptions
-  // about the shapes being compared.
+  // See comment on literal_comparison::Near().
   static ::testing::AssertionResult Near(
-      const Literal& expected, const Literal& actual,
-      const ErrorSpec& error) TF_MUST_USE_RESULT;
-
-  // Expects expected and actual to be Near with the given error.
-  static void ExpectNear(const Literal& expected, const Literal& actual,
-                         const ErrorSpec& error, const string& message = "");
+      const LiteralSlice& expected, const LiteralSlice& actual,
+      const ErrorSpec& error_spec,
+      bool detailed_message = false) TF_MUST_USE_RESULT;
 
   // Asserts the given literal are within the given error bound of the given
   // expected values. Only supported for floating point values.
   template <typename NativeT>
-  static void ExpectR0Near(NativeT expected, const Literal& actual,
+  static void ExpectR0Near(NativeT expected, const LiteralSlice& actual,
                            const ErrorSpec& error);
+
   template <typename NativeT>
-  static void ExpectR1Near(tensorflow::gtl::ArraySlice<NativeT> expected,
-                           const Literal& actual, const ErrorSpec& error);
+  static void ExpectR1Near(absl::Span<const NativeT> expected,
+                           const LiteralSlice& actual, const ErrorSpec& error);
+
   template <typename NativeT>
   static void ExpectR2Near(
       std::initializer_list<std::initializer_list<NativeT>> expected,
-      const Literal& actual, const ErrorSpec& error);
+      const LiteralSlice& actual, const ErrorSpec& error);
+
   template <typename NativeT>
   static void ExpectR3Near(
       std::initializer_list<
           std::initializer_list<std::initializer_list<NativeT>>>
           expected,
-      const Literal& actual, const ErrorSpec& error);
+      const LiteralSlice& actual, const ErrorSpec& error);
+
   template <typename NativeT>
   static void ExpectR4Near(
       std::initializer_list<std::initializer_list<
           std::initializer_list<std::initializer_list<NativeT>>>>
           expected,
-      const Literal& actual, const ErrorSpec& error);
+      const LiteralSlice& actual, const ErrorSpec& error);
 
   // Asserts the given literal are within the given error bound to the given
   // array. Only supported for floating point values.
   template <typename NativeT>
   static void ExpectR2NearArray2D(const Array2D<NativeT>& expected,
-                                  const Literal& actual,
+                                  const LiteralSlice& actual,
                                   const ErrorSpec& error);
+
   template <typename NativeT>
   static void ExpectR3NearArray3D(const Array3D<NativeT>& expected,
-                                  const Literal& actual,
+                                  const LiteralSlice& actual,
                                   const ErrorSpec& error);
+
   template <typename NativeT>
   static void ExpectR4NearArray4D(const Array4D<NativeT>& expected,
-                                  const Literal& actual,
+                                  const LiteralSlice& actual,
                                   const ErrorSpec& error);
 
   // If the error spec is given, returns whether the expected and the actual are
   // within the error bound; otherwise, returns whether they are equal. Tuples
   // will be compared recursively.
   static ::testing::AssertionResult NearOrEqual(
-      const Literal& expected, const Literal& actual,
-      const tensorflow::gtl::optional<ErrorSpec>& error) TF_MUST_USE_RESULT;
-
-  // If the error spec is given, expects the expected and the actual to be near;
-  // otherwise, expects them to be equal. Tuples will be compared recursively.
-  static void ExpectNearOrEqual(
-      const Literal& expected, const Literal& actual,
-      const tensorflow::gtl::optional<ErrorSpec>& error);
-
-  // Returns a multi-dimensional index as a string. For example: '{7, 8}' will
-  // be returned for a 2-dimensional index with dimension 0 index equal to 7,
-  // dimension 1 equal to 8.
-  static string MultiIndexAsString(
-      tensorflow::gtl::ArraySlice<int64> multi_index);
-
-  // Creates a literal with a new shape with the given new dimensions using the
-  // data in the given input literal. For reshaping purposes the (flat) data
-  // buffer of the input literal is assumed to have the given minor_to_major
-  // layout order.
-  static std::unique_ptr<Literal> Reshape(
-      tensorflow::gtl::ArraySlice<int64> new_dimensions,
-      tensorflow::gtl::ArraySlice<int64> minor_to_major,
-      const Literal& literal);
-
-  // Creates a literal with the supplied shape, and uses the provided value
-  // generator to populate the literal's values.
-  // Returns the new literal object, or an error Status if failed.
-  template <
-      PrimitiveType type,
-      typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
-  static StatusOr<std::unique_ptr<Literal>> CreateRandomLiteral(
-      const Shape& shape,
-      const std::function<T(tensorflow::gtl::ArraySlice<int64>)>& generator);
-
-  // Creates a literal with the supplied shape, and initializes the literal
-  // values using a normal distribution with given mean and stddev standard
-  // deviation, and using the engine as entropy generator.
-  // Returns the new literal object, or an error Status if failed.
-  template <
-      PrimitiveType type, typename E,
-      typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
-  static StatusOr<std::unique_ptr<Literal>> CreateRandomLiteral(
-      const Shape& shape, E* engine, T mean, T stddev);
-
-  // Creates a literal with the supplied shape, and initializes the literal
-  // values using a normal distribution with given mean and stddev standard
-  // deviation.
-  // Returns the new literal object, or an error Status if failed.
-  template <
-      PrimitiveType type,
-      typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
-  static StatusOr<std::unique_ptr<Literal>> CreateRandomLiteral(
-      const Shape& shape, T mean, T stddev);
+      const LiteralSlice& expected, const LiteralSlice& actual,
+      const absl::optional<ErrorSpec>& error) TF_MUST_USE_RESULT;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(LiteralTestUtil);
@@ -241,76 +154,76 @@ class LiteralTestUtil {
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR0Equal(NativeT expected,
-                                                 const Literal& actual) {
-  ExpectEqual(*Literal::CreateR0<NativeT>(expected), actual);
+                                                 const LiteralSlice& actual) {
+  EXPECT_TRUE(Equal(LiteralUtil::CreateR0<NativeT>(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR1Equal(
-    tensorflow::gtl::ArraySlice<NativeT> expected, const Literal& actual) {
-  ExpectEqual(*Literal::CreateR1<NativeT>(expected), actual);
+    absl::Span<const NativeT> expected, const LiteralSlice& actual) {
+  EXPECT_TRUE(Equal(LiteralUtil::CreateR1<NativeT>(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR2Equal(
     std::initializer_list<std::initializer_list<NativeT>> expected,
-    const Literal& actual) {
-  ExpectEqual(*Literal::CreateR2<NativeT>(expected), actual);
+    const LiteralSlice& actual) {
+  EXPECT_TRUE(Equal(LiteralUtil::CreateR2<NativeT>(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR3Equal(
     std::initializer_list<std::initializer_list<std::initializer_list<NativeT>>>
         expected,
-    const Literal& actual) {
-  ExpectEqual(*Literal::CreateR3<NativeT>(expected), actual);
+    const LiteralSlice& actual) {
+  EXPECT_TRUE(Equal(LiteralUtil::CreateR3<NativeT>(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR2EqualArray2D(
-    const Array2D<NativeT>& expected, const Literal& actual) {
-  ExpectEqual(*Literal::CreateR2FromArray2D(expected), actual);
+    const Array2D<NativeT>& expected, const LiteralSlice& actual) {
+  EXPECT_TRUE(Equal(LiteralUtil::CreateR2FromArray2D(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR3EqualArray3D(
-    const Array3D<NativeT>& expected, const Literal& actual) {
-  ExpectEqual(*Literal::CreateR3FromArray3D(expected), actual);
+    const Array3D<NativeT>& expected, const LiteralSlice& actual) {
+  EXPECT_TRUE(Equal(LiteralUtil::CreateR3FromArray3D(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR4EqualArray4D(
-    const Array4D<NativeT>& expected, const Literal& actual) {
-  ExpectEqual(*Literal::CreateR4FromArray4D(expected), actual);
+    const Array4D<NativeT>& expected, const LiteralSlice& actual) {
+  EXPECT_TRUE(Equal(LiteralUtil::CreateR4FromArray4D(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR0Near(NativeT expected,
-                                                const Literal& actual,
+                                                const LiteralSlice& actual,
                                                 const ErrorSpec& error) {
-  ExpectNear(*Literal::CreateR0<NativeT>(expected), actual, error);
+  EXPECT_TRUE(Near(LiteralUtil::CreateR0<NativeT>(expected), actual, error));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR1Near(
-    tensorflow::gtl::ArraySlice<NativeT> expected, const Literal& actual,
+    absl::Span<const NativeT> expected, const LiteralSlice& actual,
     const ErrorSpec& error) {
-  ExpectNear(*Literal::CreateR1<NativeT>(expected), actual, error);
+  EXPECT_TRUE(Near(LiteralUtil::CreateR1<NativeT>(expected), actual, error));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR2Near(
     std::initializer_list<std::initializer_list<NativeT>> expected,
-    const Literal& actual, const ErrorSpec& error) {
-  ExpectNear(*Literal::CreateR2<NativeT>(expected), actual, error);
+    const LiteralSlice& actual, const ErrorSpec& error) {
+  EXPECT_TRUE(Near(LiteralUtil::CreateR2<NativeT>(expected), actual, error));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR3Near(
     std::initializer_list<std::initializer_list<std::initializer_list<NativeT>>>
         expected,
-    const Literal& actual, const ErrorSpec& error) {
-  ExpectNear(*Literal::CreateR3<NativeT>(expected), actual, error);
+    const LiteralSlice& actual, const ErrorSpec& error) {
+  EXPECT_TRUE(Near(LiteralUtil::CreateR3<NativeT>(expected), actual, error));
 }
 
 template <typename NativeT>
@@ -318,63 +231,29 @@ template <typename NativeT>
     std::initializer_list<std::initializer_list<
         std::initializer_list<std::initializer_list<NativeT>>>>
         expected,
-    const Literal& actual, const ErrorSpec& error) {
-  ExpectNear(*Literal::CreateR4<NativeT>(expected), actual, error);
+    const LiteralSlice& actual, const ErrorSpec& error) {
+  EXPECT_TRUE(Near(LiteralUtil::CreateR4<NativeT>(expected), actual, error));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR2NearArray2D(
-    const Array2D<NativeT>& expected, const Literal& actual,
+    const Array2D<NativeT>& expected, const LiteralSlice& actual,
     const ErrorSpec& error) {
-  ExpectNear(*Literal::CreateR2FromArray2D(expected), actual, error);
+  EXPECT_TRUE(Near(LiteralUtil::CreateR2FromArray2D(expected), actual, error));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR3NearArray3D(
-    const Array3D<NativeT>& expected, const Literal& actual,
+    const Array3D<NativeT>& expected, const LiteralSlice& actual,
     const ErrorSpec& error) {
-  ExpectNear(*Literal::CreateR3FromArray3D(expected), actual, error);
+  EXPECT_TRUE(Near(LiteralUtil::CreateR3FromArray3D(expected), actual, error));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR4NearArray4D(
-    const Array4D<NativeT>& expected, const Literal& actual,
+    const Array4D<NativeT>& expected, const LiteralSlice& actual,
     const ErrorSpec& error) {
-  ExpectNear(*Literal::CreateR4FromArray4D(expected), actual, error);
-}
-
-template <PrimitiveType type, typename T>
-/* static */ StatusOr<std::unique_ptr<Literal>>
-LiteralTestUtil::CreateRandomLiteral(
-    const Shape& shape,
-    const std::function<T(tensorflow::gtl::ArraySlice<int64>)>& generator) {
-  using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
-  TF_RET_CHECK(shape.element_type() == type);
-  std::unique_ptr<Literal> literal = Literal::CreateFromShape(shape);
-  TF_RETURN_IF_ERROR(literal.get()->Populate<NativeT>(
-      [&](tensorflow::gtl::ArraySlice<int64> indexes) {
-        return generator(indexes);
-      }));
-  return std::move(literal);
-}
-
-template <PrimitiveType type, typename E, typename T>
-/* static */ StatusOr<std::unique_ptr<Literal>>
-LiteralTestUtil::CreateRandomLiteral(const Shape& shape, E* engine, T mean,
-                                     T stddev) {
-  using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
-  std::normal_distribution<NativeT> generator(mean, stddev);
-  return CreateRandomLiteral<type, NativeT>(
-      shape, [&](tensorflow::gtl::ArraySlice<int64> /*indexes*/) {
-        return generator(*engine);
-      });
-}
-
-template <PrimitiveType type, typename T>
-/* static */ StatusOr<std::unique_ptr<Literal>>
-LiteralTestUtil::CreateRandomLiteral(const Shape& shape, T mean, T stddev) {
-  std::minstd_rand0 engine;
-  return CreateRandomLiteral<type>(shape, &engine, mean, stddev);
+  EXPECT_TRUE(Near(LiteralUtil::CreateR4FromArray4D(expected), actual, error));
 }
 
 }  // namespace xla

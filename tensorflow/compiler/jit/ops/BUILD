@@ -4,6 +4,8 @@ package(
     default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+
 cc_library(
     name = "xla_ops",
     srcs = ["xla_ops.cc"],
@@ -11,23 +13,14 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "parallel_check_op",
-    srcs = ["parallel_check_op.cc"],
-    deps = ["//tensorflow/core:framework"],
-    alwayslink = 1,
+tf_gen_op_wrapper_py(
+    name = "xla_ops_wrapper_py",
+    out = "xla_ops.py",
+    deps = ["//tensorflow/compiler/jit/ops:xla_ops"],
 )
 
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+py_library(
+    name = "xla_ops_grad",
+    srcs = ["xla_ops_grad.py"],
+    deps = ["//tensorflow/python:framework_ops"],
 )

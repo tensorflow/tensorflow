@@ -132,8 +132,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
         meaning the quadratic form `x^H A x` has positive real part for all
         nonzero `x`.  Note that we do not require the operator to be
         self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix\
-            #Extension_for_non_symmetric_matrices
+        https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
 
@@ -229,11 +228,14 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     return diag_mat * x
 
   def _determinant(self):
-    return math_ops.reduce_prod(self._diag, reduction_indices=[-1])
+    return math_ops.reduce_prod(self._diag, axis=[-1])
 
   def _log_abs_determinant(self):
-    return math_ops.reduce_sum(
-        math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
+    log_det = math_ops.reduce_sum(
+        math_ops.log(math_ops.abs(self._diag)), axis=[-1])
+    if self.dtype.is_complex:
+      log_det = math_ops.cast(log_det, dtype=self.dtype)
+    return log_det
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     diag_term = math_ops.conj(self._diag) if adjoint else self._diag

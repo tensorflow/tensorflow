@@ -22,9 +22,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "grpc++/grpc++.h"
+#include "grpcpp/grpcpp.h"
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -66,6 +67,8 @@ class GrpcChannelCache {
   //  /job:<job identifier>/task:<task id>
   // e.g. /job:mnist/task:2
   virtual void ListWorkers(std::vector<string>* workers) = 0;
+  virtual void ListWorkersInJob(const string& job_name,
+                                std::vector<string>* workers) = 0;
 
   // If found, returns a gRPC channel that is connected to the remote
   // worker named by 'target'. 'target' is of the following
@@ -84,11 +87,14 @@ GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& channel_spec,
 
 // Below here are internal-only functions.
 
+::grpc::ChannelArguments GetChannelArguments(const RPCOptions* rpc_options);
+
 ChannelCreationFunction ConvertToChannelCreationFunction(
-    const std::function<Status(string, SharedGrpcChannelPtr*)>&
-        new_channel_func_ptr);
+    const std::function<Status(string, const RPCOptions*,
+                               SharedGrpcChannelPtr*)>& new_channel_func_ptr);
 
 Status NewHostPortGrpcChannel(const string& target,
+                              const RPCOptions* rpc_options,
                               SharedGrpcChannelPtr* channel_pointer);
 
 }  // namespace tensorflow

@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/python/lib/core/py_util.h"
 
+// Place `<locale>` before <Python.h> to avoid build failure in macOS.
+#include <locale>
+
+// The empty line above is on purpose as otherwise clang-format will
+// automatically move <Python.h> before <locale>.
+#include <Python.h>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include <Python.h>
 
 namespace tensorflow {
 namespace {

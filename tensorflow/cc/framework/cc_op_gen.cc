@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
@@ -272,6 +273,12 @@ string PrintAttrValue(const string& op, const AttrValue& attr_value) {
   return "<Unknown AttrValue type>";  // Prevent missing return warning
 }
 
+bool IsEmptyList(const AttrValue::ListValue& list) {
+  return list.s_size() == 0 && list.i_size() == 0 && list.f_size() == 0 &&
+         list.b_size() == 0 && list.type_size() == 0 &&
+         list.shape_size() == 0 && list.tensor_size() == 0;
+}
+
 string ToCamelCase(const string& str) {
   string result;
   const char joiner = '_';
@@ -296,9 +303,9 @@ string ToCamelCase(const string& str) {
 // indicate whether to treat the type as const when accepting the C++ type as an
 // argument to a function.
 std::pair<const char*, bool> AttrTypeName(StringPiece attr_type) {
-  static const std::unordered_map<StringPiece, std::pair<const char*, bool>,
-                                  StringPieceHasher>
-      attr_type_map{
+  static const auto* attr_type_map =
+      new std::unordered_map<StringPiece, std::pair<const char*, bool>,
+                             StringPieceHasher>{
           {"string", {"StringPiece", false}},
           {"list(string)", {"gtl::ArraySlice<string>", true}},
           {"int", {"int64", false}},
@@ -316,10 +323,30 @@ std::pair<const char*, bool> AttrTypeName(StringPiece attr_type) {
           {"func", {"NameAttrList", true}},
       };
 
-  auto entry = attr_type_map.find(attr_type);
-  if (entry == attr_type_map.end()) {
+  auto entry = attr_type_map->find(attr_type);
+  if (entry == attr_type_map->end()) {
     LOG(FATAL) << "Unsupported Attr type: " << attr_type;
     return {"", false};
+  }
+  return entry->second;
+}
+
+const char* ListElementTypeName(StringPiece attr_type) {
+  static const auto* attr_list_type_map =
+      new std::unordered_map<StringPiece, const char*, StringPieceHasher>{
+          {"list(string)", "string"},
+          {"list(int)", "int"},
+          {"list(float)", "float"},
+          {"list(bool)", "bool"},
+          {"list(type)", "DataType"},
+          {"list(shape)", "PartialTensorShape"},
+          {"list(tensor)", "TensorProto"},
+      };
+
+  auto entry = attr_list_type_map->find(attr_type);
+  if (entry == attr_list_type_map->end()) {
+    LOG(FATAL) << "Unsupported or non-list Attr type: " << attr_type;
+    return "";
   }
   return entry->second;
 }
@@ -439,7 +466,7 @@ string AvoidCPPKeywords(StringPiece name) {
   if (IsCPPKeyword(name)) {
     return strings::StrCat(name, "_");
   }
-  return name.ToString();
+  return string(name);
 }
 
 void InferArgAttributes(const OpDef::ArgDef& arg,
@@ -479,15 +506,6 @@ bool HasOptionalAttrs(
     }
   }
   return false;
-}
-
-const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
-  for (int i = 0; i < api_def.in_arg_size(); ++i) {
-    if (api_def.in_arg(i).name() == name) {
-      return &api_def.in_arg(i);
-    }
-  }
-  return nullptr;
 }
 
 struct OpInfo {
@@ -667,6 +685,7 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
 string OpInfo::GetOpAttrStruct() const {
   string struct_fields;
   string setters;
+  string defaults_static_storage;
 
   for (int i = 0; i < graph_op_def.attr_size(); ++i) {
     const auto& attr(graph_op_def.attr(i));
@@ -704,11 +723,32 @@ string OpInfo::GetOpAttrStruct() const {
                        "_ = x;\n");
     strings::StrAppend(&setters, "      return ret;\n    }\n\n");
 
-    strings::StrAppend(
-        &struct_fields, "    ", attr_type_name, " ", api_def_attr.rename_to(),
-        "_ = ",
-        PrintAttrValue(graph_op_def.name(), api_def_attr.default_value()),
-        ";\n");
+    string field_initiliazer;
+    auto& default_value = api_def_attr.default_value();
+    if (default_value.value_case() == AttrValue::kList &&
+        !IsEmptyList(default_value.list())) {
+      // Non-empty lists need static storage for their defaults. Define a
+      // function with static local variable that stores the array.
+      strings::StrAppend(&defaults_static_storage, "    static ",
+                         attr_type_name, " Default_", api_def_attr.rename_to(),
+                         "() {\n");
+      strings::StrAppend(
+          &defaults_static_storage, "      static const ",
+          ListElementTypeName(attr.type()), " kStorage[] = ",
+          PrintAttrValue(graph_op_def.name(), api_def_attr.default_value()),
+          ";\n");
+      strings::StrAppend(&defaults_static_storage, "      return ",
+                         attr_type_name, "(kStorage);\n    }\n");
+      // Set the field_initializer to call the defined function.
+      strings::StrAppend(&field_initiliazer, "Default_",
+                         api_def_attr.rename_to(), "()");
+    } else {
+      field_initiliazer =
+          PrintAttrValue(graph_op_def.name(), api_def_attr.default_value());
+    }
+    strings::StrAppend(&struct_fields, "    ", attr_type_name, " ",
+                       api_def_attr.rename_to(), "_ = ", field_initiliazer,
+                       ";\n");
   }
 
   if (struct_fields.empty()) {
@@ -720,6 +760,9 @@ string OpInfo::GetOpAttrStruct() const {
   string struct_decl = MakeComment(attrs_comment, "  ");
   strings::StrAppend(&struct_decl, "  struct Attrs {\n");
   strings::StrAppend(&struct_decl, setters, struct_fields);
+  if (!defaults_static_storage.empty()) {
+    strings::StrAppend(&struct_decl, "  private:\n", defaults_static_storage);
+  }
   strings::StrAppend(&struct_decl, "  };\n");
 
   return struct_decl;
@@ -810,11 +853,7 @@ void OpInfo::WriteClassDecl(WritableFile* h) const {
     }
   }
 
-  strings::StrAppend(&class_decl, "\n");
-
-  if (output_types.empty()) {
-    strings::StrAppend(&class_decl, "  Operation operation;\n");
-  }
+  strings::StrAppend(&class_decl, "\n  Operation operation;\n");
   for (int i = 0; i < output_types.size(); ++i) {
     strings::StrAppend(&class_decl, "  ", output_types[i], " ", output_names[i],
                        ";\n");
@@ -835,9 +874,11 @@ void OpInfo::GetOutput(string* out) const {
   string return_on_error =
       strings::StrCat("if (!", scope_str, ".ok()) return;");
 
+  strings::StrAppend(out, "  this->operation = Operation(ret);\n");
+
   // No outputs.
   if (graph_op_def.output_arg_size() == 0) {
-    strings::StrAppend(out, "  this->operation = Operation(ret);\n  return;\n");
+    strings::StrAppend(out, "  return;\n");
     return;
   }
   if (graph_op_def.output_arg_size() == 1) {

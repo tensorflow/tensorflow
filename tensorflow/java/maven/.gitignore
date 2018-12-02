@@ -11,4 +11,10 @@ tensorflow/src
 tensorflow/target
 proto/src
 proto/target
+hadoop/src
+hadoop/target
+spark-connector/src
+spark-connector/target
+spark-connector/dependency-reduced-pom.xml
+spark-connector/spark-warehouse
 pom.xml.versionsBackup

@@ -29,7 +29,7 @@ class SquareBijectorTest(test.TestCase):
   """Tests the correctness of the Y = X ** 2 transformation."""
 
   def testBijectorScalar(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = bijectors.Square(validate_args=True)
       self.assertEqual("square", bijector.name)
       x = [[[1., 5],
@@ -41,15 +41,16 @@ class SquareBijectorTest(test.TestCase):
       self.assertAllClose(y, bijector.forward(x).eval())
       self.assertAllClose(x, bijector.inverse(y).eval())
       self.assertAllClose(
-          ildj, bijector.inverse_log_det_jacobian(y).eval(), atol=0., rtol=1e-7)
+          ildj, bijector.inverse_log_det_jacobian(
+              y, event_ndims=0).eval(), atol=0., rtol=1e-7)
       self.assertAllClose(
-          -bijector.inverse_log_det_jacobian(y).eval(),
-          bijector.forward_log_det_jacobian(x).eval(),
+          -bijector.inverse_log_det_jacobian(y, event_ndims=0).eval(),
+          bijector.forward_log_det_jacobian(x, event_ndims=0).eval(),
           atol=0.,
           rtol=1e-7)
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = bijectors.Square(validate_args=True)
       assert_scalar_congruency(bijector, lower_x=1e-3, upper_x=1.5, rtol=0.05)
 

@@ -56,6 +56,7 @@ tf_py_test(
     srcs = ["input_data_test.py"],
     additional_deps = [
         ":input_data",
+        ":models",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -96,6 +97,31 @@ tf_py_test(
     srcs = ["freeze_test.py"],
     additional_deps = [
         ":freeze",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_binary(
+    name = "wav_to_features",
+    srcs = [
+        "wav_to_features.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":input_data",
+        ":models",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+tf_py_test(
+    name = "wav_to_features_test",
+    size = "small",
+    srcs = ["wav_to_features_test.py"],
+    additional_deps = [
+        ":wav_to_features",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -244,16 +270,4 @@ tf_cc_binary(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

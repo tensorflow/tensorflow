@@ -26,10 +26,3 @@ from __future__ import print_function
 from tensorflow.python.saved_model.main_op_impl import main_op
 from tensorflow.python.saved_model.main_op_impl import main_op_with_restore
 # pylint: enable=unused-import
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = [
-    "main_op",
-    "main_op_with_restore",
-]
-remove_undocumented(__name__, _allowed_symbols)

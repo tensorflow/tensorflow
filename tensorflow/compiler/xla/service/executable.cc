@@ -15,32 +15,33 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/executable.h"
 
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 
-using tensorflow::gtl::ArraySlice;
 
 namespace xla {
 
-StatusOr<std::vector<std::unique_ptr<ShapedBuffer>>>
-Executable::ExecuteOnStreams(
-    ArraySlice<const ServiceExecutableRunOptions> run_options,
-    ArraySlice<ArraySlice<const ShapedBuffer*>> arguments) {
+StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
+    absl::Span<const ServiceExecutableRunOptions> run_options,
+    absl::Span<const absl::Span<const ShapedBuffer* const>> arguments) {
   TF_RET_CHECK(run_options.size() == arguments.size());
 
-  std::vector<std::unique_ptr<ShapedBuffer>> return_values(run_options.size());
+  std::vector<ScopedShapedBuffer> return_values;
+  return_values.reserve(run_options.size());
 
   if (run_options.size() == 1) {
-    TF_ASSIGN_OR_RETURN(return_values[0],
+    TF_ASSIGN_OR_RETURN(auto rv,
                         ExecuteOnStream(&run_options[0], arguments[0],
                                         /*hlo_execution_profile=*/nullptr));
+    return_values.push_back(std::move(rv));
     return std::move(return_values);
   }
 
@@ -48,8 +49,9 @@ Executable::ExecuteOnStreams(
     // We cannot BlockHostUntilDone() on the already-launched executions in case
     // of error, since if the executions communicate, the initially launched
     // executions may never complete if not all executions are running.
-    TF_ASSIGN_OR_RETURN(return_values[i],
+    TF_ASSIGN_OR_RETURN(auto rv,
                         ExecuteAsyncOnStream(&run_options[i], arguments[i]));
+    return_values.push_back(std::move(rv));
   }
   for (const auto& options : run_options) {
     TF_RET_CHECK(options.stream() != nullptr);
@@ -58,13 +60,13 @@ Executable::ExecuteOnStreams(
   return std::move(return_values);
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> Executable::ExecuteOnStreamWrapper(
+StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
-    ArraySlice<const ShapedBuffer*> arguments) {
-  perftools::gputools::Stream* stream = run_options->stream();
-  std::unique_ptr<perftools::gputools::Timer> timer;
+    absl::Span<const ShapedBuffer* const> arguments) {
+  se::Stream* stream = run_options->stream();
+  std::unique_ptr<se::Timer> timer;
   if (profile != nullptr) {
-    timer.reset(new perftools::gputools::Timer(stream->parent()));
+    timer.reset(new se::Timer(stream->parent()));
     stream->InitTimer(timer.get()).ThenStartTimer(timer.get());
   }
 
@@ -74,12 +76,24 @@ StatusOr<std::unique_ptr<ShapedBuffer>> Executable::ExecuteOnStreamWrapper(
   std::unique_ptr<HloExecutionProfile> profile_ptr =
       module_config().debug_options().xla_hlo_profile() &&
               hlo_profiling_enabled()
-          ? MakeUnique<HloExecutionProfile>(&hlo_profile_printer_data(),
-                                            &hlo_profile_index_map())
+          ? absl::make_unique<HloExecutionProfile>(&hlo_profile_printer_data(),
+                                                   &hlo_profile_index_map())
           : nullptr;
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> return_value =
+  StatusOr<ScopedShapedBuffer> return_value =
       ExecuteOnStream(run_options, arguments, profile_ptr.get());
+  if (!return_value.status().ok()) {
+    if (profile != nullptr) {
+      // Ensure the ThenStartTimer call has completed before we destroy timer.
+      // We already have a failure status to return, so just log this if it
+      // fails.
+      Status status = stream->BlockHostUntilDone();
+      if (!status.ok()) {
+        LOG(ERROR) << "Failed to BlockHostUntilDone: " << status;
+      }
+    }
+    return return_value.status();
+  }
 
   if (profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
@@ -113,6 +127,11 @@ StatusOr<std::unique_ptr<ShapedBuffer>> Executable::ExecuteOnStreamWrapper(
     if (profile->compute_time_ns() == 0) {
       profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
     }
+
+    const int64 executable_size_in_bytes = SizeInBytes();
+    if (executable_size_in_bytes != 0) {
+      profile->set_executable_size_in_bytes(executable_size_in_bytes);
+    }
   }
 
   if (profile_ptr != nullptr) {
@@ -126,23 +145,24 @@ StatusOr<std::unique_ptr<ShapedBuffer>> Executable::ExecuteOnStreamWrapper(
   return return_value;
 }
 
-Status Executable::DumpSessionModule() {
-  TF_RET_CHECK(dumping());
+int64 Executable::SizeInBytes() { return -1; }
+
+Status Executable::DumpHloSnapshot() {
+  TF_RET_CHECK(dumping_snapshot());
+  TF_RET_CHECK(hlo_snapshot_->has_hlo() &&
+               hlo_snapshot_->hlo().has_hlo_module());
   const string& directory_path =
       module_config().debug_options().xla_dump_executions_to();
-  VersionedComputationHandle versioned_handle = entry_computation_handle();
-  // This filename does not include the version number because the computation
-  // is only ever executed at one version.
-  string filename = tensorflow::strings::Printf(
-      "computation_%lld__%s__execution_%lld", versioned_handle.handle.handle(),
-      session_module_->entry().name().c_str(), ++execution_count_);
-  return Executable::DumpToDirectory(directory_path, filename,
-                                     *session_module_);
+  const auto& module = hlo_snapshot_->hlo().hlo_module();
+  string filename =
+      absl::StrFormat("computation_%d__%s__execution_%d", module.id(),
+                      module.entry_computation_name(), ++execution_count_);
+  return Executable::DumpToDirectory(directory_path, filename, *hlo_snapshot_);
 }
 
 /* static */ Status Executable::DumpToDirectory(
     const string& directory_path, string filename,
-    const SessionModule& session_module) {
+    const HloSnapshot& hlo_session) {
   tensorflow::Env* env = tensorflow::Env::Default();
   if (!env->IsDirectory(directory_path).ok()) {
     // NB! CreateDir does not work reliably with multiple XLA threads -- two
@@ -155,7 +175,7 @@ Status Executable::DumpSessionModule() {
   string file_path = tensorflow::io::JoinPath(directory_path, filename);
   string result;
   TF_RET_CHECK(
-      tensorflow::SerializeToStringDeterministic(session_module, &result));
+      tensorflow::SerializeToStringDeterministic(hlo_session, &result));
   return tensorflow::WriteStringToFile(tensorflow::Env::Default(), file_path,
                                        result);
 }

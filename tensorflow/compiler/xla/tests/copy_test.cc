@@ -16,9 +16,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -39,56 +40,56 @@ class CopyOpTest : public HloTestBase {
  protected:
   void TestCopyOp(const Literal& literal) {
     auto builder = HloComputation::Builder(TestName());
-    auto constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(literal.CloneToUnique()));
+    auto constant =
+        builder.AddInstruction(HloInstruction::CreateConstant(literal.Clone()));
     builder.AddInstruction(HloInstruction::CreateUnary(
         constant->shape(), HloOpcode::kCopy, constant));
     auto computation = builder.Build();
-    auto module = CreateNewModule();
+    auto module = CreateNewUnverifiedModule();
     module->AddEntryComputation(std::move(computation));
 
-    std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
-    LiteralTestUtil::ExpectEqual(literal, *result);
+    Literal result = ExecuteAndTransfer(std::move(module), {});
+    EXPECT_TRUE(LiteralTestUtil::Equal(literal, result));
   }
 
   void TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3);
   void TestCopyConstantLayoutR4(size_t n1, size_t n2, size_t n3, size_t n4,
-                                tensorflow::gtl::ArraySlice<int64> permutation);
+                                absl::Span<const int64> permutation);
 };
 
 XLA_TEST_F(CopyOpTest, CopyR0Bool) {
-  TestCopyOp(*Literal::CreateR0<bool>(true));
+  TestCopyOp(LiteralUtil::CreateR0<bool>(true));
 }
 
 XLA_TEST_F(CopyOpTest, CopyR1S0U32) {
-  TestCopyOp(*Literal::CreateR1<uint32>({}));
+  TestCopyOp(LiteralUtil::CreateR1<uint32>({}));
 }
 
 XLA_TEST_F(CopyOpTest, CopyR1S3U32) {
-  TestCopyOp(*Literal::CreateR1<uint32>({1, 2, 3}));
+  TestCopyOp(LiteralUtil::CreateR1<uint32>({1, 2, 3}));
 }
 
 XLA_TEST_F(CopyOpTest, CopyR3F32_2x2x3) {
-  TestCopyOp(*Literal::CreateR3({{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
-                                 {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}}));
+  TestCopyOp(LiteralUtil::CreateR3({{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
+                                    {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}}));
 }
 
 XLA_TEST_F(CopyOpTest, CopyR4S32_2x2x3x2) {
-  TestCopyOp(*Literal::CreateR4(
+  TestCopyOp(LiteralUtil::CreateR4(
       {{{{1, -2}, {-4, 5}, {6, 7}}, {{8, 9}, {10, 11}, {12, 13}}},
        {{{10, 3}, {7, -2}, {3, 6}}, {{2, 5}, {-11, 5}, {-2, -5}}}}));
 }
 
 XLA_TEST_F(CopyOpTest, CopyR4S32_0x2x3x2) {
-  TestCopyOp(*Literal::CreateR4FromArray4D(Array4D<int32>(0, 2, 3, 2)));
+  TestCopyOp(LiteralUtil::CreateR4FromArray4D(Array4D<int32>(0, 2, 3, 2)));
 }
 
 XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
   auto builder = HloComputation::Builder(TestName());
 
   // Copy literal to device to use as parameter.
-  auto literal = Literal::CreateR0<float>(42.0);
-  Shape shape = literal->shape();
+  auto literal = LiteralUtil::CreateR0<float>(42.0);
+  Shape shape = literal.shape();
 
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param0"));
@@ -97,18 +98,17 @@ XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
 
   auto computation = builder.Build();
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(std::move(computation));
 
-  std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(module), {literal.get()});
-  LiteralTestUtil::ExpectR0Near<float>(42.0f, *result, error_spec_);
+  Literal result = ExecuteAndTransfer(std::move(module), {&literal});
+  LiteralTestUtil::ExpectR0Near<float>(42.0f, result, error_spec_);
 }
 
 XLA_TEST_F(CopyOpTest, CopyConstantR2Twice) {
   auto builder = HloComputation::Builder(TestName());
 
-  auto literal = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto literal = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
 
@@ -119,21 +119,19 @@ XLA_TEST_F(CopyOpTest, CopyConstantR2Twice) {
 
   auto computation = builder.Build();
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(std::move(computation));
-  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
-  LiteralTestUtil::ExpectR2Near<float>({{1.0, 2.0}, {3.0, 4.0}}, *result,
+  Literal result = ExecuteAndTransfer(std::move(module), {});
+  LiteralTestUtil::ExpectR2Near<float>({{1.0, 2.0}, {3.0, 4.0}}, result,
                                        error_spec_);
 }
 
 XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
   HloComputation::Builder builder(TestName());
 
-  std::unique_ptr<Literal> literal =
-      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  Literal literal = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   // Reverse the minor-to-major order of the literal.
-  Layout* literal_layout =
-      literal->mutable_shape_do_not_use()->mutable_layout();
+  Layout* literal_layout = literal.mutable_shape_do_not_use()->mutable_layout();
   ASSERT_EQ(2, literal_layout->minor_to_major_size());
   literal_layout->mutable_minor_to_major()->SwapElements(0, 1);
 
@@ -145,13 +143,13 @@ XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(std::move(computation));
-  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
+  Literal result = ExecuteAndTransfer(std::move(module), {});
 
   // The result of the computation has the default layout, which is the inverse
   // of the layout of the source literal.
-  LiteralTestUtil::ExpectR2Near<float>({{1.0, 3.0}, {2.0, 4.0}}, *result,
+  LiteralTestUtil::ExpectR2Near<float>({{1.0, 3.0}, {2.0, 4.0}}, result,
                                        error_spec_);
 }
 
@@ -167,7 +165,7 @@ void CopyOpTest::TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3) {
 
   HloComputation::Builder builder(TestName());
 
-  std::unique_ptr<Literal> literal = Literal::CreateR3FromArray3D(a);
+  Literal literal = LiteralUtil::CreateR3FromArray3D(a);
 
   HloInstruction* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
@@ -177,17 +175,17 @@ void CopyOpTest::TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3) {
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(std::move(computation));
   ForceResultLayout(module.get(), LayoutUtil::MakeLayout({1, 2, 0}));
-  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
+  Literal result = ExecuteAndTransfer(std::move(module), {});
 
-  LiteralTestUtil::ExpectR3EqualArray3D(a, *result);
+  LiteralTestUtil::ExpectR3EqualArray3D(a, result);
 }
 
-void CopyOpTest::TestCopyConstantLayoutR4(
-    size_t n1, size_t n2, size_t n3, size_t n4,
-    tensorflow::gtl::ArraySlice<int64> permutation) {
+void CopyOpTest::TestCopyConstantLayoutR4(size_t n1, size_t n2, size_t n3,
+                                          size_t n4,
+                                          absl::Span<const int64> permutation) {
   Array4D<int32> a(n1, n2, n3, n4);
   for (size_t i = 0; i < n1; ++i) {
     for (size_t j = 0; j < n2; ++j) {
@@ -201,7 +199,7 @@ void CopyOpTest::TestCopyConstantLayoutR4(
 
   HloComputation::Builder builder(TestName());
 
-  std::unique_ptr<Literal> literal = Literal::CreateR4FromArray4D(a);
+  Literal literal = LiteralUtil::CreateR4FromArray4D(a);
 
   HloInstruction* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
@@ -211,12 +209,12 @@ void CopyOpTest::TestCopyConstantLayoutR4(
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(std::move(computation));
   ForceResultLayout(module.get(), LayoutUtil::MakeLayout(permutation));
-  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
+  Literal result = ExecuteAndTransfer(std::move(module), {});
 
-  LiteralTestUtil::ExpectR4EqualArray4D(a, *result);
+  LiteralTestUtil::ExpectR4EqualArray4D(a, result);
 }
 
 XLA_TEST_F(CopyOpTest, CopyConstantR3Layout021_SingleIncompleteTilePerLayer) {
@@ -246,13 +244,13 @@ XLA_TEST_F(CopyOpClientTest, Copy0x0) {
   Shape out_shape = ShapeUtil::MakeShapeWithLayout(F32, {0, 0}, {1, 0});
   auto empty = Literal::CreateFromShape(in_shape);
 
-  ComputationBuilder builder(client_, TestName());
-  auto param0 = builder.Parameter(0, in_shape, "input");
-  auto input_data = client_->TransferToServer(*empty).ConsumeValueOrDie();
+  XlaBuilder builder(TestName());
+  Parameter(&builder, 0, in_shape, "input");
+  auto input_data = client_->TransferToServer(empty).ConsumeValueOrDie();
 
   auto actual = ExecuteAndTransfer(&builder, {input_data.get()}, &out_shape)
                     .ConsumeValueOrDie();
-  LiteralTestUtil::ExpectEqual(*empty, *actual);
+  EXPECT_TRUE(LiteralTestUtil::Equal(empty, actual));
 }
 
 }  // namespace

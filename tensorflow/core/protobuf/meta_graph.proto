@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "MetaGraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "google/protobuf/any.proto";
 
 import "tensorflow/core/framework/graph.proto";

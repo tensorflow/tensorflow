@@ -22,11 +22,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -39,8 +43,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -74,7 +76,7 @@ Status AddArgNodes(Graph* graph, const NodeMap& node_map,
     auto node_it = node_map.find(remap_it->second);
     if (node_it == node_map.end()) {
       // Strip off the aot_feed_#/ prefix.
-      StringPiece name(remap_it->second);
+      absl::string_view name(remap_it->second);
       const auto index = name.find('/');
       if (index > 0) name.remove_prefix(index + 1);
       return errors::InvalidArgument(
@@ -88,7 +90,7 @@ Status AddArgNodes(Graph* graph, const NodeMap& node_map,
     // explicitly specify or override them.
     Node* arg_node = nullptr;
     TF_RETURN_IF_ERROR(
-        NodeBuilder(strings::StrCat("_arg_", arg_index), kArgOp)
+        NodeBuilder(absl::StrCat("_arg_", arg_index), kArgOp)
             .Attr("T", BaseType(feed_node->output_type(output_index)))
             .Attr("index", arg_index)
             .Attr(kFeedIdAttr, TensorIdToString(feed.id()))
@@ -135,7 +137,7 @@ Status AddRetvalNodes(Graph* graph, const NodeMap& node_map,
     // Connects fetch_node -> retval_node.
     Node* retval_node = nullptr;
     TF_RETURN_IF_ERROR(
-        NodeBuilder(strings::StrCat("_retval_", ret_index), kRetvalOp)
+        NodeBuilder(absl::StrCat("_retval_", ret_index), kRetvalOp)
             .Input(fetch_node, id.output_index())
             .Attr("T", BaseType(fetch_node->output_type(id.output_index())))
             .Attr("index", ret_index)
@@ -196,8 +198,8 @@ Status RewriteAndPruneGraph(
   if (!missing_feeds.empty() || !missing_fetches.empty()) {
     return errors::Aborted(
         "Post graph-pruning",
-        ", missing feeds: ", str_util::Join(missing_feeds, ", "),
-        ", missing fetches: ", str_util::Join(missing_fetches, ", "));
+        ", missing feeds: ", absl::StrJoin(missing_feeds, ", "),
+        ", missing fetches: ", absl::StrJoin(missing_fetches, ", "));
   }
   return Status::OK();
 }
@@ -216,7 +218,7 @@ Status CollectArgNodes(const Graph& graph, std::vector<Node*>* arg_nodes) {
         const Node* dup = insert_result.first->second;
         return errors::InvalidArgument(
             "Multiple ", kArgOp, " nodes with index ", index, ", ",
-            n->DebugString(), " and ", dup->DebugString());
+            FormatNodeForError(*n), " and ", FormatNodeForError(*dup));
       }
     }
   }
@@ -251,11 +253,11 @@ Status CreateXlaArgs(const Graph& graph,
 // Converts the TensorFlow graph into an XLA computation, by executing the
 // graph symbolically, with each op building up the XLA HLO.
 Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
-                         xla::Computation* computation) {
+                         xla::XlaComputation* computation) {
   XlaOpRegistry::RegisterCompilationKernels();
   for (Node* node : graph->nodes()) {
     node->set_assigned_device_name(
-        strings::StrCat("/device:", DEVICE_CPU_XLA_JIT));
+        absl::StrCat("/device:", DEVICE_CPU_XLA_JIT));
   }
   std::vector<XlaCompiler::Argument> xla_args;
   TF_RETURN_IF_ERROR(CreateXlaArgs(*graph, &xla_args));
@@ -263,8 +265,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
   // Compile the graph into an XLA computation.
   XlaCompiler::Options compiler_options;
   compiler_options.client = client;
-  DeviceType device_type(DEVICE_CPU_XLA_JIT);
-  compiler_options.device_type = &device_type;
+  compiler_options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
   compiler_options.flib_def = &graph->flib_def();
   compiler_options.graph_def_version = graph->versions().producer();
   compiler_options.allow_cpu_custom_calls = true;
@@ -303,7 +304,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
 }
 
 // InitGraph creates a graph based on the graph_def, that may then be converted
-// to an xla::Computation via ConvertGraphToXla.
+// to an xla::XlaComputation via ConvertGraphToXla.
 //
 // The graph is rewritten with _Arg and _Retval nodes, representing the inputs
 // and outputs of the function that will be compiled.  Each feed id causes a new
@@ -340,6 +341,13 @@ Status InitGraph(const GraphDef& graph_def, const tf2xla::Config& config,
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
                                             second_copy_def, g.get()));
   TF_RETURN_IF_ERROR(RewriteAndPruneGraph(g.get(), config, feed_remapping));
+
+  // Functionalize control flow.
+  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(g.get(), &flib_def));
+  // After control flow functionalization, we might have more FunctionDef's
+  // (then/else branch, loop body). Add them to the graph.
+  TF_RETURN_IF_ERROR(g->AddFunctionLibrary(flib_def.ToProto()));
+
   *graph = std::move(g);
   return Status::OK();
 }
@@ -348,7 +356,7 @@ Status InitGraph(const GraphDef& graph_def, const tf2xla::Config& config,
 
 Status ConvertGraphDefToXla(const GraphDef& graph_def,
                             const tf2xla::Config& config, xla::Client* client,
-                            xla::Computation* computation) {
+                            xla::XlaComputation* computation) {
   std::unique_ptr<Graph> graph;
   TF_RETURN_IF_ERROR(InitGraph(graph_def, config, &graph));
   TF_RETURN_IF_ERROR(ConvertGraphToXla(std::move(graph), client, computation));

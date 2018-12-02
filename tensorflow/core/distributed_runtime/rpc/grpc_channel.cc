@@ -19,7 +19,7 @@ limitations under the License.
 #include <map>
 #include <unordered_map>
 
-#include "grpc++/create_channel.h"
+#include "grpcpp/create_channel.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -42,41 +42,69 @@ string MakeAddress(const string& job, int task) {
   return strings::StrCat("/job:", job, "/replica:0/task:", task);
 }
 
+// Allows the host to be a raw IP (either v4 or v6).
 Status ValidateHostPortPair(const string& host_port) {
   uint32 port;
-  std::vector<string> parts = str_util::Split(host_port, ':');
-  // Must be host:port, port must be a number, host must not contain a '/'.
-  if (parts.size() != 2 || !strings::safe_strtou32(parts[1], &port) ||
-      parts[0].find("/") != string::npos) {
+  auto colon_index = host_port.find_last_of(':');
+  if (!strings::safe_strtou32(host_port.substr(colon_index + 1), &port) ||
+      host_port.substr(0, colon_index).find("/") != string::npos) {
     return errors::InvalidArgument("Could not interpret \"", host_port,
                                    "\" as a host-port pair.");
   }
   return Status::OK();
 }
+
 }  // namespace
 
-Status NewHostPortGrpcChannel(const string& target,
-                              SharedGrpcChannelPtr* channel_pointer) {
-  // Minimally ensure that the target is valid
-  TF_RETURN_IF_ERROR(ValidateHostPortPair(target));
-
+::grpc::ChannelArguments GetChannelArguments(const RPCOptions* rpc_options) {
   // TODO(mrry): Implement secure channels.
   ::grpc::ChannelArguments args;
   args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
   // NOTE(mrry): Some versions of gRPC use a 20-second minimum backoff
   // on connection failure, which makes our tests time out.
   args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  if (rpc_options != nullptr) {
+    if (rpc_options->compression_algorithm() == "deflate") {
+      args.SetCompressionAlgorithm(GRPC_COMPRESS_DEFLATE);
+      args.SetInt(GRPC_COMPRESSION_CHANNEL_DEFAULT_LEVEL,
+                  rpc_options->compression_level());
+      VLOG(5) << "Setting GRPC compression : algo='"
+              << rpc_options->compression_algorithm()
+              << "' level=" << rpc_options->compression_level();
+    } else if (rpc_options->compression_algorithm() == "gzip") {
+      args.SetCompressionAlgorithm(GRPC_COMPRESS_GZIP);
+      args.SetInt(GRPC_COMPRESSION_CHANNEL_DEFAULT_LEVEL,
+                  rpc_options->compression_level());
+      VLOG(5) << "Setting GRPC compression : algo='"
+              << rpc_options->compression_algorithm()
+              << "' level=" << rpc_options->compression_level();
+    } else if (!rpc_options->compression_algorithm().empty()) {
+      LOG(ERROR) << "Invalid compression algorithm: "
+                 << rpc_options->compression_algorithm();
+    }
+  }
+  return args;
+}
+
+Status NewHostPortGrpcChannel(const string& target,
+                              const RPCOptions* rpc_options,
+                              SharedGrpcChannelPtr* channel_pointer) {
+  // Minimally ensure that the target is valid
+  TF_RETURN_IF_ERROR(ValidateHostPortPair(target));
+
+  ::grpc::ChannelArguments args = GetChannelArguments(rpc_options);
   *channel_pointer = ::grpc::CreateCustomChannel(
       "dns:///" + target, ::grpc::InsecureChannelCredentials(), args);
   return Status::OK();
 }
 
 ChannelCreationFunction ConvertToChannelCreationFunction(
-    const std::function<Status(string, SharedGrpcChannelPtr*)>&
-        new_channel_func_ptr) {
+    const std::function<Status(string, const RPCOptions*,
+                               SharedGrpcChannelPtr*)>& new_channel_func_ptr) {
   return [new_channel_func_ptr](const string& target) -> SharedGrpcChannelPtr {
     SharedGrpcChannelPtr channel_ptr;
-    if (new_channel_func_ptr(target, &channel_ptr).ok()) {
+    if (new_channel_func_ptr(target, /*rpc_options=*/nullptr, &channel_ptr)
+            .ok()) {
       return channel_ptr;
     } else {
       return nullptr;
@@ -163,6 +191,13 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
     }
   }
 
+  void ListWorkersInJob(const string& job_name,
+                        std::vector<string>* workers) override {
+    for (GrpcChannelCache* cache : caches_) {
+      cache->ListWorkersInJob(job_name, workers);
+    }
+  }
+
   string TranslateTask(const string& target) override {
     mutex_lock l(mu_);  // could use reader lock
     GrpcChannelCache* cache = gtl::FindPtrOrNull(target_caches_, target);
@@ -220,6 +255,13 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
     workers->reserve(workers->size() + host_ports_.size());
     for (const auto& id_host_port : host_ports_) {
       workers->emplace_back(MakeAddress(job_id_, id_host_port.first));
+    }
+  }
+
+  void ListWorkersInJob(const string& job_name,
+                        std::vector<string>* workers) override {
+    if (job_name == job_id_) {
+      ListWorkers(workers);
     }
   }
 

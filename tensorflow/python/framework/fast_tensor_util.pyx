@@ -6,6 +6,25 @@ cimport numpy as np
 
 from tensorflow.python.util import compat
 
+def AppendBFloat16ArrayToTensorProto(
+    tensor_proto, np.ndarray[np.uint16_t, ndim=1] nparray):
+  cdef long i, n
+  n = nparray.size
+  for i in range(n):
+    tensor_proto.half_val.append(nparray[i])
+
+
+def AppendFloat16ArrayToTensorProto(
+    # For numpy, npy_half is a typedef for npy_uint16,
+    # see: https://github.com/numpy/numpy/blob/master/doc/source/reference/c-api.coremath.rst#half-precision-functions
+    # Because np.float16_t dosen't exist in cython, we use uint16_t here.
+    # TODO: Use np.float16_t when cython supports it.
+    tensor_proto, np.ndarray[np.uint16_t, ndim=1] nparray):
+  cdef long i, n
+  n = nparray.size
+  for i in range(n):
+    tensor_proto.half_val.append(nparray[i])
+
 
 def AppendFloat32ArrayToTensorProto(
     tensor_proto, np.ndarray[np.float32_t, ndim=1] nparray):

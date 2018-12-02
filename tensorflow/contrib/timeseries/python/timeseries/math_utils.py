@@ -60,7 +60,7 @@ def clip_covariance(
   # TODO(allenl): Smarter scaling here so that correlations are preserved when
   # fiddling with diagonal elements.
   diagonal = array_ops.matrix_diag_part(covariance_matrix)
-  maximum = math_ops.reduce_max(diagonal, axis=-1, keep_dims=True)
+  maximum = math_ops.reduce_max(diagonal, axis=-1, keepdims=True)
   new_diagonal = gen_math_ops.maximum(
       diagonal, maximum / maximum_variance_ratio)
   return array_ops.matrix_set_diag(
@@ -185,7 +185,7 @@ def batch_matrix_pow(matrices, powers):
                     { matmul(A, power(matmul(A, A), (p - 1) / 2)) for odd p
       power(A, 0) = I
 
-    The power(A, 0) = I case is handeled by starting with accumulator set to the
+    The power(A, 0) = I case is handled by starting with accumulator set to the
     identity matrix; matrices with zero residual powers are passed through
     unchanged.
 
@@ -262,8 +262,8 @@ def batch_times_matrix(batch, matrix, adj_x=False, adj_y=False):
   assert matrix.get_shape().ndims == 2
   if adj_x:
     batch = array_ops.transpose(batch, [0, 2, 1])
-  batch_dimension = batch.get_shape()[0].value
-  first_dimension = batch.get_shape()[1].value
+  batch_dimension = batch.get_shape().dims[0].value
+  first_dimension = batch.get_shape().dims[1].value
   tensor_batch_shape = array_ops.shape(batch)
   if batch_dimension is None:
     batch_dimension = tensor_batch_shape[0]
@@ -543,20 +543,25 @@ class TupleOfTensorsLookup(lookup.LookupInterface):
   overhead.
   """
 
-  def __init__(
-      self, key_dtype, default_values, empty_key, name, checkpoint=True):
+  def __init__(self,
+               key_dtype,
+               default_values,
+               empty_key,
+               deleted_key,
+               name,
+               checkpoint=True):
     default_values_flat = nest.flatten(default_values)
-    self._hash_tables = nest.pack_sequence_as(
-        default_values,
-        [TensorValuedMutableDenseHashTable(
+    self._hash_tables = nest.pack_sequence_as(default_values, [
+        TensorValuedMutableDenseHashTable(
             key_dtype=key_dtype,
             value_dtype=default_value.dtype.base_dtype,
             default_value=default_value,
             empty_key=empty_key,
+            deleted_key=deleted_key,
             name=name + "_{}".format(table_number),
             checkpoint=checkpoint)
-         for table_number, default_value
-         in enumerate(default_values_flat)])
+        for table_number, default_value in enumerate(default_values_flat)
+    ])
     self._name = name
 
   def lookup(self, keys):
@@ -797,7 +802,7 @@ class InputStatisticsFromMiniBatch(object):
             array_ops.shape(times)[1] - 1, self._dtype))
     # Co-locate updates with their variables to minimize race conditions when
     # updating statistics.
-    with ops.colocate_with(auxiliary_variables.max_time_seen):
+    with ops.device(auxiliary_variables.max_time_seen.device):
       # There is a race condition if this value is being updated from multiple
       # workers. However, it should eventually reach the correct value if the
       # last chunk is presented enough times.
@@ -805,16 +810,16 @@ class InputStatisticsFromMiniBatch(object):
           auxiliary_variables.max_time_seen,
           gen_math_ops.maximum(auxiliary_variables.max_time_seen,
                                math_ops.reduce_max(times)))
-    with ops.colocate_with(auxiliary_variables.chunk_count):
+    with ops.device(auxiliary_variables.chunk_count.device):
       chunk_count_assign = state_ops.assign_add(auxiliary_variables.chunk_count,
                                                 array_ops.shape(
                                                     times,
                                                     out_type=dtypes.int64)[0])
-    with ops.colocate_with(auxiliary_variables.inter_observation_duration_sum):
+    with ops.device(auxiliary_variables.inter_observation_duration_sum.device):
       inter_observation_duration_assign = state_ops.assign_add(
           auxiliary_variables.inter_observation_duration_sum,
           math_ops.reduce_sum(batch_inter_observation_duration))
-    with ops.colocate_with(auxiliary_variables.example_count):
+    with ops.device(auxiliary_variables.example_count.device):
       example_count_assign = state_ops.assign_add(
           auxiliary_variables.example_count,
           array_ops.size(times, out_type=dtypes.int64))
@@ -824,11 +829,11 @@ class InputStatisticsFromMiniBatch(object):
     # the series are then members of fewer chunks. For series which are much
     # longer than the chunk size (the usual/expected case), this effect becomes
     # irrelevant.
-    with ops.colocate_with(auxiliary_variables.overall_feature_sum):
+    with ops.device(auxiliary_variables.overall_feature_sum.device):
       overall_feature_sum_assign = state_ops.assign_add(
           auxiliary_variables.overall_feature_sum,
           math_ops.reduce_sum(values, axis=[0, 1]))
-    with ops.colocate_with(auxiliary_variables.overall_feature_sum_of_squares):
+    with ops.device(auxiliary_variables.overall_feature_sum_of_squares.device):
       overall_feature_sum_of_squares_assign = state_ops.assign_add(
           auxiliary_variables.overall_feature_sum_of_squares,
           math_ops.reduce_sum(values**2, axis=[0, 1]))
@@ -864,7 +869,7 @@ class InputStatisticsFromMiniBatch(object):
             state_ops.assign(statistics.series_start_moments.mean, mean),
             state_ops.assign(statistics.series_start_moments.variance,
                              variance))
-      with ops.colocate_with(statistics.start_time):
+      with ops.device(statistics.start_time.device):
         series_start_update = control_flow_ops.cond(
             # Update moments whenever we even match the lowest time seen so far,
             # to ensure that series start statistics are eventually updated to
@@ -896,8 +901,8 @@ class InputStatisticsFromMiniBatch(object):
           statistics.total_observation_count,
           math_ops.cast(
               gen_math_ops.round(
-                  math_ops.cast(auxiliary_variables.max_time_seen -
-                                statistics.start_time + 1, self._dtype) /
+                  math_ops.cast(max_time_seen_assign -
+                                start_time_update + 1, self._dtype) /
                   inter_observation_duration_estimate), dtypes.int64))
       per_chunk_stat_updates = control_flow_ops.group(
           overall_feature_mean_update, overall_feature_var_update,

@@ -155,7 +155,7 @@ class GdrRemoteRendezvous : public BaseRemoteRendezvous {
     }
 
     Device* dst_device;
-    Status s = sess->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
+    Status s = sess->device_mgr()->LookupDevice(parsed.dst_device, &dst_device);
     if (!s.ok()) {
       sess->worker_cache->ReleaseWorker(src_worker, rwi);
       done(s, Args(), recv_args, Tensor{}, false);
@@ -169,6 +169,14 @@ class GdrRemoteRendezvous : public BaseRemoteRendezvous {
 
     // Record "call" in active_ so that it can be aborted cleanly.
     RegisterCall(call);
+
+    // RendezvousMgr already aborted, shouldn't send RPC call any more
+    if (!call->status().ok()) {
+      done(call->status(), Args(), Args(), Tensor(), false);
+      session()->worker_cache->ReleaseWorker(src_worker, rwi);
+      delete call;
+      return;
+    }
 
     // Start "call".
     Ref();

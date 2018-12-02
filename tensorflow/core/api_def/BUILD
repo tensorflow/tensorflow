@@ -4,6 +4,7 @@
 # The following targets can be used to access ApiDefs:
 #   :base_api_def
 #   :python_api_def
+#   :java_api_def
 
 package(
     default_visibility = ["//visibility:private"],
@@ -16,17 +17,9 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
 )
 
 filegroup(
@@ -41,10 +34,17 @@ filegroup(
     visibility = ["//tensorflow:internal"],
 )
 
+filegroup(
+    name = "java_api_def",
+    srcs = glob(["java_api/*"]),
+    visibility = ["//tensorflow:internal"],
+)
+
 cc_library(
     name = "excluded_ops_lib",
     srcs = ["excluded_ops.cc"],
     hdrs = ["excluded_ops.h"],
+    copts = if_mkl(["-DINTEL_MKL=1"]),
 )
 
 cc_library(

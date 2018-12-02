@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace tensorflow {
@@ -34,19 +34,21 @@ namespace tensorflow {
 // Otherwise, `indices_are_vectors`, then indices are multidimensional and the
 // minor dimension of `indices` represents a vector of indices.
 //
-// If any indices are negative, the corresponding update is discarded.
+// If `updates` is a scalar, then it will be broadcasted into the expected shape
+// of updates.
+//
+// If any part of the update region is out-of-bounds, the corresponding update
+// is discarded.
 //
 // If a `combiner` is provided, updates are combined with the existing values in
 // the buffer using the combiner function. Otherwise, the updates replace the
 // existing values. The order of updates is implementation-defined.
-xla::StatusOr<xla::ComputationDataHandle> XlaScatter(
-    const xla::ComputationDataHandle& buffer,
-    const xla::ComputationDataHandle& updates,
-    const xla::ComputationDataHandle& indices, bool indices_are_vectors,
-    const std::function<xla::ComputationDataHandle(
-        xla::ComputationDataHandle, xla::ComputationDataHandle,
-        xla::ComputationBuilder*)>& combiner,
-    xla::ComputationBuilder* builder);
+xla::StatusOr<xla::XlaOp> XlaScatter(
+    const xla::XlaOp& buffer, const xla::XlaOp& updates,
+    const xla::XlaOp& indices, bool indices_are_vectors,
+    const std::function<xla::XlaOp(xla::XlaOp, xla::XlaOp, xla::XlaBuilder*)>&
+        combiner,
+    xla::XlaBuilder* builder);
 
 }  // namespace tensorflow
 

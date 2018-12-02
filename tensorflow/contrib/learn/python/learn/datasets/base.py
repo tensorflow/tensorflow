@@ -139,15 +139,48 @@ def retry(initial_delay,
 
   Args:
     initial_delay: the initial delay.
+    max_delay: the maximum delay allowed (actual max is
+        max_delay * (1 + jitter).
     factor: each subsequent retry, the delay is multiplied by this value.
         (must be >= 1).
     jitter: to avoid lockstep, the returned delay is multiplied by a random
         number between (1-jitter) and (1+jitter). To add a 20% jitter, set
         jitter = 0.2. Must be < 1.
-    max_delay: the maximum delay allowed (actual max is
-        max_delay * (1 + jitter).
     is_retriable: (optional) a function that takes an Exception as an argument
         and returns true if retry should be applied.
+
+  Returns:
+    A function that wraps another function to automatically retry it.
+  """
+  return _internal_retry(
+      initial_delay=initial_delay,
+      max_delay=max_delay,
+      factor=factor,
+      jitter=jitter,
+      is_retriable=is_retriable)
+
+
+def _internal_retry(initial_delay,
+                    max_delay,
+                    factor=2.0,
+                    jitter=0.25,
+                    is_retriable=None):
+  """Simple decorator for wrapping retriable functions, for internal use only.
+
+  Args:
+    initial_delay: the initial delay.
+    max_delay: the maximum delay allowed (actual max is
+        max_delay * (1 + jitter).
+    factor: each subsequent retry, the delay is multiplied by this value.
+        (must be >= 1).
+    jitter: to avoid lockstep, the returned delay is multiplied by a random
+        number between (1-jitter) and (1+jitter). To add a 20% jitter, set
+        jitter = 0.2. Must be < 1.
+    is_retriable: (optional) a function that takes an Exception as an argument
+        and returns true if retry should be applied.
+
+  Returns:
+    A function that wraps another function to automatically retry it.
   """
   if factor < 1:
     raise ValueError('factor must be >= 1; was %f' % (factor,))
@@ -195,7 +228,7 @@ def _is_retriable(e):
 
 
 @deprecated(None, 'Please use urllib or similar directly.')
-@retry(initial_delay=1.0, max_delay=16.0, is_retriable=_is_retriable)
+@_internal_retry(initial_delay=1.0, max_delay=16.0, is_retriable=_is_retriable)
 def urlretrieve_with_retry(url, filename=None):
   return urllib.request.urlretrieve(url, filename)
 

@@ -14,15 +14,6 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = ["**/OWNERS"],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 package_group(name = "friends")
 
 cc_library(
@@ -107,7 +98,6 @@ py_library(
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
-        "//tensorflow/contrib/stateless",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -117,6 +107,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
@@ -128,7 +119,7 @@ py_library(
 
 py_test(
     name = "gbdt_batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/training/functions/gbdt_batch_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -454,6 +445,7 @@ tf_kernel_library(
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
         "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
         "//tensorflow/contrib/boosted_trees/resources:quantile_stream_resource",
         "//tensorflow/core:framework_headers_lib",

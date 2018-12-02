@@ -21,7 +21,6 @@ cc_library(
     ],
     hdrs = ["lib/gif_lib.h"],
     defines = select({
-        #"@org_tensorflow//tensorflow:android": [
         ":android": [
             "S_IREAD=S_IRUSR",
             "S_IWRITE=S_IWUSR",
@@ -33,7 +32,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = select({
         ":windows": [":windows_polyfill"],
-        ":windows_msvc": [":windows_polyfill"],
         "//conditions:default": [],
     }),
 )
@@ -48,13 +46,6 @@ genrule(
     name = "windows_unistd_h",
     outs = ["windows/unistd.h"],
     cmd = "touch $@",
-)
-
-config_setting(
-    name = "windows_msvc",
-    values = {
-        "cpu": "x64_windows_msvc",
-    },
 )
 
 config_setting(

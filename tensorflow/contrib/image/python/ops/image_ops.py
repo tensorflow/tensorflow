@@ -23,6 +23,7 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
@@ -33,12 +34,17 @@ _image_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_image_ops.so"))
 
 _IMAGE_DTYPES = set(
-    [dtypes.uint8, dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64])
+    [dtypes.uint8, dtypes.int32, dtypes.int64,
+     dtypes.float16, dtypes.float32, dtypes.float64])
 
 ops.RegisterShape("ImageConnectedComponents")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ImageProjectiveTransform")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ImageProjectiveTransformV2")(common_shapes.call_cpp_shape_fn)
 
 
+# TODO(ringwalt): Support a "reshape" (name used by SciPy) or "expand" (name
+# used by PIL, maybe more readable) mode, which determines the correct
+# output_shape and translation for the transform.
 def rotate(images, angles, interpolation="NEAREST", name=None):
   """Rotate image(s) counterclockwise by the passed angle(s) in radians.
 
@@ -212,7 +218,11 @@ def translations_to_projective_transforms(translations, name=None):
         axis=1)
 
 
-def transform(images, transforms, interpolation="NEAREST", name=None):
+def transform(images,
+              transforms,
+              interpolation="NEAREST",
+              output_shape=None,
+              name=None):
   """Applies the given transform(s) to the image(s).
 
   Args:
@@ -229,6 +239,10 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
        the transform mapping input points to output points. Note that gradients
        are not backpropagated into transformation parameters.
     interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
+    output_shape: Output dimesion after the transform, [height, width].
+       If None, output is the same size as input image.
+
+    name: The name of the op.
 
   Returns:
     Image(s) with the same type and shape as `images`, with the given
@@ -237,6 +251,7 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
 
   Raises:
     TypeError: If `image` is an invalid type.
+    ValueError: If output shape is not 1-D int32 Tensor.
   """
   with ops.name_scope(name, "transform"):
     image_or_images = ops.convert_to_tensor(images, name="images")
@@ -255,6 +270,17 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
     else:
       raise TypeError("Images should have rank between 2 and 4.")
 
+    if output_shape is None:
+      output_shape = tensor_util.constant_value(
+          array_ops.shape(images)[1:3]) or array_ops.shape(images)[1:3]
+
+    output_shape = ops.convert_to_tensor(
+        output_shape, dtypes.int32, name="output_shape")
+
+    if not output_shape.get_shape().is_compatible_with([2]):
+      raise ValueError("output_shape must be a 1-D Tensor of 2 elements: "
+                       "new_height, new_width")
+
     if len(transform_or_transforms.get_shape()) == 1:
       transforms = transform_or_transforms[None]
     elif transform_or_transforms.get_shape().ndims is None:
@@ -264,8 +290,12 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
       transforms = transform_or_transforms
     else:
       raise TypeError("Transforms should have rank 1 or 2.")
-    output = gen_image_ops.image_projective_transform(
-        images, transforms, interpolation=interpolation.upper())
+
+    output = gen_image_ops.image_projective_transform_v2(
+        images,
+        output_shape=output_shape,
+        transforms=transforms,
+        interpolation=interpolation.upper())
     if len(image_or_images.get_shape()) == 2:
       return output[0, :, :, 0]
     elif len(image_or_images.get_shape()) == 3:
@@ -362,7 +392,7 @@ def matrices_to_flat_transforms(transform_matrices):
     return transforms[:, :8]
 
 
-@ops.RegisterGradient("ImageProjectiveTransform")
+@ops.RegisterGradient("ImageProjectiveTransformV2")
 def _image_projective_transform_grad(op, grad):
   """Computes the gradient for ImageProjectiveTransform."""
   images = op.inputs[0]
@@ -375,14 +405,6 @@ def _image_projective_transform_grad(op, grad):
 
   if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
     raise TypeError("Invalid dtype %s." % image_or_images.dtype)
-  if len(image_or_images.get_shape()) == 2:
-    images = image_or_images[None, :, :, None]
-  elif len(image_or_images.get_shape()) == 3:
-    images = image_or_images[None, :, :, :]
-  elif len(image_or_images.get_shape()) == 4:
-    images = image_or_images
-  else:
-    raise TypeError("Images should have rank between 2 and 4")
   if len(transform_or_transforms.get_shape()) == 1:
     transforms = transform_or_transforms[None]
   elif len(transform_or_transforms.get_shape()) == 2:
@@ -394,14 +416,12 @@ def _image_projective_transform_grad(op, grad):
   transforms = flat_transforms_to_matrices(transforms=transforms)
   inverse = linalg_ops.matrix_inverse(transforms)
   transforms = matrices_to_flat_transforms(inverse)
-  output = gen_image_ops.image_projective_transform(
-      grad, transforms, interpolation=interpolation)
-  if len(image_or_images.get_shape()) == 2:
-    return [output[0, :, :, 0], None]
-  elif len(image_or_images.get_shape()) == 3:
-    return [output[0, :, :, :], None]
-  else:
-    return [output, None]
+  output = gen_image_ops.image_projective_transform_v2(
+      images=grad,
+      transforms=transforms,
+      output_shape=array_ops.shape(image_or_images)[1:3],
+      interpolation=interpolation)
+  return [output, None, None]
 
 
 def bipartite_match(distance_mat,
@@ -433,7 +453,7 @@ def bipartite_match(distance_mat,
       of rows of the input `distance_matrix`. If `row_to_col_match_indices[i]`
       is not -1, row i is matched to column `row_to_col_match_indices[i]`.
     col_to_row_match_indices: A vector of length num_columns, which is the
-      number of columns of the input ditance matrix.
+      number of columns of the input distance matrix.
       If `col_to_row_match_indices[j]` is not -1, column j is matched to row
       `col_to_row_match_indices[j]`.
   """

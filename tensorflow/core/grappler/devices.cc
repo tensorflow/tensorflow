@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/grappler/devices.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 
 #if GOOGLE_CUDA
@@ -30,15 +31,14 @@ int GetNumAvailableGPUs() {
   int num_eligible_gpus = 0;
 #if GOOGLE_CUDA
   if (ValidateGPUMachineManager().ok()) {
-    perftools::gputools::Platform* gpu_manager = GPUMachineManager();
+    se::Platform* gpu_manager = GPUMachineManager();
     if (gpu_manager != nullptr) {
       int num_gpus = gpu_manager->VisibleDeviceCount();
       for (int i = 0; i < num_gpus; i++) {
         auto exec_status = gpu_manager->ExecutorForDevice(i);
         if (exec_status.ok()) {
-          perftools::gputools::StreamExecutor* se = exec_status.ValueOrDie();
-          const perftools::gputools::DeviceDescription& desc =
-              se->GetDeviceDescription();
+          se::StreamExecutor* se = exec_status.ValueOrDie();
+          const se::DeviceDescription& desc = se->GetDeviceDescription();
           int min_gpu_core_count = 8;
           if (desc.core_count() >= min_gpu_core_count) {
             num_eligible_gpus++;
@@ -56,10 +56,9 @@ int GetNumAvailableGPUs() {
 int64 AvailableGPUMemory(int gpu_id) {
 #if GOOGLE_CUDA
   // Look up the device, to see its attributes.
-  perftools::gputools::Platform* gpu_platform = GPUMachineManager();
+  se::Platform* gpu_platform = GPUMachineManager();
   CHECK_LT(gpu_id, gpu_platform->VisibleDeviceCount());
-  perftools::gputools::StreamExecutor* se =
-      gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
+  se::StreamExecutor* se = gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
   int64 total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
 

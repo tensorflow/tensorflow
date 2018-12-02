@@ -25,15 +25,23 @@ A new tensor with the given shape and updates applied according
 to the indices.
 END
   }
-  summary: "Scatter `updates` into a new (initially zero) tensor according to `indices`."
+  summary: "Scatter `updates` into a new tensor according to `indices`."
   description: <<END
-Creates a new tensor by applying sparse `updates` to individual
-values or slices within a zero tensor of the given `shape` according to
-indices.  This operator is the inverse of the @{tf.gather_nd} operator which
-extracts values or slices from a given tensor.
+Creates a new tensor by applying sparse `updates` to individual values or
+slices within a tensor (initially zero for numeric, empty for string) of
+the given `shape` according to indices.  This operator is the inverse of the
+`tf.gather_nd` operator which extracts values or slices from a given tensor.
+
+This operation is similar to tensor_scatter_add, except that the tensor is
+zero-initialized. Calling `tf.scatter_nd(indices, values, shape)` is identical
+to `tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`
+
+If `indices` contains duplicates, then their updates are accumulated (summed).
 
 **WARNING**: The order in which updates are applied is nondeterministic, so the
-output will be nondeterministic if `indices` contains duplicates.
+output will be nondeterministic if `indices` contains duplicates -- because
+of some numerical approximation issues, numbers summed in different order
+may yield different results.
 
 `indices` is an integer tensor containing indices into a new tensor of shape
 `shape`.  The last dimension of `indices` can be at most the rank of `shape`:

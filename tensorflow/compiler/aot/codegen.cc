@@ -19,22 +19,26 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
-#include "tensorflow/compiler/aot/runtime.h"
-#include "tensorflow/compiler/tf2xla/str_util.h"
+#include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
+#include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 namespace tfcompile {
 
 namespace {
+
+using BufferInfo = cpu_function_runtime::BufferInfo;
 
 bool IsAlpha(char c) {
   return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
@@ -85,27 +89,36 @@ Status XLATypeToCpp(xla::PrimitiveType type, string* str) {
   return Status::OK();
 }
 
-// total_buffer_bytes returns the sum of each size in `sizes`, skipping -1
-// values.  There are `n` entries in `sizes`.
-size_t total_buffer_bytes(const intptr_t* sizes, size_t n) {
-  size_t total = 0;
-  for (size_t i = 0; i < n; ++i) {
-    if (sizes[i] != -1) {
-      total += sizes[i];
-    }
-  }
-  return total;
+// Returns the sum of the size of each buffer in `buffer_infos`.
+size_t TotalBufferBytes(const std::vector<BufferInfo>& buffer_infos) {
+  return std::accumulate(buffer_infos.begin(), buffer_infos.end(), size_t{0},
+                         [](size_t size, const BufferInfo& buffer_info) {
+                           return size + buffer_info.size();
+                         });
 }
 
-// Fills in arg_sizes with the byte size of each positional arg.
-Status ComputeArgSizes(const CompileResult& compile_result,
-                       std::vector<int64>* arg_sizes) {
-  const xla::ProgramShape& ps = compile_result.program_shape;
-  for (int i = 0; i < ps.parameters_size(); ++i) {
-    arg_sizes->push_back(xla::ShapeUtil::ByteSizeOf(
-        ps.parameters(i), compile_result.pointer_size));
-  }
-  return Status::OK();
+// Returns a vector of BufferInfo instances in `buffer_infos` that are entry
+// parameter buffers.
+std::vector<BufferInfo> ExtractEntryParamBufferInfos(
+    const std::vector<BufferInfo>& buffer_infos) {
+  std::vector<BufferInfo> result;
+  std::copy_if(buffer_infos.begin(), buffer_infos.end(),
+               std::back_inserter(result), [](const BufferInfo& buffer_info) {
+                 return buffer_info.is_entry_parameter();
+               });
+  return result;
+}
+
+// Returns a vector of BufferInfo instances in `buffer_infos` that are temp
+// buffers.
+std::vector<BufferInfo> ExtractTempBufferInfos(
+    const std::vector<BufferInfo>& buffer_infos) {
+  std::vector<BufferInfo> result;
+  std::copy_if(buffer_infos.begin(), buffer_infos.end(),
+               std::back_inserter(result), [](const BufferInfo& buffer_info) {
+                 return buffer_info.is_temp_buffer();
+               });
+  return result;
 }
 
 // Add (from,to) rewrite pairs based on the given shape.  These rewrite pairs
@@ -122,14 +135,14 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
     indices = "[0]";
   } else {
     for (int dim = 0; dim < shape.dimensions_size(); ++dim) {
-      dim_vars.push_back(strings::StrCat("size_t dim", dim));
-      dim_sizes += strings::StrCat("[", shape.dimensions(dim), "]");
-      indices += strings::StrCat("[dim", dim, "]");
+      dim_vars.push_back(absl::StrCat("size_t dim", dim));
+      dim_sizes += absl::StrCat("[", shape.dimensions(dim), "]");
+      indices += absl::StrCat("[dim", dim, "]");
     }
   }
-  rewrites->push_back({"{{I}}", strings::StrCat(i)});
+  rewrites->push_back({"{{I}}", absl::StrCat(i)});
   rewrites->push_back({"{{TYPE}}", type});
-  rewrites->push_back({"{{DIM_VARS}}", str_util::Join(dim_vars, ", ")});
+  rewrites->push_back({"{{DIM_VARS}}", absl::StrJoin(dim_vars, ", ")});
   rewrites->push_back({"{{DIM_SIZES}}", dim_sizes});
   rewrites->push_back({"{{INDICES}}", indices});
   return Status::OK();
@@ -145,12 +158,14 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
 // text-templating mechanism.
 string RewriteWithName(const string& name, string code,
                        const std::vector<std::pair<string, string>>& rewrites) {
-  str_util::ReplaceAllPairs(&code, rewrites);
-  return str_util::StringReplace(code, "{{NAME}}", name, /*replace_all=*/true);
+  absl::StrReplaceAll(rewrites, &code);
+  absl::StrReplaceAll({{"{{NAME}}", name}}, &code);
+  return code;
 }
 
 // Generate methods for args (inputs).
-Status GenArgMethods(const tf2xla::Config& config, const xla::ProgramShape& ps,
+Status GenArgMethods(const tf2xla::Config& config,
+                     const xla::ProgramShapeProto& ps,
                      const CompileResult& compile_result, string* methods) {
   size_t num_args = ps.parameters_size();
   if (config.feed_size() != num_args) {
@@ -160,7 +175,8 @@ Status GenArgMethods(const tf2xla::Config& config, const xla::ProgramShape& ps,
   }
   for (int i = 0; i < num_args; ++i) {
     std::vector<std::pair<string, string>> rewrites;
-    TF_RETURN_IF_ERROR(AddRewritesForShape(i, ps.parameters(i), &rewrites));
+    TF_RETURN_IF_ERROR(
+        AddRewritesForShape(i, xla::Shape(ps.parameters(i)), &rewrites));
     const string code = R"(
   void set_arg{{NAME}}_data(void* data) {
     set_arg_data({{I}}, data);
@@ -180,7 +196,7 @@ Status GenArgMethods(const tf2xla::Config& config, const xla::ProgramShape& ps,
         arg_data({{I}}))){{INDICES}};
   }
 )";
-    *methods += RewriteWithName(strings::StrCat(i), code, rewrites);
+    *methods += RewriteWithName(absl::StrCat(i), code, rewrites);
     if (!config.feed(i).name().empty()) {
       *methods += RewriteWithName("_" + config.feed(i).name(), code, rewrites);
     }
@@ -190,7 +206,7 @@ Status GenArgMethods(const tf2xla::Config& config, const xla::ProgramShape& ps,
 
 // Generate methods for results (outputs).
 Status GenResultMethods(const tf2xla::Config& config,
-                        const xla::ProgramShape& ps, string* methods) {
+                        const xla::ProgramShapeProto& ps, string* methods) {
   if (ps.result().element_type() != xla::TUPLE) {
     // The XlaCompiler we use to build the xla computation always generates a
     // tuple result, and we rely on this to simplify code generation.
@@ -203,8 +219,8 @@ Status GenResultMethods(const tf2xla::Config& config,
   }
   for (int i = 0; i < ps.result().tuple_shapes_size(); ++i) {
     std::vector<std::pair<string, string>> rewrites;
-    TF_RETURN_IF_ERROR(
-        AddRewritesForShape(i, ps.result().tuple_shapes(i), &rewrites));
+    TF_RETURN_IF_ERROR(AddRewritesForShape(
+        i, xla::Shape(ps.result().tuple_shapes(i)), &rewrites));
     string code = R"(
   {{TYPE}}* result{{NAME}}_data() {
     return static_cast<{{TYPE}}*>(result_data({{I}}));
@@ -221,7 +237,7 @@ Status GenResultMethods(const tf2xla::Config& config,
         result_data({{I}}))){{INDICES}};
   }
 )";
-    *methods += RewriteWithName(strings::StrCat(i), code, rewrites);
+    *methods += RewriteWithName(absl::StrCat(i), code, rewrites);
     if (!config.fetch(i).name().empty()) {
       *methods += RewriteWithName("_" + config.fetch(i).name(), code, rewrites);
     }
@@ -278,6 +294,25 @@ Status ValidateFeedFetchCppNames(const tf2xla::Config& config) {
   return Status::OK();
 }
 
+// Returns a list of C++ expressions that, when executed, will construct the
+// BufferInfo instances in `buffer_infos`.
+std::vector<string> BufferInfosToCppExpression(
+    const std::vector<BufferInfo>& buffer_infos) {
+  std::vector<string> buffer_infos_as_strings;
+  std::transform(buffer_infos.begin(), buffer_infos.end(),
+                 std::back_inserter(buffer_infos_as_strings),
+                 [](const BufferInfo& buffer_info) {
+                   std::pair<uint64, uint64> encoded = buffer_info.Encode();
+                   string encoded_second_as_str =
+                       encoded.second == ~0ULL
+                           ? "~0ULL"
+                           : absl::StrCat(encoded.second, "ULL");
+                   return absl::StrCat(
+                       "::tensorflow::cpu_function_runtime::BufferInfo({",
+                       encoded.first, "ULL, ", encoded_second_as_str, "})");
+                 });
+  return buffer_infos_as_strings;
+}
 }  // namespace
 
 Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
@@ -286,40 +321,46 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
   const int64 result_index = compile_result.aot->result_buffer_index();
-  const xla::BufferSizes& temp_sizes = compile_result.aot->buffer_sizes();
-  if (result_index < 0 || result_index > temp_sizes.size()) {
+  const std::vector<BufferInfo>& buffer_infos =
+      compile_result.aot->buffer_infos();
+  const std::vector<int32> arg_index_table =
+      ::xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
+  std::vector<string> buffer_infos_as_strings =
+      BufferInfosToCppExpression(buffer_infos);
+  if (result_index < 0 || result_index >= buffer_infos.size()) {
     return errors::InvalidArgument("result index: ", result_index,
                                    " is outside the range of temp sizes: [0,",
-                                   temp_sizes.size(), ")");
+                                   buffer_infos.size(), ")");
   }
 
   // Compute sizes and generate methods.
-  std::vector<int64> arg_sizes;
-  TF_RETURN_IF_ERROR(ComputeArgSizes(compile_result, &arg_sizes));
-  const xla::ProgramShape& ps = compile_result.program_shape;
+  std::vector<BufferInfo> buffer_infos_for_args =
+      ExtractEntryParamBufferInfos(buffer_infos);
+  std::vector<BufferInfo> buffer_infos_for_temps =
+      ExtractTempBufferInfos(buffer_infos);
+  const xla::ProgramShapeProto& ps = compile_result.program_shape;
   string methods_arg, methods_result;
   TF_RETURN_IF_ERROR(GenArgMethods(config, ps, compile_result, &methods_arg));
   TF_RETURN_IF_ERROR(GenResultMethods(config, ps, &methods_result));
-  const std::vector<intptr_t> iarg(arg_sizes.begin(), arg_sizes.end());
-  const std::vector<intptr_t> itemp(temp_sizes.begin(), temp_sizes.end());
-  const size_t arg_bytes_aligned =
-      runtime::aligned_buffer_bytes(iarg.data(), iarg.size());
-  const size_t arg_bytes_total = total_buffer_bytes(iarg.data(), iarg.size());
-  const size_t temp_bytes_aligned =
-      runtime::aligned_buffer_bytes(itemp.data(), itemp.size());
-  const size_t temp_bytes_total =
-      total_buffer_bytes(itemp.data(), itemp.size());
+  const size_t arg_bytes_aligned = cpu_function_runtime::AlignedBufferBytes(
+      buffer_infos_for_args.data(), buffer_infos_for_args.size(),
+      /*allocate_entry_params=*/true);
+  const size_t arg_bytes_total = TotalBufferBytes(buffer_infos_for_args);
+  const size_t temp_bytes_aligned = cpu_function_runtime::AlignedBufferBytes(
+      buffer_infos_for_temps.data(), buffer_infos_for_temps.size(),
+      /*allocate_entry_params=*/true);
+  const size_t temp_bytes_total = TotalBufferBytes(buffer_infos_for_temps);
 
   // Create rewrite strings for namespace start and end.
   string ns_start;
   for (const string& n : opts.namespaces) {
-    ns_start += strings::StrCat("namespace ", n, " {\n");
+    ns_start += absl::StrCat("namespace ", n, " {\n");
   }
   ns_start += "\n";
   string ns_end("\n");
   for (int i = opts.namespaces.size() - 1; i >= 0; --i) {
     const string& n = opts.namespaces[i];
-    ns_end += strings::StrCat("}  // end namespace ", n, "\n");
+    ns_end += absl::StrCat("}  // end namespace ", n, "\n");
   }
 
   // Generate metadata.
@@ -331,6 +372,20 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
       opts.gen_program_shape
           ?
           R"(#include "tensorflow/compiler/xla/xla_data.pb.h")"
+          : "";
+
+  const string include_hlo_profile_printer_data_proto =
+      opts.gen_hlo_profile_printer_data
+          ? R"(#include "tensorflow/compiler/xla/service/hlo_profile_printer_data.pb.h")"
+          : "";
+
+  // When HLO profiling is disabled we only forward declare the
+  // HloProfilePrinter protobuf.  So we can only conditionally emit this code
+  // calling HloProfilePrinter::profile_counters_size.
+  const string assign_profile_counters_size =
+      opts.gen_hlo_profile_printer_data
+          ? "data->set_profile_counters_size("
+            "data->hlo_profile_printer_data()->profile_counters_size());"
           : "";
 
   // Use a poor-man's text templating mechanism; first populate the full header
@@ -348,6 +403,7 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
 #define TFCOMPILE_GENERATED_{{ENTRY}}_H_  // NOLINT(build/header_guard)
 
 {{INCLUDE_XLA_DATA_PROTO}}
+{{INCLUDE_HLO_PROFILE_PRINTER_DATA_PROTO}}
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -399,9 +455,8 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
   static constexpr size_t kNumArgs = {{ARG_NUM}};
 
   // Byte size of each argument buffer. There are kNumArgs entries.
-  static const intptr_t* ArgSizes() {
-    static constexpr intptr_t kArgSizes[kNumArgs] = {{{ARG_SIZES}}};
-    return kArgSizes;
+  static const ::tensorflow::int64 ArgSize(::tensorflow::int32 index) {
+    return BufferInfos()[ArgIndexToBufferIndex()[index]].size();
   }
 
   // Returns static data used to create an XlaCompiledCpuFunction.
@@ -409,15 +464,17 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
     static XlaCompiledCpuFunction::StaticData* kStaticData = [](){
       XlaCompiledCpuFunction::StaticData* data =
         new XlaCompiledCpuFunction::StaticData;
-      data->raw_function = {{ENTRY}};
-      data->arg_sizes = ArgSizes();
-      data->num_args = kNumArgs;
-      data->temp_sizes = TempSizes();
-      data->num_temps = kNumTemps;
-      data->result_index = kResultIndex;
-      data->arg_names = StaticArgNames();
-      data->result_names = StaticResultNames();
-      data->program_shape = StaticProgramShape();
+      data->set_raw_function({{ENTRY}});
+      data->set_buffer_infos(BufferInfos());
+      data->set_num_buffers(kNumBuffers);
+      data->set_arg_index_table(ArgIndexToBufferIndex());
+      data->set_num_args(kNumArgs);
+      data->set_result_index(kResultIndex);
+      data->set_arg_names(StaticArgNames());
+      data->set_result_names(StaticResultNames());
+      data->set_program_shape(StaticProgramShape());
+      data->set_hlo_profile_printer_data(StaticHloProfilePrinterData());
+{{ASSIGN_PROFILE_COUNTERS_SIZE}}
       return data;
     }();
     return *kStaticData;
@@ -465,16 +522,26 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
 {{METHODS_RESULT}}
 
  private:
-  // Number of result and temporary buffers for the compiled computation.
-  static constexpr size_t kNumTemps = {{TEMP_NUM}};
+  // Number of buffers for the compiled computation.
+  static constexpr size_t kNumBuffers = {{NUM_BUFFERS}};
+
+  static const ::tensorflow::cpu_function_runtime::BufferInfo* BufferInfos() {
+    static const ::tensorflow::cpu_function_runtime::BufferInfo
+      kBufferInfos[kNumBuffers] = {
+{{BUFFER_INFOS_AS_STRING}}
+      };
+    return kBufferInfos;
+  }
+
+  static const ::tensorflow::int32* ArgIndexToBufferIndex() {
+    static constexpr ::tensorflow::int32 kArgIndexToBufferIndex[kNumArgs] = {
+{{ARG_INDEX_TABLE}}
+    };
+    return kArgIndexToBufferIndex;
+  }
+
   // The 0-based index of the result tuple in the temporary buffers.
   static constexpr size_t kResultIndex = {{RESULT_INDEX}};
-
-  // Byte size of each result / temporary buffer. There are kNumTemps entries.
-  static const intptr_t* TempSizes() {
-    static constexpr intptr_t kTempSizes[kNumTemps] = {{{TEMP_SIZES}}};
-    return kTempSizes;
-  }
 
   // Array of names of each positional argument, terminated by nullptr.
   static const char** StaticArgNames() {{ARG_NAMES_CODE}}
@@ -483,9 +550,16 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
   static const char** StaticResultNames() {{RESULT_NAMES_CODE}}
 
   // Shape of the args and results.
-  static const xla::ProgramShape* StaticProgramShape() {
-    static const xla::ProgramShape* kShape = {{PROGRAM_SHAPE_SHIM_EXPRESSION}};
+  static const xla::ProgramShapeProto* StaticProgramShape() {
+    static const xla::ProgramShapeProto* kShape = {{PROGRAM_SHAPE_SHIM_EXPRESSION}};
     return kShape;
+  }
+
+  // Metadata that can be used to pretty-print profile counters.
+  static const xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
+    static const xla::HloProfilePrinterData* kHloProfilePrinterData =
+      {{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}};
+    return kHloProfilePrinterData;
   }
 };
 {{NS_END}}
@@ -496,51 +570,59 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
 )";
   // The replacement strategy is naive, but good enough for our purposes.
   const std::vector<std::pair<string, string>> rewrites = {
-      {"{{ARG_BYTES_ALIGNED}}", strings::StrCat(arg_bytes_aligned)},
-      {"{{ARG_BYTES_TOTAL}}", strings::StrCat(arg_bytes_total)},
+      {"{{ARG_BYTES_ALIGNED}}", absl::StrCat(arg_bytes_aligned)},
+      {"{{ARG_BYTES_TOTAL}}", absl::StrCat(arg_bytes_total)},
       {"{{ARG_NAMES_CODE}}", arg_names_code},
-      {"{{ARG_NUM}}", strings::StrCat(arg_sizes.size())},
-      {"{{ARG_SIZES}}", str_util::Join(arg_sizes, ", ")},
+      {"{{ARG_NUM}}", absl::StrCat(arg_index_table.size())},
+      {"{{ARG_INDEX_TABLE}}", absl::StrJoin(arg_index_table, ", ")},
+      {"{{ASSIGN_PROFILE_COUNTERS_SIZE}}", assign_profile_counters_size},
       {"{{CLASS}}", opts.class_name},
+      {"{{DECLS_FROM_OBJ_FILE}}",
+       absl::StrJoin(metadata_result.header_variable_decls, "\n")},
       {"{{ENTRY}}", compile_result.entry_point},
+      {"{{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}}",
+       metadata_result.hlo_profile_printer_data_access_shim},
       {"{{INCLUDE_XLA_DATA_PROTO}}", include_xla_data_proto},
+      {"{{INCLUDE_HLO_PROFILE_PRINTER_DATA_PROTO}}",
+       include_hlo_profile_printer_data_proto},
       {"{{METHODS_ARG}}\n", methods_arg},
       {"{{METHODS_RESULT}}\n", methods_result},
       {"{{NS_END}}\n", ns_end},
       {"{{NS_START}}\n", ns_start},
-      {"{{PROGRAM_SHAPE}}", xla::ShapeUtil::HumanString(ps)},
-      {"{{RESULT_INDEX}}", strings::StrCat(result_index)},
-      {"{{RESULT_NAMES_CODE}}", result_names_code},
-      {"{{TEMP_BYTES_ALIGNED}}", strings::StrCat(temp_bytes_aligned)},
-      {"{{TEMP_BYTES_TOTAL}}", strings::StrCat(temp_bytes_total)},
-      {"{{TEMP_NUM}}", strings::StrCat(temp_sizes.size())},
-      {"{{TEMP_SIZES}}", str_util::Join(temp_sizes, ", ")},
-      {"{{DECLS_FROM_OBJ_FILE}}",
-       str_util::Join(metadata_result.header_variable_decls, "\n")},
+      {"{{PROGRAM_SHAPE}}", xla::ShapeUtil::HumanString(xla::ProgramShape(ps))},
       {"{{PROGRAM_SHAPE_SHIM_EXPRESSION}}",
-       metadata_result.program_shape_access_shim}};
-  str_util::ReplaceAllPairs(header, rewrites);
+       metadata_result.program_shape_access_shim},
+      {"{{RESULT_INDEX}}", absl::StrCat(result_index)},
+      {"{{RESULT_NAMES_CODE}}", result_names_code},
+      {"{{TEMP_BYTES_ALIGNED}}", absl::StrCat(temp_bytes_aligned)},
+      {"{{TEMP_BYTES_TOTAL}}", absl::StrCat(temp_bytes_total)},
+      {"{{NUM_BUFFERS}}", absl::StrCat(buffer_infos.size())},
+      {"{{BUFFER_INFOS_AS_STRING}}",
+       absl::StrJoin(buffer_infos_as_strings, ",\n")}};
+  absl::StrReplaceAll(rewrites, header);
   return Status::OK();
 }
 
-static string CreateUniqueIdentifierForProgramShape(const CodegenOpts& opts) {
+static string CreateUniqueIdentifier(const CodegenOpts& opts,
+                                     absl::string_view suffix) {
   string result = "__tfcompile";
   for (const string& n : opts.namespaces) {
-    strings::StrAppend(&result, "_", n);
+    absl::StrAppend(&result, "_", n);
   }
 
-  strings::StrAppend(&result, "_", opts.class_name, "_ProgramShape");
+  absl::StrAppend(&result, "_", opts.class_name, "_", suffix);
   return result;
 }
 
 Status GenerateMetadata(const CodegenOpts& opts,
                         const CompileResult& compile_result,
                         MetadataResult* metadata_result) {
-  std::unique_ptr<xla::ProgramShape> program_shape;
+  std::unique_ptr<xla::ProgramShapeProto> program_shape;
 
   if (opts.gen_program_shape) {
     program_shape =
-        tensorflow::MakeUnique<xla::ProgramShape>(compile_result.program_shape);
+        absl::make_unique<xla::ProgramShapeProto>(compile_result.program_shape);
+
     // The parameter names are currently meaningless, and redundant with the
     // rest of our metadata, so clear them out to avoid confusion and save
     // space.
@@ -550,18 +632,31 @@ Status GenerateMetadata(const CodegenOpts& opts,
   // When asked to serialize a null protobuf, CreateEmbeddedProtocolBuffer gives
   // a shim that evaluates to nullptr, which is what we want.
 
+  ProtobufToEmbed program_shape_protobuf{
+      CreateUniqueIdentifier(opts, "ProgramShapeProto"),
+      "xla::ProgramShapeProto", program_shape.get()};
+
+  ProtobufToEmbed hlo_profile_printer_data_protobuf{
+      CreateUniqueIdentifier(opts, "HloProfilePrinterData"),
+      "xla::HloProfilePrinterData",
+      compile_result.aot->hlo_profile_printer_data()};
+
   TF_ASSIGN_OR_RETURN(
-      EmbeddedProtocolBuffer embedded_program_shape,
-      CreateEmbeddedProtocolBuffer(opts.target_triple,
-                                   CreateUniqueIdentifierForProgramShape(opts),
-                                   "xla::ProgramShape", program_shape.get()));
+      EmbeddedProtocolBuffers embedded_protobufs,
+      CreateEmbeddedProtocolBuffers(
+          opts.target_triple,
+          {program_shape_protobuf, hlo_profile_printer_data_protobuf}));
 
   metadata_result->program_shape_access_shim =
-      std::move(embedded_program_shape.cpp_shim_expression);
+      std::move(embedded_protobufs.cpp_shims[0].expression);
+  metadata_result->hlo_profile_printer_data_access_shim =
+      std::move(embedded_protobufs.cpp_shims[1].expression);
   metadata_result->header_variable_decls.emplace_back(
-      std::move(embedded_program_shape.cpp_variable_decl));
+      std::move(embedded_protobufs.cpp_shims[0].variable_decl));
+  metadata_result->header_variable_decls.emplace_back(
+      std::move(embedded_protobufs.cpp_shims[1].variable_decl));
   metadata_result->object_file_data =
-      std::move(embedded_program_shape.object_file_data);
+      std::move(embedded_protobufs.object_file_data);
   return Status::OK();
 }
 
@@ -585,7 +680,7 @@ Status ParseCppClass(const string& cpp_class, string* class_name,
   return Status::OK();
 }
 
-Status ValidateCppIdent(StringPiece ident, StringPiece msg) {
+Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
   if (ident.empty()) {
     return errors::InvalidArgument("empty identifier: ", msg);
   }

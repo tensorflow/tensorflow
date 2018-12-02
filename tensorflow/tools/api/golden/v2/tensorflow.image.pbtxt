@@ -1,0 +1,239 @@
+path: "tensorflow.image"
+tf_module {
+  member {
+    name: "ResizeMethod"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "adjust_brightness"
+    argspec: "args=[\'image\', \'delta\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "adjust_contrast"
+    argspec: "args=[\'images\', \'contrast_factor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "adjust_gamma"
+    argspec: "args=[\'image\', \'gamma\', \'gain\'], varargs=None, keywords=None, defaults=[\'1\', \'1\'], "
+  }
+  member_method {
+    name: "adjust_hue"
+    argspec: "args=[\'image\', \'delta\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "adjust_jpeg_quality"
+    argspec: "args=[\'image\', \'jpeg_quality\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "adjust_saturation"
+    argspec: "args=[\'image\', \'saturation_factor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "central_crop"
+    argspec: "args=[\'image\', \'central_fraction\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "convert_image_dtype"
+    argspec: "args=[\'image\', \'dtype\', \'saturate\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "crop_and_resize"
+    argspec: "args=[\'image\', \'boxes\', \'box_indices\', \'crop_size\', \'method\', \'extrapolation_value\', \'name\'], varargs=None, keywords=None, defaults=[\'bilinear\', \'0\', \'None\'], "
+  }
+  member_method {
+    name: "crop_to_bounding_box"
+    argspec: "args=[\'image\', \'offset_height\', \'offset_width\', \'target_height\', \'target_width\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "decode_and_crop_jpeg"
+    argspec: "args=[\'contents\', \'crop_window\', \'channels\', \'ratio\', \'fancy_upscaling\', \'try_recover_truncated\', \'acceptable_fraction\', \'dct_method\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \'True\', \'False\', \'1\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "decode_bmp"
+    argspec: "args=[\'contents\', \'channels\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+  }
+  member_method {
+    name: "decode_gif"
+    argspec: "args=[\'contents\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "decode_image"
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'uint8\'>\", \'None\'], "
+  }
+  member_method {
+    name: "decode_jpeg"
+    argspec: "args=[\'contents\', \'channels\', \'ratio\', \'fancy_upscaling\', \'try_recover_truncated\', \'acceptable_fraction\', \'dct_method\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \'True\', \'False\', \'1\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "decode_png"
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'uint8\'>\", \'None\'], "
+  }
+  member_method {
+    name: "draw_bounding_boxes"
+    argspec: "args=[\'images\', \'boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "encode_jpeg"
+    argspec: "args=[\'image\', \'format\', \'quality\', \'progressive\', \'optimize_size\', \'chroma_downsampling\', \'density_unit\', \'x_density\', \'y_density\', \'xmp_metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'95\', \'False\', \'False\', \'True\', \'in\', \'300\', \'300\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "encode_png"
+    argspec: "args=[\'image\', \'compression\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
+    name: "extract_glimpse"
+    argspec: "args=[\'input\', \'size\', \'offsets\', \'centered\', \'normalized\', \'uniform_noise\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "extract_image_patches"
+    argspec: "args=[\'images\', \'sizes\', \'strides\', \'rates\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "extract_jpeg_shape"
+    argspec: "args=[\'contents\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "flip_left_right"
+    argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "flip_up_down"
+    argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "grayscale_to_rgb"
+    argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "hsv_to_rgb"
+    argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "image_gradients"
+    argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_jpeg"
+    argspec: "args=[\'contents\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "non_max_suppression"
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\', \'score_threshold\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'None\'], "
+  }
+  member_method {
+    name: "non_max_suppression_overlaps"
+    argspec: "args=[\'overlaps\', \'scores\', \'max_output_size\', \'overlap_threshold\', \'score_threshold\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'None\'], "
+  }
+  member_method {
+    name: "non_max_suppression_padded"
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\', \'score_threshold\', \'pad_to_max_output_size\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "pad_to_bounding_box"
+    argspec: "args=[\'image\', \'offset_height\', \'offset_width\', \'target_height\', \'target_width\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "per_image_standardization"
+    argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "psnr"
+    argspec: "args=[\'a\', \'b\', \'max_val\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "random_brightness"
+    argspec: "args=[\'image\', \'max_delta\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "random_contrast"
+    argspec: "args=[\'image\', \'lower\', \'upper\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "random_crop"
+    argspec: "args=[\'value\', \'size\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "random_flip_left_right"
+    argspec: "args=[\'image\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "random_flip_up_down"
+    argspec: "args=[\'image\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "random_hue"
+    argspec: "args=[\'image\', \'max_delta\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "random_jpeg_quality"
+    argspec: "args=[\'image\', \'min_jpeg_quality\', \'max_jpeg_quality\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "random_saturation"
+    argspec: "args=[\'image\', \'lower\', \'upper\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "resize"
+    argspec: "args=[\'images\', \'size\', \'method\', \'align_corners\', \'preserve_aspect_ratio\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "resize_image_with_crop_or_pad"
+    argspec: "args=[\'image\', \'target_height\', \'target_width\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "resize_image_with_pad"
+    argspec: "args=[\'image\', \'target_height\', \'target_width\', \'method\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "rgb_to_grayscale"
+    argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "rgb_to_hsv"
+    argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "rgb_to_yiq"
+    argspec: "args=[\'images\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "rgb_to_yuv"
+    argspec: "args=[\'images\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "rot90"
+    argspec: "args=[\'image\', \'k\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
+  }
+  member_method {
+    name: "sample_distorted_bounding_box"
+    argspec: "args=[\'image_size\', \'bounding_boxes\', \'seed\', \'min_object_covered\', \'aspect_ratio_range\', \'area_range\', \'max_attempts\', \'use_image_if_no_bounding_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0.1\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "sobel_edges"
+    argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ssim"
+    argspec: "args=[\'img1\', \'img2\', \'max_val\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ssim_multiscale"
+    argspec: "args=[\'img1\', \'img2\', \'max_val\', \'power_factors\'], varargs=None, keywords=None, defaults=[\'(0.0448, 0.2856, 0.3001, 0.2363, 0.1333)\'], "
+  }
+  member_method {
+    name: "total_variation"
+    argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "transpose"
+    argspec: "args=[\'image\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "yiq_to_rgb"
+    argspec: "args=[\'images\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "yuv_to_rgb"
+    argspec: "args=[\'images\'], varargs=None, keywords=None, defaults=None"
+  }
+}

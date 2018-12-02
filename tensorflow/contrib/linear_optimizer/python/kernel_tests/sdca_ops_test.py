@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
 import threading
 
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
@@ -34,12 +35,14 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_sdca_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import googletest
 
 _MAX_ITERATIONS = 100
-_SHARD_NUMBERS = [None, 1, 3, 10]
-_NUM_LOSS_PARTITIONS = [2, 4]
+_SHARD_NUMBERS = [None, 1, 3]
+_NUM_LOSS_PARTITIONS = [4]
 
 
 def make_example_proto(feature_dict, target, value=1.0):
@@ -102,15 +105,52 @@ def make_example_dict(example_protos, example_weights):
       example_ids=['%d' % i for i in range(0, len(example_protos))])
 
 
-def make_variable_dict(max_age, max_gender):
+def make_random_examples_and_variables_dicts(num_examples, dim, num_non_zero):
+  random.seed(1)
+
+  sparse_features = [
+      SparseFeatureColumn(
+          [i for i in range(num_examples) for _ in range(num_non_zero)], [
+              i for _ in range(num_examples)
+              for i in random.sample(range(dim), num_non_zero)
+          ],
+          [num_non_zero**(-0.5) for _ in range(num_examples * num_non_zero)])
+  ]
+  examples_dict = dict(
+      sparse_features=sparse_features,
+      dense_features=[],
+      example_weights=[random.random() for _ in range(num_examples)],
+      example_labels=[
+          1. if random.random() > 0.5 else 0. for _ in range(num_examples)
+      ],
+      example_ids=[str(i) for i in range(num_examples)])
+
+  weights = variables_lib.VariableV1(
+      array_ops.zeros([dim], dtype=dtypes.float32))
+  variables_dict = dict(
+      sparse_features_weights=[weights],
+      dense_features_weights=[])
+
+  return examples_dict, variables_dict
+
+
+def make_variable_dict(max_age, max_gender, num_shards=None, partitioned=False):
   # TODO(sibyl-toe9oF2e):  Figure out how to derive max_age & max_gender from
   # examples_dict.
-  age_weights = variables_lib.Variable(
-      array_ops.zeros(
-          [max_age + 1], dtype=dtypes.float32))
-  gender_weights = variables_lib.Variable(
-      array_ops.zeros(
-          [max_gender + 1], dtype=dtypes.float32))
+  partitioner = None
+  if partitioned:
+    partitioner = partitioned_variables.fixed_size_partitioner(num_shards=2,
+                                                               axis=0)
+  with variable_scope.variable_scope(
+      name_or_scope=('variables/shard_{}'.format(num_shards)
+                     if num_shards else 'variables'),
+      partitioner=partitioner):
+    age_weights = variable_scope.get_variable(
+        name='age',
+        initializer=array_ops.zeros([max_age + 1], dtype=dtypes.float32))
+    gender_weights = variable_scope.get_variable(
+        name='gender',
+        initializer=array_ops.zeros([max_gender + 1], dtype=dtypes.float32))
   return dict(
       sparse_features_weights=[age_weights, gender_weights],
       dense_features_weights=[])
@@ -144,7 +184,7 @@ def make_dense_examples_and_variables_dicts(dense_features_values, weights,
     dense_tensors.append(dense_tensor)
     # Add variables of shape [feature_column_dimension].
     dense_weights.append(
-        variables_lib.Variable(
+        variables_lib.VariableV1(
             array_ops.zeros(
                 [dense_tensor.get_shape().as_list()[1]], dtype=dtypes.float32)))
 
@@ -203,7 +243,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
     for num_shards in _SHARD_NUMBERS:
       with self._single_threaded_test_session():
         examples = make_example_dict(example_protos, example_weights)
-        variables = make_variable_dict(1, 1)
+        variables = make_variable_dict(1, 1, num_shards)
         options = dict(
             symmetric_l2_regularization=1,
             symmetric_l1_regularization=0,
@@ -235,7 +275,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         self.assertAllClose(
             0.01, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
 
-  def testDistributedSimple(self):
+  def testPartitionedPrimals(self):
     # Setup test data
     example_protos = [
         make_example_proto({
@@ -249,12 +289,185 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
     ]
     example_weights = [1.0, 1.0]
     for num_shards in _SHARD_NUMBERS:
+      with self._single_threaded_test_session():
+        examples = make_example_dict(example_protos, example_weights)
+        variables = make_variable_dict(1, 1, num_shards, partitioned=True)
+        options = dict(
+            symmetric_l2_regularization=1,
+            symmetric_l1_regularization=0,
+            num_table_shards=num_shards,
+            loss_type='logistic_loss')
+
+        lr = SdcaModel(examples, variables, options)
+        variables_lib.global_variables_initializer().run()
+        unregularized_loss = lr.unregularized_loss(examples)
+        loss = lr.regularized_loss(examples)
+        predictions = lr.predictions(examples)
+        self.assertAllClose(0.693147, unregularized_loss.eval())
+        self.assertAllClose(0.693147, loss.eval())
+        train_op = lr.minimize()
+        for _ in range(_MAX_ITERATIONS):
+          train_op.run()
+        lr.update_weights(train_op).run()
+        # The high tolerance in unregularized_loss comparisons is due to the
+        # fact that it's possible to trade off unregularized_loss vs.
+        # regularization and still have a sum that is quite close to the
+        # optimal regularized_loss value.  SDCA's duality gap only ensures that
+        # the regularized_loss is within 0.01 of optimal.
+        # 0.525457 is the optimal regularized_loss.
+        # 0.411608 is the unregularized_loss at that optimum.
+        self.assertAllClose(0.411608, unregularized_loss.eval(), atol=0.05)
+        self.assertAllClose(0.525457, loss.eval(), atol=0.01)
+        predicted_labels = get_binary_predictions_for_logistic(predictions)
+        self.assertAllEqual([0, 1], predicted_labels.eval())
+        self.assertAllClose(
+            0.01, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
+
+  def testSomePartitionedPrimals(self):
+    # Setup test data
+    example_protos = [
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [0],
+            'gender': [1]
+        }, 1),
+    ]
+    example_weights = [1.0, 1.0]
+    for num_shards in _SHARD_NUMBERS:
+      with self._single_threaded_test_session():
+        examples = make_example_dict(example_protos, example_weights)
+        # Explicitly make age a [1]-shaped Variable (which cannot be
+        # partitioned), while making gender a PartitionedVariable.
+        age_weights = variables_lib.VariableV1(
+            array_ops.zeros([1], dtype=dtypes.float32))
+        with variable_scope.variable_scope(
+            name_or_scope=('variables/shard_{}'.format(num_shards)
+                           if num_shards else 'variables'),
+            partitioner=partitioned_variables.fixed_size_partitioner(
+                num_shards=2, axis=0)):
+          gender_weights = variable_scope.get_variable(
+              name='gender',
+              initializer=array_ops.zeros([2], dtype=dtypes.float32))
+        variables = dict(
+            sparse_features_weights=[age_weights, gender_weights],
+            dense_features_weights=[])
+        options = dict(
+            symmetric_l2_regularization=1,
+            symmetric_l1_regularization=0,
+            num_table_shards=num_shards,
+            loss_type='logistic_loss')
+
+        lr = SdcaModel(examples, variables, options)
+        variables_lib.global_variables_initializer().run()
+        unregularized_loss = lr.unregularized_loss(examples)
+        loss = lr.regularized_loss(examples)
+        predictions = lr.predictions(examples)
+        self.assertAllClose(0.693147, unregularized_loss.eval())
+        self.assertAllClose(0.693147, loss.eval())
+        train_op = lr.minimize()
+        for _ in range(_MAX_ITERATIONS):
+          train_op.run()
+        lr.update_weights(train_op).run()
+        # The high tolerance in unregularized_loss comparisons is due to the
+        # fact that it's possible to trade off unregularized_loss vs.
+        # regularization and still have a sum that is quite close to the
+        # optimal regularized_loss value.  SDCA's duality gap only ensures that
+        # the regularized_loss is within 0.01 of optimal.
+        # 0.525457 is the optimal regularized_loss.
+        # 0.593014 is the unregularized_loss at that optimum.
+        self.assertAllClose(0.512591, unregularized_loss.eval(), atol=0.05)
+        self.assertAllClose(0.593014, loss.eval(), atol=0.01)
+        predicted_labels = get_binary_predictions_for_logistic(predictions)
+        self.assertAllEqual([0, 1], predicted_labels.eval())
+        self.assertAllClose(
+            0.01, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
+
+  def testSparseRandom(self):
+    dim = 20
+    num_examples = 1000
+    # Number of non-zero features per example.
+    non_zeros = 10
+    # Setup test data.
+    with self._single_threaded_test_session():
+      examples, variables = make_random_examples_and_variables_dicts(
+          num_examples, dim, non_zeros)
+      options = dict(
+          symmetric_l2_regularization=.1,
+          symmetric_l1_regularization=0,
+          num_table_shards=1,
+          adaptive=False,
+          loss_type='logistic_loss')
+
+      lr = SdcaModel(examples, variables, options)
+      variables_lib.global_variables_initializer().run()
+      train_op = lr.minimize()
+      for _ in range(4):
+        train_op.run()
+      lr.update_weights(train_op).run()
+      # Duality gap is 1.4e-5.
+      # It would be 0.01 without shuffling and 0.02 with adaptive sampling.
+      self.assertNear(0.0, lr.approximate_duality_gap().eval(), err=1e-3)
+
+  def testSparseDuplicate(self):
+    # Setup test data
+    example_protos = [
+        make_example_proto({
+            'age': [0] * 5,
+            'gender': [0] * 5
+        }, 0),
+        make_example_proto({
+            'age': [1] * 5,
+            'gender': [1] * 5
+        }, 1),
+    ]
+    example_weights = [1.0, 1.0]
+    with self._single_threaded_test_session():
+      examples = make_example_dict(example_protos, example_weights)
+      variables = make_variable_dict(1, 1)
+      options = dict(
+          symmetric_l2_regularization=1,
+          symmetric_l1_regularization=0,
+          loss_type='logistic_loss')
+
+      lr = SdcaModel(examples, variables, options)
+      variables_lib.global_variables_initializer().run()
+      train_op = lr.minimize()
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   'Duplicate'):
+        train_op.run()
+
+  def testDistributedSimple(self):
+    # Distributed SDCA may not converge if the workers update concurrently the
+    # same example. In this test the examples are partitioned across workers.
+    # The examples are the same for all workers, just the example_ids are
+    # different.
+    example_protos = [
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 1),
+    ]
+    example_weights = [1.0, 1.0]
+    examples = make_example_dict(example_protos, example_weights)
+    example_ids = array_ops.placeholder(
+        dtypes.string, shape=(len(example_weights),))
+    examples['example_ids'] = example_ids
+    variables = make_variable_dict(1, 1)
+    for num_shards in _SHARD_NUMBERS:
       for num_loss_partitions in _NUM_LOSS_PARTITIONS:
         with self._single_threaded_test_session():
-          examples = make_example_dict(example_protos, example_weights)
-          variables = make_variable_dict(1, 1)
           options = dict(
-              symmetric_l2_regularization=1,
+              # Keep the same solution as for TestSimple: since the number of
+              # examples is multplied by num_loss_partitions, multiply also
+              # L2 by the same value.
+              symmetric_l2_regularization=num_loss_partitions,
               symmetric_l1_regularization=0,
               loss_type='logistic_loss',
               num_table_shards=num_shards,
@@ -270,32 +483,30 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
 
           train_op = lr.minimize()
 
-          def minimize():
+          def minimize(worker_id):
             with self._single_threaded_test_session():
+              feed_dict = {example_ids: [
+                  str(i + worker_id*len(example_weights)) for i in range(
+                      len(example_weights))]}
               for _ in range(_MAX_ITERATIONS):
-                train_op.run()  # pylint: disable=cell-var-from-loop
+                train_op.run(feed_dict=feed_dict)  # pylint: disable=cell-var-from-loop
 
           threads = []
-          for _ in range(num_loss_partitions):
-            threads.append(threading.Thread(target=minimize))
+          for worker_id in range(num_loss_partitions):
+            threads.append(threading.Thread(target=minimize, args=(worker_id,)))
             threads[-1].start()
 
           for t in threads:
             t.join()
-          lr.update_weights(train_op).run()
+          lr.update_weights(train_op).run(feed_dict={
+              example_ids: [str(i) for i in range(len(example_weights))]})
 
-          # The high tolerance in unregularized_loss comparisons is due to the
-          # fact that it's possible to trade off unregularized_loss vs.
-          # regularization and still have a sum that is quite close to the
-          # optimal regularized_loss value.  SDCA's duality gap only ensures
-          # that the regularized_loss is within 0.01 of optimal.
-          # 0.525457 is the optimal regularized_loss.
-          # 0.411608 is the unregularized_loss at that optimum.
-          self.assertAllClose(0.411608, unregularized_loss.eval(), atol=0.05)
-          self.assertAllClose(0.525457, loss.eval(), atol=0.01)
+          # Test only the unregularized loss because the optimal value of the
+          # regularized loss depends on num_loss_partitions.
+          self.assertAllClose(0.411608, unregularized_loss.eval(), atol=0.02)
           predicted_labels = get_binary_predictions_for_logistic(predictions)
           self.assertAllEqual([0, 1], predicted_labels.eval())
-          self.assertTrue(lr.approximate_duality_gap().eval() < 0.02)
+          self.assertNear(0.0, lr.approximate_duality_gap().eval(), 0.02)
 
   def testSimpleNoL2(self):
     # Same as test above (so comments from above apply) but without an L2.
@@ -315,7 +526,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
     for num_shards in _SHARD_NUMBERS:
       with self._single_threaded_test_session():
         examples = make_example_dict(example_protos, example_weights)
-        variables = make_variable_dict(1, 1)
+        variables = make_variable_dict(1, 1, num_shards)
         options = dict(
             symmetric_l2_regularization=0,
             symmetric_l1_regularization=0,
@@ -373,7 +584,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
       with self._single_threaded_test_session():
         # Only use examples 0 and 2
         examples = make_example_dict(example_protos, example_weights)
-        variables = make_variable_dict(1, 1)
+        variables = make_variable_dict(1, 1, num_shards)
         options = dict(
             symmetric_l2_regularization=1,
             symmetric_l1_regularization=0,
@@ -413,7 +624,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
     for num_shards in _SHARD_NUMBERS:
       with self._single_threaded_test_session():
         examples = make_example_dict(example_protos, example_weights)
-        variables = make_variable_dict(1, 1)
+        variables = make_variable_dict(1, 1, num_shards)
         options = dict(
             symmetric_l2_regularization=1,
             symmetric_l1_regularization=0,
@@ -450,7 +661,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
     for num_shards in _SHARD_NUMBERS:
       with self._single_threaded_test_session():
         examples = make_example_dict(example_protos, example_weights)
-        variables = make_variable_dict(3, 1)
+        variables = make_variable_dict(3, 1, num_shards)
         options = dict(
             symmetric_l2_regularization=1,
             symmetric_l1_regularization=0,
@@ -491,7 +702,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
     for num_shards in _SHARD_NUMBERS:
       with self._single_threaded_test_session():
         examples = make_example_dict(example_protos, example_weights)
-        variables = make_variable_dict(1, 1)
+        variables = make_variable_dict(1, 1, num_shards)
         options = dict(
             symmetric_l2_regularization=1,
             symmetric_l1_regularization=0,
@@ -531,7 +742,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
     for num_shards in _SHARD_NUMBERS:
       with self._single_threaded_test_session():
         examples = make_example_dict(example_protos, example_weights)
-        variables = make_variable_dict(1, 1)
+        variables = make_variable_dict(1, 1, num_shards)
         options = dict(
             symmetric_l2_regularization=1,
             symmetric_l1_regularization=0,
@@ -590,7 +801,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
           labels=[1.0, 0.0])
       # Replace with a variable of size 1 instead of 2.
       variables['dense_features_weights'] = [
-          variables_lib.Variable(array_ops.zeros(
+          variables_lib.VariableV1(array_ops.zeros(
               [1], dtype=dtypes.float32))
       ]
       options = dict(
@@ -1043,6 +1254,57 @@ class SdcaWithSmoothHingeLossTest(SdcaModelTest):
       self.assertAllEqual([0, 1], binary_predictions.eval())
       self.assertAllClose(0.33, unregularized_loss.eval(), atol=0.02)
       self.assertAllClose(0.44, regularized_loss.eval(), atol=0.02)
+
+class SdcaWithPoissonLossTest(SdcaModelTest):
+  """SDCA optimizer test class for poisson loss."""
+
+  def testSimple(self):
+    # Setup test data
+    example_protos = [
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 2),
+    ]
+    example_weights = [100.0, 100.0]
+    with self._single_threaded_test_session():
+      examples = make_example_dict(example_protos, example_weights)
+      variables = make_variable_dict(1, 1)
+      options = dict(
+          symmetric_l2_regularization=1.0,
+          symmetric_l1_regularization=0,
+          loss_type='poisson_loss')
+      model = SdcaModel(examples, variables, options)
+      variables_lib.global_variables_initializer().run()
+
+      # Before minimization, the weights default to zero. There is no loss due
+      # to regularization, only unregularized loss which is 1 for each example.
+      predictions = model.predictions(examples)
+      self.assertAllClose([1.0, 1.0], predictions.eval())
+      unregularized_loss = model.unregularized_loss(examples)
+      regularized_loss = model.regularized_loss(examples)
+      approximate_duality_gap = model.approximate_duality_gap()
+      self.assertAllClose(1.0, unregularized_loss.eval())
+      self.assertAllClose(1.0, regularized_loss.eval())
+
+      # There are 4 sparse weights: 2 for age (say w1, w2) and 2 for gender
+      # (say w3 and w4). The minimization leads to:
+      # w1=w3=-1.96487, argmin of 100*(exp(2*w)-2*w*0)+w**2.
+      # w2=w4=0.345708, argmin of 100*(exp(2*w)-2*w*2)+w**2.
+      # This gives an unregularized loss of .3167 and .3366 with regularization.
+      train_op = model.minimize()
+      for _ in range(_MAX_ITERATIONS):
+        train_op.run()
+      model.update_weights(train_op).run()
+
+      self.assertAllClose([0.0196, 1.9965], predictions.eval(), atol=1e-4)
+      self.assertAllClose(0.3167, unregularized_loss.eval(), atol=1e-4)
+      self.assertAllClose(0.3366, regularized_loss.eval(), atol=1e-4)
+      self.assertAllClose(0., approximate_duality_gap.eval(), atol=1e-6)
 
 
 class SdcaFprintTest(SdcaModelTest):

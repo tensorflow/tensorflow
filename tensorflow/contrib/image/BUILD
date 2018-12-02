@@ -49,6 +49,7 @@ tf_kernel_library(
         "kernels/image_ops.h",
     ],
     deps = [
+        ":image_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
@@ -74,11 +75,13 @@ tf_custom_op_py_library(
     dso = [":python/ops/_image_ops.so"],
     kernels = [
         ":image_ops_kernels",
-        ":image_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":dense_image_warp_py",
         ":image_ops",
+        ":interpolate_spline_py",
+        ":sparse_image_warp_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:common_shapes",
@@ -125,6 +128,26 @@ tf_custom_op_library(
     ],
 )
 
+tf_kernel_library(
+    name = "distort_image_ops_kernels",
+    srcs = [
+        "kernels/adjust_hsv_in_yiq_op.cc",
+        "kernels/adjust_hsv_in_yiq_op.h",
+    ],
+    gpu_srcs = [
+        "kernels/adjust_hsv_in_yiq_op_gpu.cu.cc",
+        "kernels/adjust_hsv_in_yiq_op.h",
+    ],
+    deps = [
+        ":distort_image_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:gpu_util_hdrs",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
 tf_cc_test(
     name = "adjust_hsv_in_yiq_op_test",
     size = "small",
@@ -152,13 +175,16 @@ tf_gen_op_wrapper_py(
     deps = [":distort_image_ops_op_lib"],
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "distort_image_py",
     srcs = [
         "__init__.py",
         "python/ops/distort_image_ops.py",
     ],
-    data = [":python/ops/_distort_image_ops.so"],
+    dso = [":python/ops/_distort_image_ops.so"],
+    kernels = [
+        ":distort_image_ops_kernels",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":distort_image_ops",
@@ -194,6 +220,117 @@ cuda_py_test(
     ],
 )
 
+py_library(
+    name = "dense_image_warp_py",
+    srcs = [
+        "python/ops/dense_image_warp.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "interpolate_spline_py",
+    srcs = [
+        "python/ops/interpolate_spline.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "sparse_image_warp_py",
+    srcs = [
+        "python/ops/sparse_image_warp.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dense_image_warp_py",
+        ":interpolate_spline_py",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
+)
+
+cuda_py_test(
+    name = "sparse_image_warp_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/sparse_image_warp_test.py"],
+    additional_deps = [
+        ":sparse_image_warp_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/core:protos_all_py",
+    ],
+    data = [":sparse_image_warp_test_data"],
+    tags = ["no_pip"],
+)
+
+filegroup(
+    name = "sparse_image_warp_test_data",
+    srcs = glob(["python/kernel_tests/test_data/*.png"]),
+)
+
+cuda_py_test(
+    name = "dense_image_warp_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/dense_image_warp_test.py"],
+    additional_deps = [
+        ":dense_image_warp_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+cuda_py_test(
+    name = "interpolate_spline_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/interpolate_spline_test.py"],
+    additional_deps = [
+        ":interpolate_spline_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
 tf_py_test(
     name = "segmentation_test",
     size = "medium",
@@ -224,25 +361,36 @@ tf_gen_op_libs(
     op_lib_names = ["single_image_random_dot_stereograms_ops"],
 )
 
+tf_kernel_library(
+    name = "single_image_random_dot_stereograms_kernels",
+    srcs = [
+        "kernels/single_image_random_dot_stereograms_ops.cc",
+    ],
+    deps = [
+        ":single_image_random_dot_stereograms_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_gen_op_wrapper_py(
     name = "single_image_random_dot_stereograms_ops",
     deps = [":single_image_random_dot_stereograms_ops_op_lib"],
 )
 
-cc_library(
+alias(
     name = "image_ops_cc",
-    srcs = ["ops/image_ops.cc"],
-    deps = [
-        ":image_ops_kernels",
-        "//tensorflow/core:framework",
-    ],
-    alwayslink = 1,
+    actual = ":image_ops_op_lib",
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "single_image_random_dot_stereograms_py",
     srcs = glob(["python/ops/single*.py"]) + ["__init__.py"],
-    data = [":python/ops/_single_image_random_dot_stereograms.so"],
+    dso = [":python/ops/_single_image_random_dot_stereograms.so"],
+    kernels = [
+        ":single_image_random_dot_stereograms_kernels",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":image_py",
@@ -269,16 +417,4 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

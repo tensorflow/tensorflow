@@ -13,19 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/grappler/utils.h"
+
+#include <iterator>
 #include <memory>
+#include <queue>
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -33,13 +40,23 @@ namespace {
 template <typename T>
 bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
   using RealType = typename Eigen::NumTraits<T>::Real;
-  if (value > std::numeric_limits<RealType>::max() ||
-      value < std::numeric_limits<RealType>::min()) {
+  if (value > static_cast<double>(Eigen::NumTraits<RealType>::highest()) ||
+      value < static_cast<double>(Eigen::NumTraits<RealType>::lowest())) {
     return false;
   }
   tensor->flat<T>()(0) = static_cast<T>(value);
   return true;
 }
+
+// Is 'node' an operator that consumes only the shape of its input, not the
+// data itself?
+// TODO(ezhulenev): move to op_types.h. Requires to break circular dependency.
+// TODO(ezhulenev): what about Identity passing tensor to Shape consumer?
+bool IsShapeConsumer(const NodeDef& node) {
+  const string& op = node.op();
+  return op == "Shape" || op == "ShapeN" || op == "Rank" || op == "Size";
+}
+
 }  // namespace
 
 NodeMap::NodeMap(GraphDef* graph) {
@@ -128,56 +145,17 @@ void NodeMap::UpdateOutput(const string& node_name,
 }
 
 bool IsSameInput(const string& name1, const string& name2) {
-  if (name1 == name2) {
-    return true;
-  }
-  int position1;
-  string node1 = ParseNodeName(name1, &position1);
-  int position2;
-  string node2 = ParseNodeName(name2, &position2);
-  return (position1 == position2) && (node1 == node2);
-}
-
-string ParseNodeName(const string& name, int* position) {
-  // Strip the prefix '^' (if any), and strip the trailing ":{digits} (if any)
-  // to get a node name.
-  strings::Scanner scan(name);
-  scan.ZeroOrOneLiteral("^")
-      .RestartCapture()
-      .One(strings::Scanner::LETTER_DIGIT_DOT_UNDERSCORE)
-      .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
-  StringPiece capture;
-  StringPiece remaining;
-  if (scan.Peek(':') != ':' || !scan.GetResult(&remaining, &capture)) {
-    *position = 0;
-    return "";
-  } else {
-    if (name[0] == '^') {
-      *position = -1;
-    } else if (remaining.empty()) {
-      *position = 0;
-    } else {
-      // Skip the first ':' character.
-      CHECK(strings::safe_strto32(remaining.substr(1), position));
-    }
-    return capture.ToString();
-  }
+  if (name1 == name2) return true;
+  TensorId tensor1 = ParseTensorName(name1);
+  TensorId tensor2 = ParseTensorName(name2);
+  return tensor1.node() == tensor2.node() && tensor1.index() == tensor2.index();
 }
 
 bool IsControlInput(const string& name) {
   return !name.empty() && name[0] == '^';
 }
 
-string NodeName(const string& name) {
-  int position;
-  return ParseNodeName(name, &position);
-}
-
-int NodePosition(const string& name) {
-  int position;
-  ParseNodeName(name, &position);
-  return position;
-}
+bool IsControlInput(const TensorId& tensor_id) { return tensor_id.index() < 0; }
 
 string AddPrefixToNodeName(const string& name, const string& prefix,
                            const string& delimiter) {
@@ -220,6 +198,12 @@ string AsControlDependency(const string& node_name) {
              : strings::StrCat("^", node_name);
 }
 
+bool NodeIsOnCpu(const NodeDef* node) {
+  string task, device;
+  return DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) &&
+         str_util::StartsWith(device, DEVICE_CPU);
+}
+
 int NumOutputs(const NodeDef& node, GraphDef* graph) {
   int num_outputs = 0;
   const OpDef* op_def = nullptr;
@@ -245,6 +229,14 @@ int NumOutputs(const NodeDef& node, GraphDef* graph) {
   return num_outputs;
 }
 
+bool HasControlInputs(const NodeDef& node) {
+  int num_inputs = node.input_size();
+  if (num_inputs > 0 && IsControlInput(node.input(num_inputs - 1))) {
+    return true;
+  }
+  return false;
+}
+
 int NumNonControlInputs(const NodeDef& node) {
   int num_inputs = node.input_size();
   for (const string& input : node.input()) {
@@ -262,21 +254,42 @@ int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
       if (IsControlInput(node_as_input)) {
         break;
       }
-      if (NodeName(node_as_input) == node.name()) {
+      if (node_as_input == node.name()) {
         ++num_outputs;
+      } else {
+        const TensorId tensor = ParseTensorName(node_as_input);
+        if (tensor.node() == node.name()) {
+          ++num_outputs;
+        }
       }
     }
   }
   return num_outputs;
 }
 
+int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map) {
+  int num_data_outputs = 0;
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    if (IsShapeConsumer(*output)) continue;
+
+    for (int i = 0; i < output->input_size(); ++i) {
+      const string& input = output->input(i);
+      if (!IsControlInput(input) && NodeName(input) == node.name()) {
+        ++num_data_outputs;
+        break;
+      }
+    }
+  }
+  return num_data_outputs;
+}
+
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
-DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name) {
-  if (!node.attr().count(attr_name)) {
+DataType GetDataTypeFromAttr(const NodeDef& node, const string& type_attr) {
+  if (!node.attr().count(type_attr)) {
     return DT_INVALID;
   }
-  const auto& attr = node.attr().at(attr_name);
+  const auto& attr = node.attr().at(type_attr);
   if (attr.value_case() != AttrValue::kType) {
     return DT_INVALID;
   }
@@ -339,15 +352,56 @@ void DedupControlInputs(NodeDef* node) {
 }
 
 namespace {
+
+template <typename UniqueContainer>
+void EraseNodesFromGraphImpl(const UniqueContainer& nodes_to_delete,
+                             GraphDef* graph) {
+  static_assert(std::is_same<typename UniqueContainer::value_type, int>::value,
+                "Need to pass container of ints");
+
+  int last = graph->node_size() - 1;
+  for (auto it = nodes_to_delete.rbegin(); it != nodes_to_delete.rend(); ++it) {
+    const int index = *it;
+    graph->mutable_node()->SwapElements(index, last);
+    last--;
+  }
+  graph->mutable_node()->DeleteSubrange(last + 1, nodes_to_delete.size());
+}
+
 template <typename T>
 inline void STLSortAndRemoveDuplicates(T* v) {
   std::sort(v->begin(), v->end());
   v->erase(std::unique(v->begin(), v->end()), v->end());
 }
+
 }  // namespace
 
-Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
-                                   bool dedup_outputs) {
+void EraseNodesFromGraph(const std::set<int>& nodes_to_delete,
+                         GraphDef* graph) {
+  EraseNodesFromGraphImpl(nodes_to_delete, graph);
+}
+
+void EraseNodesFromGraph(std::vector<int>&& nodes_to_delete, GraphDef* graph) {
+  STLSortAndRemoveDuplicates(&nodes_to_delete);
+  EraseNodesFromGraphImpl(nodes_to_delete, graph);
+}
+
+void EraseNodesFromGraph(const std::set<string>& nodes_to_delete,
+                         GraphDef* graph) {
+  std::vector<int> nodes_idx_to_delete;
+  nodes_idx_to_delete.reserve(nodes_to_delete.size());
+  for (int i = 0; i < graph->node_size(); ++i) {
+    if (nodes_to_delete.count(graph->node(i).name()))
+      nodes_idx_to_delete.push_back(i);
+  }
+  EraseNodesFromGraphImpl(nodes_idx_to_delete, graph);
+}
+
+Status SimpleGraphView::Initialize(
+    const GraphDef& graph,
+    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+        extra_dependencies,
+    bool dedup_inputs, bool dedup_outputs) {
   graph_ = &graph;
   const int num_nodes = graph.node_size();
   inputs_.clear();
@@ -364,6 +418,23 @@ Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
     const NodeDef& node = graph.node(node_idx);
     name_to_index_.emplace(node.name(), node_idx);
     index_to_name_.push_back(node.name());
+  }
+
+  if (extra_dependencies) {
+    for (const auto& dep : *extra_dependencies) {
+      auto itr_src = name_to_index_.find(dep.first->name());
+      if (itr_src == name_to_index_.end()) {
+        return errors::InvalidArgument("Non-existent src ", dep.first->name());
+      }
+      auto itr_tgt = name_to_index_.find(dep.second->name());
+      if (itr_tgt == name_to_index_.end()) {
+        return errors::InvalidArgument("Non-existent tgt ", dep.second->name());
+      }
+      const int src_idx = itr_src->second;
+      const int tgt_idx = itr_tgt->second;
+      inputs_[tgt_idx].push_back(src_idx);
+      outputs_[src_idx].push_back(tgt_idx);
+    }
   }
 
   // Build forward and reverse adjacency lists.
@@ -396,18 +467,30 @@ Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
 }
 
 void SimpleGraphView::DepthFirstSearch(
-    const std::unordered_set<string>& op_types_to_traverse, int node_idx,
+    const std::unordered_set<string>& op_types_to_traverse, int root_node,
     std::set<int>* nodes_found) const {
-  if (nodes_found->find(node_idx) != nodes_found->end()) {
+  nodes_found->clear();
+  const string& op_type = graph_->node(root_node).op();
+  if (!op_types_to_traverse.empty() &&
+      op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
     return;
   }
-  nodes_found->insert(node_idx);
-  const string& op_type = graph_->node(node_idx).op();
-  if (op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
-    return;
-  }
-  for (auto output_idx : this->outputs(node_idx)) {
-    DepthFirstSearch(op_types_to_traverse, output_idx, nodes_found);
+  std::vector<int> stack;
+  stack.reserve(32);
+  stack.push_back(root_node);
+  while (!stack.empty()) {
+    const int node_idx = stack.back();
+    stack.pop_back();
+    nodes_found->insert(node_idx);
+    const string& op_type = graph_->node(node_idx).op();
+    if (op_types_to_traverse.empty() ||
+        op_types_to_traverse.find(op_type) != op_types_to_traverse.end()) {
+      for (auto output_idx : this->outputs(node_idx)) {
+        if (nodes_found->find(output_idx) == nodes_found->end()) {
+          stack.push_back(output_idx);
+        }
+      }
+    }
   }
 }
 
@@ -447,8 +530,8 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
         "Expected scalar tensor, got num_elements = ", tensor->NumElements());
   }
   switch (dtype) {
-    // TODO(rmlarsen): Handle DT_HALF.
-    //    HANDLE_CASE(DT_HALF);
+    HANDLE_CASE(DT_HALF);
+    HANDLE_CASE(DT_BFLOAT16);
     HANDLE_CASE(DT_BOOL);
     HANDLE_CASE(DT_FLOAT);
     HANDLE_CASE(DT_DOUBLE);
@@ -468,6 +551,30 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
 }
 
 #undef HANDLE_CASE
+
+Status CheckAttrExists(const NodeDef& node, const string& key) {
+  if (!HasNodeAttr(node, key)) {
+    return errors::InvalidArgument("Node '", node.name(), "' lacks '", key,
+                                   "' attr: ", node.ShortDebugString());
+  }
+  return Status::OK();
+}
+
+Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys) {
+  for (const string& key : keys) {
+    TF_RETURN_IF_ERROR(CheckAttrExists(node, key));
+  }
+  return Status::OK();
+}
+
+Status IsKernelRegisteredForNode(const NodeDef& node) {
+  DeviceNameUtils::ParsedName parsed_name;
+  if (!DeviceNameUtils::ParseFullName(node.device(), &parsed_name)) {
+    return errors::InvalidArgument("Could not parse device name: ",
+                                   node.device());
+  }
+  return FindKernelDef(DeviceType(parsed_name.type), node, nullptr, nullptr);
+}
 
 }  // end namespace grappler
 }  // end namespace tensorflow

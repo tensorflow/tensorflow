@@ -21,20 +21,23 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/buffer_value_containers.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/logical_buffer.h"
+#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
 // Forward declare classes defined below.
 class HeapAlgorithm;
+class NoFragmentationStatsHeap;
 
 // HeapSimulator assigns buffer offsets by running a simulation of a regular
 // memory heap with Alloc and Free calls.  It only works for completely
@@ -43,7 +46,7 @@ class HeapAlgorithm;
 // don't need to return the assignment of buffer offsets until the very end.
 class HeapSimulator {
  public:
-  // Chunk represents a contiguous piece of memory.  Each LogicalBuffer will be
+  // Chunk represents a contiguous piece of memory.  Each BufferValue will be
   // associated with a chunk in the assignment result.
   struct Chunk {
     int64 offset;
@@ -55,7 +58,7 @@ class HeapSimulator {
   // Result represents the result of the heap simulation.
   struct Result {
     // The assignment of buffers to chunks.
-    tensorflow::gtl::FlatMap<const LogicalBuffer*, Chunk> chunk_map;
+    absl::flat_hash_map<const BufferValue*, Chunk> chunk_map;
 
     // The total size in bytes of the heap, containing all assigned chunks.
     int64 heap_size = 0;
@@ -81,11 +84,27 @@ class HeapSimulator {
     bool alloc_constants;
     // If 'buffers_to_assign' is provided, only those buffers are assigned
     // offsets, otherwise all buffers defined by the instructions are assigned.
-    const tensorflow::gtl::FlatSet<const LogicalBuffer*>* buffers_to_assign;
+    const BufferValueFlatSet* buffers_to_assign;
   };
 
+  // Returns the minimum memory required to compute an HLO module where all
+  // computations have been scheduled (represented by the given
+  // schedule), assuming no fragmentation.
+  static StatusOr<int64> MinimumMemoryForModule(
+      const HloSchedule& schedule,
+      const LogicalBuffer::SizeFunction& size_function);
+
+  // Returns the minimum memory required to compute the given computation,
+  // assuming no fragmentation.
+  static StatusOr<int64> MinimumMemoryForComputation(
+      const HloComputation& computation, const HloInstructionSequence& sequence,
+      const TuplePointsToAnalysis& points_to_analysis,
+      const LogicalBuffer::SizeFunction& size_function,
+      const absl::flat_hash_map<const HloComputation*, int64>*
+          memory_by_computation = nullptr);
+
   // Run the heap simulation with the given algorithm, assuming the given
-  // module_sequence, which must contain a topologically-consistent total
+  // schedule, which must contain a topologically-consistent total
   // ordering of all instructions within each computation. The result is invalid
   // if instructions are not run in exactly this sequence.
   //
@@ -93,12 +112,12 @@ class HeapSimulator {
   // to running on a per-computation basis, since we can re-use buffer space for
   // called sub-computations.
   //
-  static StatusOr<Result> Run(
-      std::unique_ptr<HeapAlgorithm> algorithm, const HloModule& module,
-      const SequentialHloOrdering::HloModuleSequence& module_sequence,
-      const TuplePointsToAnalysis& points_to_analysis,
-      const LogicalBuffer::SizeFunction& size_fn,
-      const Options& options = Options());
+  static StatusOr<Result> Run(std::unique_ptr<HeapAlgorithm> algorithm,
+                              const HloModule& module,
+                              const HloSchedule& schedule,
+                              const TuplePointsToAnalysis& points_to_analysis,
+                              const BufferValue::SizeFunction& size_fn,
+                              const Options& options = Options());
 
   // Same as above, but runs on a single computation. The 'instruction_sequence'
   // must contain a topologically-consistent total ordering of all instructions
@@ -107,43 +126,54 @@ class HeapSimulator {
   static StatusOr<Result> Run(
       std::unique_ptr<HeapAlgorithm> algorithm,
       const HloComputation& computation,
-      const std::vector<const HloInstruction*>& instruction_sequence,
+      const HloInstructionSequence& instruction_sequence,
       const TuplePointsToAnalysis& points_to_analysis,
-      const LogicalBuffer::SizeFunction& size_fn,
-      const Options& options = Options());
+      const BufferValue::SizeFunction& size_fn,
+      const Options& options = Options(),
+      const absl::flat_hash_map<const HloComputation*, int64>*
+          memory_by_computation = nullptr);
 
  private:
-  // If 'module_sequence' is non-null, it is used to find kCall and kWhile
+  // If 'schedule' is non-null, it is used to find kCall and kWhile
   // sub-computations, and the heap simulation for those sub-computations will
   // be run recursively. I.e. the simulation is run over the whole module.
-  HeapSimulator(
-      std::unique_ptr<HeapAlgorithm> algorithm,
-      const LogicalBuffer::SizeFunction& size_fn, const Options& options,
-      const SequentialHloOrdering::HloModuleSequence* module_sequence);
+  HeapSimulator(std::unique_ptr<HeapAlgorithm> algorithm,
+                const BufferValue::SizeFunction& size_fn,
+                const Options& options, const HloSchedule* schedule = nullptr,
+                const absl::flat_hash_map<const HloComputation*, int64>*
+                    memory_by_computation = nullptr);
   ~HeapSimulator();
 
-  Status RunComputation(
-      const HloComputation& computation,
-      const std::vector<const HloInstruction*>& instruction_sequence,
-      const TuplePointsToAnalysis& points_to_analysis);
+  Status RunComputation(const HloComputation& computation,
+                        const HloInstructionSequence& instruction_sequence,
+                        const TuplePointsToAnalysis& points_to_analysis);
 
-  bool IgnoreBuffer(const LogicalBuffer* buffer) const;
-  void Alloc(const LogicalBuffer* buffer, const HloInstruction* instruction);
-  void Free(const LogicalBuffer* buffer, const HloInstruction* instruction);
-  void ShareBuffer(const LogicalBuffer* buffer, const LogicalBuffer* shared,
+  bool IgnoreBuffer(const BufferValue* buffer) const;
+  void Alloc(const BufferValue* buffer, const HloInstruction* instruction);
+  void Free(const BufferValue* buffer, const HloInstruction* instruction);
+  void ShareBuffer(const BufferValue* buffer, const BufferValue* shared,
                    const HloInstruction* instruction);
   Result Finish();
 
   void FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
-                      const LogicalBuffer* buffer,
+                      const BufferValue* buffer,
                       const HloInstruction* instruction,
-                      const LogicalBuffer* shared_with_canonical);
+                      const BufferValue* shared_with_canonical);
 
-  const std::unique_ptr<HeapAlgorithm> no_fragmentation_stats_;
+  // Counterintuitive: the algorithm_ itself can be a NoFragmentationStatsHeap,
+  // in which case we are calculating the same allocs/frees twice in the
+  // simulation.
+  const std::unique_ptr<NoFragmentationStatsHeap> no_fragmentation_stats_;
   const std::unique_ptr<HeapAlgorithm> algorithm_;
-  const LogicalBuffer::SizeFunction size_fn_;
+  const BufferValue::SizeFunction size_fn_;
   const Options options_;
-  const SequentialHloOrdering::HloModuleSequence* module_sequence_;
+  // schedule_ is set by buffer assignment, and memory_by_computation_ is
+  // set by hlo scheduling. Then, in RunComputation, we check both in order to
+  // handle subcomputations. It would be good to unify the handling of
+  // subcomputations, but it's not clear how.
+  const HloSchedule* schedule_;
+  const absl::flat_hash_map<const HloComputation*, int64>*
+      memory_by_computation_;
 
   // In addition to Alloc and Free, the heap simulator exposes a concept of
   // buffer sharing.  When ShareBuffer is called, instead of allocating new
@@ -160,15 +190,15 @@ class HeapSimulator {
   // The shared_buffers_ map associates each shared buffer (including the
   // canonical) to its SharedGroup control block.
   struct SharedGroup {
-    const LogicalBuffer* canonical = nullptr;
+    const BufferValue* canonical = nullptr;
     int64 refcount = 0;
   };
-  tensorflow::gtl::FlatMap<const LogicalBuffer*, std::shared_ptr<SharedGroup>>
+  absl::flat_hash_map<const BufferValue*, std::shared_ptr<SharedGroup>>
       shared_buffers_;
 
   // Hold some sets for error-checking the sequence of Alloc and Free calls.
-  tensorflow::gtl::FlatSet<const LogicalBuffer*> allocated_buffers_;
-  tensorflow::gtl::FlatSet<const LogicalBuffer*> freed_buffers_;
+  absl::flat_hash_set<const BufferValue*> allocated_buffers_;
+  absl::flat_hash_set<const BufferValue*> freed_buffers_;
 
   // Debugging information filled in while the heap simulator runs.
   HeapSimulatorTrace debug_trace_;
@@ -186,10 +216,26 @@ class HeapAlgorithm {
   virtual ~HeapAlgorithm() = default;
 
   // Alloc allocates a buffer of 'size' bytes.
-  virtual void Alloc(const LogicalBuffer* buffer, int64 size) = 0;
+  virtual void Alloc(const BufferValue* buffer, int64 size) = 0;
+
+  // Takes memory usage of subcomputations into account when calculating the
+  // memory usage of a computation. Currently, we don't handle buffer aliasing
+  // between computations entirely correctly. We are careful to not double count
+  // for the output buffers of whiles/conds/calls. But we don't take into
+  // account other aliases, such as for the while init. A more thorough solution
+  // would require something like BufferAssignment::BuildColocatedBufferSets.
+  // TODO(b/65835246):
+  // Since TuplePointsToAnalysis is being replaced with a module-aware alias
+  // analysis, it's not worth making major changes to HeapSimulator now.
+  virtual void AccountForSubcomputationMemory(
+      const HloInstruction* instruction,
+      // The total number of bytes allocated by instruction.
+      int64 alloc_size_by_instruction,
+      const absl::flat_hash_map<const HloComputation*, int64>&
+          memory_by_computation) {}
 
   // Free de-allocates a previously allocated buffer.
-  virtual void Free(const LogicalBuffer* buffer, int64 size) = 0;
+  virtual void Free(const BufferValue* buffer, int64 size) = 0;
 
   // Finish collects the buffer offset assignment results.  Free may only be
   // called once, after the Alloc and Free calls.
@@ -205,8 +251,15 @@ class NoFragmentationStatsHeap : public HeapAlgorithm {
   NoFragmentationStatsHeap() = default;
   ~NoFragmentationStatsHeap() override = default;
 
-  void Alloc(const LogicalBuffer* buffer, int64 size) override;
-  void Free(const LogicalBuffer* buffer, int64 size) override;
+  void Alloc(const BufferValue* buffer, int64 size) override;
+
+  void AccountForSubcomputationMemory(
+      const HloInstruction* instruction, int64 alloc_size_by_instruction,
+      const absl::flat_hash_map<const HloComputation*, int64>&
+          memory_by_computation) override;
+
+  void Free(const BufferValue* buffer, int64 size) override;
+
   Result Finish() override;
 
  private:
@@ -223,14 +276,14 @@ class DecreasingSizeRunsHeap : public HeapAlgorithm {
       : algorithm_(std::move(algorithm)) {}
   ~DecreasingSizeRunsHeap() override {}
 
-  void Alloc(const LogicalBuffer* buffer, int64 size) override;
-  void Free(const LogicalBuffer* buffer, int64 size) override;
+  void Alloc(const BufferValue* buffer, int64 size) override;
+  void Free(const BufferValue* buffer, int64 size) override;
   Result Finish() override;
 
  private:
   // A single Alloc or Free operation that we've buffered in run_.
   struct Op {
-    const LogicalBuffer* buffer;
+    const BufferValue* buffer;
     int64 size;
   };
 
@@ -266,8 +319,8 @@ class LazyBestFitHeap : public HeapAlgorithm {
   LazyBestFitHeap(int64 alignment) : alignment_(alignment) {}
   ~LazyBestFitHeap() override {}
 
-  void Alloc(const LogicalBuffer* buffer, int64 size) override;
-  void Free(const LogicalBuffer* buffer, int64 size) override;
+  void Alloc(const BufferValue* buffer, int64 size) override;
+  void Free(const BufferValue* buffer, int64 size) override;
   Result Finish() override;
 
  private:
@@ -289,6 +342,67 @@ class LazyBestFitHeap : public HeapAlgorithm {
 
   // Maintain the set of free chunks, ordered by increasing size.
   std::set<Chunk, OrderChunkByIncreasingSize> free_;
+};
+
+// GlobalDecreasingSizeBestFitHeap collects the live intervals of all buffers,
+// then allocates them in decreasing sizes regardless of the alloc/free time. It
+// internally tracks the allocated buffers and their live intervals; when
+// allocating a buffer, it finds the best-fit free chunk during its live
+// interval.
+class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
+ public:
+  GlobalDecreasingSizeBestFitHeap(int64 alignment) : alignment_(alignment) {}
+  ~GlobalDecreasingSizeBestFitHeap() override {}
+
+  void Alloc(const BufferValue* buffer, int64 size) override;
+  void Free(const BufferValue* buffer, int64 size) override;
+  Result Finish() override;
+
+ private:
+  int64 alignment_;
+  Result result_;
+
+  // The current time represented as an integer. It increments by 1 at each
+  // Alloc or Free call.
+  int64 current_time_ = 0;
+
+  // BufferInterval stores a buffer's size and time interval.
+  struct BufferInterval {
+    const BufferValue* buffer;
+    int64 size;
+    // Alloc time of the buffer.
+    int64 start;
+    // Free time of the buffer.
+    int64 end;
+  };
+  absl::flat_hash_map<const BufferValue*, BufferInterval> buffer_intervals_;
+};
+
+// A heap algorithm that chooses the best results from other algorithms added to
+// it.
+class ChooseBestHeapAlgorithm : public HeapAlgorithm {
+ public:
+  ChooseBestHeapAlgorithm(
+      std::unique_ptr<std::vector<std::unique_ptr<HeapAlgorithm>>> algorithms)
+      : algorithms_(std::move(*algorithms)) {}
+  ~ChooseBestHeapAlgorithm() override {}
+
+  void Alloc(const BufferValue* buffer, int64 size) override {
+    for (auto& algorithm : algorithms_) {
+      algorithm->Alloc(buffer, size);
+    }
+  }
+
+  void Free(const BufferValue* buffer, int64 size) override {
+    for (auto& algorithm : algorithms_) {
+      algorithm->Free(buffer, size);
+    }
+  }
+
+  Result Finish() override;
+
+ private:
+  std::vector<std::unique_ptr<HeapAlgorithm>> algorithms_;
 };
 
 }  // namespace xla

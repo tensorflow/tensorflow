@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+ Copyright 2018 The Android Open Source Project
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:paddingBottom="@dimen/activity_vertical_margin"
+    android:paddingLeft="@dimen/activity_horizontal_margin"
+    android:paddingRight="@dimen/activity_horizontal_margin"
+    android:paddingTop="@dimen/activity_vertical_margin"
+    tools:context="ovic.demo.app.OvicBenchmarkerActivity">
+
+  <TextView
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="@string/initial_status_msg"
+    android:id="@+id/textView"
+    android:layout_above="@+id/button_clf_start"
+    android:layout_alignParentTop="true"/>
+
+  <Button
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="@string/start_clf_label"
+    android:id="@id/button_clf_start"
+    android:layout_alignParentBottom="true"
+    android:layout_alignParentLeft="true"
+    android:background="@drawable/start_button_color"
+    android:padding="10dp"
+    android:layout_marginRight="30dp"
+    android:layout_marginLeft="100dp"
+    android:layout_marginTop="10dp"
+    android:foreground="#000000"
+    android:textColor="#ffffff"
+    android:enabled="true"
+    style="?android:attr/buttonBarButtonStyle"
+    android:onClick="classifyPressed"/>
+
+  <Button
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="@string/start_det_label"
+    android:id="@+id/button_det_start"
+    android:layout_alignParentBottom="true"
+    android:layout_alignParentRight="true"
+    android:layout_toRightOf="@id/button_clf_start"
+    android:background="@drawable/start_button_color"
+    android:padding="10dp"
+    android:layout_marginRight="100dp"
+    android:layout_marginLeft="30dp"
+    android:layout_marginTop="10dp"
+    android:foreground="#000000"
+    android:textColor="#ffffff"
+    android:enabled="true"
+    style="?android:attr/buttonBarButtonStyle"
+    android:onClick="detectPressed"/>
+
+</RelativeLayout>

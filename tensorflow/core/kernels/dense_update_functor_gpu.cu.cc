@@ -57,7 +57,9 @@ struct DenseUpdate<GPUDevice, T, SUB> {
   template struct functor::DenseUpdate<GPUDevice, T, ADD>; \
   template struct functor::DenseUpdate<GPUDevice, T, SUB>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
+TF_CALL_int32(DEFINE_GPU_KERNELS);
 TF_CALL_int64(DEFINE_GPU_KERNELS);
+TF_CALL_int8(DEFINE_GPU_KERNELS);
 #undef DEFINE_GPU_KERNELS
 
 #define DEFINE_GPU_KERNELS(T) \
@@ -65,6 +67,7 @@ TF_CALL_int64(DEFINE_GPU_KERNELS);
 TF_CALL_GPU_ALL_TYPES(DEFINE_GPU_KERNELS);
 TF_CALL_int32(DEFINE_GPU_KERNELS);
 TF_CALL_int64(DEFINE_GPU_KERNELS);
+TF_CALL_int8(DEFINE_GPU_KERNELS);
 #undef DEFINE_GPU_KERNELS
 
 }  // end namespace tensorflow

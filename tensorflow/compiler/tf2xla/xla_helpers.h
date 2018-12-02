@@ -18,95 +18,70 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
 // Helper methods for building XLA computations.
 class XlaHelpers {
  public:
-  // Returns a handle representing the minimum value of a scalar
-  // element of data_type.
-  static xla::ComputationDataHandle MinValue(xla::ComputationBuilder* b,
-                                             DataType data_type);
-
-  // Returns a handle representing the maximum value of a scalar
-  // element of data_type.
-  static xla::ComputationDataHandle MaxValue(xla::ComputationBuilder* b,
-                                             DataType data_type);
-
   // Returns a handle representing the zero value of a scalar
   // element of data_type.
-  static xla::ComputationDataHandle Zero(xla::ComputationBuilder* b,
-                                         DataType data_type);
+  static xla::XlaOp Zero(xla::XlaBuilder* b, DataType data_type);
 
   // Returns a handle representing the one value of a scalar
   // element of data_type.
-  static xla::ComputationDataHandle One(xla::ComputationBuilder* b,
-                                        DataType data_type);
-
-  // Returns the machine epsilon for floating-point type `data_type`, i.e.,
-  // the difference between 1.0 and the next representable value.
-  static xla::ComputationDataHandle Epsilon(xla::ComputationBuilder* b,
-                                            DataType data_type);
+  static xla::XlaOp One(xla::XlaBuilder* b, DataType data_type);
 
   // Returns a handle representing the given value of an integer scalar
   // element of data_type.
   // Note that unlike One and Zero, does not work on boolean types.
-  static xla::ComputationDataHandle IntegerLiteral(xla::ComputationBuilder* b,
-                                                   DataType data_type,
-                                                   int64 value);
+  static xla::XlaOp IntegerLiteral(xla::XlaBuilder* b, DataType data_type,
+                                   int64 value);
 
   // Returns a handle representing the given value of a floating-point scalar
   // element of data_type.
-  static xla::ComputationDataHandle FloatLiteral(xla::ComputationBuilder* b,
-                                                 DataType data_type,
-                                                 double value);
+  static xla::XlaOp FloatLiteral(xla::XlaBuilder* b, DataType data_type,
+                                 double value);
 
   // Reshapes literal 'input' to have 'shape'. Both the original shape and
   // 'shape' must contain the same number of elements.
   static Status ReshapeLiteral(const xla::Literal& input,
-                               gtl::ArraySlice<int64> shape,
+                               absl::Span<const int64> shape,
                                xla::Literal* output);
 
-  // Sets `argmax` to the argmax of `input` along `axis`. `input_shape` and
-  // `input_dtype` are the shape and dtype of `input` respectively, and
-  // `output_type` is the dtype to use for `argmax`.
-  static Status ArgMax(xla::ComputationBuilder* builder,
-                       XlaOpKernelContext* ctx,
-                       const xla::ComputationDataHandle& input,
-                       const TensorShape& input_shape, DataType input_type,
-                       DataType output_type, int axis,
-                       xla::ComputationDataHandle* argmax);
+  // Returns the argmax of `input` along `axis`. `output_type` is the type to
+  // use for the output.
+  static xla::XlaOp ArgMax(xla::XlaOp input, xla::PrimitiveType output_type,
+                           int axis);
 
-  // Sets `argmin` to the argmin of `input` along `axis`. `input_shape` and
-  // `input_dtype` are the shape and dtype of `input` respectively, and
-  // `output_type` is the dtype to use for `argmin`.
-  static Status ArgMin(xla::ComputationBuilder* builder,
-                       XlaOpKernelContext* ctx,
-                       const xla::ComputationDataHandle& input,
-                       const TensorShape& input_shape, DataType input_type,
-                       DataType output_type, int axis,
-                       xla::ComputationDataHandle* argmin);
-
-  // Sets *iota to a rank 1 tensor with values [0, 1, 2, ...] of `dtype`.
-  static Status Iota(xla::ComputationBuilder* builder, DataType dtype,
-                     int64 size, xla::ComputationDataHandle* iota);
+  // Returns the argmin of `input` along `axis`. `output_type` is the type to
+  // use for the output.
+  static xla::XlaOp ArgMin(xla::XlaOp input, xla::PrimitiveType output_type,
+                           int axis);
 
   // Converts `indices` into a one-hot representation. `depth` is the size
   // of the new axis to add. `axis` is the position at which to add the new
   // axis. `indices_shape` is the shape of `indices`. `on_value` and
   // `off_value` represent the values to use for the on and off positions,
   // respectively.
-  static Status OneHot(xla::ComputationBuilder* builder, int64 depth, int axis,
+  static Status OneHot(xla::XlaBuilder* builder, int64 depth, int axis,
                        DataType index_type, const TensorShape& indices_shape,
-                       const xla::ComputationDataHandle& indices,
-                       const xla::ComputationDataHandle& on_value,
-                       const xla::ComputationDataHandle& off_value,
-                       xla::ComputationDataHandle* one_hot);
+                       const xla::XlaOp& indices, const xla::XlaOp& on_value,
+                       const xla::XlaOp& off_value, xla::XlaOp* one_hot);
+
+  // Certain DataTypes should use increased precision DataTypes when performing
+  // reductions.  This function remaps a given DataType to a higher precision
+  // DataType if needed.
+  static DataType SumAccumulationType(const DataType& dtype);
+
+  // A helper for creating a ConvertElementType xla op given a DataType rather
+  // than the xla::PrimitiveType.
+  static xla::XlaOp ConvertElementType(const xla::XlaOp& operand,
+                                       const DataType new_element_type);
 };
 
 }  // end namespace tensorflow

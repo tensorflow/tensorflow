@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
+#include "tensorflow/core/platform/mutex.h"
+
+#include "tensorflow/core/util/reffed_status_callback.h"
 
 namespace tensorflow {
 
@@ -54,7 +57,7 @@ void RecvOutputsFromRendezvousAsync(
     Rendezvous* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     const std::vector<string>& keys, std::vector<Tensor>* received_tensors,
-    const StatusCallback& done) {
+    StatusCallback done) {
   if (keys.empty()) {
     done(Status::OK());
     return;
@@ -85,13 +88,7 @@ void RecvOutputsFromRendezvousAsync(
                            alloc_attr);
   }
 
-  typedef struct {
-    mutex mu;
-    int64 done_counter;
-    Status shared_status = Status::OK();
-  } CallState;
-  CallState* call_state = new CallState;
-  call_state->done_counter = keys.size();
+  auto status_cb = new ReffedStatusCallback(std::move(done));
   for (auto& p : arguments) {
     const string& key = std::get<0>(p);
     Tensor* val = std::get<1>(p);
@@ -99,13 +96,13 @@ void RecvOutputsFromRendezvousAsync(
     Rendezvous::Args rendez_args;
     rendez_args.device_context = device_context;
     rendez_args.alloc_attrs = std::get<3>(p);
-
+    status_cb->Ref();
     rendezvous->RecvAsync(
         parsed, rendez_args,
-        [val, done, key, call_state](const Status& s,
-                                     const Rendezvous::Args& send_args,
-                                     const Rendezvous::Args& recv_args,
-                                     const Tensor& v, const bool is_dead) {
+        [val, key, status_cb](const Status& s,
+                              const Rendezvous::Args& send_args,
+                              const Rendezvous::Args& recv_args,
+                              const Tensor& v, const bool is_dead) {
           Status status = s;
           if (status.ok()) {
             *val = v;
@@ -114,20 +111,11 @@ void RecvOutputsFromRendezvousAsync(
                                                " was not valid.");
             }
           }
-          call_state->mu.lock();
-          call_state->shared_status.Update(status);
-          call_state->done_counter--;
-          // If we are the last async call to return, call the done callback.
-          if (call_state->done_counter == 0) {
-            const Status& final_status = call_state->shared_status;
-            call_state->mu.unlock();
-            done(final_status);
-            delete call_state;
-            return;
-          }
-          call_state->mu.unlock();
+          status_cb->UpdateStatus(status);
+          status_cb->Unref();
         });
   }
+  status_cb->Unref();
 }
 
 Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out,

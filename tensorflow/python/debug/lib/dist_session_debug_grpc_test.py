@@ -118,8 +118,8 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     """
     with ops.Graph().as_default() as graph:
       with ops.device("/job:worker/task:0/cpu:0"):
-        self.a = variables.Variable(10.0, name="a")
-        self.b = variables.Variable(100.0, name="b")
+        self.a = variables.VariableV1(10.0, name="a")
+        self.b = variables.VariableV1(100.0, name="b")
         self.inc_a = state_ops.assign_add(self.a, 2.0, name="inc_a")
         self.dec_b = state_ops.assign_add(self.b, -5.0, name="dec_b")
         self.p = math_ops.multiply(self.inc_a, self.dec_b, name="p")

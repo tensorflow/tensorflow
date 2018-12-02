@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
@@ -43,7 +45,7 @@ class ShapeOp : public XlaOpKernel {
   DataType out_dtype_;
 };
 
-REGISTER_XLA_OP(Name("Shape"), ShapeOp);
+REGISTER_XLA_OP(Name("Shape").CompilationOnly().IsMetadataOp(), ShapeOp);
 
 class ShapeNOp : public XlaOpKernel {
  public:
@@ -65,7 +67,7 @@ class ShapeNOp : public XlaOpKernel {
  private:
   DataType out_dtype_;
 };
-REGISTER_XLA_OP(Name("ShapeN"), ShapeNOp);
+REGISTER_XLA_OP(Name("ShapeN").CompilationOnly().IsMetadataOp(), ShapeNOp);
 
 class RankOp : public XlaOpKernel {
  public:
@@ -81,7 +83,7 @@ class RankOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Rank"), RankOp);
+REGISTER_XLA_OP(Name("Rank").CompilationOnly().IsMetadataOp(), RankOp);
 
 class SizeOp : public XlaOpKernel {
  public:
@@ -100,28 +102,23 @@ class SizeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Size"), SizeOp);
+REGISTER_XLA_OP(Name("Size").CompilationOnly().IsMetadataOp(), SizeOp);
 
 class ExpandDimsOp : public XlaOpKernel {
  public:
   explicit ExpandDimsOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape input_shape = ctx->InputShape(0);
-    const TensorShape dim_shape = ctx->InputShape(1);
+    const TensorShape input_shape = ctx->InputShape("input");
+    const TensorShape dim_shape = ctx->InputShape("dim");
 
-    // TODO(phawkins): the standard implementation of ExpandDimsOp seems to
-    // accept legacy scalars, even when they should be forbidden by the graphdef
-    // version.
-    OP_REQUIRES(ctx, dim_shape.num_elements() == 1,
-                errors::InvalidArgument(strings::StrCat(
+    std::vector<int64> dims;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputReshapedToIntVector("dim", &dims));
+    OP_REQUIRES(ctx, dims.size() == 1,
+                errors::InvalidArgument(absl::StrCat(
                     "dim input to ExpandDims must be a scalar; got ",
                     dim_shape.DebugString())));
-
-    xla::Literal literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputReshaped(1, {1}, &literal));
-
-    int dim = literal.data<int32>()[0];
+    int dim = dims[0];
 
     OP_REQUIRES(ctx,
                 (dim >= -1 - input_shape.dims() && dim <= input_shape.dims()),
@@ -147,10 +144,11 @@ class ExpandDimsOp : public XlaOpKernel {
     dim = std::min<int32>(dim, existing_dims_size);
     new_shape.emplace(new_shape.begin() + dim, 1);
 
-    ctx->SetOutput(0, ctx->builder()->Reshape(ctx->Input(0), new_shape));
+    ctx->SetOutput(0, xla::Reshape(ctx->Input("input"), new_shape));
   }
 };
-REGISTER_XLA_OP(Name("ExpandDims").CompileTimeConstInput("dim"), ExpandDimsOp);
+REGISTER_XLA_OP(Name("ExpandDims").CompileTimeConstantInput("dim"),
+                ExpandDimsOp);
 
 class SqueezeOp : public XlaOpKernel {
  public:
@@ -189,10 +187,9 @@ class SqueezeOp : public XlaOpKernel {
       if (!wrapped_squeeze_dims.empty()) {
         if (wrapped_squeeze_dims.count(i) > 0) {
           OP_REQUIRES(ctx, existing_dim == 1,
-                      errors::InvalidArgument("Tried to explicitly squeeze "
-                                              "dimension ",
-                                              i, " but dimension was not 1: ",
-                                              existing_dim));
+                      errors::InvalidArgument(
+                          "Tried to explicitly squeeze dimension ", i,
+                          " but dimension was not 1: ", existing_dim));
         } else {
           // This dimension is not being squeezed.
           new_shape.push_back(existing_dim);
@@ -205,7 +202,7 @@ class SqueezeOp : public XlaOpKernel {
       }
     }
 
-    ctx->SetOutput(0, ctx->builder()->Reshape(ctx->Input(0), new_shape));
+    ctx->SetOutput(0, xla::Reshape(ctx->Input(0), new_shape));
   }
 
  private:
@@ -222,7 +219,7 @@ class ZerosLikeOp : public XlaOpKernel {
     const TensorShape input_shape = ctx->InputShape(0);
 
     auto zero = XlaHelpers::Zero(ctx->builder(), input_type(0));
-    ctx->SetOutput(0, ctx->builder()->Broadcast(zero, input_shape.dim_sizes()));
+    ctx->SetOutput(0, xla::Broadcast(zero, input_shape.dim_sizes()));
   }
 };
 
@@ -236,7 +233,7 @@ class OnesLikeOp : public XlaOpKernel {
     const TensorShape input_shape = ctx->InputShape(0);
 
     auto one = XlaHelpers::One(ctx->builder(), input_type(0));
-    ctx->SetOutput(0, ctx->builder()->Broadcast(one, input_shape.dim_sizes()));
+    ctx->SetOutput(0, xla::Broadcast(one, input_shape.dim_sizes()));
   }
 };
 

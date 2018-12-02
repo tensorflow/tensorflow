@@ -19,6 +19,26 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("BatchFunction")
+    .Input("in_tensors: Tin")
+    .Input("captured_tensors: Tcaptured")
+    .Output("out_tensors: Tout")
+    .Attr("f: func")
+    .Attr("num_batch_threads: int")
+    .Attr("max_batch_size: int")
+    .Attr("batch_timeout_micros: int")
+    .Attr("max_enqueued_batches: int = 10")
+    .Attr("allowed_batch_sizes: list(int) = []")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Attr("batching_queue: string = ''")
+    .Attr("Tin: list(type)")
+    .Attr("Tcaptured: list(type) >= 0")
+    .Attr("Tout: list(type)")
+    // TODO(apassos): Fix this shape inference function. It requires shape
+    // inference of function calls.
+    .SetShapeFn(shape_inference::UnknownShape);
+
 REGISTER_OP("Batch")
     .Input("in_tensors: T")
     .Output("batched_tensors: T")

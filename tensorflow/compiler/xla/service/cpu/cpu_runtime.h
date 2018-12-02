@@ -26,6 +26,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_H_
 
+#include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -44,9 +45,15 @@ namespace runtime {
 extern const char* const kEigenMatMulF16SymbolName;
 extern const char* const kEigenMatMulF32SymbolName;
 extern const char* const kEigenMatMulF64SymbolName;
+extern const char* const kMKLConvF32SymbolName;
+extern const char* const kMKLMatMulF32SymbolName;
+extern const char* const kMKLMatMulF64SymbolName;
+extern const char* const kMKLSingleThreadedMatMulF32SymbolName;
+extern const char* const kMKLSingleThreadedMatMulF64SymbolName;
 extern const char* const kEigenConvF16SymbolName;
 extern const char* const kEigenConvF32SymbolName;
 extern const char* const kEigenFftSymbolName;
+extern const char* const kEigenSingleThreadedFftSymbolName;
 extern const char* const kEigenSingleThreadedMatMulF16SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName;
@@ -57,19 +64,44 @@ extern const char* const kReleaseInfeedBufferAfterDequeueSymbolName;
 extern const char* const kAcquireOutfeedBufferForPopulationSymbolName;
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName;
 extern const char* const kParallelForkJoinSymbolName;
+extern const char* const kKeyValueSortPREDSymbolName;
+extern const char* const kKeyValueSortS8SymbolName;
+extern const char* const kKeyValueSortU8SymbolName;
+extern const char* const kKeyValueSortS16SymbolName;
+extern const char* const kKeyValueSortU16SymbolName;
+extern const char* const kKeyValueSortF16SymbolName;
+extern const char* const kKeyValueSortS32SymbolName;
+extern const char* const kKeyValueSortU32SymbolName;
+extern const char* const kKeyValueSortF32SymbolName;
+extern const char* const kKeyValueSortS64SymbolName;
+extern const char* const kKeyValueSortU64SymbolName;
+extern const char* const kKeyValueSortF64SymbolName;
 
 // All symbol names for XLA CPU runtime functions need to start with this
 // prefix.
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix;
 
-// Returns the infeed manager used by the CPU runtime.
-XfeedManager* GetXfeedManager();
+// Returns the infeed manager used by the CPU runtime for the CPU device
+// `device_ordinal`.  Note the device ordinal does not name a CPU
+XfeedManager* GetXfeedManager(int device_ordinal);
 
 }  // namespace runtime
 }  // namespace cpu
 }  // namespace xla
 
 extern "C" {
+
+// Some things common to all of the runtime entry points below:
+//
+//  * The shape pointer and shape_length reflect values that can be deserialized
+//    via llvm_ir::DecodeSelfDescribingShapeConstant. This is the way we pass
+//    reified type information from the generated program to the runtime, which
+//    helps check the type safety and contract for the emitted-code/runtime
+//    communication.
+//
+//  * run_options is used to look up the device ordinal for the stream executor
+//    we're executing under.  If it is null the device ordinal is assumed to be
+//    0 (this behavior helps in writing tests).
 
 // Note: in the runtime entry points below, the shape pointer and shape_length
 // reflect values that can be deserialized via
@@ -83,7 +115,8 @@ extern "C" {
 // the length would be more exact, but the length check is chosen as a
 // tradeoff between error checking and speed/simplicity.
 extern void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
-    xla::int32 buffer_length, const void* shape, xla::int32 shape_length);
+    const xla::ExecutableRunOptions* run_options, xla::int32 buffer_length,
+    const void* shape, xla::int32 shape_length);
 
 // Relinquishes the next infeed buffer that was returned by
 // __xla_cpu_runtime_AcquireInfeedBufferForDequeue. Once this call
@@ -98,13 +131,14 @@ extern void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
 // implemented we will add support for multiple outstanding buffers
 // that can be returned out of order.
 extern void __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
-    xla::int32 buffer_length, void* buffer_ptr, const void* shape_ptr,
-    xla::int32 shape_length);
+    const xla::ExecutableRunOptions* run_options, xla::int32 buffer_length,
+    void* buffer_ptr, const void* shape_ptr, xla::int32 shape_length);
 
 // Blocks until the next outfeed buffer is available to be populated, then
 // returns it.
 extern void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
-    xla::int32 buffer_length, const void* shape_ptr, xla::int32 shape_length);
+    const xla::ExecutableRunOptions* run_options, xla::int32 buffer_length,
+    const void* shape_ptr, xla::int32 shape_length);
 
 // Relinquishes the outfeed buffer after it has been populated.
 // buffer_ptr must have been previously returned by
@@ -116,8 +150,8 @@ extern void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
 // acquired, i.e., there may only be one outstanding outfeed buffer in
 // use by the runtime.
 extern void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
-    xla::int32 buffer_length, void* buffer_ptr, const void* shape_ptr,
-    xla::int32 shape_length);
+    const xla::ExecutableRunOptions* run_options, xla::int32 buffer_length,
+    void* buffer_ptr, const void* shape_ptr, xla::int32 shape_length);
 
 }  // extern "C"
 

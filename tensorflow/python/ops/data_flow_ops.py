@@ -35,9 +35,11 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: enable=wildcard-import
@@ -77,7 +79,7 @@ def _as_shape_list(shapes,
     shapes = [shapes]
   shapes = [tensor_shape.as_shape(shape) for shape in shapes]
   if not unknown_dim_allowed:
-    if any([not shape.is_fully_defined() for shape in shapes]):
+    if any(not shape.is_fully_defined() for shape in shapes):
       raise ValueError("All shapes must be fully defined: %s" % shapes)
   if not unknown_rank_allowed:
     if any([shape.dims is None for shape in shapes]):
@@ -111,7 +113,8 @@ def _shape_common(s1, s2):
 
 
 # pylint: disable=protected-access
-@tf_export("QueueBase")
+@tf_export("io.QueueBase", v1=["io.QueueBase", "QueueBase"])
+@deprecation.deprecated_endpoints("QueueBase")
 class QueueBase(object):
   """Base class for queue implementations.
 
@@ -125,15 +128,10 @@ class QueueBase(object):
   handle single elements, versions that support enqueuing and
   dequeuing a batch of elements at once.
 
-  See @{tf.FIFOQueue} and
-  @{tf.RandomShuffleQueue} for concrete
+  See `tf.FIFOQueue` and
+  `tf.RandomShuffleQueue` for concrete
   implementations of this class, and instructions on how to create
   them.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self, dtypes, shapes, names, queue_ref):
@@ -157,12 +155,7 @@ class QueueBase(object):
 
     Raises:
       ValueError: If one of the arguments is invalid.
-      RuntimeError: If eager execution is enabled.
     """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          "Queues are not supported when eager execution is enabled. "
-          "Instead, please use tf.data to get data into your model.")
     self._dtypes = dtypes
     if shapes is not None:
       if len(shapes) != len(dtypes):
@@ -178,7 +171,12 @@ class QueueBase(object):
       self._names = None
     self._queue_ref = queue_ref
     if context.executing_eagerly():
-      self._name = context.context().scope_name
+      if context.context().scope_name:
+        self._name = context.context().scope_name
+      else:
+        self._name = "Empty"
+      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+          queue_ref, None)
     else:
       self._name = self._queue_ref.op.name.split("/")[-1]
 
@@ -203,11 +201,11 @@ class QueueBase(object):
       raise TypeError("A list of queues expected")
 
     dtypes = queues[0].dtypes
-    if not all([dtypes == q.dtypes for q in queues[1:]]):
+    if not all(dtypes == q.dtypes for q in queues[1:]):
       raise TypeError("Queues do not have matching component dtypes.")
 
     names = queues[0].names
-    if not all([names == q.names for q in queues[1:]]):
+    if not all(names == q.names for q in queues[1:]):
       raise TypeError("Queues do not have matching component names.")
 
     queue_shapes = [q.shapes for q in queues]
@@ -316,12 +314,12 @@ class QueueBase(object):
     until the element has been enqueued.
 
     At runtime, this operation may raise an error if the queue is
-    @{tf.QueueBase.close} before or during its execution. If the
+    `tf.QueueBase.close` before or during its execution. If the
     queue is closed before this operation runs,
     `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
-    @{tf.Session.close},
+    `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -359,12 +357,12 @@ class QueueBase(object):
     until all of the elements have been enqueued.
 
     At runtime, this operation may raise an error if the queue is
-    @{tf.QueueBase.close} before or during its execution. If the
+    `tf.QueueBase.close` before or during its execution. If the
     queue is closed before this operation runs,
     `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
-    @{tf.Session.close},
+    `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -381,10 +379,16 @@ class QueueBase(object):
 
       # NOTE(mrry): Not using a shape function because we need access to
       # the `QueueBase` object.
-      batch_dim = vals[0].get_shape().with_rank_at_least(1)[0]
+      # NOTE(fchollet): the code that follow is verbose because it needs to be
+      # compatible with both TF v1 TensorShape behavior and TF v2 behavior.
+      batch_dim = tensor_shape.dimension_value(
+          vals[0].get_shape().with_rank_at_least(1)[0])
+      batch_dim = tensor_shape.Dimension(batch_dim)
       for val, shape in zip(vals, self._shapes):
-        batch_dim = batch_dim.merge_with(
+        val_batch_dim = tensor_shape.dimension_value(
             val.get_shape().with_rank_at_least(1)[0])
+        val_batch_dim = tensor_shape.Dimension(val_batch_dim)
+        batch_dim = batch_dim.merge_with(val_batch_dim)
         val.get_shape()[1:].assert_is_compatible_with(shape)
 
       return gen_data_flow_ops.queue_enqueue_many_v2(
@@ -420,11 +424,11 @@ class QueueBase(object):
     until there is an element to dequeue.
 
     At runtime, this operation may raise an error if the queue is
-    @{tf.QueueBase.close} before or during its execution. If the
+    `tf.QueueBase.close` before or during its execution. If the
     queue is closed, the queue is empty, and there are no pending
     enqueue operations that can fulfill this request,
     `tf.errors.OutOfRangeError` will be raised. If the session is
-    @{tf.Session.close},
+    `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -462,11 +466,11 @@ class QueueBase(object):
     `OutOfRange` exception is raised.
 
     At runtime, this operation may raise an error if the queue is
-    @{tf.QueueBase.close} before or during its execution. If the
+    `tf.QueueBase.close` before or during its execution. If the
     queue is closed, the queue contains fewer than `n` elements, and
     there are no pending enqueue operations that can fulfill this
     request, `tf.errors.OutOfRangeError` will be raised. If the
-    session is @{tf.Session.close},
+    session is `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -507,7 +511,7 @@ class QueueBase(object):
 
     If the queue is closed and there are more than `0` but fewer than
     `n` elements remaining, then instead of raising a
-    `tf.errors.OutOfRangeError` like @{tf.QueueBase.dequeue_many},
+    `tf.errors.OutOfRangeError` like `tf.QueueBase.dequeue_many`,
     less than `n` elements are returned immediately.  If the queue is
     closed and there are `0` elements left in the queue, then a
     `tf.errors.OutOfRangeError` is raised just like in `dequeue_many`.
@@ -571,7 +575,7 @@ class QueueBase(object):
           name=name)
 
   def is_closed(self, name=None):
-    """ Returns true if queue is closed.
+    """Returns true if queue is closed.
 
     This operation returns true if the queue is closed and false if the queue
     is open.
@@ -605,18 +609,20 @@ class QueueBase(object):
     else:
       return gen_data_flow_ops.queue_size(self._queue_ref, name=name)
 
+def _shared_name(shared_name):
+  if context.executing_eagerly():
+    return str(ops.uid())
+  return shared_name
 
-@tf_export("RandomShuffleQueue")
+
+@tf_export(
+    "io.RandomShuffleQueue", v1=["io.RandomShuffleQueue", "RandomShuffleQueue"])
+@deprecation.deprecated_endpoints("RandomShuffleQueue")
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
-  See @{tf.QueueBase} for a description of the methods on
+  See `tf.QueueBase` for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -664,7 +670,7 @@ class RandomShuffleQueue(QueueBase):
         with the same length as `dtypes`, or `None`.  If specified the dequeue
         methods return a dictionary with the names as keys.
       seed: A Python integer. Used to create a random seed. See
-        @{tf.set_random_seed}
+        `tf.set_random_seed`
         for behavior.
       shared_name: (Optional.) If non-empty, this queue will be shared under
         the given name across multiple sessions.
@@ -690,7 +696,7 @@ class RandomShuffleQueue(QueueBase):
         min_after_dequeue=min_after_dequeue,
         seed=seed1,
         seed2=seed2,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     super(RandomShuffleQueue, self).__init__(dtypes, shapes, names, queue_ref)
@@ -700,13 +706,8 @@ class RandomShuffleQueue(QueueBase):
 class FIFOQueue(QueueBase):
   """A queue implementation that dequeues elements in first-in first-out order.
 
-  See @{tf.QueueBase} for a description of the methods on
+  See `tf.QueueBase` for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -752,26 +753,23 @@ class FIFOQueue(QueueBase):
         component_types=dtypes,
         shapes=shapes,
         capacity=capacity,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("PaddingFIFOQueue")
+@tf_export(
+    "io.PaddingFIFOQueue", v1=["io.PaddingFIFOQueue", "PaddingFIFOQueue"])
+@deprecation.deprecated_endpoints("PaddingFIFOQueue")
 class PaddingFIFOQueue(QueueBase):
   """A FIFOQueue that supports batching variable-sized tensors by padding.
 
   A `PaddingFIFOQueue` may contain components with dynamic shape, while also
   supporting `dequeue_many`.  See the constructor for more details.
 
-  See @{tf.QueueBase} for a description of the methods on
+  See `tf.QueueBase` for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -831,23 +829,19 @@ class PaddingFIFOQueue(QueueBase):
         component_types=dtypes,
         shapes=shapes,
         capacity=capacity,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("PriorityQueue")
+@tf_export("io.PriorityQueue", v1=["io.PriorityQueue", "PriorityQueue"])
+@deprecation.deprecated_endpoints("PriorityQueue")
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
-  See @{tf.QueueBase} for a description of the methods on
+  See `tf.QueueBase` for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -899,7 +893,7 @@ class PriorityQueue(QueueBase):
         component_types=types,
         shapes=shapes,
         capacity=capacity,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     priority_dtypes = [_dtypes.int64] + types
@@ -1157,7 +1151,7 @@ class Barrier(object):
         self._barrier_ref, name=name)
 
 
-@tf_export("ConditionalAccumulatorBase")
+@tf_export(v1=["ConditionalAccumulatorBase"])
 class ConditionalAccumulatorBase(object):
   """A conditional accumulator for aggregating gradients.
 
@@ -1236,7 +1230,7 @@ class ConditionalAccumulatorBase(object):
         name=name)
 
 
-@tf_export("ConditionalAccumulator")
+@tf_export(v1=["ConditionalAccumulator"])
 class ConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating gradients.
 
@@ -1251,7 +1245,8 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
                dtype,
                shape=None,
                shared_name=None,
-               name="conditional_accumulator"):
+               name="conditional_accumulator",
+               reduction_type="MEAN"):
     """Creates a new ConditionalAccumulator.
 
     Args:
@@ -1260,9 +1255,14 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
       shared_name: Optional. If non-empty, this accumulator will be shared under
         the given name across multiple sessions.
       name: Optional name for the accumulator.
+      reduction_type: Reduction type to use when taking the gradient.
     """
     accumulator_ref = gen_data_flow_ops.conditional_accumulator(
-        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+        dtype=dtype,
+        shape=shape,
+        shared_name=shared_name,
+        name=name,
+        reduction_type=reduction_type)
     super(ConditionalAccumulator, self).__init__(dtype, shape, accumulator_ref)
 
   def apply_grad(self, grad, local_step=0, name=None):
@@ -1316,7 +1316,10 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     return out
 
 
-@tf_export("SparseConditionalAccumulator")
+@tf_export(
+    "sparse.SparseConditionalAccumulator",
+    v1=["sparse.SparseConditionalAccumulator", "SparseConditionalAccumulator"])
+@deprecation.deprecated_endpoints("SparseConditionalAccumulator")
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.
 
@@ -1334,15 +1337,21 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     shared_name: Optional. If non-empty, this accumulator will be shared under
       the given name across multiple sessions.
     name: Optional name for the accumulator.
+    reduction_type: Reduction type to use when taking the gradient.
   """
 
   def __init__(self,
                dtype,
                shape=None,
                shared_name=None,
-               name="sparse_conditional_accumulator"):
+               name="sparse_conditional_accumulator",
+               reduction_type="MEAN"):
     accumulator_ref = gen_data_flow_ops.sparse_conditional_accumulator(
-        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+        dtype=dtype,
+        shape=shape,
+        shared_name=shared_name,
+        name=name,
+        reduction_type=reduction_type)
     super(SparseConditionalAccumulator, self).__init__(dtype, shape,
                                                        accumulator_ref)
 
@@ -1563,7 +1572,7 @@ class BaseStagingArea(object):
     of the staging area.
 
     Args:
-      vals: A tensor, a list or tuple of tensors, or a dictionary..
+      vals: A tensor, a list or tuple of tensors, or a dictionary.
 
     Returns:
       A (tensors, indices) tuple where `tensors` is a list of `Tensor` objects
@@ -1582,7 +1591,7 @@ class BaseStagingArea(object):
                          (sorted(vals.keys()), sorted(self._names)))
       # The order of values in `self._names` indicates the order in which the
       # tensors in the dictionary `vals` must be listed.
-      vals, indices, n = zip(*[(vals[k], i, k)
+      vals, indices, _ = zip(*[(vals[k], i, k)
                                for i, k in enumerate(self._names)
                                if k in vals])
     else:
@@ -1612,7 +1621,7 @@ class BaseStagingArea(object):
     for val, i in zip(vals, indices):
       dtype, shape = self._dtypes[i], self._shapes[i]
       # Check dtype
-      if not val.dtype == dtype:
+      if val.dtype != dtype:
         raise ValueError("Datatypes do not match. '%s' != '%s'" %
                          (str(val.dtype), str(dtype)))
 
@@ -1626,7 +1635,7 @@ class BaseStagingArea(object):
 
   def _create_device_transfers(self, tensors):
     """Encode inter-device transfers if the current device
-    is not the same as the Staging Area's device
+    is not the same as the Staging Area's device.
     """
 
     if not isinstance(tensors, (tuple, list)):
@@ -1739,11 +1748,6 @@ class StagingArea(BaseStagingArea):
     Args:
       dtypes:  A list of types.  The length of dtypes must equal the number
         of tensors in each element.
-      capacity: (Optional.) Maximum number of elements.
-        An integer. If zero, the Staging Area is unbounded
-      memory_limit: (Optional.) Maximum number of bytes of all tensors
-        in the Staging Area.
-        An integer. If zero, the Staging Area is unbounded
       shapes: (Optional.) Constraints on the shapes of tensors in an element.
         A list of shape tuples or None. This list is the same length
         as dtypes.  If the shape of any tensors in the element are constrained,
@@ -1754,6 +1758,11 @@ class StagingArea(BaseStagingArea):
       shared_name: (Optional.) A name to be used for the shared object. By
         passing the same name to two different python objects they will share
         the underlying staging area. Must be a string.
+      capacity: (Optional.) Maximum number of elements.
+        An integer. If zero, the Staging Area is unbounded
+      memory_limit: (Optional.) Maximum number of bytes of all tensors
+        in the Staging Area.
+        An integer. If zero, the Staging Area is unbounded
 
     Raises:
       ValueError: If one of the arguments is invalid.
@@ -1769,7 +1778,9 @@ class StagingArea(BaseStagingArea):
     its capacity.
 
     Args:
-      values: Tensor (or a tuple of Tensors) to place into the staging area.
+      values: A single tensor, a list or tuple of tensors, or a dictionary with
+        tensor values. The number of elements must match the length of the
+        list provided to the dtypes argument when creating the StagingArea.
       name: A name for the operation (optional).
 
     Returns:
@@ -1781,10 +1792,11 @@ class StagingArea(BaseStagingArea):
     with ops.name_scope(name, "%s_put" % self._name,
                         self._scope_vals(values)) as scope:
 
+      if not isinstance(values, (list, tuple, dict)):
+        values = [values]
+
       # Hard-code indices for this staging area
-      indices = (
-          list(six.moves.range(len(values)))
-          if isinstance(values, (list, tuple)) else None)
+      indices = list(six.moves.range(len(values)))
       vals, _ = self._check_put_dtypes(values, indices)
 
       with ops.colocate_with(self._coloc_op):
@@ -1908,7 +1920,8 @@ class StagingArea(BaseStagingArea):
 
 
 class MapStagingArea(BaseStagingArea):
-  """A `MapStagingArea` is a TensorFlow data structure that stores tensors across multiple steps, and exposes operations that can put and get tensors.
+  """A `MapStagingArea` is a TensorFlow data structure that stores tensors
+  across multiple steps, and exposes operations that can put and get tensors.
 
   Each `MapStagingArea` element is a (key, value) pair.
   Only int64 keys are supported, other types should be
@@ -2372,7 +2385,7 @@ class RecordInput(object):
       return records
     else:
       with ops.name_scope(self._name):
-        batch_list = [[] for i in six.moves.range(self._batches)]
+        batch_list = [[] for _ in six.moves.range(self._batches)]
         records = array_ops.split(records, self._batch_size, 0)
         records = [array_ops.reshape(record, []) for record in records]
         for index, protobuf in zip(six.moves.range(len(records)), records):

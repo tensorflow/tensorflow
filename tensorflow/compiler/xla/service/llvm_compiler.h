@@ -60,19 +60,28 @@ class LLVMCompiler : public Compiler {
   // Bring in
   //   StatusOr<std::unique_ptr<Executable>> RunBackend(
   //       std::unique_ptr<HloModule> module,
-  //       perftools::gputools::StreamExecutor* stream_exec,
+  //       se::StreamExecutor* stream_exec,
   //       DeviceMemoryAllocator* device_allocator)
   //   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
   //       std::unique_ptr<HloModule> module,
-  //       perftools::gputools::StreamExecutor* stream_exec,
+  //       se::StreamExecutor* stream_exec,
   //       DeviceMemoryAllocator* device_allocator)
   using Compiler::RunBackend;
   using Compiler::RunHloPasses;
 
+  Status RunHloPassesOnModuleGroup(
+      HloModuleGroup* module_group,
+      absl::Span<se::StreamExecutor* const> executors,
+      DeviceMemoryAllocator* device_allocator) override;
+
+  StatusOr<std::vector<std::unique_ptr<Executable>>> RunBackendOnModuleGroup(
+      std::unique_ptr<HloModuleGroup> module_group,
+      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+      DeviceMemoryAllocator* device_allocator) override;
+
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> modules,
-      std::vector<std::vector<perftools::gputools::StreamExecutor*>>
-          stream_execs,
+      std::unique_ptr<HloModuleGroup> module_group,
+      std::vector<std::vector<se::StreamExecutor*>> stream_execs,
       DeviceMemoryAllocator* device_allocator) override;
 
  protected:

@@ -36,6 +36,8 @@ class WorkerCacheInterface {
   // Updates *workers with strings naming the remote worker tasks to
   // which open channels have been established.
   virtual void ListWorkers(std::vector<string>* workers) const = 0;
+  virtual void ListWorkersInJob(const string& job_name,
+                                std::vector<string>* workers) const = 0;
 
   // If "target" names a remote task for which an RPC channel exists
   // or can be constructed, returns a pointer to a WorkerInterface object

@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 
 
 def optional_param_to_tensor(argument_name,
@@ -32,3 +33,40 @@ def optional_param_to_tensor(argument_name,
   else:
     return constant_op.constant(
         argument_default, dtype=argument_dtype, name=argument_name)
+
+
+def partial_shape_to_tensor(shape_like):
+  """Returns a `tf.Tensor` that represents the given shape.
+
+  Args:
+    shape_like: A value that can be converted to a `tf.TensorShape` or a
+      `tf.Tensor`.
+
+  Returns:
+    A 1-D `tf.Tensor` of `tf.int64` elements representing the given shape, where
+    `-1` is substituted for any unknown dimensions.
+  """
+  try:
+    # First attempt to convert the input to a shape, and return the
+    # "canonical" tensor representation, which uses `-1` in place of
+    # `None`.
+    shape_like = tensor_shape.as_shape(shape_like)
+    return ops.convert_to_tensor(
+        [dim if dim is not None else -1 for dim in shape_like.as_list()],
+        dtype=dtypes.int64)
+  except (TypeError, ValueError):
+    # The argument was not trivially convertible to a
+    # `tf.TensorShape`, so fall back on the conversion to tensor
+    # machinery.
+    ret = ops.convert_to_tensor(shape_like, preferred_dtype=dtypes.int64)
+    if ret.shape.dims is not None and len(ret.shape.dims) != 1:
+      raise ValueError("The given shape %s must be a 1-D tensor of tf.int64 "
+                       "values, but the shape was %s."
+                       % (shape_like, ret.shape))
+    if ret.dtype != dtypes.int64:
+      raise TypeError("The given shape %s must be a 1-D tensor of tf.int64 "
+                      "values, but the element type was %s."
+                      % (shape_like, ret.dtype.name))
+
+    return ret
+

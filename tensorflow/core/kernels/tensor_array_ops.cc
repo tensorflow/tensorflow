@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 #if GOOGLE_CUDA
@@ -258,13 +259,17 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayV3").Device(DEVICE_CPU),
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA
 
 // GRADIENT *******************************************************************
-
+// Note that this op may have an optional third input. If present, it represents
+// a shape value. It indicates that element shape of this gradient array is that
+// shape value concatenated with the element shape of the original tensor array.
+// See TensorArrayGradWithShape.
 class TensorArrayGradOp : public TensorArrayCreationOp {
  public:
   explicit TensorArrayGradOp(OpKernelConstruction* context)
@@ -286,14 +291,14 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
       }
     } else {
       container = "_tensor_arrays";
-      auto resource = ctx->input(0).flat<ResourceHandle>()(0);
+      const auto& resource = ctx->input(0).flat<ResourceHandle>()(0);
       if (StringPiece(resource.name()).substr(0, container.size()) !=
           container) {
         return errors::InvalidArgument("Wrong input container. ",
                                        resource.name());
       }
       tensor_array_name =
-          StringPiece(resource.name()).substr(container.size()).ToString();
+          string(StringPiece(resource.name()).substr(container.size()));
     }
 
     auto output_handle = tensor_array_output_handle->flat<string>();
@@ -325,18 +330,38 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
           "previous write?  Gradient calculation is impossible when multiple "
           "writes are performed to the same index.");
     }
+    TensorShape shape_to_prepend;
+    auto element_shape = PartialTensorShape();
+    if (ctx->num_inputs() > 2) {
+      TF_RETURN_IF_ERROR(
+          ctx->op_kernel().MakeShape(ctx->input(2), &shape_to_prepend));
+      auto ta_element_shape = tensor_array->ElemShape();
+      if (!ta_element_shape.unknown_rank()) {
+        std::vector<int64> dims;
+        for (auto dim : shape_to_prepend) {
+          dims.push_back(dim.size);
+        }
+        for (auto dim : ta_element_shape) {
+          dims.push_back(dim.size);
+        }
+        TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
+            gtl::ArraySlice<int64>(dims), &element_shape));
+      }
+    } else {
+      element_shape = tensor_array->ElemShape();
+    }
 
     const auto key = strings::StrCat(output_handle(0), output_handle(1));
-    auto creator = [this, key, tensor_array, array_size, marked_size,
-                    tensor_array_output_handle,
-                    output_handle](TensorArray** ret) -> Status {
+    auto creator = [key, tensor_array, array_size, marked_size, element_shape,
+                    shape_to_prepend,
+                    tensor_array_output_handle](TensorArray** ret) -> Status {
       *ret = new TensorArray(
           key, tensor_array->ElemType(), *tensor_array_output_handle,
-          array_size, tensor_array->ElemShape(),
-          tensor_array->HasIdenticalElementShapes(), false /* dynamic_size */,
-          true /* multiple_writes_aggregate */, true /* is_grad */,
-          marked_size /* marked_size */, true /* close_after_read */);
-      return (*ret)->CopyShapesFrom(tensor_array);
+          array_size, element_shape, tensor_array->HasIdenticalElementShapes(),
+          false /* dynamic_size */, true /* multiple_writes_aggregate */,
+          true /* is_grad */, marked_size /* marked_size */,
+          true /* close_after_read */);
+      return (*ret)->CopyShapesFrom(tensor_array, &shape_to_prepend);
     };
 
     Status s = rm->LookupOrCreate<TensorArray>(
@@ -361,7 +386,8 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV2").Device(DEVICE_CPU),
                         TensorArrayGradOp);
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV3").Device(DEVICE_CPU),
                         TensorArrayGradOp);
-
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGradWithShape").Device(DEVICE_CPU),
+                        TensorArrayGradOp);
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGrad")
                             .Device(DEVICE_GPU)
                             .HostMemory("handle")
@@ -375,6 +401,12 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV2")
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV3")
                             .Device(DEVICE_GPU)
                             .HostMemory("handle")
+                            .HostMemory("grad_handle"),
+                        TensorArrayGradOp);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGradWithShape")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("handle")
+                            .HostMemory("shape_to_prepend")
                             .HostMemory("grad_handle"),
                         TensorArrayGradOp);
 
@@ -545,6 +577,7 @@ TF_CALL_ALL_TYPES(REGISTER_READ)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
@@ -653,7 +686,7 @@ class TensorArrayPackOrGatherOp : public OpKernel {
         output_tensor->shaped<T, 2>({1, output_shape.num_elements()});
 
     // Insert the first value
-    input_tensors_flat.emplace_back(new ConstMatrix(
+    input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
         value_0_t->shaped<T, 2>({1, value_0_t->NumElements()})));
 
     for (int i = 1; i < num_indices; ++i) {
@@ -664,8 +697,8 @@ class TensorArrayPackOrGatherOp : public OpKernel {
               "TensorArray has inconsistent shapes.  Index 0 has shape: ",
               value_0_t->shape().DebugString(), " but index ", i,
               " has shape: ", value_t->shape().DebugString()));
-      input_tensors_flat.emplace_back(
-          new ConstMatrix(value_t->shaped<T, 2>({1, value_t->NumElements()})));
+      input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
+          value_t->shaped<T, 2>({1, value_t->NumElements()})));
     }
 
 #if GOOGLE_CUDA
@@ -705,6 +738,7 @@ class TensorArrayPackOrGatherOp : public OpKernel {
       TensorArrayPackOrGatherOp<CPUDevice, type, false /* LEGACY_PACK */>);
 
 TF_CALL_POD_STRING_TYPES(REGISTER_GATHER_AND_PACK);
+TF_CALL_variant(REGISTER_GATHER_AND_PACK);
 REGISTER_GATHER_AND_PACK(quint8);
 REGISTER_GATHER_AND_PACK(qint8);
 REGISTER_GATHER_AND_PACK(qint32);
@@ -891,7 +925,7 @@ class TensorArrayConcatOp : public OpKernel {
     for (size_t i = 0; i < values.size(); ++i) {
       const Tensor* value_t = value_tensors[i];
       if (value_t->NumElements() > 0) {
-        input_tensors_flat.emplace_back(new ConstMatrix(
+        input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
             value_t->shaped<T, 2>({1, value_t->NumElements()})));
       }
     }
@@ -1087,8 +1121,8 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
         {1, num_values, element_shape.num_elements()});
 
     Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, 0};
-    Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, 1,
-                                              element_shape.num_elements()};
+    Eigen::DSizes<Eigen::DenseIndex, 3> sizes{
+        1, 1, static_cast<Eigen::DenseIndex>(element_shape.num_elements())};
 
     std::vector<PersistentTensor> write_values;
     write_values.reserve(num_values);
@@ -1186,6 +1220,7 @@ TF_CALL_ALL_TYPES(REGISTER_SCATTER_AND_UNPACK);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA
@@ -1283,9 +1318,11 @@ class TensorArraySplitOp : public OpKernel {
       PersistentTensor persistent_tensor;
 
       int64 previous_length = (i == 0) ? 0 : cumulative_lengths[i - 1];
-      Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, previous_length, 0};
-      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, tensor_lengths_t(i),
-                                                elements_per_row};
+      Eigen::DSizes<Eigen::DenseIndex, 3> indices{
+          0, static_cast<Eigen::DenseIndex>(previous_length), 0};
+      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{
+          1, static_cast<Eigen::DenseIndex>(tensor_lengths_t(i)),
+          static_cast<Eigen::DenseIndex>(elements_per_row)};
 
       OP_REQUIRES_OK(ctx, ctx->allocate_persistent(
                               tensor_array->ElemType(), element_shapes[i],

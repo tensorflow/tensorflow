@@ -233,7 +233,7 @@ class GridRNNCellTest(test.TestCase):
                     ([[1.38917875, 1.49043763]], [[0.83884692, 0.86036491]])))
 
   def testGrid2LSTMCellWithRelu(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'root', initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 3])
@@ -261,7 +261,7 @@ class GridRNNCellTest(test.TestCase):
   """
 
   def testGrid2BasicRNNCell(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'root', initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([2, 2])
@@ -292,7 +292,7 @@ class GridRNNCellTest(test.TestCase):
                     [[0.80049908, 0.80049908], [0.97574311, 0.97574311]]))
 
   def testGrid2BasicRNNCellTied(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'root', initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([2, 2])
@@ -323,7 +323,7 @@ class GridRNNCellTest(test.TestCase):
                     [[0.80049908, 0.80049908], [0.97574311, 0.97574311]]))
 
   def testGrid2BasicRNNCellWithRelu(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'root', initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
@@ -348,7 +348,7 @@ class GridRNNCellTest(test.TestCase):
   """
 
   def testGrid1LSTMCell(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'root', initializer=init_ops.constant_initializer(0.5)) as root_scope:
         x = array_ops.zeros([1, 3])
@@ -410,7 +410,7 @@ class GridRNNCellTest(test.TestCase):
   """
 
   def testGrid3LSTMCell(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'root', initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 3])
@@ -455,7 +455,7 @@ class GridRNNCellTest(test.TestCase):
   """
 
   def testGridRNNEdgeCasesLikeRelu(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'root', initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([3, 2])
@@ -481,7 +481,7 @@ class GridRNNCellTest(test.TestCase):
         self.assertAllClose(res_g, ([[0, 0], [0, 0], [0.5, 0.5]],))
 
   def testGridRNNEdgeCasesNoOutput(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'root', initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
@@ -541,7 +541,7 @@ class GridRNNCellTest(test.TestCase):
       self.assertEqual(out[0].get_shape()[1], num_units)
       self.assertEqual(out[0].dtype, inp.dtype)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       input_value = np.ones((batch_size, input_size))
@@ -581,7 +581,7 @@ class GridRNNCellTest(test.TestCase):
       self.assertEqual(out[0].get_shape()[1], num_units)
       self.assertEqual(out[0].dtype, inp.dtype)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       input_value = np.ones((batch_size, input_size))
@@ -623,7 +623,7 @@ class GridRNNCellTest(test.TestCase):
       self.assertEqual(out[0].get_shape()[1], num_units)
       self.assertEqual(out[0].dtype, inp.dtype)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       input_value = np.ones((batch_size, input_size))
@@ -663,7 +663,7 @@ class GridRNNCellTest(test.TestCase):
       self.assertEqual(out[0].get_shape(), (3, num_units))
       self.assertEqual(out[0].dtype, inp.dtype)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       input_value = np.ones((batch_size, input_size))
@@ -696,11 +696,11 @@ class GridRNNCellTest(test.TestCase):
 
     for out, inp in zip(outputs, inputs):
       self.assertEqual(len(out), 1)
-      self.assertTrue(out[0].get_shape()[0].value is None)
-      self.assertEqual(out[0].get_shape()[1], num_units)
+      self.assertTrue(out[0].get_shape().dims[0].value is None)
+      self.assertEqual(out[0].get_shape().dims[1], num_units)
       self.assertEqual(out[0].dtype, inp.dtype)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       input_value = np.ones((3, input_size))
@@ -715,7 +715,7 @@ class GridRNNCellTest(test.TestCase):
 
   def testGrid2LSTMCellLegacy(self):
     """Test for legacy case (when state_is_tuple=False)."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'root', initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 3])

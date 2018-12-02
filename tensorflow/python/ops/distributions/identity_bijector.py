@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops.distributions import bijector
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -28,7 +28,6 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.bijectors.Identity")
 class Identity(bijector.Bijector):
   """Compute Y = g(X) = X.
 
@@ -37,7 +36,7 @@ class Identity(bijector.Bijector):
     ```python
     # Create the Y=g(X)=X transform which is intended for Tensors with 1 batch
     # ndim and 1 event ndim (i.e., vector of vectors).
-    identity = Identity(event_ndims=1)
+    identity = Identity()
     x = [[1., 2],
          [3, 4]]
     x == identity.forward(x) == identity.inverse(x)
@@ -45,10 +44,18 @@ class Identity(bijector.Bijector):
 
   """
 
-  def __init__(self, validate_args=False, event_ndims=0, name="identity"):
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
+  def __init__(self, validate_args=False, name="identity"):
     super(Identity, self).__init__(
+        forward_min_event_ndims=0,
         is_constant_jacobian=True,
-        event_ndims=event_ndims,
         validate_args=validate_args,
         name=name)
 

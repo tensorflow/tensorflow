@@ -143,6 +143,99 @@ public final class Graph implements AutoCloseable {
     }
   }
 
+  /**
+   * Adds operations to compute the partial derivatives of sum of {@code y}s w.r.t {@code x}s, i.e.,
+   * {@code d(y_1 + y_2 + ...)/dx_1, d(y_1 + y_2 + ...)/dx_2...}
+   *
+   * <p>{@code dx} are used as initial gradients (which represent the symbolic partial derivatives
+   * of some loss function {@code L} w.r.t. {@code y}). {@code dx} must be null or have size of
+   * {@code y}.
+   *
+   * <p>If {@code dx} is null, the implementation will use dx of {@link
+   * org.tensorflow.op.core.OnesLike OnesLike} for all shapes in {@code y}.
+   *
+   * <p>{@code prefix} is used as the name prefix applied to all nodes added to the graph to compute
+   * gradients. It must be unique within the provided graph or the operation will fail.
+   *
+   * <p>If {@code prefix} is null, then one will be chosen automatically.
+   *
+   * @param prefix unique string prefix applied before the names of nodes added to the graph to
+   *     compute gradients. If null, a default one will be chosen.
+   * @param y output of the function to derive
+   * @param x inputs of the function for which partial derivatives are computed
+   * @param dx if not null, the partial derivatives of some loss function {@code L} w.r.t. {@code y}
+   * @return the partial derivatives {@code dy} with the size of {@code x}
+   */
+  public Output<?>[] addGradients(String prefix, Output<?>[] y, Output<?>[] x, Output<?>[] dx) {
+    Output<?>[] dy = new Output<?>[x.length];
+    final long[] yHandles = new long[y.length];
+    final int[] yIndices = new int[y.length];
+    final long[] xHandles = new long[x.length];
+    final int[] xIndices = new int[x.length];
+    long[] dxHandles = null;
+    int[] dxIndices = null;
+
+    try (Reference ref = ref()) {
+      for (int i = 0; i < y.length; ++i) {
+        yHandles[i] = y[i].op().getUnsafeNativeHandle();
+        yIndices[i] = y[i].index();
+      }
+      for (int i = 0; i < x.length; ++i) {
+        xHandles[i] = x[i].op().getUnsafeNativeHandle();
+        xIndices[i] = x[i].index();
+      }
+      if (dx != null && dx.length > 0) {
+        dxHandles = new long[dx.length];
+        dxIndices = new int[dx.length];
+
+        for (int i = 0; i < dx.length; ++i) {
+          dxHandles[i] = dx[i].op().getUnsafeNativeHandle();
+          dxIndices[i] = dx[i].index();
+        }
+      }
+      // Gradient outputs are returned in two continuous arrays concatenated into one. The first
+      // holds the native handles of the gradient operations while the second holds the index of
+      // their output e.g. given
+      // xHandles = [x0Handle, x1Handle, ...] and xIndices = [x0Index, x1Index, ..], we obtain
+      // dy = [dy0Handle, dy1Handle, ..., dy0Index, dy1Index, ...]
+      long[] dyHandlesAndIndices =
+          addGradients(
+              ref.nativeHandle(),
+              prefix,
+              yHandles,
+              yIndices,
+              xHandles,
+              xIndices,
+              dxHandles,
+              dxIndices);
+      int ndy = dyHandlesAndIndices.length >> 1;
+      if (ndy != dy.length) {
+        throw new IllegalStateException(String.valueOf(ndy) + " gradients were added to the graph when " + dy.length
+            + " were expected");
+      }
+      for (int i = 0, j = ndy; i < ndy; ++i, ++j) {
+        Operation op = new Operation(this, dyHandlesAndIndices[i]);
+        dy[i] = new Output<>(op, (int) dyHandlesAndIndices[j]);
+      }
+    }
+    return dy;
+  }
+
+  /**
+   * Adds operations to compute the partial derivatives of sum of {@code y}s w.r.t {@code x}s,
+   * i.e., {@code dy/dx_1, dy/dx_2...}
+   * <p>
+   * This is a simplified version of {@link #addGradients(Output[], Output[], Output[]) where {@code y} is
+   * a single output, {@code dx} is null and {@code prefix} is null.
+   *
+   * @param y output of the function to derive
+   * @param x inputs of the function for which partial derivatives are computed
+   * @return the partial derivatives {@code dy} with the size of {@code x}
+   */
+  public Output<?>[] addGradients(Output<?> y, Output<?>[] x) {
+    return addGradients(null, new Output<?>[] {y}, x, null);
+  }
+  
   private final Object nativeHandleLock = new Object();
   private long nativeHandle;
   private int refcount = 0;
@@ -253,6 +346,16 @@ public final class Graph implements AutoCloseable {
       throws IllegalArgumentException;
 
   private static native byte[] toGraphDef(long handle);
+
+  private static native long[] addGradients(
+      long handle,
+      String prefix,
+      long[] inputHandles,
+      int[] inputIndices,
+      long[] outputHandles,
+      int[] outputIndices,
+      long[] gradInputHandles,
+      int[] gradInputIndices);
 
   static {
     TensorFlow.init();

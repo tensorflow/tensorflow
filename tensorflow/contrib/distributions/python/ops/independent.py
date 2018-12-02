@@ -29,6 +29,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions import kullback_leibler
+from tensorflow.python.util import deprecation
 
 
 class Independent(distribution_lib.Distribution):
@@ -36,7 +37,7 @@ class Independent(distribution_lib.Distribution):
 
   This distribution is useful for regarding a collection of independent,
   non-identical distributions as a single random variable. For example, the
-  `Indpendent` distribution composed of a collection of `Bernoulli`
+  `Independent` distribution composed of a collection of `Bernoulli`
   distributions might define a distribution over an image (where each
   `Bernoulli` is a distribution over each pixel).
 
@@ -69,7 +70,8 @@ class Independent(distribution_lib.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Make independent distribution from a 2-batch Normal.
   ind = tfd.Independent(
@@ -94,6 +96,14 @@ class Independent(distribution_lib.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(
       self, distribution, reinterpreted_batch_ndims=None,
       validate_args=False, name=None):
@@ -116,10 +126,10 @@ class Independent(distribution_lib.Distribution):
       ValueError: if `reinterpreted_batch_ndims` exceeds
         `distribution.batch_ndims`
     """
-    parameters = locals()
+    parameters = dict(locals())
     name = name or "Independent" + distribution.name
     self._distribution = distribution
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       if reinterpreted_batch_ndims is None:
         reinterpreted_batch_ndims = self._get_default_reinterpreted_batch_ndims(
             distribution)
@@ -156,8 +166,10 @@ class Independent(distribution_lib.Distribution):
   def _batch_shape_tensor(self):
     with ops.control_dependencies(self._runtime_assertions):
       batch_shape = self.distribution.batch_shape_tensor()
-      batch_ndims = (batch_shape.shape[0].value
-                     if batch_shape.shape.with_rank_at_least(1)[0].value
+      dim0 = tensor_shape.dimension_value(
+          batch_shape.shape.with_rank_at_least(1)[0])
+      batch_ndims = (dim0
+                     if dim0 is not None
                      else array_ops.shape(batch_shape)[0])
       return batch_shape[:batch_ndims - self.reinterpreted_batch_ndims]
 
@@ -172,8 +184,10 @@ class Independent(distribution_lib.Distribution):
   def _event_shape_tensor(self):
     with ops.control_dependencies(self._runtime_assertions):
       batch_shape = self.distribution.batch_shape_tensor()
-      batch_ndims = (batch_shape.shape[0].value
-                     if batch_shape.shape.with_rank_at_least(1)[0].value
+      dim0 = tensor_shape.dimension_value(
+          batch_shape.shape.with_rank_at_least(1)[0])
+      batch_ndims = (dim0
+                     if dim0 is not None
                      else array_ops.shape(batch_shape)[0])
       return array_ops.concat([
           batch_shape[batch_ndims - self.reinterpreted_batch_ndims:],
@@ -229,9 +243,11 @@ class Independent(distribution_lib.Distribution):
                              static_reinterpreted_batch_ndims, batch_ndims))
     elif validate_args:
       batch_shape = distribution.batch_shape_tensor()
+      dim0 = tensor_shape.dimension_value(
+          batch_shape.shape.with_rank_at_least(1)[0])
       batch_ndims = (
-          batch_shape.shape[0].value
-          if batch_shape.shape.with_rank_at_least(1)[0].value is not None
+          dim0
+          if dim0 is not None
           else array_ops.shape(batch_shape)[0])
       assertions.append(check_ops.assert_less_equal(
           reinterpreted_batch_ndims, batch_ndims,
@@ -258,6 +274,14 @@ class Independent(distribution_lib.Distribution):
 
 
 @kullback_leibler.RegisterKL(Independent, Independent)
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _kl_independent(a, b, name="kl_independent"):
   """Batched KL divergence `KL(a || b)` for Independent distributions.
 

@@ -22,64 +22,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
 class HloOrderingTest : public HloTestBase {};
-
-TEST_F(HloOrderingTest, LastUseScheduledFirst) {
-  // Tests scheduling of the following HLO code:
-  //
-  //   %ab = abs(%param)
-  //   %exp = exp(%param)
-  //   %add = add(%ab, %exp)
-  //   %negate = negate(%exp)
-  //   %sub = subtract(%add, %negate)
-  //
-  // %add should be scheduled before %negate because %add is the last (and only)
-  // use of %ab. Scheduling %add first then frees up %ab's buffer.
-  const Shape vec = ShapeUtil::MakeShape(xla::F32, {42});
-  auto builder = HloComputation::Builder(TestName());
-  auto param =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, vec, "param"));
-  auto ab = builder.AddInstruction(
-      HloInstruction::CreateUnary(vec, HloOpcode::kAbs, param));
-  auto exp = builder.AddInstruction(
-      HloInstruction::CreateUnary(vec, HloOpcode::kExp, param));
-
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(vec, HloOpcode::kAdd, ab, exp));
-  auto negate = builder.AddInstruction(
-      HloInstruction::CreateUnary(vec, HloOpcode::kNegate, exp));
-  auto sub = builder.AddInstruction(
-      HloInstruction::CreateBinary(vec, HloOpcode::kSubtract, add, negate));
-
-  auto module = CreateNewModule();
-  module->AddEntryComputation(builder.Build());
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      SequentialHloOrdering::HloModuleSequence sequence,
-      CreateMemoryMinimizingSequence(*module, [](const LogicalBuffer& buffer) {
-        return ShapeUtil::ByteSizeOf(buffer.shape());
-      }));
-  // Verify that all instructions are in the sequence.
-  EXPECT_EQ(module->entry_computation()->instruction_count(),
-            sequence.at(module->entry_computation()).size());
-
-  // The first instruction should be the parameter and the last the root "sub".
-  EXPECT_EQ(param, sequence.at(module->entry_computation()).front());
-  EXPECT_EQ(sub, sequence.at(module->entry_computation()).back());
-
-  SequentialHloOrdering ordering(module.get(), sequence);
-  EXPECT_TRUE(ordering.ExecutesBefore(add, negate));
-}
 
 TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
   // Tests the ordering of instructions in different computations using the
@@ -99,12 +53,12 @@ TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
   //   %c = Constant(42.0f)
   //
   // This results in a diamond-shaped callgraph.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto builder_c = HloComputation::Builder("C");
   HloInstruction* c = builder_c.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   HloComputation* computation_c =
       module->AddEmbeddedComputation(builder_c.Build());
 
@@ -172,7 +126,7 @@ TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
   //   %constant = Constant(1.0)
   //   return While(%constant, body, condition)
   //
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto body_builder = HloComputation::Builder("body");
@@ -192,7 +146,7 @@ TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
 
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto xla_while = builder.AddInstruction(
       HloInstruction::CreateWhile(scalar_shape, condition, body, constant));
   module->AddEntryComputation(builder.Build());
@@ -220,6 +174,26 @@ TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
   EXPECT_FALSE(ordering.ExecutesBefore(body_param, cond_param));
 }
 
+TEST_F(HloOrderingTest, ParametersDefinedBeforeOthers) {
+  // Entry parameter should always be defined before other instruction.
+  auto module = CreateNewVerifiedModule();
+  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "param"));
+  module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+
+  DependencyHloOrdering ordering(module.get());
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(param),
+                                       dataflow->GetValueDefinedAt(constant)));
+  EXPECT_TRUE(!ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(constant),
+                                        dataflow->GetValueDefinedAt(param)));
+}
+
 TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   // Tests the ordering of values (defined by dataflow analysis) in the body and
   // condition of a while instruction. HLO code:
@@ -235,7 +209,7 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   //   %while = While(%constant, body, condition)
   //   %add = Add(%constant, %while)
   //
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto body_builder = HloComputation::Builder("body");
@@ -255,7 +229,7 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
 
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto xla_while = builder.AddInstruction(
       HloInstruction::CreateWhile(scalar_shape, condition, body, constant));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -357,9 +331,169 @@ ENTRY while.v11 {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(module_str));
+                          ParseHloString(module_str));
   DependencyHloOrdering ordering(module.get());
   ordering.ToString();  // Shouldn't crash.
+}
+
+TEST_F(HloOrderingTest, ConditionalInstructionOrdering) {
+  const char* module_str = R"(
+HloModule test_conditional_module
+
+true_branch {
+  param.1 = (s32[], s32[]) parameter(0)
+  get-tuple-element.1 = s32[] get-tuple-element(param.1), index=0
+  get-tuple-element.2 = s32[] get-tuple-element(param.1), index=1
+  add.1 = s32[] add(get-tuple-element.1, get-tuple-element.2)
+  ROOT tuple.1 = (s32[], s32[]) tuple(add.1, get-tuple-element.1)
+}
+
+false_branch {
+  param.2 = (s32[], s32[]) parameter(0)
+  get-tuple-element.3 = s32[] get-tuple-element(param.2), index=0
+  get-tuple-element.4 = s32[] get-tuple-element(param.2), index=1
+  add.2 = s32[] add(get-tuple-element.3, get-tuple-element.4)
+  ROOT tuple.2 = (s32[], s32[]) tuple(add.2, get-tuple-element.4)
+}
+
+ENTRY root {
+  param.3 = (pred[], (s32[], s32[])) parameter(0)
+  pred.1 = pred[] get-tuple-element(param.3), index=0
+  cond_arg.1 = (s32[], s32[]) get-tuple-element(param.3), index=1
+  conditional = (s32[], s32[]) conditional(pred.1, cond_arg.1, cond_arg.1), true_computation=true_branch, false_computation=false_branch
+  cond_res.1 = s32[] get-tuple-element(conditional), index=0
+  cond_res.2 = s32[] get-tuple-element(conditional), index=1
+  add.3 = s32[] add(cond_res.1, cond_res.2)
+  ROOT result = (s32[], s32[], s32[]) tuple(add.3, cond_res.1, cond_res.2)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  DependencyHloOrdering ordering(module.get());
+
+  // Even though the true and false branches has no ordering, since they do not
+  // interfere (as they are mutually exclusive), we define the true computation
+  // to be before the false one.
+  // Similarly, any instruction in the true or false branches are considered
+  // before the conditional instruction. The roots are effectively "at the same
+  // time" WRT the conditional, but they are Phi-ed anyway.
+  HloInstruction* add_1 = FindInstruction(module.get(), "add.1");
+  HloInstruction* add_2 = FindInstruction(module.get(), "add.2");
+  HloInstruction* add_3 = FindInstruction(module.get(), "add.3");
+  HloInstruction* conditional = FindInstruction(module.get(), "conditional");
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(add_1),
+                                       dataflow->GetValueDefinedAt(add_2)));
+  EXPECT_TRUE(
+      ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(add_2),
+                               dataflow->GetValueDefinedAt(conditional)));
+  EXPECT_TRUE(
+      ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(add_1),
+                               dataflow->GetValueDefinedAt(conditional)));
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(add_1),
+                                       dataflow->GetValueDefinedAt(add_3)));
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(add_2),
+                                       dataflow->GetValueDefinedAt(add_3)));
+}
+
+TEST_F(HloOrderingTest,
+       ValuesLiveOutOfModuleInterfereWithInstructionsAfterRoot) {
+  // Tests that values live out of the module should interfere with values
+  // defined after the root instruction. That is:
+  //
+  //   %param = param(0)
+  //   ROOT %root = negate(%param)
+  //   %dead = Constant(123.0)
+  //
+  // %root should interfere with %dead.
+  auto module = CreateNewVerifiedModule();
+  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "param"));
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateUnary(scalar_shape, HloOpcode::kNegate, param));
+  HloInstruction* dead = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(123.0f)));
+  HloComputation* entry =
+      module->AddEntryComputation(builder.Build(/*root_instruction=*/root));
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(entry, {param, root, dead});
+  TF_ASSERT_OK(schedule.Verify());
+  SequentialHloOrdering ordering(schedule);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+
+  EXPECT_TRUE(ordering.ExecutesBefore(root, dead));
+  EXPECT_FALSE(ordering.ExecutesBefore(dead, root));
+
+  EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
+      dataflow->GetValueDefinedAt(root), dataflow->GetValueDefinedAt(dead),
+      *dataflow));
+
+  EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(root),
+                                    dataflow->GetValueDefinedAt(dead),
+                                    *dataflow));
+}
+
+TEST_F(HloOrderingTest,
+       ValuesLiveOutOfComputationInterfereWithInstructionsAfterRoot) {
+  // Tests that values live out of a computation should interfere with values
+  // defined after the root instruction of the computation. That is:
+  //
+  // subcomputation:
+  //   %param = param(0)
+  //   ROOT %root = negate(%param)
+  //   %dead = Constant(123.0)
+  //
+  // entry computation:
+  //   %c = constant(42.0)
+  //   ROOT %call = call({%c}), subcomputation
+  //
+  // %root should interfere with %dead.
+  auto module = CreateNewVerifiedModule();
+  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+
+  auto subbuilder = HloComputation::Builder(TestName() + ".sub");
+  HloInstruction* param = subbuilder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "param"));
+  HloInstruction* root = subbuilder.AddInstruction(
+      HloInstruction::CreateUnary(scalar_shape, HloOpcode::kNegate, param));
+  HloInstruction* dead = subbuilder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(123.0f)));
+  HloComputation* subcomputation = module->AddEmbeddedComputation(
+      subbuilder.Build(/*root_instruction=*/root));
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* c = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+  HloInstruction* call = builder.AddInstruction(
+      HloInstruction::CreateCall(scalar_shape, {c}, subcomputation));
+  HloComputation* entry = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(subcomputation, {param, root, dead});
+  schedule.set_sequence(entry, {c, call});
+  TF_ASSERT_OK(schedule.Verify());
+  SequentialHloOrdering ordering(schedule);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+
+  EXPECT_TRUE(ordering.ExecutesBefore(root, dead));
+  EXPECT_FALSE(ordering.ExecutesBefore(dead, root));
+
+  EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
+      dataflow->GetValueDefinedAt(root), dataflow->GetValueDefinedAt(dead),
+      *dataflow));
+
+  EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(root),
+                                    dataflow->GetValueDefinedAt(dead),
+                                    *dataflow));
 }
 
 }  // namespace

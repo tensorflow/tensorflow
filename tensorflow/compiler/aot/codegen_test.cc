@@ -18,11 +18,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/TargetSelect.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
@@ -31,9 +32,11 @@ namespace tensorflow {
 namespace tfcompile {
 namespace {
 
-void ExpectErrorContains(const Status& status, StringPiece str) {
+using ::tensorflow::cpu_function_runtime::BufferInfo;
+
+void ExpectErrorContains(const Status& status, absl::string_view str) {
   EXPECT_NE(Status::OK(), status);
-  EXPECT_TRUE(StringPiece(status.error_message()).contains(str))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), str))
       << "expected error: " << status.error_message() << " to contain: " << str;
 }
 
@@ -170,15 +173,23 @@ TEST(CodegenTest, Golden) {
   fetch->mutable_id()->set_node_name("fetch0");
   fetch->set_name("myfetch");
   CompileResult compile_result;
-  compile_result.aot.reset(
-      new xla::cpu::CpuAotCompilationResult({}, {1, -1, 2, -1, 3, 120}, 5));
-  compile_result.program_shape = xla::ShapeUtil::MakeProgramShape(
-      {
-          xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),
-          xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
-      },
-      xla::ShapeUtil::MakeTupleShape(
-          {xla::ShapeUtil::MakeShape(xla::U32, {5, 6})}));
+  compile_result.aot.reset(new xla::cpu::CpuAotCompilationResult(
+      {},
+      {BufferInfo::MakeTempBuffer(1),
+       BufferInfo::MakeEntryParameter(/*size=*/8, /*param_number=*/0),
+       BufferInfo::MakeTempBuffer(2),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/1),
+       BufferInfo::MakeTempBuffer(3), BufferInfo::MakeTempBuffer(120)},
+      5, {}));
+  compile_result.program_shape =
+      xla::ShapeUtil::MakeProgramShape(
+          {
+              xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),
+              xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
+          },
+          xla::ShapeUtil::MakeTupleShape(
+              {xla::ShapeUtil::MakeShape(xla::U32, {5, 6})}))
+          .ToProto();
   compile_result.entry_point = "entry_point";
   compile_result.pointer_size = 8;
 

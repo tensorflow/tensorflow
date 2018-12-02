@@ -196,10 +196,19 @@ TEST_F(SingleMachineTest, GraphOptimizations) {
   TF_CHECK_OK(cluster_->Run(item.graph, item.feed, item.fetch, &metadata));
   std::set<string> cost_nodes;
   for (const auto& node : metadata.cost_graph().node()) {
+#ifdef INTEL_MKL
+    // Skip the special nodes inserted by TF (and MKL): these are either
+    // prefixed with an underscore or contain "/_".
+    if (node.name()[0] == '_' || node.name().find("/_") != string::npos) {
+      continue;
+    }
+    cost_nodes.insert(node.name());
+#else
     // Skip nodes added by TF internally.
     if (node.name()[0] != '_') {
       cost_nodes.insert(node.name());
     }
+#endif
   }
   const std::set<string> expected_cost_nodes = {
       "zero",      "one",      "add",         "square",
@@ -537,7 +546,7 @@ TEST_F(SingleMachineTest, ReleaseMemoryAfterDestruction) {
   TF_CHECK_OK(cluster_->GetPeakMemoryUsage(&device_peak_memory_before));
   EXPECT_EQ(device_peak_memory_before.size(), 1);
   // There might be a bit memory used before session's running anything.
-  EXPECT_LT(device_peak_memory_before.begin()->second, 200);
+  EXPECT_LT(device_peak_memory_before.begin()->second, 400);
 
   RunMetadata metadata;
   TF_CHECK_OK(cluster_->Run(item.graph, item.feed, item.fetch, &metadata));
@@ -558,8 +567,8 @@ TEST_F(SingleMachineTest, ReleaseMemoryAfterDestruction) {
   // Check memory used by resources are released after cluster destruction.
   EXPECT_EQ(device_peak_memory_before.size(), 1);
   EXPECT_EQ(device_peak_memory_after.size(), 1);
-  EXPECT_LT(device_peak_memory_before.begin()->second, 200);
-  EXPECT_LT(device_peak_memory_after.begin()->second, 200);
+  EXPECT_LT(device_peak_memory_before.begin()->second, 400);
+  EXPECT_LT(device_peak_memory_after.begin()->second, 400);
 }
 
 TEST_F(SingleMachineTest, PeakMemory) {
@@ -588,7 +597,7 @@ TEST_F(SingleMachineTest, PeakMemory) {
       device_peak_memory.end());
   cpu_memory =
       device_peak_memory["/job:localhost/replica:0/task:0/device:CPU:0"];
-  EXPECT_LT(cpu_memory, 100);
+  EXPECT_LT(cpu_memory, 200);
 }
 
 TEST_F(SingleMachineTest, PeakMemoryStatsNotEnabled) {

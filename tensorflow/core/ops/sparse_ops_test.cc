@@ -52,6 +52,18 @@ TEST(SparseOpsTest, SparseAddGrad_ShapeFn) {
   INFER_OK(op, "?;[?,?];[?,?];?", "[d1_0];[d2_0]");
 }
 
+TEST(SparseOpsTest, SparseSliceGrad_ShapeFn) {
+  ShapeInferenceTestOp op("SparseSliceGrad");
+
+  // Rank checks.
+  INFER_ERROR("must be rank 2", op, "?;[1];?;?");
+
+  INFER_OK(op, "?;?;?;?", "[?]");
+
+  // input[1].dim(0) determine output.
+  INFER_OK(op, "?;[?,?];?;?", "[d1_0]");
+}
+
 TEST(SparseOpsTest, SparseReorder_ShapeFn) {
   ShapeInferenceTestOp op("SparseReorder");
 
@@ -121,6 +133,13 @@ TEST(SparseOpsTest, SparseToDense_ShapeFn) {
 
 TEST(SparseOpsTest, SparseReduceSum_ShapeFn) {
   ShapeInferenceTestOp op("SparseReduceSum");
+  TF_ASSERT_OK(NodeDefBuilder("test", "SparseReduceSum")
+                   .Input({"input_indices", 0, DT_INT64})
+                   .Input({"input_values", 1, DT_INT64})
+                   .Input({"input_shape", 2, DT_INT64})
+                   .Input({"reduction_axes", 3, DT_INT32})
+                   .Attr("keep_dims", false)
+                   .Finalize(&op.node_def));
 
   // Shape fn always yields unknown.
   INFER_OK(op, "?;?;?;?", "?");

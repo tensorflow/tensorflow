@@ -15,34 +15,44 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
 
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/util.h"
-
-namespace se = ::perftools::gputools;
 
 namespace xla {
 namespace gpu {
 
-tensorflow::Status TupleThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
-  std::vector<void*> tuple_element_buffer_addresses;
-  for (BufferAllocation::Slice tuple_element_buffer : tuple_element_buffers_) {
-    tuple_element_buffer_addresses.push_back(
-        buffer_allocations.GetDeviceAddress(tuple_element_buffer).opaque());
+Status TupleThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                   se::Stream* stream,
+                                   HloExecutionProfiler* profiler) {
+  auto size = tuple_element_buffers_.size();
+  auto tuple_element_buffer_addresses = absl::make_unique<void*[]>(size);
+  for (int i = 0; i != size; ++i) {
+    tuple_element_buffer_addresses[i] =
+        buffer_allocations.GetDeviceAddress(tuple_element_buffers_[i]).opaque();
   }
   se::DeviceMemory<void*> dest_buffer_address(
       buffer_allocations.GetDeviceAddress(dest_buffer_));
 
-  auto host_size = tuple_element_buffer_addresses.size() * sizeof(void*);
+  auto host_size = size * sizeof(void*);
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   if (!stream
            ->ThenMemcpy(&dest_buffer_address,
-                        tuple_element_buffer_addresses.data(), host_size)
+                        tuple_element_buffer_addresses.get(), host_size)
            .ok()) {
     return InternalError(
         "Unable to launch MemcpyH2D from %p to %p with size %lu",
-        tuple_element_buffer_addresses.data(), dest_buffer_address.opaque(),
-        sizeof(void*) * tuple_element_buffer_addresses.size());
+        tuple_element_buffer_addresses.get(), dest_buffer_address.opaque(),
+        host_size);
   }
-  return tensorflow::Status::OK();
+  // Free the tuple address buffer when memcpy is done.
+  auto* buffers_raw = tuple_element_buffer_addresses.release();
+  if (!stream->ThenDoHostCallback([buffers_raw] { delete[] buffers_raw; })
+           .ok()) {
+    delete[] buffers_raw;
+    return InternalError("Unable to enqueue host callback!");
+  }
+  return Status::OK();
 }
 
 }  // namespace gpu

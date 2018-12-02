@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
 

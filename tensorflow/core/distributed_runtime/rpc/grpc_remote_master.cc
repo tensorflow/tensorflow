@@ -95,13 +95,35 @@ class GrpcRemoteMaster : public MasterInterface {
                 &MasterServiceStub::Reset);
   }
 
+  Status MakeCallable(CallOptions* call_options,
+                      const MakeCallableRequest* request,
+                      MakeCallableResponse* response) override {
+    ::grpc::ClientContext ctx;
+    return Call(&ctx, call_options, request, response,
+                &MasterServiceStub::MakeCallable);
+  }
+  Status RunCallable(CallOptions* call_options,
+                     const RunCallableRequest* request,
+                     RunCallableResponse* response) override {
+    ::grpc::ClientContext ctx;
+    return Call(&ctx, call_options, request, response,
+                &MasterServiceStub::RunCallable);
+  }
+  Status ReleaseCallable(CallOptions* call_options,
+                         const ReleaseCallableRequest* request,
+                         ReleaseCallableResponse* response) override {
+    ::grpc::ClientContext ctx;
+    return Call(&ctx, call_options, request, response,
+                &MasterServiceStub::ReleaseCallable);
+  }
+
  private:
   // Start tracing, attaching a unique ID to both the trace and the RPC.
-  port::Tracing::TraceMe TraceRpc(StringPiece name,
-                                  ::grpc::ClientContext* ctx) {
-    string trace_id = strings::StrCat(port::Tracing::UniqueId());
+  tracing::ScopedActivity TraceRpc(StringPiece name,
+                                   ::grpc::ClientContext* ctx) {
+    string trace_id = strings::StrCat(tracing::GetUniqueArg());
     ctx->AddMetadata(GrpcIdKey(), trace_id);
-    return port::Tracing::TraceMe(name, trace_id);
+    return tracing::ScopedActivity(name, trace_id);
   }
 
   void SetDeadline(::grpc::ClientContext* ctx, int64 time_in_ms) {

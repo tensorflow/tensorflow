@@ -29,7 +29,7 @@ class _PoissonLogNormalQuadratureCompoundTest(
   """Tests the PoissonLogNormalQuadratureCompoundTest distribution."""
 
   def testSampleProbConsistent(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
           loc=array_ops.placeholder_with_default(
               -2.,
@@ -43,7 +43,7 @@ class _PoissonLogNormalQuadratureCompoundTest(
           sess.run, pln, batch_size=1, rtol=0.1)
 
   def testMeanVariance(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
           loc=array_ops.placeholder_with_default(
               0.,
@@ -57,7 +57,7 @@ class _PoissonLogNormalQuadratureCompoundTest(
           sess.run, pln, rtol=0.02)
 
   def testSampleProbConsistentBroadcastScalar(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
           loc=array_ops.placeholder_with_default(
               [0., -0.5],
@@ -71,7 +71,7 @@ class _PoissonLogNormalQuadratureCompoundTest(
           sess.run, pln, batch_size=2, rtol=0.1, atol=0.01)
 
   def testMeanVarianceBroadcastScalar(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
           loc=array_ops.placeholder_with_default(
               [0., -0.5],
@@ -85,7 +85,7 @@ class _PoissonLogNormalQuadratureCompoundTest(
           sess.run, pln, rtol=0.1, atol=0.01)
 
   def testSampleProbConsistentBroadcastBoth(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
           loc=array_ops.placeholder_with_default(
               [[0.], [-0.5]],
@@ -99,7 +99,7 @@ class _PoissonLogNormalQuadratureCompoundTest(
           sess.run, pln, batch_size=4, rtol=0.1, atol=0.08)
 
   def testMeanVarianceBroadcastBoth(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
           loc=array_ops.placeholder_with_default(
               [[0.], [-0.5]],

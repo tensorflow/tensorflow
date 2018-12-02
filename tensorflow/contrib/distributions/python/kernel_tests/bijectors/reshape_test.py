@@ -22,15 +22,12 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops.bijectors.reshape import Reshape
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions.bijector_test_util import assert_bijective_and_finite
 from tensorflow.python.platform import test
 
 
-@test_util.with_c_api
 class _ReshapeBijectorTest(object):
   """Base class for testing the reshape transformation.
 
@@ -53,7 +50,7 @@ class _ReshapeBijectorTest(object):
     expected_x = np.random.randn(4, 3, 2)
     expected_y = np.reshape(expected_x, [4, 6])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       shape_in, shape_out, feed_dict = self.build_shapes([3, 2], [6,])
       bijector = Reshape(
           event_shape_out=shape_out,
@@ -65,8 +62,8 @@ class _ReshapeBijectorTest(object):
        ildj_) = sess.run((
            bijector.inverse(expected_y),
            bijector.forward(expected_x),
-           bijector.forward_log_det_jacobian(expected_x),
-           bijector.inverse_log_det_jacobian(expected_y),
+           bijector.forward_log_det_jacobian(expected_x, event_ndims=2),
+           bijector.inverse_log_det_jacobian(expected_y, event_ndims=2),
        ), feed_dict=feed_dict)
       self.assertEqual("reshape", bijector.name)
       self.assertAllClose(expected_y, y_, rtol=1e-6, atol=0)
@@ -87,7 +84,7 @@ class _ReshapeBijectorTest(object):
 
     # using the _tensor methods, we should always get a fully-specified
     # result since these are evaluated at graph runtime.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       (shape_out_,
        shape_in_) = sess.run((
            bijector.forward_event_shape_tensor(shape_in),
@@ -106,7 +103,7 @@ class _ReshapeBijectorTest(object):
     expected_y_scalar = expected_x_scalar[0]
 
     shape_in, shape_out, feed_dict = self.build_shapes([], [1,])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       bijector = Reshape(
           event_shape_out=shape_in,
           event_shape_in=shape_out, validate_args=True)
@@ -127,7 +124,7 @@ class _ReshapeBijectorTest(object):
 
   def testMultipleUnspecifiedDimensionsOpError(self):
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       shape_in, shape_out, feed_dict = self.build_shapes([2, 3], [4, -1, -1,])
       bijector = Reshape(
           event_shape_out=shape_out,
@@ -142,7 +139,7 @@ class _ReshapeBijectorTest(object):
   # pylint: disable=invalid-name
   def _testInvalidDimensionsOpError(self, expected_error_message):
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       shape_in, shape_out, feed_dict = self.build_shapes([2, 3], [1, 2, -2,])
       bijector = Reshape(
@@ -158,7 +155,7 @@ class _ReshapeBijectorTest(object):
   def testValidButNonMatchingInputOpError(self):
     x = np.random.randn(4, 3, 2)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       shape_in, shape_out, feed_dict = self.build_shapes([2, 3], [1, 6, 1,])
       bijector = Reshape(
           event_shape_out=shape_out,
@@ -176,7 +173,7 @@ class _ReshapeBijectorTest(object):
   def testValidButNonMatchingInputPartiallySpecifiedOpError(self):
     x = np.random.randn(4, 3, 2)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       shape_in, shape_out, feed_dict = self.build_shapes([2, -1], [1, 6, 1,])
       bijector = Reshape(
           event_shape_out=shape_out,
@@ -193,7 +190,7 @@ class _ReshapeBijectorTest(object):
     x1 = np.random.randn(4, 2, 3)
     x2 = np.random.randn(4, 1, 1, 5)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       shape_in, shape_out, fd_mismatched = self.build_shapes([2, 3],
                                                              [1, 1, 5])
       bijector = Reshape(
@@ -211,7 +208,7 @@ class _ReshapeBijectorTest(object):
     expected_x = np.random.randn(4, 6)
     expected_y = np.reshape(expected_x, [4, 2, 3])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # one of input/output shapes is partially specified
       shape_in, shape_out, feed_dict = self.build_shapes([-1,], [2, 3])
       bijector = Reshape(
@@ -230,7 +227,7 @@ class _ReshapeBijectorTest(object):
   def testBothShapesPartiallySpecified(self):
     expected_x = np.random.randn(4, 2, 3)
     expected_y = np.reshape(expected_x, [4, 3, 2])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       shape_in, shape_out, feed_dict = self.build_shapes([-1, 3], [-1, 2])
       bijector = Reshape(
           event_shape_out=shape_out,
@@ -248,7 +245,7 @@ class _ReshapeBijectorTest(object):
   def testDefaultVectorShape(self):
     expected_x = np.random.randn(4, 4)
     expected_y = np.reshape(expected_x, [4, 2, 2])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _, shape_out, feed_dict = self.build_shapes([-1,], [-1, 2])
       bijector = Reshape(shape_out,
                          validate_args=True)
@@ -265,7 +262,6 @@ class _ReshapeBijectorTest(object):
     raise NotImplementedError("Subclass failed to implement `build_shapes`.")
 
 
-@test_util.with_c_api
 class ReshapeBijectorTestStatic(test.TestCase, _ReshapeBijectorTest):
 
   def build_shapes(self, shape_in, shape_out):
@@ -296,29 +292,22 @@ class ReshapeBijectorTestStatic(test.TestCase, _ReshapeBijectorTest):
   def testBijectiveAndFinite(self):
     x = np.random.randn(4, 2, 3)
     y = np.reshape(x, [4, 1, 2, 3])
-    with self.test_session():
+    with self.cached_session():
       bijector = Reshape(
           event_shape_in=[2, 3],
           event_shape_out=[1, 2, 3],
           validate_args=True)
-      assert_bijective_and_finite(bijector, x, y, rtol=1e-6, atol=0)
+      assert_bijective_and_finite(
+          bijector, x, y, event_ndims=2, rtol=1e-6, atol=0)
 
   def testInvalidDimensionsOpError(self):
-    if ops._USE_C_API:
-      error_message = "Invalid value in tensor used for shape: -2"
-    else:
-      error_message = "elements must be either positive integers or `-1`."
-    self._testInvalidDimensionsOpError(error_message)
+    self._testInvalidDimensionsOpError(
+        "Invalid value in tensor used for shape: -2")
 
   def testInputOutputMismatchOpError(self):
-    if ops._USE_C_API:
-      error_message = "Cannot reshape a tensor with"
-    else:
-      error_message = "Input to reshape is a tensor with"
-    self._testInputOutputMismatchOpError(error_message)
+    self._testInputOutputMismatchOpError("Cannot reshape a tensor with")
 
 
-@test_util.with_c_api
 class ReshapeBijectorTestDynamic(test.TestCase, _ReshapeBijectorTest):
 
   def build_shapes(self, shape_in, shape_out):
@@ -340,7 +329,6 @@ class ReshapeBijectorTestDynamic(test.TestCase, _ReshapeBijectorTest):
     self._testInputOutputMismatchOpError("Input to reshape is a tensor with")
 
 
-@test_util.with_c_api
 class ReshapeBijectorTestDynamicNdims(test.TestCase, _ReshapeBijectorTest):
 
   def build_shapes(self, shape_in, shape_out):

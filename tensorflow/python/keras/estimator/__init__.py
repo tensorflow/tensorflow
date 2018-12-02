@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,60 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras._impl.keras.estimator import model_to_estimator
+from tensorflow.python.util.tf_export import tf_export
 
-del absolute_import
-del division
-del print_function
+# Keras has undeclared dependency on tensorflow/estimator:estimator_py.
+# As long as you depend //third_party/py/tensorflow:tensorflow target
+# everything will work as normal.
+
+
+# LINT.IfChange
+@tf_export('keras.estimator.model_to_estimator')
+def model_to_estimator(
+    keras_model=None,
+    keras_model_path=None,
+    custom_objects=None,
+    model_dir=None,
+    config=None):
+  """Constructs an `Estimator` instance from given keras model.
+
+  For usage example, please see:
+  [Creating estimators from Keras
+  Models](https://tensorflow.org/guide/estimators#model_to_estimator).
+
+  Args:
+    keras_model: A compiled Keras model object. This argument is mutually
+      exclusive with `keras_model_path`.
+    keras_model_path: Path to a compiled Keras model saved on disk, in HDF5
+      format, which can be generated with the `save()` method of a Keras model.
+      This argument is mutually exclusive with `keras_model`.
+    custom_objects: Dictionary for custom objects.
+    model_dir: Directory to save `Estimator` model parameters, graph, summary
+      files for TensorBoard, etc.
+    config: `RunConfig` to config `Estimator`.
+
+  Returns:
+    An Estimator from given keras model.
+
+  Raises:
+    ValueError: if neither keras_model nor keras_model_path was given.
+    ValueError: if both keras_model and keras_model_path was given.
+    ValueError: if the keras_model_path is a GCS URI.
+    ValueError: if keras_model has not been compiled.
+  """
+  try:
+    from tensorflow_estimator.python.estimator import keras as keras_lib  # pylint: disable=g-import-not-at-top
+  except ImportError:
+    raise NotImplementedError(
+        'tf.keras.estimator.model_to_estimator function not available in your '
+        'installation.')
+  keras_lib.model_to_estimator(
+      keras_model=keras_model,
+      keras_model_path=keras_model_path,
+      custom_objects=custom_objects,
+      model_dir=model_dir,
+      config=config)
+
+# LINT.ThenChange(//third_party/tensorflow_estimator/python/estimator/keras.py)
+
+

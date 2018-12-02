@@ -125,7 +125,7 @@ CheckpointReader::BuildV2VarMaps() {
       const auto& slice_proto = entry.slices(i);
       CHECK(filtered_keys
                 .insert(EncodeTensorNameSlice(
-                    v2_reader_->key().ToString() /* full var's name */,
+                    string(v2_reader_->key()) /* full var's name */,
                     TensorSlice(slice_proto)))
                 .second);
     }
@@ -138,11 +138,11 @@ CheckpointReader::BuildV2VarMaps() {
       new TensorSliceReader::VarToDataTypeMap);
   v2_reader_->Seek(kHeaderEntryKey);
   for (v2_reader_->Next(); v2_reader_->Valid(); v2_reader_->Next()) {
-    if (filtered_keys.count(v2_reader_->key().ToString()) > 0) continue;
+    if (filtered_keys.count(string(v2_reader_->key())) > 0) continue;
     CHECK(entry.ParseFromArray(v2_reader_->value().data(),
                                v2_reader_->value().size()))
         << entry.InitializationErrorString();
-    string key = v2_reader_->key().ToString();
+    string key(v2_reader_->key());
     (*var_to_shape_map)[key] = TensorShape(entry.shape());
     (*var_to_data_type_map)[key] = DataType(entry.dtype());
   }

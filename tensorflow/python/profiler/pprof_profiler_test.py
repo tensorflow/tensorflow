@@ -24,6 +24,7 @@ from proto import profile_pb2
 from tensorflow.core.framework import step_stats_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -135,13 +136,14 @@ comment: 9
       profile.ParseFromString(profile_contents)
       self.assertEquals(expected_proto, str(profile))
 
+  @test_util.run_deprecated_v1
   def testProfileWithWhileLoop(self):
     options = config_pb2.RunOptions()
     options.trace_level = config_pb2.RunOptions.FULL_TRACE
     run_metadata = config_pb2.RunMetadata()
 
     num_iters = 5
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       i = constant_op.constant(0)
       c = lambda i: math_ops.less(i, num_iters)
       b = lambda i: math_ops.add(i, 1)

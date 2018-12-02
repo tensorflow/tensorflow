@@ -40,12 +40,12 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.Supervisor")
+@tf_export(v1=["train.Supervisor"])
 class Supervisor(object):
   """A training helper that checkpoints models and computes summaries.
 
   This class is deprecated. Please use
-  @{tf.train.MonitoredTrainingSession} instead.
+  `tf.train.MonitoredTrainingSession` instead.
 
   The Supervisor is a small wrapper around a `Coordinator`, a `Saver`,
   and a `SessionManager` that takes care of common needs of TensorFlow
@@ -134,7 +134,7 @@ class Supervisor(object):
 
   * Specifying `'local'` requests a session that uses the RPC-based
     "Master interface" to run TensorFlow programs. See
-    @{tf.train.Server.create_local_server} for
+    `tf.train.Server.create_local_server` for
     details.
 
   * Specifying `'grpc://hostname:port'` requests a session that uses
@@ -225,7 +225,8 @@ class Supervisor(object):
                checkpoint_basename="model.ckpt",
                session_manager=None,
                summary_writer=USE_DEFAULT,
-               init_fn=None):
+               init_fn=None,
+               local_init_run_options=None):
     """Create a `Supervisor`.
 
     Args:
@@ -241,10 +242,9 @@ class Supervisor(object):
       ready_for_local_init_op: 1-D string `Tensor`.  This tensor is evaluated by
         supervisors in `prepare_or_wait_for_session()` to check if the model is
         ready to run the local_init_op.
-        The model is considered ready if it returns an empty array.  Defaults to
-        the tensor returned from
-        `tf.report_uninitialized_variables(tf.global_variables())`. If `None`,
-        the model is not checked for readiness before running local_init_op.
+        The model is considered ready if it returns an empty array. Defaults to
+        `None`. If `None`, the model is not checked for readiness before running
+        local_init_op.
       is_chief: If True, create a chief supervisor in charge of initializing
         and restoring the model.  If False, create a supervisor that relies
         on a chief supervisor for inits and restore.
@@ -294,6 +294,8 @@ class Supervisor(object):
       init_fn: Optional callable used to initialize the model. Called
         after the optional `init_op` is called.  The callable must accept one
         argument, the session being initialized.
+      local_init_run_options: RunOptions to be passed as the SessionManager
+        local_init_run_options parameter.
 
     Returns:
       A `Supervisor`.
@@ -327,6 +329,7 @@ class Supervisor(object):
     self._recovery_wait_secs = recovery_wait_secs
     self._stop_grace_secs = stop_grace_secs
     self._init_fn = init_fn
+    self._local_init_run_options = local_init_run_options
 
     # Set all attributes related to checkpointing and writing events to None.
     # Afterwards, set them appropriately for chief supervisors, as these are
@@ -362,7 +365,8 @@ class Supervisor(object):
           ready_op=self._ready_op,
           ready_for_local_init_op=self._ready_for_local_init_op,
           graph=self._graph,
-          recovery_wait_secs=self._recovery_wait_secs)
+          recovery_wait_secs=self._recovery_wait_secs,
+          local_init_run_options=self._local_init_run_options)
     else:
       self._session_manager = session_manager
 

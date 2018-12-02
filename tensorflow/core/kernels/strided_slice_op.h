@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_STRIDED_SLICE_OP_H_
-#define TENSORFLOW_KERNELS_STRIDED_SLICE_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_STRIDED_SLICE_OP_H_
+#define TENSORFLOW_CORE_KERNELS_STRIDED_SLICE_OP_H_
 
 // Functor definition for StridedSliceOp, must be compilable by nvcc.
 
@@ -137,4 +137,4 @@ struct StridedSliceAssignScalar {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SLICE_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_STRIDED_SLICE_OP_H_

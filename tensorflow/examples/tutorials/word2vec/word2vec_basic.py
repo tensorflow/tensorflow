@@ -224,7 +224,7 @@ with graph.as_default():
     optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(loss)
 
   # Compute the cosine similarity between minibatch examples and all embeddings.
-  norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), 1, keep_dims=True))
+  norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), 1, keepdims=True))
   normalized_embeddings = embeddings / norm
   valid_embeddings = tf.nn.embedding_lookup(normalized_embeddings,
                                             valid_dataset)

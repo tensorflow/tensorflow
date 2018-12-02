@@ -25,14 +25,13 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util.tf_export import tf_export
 
-# This is a tuple of PS ops used by tf.estimator.Esitmator which should work in
+# This is a tuple of PS ops used by tf.estimator.Estimator which should work in
 # almost all of cases.
-STANDARD_PS_OPS = (
-    "Variable", "VariableV2", "AutoReloadVariable", "MutableHashTable",
-    "MutableHashTableV2", "MutableHashTableOfTensors",
-    "MutableHashTableOfTensorsV2", "MutableDenseHashTable",
-    "MutableDenseHashTableV2", "VarHandleOp"
-)
+STANDARD_PS_OPS = ("Variable", "VariableV2", "AutoReloadVariable",
+                   "MutableHashTable", "MutableHashTableV2",
+                   "MutableHashTableOfTensors", "MutableHashTableOfTensorsV2",
+                   "MutableDenseHashTable", "MutableDenseHashTableV2",
+                   "VarHandleOp", "BoostedTreesEnsembleResourceHandleOp")
 
 
 class _RoundRobinStrategy(object):
@@ -131,7 +130,7 @@ class _ReplicaDeviceChooser(object):
     return worker_device.to_string()
 
 
-@tf_export("train.replica_device_setter")
+@tf_export(v1=["train.replica_device_setter"])
 def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
                           worker_device="/job:worker", merge_devices=True,
                           cluster=None, ps_ops=None, ps_strategy=None):

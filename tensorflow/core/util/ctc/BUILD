@@ -26,18 +26,6 @@ alias(
     actual = ":mobile_srcs",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "ctc",
     deps = [

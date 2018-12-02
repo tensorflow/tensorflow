@@ -16,16 +16,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import threading
 import time
 
 import numpy as np
 
 from tensorflow.contrib import lookup
-from tensorflow.contrib.data.python.ops import threadpool
-from tensorflow.contrib.data.python.ops import unique
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.python.data import Dataset
+from tensorflow.python.data.experimental.ops import threadpool
+from tensorflow.python.data.experimental.ops import unique
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -34,6 +36,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 class IteratorTest(test.TestCase):
@@ -189,6 +193,20 @@ class IteratorTest(test.TestCase):
       x = math_ops.add(x, x)
     self.assertAllEqual([0., 2.], x.numpy())
 
+  def testGpuTensor(self):
+    ds = Dataset.from_tensors([0., 1.])
+    with ops.device(test.gpu_device_name()):
+      for x in ds:
+        y = math_ops.add(x, x)
+    self.assertAllEqual([0., 2.], y.numpy())
+
+  def testGpuDefinedDataset(self):
+    with ops.device(test.gpu_device_name()):
+      ds = Dataset.from_tensors([0., 1.])
+      for x in ds:
+        y = math_ops.add(x, x)
+    self.assertAllEqual([0., 2.], y.numpy())
+
   def testOverrideThreadPool(self):
 
     def get_thread_id(_):
@@ -220,6 +238,74 @@ class IteratorTest(test.TestCase):
       # so cannot guarantee that all of the threads in the pool will
       # perform work.
       self.assertLessEqual(len(thread_ids), num_threads)
+
+  def testSaveRestore(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
+    dataset = Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    dataset = dataset.map(math_ops.square).batch(2)
+    iterator = datasets.Iterator(dataset)
+    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    self.assertAllEqual([1, 4], iterator.get_next().numpy())
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.assertAllEqual([9, 16], iterator.get_next().numpy())
+    self.assertAllEqual([25, 36], iterator.get_next().numpy())
+    checkpoint.restore(save_path)
+    self.assertAllEqual([9, 16], iterator.get_next().numpy())
+    self.assertAllEqual([25, 36], iterator.get_next().numpy())
+
+  def testSaveRestoreMultipleIterator(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
+    dataset = Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    dataset = dataset.map(math_ops.square).batch(2)
+    iterator_1 = datasets.Iterator(dataset)
+    iterator_2 = datasets.Iterator(dataset)
+    dataset_2 = Dataset.range(10)
+    iterator_3 = datasets.Iterator(dataset_2)
+
+    checkpoint = checkpointable_utils.Checkpoint(
+        iterator_1=iterator_1, iterator_2=iterator_2, iterator_3=iterator_3)
+    self.assertAllEqual([1, 4], iterator_1.get_next().numpy())
+    self.assertEqual(0, iterator_3.get_next().numpy())
+    self.assertEqual(1, iterator_3.get_next().numpy())
+    self.assertEqual(2, iterator_3.get_next().numpy())
+
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.assertAllEqual([1, 4], iterator_2.get_next().numpy())
+    self.assertAllEqual([9, 16], iterator_2.get_next().numpy())
+    self.assertEqual(3, iterator_3.get_next().numpy())
+    checkpoint.restore(save_path)
+    self.assertAllEqual([9, 16], iterator_1.get_next().numpy())
+    self.assertAllEqual([1, 4], iterator_2.get_next().numpy())
+    self.assertEqual(3, iterator_3.get_next().numpy())
+
+  def testRestoreExhaustedIterator(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
+    dataset = Dataset.range(3)
+    iterator = datasets.Iterator(dataset)
+
+    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    self.assertEqual(0, iterator.get_next().numpy())
+    self.assertEqual(1, iterator.get_next().numpy())
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.assertEqual(2, iterator.get_next().numpy())
+    checkpoint.restore(save_path)
+    self.assertEqual(2, iterator.get_next().numpy())
+
+  def testRestoreInReconstructedIterator(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
+    dataset = Dataset.range(10)
+    for i in range(5):
+      iterator = datasets.Iterator(dataset)
+      checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+      checkpoint.restore(checkpoint_management.latest_checkpoint(
+          checkpoint_directory))
+      for j in range(2):
+        self.assertEqual(i * 2 + j, iterator.get_next().numpy())
+      checkpoint.save(file_prefix=checkpoint_prefix)
 
 
 class DatasetConstructorBenchmark(test.Benchmark):

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb_text.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
@@ -94,7 +95,7 @@ static Status RemoveNewDefaultAttrsFromNodeDef(
   std::vector<string> to_remove;
   for (const auto& attr : node_def->attr()) {
     // If the attr is not in consumer_op_def and doesn't start with '_'...
-    if (!StringPiece(attr.first).starts_with("_") &&
+    if (!str_util::StartsWith(attr.first, "_") &&
         FindAttr(attr.first, *consumer_op_def) == nullptr) {
       const OpDef::AttrDef* producer_attr_def =
           FindAttr(attr.first, *producer_op_def);
@@ -102,7 +103,7 @@ static Status RemoveNewDefaultAttrsFromNodeDef(
         return errors::InvalidArgument(
             "Attr '", attr.first,
             "' missing in producer's OpDef: ", SummarizeOpDef(*producer_op_def),
-            " but found in node: ", SummarizeNodeDef(*node_def));
+            " but found in node: ", FormatNodeDefForError(*node_def));
       }
       // ...and it has the same value as the default in producer,
       if (producer_attr_def->has_default_value() &&

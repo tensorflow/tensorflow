@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.platform import test
@@ -85,15 +86,15 @@ class PadOpTest(test.TestCase):
   def _testPad(self, np_inputs, paddings, mode, constant_values):
     np_val = self._npPad(np_inputs, paddings, mode=mode,
                          constant_values=constant_values)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_val = array_ops.pad(np_inputs, paddings, mode=mode,
                              constant_values=constant_values)
-      out = tf_val.eval()
+      out = self.evaluate(tf_val)
     self.assertAllEqual(np_val, out)
     self.assertShapeEqual(np_val, tf_val)
 
   def _testGradient(self, x, a, mode, constant_values):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       inx = ops.convert_to_tensor(x)
       xs = list(x.shape)
       ina = ops.convert_to_tensor(a)
@@ -116,56 +117,63 @@ class PadOpTest(test.TestCase):
           self._testGradient(np_inputs, paddings, mode=mode,
                              constant_values=constant_values)
 
+  @test_util.run_deprecated_v1
   def testInputDims(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
         array_ops.pad(array_ops.reshape(
             [1, 2], shape=[1, 2, 1, 1, 1, 1]),
                       array_ops.reshape(
                           [1, 2], shape=[1, 2]))
 
+  @test_util.run_deprecated_v1
   def testPaddingsDim(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
         array_ops.pad(array_ops.reshape(
             [1, 2], shape=[1, 2]),
                       array_ops.reshape(
                           [1, 2], shape=[2]))
 
+  @test_util.run_deprecated_v1
   def testPaddingsDim2(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
         array_ops.pad(array_ops.reshape(
             [1, 2], shape=[1, 2]),
                       array_ops.reshape(
                           [1, 2], shape=[2, 1]))
 
+  @test_util.run_deprecated_v1
   def testPaddingsDim3(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
         array_ops.pad(array_ops.reshape(
             [1, 2], shape=[1, 2]),
                       array_ops.reshape(
                           [1, 2], shape=[1, 2]))
 
+  @test_util.run_deprecated_v1
   def testPaddingsDim4(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
         array_ops.pad(array_ops.reshape(
             [1, 2], shape=[1, 2]),
                       array_ops.reshape(
                           [1, 2, 3, 4, 5, 6], shape=[3, 2]))
 
+  @test_util.run_deprecated_v1
   def testPaddingsNonNegative(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaisesRegexp(ValueError, "must be non-negative"):
         array_ops.pad(constant_op.constant(
             [1], shape=[1]),
                       constant_op.constant(
                           [-1, 0], shape=[1, 2]))
 
+  @test_util.run_deprecated_v1
   def testPaddingsNonNegative2(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaisesRegexp(ValueError, "must be non-negative"):
         array_ops.pad(constant_op.constant(
             [1], shape=[1]),
@@ -173,7 +181,7 @@ class PadOpTest(test.TestCase):
                           [-1, 0], shape=[1, 2]))
 
   def testPaddingsMaximum(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(Exception):
         array_ops.pad(constant_op.constant(
             [1], shape=[2]),
@@ -188,7 +196,7 @@ class PadOpTest(test.TestCase):
                       mode="SYMMETRIC").eval()
 
   def testInvalid(self):
-    with self.test_session():
+    with self.cached_session():
       x = [[1, 2, 3], [4, 5, 6]]
       with self.assertRaisesRegexp(ValueError, "Unknown padding mode"):
         array_ops.pad(x, [[1, 0], [2, 1]], mode="weird").eval()
@@ -203,26 +211,27 @@ class PadOpTest(test.TestCase):
                              paddings,
                              mode=mode,
                              constant_values=0)
-        with self.test_session(use_gpu=True):
+        with self.cached_session(use_gpu=True):
           tf_val = array_ops.pad(inputs,
                                  constant_op.constant(paddings, padding_dtype),
                                  mode=mode,
                                  constant_values=0)
-          out = tf_val.eval()
+          out = self.evaluate(tf_val)
         self.assertAllEqual(np_val, out)
         self.assertShapeEqual(np_val, tf_val)
 
   def testIntTypes(self):
     # TODO(touts): Figure out why the padding tests do not work on GPU
     # for int types and rank > 2.
-    for t in [np.int32, np.int64]:
+    for t in [np.int8, np.int32, np.int64]:
       self._testAll(
           np.random.randint(-100, 100, (4, 4, 3)).astype(t),
           [[1, 0], [2, 3], [0, 2]], 0)
       self._testAll(
           np.random.randint(-100, 100, (4, 2, 1, 3)).astype(t),
-          [[0, 0], [0, 0], [0, 0], [0, 0]], -1234)
+          [[0, 0], [0, 0], [0, 0], [0, 0]], -123)
 
+  @test_util.run_deprecated_v1
   def testFloatTypes(self):
     for t in [np.float32, np.float64]:
       self._testAll(np.random.rand(2, 5).astype(t), [[1, 0], [2, 0]], 0.0)
@@ -249,18 +258,19 @@ class PadOpTest(test.TestCase):
                             constant_values="PAD")
     symmetric = array_ops.pad(x, [[1, 0], [0, 1]], mode="SYMMETRIC",
                               constant_values="PAD")
-    with self.test_session(use_gpu=True):
-      self.assertAllEqual([[b"PAD", b"PAD", b"PAD"],
-                           [b"Hello", b"World", b"PAD"],
-                           [b"Goodnight", b"Moon", b"PAD"]], constant.eval())
+    with self.session(use_gpu=True):
+      self.assertAllEqual(
+          [[b"PAD", b"PAD", b"PAD"], [b"Hello", b"World", b"PAD"],
+           [b"Goodnight", b"Moon", b"PAD"]], self.evaluate(constant))
       self.assertAllEqual([[b"Goodnight", b"Moon", b"Goodnight"],
                            [b"Hello", b"World", b"Hello"],
                            [b"Goodnight", b"Moon", b"Goodnight"]],
-                          reflect.eval())
-      self.assertAllEqual([[b"Hello", b"World", b"World"],
-                           [b"Hello", b"World", b"World"],
-                           [b"Goodnight", b"Moon", b"Moon"]], symmetric.eval())
+                          self.evaluate(reflect))
+      self.assertAllEqual(
+          [[b"Hello", b"World", b"World"], [b"Hello", b"World", b"World"],
+           [b"Goodnight", b"Moon", b"Moon"]], self.evaluate(symmetric))
 
+  @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
     # Unknown paddings shape.
     inp = constant_op.constant(0.0, shape=[4, 4, 4, 4])
@@ -277,6 +287,7 @@ class PadOpTest(test.TestCase):
     padded = array_ops.pad(inp, array_ops.placeholder(dtypes.int32))
     self.assertAllEqual(None, padded.get_shape().ndims)
 
+  @test_util.run_deprecated_v1
   def testPartialShapeInformation(self):
     unknown = array_ops.placeholder(dtypes.int32)
 
@@ -317,12 +328,17 @@ class PadOpTest(test.TestCase):
                            [constant_op.constant(1, shape=[2]), [0, unknown]])
     self.assertEqual([6, None], padded.get_shape().as_list())
 
+    # Zero padding on a known dimension.
+    inp = array_ops.placeholder(dtypes.int32, [None, None, 20])
+    padded = array_ops.pad(inp, [[0, 0], [0, unknown], [0, 0]])
+    self.assertEqual([None, None, 20], padded.get_shape().as_list())
+
   def testScalars(self):
     paddings = np.zeros((0, 2), dtype=np.int32)
     inp = np.asarray(7)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       tf_val = array_ops.pad(inp, paddings)
-      out = tf_val.eval()
+      out = self.evaluate(tf_val)
     self.assertAllEqual(inp, out)
     self.assertShapeEqual(inp, tf_val)
 
@@ -330,35 +346,39 @@ class PadOpTest(test.TestCase):
     for dtype in [dtypes.int32, dtypes.int64]:
       paddings = np.zeros((0, 2))
       inp = np.asarray(7)
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         tf_val = array_ops.pad(inp, constant_op.constant(paddings, dtype=dtype))
-        out = tf_val.eval()
+        out = self.evaluate(tf_val)
       self.assertAllEqual(inp, out)
       self.assertShapeEqual(inp, tf_val)
 
+  @test_util.run_deprecated_v1
   def testCollapseAdjacentNonPaddedDimensions(self):
     # pyformat: disable
-    for paddings_value in [[[0, 0], [0, 0], [0, 0], [0, 1]],
-                           [[0, 0], [2, 3], [0, 0], [0, 0]],
-                           [[0, 0], [0, 0], [0, 0], [0, 0]]]:
-      # pyformat: enable
-      inp = constant_op.constant(1.0, shape=[8, 28, 28, 3])
-      paddings = constant_op.constant(paddings_value, dtype=dtypes.int32)
-      padded = array_ops.pad(inp, paddings)
-      middle = array_ops.slice(padded, [row[0] for row in paddings_value],
-                               [dim.value for dim in inp.shape.dims])
-      left = array_ops.slice(padded, [0, 0, 0, 0],
-                             [row[0] for row in paddings_value])
-      right = array_ops.slice(
-          padded,
-          [paddings_value[i][0] + inp.shape.dims[i].value for i in range(4)],
-          [-1, -1, -1, -1])
-      with self.test_session(use_gpu=True):
-        self.assertAllEqual(inp.eval(), middle.eval())
-        self.assertAllEqual(
-            np.zeros([row[0] for row in paddings_value]), left.eval())
-        self.assertAllEqual(
-            np.zeros([row[1] for row in paddings_value]), right.eval())
+    paddings_values = [[[0, 0], [0, 0], [0, 0], [0, 1]],
+                       [[0, 0], [2, 3], [0, 0], [0, 0]],
+                       [[0, 0], [0, 0], [0, 0], [0, 0]]]
+    # pyformat: enable
+    for paddings_value in paddings_values:
+      for dtype in [dtypes.float32, dtypes.int32]:
+        inp = constant_op.constant(1, shape=[8, 28, 28, 3], dtype=dtype)
+        paddings = constant_op.constant(paddings_value, dtype=dtypes.int32)
+        padded = array_ops.pad(inp, paddings)
+        middle = array_ops.slice(padded, [row[0] for row in paddings_value],
+                                 [dim.value for dim in inp.shape.dims])
+        left = array_ops.slice(padded, [0, 0, 0, 0],
+                               [row[0] for row in paddings_value])
+        right = array_ops.slice(
+            padded,
+            [paddings_value[i][0] + inp.shape.dims[i].value for i in range(4)],
+            [-1, -1, -1, -1])
+        with self.cached_session(use_gpu=True):
+          self.assertAllEqual(inp.eval(), self.evaluate(middle))
+          self.assertAllEqual(
+              np.zeros([row[0] for row in paddings_value]), self.evaluate(left))
+          self.assertAllEqual(
+              np.zeros([row[1] for row in paddings_value]),
+              self.evaluate(right))
 
 
 if __name__ == "__main__":

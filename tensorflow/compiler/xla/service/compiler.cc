@@ -23,26 +23,49 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 /* static */ tensorflow::mutex Compiler::platform_compiler_mutex_(
     tensorflow::LINKER_INITIALIZED);
 
-/* static */ std::map<perftools::gputools::Platform::Id,
-                      Compiler::CompilerFactory>*
+std::vector<std::unique_ptr<tensorflow::protobuf::Message>>
+Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
+                                se::StreamExecutor* executor) const {
+  CHECK(executor != nullptr);
+  return {};
+}
+
+std::unique_ptr<tensorflow::protobuf::Message>
+Compiler::ComputeDefaultBackendConfig(const HloInstruction& hlo,
+                                      se::StreamExecutor* executor) const {
+  CHECK(executor != nullptr);
+  return nullptr;
+}
+
+// Define a default version where metadata is not used.
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+Compiler::CompileAheadOfTime(
+    std::unique_ptr<HloModuleGroup> module_group,
+    const AotCompilationOptions& options,
+    std::unique_ptr<AotCompilationMetadata>* metadata) {
+  if (metadata != nullptr) {
+    return Unimplemented(
+        "Populating AotCompilationMetadata is not implemented on this "
+        "compiler.");
+  }
+  return CompileAheadOfTime(std::move(module_group), options);
+}
+
+/* static */ std::map<se::Platform::Id, Compiler::CompilerFactory>*
 Compiler::GetPlatformCompilerFactories() {
-  static auto* r =
-      new std::map<perftools::gputools::Platform::Id, CompilerFactory>;
+  static auto* r = new std::map<se::Platform::Id, CompilerFactory>;
   return r;
 }
 
 /* static */
-std::map<perftools::gputools::Platform::Id, std::unique_ptr<Compiler>>*
+std::map<se::Platform::Id, std::unique_ptr<Compiler>>*
 Compiler::GetPlatformCompilers() {
-  static auto* r = new std::map<perftools::gputools::Platform::Id,
-                                std::unique_ptr<Compiler>>;
+  static auto* r = new std::map<se::Platform::Id, std::unique_ptr<Compiler>>;
   return r;
 }
 
@@ -78,7 +101,7 @@ Compiler::GetPlatformCompilers() {
     return NotFound(
         "could not find registered compiler for platform %s -- check "
         "target linkage",
-        platform->Name().c_str());
+        platform->Name());
   }
 
   // And then we invoke the factory, placing the result into the mapping.
@@ -87,6 +110,6 @@ Compiler::GetPlatformCompilers() {
 }
 
 AotCompilationOptions::AotCompilationOptions()
-    : debug_options_(legacy_flags::GetDebugOptionsFromFlags()) {}
+    : debug_options_(GetDebugOptionsFromFlags()) {}
 
 }  // namespace xla

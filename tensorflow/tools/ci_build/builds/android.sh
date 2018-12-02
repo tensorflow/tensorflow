@@ -26,12 +26,20 @@ configure_android_workspace
 # android_full.sh
 
 echo "========== TensorFlow Demo Build Test =========="
+TARGETS=
+TARGETS+=" //tensorflow/examples/android:tensorflow_demo"
+# Also build the Eager Runtime so it remains compatible with Android for the
+# benefits of clients like TensorFlow Lite. For now it is enough to build only
+# :execute, which what TF Lite needs.
+TARGETS+=" //tensorflow/core/common_runtime/eager:execute"
 # Enable sandboxing so that zip archives don't get incorrectly packaged
 # in assets/ dir (see https://github.com/bazelbuild/bazel/issues/2334)
 # TODO(gunan): remove extra flags once sandboxing is enabled for all builds.
-bazel --bazelrc=/dev/null build -c opt --fat_apk_cpu=x86_64 \
+bazel --bazelrc=/dev/null build \
+    --compilation_mode=opt --cxxopt=-std=c++11 --fat_apk_cpu=x86_64 \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
-    //tensorflow/examples/android:tensorflow_demo
+    --define=grpc_no_ares=true \
+    ${TARGETS}
 
 echo "========== Makefile Build Test =========="
 # Test Makefile build just to make sure it still works.

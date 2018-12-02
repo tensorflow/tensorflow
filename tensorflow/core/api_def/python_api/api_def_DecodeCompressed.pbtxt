@@ -1,4 +1,10 @@
 op {
   graph_op_name: "DecodeCompressed"
-  visibility: HIDDEN
+  endpoint {
+    name: "io.decode_compressed"
+  }
+  endpoint {
+    name: "decode_compressed"
+    deprecation_version: 2
+  }
 }

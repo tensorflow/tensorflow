@@ -20,13 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ReverseSequenceTest(XLATestCase):
+class ReverseSequenceTest(xla_test.XLATestCase):
 
   def _testReverseSequence(self,
                            x,
@@ -35,7 +35,7 @@ class ReverseSequenceTest(XLATestCase):
                            seq_lengths,
                            truth,
                            expected_err_re=None):
-    with self.test_session():
+    with self.cached_session():
       p = array_ops.placeholder(dtypes.as_dtype(x.dtype))
       lengths = array_ops.placeholder(dtypes.as_dtype(seq_lengths.dtype))
       with self.test_scope():
@@ -85,7 +85,7 @@ class ReverseSequenceTest(XLATestCase):
 
   def testSeqLength(self):
     for dtype in self.all_types:
-      for seq_dtype in self.int_types:
+      for seq_dtype in self.all_types & {np.int32, np.int64}:
         self._testBasic(dtype, seq_dtype)
 
 

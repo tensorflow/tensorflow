@@ -22,8 +22,8 @@ namespace tensorflow {
 
 VariantTensorData::VariantTensorData() {}
 
-VariantTensorData::VariantTensorData(const VariantTensorDataProto& proto) {
-  FromProto(proto);
+VariantTensorData::VariantTensorData(VariantTensorDataProto proto) {
+  FromProto(std::move(proto));
 }
 
 VariantTensorData::~VariantTensorData() {}
@@ -52,7 +52,19 @@ void VariantTensorData::ToProto(VariantTensorDataProto* proto) const {
   }
 }
 
-bool VariantTensorData::FromProto(const VariantTensorDataProto& proto) {
+bool VariantTensorData::FromProto(VariantTensorDataProto proto) {
+  // TODO(ebrevdo): Do this lazily.
+  set_type_name(proto.type_name());
+  set_metadata(proto.metadata());
+  for (const auto& tensor : proto.tensors()) {
+    Tensor tmp;
+    if (!tmp.FromProto(tensor)) return false;
+    tensors_.push_back(tmp);
+  }
+  return true;
+}
+
+bool VariantTensorData::FromConstProto(const VariantTensorDataProto& proto) {
   set_type_name(proto.type_name());
   set_metadata(proto.metadata());
   for (const auto& tensor : proto.tensors()) {
@@ -75,10 +87,10 @@ bool VariantTensorData::SerializeToString(string* buf) {
   return proto.SerializeToString(buf);
 }
 
-bool VariantTensorData::ParseFromString(const string& s) {
+bool VariantTensorData::ParseFromString(string s) {
   VariantTensorDataProto proto;
   const bool status = proto.ParseFromString(s);
-  if (status) FromProto(proto);
+  if (status) FromProto(std::move(proto));
   return status;
 }
 

@@ -17,41 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import random_seed
-from tensorflow.python.data.util import sparse
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.data.experimental.ops import random_ops
+from tensorflow.python.util import deprecation
 
 
-class RandomDataset(dataset_ops.Dataset):
+class RandomDataset(random_ops.RandomDataset):
   """A `Dataset` of pseudorandom values."""
 
+  @deprecation.deprecated(
+      None, "Use `tf.data.experimental.RandomDataset(...)`.")
   def __init__(self, seed=None):
-    """A `Dataset` of pseudorandom values."""
-    super(RandomDataset, self).__init__()
-    self._seed, self._seed2 = random_seed.get_seed(seed)
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.random_dataset(
-        seed=self._seed,
-        seed2=self._seed2,
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)))
-
-  @property
-  def output_classes(self):
-    return ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
-
-  @property
-  def output_types(self):
-    return dtypes.int64
+    super(RandomDataset, self).__init__(seed)

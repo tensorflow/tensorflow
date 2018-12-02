@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_SHAPE_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_SHAPE_UTIL_H_
 
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -34,6 +35,11 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
 // XLA, so this conversion may fail.
 Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
                              xla::Shape* shape);
+
+// Converts a TensorShape into the equivalent XLA Shape proto, taking an
+// xla::PrimitiveType to specify the element type.  This never fails.
+xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
+                                 const TensorShape& tensor_shape);
 
 }  // namespace tensorflow
 

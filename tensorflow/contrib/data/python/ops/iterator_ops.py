@@ -17,11 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.training import saver
+from tensorflow.python.data.experimental.ops import iterator_ops
+from tensorflow.python.util import deprecation
 
 
+@deprecation.deprecated(
+    None, "Use `tf.data.experimental.make_saveable_from_iterator(...)`.")
 def make_saveable_from_iterator(iterator):
   """Returns a SaveableObject for saving/restore iterator state using Saver.
 
@@ -57,21 +58,55 @@ def make_saveable_from_iterator(iterator):
   Note: Not all iterators support checkpointing yet. Attempting to save the
   state of an unsupported iterator will throw an error.
   """
-  return _Saveable(iterator._iterator_resource)  # pylint: disable=protected-access
+  return iterator_ops.make_saveable_from_iterator(iterator)
 
 
-class _Saveable(saver.BaseSaverBuilder.SaveableObject):
-  """SaveableObject for saving/restoring iterator state."""
+class CheckpointInputPipelineHook(iterator_ops.CheckpointInputPipelineHook):
+  """Checkpoints input pipeline state every N steps or seconds.
 
-  def __init__(self, iterator_resource):
-    serialized_iterator = gen_dataset_ops.serialize_iterator(iterator_resource)
-    specs = [
-        saver.BaseSaverBuilder.SaveSpec(serialized_iterator, "",
-                                        iterator_resource.name + "-state")
-    ]
-    super(_Saveable, self).__init__(iterator_resource, specs,
-                                    iterator_resource.name)
+  This hook saves the state of the iterators in the `Graph` so that when
+  training is resumed the input pipeline continues from where it left off.
+  This could potentially avoid overfitting in certain pipelines where the
+  number of training steps per eval are small compared to the dataset
+  size or if the training pipeline is pre-empted.
 
-  def restore(self, restored_tensors, unused_restored_shapes):
-    with ops.colocate_with(self.op):
-      return gen_dataset_ops.deserialize_iterator(self.op, restored_tensors[0])
+  Differences from `CheckpointSaverHook`:
+  1. Saves only the input pipelines in the "iterators" collection and not the
+     global variables or other saveable objects.
+  2. Does not write the `GraphDef` and `MetaGraphDef` to the summary.
+
+  Example of checkpointing the training pipeline:
+
+  ```python
+  est = tf.estimator.Estimator(model_fn)
+  while True:
+    est.train(
+        train_input_fn,
+        hooks=[tf.contrib.data.CheckpointInputPipelineHook(est)],
+        steps=train_steps_per_eval)
+    # Note: We do not pass the hook here.
+    metrics = est.evaluate(eval_input_fn)
+    if should_stop_the_training(metrics):
+      break
+  ```
+
+  This hook should be used if the input pipeline state needs to be saved
+  separate from the model checkpoint. Doing so may be useful for a few reasons:
+  1. The input pipeline checkpoint may be large, if there are large shuffle
+     or prefetch buffers for instance, and may bloat the checkpoint size.
+  2. If the input pipeline is shared between training and validation, restoring
+     the checkpoint during validation may override the validation input
+     pipeline.
+
+  For saving the input pipeline checkpoint alongside the model weights use
+  `tf.contrib.data.make_saveable_from_iterator` directly to create a
+  `SaveableObject` and add to the `SAVEABLE_OBJECTS` collection. Note, however,
+  that you will need to be careful not to restore the training iterator during
+  eval. You can do that by not adding the iterator to the SAVEABLE_OBJECTS
+  collector when building the eval graph.
+  """
+
+  @deprecation.deprecated(
+      None, "Use `tf.data.experimental.CheckpointInputPipelineHook(...)`.")
+  def __init__(self, estimator):
+    super(CheckpointInputPipelineHook, self).__init__(estimator)

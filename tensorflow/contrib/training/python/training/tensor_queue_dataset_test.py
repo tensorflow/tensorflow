@@ -19,8 +19,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.training.python.training import tensor_queue_dataset as tqd
+from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -79,7 +79,7 @@ class PrependFromQueueAndPaddedBatchDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     queue_handle, value = iterator.get_next()
     enqueue_negative = tqd.enqueue_in_queue_dataset(queue_handle, -value)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual([[0, 0, 0]], sess.run(value))
       value_1, _ = sess.run([value, enqueue_negative])
       self.assertAllEqual([[1, 0, 0]], value_1)
@@ -101,7 +101,7 @@ class PrependFromQueueAndPaddedBatchDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     queue_handle, value = iterator.get_next()
     enqueue_negative = tqd.enqueue_in_queue_dataset(queue_handle, -value)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual([0], sess.run(value))
       value_1, _ = sess.run([value, enqueue_negative])
       self.assertEqual([1], value_1)
@@ -126,7 +126,7 @@ class PrependFromQueueAndPaddedBatchDatasetTest(test.TestCase):
     enqueue_zeroth = tqd.enqueue_in_queue_dataset([queue_handle[0]],
                                                   array_ops.expand_dims(
                                                       value[0], axis=0))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       value_0, _ = sess.run([value, enqueue_negative])
       self.assertAllEqual([0, 1], value_0)
       value_1, _ = sess.run([value, enqueue_zeroth])
@@ -147,7 +147,7 @@ class PrependFromQueueAndPaddedBatchDatasetTest(test.TestCase):
         tqd.enqueue_in_queue_dataset(queue_handle, value + 100 + i)
         for i in range(1000)
     ]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       value_0, _ = sess.run((value, enqueue_many_more))
       self.assertEqual([0], value_0)
       rest = []
@@ -174,7 +174,7 @@ class PrependFromQueueAndPaddedBatchDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     queue_handle, value = iterator.get_next()
     enqueue = tqd.enqueue_in_queue_dataset(queue_handle, value + 1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       i = 0
       while i < 4:
         received, _ = sess.run((value, enqueue))
@@ -199,7 +199,7 @@ class PrependFromQueueAndPaddedBatchDatasetTest(test.TestCase):
             batch_size=1, padded_shapes=[2]))
     iterator = dataset.make_one_shot_iterator()
     _, value = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesOpError(
           r"Incompatible input shapes at component 0 between "
           r"input dataset this dataset: \[3\] vs. \[2\]"):
@@ -224,7 +224,7 @@ class PrependFromQueueAndPaddedBatchDatasetTest(test.TestCase):
                                                      np.array(
                                                          [[1]], dtype=np.int32))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesOpError(
           "mismatched number of tensors.  Queue expects 1 tensors but "
           "tried to insert 2"):
@@ -274,7 +274,7 @@ class PrependFromQueueAndPaddedBatchDatasetTest(test.TestCase):
     with ops.control_dependencies([enqueue_rest_op]):
       calc = array_ops.identity(value_head)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual([[0, 0], [2, 2], [4, 4]], sess.run(calc))
       self.assertAllEqual([[4, 4], [6, 6]], sess.run(calc))
       self.assertAllEqual([[6, 6]], sess.run(calc))
@@ -304,7 +304,7 @@ class PrependFromQueueAndPaddedBatchDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     _, (unused_count, padded_value) = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual([[-1, -1, -1, -1], [2, 2, -1, -1], [4, 4, 4, 4]],
                           sess.run(padded_value))
       self.assertAllEqual([[6] * 6], sess.run(padded_value))

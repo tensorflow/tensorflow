@@ -17,37 +17,40 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
+from tensorflow.python.data.experimental.ops import prefetching_ops
+from tensorflow.python.util import deprecation
 
 
-# TODO(rohanj): Add a python class that constructs resource in the __init__
-# method and provides a get_next() that calls the prefetch op.
-def function_buffering_resource(string_arg,
-                                target_device,
-                                f,
-                                buffer_size,
-                                thread_pool_size=1,
-                                container="",
-                                shared_name=None,
-                                name=None):
-  if shared_name is None:
-    shared_name = ""
-  return gen_dataset_ops.function_buffering_resource(
-      string_arg=string_arg,
-      target_device=target_device,
-      shared_name=shared_name,
-      f=f,
-      buffer_size=buffer_size,
-      thread_pool_size=thread_pool_size,
-      container=container,
-      name=name)
+@deprecation.deprecated(None,
+                        "Use `tf.data.experimental.prefetch_to_device(...)`.")
+def prefetch_to_device(device, buffer_size=None):
+  """A transformation that prefetches dataset values to the given `device`.
+
+  NOTE: Although the transformation creates a `tf.data.Dataset`, the
+  transformation must be the final `Dataset` in the input pipeline.
+
+  Args:
+    device: A string. The name of a device to which elements will be prefetched.
+    buffer_size: (Optional.) The number of elements to buffer on `device`.
+      Defaults to an automatically chosen value.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    `tf.data.Dataset.apply`.
+  """
+  return prefetching_ops.prefetch_to_device(device, buffer_size)
 
 
-def function_buffering_resource_get_next(function_buffer_resource,
-                                         output_types,
-                                         name=None):
-  return gen_dataset_ops.function_buffering_resource_get_next(
-      function_buffer_resource=function_buffer_resource,
-      output_types=output_types,
-      name=name)
+@deprecation.deprecated(None, "Use `tf.data.experimental.copy_to_device(...)`.")
+def copy_to_device(target_device, source_device="/cpu:0"):
+  """A transformation that copies dataset elements to the given `target_device`.
+
+  Args:
+    target_device: The name of a device to which elements will be copied.
+    source_device: The original device on which `input_dataset` will be placed.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    `tf.data.Dataset.apply`.
+  """
+  return prefetching_ops.copy_to_device(target_device, source_device)

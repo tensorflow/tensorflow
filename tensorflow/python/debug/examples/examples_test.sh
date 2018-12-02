@@ -48,12 +48,14 @@ if [[ -z "${PYTHON_BIN_PATH}" ]]; then
   DEBUG_ERRORS_BIN="$TEST_SRCDIR/org_tensorflow/tensorflow/python/debug/debug_errors"
   DEBUG_MNIST_BIN="$TEST_SRCDIR/org_tensorflow/tensorflow/python/debug/debug_mnist"
   DEBUG_TFLEARN_IRIS_BIN="$TEST_SRCDIR/org_tensorflow/tensorflow/python/debug/debug_tflearn_iris"
+  DEBUG_KERAS_BIN="$TEST_SRCDIR/org_tensorflow/tensorflow/python/debug/debug_keras"
   OFFLINE_ANALYZER_BIN="$TEST_SRCDIR/org_tensorflow/tensorflow/python/debug/offline_analyzer"
 else
   DEBUG_FIBONACCI_BIN="${PYTHON_BIN_PATH} -m tensorflow.python.debug.examples.debug_fibonacci"
   DEBUG_ERRORS_BIN="${PYTHON_BIN_PATH} -m tensorflow.python.debug.examples.debug_errors"
   DEBUG_MNIST_BIN="${PYTHON_BIN_PATH} -m tensorflow.python.debug.examples.debug_mnist"
   DEBUG_TFLEARN_IRIS_BIN="${PYTHON_BIN_PATH} -m tensorflow.python.debug.examples.debug_tflearn_iris"
+  DEBUG_KERAS_BIN="${PYTHON_BIN_PATH} -m tensorflow.python.debug.examples.debug_keras"
   OFFLINE_ANALYZER_BIN="${PYTHON_BIN_PATH} -m tensorflow.python.debug.cli.offline_analyzer"
 fi
 
@@ -66,6 +68,12 @@ EOF
 
 cat << EOF | ${DEBUG_ERRORS_BIN} --error=no_error --ui_type=readline
 run
+exit
+EOF
+
+cat << EOF | ${DEBUG_ERRORS_BIN} --error=uninitialized_variable --debug --ui_type=readline
+run
+ni -a -d -t v/read
 exit
 EOF
 
@@ -90,6 +98,11 @@ if [[ -d "${CUSTOM_DUMP_ROOT}" ]]; then
   exit 1
 fi
 
+# Test debugging of tf.keras.
+cat << EOF | ${DEBUG_KERAS_BIN} --debug --ui_type=readline
+run -f has_inf_or_nan
+EOF
+
 # Test offline_analyzer.
 echo
 echo "Testing offline_analyzer"
@@ -102,7 +115,7 @@ OUTPUT=$(${OFFLINE_ANALYZER_BIN} 2>&1)
 set -e
 
 EXPECTED_OUTPUT="ERROR: dump_dir flag is empty."
-if [[ "${OUTPUT}" != "${EXPECTED_OUTPUT}" ]]; then
+if ! echo "${OUTPUT}" | grep -q "${EXPECTED_OUTPUT}"; then
   echo "ERROR: offline_analyzer output didn't match expectation: ${OUTPUT}" 1>&2
   echo "Expected output: ${EXPECTED_OUTPUT}"
   exit 1

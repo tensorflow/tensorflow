@@ -12,30 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Module for constructing RNN Cells.
-
-## Base interface for all RNN Cells
-
-@@RNNCell
-
-## RNN Cells for use with TensorFlow's core RNN methods
-
-@@BasicRNNCell
-@@BasicLSTMCell
-@@GRUCell
-@@LSTMCell
-
-## Classes storing split `RNNCell` state
-
-@@LSTMStateTuple
-
-## RNN Cell wrappers (RNNCells that wrap other RNNCells)
-
-@@MultiRNNCell
-@@DropoutWrapper
-@@DeviceWrapper
-@@ResidualWrapper
-"""
+"""Module for constructing RNN Cells."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -44,8 +21,3 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.rnn_cell_impl import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = []
-
-remove_undocumented(__name__, _allowed_symbols)

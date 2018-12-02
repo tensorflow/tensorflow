@@ -14,7 +14,9 @@
 # ==============================================================================
 """Ops for evaluation metrics and summary statistics.
 
-See the @{$python/contrib.metrics} guide.
+See the
+[Contrib Metrics](https://tensorflow.org/api_guides/python/contrib.metrics)
+guide.
 
 @@auc_with_confidence_intervals
 @@streaming_accuracy
@@ -63,6 +65,7 @@ See the @{$python/contrib.metrics} guide.
 @@aggregate_metrics
 @@aggregate_metric_map
 @@confusion_matrix
+@@f1_score
 @@set_difference
 @@set_intersection
 @@set_size
@@ -71,6 +74,7 @@ See the @{$python/contrib.metrics} guide.
 @@count
 @@precision_recall_at_equal_thresholds
 @@recall_at_precision
+@@precision_at_recall
 
 """
 from __future__ import absolute_import
@@ -87,6 +91,7 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metrics
 from tensorflow.contrib.metrics.python.ops.metric_ops import auc_with_confidence_intervals
 from tensorflow.contrib.metrics.python.ops.metric_ops import cohen_kappa
 from tensorflow.contrib.metrics.python.ops.metric_ops import count
+from tensorflow.contrib.metrics.python.ops.metric_ops import precision_at_recall
 from tensorflow.contrib.metrics.python.ops.metric_ops import precision_recall_at_equal_thresholds
 from tensorflow.contrib.metrics.python.ops.metric_ops import recall_at_precision
 from tensorflow.contrib.metrics.python.ops.metric_ops import sparse_recall_at_top_k

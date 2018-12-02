@@ -14,10 +14,12 @@
 // ============================================================================
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 using ::tensorflow::shape_inference::InferenceContext;
 using ::tensorflow::shape_inference::ShapeAndType;
@@ -55,6 +57,36 @@ Status ReadVariableShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+Status ReadVariablesShapeFn(InferenceContext* c) {
+  int n;
+  TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
+  DataTypeVector value_dtypes;
+  TF_RETURN_IF_ERROR(c->GetAttr("dtypes", &value_dtypes));
+  if (n != value_dtypes.size()) {
+    return errors::InvalidArgument(
+        "Mismatched number of arguments to ReadVariablesOp");
+  }
+  for (int i = 0; i < n; ++i) {
+    ShapeAndType shape_and_type;
+    auto* handle_data = c->input_handle_shapes_and_types(i);
+    if (handle_data == nullptr || handle_data->empty()) {
+      shape_and_type.shape = c->UnknownShape();
+      shape_and_type.dtype = DT_INVALID;
+    } else {
+      shape_and_type = (*handle_data)[0];
+      if (shape_and_type.dtype != value_dtypes[i]) {
+        return errors::InvalidArgument(
+            "Trying to read variable with wrong dtype. "
+            "Expected ",
+            DataTypeString(shape_and_type.dtype), " got ",
+            DataTypeString(value_dtypes[i]));
+      }
+    }
+    c->set_output(i, shape_and_type.shape);
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 REGISTER_OP("VarHandleOp")
@@ -78,11 +110,68 @@ REGISTER_OP("VarHandleOp")
       return Status::OK();
     });
 
+REGISTER_OP("_VarHandlesOp")
+    .Attr("containers: list(string)")
+    .Attr("shared_names: list(string)")
+    .Attr("N: int >= 0")
+    .Attr("dtypes: list(type)")
+    .Attr("shapes: list(shape)")
+    .Output("resources: N * resource")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      int n;
+      TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
+      DataTypeVector dtypes;
+      TF_RETURN_IF_ERROR(c->GetAttr("dtypes", &dtypes));
+      std::vector<PartialTensorShape> shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
+      if (dtypes.size() != n) {
+        return errors::InvalidArgument("Mismatched number of dtypes (n=", n,
+                                       ", num dtypes=", dtypes.size(), ")");
+      }
+      if (shapes.size() != n) {
+        return errors::InvalidArgument("Mismatched number of shapes (n=", n,
+                                       ", num shapes=", shapes.size(), ")");
+      }
+      for (int i = 0; i < n; ++i) {
+        c->set_output(i, c->Scalar());
+        ShapeHandle s;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shapes[i], &s));
+        c->set_output_handle_shapes_and_types(
+            i, std::vector<ShapeAndType>{{s, dtypes[i]}});
+      }
+
+      return Status::OK();
+    });
+
 REGISTER_OP("ReadVariableOp")
     .Input("resource: resource")
     .Output("value: dtype")
     .Attr("dtype: type")
     .SetShapeFn(ReadVariableShapeFn);
+
+REGISTER_OP("_ReadVariablesOp")
+    .Attr("N: int >= 0")
+    .Input("resources: N * resource")
+    .Output("values: dtypes")
+    .Attr("dtypes: list(type)")
+    .SetShapeFn(ReadVariablesShapeFn);
+
+Status ReadGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FunctionDefHelper::Define(
+      // Arg defs
+      {"x: resource", "dy: float"},
+      // Ret val defs
+      {"dy: float"},
+      // Attr defs
+      {},
+      // Nodes
+      {});
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("ReadVariableOp", ReadGrad);
 
 REGISTER_OP("DestroyResourceOp")
     .Input("resource: resource")
@@ -127,7 +216,8 @@ REGISTER_OP("VarIsInitializedOp")
 Status VariableShapeShapeFn(InferenceContext* c) {
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data == nullptr || handle_data->empty()) {
-    return errors::InvalidArgument("Handle doesn't have shape information.");
+    c->set_output(0, c->Vector(c->UnknownDim()));
+    return Status::OK();
   }
   ShapeHandle var_shape = (*handle_data)[0].shape;
   int64 rank = c->RankKnown(var_shape) ? c->Rank(var_shape)
@@ -167,27 +257,75 @@ REGISTER_OP("ResourceGather")
       return Status::OK();
     });
 
+namespace {
+
+Status ResourceScatterUpdateShape(InferenceContext* c) {
+  ShapeAndType handle_shape_and_type;
+  TF_RETURN_IF_ERROR(ValidateVariableResourceHandle(c, &handle_shape_and_type));
+  ShapeHandle var_shape = handle_shape_and_type.shape;
+  ShapeHandle indices_shape = c->input(1);
+
+  ShapeHandle unused_updates_shape;
+  ShapeHandle concat;
+  ShapeHandle var_subshape;
+  TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
+  TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
+  TF_RETURN_IF_ERROR(
+      InferenceContext::Rank(c->input(2)) == 0
+          ? Status::OK()
+          : c->Merge(c->input(2), concat, &unused_updates_shape));
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("ResourceScatterAdd")
     .Input("resource: resource")
     .Input("indices: Tindices")
     .Input("updates: dtype")
     .Attr("dtype: numbertype")
     .Attr("Tindices: {int32, int64}")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeAndType handle_shape_and_type;
-      TF_RETURN_IF_ERROR(
-          ValidateVariableResourceHandle(c, &handle_shape_and_type));
-      ShapeHandle var_shape = handle_shape_and_type.shape;
-      ShapeHandle indices_shape = c->input(1);
+    .SetShapeFn(ResourceScatterUpdateShape);
 
-      ShapeHandle unused_updates_shape;
-      ShapeHandle concat;
-      ShapeHandle var_subshape;
-      TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
-      TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
-      TF_RETURN_IF_ERROR(c->Merge(c->input(2), concat, &unused_updates_shape));
-      return Status::OK();
-    });
+REGISTER_OP("ResourceScatterSub")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ResourceScatterUpdateShape);
+
+REGISTER_OP("ResourceScatterMul")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ResourceScatterUpdateShape);
+
+REGISTER_OP("ResourceScatterDiv")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ResourceScatterUpdateShape);
+
+REGISTER_OP("ResourceScatterMin")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ResourceScatterUpdateShape);
+
+REGISTER_OP("ResourceScatterMax")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ResourceScatterUpdateShape);
 
 REGISTER_OP("ResourceScatterUpdate")
     .Input("resource: resource")
@@ -195,21 +333,7 @@ REGISTER_OP("ResourceScatterUpdate")
     .Input("updates: dtype")
     .Attr("dtype: type")
     .Attr("Tindices: {int32, int64}")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeAndType handle_shape_and_type;
-      TF_RETURN_IF_ERROR(
-          ValidateVariableResourceHandle(c, &handle_shape_and_type));
-      ShapeHandle var_shape = handle_shape_and_type.shape;
-      ShapeHandle indices_shape = c->input(1);
-
-      ShapeHandle unused_updates_shape;
-      ShapeHandle concat;
-      ShapeHandle var_subshape;
-      TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
-      TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
-      TF_RETURN_IF_ERROR(c->Merge(c->input(2), concat, &unused_updates_shape));
-      return Status::OK();
-    });
+    .SetShapeFn(ResourceScatterUpdateShape);
 
 REGISTER_OP("MutexV2")
     .Attr("container: string = ''")

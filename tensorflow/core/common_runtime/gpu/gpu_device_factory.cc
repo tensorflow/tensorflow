@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 
 namespace tensorflow {
@@ -40,9 +40,10 @@ class GPUDevice : public BaseGPUDevice {
   }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
+    CHECK(cpu_allocator_) << "bad place 1";
     if (attr.on_host()) {
       if (attr.gpu_compatible() || force_gpu_compatible_) {
-        ProcessState* ps = ProcessState::singleton();
+        GPUProcessState* ps = GPUProcessState::singleton();
         return ps->GetCUDAHostAllocator(0);
       } else {
         return cpu_allocator_;
@@ -58,15 +59,14 @@ class GPUDevice : public BaseGPUDevice {
 
 class GPUDeviceFactory : public BaseGPUDeviceFactory {
  private:
-  BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
-                                 const string& name, Bytes memory_limit,
-                                 const DeviceLocality& locality,
-                                 TfGpuId tf_gpu_id,
-                                 const string& physical_device_desc,
-                                 Allocator* gpu_allocator,
-                                 Allocator* cpu_allocator) override {
-    return new GPUDevice(options, name, memory_limit, locality, tf_gpu_id,
-                         physical_device_desc, gpu_allocator, cpu_allocator);
+  std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
+      const SessionOptions& options, const string& name, Bytes memory_limit,
+      const DeviceLocality& locality, TfGpuId tf_gpu_id,
+      const string& physical_device_desc, Allocator* gpu_allocator,
+      Allocator* cpu_allocator) override {
+    return absl::make_unique<GPUDevice>(options, name, memory_limit, locality,
+                                        tf_gpu_id, physical_device_desc,
+                                        gpu_allocator, cpu_allocator);
   }
 };
 
@@ -90,7 +90,7 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
   ~GPUCompatibleCPUDevice() override {}
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
-    ProcessState* ps = ProcessState::singleton();
+    GPUProcessState* ps = GPUProcessState::singleton();
     if (attr.gpu_compatible() || force_gpu_compatible_) {
       return ps->GetCUDAHostAllocator(0);
     } else {
@@ -107,7 +107,7 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
 class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override {
+                       std::vector<std::unique_ptr<Device>>* devices) override {
     int n = 1;
     auto iter = options.config.device_count().find("CPU");
     if (iter != options.config.device_count().end()) {
@@ -115,7 +115,7 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
     }
     for (int i = 0; i < n; i++) {
       string name = strings::StrCat(name_prefix, "/device:CPU:", i);
-      devices->push_back(new GPUCompatibleCPUDevice(
+      devices->push_back(absl::make_unique<GPUCompatibleCPUDevice>(
           options, name, Bytes(256 << 20), DeviceLocality(), cpu_allocator()));
     }
 

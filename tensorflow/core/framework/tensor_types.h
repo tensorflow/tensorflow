@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TENSOR_TYPES_H_
-#define TENSORFLOW_FRAMEWORK_TENSOR_TYPES_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_TYPES_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TENSOR_TYPES_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -123,4 +123,4 @@ To32Bit(TensorType in) {
 }
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_FRAMEWORK_TENSOR_TYPES_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TENSOR_TYPES_H_

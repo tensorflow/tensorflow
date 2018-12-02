@@ -14,11 +14,11 @@
 # ==============================================================================
 """Ops for building neural network layers, regularizers, summaries, etc.
 
-See the @{$python/contrib.layers} guide.
-
 @@avg_pool2d
 @@avg_pool3d
 @@batch_norm
+@@convolution
+@@convolution1d
 @@convolution2d
 @@convolution3d
 @@conv2d_in_plane
@@ -104,6 +104,7 @@ See the @{$python/contrib.layers} guide.
 @@infer_real_valued_columns
 @@sequence_input_from_feature_columns
 
+@@group_norm
 @@instance_norm
 """
 
@@ -118,10 +119,12 @@ from tensorflow.contrib.layers.python.layers import *
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = ['bias_add',
+                    'conv1d',
                     'conv2d',
                     'conv3d',
                     'elu',
                     'feature_column',
+                    'group_norm',
                     'instance_norm',
                     'legacy_fully_connected',
                     'legacy_linear',

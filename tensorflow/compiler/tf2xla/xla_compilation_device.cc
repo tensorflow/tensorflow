@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/platform/mem.h"
@@ -75,12 +76,11 @@ class XlaCompilationAllocator : public Allocator {
 
 XlaCompilationDevice::XlaCompilationDevice(const SessionOptions& options,
                                            DeviceType type)
-    : LocalDevice(
-          options,
-          Device::BuildDeviceAttributes(
-              strings::StrCat("/device:", type.type(), ":0"), type,
-              Bytes(256 << 20), DeviceLocality(),
-              strings::StrCat("device: XLA compilation device ", type.type()))),
+    : LocalDevice(options, Device::BuildDeviceAttributes(
+                               absl::StrCat("/device:", type.type(), ":0"),
+                               type, Bytes(256 << 20), DeviceLocality(),
+                               absl::StrCat("device: XLA compilation device ",
+                                            type.type()))),
       allocator_(new XlaCompilationAllocator()) {}
 
 XlaCompilationDevice::~XlaCompilationDevice() {}
@@ -92,7 +92,7 @@ Allocator* XlaCompilationDevice::GetAllocator(AllocatorAttributes attr) {
 void XlaCompilationDevice::Compute(OpKernel* op_kernel,
                                    OpKernelContext* context) {
   VLOG(4) << "XlaCompilationDevice::Compute "
-          << SummarizeNodeDef(op_kernel->def());
+          << FormatNodeDefForError(op_kernel->def());
   auto* b = XlaContext::Get(context).builder();
   xla::OpMetadata metadata;
   metadata.set_op_type(op_kernel->type_string());
@@ -102,13 +102,13 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   auto sharding_parse_result = ParseShardingFromDevice(
       op_kernel->def(), std::numeric_limits<int>::max());
   OP_REQUIRES_OK(context, sharding_parse_result.status());
-  tensorflow::gtl::optional<xla::OpSharding> op_sharding =
+  absl::optional<xla::OpSharding> op_sharding =
       sharding_parse_result.ValueOrDie();
 
   // If no sharding metadata is found, XLA is free to use whatever device it
   // wants. In practice this usually has the effect of placing things on device
   // 0.
-  xla::ScopedShardingAssignment assign_sharding(b, op_sharding);
+  xla::XlaScopedShardingAssignment assign_sharding(b, op_sharding);
   op_kernel->Compute(context);
 
   b->ClearOpMetadata();
@@ -122,17 +122,6 @@ Status XlaCompilationDevice::MakeTensorFromProto(
     Tensor* tensor) {
   return errors::InvalidArgument(
       "XLACompilationDevice::MakeTensorFromProto should not be called");
-}
-
-XlaExpression::XlaExpression() = default;
-
-void XlaExpression::set_handle(const xla::ComputationDataHandle& h) {
-  handle_ = h;
-}
-
-void XlaExpression::set_constant_value(Tensor value) {
-  has_constant_value_ = true;
-  constant_value_ = std::move(value);
 }
 
 }  // namespace tensorflow

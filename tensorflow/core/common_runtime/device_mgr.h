@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_DEVICE_MGR_H_
-#define TENSORFLOW_COMMON_RUNTIME_DEVICE_MGR_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -34,15 +35,17 @@ class DeviceAttributes;
 
 class DeviceMgr {
  public:
-  // Takes ownership of each device in 'devices'.
+  // Constructs a DeviceMgr from a list of devices.
   // TODO(zhifengc): Other initialization information.
-  // TODO(b/37437134): Use std::unique_ptr's to track ownership.
-  explicit DeviceMgr(const std::vector<Device*>& devices);
-  ~DeviceMgr();
+  explicit DeviceMgr(std::vector<std::unique_ptr<Device>> devices);
+
+  // Constructs a DeviceMgr managing a single device.
+  explicit DeviceMgr(std::unique_ptr<Device> device);
 
   // Returns attributes of all devices.
   void ListDeviceAttributes(std::vector<DeviceAttributes>* devices) const;
 
+  // Returns raw pointers to the underlying devices.
   std::vector<Device*> ListDevices() const;
 
   // Returns a string listing all devices.
@@ -62,9 +65,7 @@ class DeviceMgr {
   int NumDeviceType(const string& type) const;
 
  private:
-  // TODO(b/37437134): Use std::unique_ptr's to track ownership.
-  typedef gtl::InlinedVector<Device*, 8> DeviceVec;
-  DeviceVec devices_;
+  const std::vector<std::unique_ptr<Device>> devices_;
 
   StringPiece CopyToBackingStore(StringPiece s);
 
@@ -77,4 +78,4 @@ class DeviceMgr {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_DEVICE_MGR_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_

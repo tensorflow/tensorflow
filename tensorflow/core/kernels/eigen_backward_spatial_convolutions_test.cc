@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/eigen_backward_spatial_convolutions.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/eigen_backward_cuboid_convolutions.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -1248,11 +1247,14 @@ TEST(EigenBackwardSpatialConvolutionsTest,
   const int output_cols = input_cols - patch_cols + 1;
   const int output_planes = input_planes - patch_planes + 1;
 
-  Tensor<float, 4> input(input_depth, input_planes, input_rows, input_cols);
+  // TODO(ezhulenev): Support backward kernel convolution without batch
+  // dimension.
+  Tensor<float, 5> input(input_depth, input_planes, input_rows, input_cols,
+                         /*num_batches*/ 1);
   Tensor<float, 5> kernel(output_depth, input_depth, patch_planes, patch_rows,
                           patch_cols);
-  Tensor<float, 4> output_backward(output_depth, output_planes, output_rows,
-                                   output_cols);
+  Tensor<float, 5> output_backward(output_depth, output_planes, output_rows,
+                                   output_cols, /*num_batches*/ 1);
 
   output_backward = output_backward.constant(11.0f) + output_backward.random();
   input = input.constant(2.0f) + input.random();
@@ -1282,9 +1284,9 @@ TEST(EigenBackwardSpatialConvolutionsTest,
                   if (output_i >= 0 && output_i < output_planes &&
                       output_j >= 0 && output_j < output_rows &&
                       output_k >= 0 && output_k < output_cols) {
-                    expected +=
-                        input(id, i, j, k) *
-                        output_backward(od, output_i, output_j, output_k);
+                    expected += input(id, i, j, k, /*batch*/ 0) *
+                                output_backward(od, output_i, output_j,
+                                                output_k, /*batch*/ 0);
                   }
                 }
               }
@@ -1311,12 +1313,14 @@ TEST(EigenBackwardSpatialConvolutionsTest,
   const int output_cols = input_cols - patch_cols + 1;
   const int output_planes = input_planes - patch_planes + 1;
 
-  Tensor<float, 4, RowMajor> input(input_cols, input_rows, input_planes,
-                                   input_depth);
+  // TODO(ezhulenev): Support backward kernel convolution without batch
+  // dimension.
+  Tensor<float, 5, RowMajor> input(/*num_batches*/ 1, input_cols, input_rows,
+                                   input_planes, input_depth);
   Tensor<float, 5, RowMajor> kernel(patch_cols, patch_rows, patch_planes,
                                     input_depth, output_depth);
-  Tensor<float, 4, RowMajor> output_backward(output_cols, output_rows,
-                                             output_planes, output_depth);
+  Tensor<float, 5, RowMajor> output_backward(
+      /*num_batches*/ 1, output_cols, output_rows, output_planes, output_depth);
 
   output_backward = output_backward.constant(11.0f) + output_backward.random();
   input = input.constant(2.0f) + input.random();
@@ -1346,9 +1350,9 @@ TEST(EigenBackwardSpatialConvolutionsTest,
                   if (output_i >= 0 && output_i < output_planes &&
                       output_j >= 0 && output_j < output_rows &&
                       output_k >= 0 && output_k < output_cols) {
-                    expected +=
-                        input(k, j, i, id) *
-                        output_backward(output_k, output_j, output_i, od);
+                    expected += input(/*batch*/ 0, k, j, i, id) *
+                                output_backward(/*batch*/ 0, output_k, output_j,
+                                                output_i, od);
                   }
                 }
               }

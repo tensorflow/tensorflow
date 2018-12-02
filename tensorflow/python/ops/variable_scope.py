@@ -24,14 +24,15 @@ import copy
 import enum  # pylint: disable=g-bad-import-order
 import functools
 import sys
+import threading
 import traceback
 
 import six
 from six import iteritems
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -40,12 +41,17 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
-__all__ = ["AUTO_REUSE", "VariableScope", "get_variable_scope",
-           "get_variable", "get_local_variable", "variable_scope",
-           "variable_op_scope", "no_regularizer"]
+__all__ = [
+    "AUTO_REUSE", "VariableScope", "get_variable_scope", "get_variable",
+    "get_local_variable", "variable_scope", "variable_op_scope",
+    "no_regularizer", "VariableSynchronization", "VariableAggregation"
+]
 
 
 class _PartitionInfo(object):
@@ -187,13 +193,54 @@ class _ReuseMode(enum.Enum):
   # REUSE_FALSE = 2
   # REUSE_TRUE = 3
 
+
+# TODO(apassos) remove these forwarding symbols.
+VariableSynchronization = variables.VariableSynchronization  # pylint: disable=invalid-name
+VariableAggregation = variables.VariableAggregation  # pylint: disable=invalid-name
+
 AUTO_REUSE = _ReuseMode.AUTO_REUSE
-tf_export("AUTO_REUSE").export_constant(__name__, "AUTO_REUSE")
+tf_export(v1=["AUTO_REUSE"]).export_constant(__name__, "AUTO_REUSE")
 AUTO_REUSE.__doc__ = """
 When passed in as the value for the `reuse` flag, AUTO_REUSE indicates that
 get_variable() should create the requested variable if it doesn't exist or, if
 it does exist, simply return it.
 """
+
+
+_DEFAULT_USE_RESOURCE = tf2.enabled()
+
+
+@tf_export(v1=["enable_resource_variables"])
+def enable_resource_variables():
+  """Creates resource variables by default.
+
+  Resource variables are improved versions of TensorFlow variables with a
+  well-defined memory model. Accessing a resource variable reads its value, and
+  all ops which access a specific read value of the variable are guaranteed to
+  see the same value for that tensor. Writes which happen after a read (by
+  having a control or data dependency on the read) are guaranteed not to affect
+  the value of the read tensor, and similarly writes which happen before a read
+  are guaranteed to affect the value. No guarantees are made about unordered
+  read/write pairs.
+
+  Calling tf.enable_resource_variables() lets you opt-in to this TensorFlow 2.0
+  feature.
+  """
+  global _DEFAULT_USE_RESOURCE
+  _DEFAULT_USE_RESOURCE = True
+
+
+@deprecation.deprecated(
+    None, "non-resource variables are not supported in the long term")
+@tf_export(v1=["disable_resource_variables"])
+def disable_resource_variables():
+  """Opts out of resource variables.
+
+  If your code needs tf.disable_resource_variables() to be called to work
+  properly please file a bug.
+  """
+  global _DEFAULT_USE_RESOURCE
+  _DEFAULT_USE_RESOURCE = False
 
 
 class _VariableStore(object):
@@ -211,28 +258,25 @@ class _VariableStore(object):
     """Create a variable store."""
     self._vars = {}  # A dictionary of the stored TensorFlow variables.
     self._partitioned_vars = {}  # A dict of the stored PartitionedVariables.
-    self.variable_scopes_count = {}  # Count re-used variable scopes.
     self._store_eager_variables = False
 
-  def open_variable_scope(self, scope_name):
-    if scope_name in self.variable_scopes_count:
-      self.variable_scopes_count[scope_name] += 1
-    else:
-      self.variable_scopes_count[scope_name] = 1
-
-  def close_variable_subscopes(self, scope_name):
-    for k in self.variable_scopes_count:
-      if not scope_name or k.startswith(scope_name + "/"):
-        self.variable_scopes_count[k] = 0
-
-  def variable_scope_count(self, scope_name):
-    return self.variable_scopes_count.get(scope_name, 0)
-
-  def get_variable(self, name, shape=None, dtype=dtypes.float32,
-                   initializer=None, regularizer=None, reuse=None,
-                   trainable=True, collections=None, caching_device=None,
-                   partitioner=None, validate_shape=True, use_resource=None,
-                   custom_getter=None, constraint=None):
+  def get_variable(self,
+                   name,
+                   shape=None,
+                   dtype=dtypes.float32,
+                   initializer=None,
+                   regularizer=None,
+                   reuse=None,
+                   trainable=None,
+                   collections=None,
+                   caching_device=None,
+                   partitioner=None,
+                   validate_shape=True,
+                   use_resource=None,
+                   custom_getter=None,
+                   constraint=None,
+                   synchronization=VariableSynchronization.AUTO,
+                   aggregation=VariableAggregation.NONE):
     """Gets an existing variable with these parameters or create a new one.
 
     If a variable with the given name is already stored, we return the stored
@@ -268,6 +312,8 @@ class _VariableStore(object):
         forced to be False.
       trainable: If `True` also add the variable to the graph collection
         `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+        `trainable` defaults to `True` unless `synchronization` is
+        set to `ON_READ`.
       collections: List of graph collections keys to add the `Variable` to.
         Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
       caching_device: Optional device string or function describing where the
@@ -305,6 +351,15 @@ class _VariableStore(object):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
 
     Returns:
       The created or existing `Variable` (or `PartitionedVariable`, if a
@@ -321,6 +376,17 @@ class _VariableStore(object):
       raise ValueError(
           "Passed a custom_getter which is not callable: %s" % custom_getter)
 
+    with ops.init_scope():
+      if context.executing_eagerly():
+        # Variable creation and initialization takes place in `init_scope`s;
+        # as such, if an `init_scope` lifts us into the eager context, then we
+        # need to use `ResourceVariable`s.
+        use_resource = True
+
+    # Note that it's fine to reuse eager variables whose initialization was
+    # lifted from a function-building graph into the eager context (that's why
+    # the following clause is not wrapped in an `init_scope`); lifted variables
+    # are tracked by the graph's `VariableStore`.
     if context.executing_eagerly():
       if not self._store_eager_variables and reuse:
         raise RuntimeError(
@@ -329,7 +395,6 @@ class _VariableStore(object):
             " EagerVariableStore for example usage.")
       if self._store_eager_variables:
         reuse = AUTO_REUSE
-      use_resource = True
 
     # If a *_ref type is passed in an error would be triggered further down the
     # stack. We prevent this using base_dtype to get a non-ref version of the
@@ -347,11 +412,22 @@ class _VariableStore(object):
     # it to custom_getter.
     # Note: the parameters of _true_getter, and their documentation, match
     # *exactly* item-for-item with the docstring of this method.
-    def _true_getter(name, shape=None, dtype=dtypes.float32,  # pylint: disable=missing-docstring
-                     initializer=None, regularizer=None, reuse=None,
-                     trainable=True, collections=None, caching_device=None,
-                     partitioner=None, validate_shape=True, use_resource=None,
-                     constraint=None):
+    def _true_getter(  # pylint: disable=missing-docstring
+        name,
+        shape=None,
+        dtype=dtypes.float32,
+        initializer=None,
+        regularizer=None,
+        reuse=None,
+        trainable=None,
+        collections=None,
+        caching_device=None,
+        partitioner=None,
+        validate_shape=True,
+        use_resource=None,
+        constraint=None,
+        synchronization=VariableSynchronization.AUTO,
+        aggregation=VariableAggregation.NONE):
       is_scalar = (shape is not None
                    and isinstance(shape, collections_lib.Sequence)
                    and not shape)
@@ -361,37 +437,43 @@ class _VariableStore(object):
           raise ValueError(
               "Partitioner must be callable, but received: %s" % partitioner)
         with ops.name_scope(None):
-          return self._get_partitioned_variable(name=name,
-                                                shape=shape,
-                                                dtype=dtype,
-                                                initializer=initializer,
-                                                regularizer=regularizer,
-                                                reuse=reuse,
-                                                trainable=trainable,
-                                                collections=collections,
-                                                caching_device=caching_device,
-                                                partitioner=partitioner,
-                                                validate_shape=validate_shape,
-                                                use_resource=use_resource,
-                                                constraint=constraint)
+          return self._get_partitioned_variable(
+              name=name,
+              shape=shape,
+              dtype=dtype,
+              initializer=initializer,
+              regularizer=regularizer,
+              reuse=reuse,
+              trainable=trainable,
+              collections=collections,
+              caching_device=caching_device,
+              partitioner=partitioner,
+              validate_shape=validate_shape,
+              use_resource=use_resource,
+              constraint=constraint,
+              synchronization=synchronization,
+              aggregation=aggregation)
 
       # Special case for partitioned variable to allow reuse without having to
       # specify partitioner.
       if (reuse is True and partitioner is None
           and name in self._partitioned_vars):
-        return self._get_partitioned_variable(name=name,
-                                              shape=shape,
-                                              dtype=dtype,
-                                              initializer=initializer,
-                                              regularizer=regularizer,
-                                              reuse=reuse,
-                                              trainable=trainable,
-                                              collections=collections,
-                                              caching_device=caching_device,
-                                              partitioner=None,
-                                              validate_shape=validate_shape,
-                                              use_resource=use_resource,
-                                              constraint=constraint)
+        return self._get_partitioned_variable(
+            name=name,
+            shape=shape,
+            dtype=dtype,
+            initializer=initializer,
+            regularizer=regularizer,
+            reuse=reuse,
+            trainable=trainable,
+            collections=collections,
+            caching_device=caching_device,
+            partitioner=None,
+            validate_shape=validate_shape,
+            use_resource=use_resource,
+            constraint=constraint,
+            synchronization=synchronization,
+            aggregation=aggregation)
 
       # Single variable case
       if "%s/part_0" % name in self._vars:
@@ -401,11 +483,24 @@ class _VariableStore(object):
             "name was already created with partitioning?" % name)
 
       return self._get_single_variable(
-          name=name, shape=shape, dtype=dtype,
-          initializer=initializer, regularizer=regularizer, reuse=reuse,
-          trainable=trainable, collections=collections,
-          caching_device=caching_device, validate_shape=validate_shape,
-          use_resource=use_resource, constraint=constraint)
+          name=name,
+          shape=shape,
+          dtype=dtype,
+          initializer=initializer,
+          regularizer=regularizer,
+          reuse=reuse,
+          trainable=trainable,
+          collections=collections,
+          caching_device=caching_device,
+          validate_shape=validate_shape,
+          use_resource=use_resource,
+          constraint=constraint,
+          synchronization=synchronization,
+          aggregation=aggregation)
+
+    # Set trainable value based on synchronization value.
+    trainable = _get_trainable_value(
+        synchronization=synchronization, trainable=trainable)
 
     if custom_getter is not None:
       # Handle backwards compatibility with getter arguments that were added
@@ -424,25 +519,49 @@ class _VariableStore(object):
           "partitioner": partitioner,
           "validate_shape": validate_shape,
           "use_resource": use_resource,
+          "synchronization": synchronization,
+          "aggregation": aggregation,
       }
-      # `fn_args` can handle functions, `functools.partial`, `lambda`.
-      if "constraint" in estimator_util.fn_args(custom_getter):
+      # `fn_args` and `has_kwargs` can handle functions, `functools.partial`,
+      # `lambda`.
+      if ("constraint" in function_utils.fn_args(custom_getter) or
+          function_utils.has_kwargs(custom_getter)):
         custom_getter_kwargs["constraint"] = constraint
       return custom_getter(**custom_getter_kwargs)
     else:
       return _true_getter(
-          name, shape=shape, dtype=dtype,
-          initializer=initializer, regularizer=regularizer,
-          reuse=reuse, trainable=trainable, collections=collections,
-          caching_device=caching_device, partitioner=partitioner,
-          validate_shape=validate_shape, use_resource=use_resource,
-          constraint=constraint)
+          name,
+          shape=shape,
+          dtype=dtype,
+          initializer=initializer,
+          regularizer=regularizer,
+          reuse=reuse,
+          trainable=trainable,
+          collections=collections,
+          caching_device=caching_device,
+          partitioner=partitioner,
+          validate_shape=validate_shape,
+          use_resource=use_resource,
+          constraint=constraint,
+          synchronization=synchronization,
+          aggregation=aggregation)
 
-  def _get_partitioned_variable(
-      self, name, partitioner, shape=None, dtype=dtypes.float32,
-      initializer=None, regularizer=None, reuse=None,
-      trainable=True, collections=None, caching_device=None,
-      validate_shape=True, use_resource=None, constraint=None):
+  def _get_partitioned_variable(self,
+                                name,
+                                partitioner,
+                                shape=None,
+                                dtype=dtypes.float32,
+                                initializer=None,
+                                regularizer=None,
+                                reuse=None,
+                                trainable=None,
+                                collections=None,
+                                caching_device=None,
+                                validate_shape=True,
+                                use_resource=None,
+                                constraint=None,
+                                synchronization=VariableSynchronization.AUTO,
+                                aggregation=VariableAggregation.NONE):
     """Gets or creates a sharded variable list with these parameters.
 
     The `partitioner` must be a callable that accepts a fully defined
@@ -508,6 +627,15 @@ class _VariableStore(object):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
 
     Returns:
       A `PartitionedVariable` object.
@@ -518,14 +646,8 @@ class _VariableStore(object):
         when violating reuse during variable creation, or if an existing
         sharded variable exists for the given name but with different sharding.
     """
-    if context.executing_eagerly():
-      raise NotImplementedError("Partitioned variables are not yet supported "
-                                "when eager execution is enabled.")
-
     initializing_from_value = initializer is not None and isinstance(
         initializer, ops.Tensor)
-    reuse_without_partition = reuse and not partitioner
-
     if name in self._vars:
       raise ValueError(
           "A partitioner was provided, but an unpartitioned version of the "
@@ -536,30 +658,9 @@ class _VariableStore(object):
     if initializing_from_value:
       shape = shape.merge_with(initializer.get_shape())
 
-    if not reuse_without_partition:
-      if not shape.is_fully_defined():
-        raise ValueError("Shape of a new partitioned variable (%s) must be "
-                         "fully defined, but instead was %s." % (name, shape))
-
-      if shape.ndims < 1:
-        raise ValueError("A partitioned Variable must have rank at least 1, "
-                         "shape: %s" % shape)
-
-      partitions = partitioner(shape=shape, dtype=dtype)
-
-      if not isinstance(partitions, collections_lib.Sequence):
-        raise ValueError("Partitioner must return a sequence, but saw: %s"
-                         % partitions)
-
-      if len(partitions) != shape.ndims:
-        raise ValueError(
-            "Partitioner returned a partition list that does not match the "
-            "Variable's rank: %s vs. %s" % (partitions, shape))
-
-      if any([p < 1 for p in partitions]):
-        raise ValueError(
-            "Partitioner returned zero partitions for some axes: %s" %
-            partitions)
+    partitions = None
+    if not reuse or partitioner:
+      partitions = _call_partitioner(partitioner, shape, dtype)
 
     if name in self._partitioned_vars:
       if reuse is False:
@@ -581,7 +682,7 @@ class _VariableStore(object):
             % (name, dtype.name, existing_var.dtype.name))
 
       # pylint: disable=protected-access
-      if (not reuse_without_partition and
+      if (partitions is not None and
           existing_var._get_partitions() != partitions):
         raise ValueError(
             "Trying to reuse partitioned variable %s, but specified partitions "
@@ -596,14 +697,7 @@ class _VariableStore(object):
                        "created with tf.get_variable(). Did you mean to set "
                        "reuse=False or reuse=tf.AUTO_REUSE in VarScope?" % name)
 
-    slice_dim, slice_shape = _compute_slice_dim_and_shape(
-        shape.as_list(), partitions)
-
-    vs = []
-    num_slices = partitions[slice_dim]
-    num_slices_with_excess = shape[slice_dim].value % num_slices
-
-    slice_offset = [0] * shape.ndims
+    slice_dim, num_slices = _get_slice_dim_and_num_slices(partitions)
 
     if "%s/part_0" % name in self._vars:
       if "%s/part_%d" % (name, num_slices - 1) not in self._vars:
@@ -619,15 +713,14 @@ class _VariableStore(object):
             "%s/part_0 was found, but so was the extra shard %s/part_%d."
             % (num_slices, name, name, num_slices))
 
-    for i in xrange(num_slices):
-      var_shape = slice_shape[:]
-      var_offset = slice_offset[:]
+    vs = []
+    for i, (var_offset, var_shape) in enumerate(_iter_slices(
+        shape.as_list(),
+        num_slices,
+        slice_dim
+    )):
       partition_info = _PartitionInfo(
           full_shape=shape.as_list(), var_offset=var_offset)
-      if i < num_slices_with_excess:
-        var_shape[slice_dim] += 1
-      slice_offset[slice_dim] += var_shape[slice_dim]
-
       var_full_name = "%s/part_%d" % (name, i)
       with ops.name_scope(var_full_name + "/PartitionedInitializer"):
         # Create the tensor to initialize the variable with default value.
@@ -665,7 +758,9 @@ class _VariableStore(object):
             caching_device=caching_device,
             validate_shape=validate_shape,
             use_resource=use_resource,
-            constraint=constraint)
+            constraint=constraint,
+            synchronization=synchronization,
+            aggregation=aggregation)
 
       # pylint: disable=protected-access
       var._set_save_slice_info(variables.Variable.SaveSliceInfo(
@@ -673,15 +768,13 @@ class _VariableStore(object):
       vs.append(var)
       # pylint: enable=protected-access
 
-      # pylint: disable=protected-access
     partitioned_var = variables.PartitionedVariable(name=name,
                                                     shape=shape,
                                                     dtype=dtype,
                                                     variable_list=vs,
                                                     partitions=partitions)
-    # pylint: enable=protected-access
-
-    self._partitioned_vars[name] = partitioned_var
+    if not context.executing_eagerly() or self._store_eager_variables:
+      self._partitioned_vars[name] = partitioned_var
     return partitioned_var
 
   def _get_single_variable(self,
@@ -692,12 +785,14 @@ class _VariableStore(object):
                            regularizer=None,
                            partition_info=None,
                            reuse=None,
-                           trainable=True,
+                           trainable=None,
                            collections=None,
                            caching_device=None,
                            validate_shape=True,
                            use_resource=None,
-                           constraint=None):
+                           constraint=None,
+                           synchronization=VariableSynchronization.AUTO,
+                           aggregation=VariableAggregation.NONE):
     """Get or create a single Variable (e.g. a shard or entire variable).
 
     See the documentation of get_variable above (ignore partitioning components)
@@ -717,6 +812,8 @@ class _VariableStore(object):
       validate_shape: see get_variable.
       use_resource: see get_variable.
       constraint: see get_variable.
+      synchronization: see get_variable.
+      aggregation: see get_variable.
 
     Returns:
       A Variable.  See documentation of get_variable above.
@@ -737,14 +834,18 @@ class _VariableStore(object):
     if name in self._vars:
       # Here we handle the case when returning an existing variable.
       if reuse is False:
-        tb = self._vars[name].op.traceback[::-1]
+        var = self._vars[name]
+        err_msg = ("Variable %s already exists, disallowed."
+                   " Did you mean to set reuse=True or "
+                   "reuse=tf.AUTO_REUSE in VarScope?" % name)
+        # ResourceVariables don't have an op associated with so no traceback
+        if isinstance(var, resource_variable_ops.ResourceVariable):
+          raise ValueError(err_msg)
+        tb = var.op.traceback[::-1]
         # Throw away internal tf entries and only take a few lines.
         tb = [x for x in tb if "tensorflow/python" not in x[0]][:3]
-        raise ValueError("Variable %s already exists, disallowed."
-                         " Did you mean to set reuse=True or "
-                         "reuse=tf.AUTO_REUSE in VarScope? "
-                         "Originally defined at:\n\n%s" % (
-                             name, "".join(traceback.format_list(tb))))
+        raise ValueError("%s Originally defined at:\n\n%s" % (err_msg, "".join(
+            traceback.format_list(tb))))
       found_var = self._vars[name]
       if not shape.is_compatible_with(found_var.get_shape()):
         raise ValueError("Trying to share variable %s, but specified shape %s"
@@ -763,9 +864,6 @@ class _VariableStore(object):
       raise ValueError("Variable %s does not exist, or was not created with "
                        "tf.get_variable(). Did you mean to set "
                        "reuse=tf.AUTO_REUSE in VarScope?" % name)
-    if not shape.is_fully_defined() and not initializing_from_value:
-      raise ValueError("Shape of a new variable (%s) must be fully defined, "
-                       "but instead was %s." % (name, shape))
 
     # Create the tensor to initialize the variable with default value.
     if initializer is None:
@@ -778,17 +876,28 @@ class _VariableStore(object):
         variable_dtype = None
       else:
         # Instantiate initializer if provided initializer is a type object.
-        if isinstance(initializer, type(init_ops.Initializer)):
+        if tf_inspect.isclass(initializer):
           initializer = initializer(dtype=dtype)
-        init_val = lambda: initializer(  # pylint: disable=g-long-lambda
-            shape.as_list(), dtype=dtype, partition_info=partition_info)
-        variable_dtype = dtype.base_dtype
+        if shape is not None and shape.is_fully_defined():
+          init_val = lambda: initializer(  # pylint: disable=g-long-lambda
+              shape.as_list(), dtype=dtype, partition_info=partition_info)
+          variable_dtype = dtype.base_dtype
+        elif len(tf_inspect.getargspec(initializer).args) == len(
+            tf_inspect.getargspec(initializer).defaults or []):
+          init_val = initializer
+          variable_dtype = None
+        else:
+          raise ValueError("The initializer passed is not valid. It should "
+                           "be a callable with no arguments and the "
+                           "shape should not be provided or an instance of "
+                           "`tf.keras.initializers.*' and `shape` should be "
+                           "fully defined.")
 
     # Create the variable.
     if use_resource is None:
       # Set the default value if unspecified.
-      use_resource = False
-    v = variable(
+      use_resource = _DEFAULT_USE_RESOURCE
+    v = variables.VariableV1(
         initial_value=init_val,
         name=name,
         trainable=trainable,
@@ -797,7 +906,17 @@ class _VariableStore(object):
         dtype=variable_dtype,
         validate_shape=validate_shape,
         constraint=constraint,
-        use_resource=use_resource)
+        use_resource=use_resource,
+        synchronization=synchronization,
+        aggregation=aggregation)
+    if context.executing_eagerly() and self._store_eager_variables:
+      if collections:
+        ops.add_to_collections(collections, v)
+      else:
+        ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, v)
+      if trainable:
+        ops.add_to_collection(ops.GraphKeys.TRAINABLE_VARIABLES, v)
+
     if not context.executing_eagerly() or self._store_eager_variables:
       # In eager mode we do not want to keep default references to Variable
       # objects as this will prevent their memory from being released.
@@ -809,7 +928,8 @@ class _VariableStore(object):
     if regularizer:
       with ops.colocate_with(v):
         with ops.name_scope(name + "/Regularizer/"):
-          loss = regularizer(v)
+          with ops.init_scope():
+            loss = regularizer(v)
         if loss is not None:
           if context.executing_eagerly():
             v_name = "v_%s" % type(v)
@@ -844,7 +964,8 @@ class _VariableStore(object):
       initializing_from_value = False
     # If dtype is DT_INT/DT_UINT, provide a default value `zero`
     # If dtype is DT_BOOL, provide a default value `FALSE`
-    elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
+    elif (dtype.is_integer or dtype.is_unsigned or dtype.is_bool
+          or dtype == dtypes.string):
       initializer = init_ops.zeros_initializer()
       initializing_from_value = False
     # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
@@ -863,7 +984,7 @@ def no_regularizer(_):
 
 
 # TODO(alive): support caching devices and partitioned variables in Eager mode.
-@tf_export("VariableScope")
+@tf_export(v1=["VariableScope"])
 class VariableScope(object):
   """Variable scope object to carry defaults to provide to `get_variable`.
 
@@ -923,9 +1044,6 @@ class VariableScope(object):
     if context.executing_eagerly():
       if self._caching_device is not None:
         raise NotImplementedError("Caching devices is not yet supported "
-                                  "when eager execution is enabled.")
-      if self._partitioner is not None:
-        raise NotImplementedError("Partitioned variables are not yet supported "
                                   "when eager execution is enabled.")
       self._reuse = AUTO_REUSE
       self._use_resource = True
@@ -1006,9 +1124,6 @@ class VariableScope(object):
 
   def set_partitioner(self, partitioner):
     """Set partitioner for this scope."""
-    if partitioner and context.executing_eagerly():
-      raise NotImplementedError("Partitioned variables are not yet supported "
-                                "when eager execution is enabled.")
     self._partitioner = partitioner
 
   def set_custom_getter(self, custom_getter):
@@ -1040,14 +1155,16 @@ class VariableScope(object):
                    initializer=None,
                    regularizer=None,
                    reuse=None,
-                   trainable=True,
+                   trainable=None,
                    collections=None,
                    caching_device=None,
                    partitioner=None,
                    validate_shape=True,
                    use_resource=None,
                    custom_getter=None,
-                   constraint=None):
+                   constraint=None,
+                   synchronization=VariableSynchronization.AUTO,
+                   aggregation=VariableAggregation.NONE):
     """Gets an existing variable with this name or create a new one."""
     if regularizer is None:
       regularizer = self._regularizer
@@ -1085,12 +1202,22 @@ class VariableScope(object):
       if dtype is None:
         dtype = self._dtype
       return var_store.get_variable(
-          full_name, shape=shape, dtype=dtype, initializer=initializer,
-          regularizer=regularizer, reuse=reuse, trainable=trainable,
-          collections=collections, caching_device=caching_device,
-          partitioner=partitioner, validate_shape=validate_shape,
-          use_resource=use_resource, custom_getter=custom_getter,
-          constraint=constraint)
+          full_name,
+          shape=shape,
+          dtype=dtype,
+          initializer=initializer,
+          regularizer=regularizer,
+          reuse=reuse,
+          trainable=trainable,
+          collections=collections,
+          caching_device=caching_device,
+          partitioner=partitioner,
+          validate_shape=validate_shape,
+          use_resource=use_resource,
+          custom_getter=custom_getter,
+          constraint=constraint,
+          synchronization=synchronization,
+          aggregation=aggregation)
 
   def _get_partitioned_variable(self,
                                 var_store,
@@ -1099,17 +1226,16 @@ class VariableScope(object):
                                 dtype=None,
                                 initializer=None,
                                 regularizer=None,
-                                trainable=True,
+                                trainable=None,
                                 collections=None,
                                 caching_device=None,
                                 partitioner=None,
                                 validate_shape=True,
                                 use_resource=None,
-                                constraint=None):
+                                constraint=None,
+                                synchronization=VariableSynchronization.AUTO,
+                                aggregation=VariableAggregation.NONE):
     """Gets an existing variable with this name or create a new one."""
-    if context.executing_eagerly():
-      raise NotImplementedError("Partitioned variables are not yet supported "
-                                "when eager execution is enabled.")
     if initializer is None:
       initializer = self._initializer
     if regularizer is None:
@@ -1151,27 +1277,68 @@ class VariableScope(object):
     with ops.name_scope(None):
       # pylint: disable=protected-access
       return var_store._get_partitioned_variable(
-          full_name, shape=shape, dtype=dtype, initializer=initializer,
-          regularizer=regularizer, reuse=self.reuse, trainable=trainable,
-          collections=collections, caching_device=caching_device,
-          partitioner=partitioner, validate_shape=validate_shape,
-          use_resource=use_resource, constraint=constraint)
+          full_name,
+          shape=shape,
+          dtype=dtype,
+          initializer=initializer,
+          regularizer=regularizer,
+          reuse=self.reuse,
+          trainable=trainable,
+          collections=collections,
+          caching_device=caching_device,
+          partitioner=partitioner,
+          validate_shape=validate_shape,
+          use_resource=use_resource,
+          constraint=constraint,
+          synchronization=synchronization,
+          aggregation=aggregation)
       # pylint: enable=protected-access
 
 
 _VARSTORE_KEY = ("__variable_store",)
-_VARSCOPE_KEY = ("__varscope",)
+_VARSCOPESTORE_KEY = ("__varscope",)
 
 
-@tf_export("get_variable_scope")
+class _VariableScopeStore(threading.local):
+  """A thread local store for the current variable scope and scope counts."""
+
+  def __init__(self):
+    super(_VariableScopeStore, self).__init__()
+    self.current_scope = VariableScope(False)
+    self.variable_scopes_count = {}
+
+  def open_variable_scope(self, scope_name):
+    if scope_name in self.variable_scopes_count:
+      self.variable_scopes_count[scope_name] += 1
+    else:
+      self.variable_scopes_count[scope_name] = 1
+
+  def close_variable_subscopes(self, scope_name):
+    for k in list(self.variable_scopes_count.keys()):
+      if scope_name is None or k.startswith(scope_name + "/"):
+        self.variable_scopes_count[k] = 0
+
+  def variable_scope_count(self, scope_name):
+    return self.variable_scopes_count.get(scope_name, 0)
+
+
+def get_variable_scope_store():
+  """Returns the variable scope store for current thread."""
+  scope_store = ops.get_collection(_VARSCOPESTORE_KEY)
+
+  if not scope_store:
+    scope_store = _VariableScopeStore()
+    ops.add_to_collection(_VARSCOPESTORE_KEY, scope_store)
+  else:
+    scope_store = scope_store[0]
+
+  return scope_store
+
+
+@tf_export(v1=["get_variable_scope"])
 def get_variable_scope():
   """Returns the current variable scope."""
-  scope = ops.get_collection(_VARSCOPE_KEY)
-  if scope:  # This collection has at most 1 element, the default scope at [0].
-    return scope[0]
-  scope = VariableScope(False)
-  ops.add_to_collection(_VARSCOPE_KEY, scope)
-  return scope
+  return get_variable_scope_store().current_scope
 
 
 def _get_default_variable_store():
@@ -1233,13 +1400,13 @@ class EagerVariableStore(object):
 
   def trainable_variables(self):
     # pylint: disable=protected-access
-    return sorted([x for x in self._store._vars.values() if x._trainable],
+    return sorted([x for x in self._store._vars.values() if x.trainable],
                   key=lambda x: x.name)
     # pylint: enable=protected-access
 
   def non_trainable_variables(self):
     # pylint: disable=protected-access
-    return sorted([x for x in self._store._vars.values() if not x._trainable],
+    return sorted([x for x in self._store._vars.values() if not x.trainable],
                   key=lambda x: x.name)
     # pylint: enable=protected-access
 
@@ -1268,39 +1435,55 @@ class EagerVariableStore(object):
       new_var = resource_variable_ops.ResourceVariable(
           var.read_value(),
           name=stripped_var_name,
-          trainable=var._trainable)
+          trainable=var.trainable)
       new_store._store._vars[key] = new_var
     return new_store
     # pylint: enable=protected-access
 
 
-@tf_export("get_variable")
+# The argument list for get_variable must match arguments to get_local_variable.
+# So, if you are updating the arguments, also update arguments to
+# get_local_variable below.
+@tf_export(v1=["get_variable"])
 def get_variable(name,
                  shape=None,
                  dtype=None,
                  initializer=None,
                  regularizer=None,
-                 trainable=True,
+                 trainable=None,
                  collections=None,
                  caching_device=None,
                  partitioner=None,
                  validate_shape=True,
                  use_resource=None,
                  custom_getter=None,
-                 constraint=None):
+                 constraint=None,
+                 synchronization=VariableSynchronization.AUTO,
+                 aggregation=VariableAggregation.NONE):
   return get_variable_scope().get_variable(
-      _get_default_variable_store(), name, shape=shape, dtype=dtype,
-      initializer=initializer, regularizer=regularizer, trainable=trainable,
-      collections=collections, caching_device=caching_device,
-      partitioner=partitioner, validate_shape=validate_shape,
-      use_resource=use_resource, custom_getter=custom_getter,
-      constraint=constraint)
-get_variable_or_local_docstring = (
-    """%s
+      _get_default_variable_store(),
+      name,
+      shape=shape,
+      dtype=dtype,
+      initializer=initializer,
+      regularizer=regularizer,
+      trainable=trainable,
+      collections=collections,
+      caching_device=caching_device,
+      partitioner=partitioner,
+      validate_shape=validate_shape,
+      use_resource=use_resource,
+      custom_getter=custom_getter,
+      constraint=constraint,
+      synchronization=synchronization,
+      aggregation=aggregation)
+
+
+get_variable_or_local_docstring = ("""%s
 
 %sThis function prefixes the name with the current variable scope
 and performs reuse checks. See the
-@{$variables$Variable Scope How To}
+[Variable Scope How To](https://tensorflow.org/guide/variables)
 for an extensive description of how reusing works. Here is a basic example:
 
 ```python
@@ -1334,10 +1517,12 @@ Args:
   name: The name of the new or existing variable.
   shape: Shape of the new or existing variable.
   dtype: Type of the new or existing variable (defaults to `DT_FLOAT`).
-  initializer: Initializer for the variable if one is created.
+  initializer: Initializer for the variable if one is created. Can either be
+    an initializer object or a Tensor. If it's a Tensor, its shape must be known
+    unless validate_shape is False.
   regularizer: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
-    @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
+    `tf.GraphKeys.REGULARIZATION_LOSSES` and can be used for regularization.
   %scollections: List of graph collections keys to add the Variable to.
     Defaults to `[%s]` (see `tf.Variable`).
   caching_device: Optional device string or function describing where the
@@ -1350,7 +1535,8 @@ Args:
     partitions for each axis (currently only one axis can be partitioned).
   validate_shape: If False, allows the variable to be initialized with a
       value of unknown shape. If True, the default, the shape of initial_value
-      must be known.
+      must be known. For this to be used the initializer must be a Tensor and
+      not an initializer object.
   use_resource: If False, creates a regular Variable. If true, creates an
     experimental ResourceVariable instead with well-defined semantics.
     Defaults to False (will later change to True). When eager execution is
@@ -1367,6 +1553,22 @@ Args:
     def custom_getter(getter, name, *args, **kwargs):
       return getter(name + '_suffix', *args, **kwargs)
     ```
+  constraint: An optional projection function to be applied to the variable
+    after being updated by an `Optimizer` (e.g. used to implement norm
+    constraints or value constraints for layer weights). The function must
+    take as input the unprojected Tensor representing the value of the
+    variable and return the Tensor for the projected value
+    (which must have the same shape). Constraints are not safe to
+    use when doing asynchronous distributed training.
+  synchronization: Indicates when a distributed a variable will be
+    aggregated. Accepted values are constants defined in the class
+    `tf.VariableSynchronization`. By default the synchronization is set to
+    `AUTO` and the current `DistributionStrategy` chooses
+    when to synchronize. If `synchronization` is set to `ON_READ`,
+    `trainable` must not be set to `True`.
+  aggregation: Indicates how a distributed variable will be aggregated.
+    Accepted values are constants defined in the class
+    `tf.VariableAggregation`.
 
 Returns:
   The created or existing `Variable` (or `PartitionedVariable`, if a
@@ -1385,15 +1587,47 @@ get_variable.__doc__ = get_variable_or_local_docstring % (
     "GraphKeys.GLOBAL_VARIABLES")
 
 
-@functools.wraps(get_variable)
-@tf_export("get_local_variable")
-def get_local_variable(*args, **kwargs):
-  kwargs["trainable"] = False
-  if "collections" in kwargs:
-    kwargs["collections"] += [ops.GraphKeys.LOCAL_VARIABLES]
+# The argument list for get_local_variable must match arguments to get_variable.
+# So, if you are updating the arguments, also update arguments to get_variable.
+@tf_export(v1=["get_local_variable"])
+def get_local_variable(  # pylint: disable=missing-docstring
+    name,
+    shape=None,
+    dtype=None,
+    initializer=None,
+    regularizer=None,
+    trainable=False,  # pylint: disable=unused-argument
+    collections=None,
+    caching_device=None,
+    partitioner=None,
+    validate_shape=True,
+    use_resource=None,
+    custom_getter=None,
+    constraint=None,
+    synchronization=VariableSynchronization.AUTO,
+    aggregation=VariableAggregation.NONE):
+  if collections:
+    collections += [ops.GraphKeys.LOCAL_VARIABLES]
   else:
-    kwargs["collections"] = [ops.GraphKeys.LOCAL_VARIABLES]
-  return get_variable(*args, **kwargs)
+    collections = [ops.GraphKeys.LOCAL_VARIABLES]
+  return get_variable(
+      name,
+      shape=shape,
+      dtype=dtype,
+      initializer=initializer,
+      regularizer=regularizer,
+      trainable=False,
+      collections=collections,
+      caching_device=caching_device,
+      partitioner=partitioner,
+      validate_shape=validate_shape,
+      use_resource=use_resource,
+      synchronization=synchronization,
+      aggregation=aggregation,
+      custom_getter=custom_getter,
+      constraint=constraint)
+
+
 get_local_variable.__doc__ = get_variable_or_local_docstring % (
     "Gets an existing *local* variable or creates a new one.",
     "Behavior is the same as in `get_variable`, except that variables are\n"
@@ -1414,7 +1648,9 @@ def _get_partitioned_variable(name,
                               partitioner=None,
                               validate_shape=True,
                               use_resource=None,
-                              constraint=None):
+                              constraint=None,
+                              synchronization=VariableSynchronization.AUTO,
+                              aggregation=VariableAggregation.NONE):
   """Gets or creates a sharded variable list with these parameters.
 
   The `partitioner` must be a callable that accepts a fully defined
@@ -1472,6 +1708,15 @@ def _get_partitioned_variable(name,
       variable and return the Tensor for the projected value
       (which must have the same shape). Constraints are not safe to
       use when doing asynchronous distributed training.
+    synchronization: Indicates when a distributed a variable will be
+      aggregated. Accepted values are constants defined in the class
+      `tf.VariableSynchronization`. By default the synchronization is set to
+      `AUTO` and the current `DistributionStrategy` chooses
+      when to synchronize. If `synchronization` is set to `ON_READ`,
+      `trainable` must not be set to `True`.
+    aggregation: Indicates how a distributed variable will be aggregated.
+      Accepted values are constants defined in the class
+      `tf.VariableAggregation`.
 
   Returns:
     A tuple `(shards, partitions)` where `shards` is the list of `Variable`
@@ -1493,11 +1738,21 @@ def _get_partitioned_variable(name,
         "If so, consider instead using get_variable with a non-empty "
         "partitioner parameter instead." % scope.custom_getter)
   return scope._get_partitioned_variable(
-      _get_default_variable_store(), name, shape=shape, dtype=dtype,
-      initializer=initializer, regularizer=regularizer, trainable=trainable,
-      collections=collections, caching_device=caching_device,
-      partitioner=partitioner, validate_shape=validate_shape,
-      use_resource=use_resource, constraint=constraint)
+      _get_default_variable_store(),
+      name,
+      shape=shape,
+      dtype=dtype,
+      initializer=initializer,
+      regularizer=regularizer,
+      trainable=trainable,
+      collections=collections,
+      caching_device=caching_device,
+      partitioner=partitioner,
+      validate_shape=validate_shape,
+      use_resource=use_resource,
+      constraint=constraint,
+      synchronization=synchronization,
+      aggregation=aggregation)
   # pylint: enable=protected-access
 
 
@@ -1555,10 +1810,8 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
     self._dtype = dtype
     self._use_resource = use_resource
     self._constraint = constraint
-    get_variable_scope()  # Ensure that a default exists, then get a pointer.
-    # Get the reference to the collection as we want to modify it in place.
-    self._default_varscope = ops.get_collection_ref(_VARSCOPE_KEY)
     self._var_store = _get_default_variable_store()
+    self._var_scope_store = get_variable_scope_store()
     if isinstance(self._name_or_scope, VariableScope):
       self._new_name = self._name_or_scope.name
       name_scope = self._name_or_scope._name_scope  # pylint: disable=protected-access
@@ -1606,10 +1859,11 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
         a reuse scope, or if reuse is not `None` or `True`.
       TypeError: when the types of some arguments are not appropriate.
     """
-    self._old = self._default_varscope[0]
+    self._old = self._var_scope_store.current_scope
     if isinstance(self._name_or_scope, VariableScope):
-      self._var_store.open_variable_scope(self._new_name)
-      self._old_subscopes = copy.copy(self._var_store.variable_scopes_count)
+      self._var_scope_store.open_variable_scope(self._new_name)
+      self._old_subscopes = copy.copy(
+          self._var_scope_store.variable_scopes_count)
       variable_scope_object = self._cached_variable_scope_object
     else:
       # Handler for the case when we just prolong current variable scope.
@@ -1652,17 +1906,17 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
         variable_scope_object.set_dtype(self._dtype)
       if self._use_resource is not None:
         variable_scope_object.set_use_resource(self._use_resource)
-      self._var_store.open_variable_scope(self._new_name)
-    self._default_varscope[0] = variable_scope_object
+      self._var_scope_store.open_variable_scope(self._new_name)
+    self._var_scope_store.current_scope = variable_scope_object
     return variable_scope_object
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
     # If jumping out from a non-prolonged scope, restore counts.
     if isinstance(self._name_or_scope, VariableScope):
-      self._var_store.variable_scopes_count = self._old_subscopes
+      self._var_scope_store.variable_scopes_count = self._old_subscopes
     else:
-      self._var_store.close_variable_subscopes(self._new_name)
-    self._default_varscope[0] = self._old
+      self._var_scope_store.close_variable_subscopes(self._new_name)
+    self._var_scope_store.current_scope = self._old
 
 
 def _maybe_wrap_custom_getter(custom_getter, old_getter):
@@ -1687,13 +1941,13 @@ def _maybe_wrap_custom_getter(custom_getter, old_getter):
 
 def _get_unique_variable_scope(prefix):
   """Get a name with the given prefix unique in the current variable scope."""
-  var_store = _get_default_variable_store()
+  var_scope_store = get_variable_scope_store()
   current_scope = get_variable_scope()
   name = current_scope.name + "/" + prefix if current_scope.name else prefix
-  if var_store.variable_scope_count(name) == 0:
+  if var_scope_store.variable_scope_count(name) == 0:
     return prefix
   idx = 1
-  while var_store.variable_scope_count(name + ("_%d" % idx)) > 0:
+  while var_scope_store.variable_scope_count(name + ("_%d" % idx)) > 0:
     idx += 1
   return prefix + ("_%d" % idx)
 
@@ -1701,7 +1955,7 @@ def _get_unique_variable_scope(prefix):
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
-@tf_export("variable_scope")  # pylint: disable=invalid-name
+@tf_export(v1=["variable_scope"])  # pylint: disable=invalid-name
 class variable_scope(object):
   """A context manager for defining ops that creates variables (layers).
 
@@ -1709,14 +1963,15 @@ class variable_scope(object):
   graph, ensures that graph is the default graph, and pushes a name scope and a
   variable scope.
 
-  If `name_or_scope` is not None, it is used as is. If `scope` is None, then
-  `default_name` is used.  In that case, if the same name has been previously
-  used in the same scope, it will be made unique by appending `_N` to it.
+  If `name_or_scope` is not None, it is used as is. If `name_or_scope` is None,
+  then `default_name` is used.  In that case, if the same name has been
+  previously used in the same scope, it will be made unique by appending `_N`
+  to it.
 
   Variable scope allows you to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
-  see the @{$variables$Variable Scope How To}, here we present only a few basic
-  examples.
+  see the [Variable Scope How To](https://tensorflow.org/guide/variables), here
+  we present only a few basic examples.
 
   Simple example of how to create a new variable:
 
@@ -1725,6 +1980,23 @@ class variable_scope(object):
       with tf.variable_scope("bar"):
           v = tf.get_variable("v", [1])
           assert v.name == "foo/bar/v:0"
+  ```
+
+  Simple example of how to reenter a premade variable scope safely:
+
+  ```python
+  with tf.variable_scope("foo") as vs:
+    pass
+
+  # Re-enter the variable scope.
+  with tf.variable_scope(vs,
+                         auxiliary_name_scope=False) as vs1:
+    # Restore the original name_scope.
+    with tf.name_scope(vs1.original_name_scope):
+        v = tf.get_variable("v", [1])
+        assert v.name == "foo/v:0"
+        c = tf.constant([1], name="c")
+        assert c.name == "foo/c:0"
   ```
 
   Basic example of sharing a variable AUTO_REUSE:
@@ -1790,6 +2062,32 @@ class variable_scope(object):
   discouraged) to pass False to the reuse argument, yielding undocumented
   behaviour slightly different from None. Starting at 1.1.0 passing None and
   False as reuse has exactly the same effect.
+
+  A note about using variable scopes in multi-threaded environment: Variable
+  scopes are thread local, so one thread will not see another thread's current
+  scope. Also, when using `default_name`, unique scopes names are also generated
+  only on a per thread basis. If the same name was used within a different
+  thread, that doesn't prevent a new thread from creating the same scope.
+  However, the underlying variable store is shared across threads (within the
+  same graph). As such, if another thread tries to create a new variable with
+  the same name as a variable created by a previous thread, it will fail unless
+  reuse is True.
+
+  Further, each thread starts with an empty variable scope. So if you wish to
+  preserve name prefixes from a scope from the main thread, you should capture
+  the main thread's scope and re-enter it in each thread. For e.g.
+
+  ```
+  main_thread_scope = variable_scope.get_variable_scope()
+
+  # Thread's target function:
+  def thread_target_fn(captured_scope):
+    with variable_scope.variable_scope(captured_scope):
+      # .... regular code for this thread
+
+
+  thread = threading.Thread(target=thread_target_fn, args=(main_thread_scope,))
+  ```
   """
 
   def __init__(self,
@@ -1823,7 +2121,8 @@ class variable_scope(object):
         for this scope as well as all sub-scopes; if tf.AUTO_REUSE, we create
         variables if they do not exist, and return them otherwise; if None, we
         inherit the parent scope's reuse flag. When eager execution is enabled,
-        this argument is always forced to be tf.AUTO_REUSE.
+        new variables are always created unless an EagerVariableStore or
+        template is currently active.
       dtype: type of variables created in this scope (defaults to the type
         in the passed scope, or inherited from parent scope).
       use_resource: If False, all variables will be regular Variables. If True,
@@ -1838,7 +2137,9 @@ class variable_scope(object):
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
       auxiliary_name_scope: If `True`, we create an auxiliary name scope with
-        the scope. If `False`, we don't touch name scope.
+        the scope. If `False`, we don't create it. Note that the argument is
+        not inherited, and it only takes effect for once when creating. You
+        should only use it for re-entering a premade variable scope.
 
     Returns:
       A scope that can be captured and reused.
@@ -1901,9 +2202,10 @@ class variable_scope(object):
 
     try:
       return self._enter_scope_uncached()
-    except:
-      if self._graph_context_manager is not None:
-        self._graph_context_manager.__exit__(*sys.exc_info())
+    except Exception:
+      if self._in_graph_mode and not self._building_function:
+        if self._graph_context_manager is not None:
+          self._graph_context_manager.__exit__(*sys.exc_info())
       raise
 
   def _enter_scope_uncached(self):
@@ -2035,7 +2337,7 @@ class variable_scope(object):
 
 
 # pylint: disable=g-doc-return-or-yield
-@tf_export("variable_op_scope")
+@tf_export(v1=["variable_op_scope"])
 @tf_contextlib.contextmanager
 def variable_op_scope(values,
                       name_or_scope,
@@ -2067,67 +2369,159 @@ def variable_op_scope(values,
     yield scope
 
 
-def _compute_slice_dim_and_shape(full_shape, slicing):
-  """Computes which dimension is being sliced and the typical slice shape."""
+def _call_partitioner(partitioner, shape, dtype):
+  """Call partitioner validating its inputs/output.
 
-  slice_shape = [0] * len(full_shape)
-  slice_dim = None
-  for dim, num_slices in enumerate(slicing):
-    dim_size = full_shape[dim]
-    if num_slices <= 0 or dim_size < num_slices:
-      raise ValueError("Cannot create %d slices for size %d. shape: %s, "
-                       "slicing: %s" %
-                       (num_slices, full_shape[dim], full_shape, slicing))
-    if num_slices == 1:
-      # Not slicing in this dimension.
-      slice_shape[dim] = dim_size
-    elif slice_dim is not None:
-      # We only support slicing along one of the dimensions.
-      raise ValueError("Can only slice a variable along one dimension: "
-                       "shape: %s, slicing: %s" % (full_shape, slicing))
-    else:
-      # Note: We will add any extras onto the last slice, later.
-      slice_dim = dim
-      slice_shape[dim] = dim_size // num_slices
+  Args:
+    partitioner: a function mapping `Tensor` shape and dtype to a
+        list of partitions.
+    shape: shape of the `Tensor` to partition, must have at least two
+        dimensions.
+    dtype: dtype of the elements in the `Tensor`.
 
-  # Degenerate case: If "slicing" was all ones, pretend we are slicing along
-  # the first dimension.
-  if slice_dim is None:
+  Returns:
+    A list with elements >=1 and exactly one >1. The index of that
+    element corresponds to the partitioning axis.
+  """
+  if not shape.is_fully_defined():
+    raise ValueError("Shape of a new partitioned variable must be "
+                     "fully defined, but instead was %s." % (shape,))
+  if shape.ndims < 1:
+    raise ValueError("A partitioned Variable must have rank at least 1, "
+                     "shape: %s" % shape)
+
+  slicing = partitioner(shape=shape, dtype=dtype)
+  if not isinstance(slicing, collections_lib.Sequence):
+    raise ValueError("Partitioner must return a sequence, but saw: %s"
+                     % slicing)
+  if len(slicing) != shape.ndims:
+    raise ValueError(
+        "Partitioner returned a partition list that does not match the "
+        "Variable's rank: %s vs. %s" % (slicing, shape))
+  if any(p < 1 for p in slicing):
+    raise ValueError(
+        "Partitioner returned zero partitions for some axes: %s" %
+        slicing)
+  if sum(p > 1 for p in slicing) > 1:
+    raise ValueError(
+        "Can only slice a variable along one dimension: "
+        "shape: %s, partitioning: %s" % (shape, slicing))
+  return slicing
+
+
+# TODO(slebedev): could be inlined, but
+# `_VariableStore._get_partitioned_variable` is too complex even
+# without this logic.
+def _get_slice_dim_and_num_slices(slicing):
+  """Get slicing dimension and number of slices from the partitioner output."""
+  for slice_dim, num_slices in enumerate(slicing):
+    if num_slices > 1:
+      break
+  else:
+    # Degenerate case: no partitioning applied.
     slice_dim = 0
-  return slice_dim, slice_shape
+    num_slices = 1
+  return slice_dim, num_slices
+
+
+def _iter_slices(full_shape, num_slices, slice_dim):
+  """Slices a given a shape along the specified dimension."""
+  num_slices_with_excess = full_shape[slice_dim] % num_slices
+  offset = [0] * len(full_shape)
+  min_slice_len = full_shape[slice_dim] // num_slices
+  for i in xrange(num_slices):
+    shape = full_shape[:]
+    shape[slice_dim] = min_slice_len + bool(i < num_slices_with_excess)
+    yield offset[:], shape
+    offset[slice_dim] += shape[slice_dim]
+
+
+def _get_trainable_value(synchronization, trainable):
+  """Computes the trainable value based on the given arguments."""
+  if synchronization == VariableSynchronization.ON_READ:
+    if trainable:
+      raise ValueError(
+          "Synchronization value can be set to "
+          "VariableSynchronization.ON_READ only for non-trainable variables. "
+          "You have specified trainable=True and "
+          "synchronization=VariableSynchronization.ON_READ.")
+    else:
+      # Set trainable to be false when variable is to be synced on read.
+      trainable = False
+  elif trainable is None:
+    trainable = True
+  return trainable
 
 
 def default_variable_creator(next_creator=None, **kwargs):
   """Default variable creator."""
   assert next_creator is None
   initial_value = kwargs.get("initial_value", None)
-  trainable = kwargs.get("trainable", True)
+  trainable = kwargs.get("trainable", None)
   collections = kwargs.get("collections", None)
   validate_shape = kwargs.get("validate_shape", True)
   caching_device = kwargs.get("caching_device", None)
   name = kwargs.get("name", None)
+  variable_def = kwargs.get("variable_def", None)
   dtype = kwargs.get("dtype", None)
+  expected_shape = kwargs.get("expected_shape", None)
+  import_scope = kwargs.get("import_scope", None)
   constraint = kwargs.get("constraint", None)
   use_resource = kwargs.get("use_resource", None)
+
+  # Set trainable value based on synchronization value.
+  synchronization = kwargs.get("synchronization", VariableSynchronization.AUTO)
+  trainable = _get_trainable_value(
+      synchronization=synchronization, trainable=trainable)
+
   if use_resource is None:
     use_resource = get_variable_scope().use_resource
-  if use_resource or (use_resource is None and context.executing_eagerly()):
+  if use_resource is None:
+    use_resource = _DEFAULT_USE_RESOURCE
+  use_resource = use_resource or context.executing_eagerly()
+  if use_resource:
     return resource_variable_ops.ResourceVariable(
         initial_value=initial_value, trainable=trainable,
         collections=collections, validate_shape=validate_shape,
         caching_device=caching_device, name=name, dtype=dtype,
-        constraint=constraint)
-  elif not use_resource and context.executing_eagerly():
-    raise RuntimeError(
-        "VariableScope should use resource variable when eager execution is"
-        " enabled, but use_resource is False."
-    )
+        constraint=constraint, variable_def=variable_def,
+        import_scope=import_scope)
   else:
-    return variables.Variable(
+    return variables.RefVariable(
         initial_value=initial_value, trainable=trainable,
         collections=collections, validate_shape=validate_shape,
         caching_device=caching_device, name=name, dtype=dtype,
-        constraint=constraint)
+        constraint=constraint, variable_def=variable_def,
+        expected_shape=expected_shape, import_scope=import_scope)
+
+
+def default_variable_creator_v2(next_creator=None, **kwargs):
+  """Default variable creator."""
+  assert next_creator is None
+  initial_value = kwargs.get("initial_value", None)
+  trainable = kwargs.get("trainable", None)
+  validate_shape = kwargs.get("validate_shape", True)
+  caching_device = kwargs.get("caching_device", None)
+  name = kwargs.get("name", None)
+  variable_def = kwargs.get("variable_def", None)
+  dtype = kwargs.get("dtype", None)
+  import_scope = kwargs.get("import_scope", None)
+  constraint = kwargs.get("constraint", None)
+
+  # Set trainable value based on synchronization value.
+  synchronization = kwargs.get("synchronization", VariableSynchronization.AUTO)
+  trainable = _get_trainable_value(
+      synchronization=synchronization, trainable=trainable)
+
+  return resource_variable_ops.ResourceVariable(
+      initial_value=initial_value, trainable=trainable,
+      validate_shape=validate_shape, caching_device=caching_device,
+      name=name, dtype=dtype, constraint=constraint, variable_def=variable_def,
+      import_scope=import_scope)
+
+
+variables.default_variable_creator = default_variable_creator
+variables.default_variable_creator_v2 = default_variable_creator_v2
 
 
 def _make_getter(captured_getter, captured_previous):
@@ -2135,30 +2529,13 @@ def _make_getter(captured_getter, captured_previous):
   return lambda **kwargs: captured_getter(captured_previous, **kwargs)
 
 
-def variable(initial_value=None,
-             trainable=True,
-             collections=None,
-             validate_shape=True,
-             caching_device=None,
-             name=None,
-             dtype=None,
-             constraint=None,
-             use_resource=None):
-  previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
-  for getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
-    previous_getter = _make_getter(getter, previous_getter)
-  return previous_getter(initial_value=initial_value,
-                         trainable=trainable,
-                         collections=collections,
-                         validate_shape=validate_shape,
-                         caching_device=caching_device,
-                         name=name, dtype=dtype,
-                         constraint=constraint,
-                         use_resource=use_resource)
+# TODO(apassos) remove forwarding symbol
+variable = variables.VariableV1
 
 
+@tf_export(v1=["variable_creator_scope"])
 @tf_contextlib.contextmanager
-def variable_creator_scope(variable_creator):
+def variable_creator_scope_v1(variable_creator):
   """Scope which defines a variable creation function to be used by variable().
 
   variable_creator is expected to be a function with the following signature:
@@ -2188,6 +2565,8 @@ def variable_creator_scope(variable_creator):
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        `trainable` defaults to `True` unless `synchronization` is
+        set to `ON_READ`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -2206,6 +2585,85 @@ def variable_creator_scope(variable_creator):
       constraint: A constraint function to be applied to the variable after
         updates by some algorithms.
       use_resource: if True, a ResourceVariable is always created.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
+
+  This set may grow over time, so it's important the signature of creators is as
+  mentioned above.
+
+  Args:
+    variable_creator: the passed creator
+
+  Yields:
+    A scope in which the creator is active
+  """
+  with ops.get_default_graph()._variable_creator_scope(variable_creator):  # pylint: disable=protected-access
+    yield
+
+
+# Note: only the docstrings differ between this and v1.
+@tf_export("variable_creator_scope", v1=[])
+@tf_contextlib.contextmanager
+def variable_creator_scope(variable_creator):
+  """Scope which defines a variable creation function to be used by variable().
+
+  variable_creator is expected to be a function with the following signature:
+
+  ```
+    def variable_creator(next_creator, **kwargs)
+  ```
+
+  The creator is supposed to eventually call the next_creator to create a
+  variable if it does want to create a variable and not call Variable or
+  ResourceVariable directly. This helps make creators composable. A creator may
+  choose to create multiple variables, return already existing variables, or
+  simply register that a variable was created and defer to the next creators in
+  line. Creators can also modify the keyword arguments seen by the next
+  creators.
+
+  Custom getters in the variable scope will eventually resolve down to these
+  custom creators when they do create variables.
+
+  The valid keyword arguments in kwds are:
+      initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
+        which is the initial value for the Variable. The initial value must have
+        a shape specified unless `validate_shape` is set to False. Can also be a
+        callable with no argument that returns the initial value when called. In
+        that case, `dtype` must be specified. (Note that initializer functions
+        from init_ops.py must first be bound to a shape before being used here.)
+      trainable: If `True`, the default, GradientTapes automatically watch
+        uses of this Variable.
+      validate_shape: If `False`, allows the variable to be initialized with a
+        value of unknown shape. If `True`, the default, the shape of
+        `initial_value` must be known.
+      caching_device: Optional device string describing where the Variable
+        should be cached for reading.  Defaults to the Variable's device.
+        If not `None`, caches on another device.  Typical use is to cache
+        on the device where the Ops using the Variable reside, to deduplicate
+        copying through `Switch` and other conditional statements.
+      name: Optional name for the variable. Defaults to `'Variable'` and gets
+        uniquified automatically.
+      dtype: If set, initial_value will be converted to the given type.
+        If `None`, either the datatype will be kept (if `initial_value` is
+        a Tensor), or `convert_to_tensor` will decide.
+      constraint: A constraint function to be applied to the variable after
+        updates by some algorithms.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
 
   This set may grow over time, so it's important the signature of creators is as
   mentioned above.

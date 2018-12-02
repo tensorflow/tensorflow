@@ -45,24 +45,8 @@ from tensorflow.python.util.deprecation import deprecated
 _EPSILON = 1e-7
 
 
-def _safe_div(numerator, denominator, name):
-  """Divides two values, returning 0 if the denominator is <= 0.
-
-  Args:
-    numerator: A real `Tensor`.
-    denominator: A real `Tensor`, with dtype matching `numerator`.
-    name: Name for the returned op.
-
-  Returns:
-    0 if `denominator` <= 0, else `numerator` / `denominator`
-  """
-  return array_ops.where(
-      math_ops.greater(denominator, 0),
-      math_ops.truediv(numerator, denominator),
-      0,
-      name=name)
-
-
+@deprecated(None, 'Please switch to tf.metrics.true_positives. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_true_positives(predictions,
                              labels,
                              weights=None,
@@ -107,6 +91,8 @@ def streaming_true_positives(predictions,
       name=name)
 
 
+@deprecated(None, 'Please switch to tf.metrics.true_negatives. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_true_negatives(predictions,
                              labels,
                              weights=None,
@@ -151,6 +137,8 @@ def streaming_true_negatives(predictions,
       name=name)
 
 
+@deprecated(None, 'Please switch to tf.metrics.false_positives. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_false_positives(predictions,
                               labels,
                               weights=None,
@@ -195,6 +183,8 @@ def streaming_false_positives(predictions,
       name=name)
 
 
+@deprecated(None, 'Please switch to tf.metrics.false_negatives. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_false_negatives(predictions,
                               labels,
                               weights=None,
@@ -238,6 +228,7 @@ def streaming_false_negatives(predictions,
       name=name)
 
 
+@deprecated(None, 'Please switch to tf.metrics.mean')
 def streaming_mean(values,
                    weights=None,
                    metrics_collections=None,
@@ -287,6 +278,7 @@ def streaming_mean(values,
       name=name)
 
 
+@deprecated(None, 'Please switch to tf.metrics.mean_tensor')
 def streaming_mean_tensor(values,
                           weights=None,
                           metrics_collections=None,
@@ -340,9 +332,8 @@ def streaming_mean_tensor(values,
       name=name)
 
 
-@deprecated(None,
-            'Please switch to tf.metrics.accuracy. Note that the order of the '
-            'labels and predictions arguments has been switched.')
+@deprecated(None, 'Please switch to tf.metrics.accuracy. Note that the order '
+            'of the labels and predictions arguments has been switched.')
 def streaming_accuracy(predictions,
                        labels,
                        weights=None,
@@ -400,6 +391,8 @@ def streaming_accuracy(predictions,
       name=name)
 
 
+@deprecated(None, 'Please switch to tf.metrics.precision. Note that the order '
+            'of the labels and predictions arguments has been switched.')
 def streaming_precision(predictions,
                         labels,
                         weights=None,
@@ -456,6 +449,8 @@ def streaming_precision(predictions,
       name=name)
 
 
+@deprecated(None, 'Please switch to tf.metrics.recall. Note that the order '
+            'of the labels and predictions arguments has been switched.')
 def streaming_recall(predictions,
                      labels,
                      weights=None,
@@ -975,8 +970,8 @@ def streaming_curve_points(labels=None,
     return points, update_op
 
 
-@deprecated(None, 'Please switch to tf.metrics.auc. Note that the order of the '
-            'labels and predictions arguments has been switched.')
+@deprecated(None, 'Please switch to tf.metrics.auc. Note that the order of '
+            'the labels and predictions arguments has been switched.')
 def streaming_auc(predictions,
                   labels,
                   weights=None,
@@ -1051,7 +1046,7 @@ def streaming_auc(predictions,
       name=name)
 
 
-def _compute_dynamic_auc(labels, predictions, curve='ROC'):
+def _compute_dynamic_auc(labels, predictions, curve='ROC', weights=None):
   """Computes the apporixmate AUC by a Riemann sum with data-derived thresholds.
 
   Computes the area under the ROC or PR curve using each prediction as a
@@ -1064,13 +1059,22 @@ def _compute_dynamic_auc(labels, predictions, curve='ROC'):
     predictions: A 1-D `Tensor` of predictions whose values are `float64`.
     curve: The name of the curve to be computed, 'ROC' for the Receiving
       Operating Characteristic or 'PR' for the Precision-Recall curve.
+    weights: A 1-D `Tensor` of weights whose values are `float64`.
 
   Returns:
     A scalar `Tensor` containing the area-under-curve value for the input.
   """
-  # Count the total number of positive and negative labels in the input.
+  # Compute the total weight and the total positive weight.
   size = array_ops.size(predictions)
-  total_positive = math_ops.cast(math_ops.reduce_sum(labels), dtypes.int32)
+  if weights is None:
+    weights = array_ops.ones_like(labels, dtype=dtypes.float64)
+  labels, predictions, weights = metrics_impl._remove_squeezable_dimensions(
+      labels, predictions, weights)
+  total_weight = math_ops.reduce_sum(weights)
+  total_positive = math_ops.reduce_sum(
+      array_ops.where(
+          math_ops.greater(labels, 0), weights,
+          array_ops.zeros_like(labels, dtype=dtypes.float64)))
 
   def continue_computing_dynamic_auc():
     """Continues dynamic auc computation, entered if labels are not all equal.
@@ -1078,9 +1082,11 @@ def _compute_dynamic_auc(labels, predictions, curve='ROC'):
     Returns:
       A scalar `Tensor` containing the area-under-curve value.
     """
-    # Sort the predictions descending, and the corresponding labels as well.
+    # Sort the predictions descending, keeping the same order for the
+    # corresponding labels and weights.
     ordered_predictions, indices = nn.top_k(predictions, k=size)
     ordered_labels = array_ops.gather(labels, indices)
+    ordered_weights = array_ops.gather(weights, indices)
 
     # Get the counts of the unique ordered predictions.
     _, _, counts = array_ops.unique_with_counts(ordered_predictions)
@@ -1090,23 +1096,39 @@ def _compute_dynamic_auc(labels, predictions, curve='ROC'):
         array_ops.pad(math_ops.cumsum(counts), paddings=[[1, 0]]), dtypes.int32)
 
     # Count the positives to the left of the split indices.
-    positives = math_ops.cast(
-        array_ops.pad(math_ops.cumsum(ordered_labels), paddings=[[1, 0]]),
-        dtypes.int32)
-    true_positives = array_ops.gather(positives, splits)
+    true_positives = array_ops.gather(
+        array_ops.pad(
+            math_ops.cumsum(
+                array_ops.where(
+                    math_ops.greater(ordered_labels, 0), ordered_weights,
+                    array_ops.zeros_like(ordered_labels,
+                                         dtype=dtypes.float64))),
+            paddings=[[1, 0]]), splits)
     if curve == 'ROC':
-      # Count the negatives to the left of every split point and the total
-      # number of negatives for computing the FPR.
-      false_positives = math_ops.subtract(splits, true_positives)
-      total_negative = size - total_positive
+      # Compute the weight of the negatives to the left of every split point and
+      # the total weight of the negatives number of negatives for computing the
+      # FPR.
+      false_positives = array_ops.gather(
+          array_ops.pad(
+              math_ops.cumsum(
+                  array_ops.where(
+                      math_ops.less(ordered_labels, 1), ordered_weights,
+                      array_ops.zeros_like(
+                          ordered_labels, dtype=dtypes.float64))),
+              paddings=[[1, 0]]), splits)
+      total_negative = total_weight - total_positive
       x_axis_values = math_ops.truediv(false_positives, total_negative)
       y_axis_values = math_ops.truediv(true_positives, total_positive)
     elif curve == 'PR':
       x_axis_values = math_ops.truediv(true_positives, total_positive)
       # For conformance, set precision to 1 when the number of positive
       # classifications is 0.
+      positives = array_ops.gather(
+          array_ops.pad(math_ops.cumsum(ordered_weights), paddings=[[1, 0]]),
+          splits)
       y_axis_values = array_ops.where(
-          math_ops.greater(splits, 0), math_ops.truediv(true_positives, splits),
+          math_ops.greater(splits, 0),
+          math_ops.truediv(true_positives, positives),
           array_ops.ones_like(true_positives, dtype=dtypes.float64))
 
     # Calculate trapezoid areas.
@@ -1120,7 +1142,7 @@ def _compute_dynamic_auc(labels, predictions, curve='ROC'):
   return control_flow_ops.cond(
       math_ops.logical_or(
           math_ops.equal(total_positive, 0), math_ops.equal(
-              total_positive, size)),
+              total_positive, total_weight)),
       true_fn=lambda: array_ops.constant(0, dtypes.float64),
       false_fn=continue_computing_dynamic_auc)
 
@@ -1130,7 +1152,8 @@ def streaming_dynamic_auc(labels,
                           curve='ROC',
                           metrics_collections=(),
                           updates_collections=(),
-                          name=None):
+                          name=None,
+                          weights=None):
   """Computes the apporixmate AUC by a Riemann sum with data-derived thresholds.
 
   USAGE NOTE: this approach requires storing all of the predictions and labels
@@ -1155,6 +1178,8 @@ def streaming_dynamic_auc(labels,
       should be added to.
     name: An optional name for the variable_scope that contains the metric
       variables.
+    weights: A 'Tensor' of non-negative weights whose values are castable to
+      `float64`. Will be flattened into a 1-D `Tensor`.
 
   Returns:
     auc: A scalar `Tensor` containing the current area-under-curve value.
@@ -1182,14 +1207,24 @@ def streaming_dynamic_auc(labels,
         check_ops.assert_less_equal(
             labels,
             array_ops.ones_like(labels, dtypes.int64),
-            message='labels must be 0 or 1, at least one is >1')
+            message='labels must be 0 or 1, at least one is >1'),
     ]):
       preds_accum, update_preds = streaming_concat(
           predictions, name='concat_preds')
       labels_accum, update_labels = streaming_concat(
           labels, name='concat_labels')
-      update_op = control_flow_ops.group(update_labels, update_preds)
-      auc = _compute_dynamic_auc(labels_accum, preds_accum, curve=curve)
+      if weights is not None:
+        weights = array_ops.reshape(
+            math_ops.cast(weights, dtypes.float64), [-1])
+        weights_accum, update_weights = streaming_concat(
+            weights, name='concat_weights')
+        update_op = control_flow_ops.group(update_labels, update_preds,
+                                           update_weights)
+      else:
+        weights_accum = None
+        update_op = control_flow_ops.group(update_labels, update_preds)
+      auc = _compute_dynamic_auc(
+          labels_accum, preds_accum, curve=curve, weights=weights_accum)
       if updates_collections:
         ops.add_to_collections(updates_collections, update_op)
       if metrics_collections:
@@ -1531,7 +1566,7 @@ def precision_recall_at_equal_thresholds(labels,
     result: A named tuple (See PrecisionRecallData within the implementation of
       this function) with properties that are variables of shape
       `[num_thresholds]`. The names of the properties are tp, fp, tn, fn,
-      precision, recall, thresholds.
+      precision, recall, thresholds. Types are same as that of predictions.
     update_op: An op that accumulates values.
 
   Raises:
@@ -1557,7 +1592,6 @@ def precision_recall_at_equal_thresholds(labels,
 
   check_ops.assert_type(labels, dtypes.bool)
 
-  dtype = predictions.dtype
   with variable_scope.variable_scope(name,
                                      'precision_recall_at_equal_thresholds',
                                      (labels, predictions, weights)):
@@ -1579,11 +1613,16 @@ def precision_recall_at_equal_thresholds(labels,
 
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-    # We cast to float to ensure we have 0.0 or 1.0.
-    f_labels = math_ops.cast(labels, dtype)
+    # It's important we aggregate using float64 since we're accumulating a lot
+    # of 1.0's for the true/false labels, and accumulating to float32 will
+    # be quite inaccurate even with just a modest amount of values (~20M).
+    # We use float64 instead of integer primarily since GPU scatter kernel
+    # only support floats.
+    agg_dtype = dtypes.float64
 
-    # Get weighted true/false labels.
-    true_labels = f_labels * weights
+    f_labels = math_ops.cast(labels, agg_dtype)
+    weights = math_ops.cast(weights, agg_dtype)
+    true_labels = f_labels  * weights
     false_labels = (1.0 - f_labels) * weights
 
     # Flatten predictions and labels.
@@ -1625,9 +1664,9 @@ def precision_recall_at_equal_thresholds(labels,
 
     with ops.name_scope('variables'):
       tp_buckets_v = metrics_impl.metric_variable(
-          [num_thresholds], dtype, name='tp_buckets')
+          [num_thresholds], agg_dtype, name='tp_buckets')
       fp_buckets_v = metrics_impl.metric_variable(
-          [num_thresholds], dtype, name='fp_buckets')
+          [num_thresholds], agg_dtype, name='fp_buckets')
 
     with ops.name_scope('update_op'):
       update_tp = state_ops.scatter_add(
@@ -1647,18 +1686,21 @@ def precision_recall_at_equal_thresholds(labels,
     fn = tp[0] - tp
 
     # We use a minimum to prevent division by 0.
-    epsilon = 1e-7
+    epsilon = ops.convert_to_tensor(1e-7, dtype=agg_dtype)
     precision = tp / math_ops.maximum(epsilon, tp + fp)
     recall = tp / math_ops.maximum(epsilon, tp + fn)
 
+    # Convert all tensors back to predictions' dtype (as per function contract).
+    out_dtype = predictions.dtype
+    _convert = lambda tensor: math_ops.cast(tensor, out_dtype)
     result = PrecisionRecallData(
-        tp=tp,
-        fp=fp,
-        tn=tn,
-        fn=fn,
-        precision=precision,
-        recall=recall,
-        thresholds=math_ops.lin_space(0.0, 1.0, num_thresholds))
+        tp=_convert(tp),
+        fp=_convert(fp),
+        tn=_convert(tn),
+        fn=_convert(fn),
+        precision=_convert(precision),
+        recall=_convert(recall),
+        thresholds=_convert(math_ops.lin_space(0.0, 1.0, num_thresholds)))
     update_op = control_flow_ops.group(update_tp, update_fp)
     return result, update_op
 
@@ -1797,9 +1839,9 @@ def streaming_sensitivity_at_specificity(predictions,
       name=name)
 
 
-@deprecated(
-    None, 'Please switch to tf.metrics.precision_at_thresholds. Note that the '
-    'order of the labels and predictions arguments has been switched.')
+@deprecated(None,
+            'Please switch to tf.metrics.precision_at_thresholds. Note that '
+            'the order of the labels and predictions arguments are switched.')
 def streaming_precision_at_thresholds(predictions,
                                       labels,
                                       thresholds,
@@ -2472,7 +2514,8 @@ def sparse_recall_at_top_k(labels,
         name=name_scope)
 
 
-def _compute_recall_at_precision(tp, fp, fn, precision, name):
+def _compute_recall_at_precision(tp, fp, fn, precision, name,
+                                 strict_mode=False):
   """Helper function to compute recall at a given `precision`.
 
   Args:
@@ -2481,17 +2524,42 @@ def _compute_recall_at_precision(tp, fp, fn, precision, name):
     fn: The number of false negatives.
     precision: The precision for which the recall will be calculated.
     name: An optional variable_scope name.
+    strict_mode: If true and there exists a threshold where the precision is
+      no smaller than the target precision, return the corresponding recall at
+      the threshold. Otherwise, return 0. If false, find the threshold where the
+      precision is closest to the target precision and return the recall at the
+      threshold.
 
   Returns:
-    The recall at a the given `precision`.
+    The recall at a given `precision`.
   """
   precisions = math_ops.div(tp, tp + fp + _EPSILON)
-  tf_index = math_ops.argmin(
-      math_ops.abs(precisions - precision), 0, output_type=dtypes.int32)
+  if not strict_mode:
+    tf_index = math_ops.argmin(
+        math_ops.abs(precisions - precision), 0, output_type=dtypes.int32)
+    # Now, we have the implicit threshold, so compute the recall:
+    return math_ops.div(tp[tf_index], tp[tf_index] + fn[tf_index] + _EPSILON,
+                        name)
+  else:
+    # We aim to find the threshold where the precision is minimum but no smaller
+    # than the target precision.
+    # The rationale:
+    # 1. Compute the difference between precisions (by different thresholds) and
+    #   the target precision.
+    # 2. Take the reciprocal of the values by the above step. The intention is
+    #   to make the positive values rank before negative values and also the
+    #   smaller positives rank before larger positives.
+    tf_index = math_ops.argmax(
+        math_ops.div(1.0, precisions - precision + _EPSILON),
+        0,
+        output_type=dtypes.int32)
 
-  # Now, we have the implicit threshold, so compute the recall:
-  return math_ops.div(tp[tf_index], tp[tf_index] + fn[tf_index] + _EPSILON,
-                      name)
+    def _return_good_recall():
+      return math_ops.div(tp[tf_index], tp[tf_index] + fn[tf_index] + _EPSILON,
+                          name)
+
+    return control_flow_ops.cond(precisions[tf_index] >= precision,
+                                 _return_good_recall, lambda: .0)
 
 
 def recall_at_precision(labels,
@@ -2501,7 +2569,8 @@ def recall_at_precision(labels,
                         num_thresholds=200,
                         metrics_collections=None,
                         updates_collections=None,
-                        name=None):
+                        name=None,
+                        strict_mode=False):
   """Computes `recall` at `precision`.
 
   The `recall_at_precision` function creates four local variables,
@@ -2533,6 +2602,11 @@ def recall_at_precision(labels,
     updates_collections: An optional list of collections that `update_op` should
       be added to.
     name: An optional variable_scope name.
+    strict_mode: If true and there exists a threshold where the precision is
+      above the target precision, return the corresponding recall at the
+      threshold. Otherwise, return 0. If false, find the threshold where the
+      precision is closest to the target precision and return the recall at the
+      threshold.
 
   Returns:
     recall: A scalar `Tensor` representing the recall at the given
@@ -2561,10 +2635,11 @@ def recall_at_precision(labels,
         predictions, labels, thresholds, weights)
 
     recall = _compute_recall_at_precision(values['tp'], values['fp'],
-                                          values['fn'], precision, 'value')
+                                          values['fn'], precision, 'value',
+                                          strict_mode)
     update_op = _compute_recall_at_precision(update_ops['tp'], update_ops['fp'],
                                              update_ops['fn'], precision,
-                                             'update_op')
+                                             'update_op', strict_mode)
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, recall)
@@ -2573,6 +2648,121 @@ def recall_at_precision(labels,
       ops.add_to_collections(updates_collections, update_op)
 
     return recall, update_op
+
+
+def precision_at_recall(labels,
+                        predictions,
+                        target_recall,
+                        weights=None,
+                        num_thresholds=200,
+                        metrics_collections=None,
+                        updates_collections=None,
+                        name=None):
+  """Computes the precision at a given recall.
+
+  This function creates variables to track the true positives, false positives,
+  true negatives, and false negatives at a set of thresholds. Among those
+  thresholds where recall is at least `target_recall`, precision is computed
+  at the threshold where recall is closest to `target_recall`.
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  precision at `target_recall`. `update_op` increments the counts of true
+  positives, false positives, true negatives, and false negatives with the
+  weight of each case found in the `predictions` and `labels`.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  For additional information about precision and recall, see
+  http://en.wikipedia.org/wiki/Precision_and_recall
+
+  Args:
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: A floating point `Tensor` of arbitrary shape and whose values
+      are in the range `[0, 1]`.
+    target_recall: A scalar value in range `[0, 1]`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    num_thresholds: The number of thresholds to use for matching the given
+      recall.
+    metrics_collections: An optional list of collections to which `precision`
+      should be added.
+    updates_collections: An optional list of collections to which `update_op`
+      should be added.
+    name: An optional variable_scope name.
+
+  Returns:
+    precision: A scalar `Tensor` representing the precision at the given
+      `target_recall` value.
+    update_op: An operation that increments the variables for tracking the
+      true positives, false positives, true negatives, and false negatives and
+      whose value matches `precision`.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      `target_recall` is not between 0 and 1, or if either `metrics_collections`
+      or `updates_collections` are not a list or tuple.
+    RuntimeError: If eager execution is enabled.
+  """
+  if context.executing_eagerly():
+    raise RuntimeError('tf.metrics.precision_at_recall is not '
+                       'supported when eager execution is enabled.')
+
+  if target_recall < 0 or target_recall > 1:
+    raise ValueError('`target_recall` must be in the range [0, 1].')
+
+  with variable_scope.variable_scope(name, 'precision_at_recall',
+                                     (predictions, labels, weights)):
+    kepsilon = 1e-7  # Used to avoid division by zero.
+    thresholds = [
+        (i + 1) * 1.0 / (num_thresholds - 1) for i in range(num_thresholds - 2)
+    ]
+    thresholds = [0.0 - kepsilon] + thresholds + [1.0 + kepsilon]
+
+    values, update_ops = _streaming_confusion_matrix_at_thresholds(
+        predictions, labels, thresholds, weights)
+
+    def compute_precision_at_recall(tp, fp, fn, name):
+      """Computes the precision at a given recall.
+
+      Args:
+        tp: True positives.
+        fp: False positives.
+        fn: False negatives.
+        name: A name for the operation.
+
+      Returns:
+        The precision at the desired recall.
+      """
+      recalls = math_ops.div(tp, tp + fn + kepsilon)
+
+      # Because recall is monotone decreasing as a function of the threshold,
+      # the smallest recall exceeding target_recall occurs at the largest
+      # threshold where recall >= target_recall.
+      admissible_recalls = math_ops.cast(
+          math_ops.greater_equal(recalls, target_recall), dtypes.int64)
+      tf_index = math_ops.reduce_sum(admissible_recalls) - 1
+
+      # Now we have the threshold at which to compute precision:
+      return math_ops.div(tp[tf_index] + kepsilon,
+                          tp[tf_index] + fp[tf_index] + kepsilon,
+                          name)
+
+    precision_value = compute_precision_at_recall(
+        values['tp'], values['fp'], values['fn'], 'value')
+    update_op = compute_precision_at_recall(
+        update_ops['tp'], update_ops['fp'], update_ops['fn'], 'update_op')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, precision_value)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return precision_value, update_op
 
 
 def streaming_sparse_average_precision_at_k(predictions,
@@ -2706,7 +2896,9 @@ def streaming_sparse_average_precision_at_top_k(top_k_predictions,
       name=name)
 
 
-@deprecated(None, 'Please switch to tf.metrics.mean.')
+@deprecated(None,
+            'Please switch to tf.metrics.mean_absolute_error. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_mean_absolute_error(predictions,
                                   labels,
                                   weights=None,
@@ -2825,7 +3017,9 @@ def streaming_mean_relative_error(predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(None,
+            'Please switch to tf.metrics.mean_squared_error. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_mean_squared_error(predictions,
                                  labels,
                                  weights=None,
@@ -2883,7 +3077,10 @@ def streaming_mean_squared_error(predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(
+    None,
+    'Please switch to tf.metrics.root_mean_squared_error. Note that the '
+    'order of the labels and predictions arguments has been switched.')
 def streaming_root_mean_squared_error(predictions,
                                       labels,
                                       weights=None,
@@ -3023,22 +3220,20 @@ def streaming_covariance(predictions,
 
     # We update the means by Delta=Error*BatchCount/(BatchCount+PrevCount)
     # batch_mean_prediction is E[x_B] in the update equation
-    batch_mean_prediction = _safe_div(
-        math_ops.reduce_sum(weighted_predictions), batch_count,
-        'batch_mean_prediction')
-    delta_mean_prediction = _safe_div(
-        (batch_mean_prediction - mean_prediction) * batch_count, update_count,
-        'delta_mean_prediction')
+    batch_mean_prediction = math_ops.div_no_nan(
+        math_ops.reduce_sum(weighted_predictions), batch_count)
+    delta_mean_prediction = math_ops.div_no_nan(
+        (batch_mean_prediction - mean_prediction) * batch_count, update_count)
     update_mean_prediction = state_ops.assign_add(mean_prediction,
                                                   delta_mean_prediction)
     # prev_mean_prediction is E[x_A] in the update equation
     prev_mean_prediction = update_mean_prediction - delta_mean_prediction
 
     # batch_mean_label is E[y_B] in the update equation
-    batch_mean_label = _safe_div(
-        math_ops.reduce_sum(weighted_labels), batch_count, 'batch_mean_label')
-    delta_mean_label = _safe_div((batch_mean_label - mean_label) * batch_count,
-                                 update_count, 'delta_mean_label')
+    batch_mean_label = math_ops.div_no_nan(
+        math_ops.reduce_sum(weighted_labels), batch_count)
+    delta_mean_label = math_ops.div_no_nan(
+        (batch_mean_label - mean_label) * batch_count, update_count)
     update_mean_label = state_ops.assign_add(mean_label, delta_mean_label)
     # prev_mean_label is E[y_A] in the update equation
     prev_mean_label = update_mean_label - delta_mean_label
@@ -3221,9 +3416,9 @@ def streaming_mean_cosine_distance(predictions,
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(
-      radial_diffs, reduction_indices=[
+      radial_diffs, axis=[
           dim,
-      ], keep_dims=True)
+      ], keepdims=True)
   mean_distance, update_op = streaming_mean(radial_diffs, weights, None, None,
                                             name or 'mean_cosine_distance')
   mean_distance = math_ops.subtract(1.0, mean_distance)
@@ -3533,6 +3728,7 @@ def count(values,
           name=None):
   """Computes the number of examples, or sum of `weights`.
 
+  This metric keeps track of the denominator in `tf.metrics.mean`.
   When evaluating some metric (e.g. mean) on one or more subsets of the data,
   this auxiliary metric is useful for keeping track of how many examples there
   are in each subset.
@@ -3559,15 +3755,21 @@ def count(values,
     ValueError: If `weights` is not `None` and its shape doesn't match `values`,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.executing_eagerly():
+    raise RuntimeError('tf.contrib.metrics.count is not supported when eager '
+                       'execution is enabled.')
 
   with variable_scope.variable_scope(name, 'count', (values, weights)):
+
     count_ = metrics_impl.metric_variable([], dtypes.float32, name='count')
 
     if weights is None:
       num_values = math_ops.to_float(array_ops.size(values))
     else:
-      _, _, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
+      values = math_ops.to_float(values)
+      values, _, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
           predictions=values,
           labels=None,
           weights=weights)
@@ -3576,15 +3778,14 @@ def count(values,
       num_values = math_ops.reduce_sum(weights)
 
     with ops.control_dependencies([values]):
-      update_op = state_ops.assign_add(count_, num_values)
+      update_count_op = state_ops.assign_add(count_, num_values)
 
-    if metrics_collections:
-      ops.add_to_collections(metrics_collections, count_)
+    count_ = metrics_impl._aggregate_variable(count_, metrics_collections)  # pylint: disable=protected-access
 
     if updates_collections:
-      ops.add_to_collections(updates_collections, update_op)
+      ops.add_to_collections(updates_collections, update_count_op)
 
-    return count_, update_op
+    return count_, update_count_op
 
 
 def cohen_kappa(labels,
@@ -3647,7 +3848,7 @@ def cohen_kappa(labels,
     RuntimeError: If eager execution is enabled.
   """
   if context.executing_eagerly():
-    raise RuntimeError('tf.contrib.metrics.cohen_kappa is not supported'
+    raise RuntimeError('tf.contrib.metrics.cohen_kappa is not supported '
                        'when eager execution is enabled.')
   if num_classes < 2:
     raise ValueError('`num_classes` must be >= 2.'
@@ -3694,8 +3895,8 @@ def cohen_kappa(labels,
       po_sum = math_ops.reduce_sum(po)
       total = math_ops.reduce_sum(pe_row)
       pe_sum = math_ops.reduce_sum(
-          metrics_impl._safe_div(  # pylint: disable=protected-access
-              pe_row * pe_col, total, None))
+          math_ops.div_no_nan(
+              math_ops.to_double(pe_row * pe_col), math_ops.to_double(total)))
       po_sum, pe_sum, total = (math_ops.to_double(po_sum),
                                math_ops.to_double(pe_sum),
                                math_ops.to_double(total))

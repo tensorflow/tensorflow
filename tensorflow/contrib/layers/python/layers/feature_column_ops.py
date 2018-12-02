@@ -683,11 +683,12 @@ def parse_feature_columns_from_sequence_examples(
       the serialized proto.
 
   Returns:
-    A tuple consisting of:
-    context_features: a dict mapping `FeatureColumns` from
-      `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
-    sequence_features: a dict mapping `FeatureColumns` from
-      `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+    A tuple consisting of (context_features, sequence_features)
+
+    *  context_features: a dict mapping `FeatureColumns` from
+        `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+    *  sequence_features: a dict mapping `FeatureColumns` from
+        `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
   """
   # Sequence example parsing requires a single (scalar) example.
   try:
@@ -815,7 +816,7 @@ class _Transformer(object):
   """
 
   def __init__(self, columns_to_tensors):
-    """Initializes transfomer.
+    """Initializes transformer.
 
     Args:
       columns_to_tensors: A mapping from feature columns to tensors. 'string'
@@ -908,7 +909,7 @@ def _gather_feature_columns(feature_columns):
 
 
 def _check_forbidden_sequence_columns(feature_columns):
-  """Recursively cecks `feature_columns` for `_FORBIDDEN_SEQUENCE_COLUMNS`."""
+  """Recursively checks `feature_columns` for `_FORBIDDEN_SEQUENCE_COLUMNS`."""
   all_feature_columns = _gather_feature_columns(feature_columns)
   for feature_column in all_feature_columns:
     if isinstance(feature_column, _FORBIDDEN_SEQUENCE_COLUMNS):

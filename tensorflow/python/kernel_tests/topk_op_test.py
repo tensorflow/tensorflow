@@ -27,6 +27,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
@@ -46,9 +47,9 @@ class TopKTest(test.TestCase):
                     sorted=True):  # pylint: disable=redefined-builtin
     np_expected_values = np.array(expected_values)
     np_expected_indices = np.array(expected_indices)
-    with self.test_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       values_op, indices_op = nn_ops.top_k(inputs, k, sorted=sorted)
-      values, indices = sess.run([values_op, indices_op])
+      values, indices = self.evaluate([values_op, indices_op])
 
       self.assertShapeEqual(np_expected_values, values_op)
       self.assertShapeEqual(np_expected_indices, indices_op)
@@ -76,7 +77,7 @@ class TopKTest(test.TestCase):
         for result_index, src_index in np.ndenumerate(indices):
           value = values[result_index]
           expected_value = np_inputs[result_index[0], src_index]
-          np.testing.utils.assert_almost_equal(value, expected_value)
+          np.testing.assert_almost_equal(value, expected_value)
 
         # Check that if two elements are equal, the lower-index element appears
         # first.
@@ -181,29 +182,34 @@ class TopKTest(test.TestCase):
     k = constant_op.constant(3)
     self._validateTopK(inputs, k, [19, 18, 17], [11, 3, 7])
 
+  @test_util.run_deprecated_v1
   def testKNegative(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       k = array_ops.placeholder(dtypes.int32)
       values, _ = nn_ops.top_k(inputs, k)
       with self.assertRaisesOpError("Need k >= 0, got -7"):
         values.eval(feed_dict={k: -7})
 
+  @test_util.run_deprecated_v1
   def testKTooLarge(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
     with self.assertRaisesRegexp(ValueError,
                                  r"must have last dimension >= k = 4"):
       nn_ops.top_k(inputs, 4)
 
+  @test_util.run_deprecated_v1
   def testTopKGradients(self):
-    with self.test_session(use_gpu=True) as sess:
-      inputs = array_ops.placeholder(dtypes.int32, shape=[2, 5])
+    with self.session(use_gpu=True) as sess:
+      inputs = array_ops.placeholder(dtypes.float32, shape=[2, 5])
       values, _ = nn_ops.top_k(inputs, 3)
       grad = sess.run(
           gradients_impl.gradients(
-              values, inputs, grad_ys=[[[1, 2, 3], [4, 5, 6]]]),
-          feed_dict={inputs: [[2, -1, 1000, 3, 4], [1, 5, 2, 4, 3]]})[0]
-    self.assertEqual(grad.tolist(), [[0, 0, 1, 3, 2], [0, 4, 0, 5, 6]])
+              values, inputs, grad_ys=[[[1., 2., 3.], [4., 5., 6.]]]),
+          feed_dict={inputs: [[2., -1., 1000., 3., 4.],
+                              [1., 5., 2., 4., 3.]]})[0]
+    self.assertEqual(
+        grad.tolist(), [[0., 0., 1., 3., 2.], [0., 4., 0., 5., 6.]])
 
 
 class TopKBenchmark(test.Benchmark):

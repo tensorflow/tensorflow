@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import test
@@ -61,13 +62,21 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q")
     self.assertTrue(isinstance(q.accumulator_ref, ops.Tensor))
-    self.assertProtoEquals("""
+    self.assertProtoEquals(
+        """
       name:'Q' op:'SparseConditionalAccumulator'
       attr { key: 'dtype' value { type: DT_FLOAT } }
       attr { key: 'shape' value { shape { unknown_rank: true} } }
       attr { key: 'container' value { s: '' } }
       attr { key: 'shared_name' value { s: '' } }
+      attr { key: 'reduction_type' value {s: 'MEAN'} }
       """, q.accumulator_ref.op.node_def)
+
+  def testConstructorWithInvalidArg(self):
+    with ops.Graph().as_default():
+      with self.assertRaises(ValueError):
+        data_flow_ops.SparseConditionalAccumulator(
+            dtypes_lib.float32, name="Q", reduction_type="Invalid")
 
   def testConstructorWithShape(self):
     with ops.Graph().as_default():
@@ -76,7 +85,8 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
           name="Q",
           shape=tensor_shape.TensorShape([1, 5, 2, 8]))
     self.assertTrue(isinstance(q.accumulator_ref, ops.Tensor))
-    self.assertProtoEquals("""
+    self.assertProtoEquals(
+        """
       name:'Q' op:'SparseConditionalAccumulator'
       attr { key: 'dtype' value { type: DT_FLOAT } }
       attr { key: 'shape' value { shape { dim {size: 1 }
@@ -86,23 +96,27 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       } } }
       attr { key: 'container' value { s: '' } }
       attr { key: 'shared_name' value { s: '' } }
+      attr { key: 'reduction_type' value {s: 'MEAN'} }
       """, q.accumulator_ref.op.node_def)
 
+  @test_util.run_deprecated_v1
   def testAccumulatorSizeEmpty(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q")
       self.assertEqual(q.num_accumulated().eval(), 0)
 
+  @test_util.run_deprecated_v1
   def testAccumulatorSetGlobalStep(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([1]))
       set_global_step_op = q.set_global_step(1)
       set_global_step_op.run()
 
+  @test_util.run_deprecated_v1
   def testAccumulatorApplyGradFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([3, 3]))
       accum_op = q.apply_indexed_slices_grad(
@@ -112,8 +126,9 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       accum_op.run()
       self.assertEqual(q.num_accumulated().eval(), 1)
 
+  @test_util.run_deprecated_v1
   def testDtypes(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dtypes = [dtypes_lib.float16, dtypes_lib.float32, dtypes_lib.float64]
 
       for i in range(len(dtypes)):
@@ -130,12 +145,13 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
           t = _indexedslice(mat_to_add)
           q.apply_indexed_slices_grad(t).run()
 
-        result = sess.run(q.take_indexed_slices_grad(1))
+        result = self.evaluate(q.take_indexed_slices_grad(1))
 
         self._assertEqual_nparray(sum_elems / len(elems), result, sess)
 
+  @test_util.run_deprecated_v1
   def testAccumulatorMultipleAccumulators(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q_f32_0 = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([2, 2]))
       q_f32_1 = data_flow_ops.SparseConditionalAccumulator(
@@ -164,8 +180,9 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
         result = sess.run(accums[i].take_indexed_slices_grad(1))
         self._assertEqual_indexedslices(expected_tensors[i], result)
 
-  def testAccumulatorTakeGrad(self):
-    with self.test_session() as sess:
+  @test_util.run_deprecated_v1
+  def testAccumulatorTakeGradMean(self):
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=())
 
@@ -179,13 +196,41 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       accum_op.run()
 
       takeg_t = q.take_indexed_slices_grad(1)
-      val = sess.run(takeg_t)
-      self.assertAllEqual(val.indices, [0, 1, 2])
-      self.assertAllEqual(val.values, [[0.5, 0.5], [0, 2], [3, 0]])
-      self.assertAllEqual(val.dense_shape, [-1, 2])
+      val = self.evaluate(takeg_t)
+      self.assertAllEqual([0, 1, 2], val.indices)
+      self.assertAllEqual([[0.5, 0.5], [0, 2], [3, 0]], val.values)
+      self.assertAllEqual([-1, 2], val.dense_shape)
 
+  @test_util.run_deprecated_v1
+  def testAccumulatorTakeGradSum(self):
+    with self.cached_session() as sess:
+      q = data_flow_ops.SparseConditionalAccumulator(
+          dtypes_lib.float32, name="Q", shape=(), reduction_type="SUM")
+
+      grad_indexed_slices = ops.IndexedSlices(
+          indices=[0, 1], values=np.array([[1, 0], [0, 2]]).astype(np.float32))
+      accum_op = q.apply_indexed_slices_grad(grad_indexed_slices)
+      accum_op.run()
+      accum_op = q.apply_grad([0, 2],
+                              np.array([[0, 1], [3, 0]]).astype(np.float32),
+                              [3, 2])
+      accum_op.run()
+
+      takeg_t = q.take_indexed_slices_grad(1)
+      val = self.evaluate(takeg_t)
+      self.assertAllEqual([0, 1, 2], val.indices)
+      self.assertAllEqual([[1, 1], [0, 2], [3, 0]], val.values)
+      self.assertAllEqual([-1, 2], val.dense_shape)
+
+  @test_util.run_deprecated_v1
+  def testAccumulatorTakeGradInvalidReductionType(self):
+    with self.assertRaises(ValueError):
+      data_flow_ops.SparseConditionalAccumulator(
+          dtypes_lib.float32, name="Q", shape=(), reduction_type="Invalid")
+
+  @test_util.run_deprecated_v1
   def testAccumulatorRepeatedTakeGrad(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=())
 
@@ -200,7 +245,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       accum_op.run()
 
       takeg_t = q.take_indexed_slices_grad(1)
-      val = sess.run(takeg_t)
+      val = self.evaluate(takeg_t)
       self.assertAllEqual(val.indices, [0, 1, 2])
       self.assertAllEqual(val.values, [[0.5, 0.5], [0, 2], [3, 0]])
       self.assertAllEqual(val.dense_shape, [-1, 2])
@@ -217,13 +262,14 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       accum_op.run()
 
       takeg_t = q.take_indexed_slices_grad(1)
-      val = sess.run(takeg_t)
+      val = self.evaluate(takeg_t)
       self.assertAllEqual(val.indices, [0, 1, 2])
       self.assertAllEqual(val.values, [[5, 5], [0, 20], [30, 0]])
       self.assertAllEqual(val.dense_shape, [-1, 2])
 
-  def testParallelApplyGrad(self):
-    with self.test_session() as sess:
+  @test_util.run_deprecated_v1
+  def testParallelApplyGradMean(self):
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([2, 2]))
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
@@ -234,7 +280,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       takeg_t = q.take_indexed_slices_grad(1)
 
       def apply_indexed_slices_grad(accum_op):
-        sess.run(accum_op)
+        self.evaluate(accum_op)
 
       threads = [
           self.checkedThread(
@@ -246,15 +292,51 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       for thread in threads:
         thread.join()
 
-      val = sess.run(takeg_t)
+      val = self.evaluate(takeg_t)
 
       expected_val = sum(elems) / len(elems)
       self._assertEqual_nparray(
           np.array([[expected_val, 0], [0, expected_val]]).astype(np.float32),
           val, sess)
 
+  @test_util.run_deprecated_v1
+  def testParallelApplyGradSum(self):
+    with self.cached_session() as sess:
+      q = data_flow_ops.SparseConditionalAccumulator(
+          dtypes_lib.float32,
+          name="Q",
+          shape=tensor_shape.TensorShape([2, 2]),
+          reduction_type="SUM")
+      elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
+      accum_ops = []
+      for x in elems:
+        x = _indexedslice(np.array([[x, 0], [0, x]]).astype(np.float32))
+        accum_ops.append(q.apply_indexed_slices_grad(x, local_step=0))
+      takeg_t = q.take_indexed_slices_grad(1)
+
+      def apply_indexed_slices_grad(accum_op):
+        self.evaluate(accum_op)
+
+      threads = [
+          self.checkedThread(target=apply_indexed_slices_grad, args=(o,))
+          for o in accum_ops
+      ]
+
+      for thread in threads:
+        thread.start()
+      for thread in threads:
+        thread.join()
+
+      val = self.evaluate(takeg_t)
+
+      expected_val = 550.0
+      self._assertEqual_nparray(
+          np.array([[expected_val, 0], [0, expected_val]]).astype(np.float32),
+          val, sess)
+
+  @test_util.run_deprecated_v1
   def testParallelTakeGrad(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([2, 2]))
       elems = [e + 1 for e in range(10)]
@@ -269,13 +351,13 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       def apply_indexed_slices_grad():
         for accum_op in accum_ops:
           time.sleep(1.0)
-          sess.run(accum_op)
+          self.evaluate(accum_op)
 
       apply_indexed_slices_grad_thread = self.checkedThread(
           target=apply_indexed_slices_grad)
 
       def take_grad():
-        t = sess.run(takeg_t)
+        t = self.evaluate(takeg_t)
         results.append(t)
 
       threads = [self.checkedThread(target=take_grad) for _ in range(10)]
@@ -292,8 +374,9 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
         self._assertEqual_nparray(
             np.array([[0, 0], [elems[i], 0]]), results[i], sess)
 
+  @test_util.run_deprecated_v1
   def testAccumulatorApplyAndBlockingTake(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([2, 2]))
 
@@ -309,10 +392,10 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
 
       def apply_indexed_slices_grad():
         for accum_op in accum_ops:
-          sess.run(accum_op)
+          self.evaluate(accum_op)
 
       def take_grad():
-        results.append(sess.run(takeg_t))
+        results.append(self.evaluate(takeg_t))
 
       accum_thread = self.checkedThread(target=apply_indexed_slices_grad)
       takeg_thread = self.checkedThread(target=take_grad)
@@ -325,10 +408,11 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
 
   def _blocking_takeg(self, sess, takeg_op):
     with self.assertRaisesOpError("was cancelled"):
-      sess.run(takeg_op)
+      self.evaluate(takeg_op)
 
+  @test_util.run_deprecated_v1
   def testAccumulatorCancel(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32,
           name="Q",
@@ -346,8 +430,9 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
 
       takeg_thread.join()
 
+  @test_util.run_deprecated_v1
   def testNonVectorIndices(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([3, 3]))
 
@@ -358,8 +443,9 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
             grad_indices=[[0, 1], [1, 0]],
             grad_values=np.array([1, 2]).astype(np.float32)).run()
 
+  @test_util.run_deprecated_v1
   def testZeroDimensionValues(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([3, 3]))
 
@@ -368,8 +454,9 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
         q.apply_grad(
             grad_indices=[0], grad_values=np.array(1).astype(np.float32)).run()
 
+  @test_util.run_deprecated_v1
   def testWrongNonEmptyInputValues(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([3, 3]))
 
@@ -379,8 +466,9 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
             grad_indices=[0, 1],
             grad_values=np.array([[0, 1, 1]]).astype(np.float32)).run()
 
+  @test_util.run_deprecated_v1
   def testDynamicNonVectorIndices(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([3, 3]))
 
@@ -398,8 +486,9 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
                      x_values: np.array([1, 2]).astype(np.float32)
                  })
 
+  @test_util.run_deprecated_v1
   def testDynamicWrongNonEmptyInputValues(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([3, 3]))
 
@@ -416,8 +505,9 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
                      x_values: np.array([[0, 1, 1]]).astype(np.float32)
                  })
 
+  @test_util.run_deprecated_v1
   def testEmptyShapeApply(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([]))
 
@@ -441,8 +531,9 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       q.apply_grad(grad_indices=[0], grad_values=[1.0], grad_shape=[]).run()
       q.apply_grad(grad_indices=[0], grad_values=[1.0]).run()
 
+  @test_util.run_deprecated_v1
   def testValidateShape(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=[2, 2, None])
 
@@ -516,7 +607,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
                     np.float32)).run()
 
       # After take grad, constraints on accumulated gradient are removed
-      sess.run(q.take_grad(1))
+      self.evaluate(q.take_grad(1))
 
       # First successful gradient imposes new constraints.
       # Hereafter, shape will additionally constrained to [None,2,2,3]
@@ -536,8 +627,9 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
                 [[[[1, 2], [3, 4]], [[5, 6], [7, 8]]]]).astype(np.float32),
             local_step=1).run()
 
+  @test_util.run_deprecated_v1
   def testReturnShape(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=[2, None])
 
@@ -546,7 +638,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
           grad_values=np.array(
               [[[[1, 2], [3, 4]], [[5, 6], [7, 8]]]]).astype(np.float32)).run()
 
-      val = sess.run(q.take_indexed_slices_grad(1))
+      val = self.evaluate(q.take_indexed_slices_grad(1))
       self.assertAllEqual(val.dense_shape, [2, 2, 2, 2])
 
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -558,11 +650,12 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
               [[[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]]).astype(
                   np.float32)).run()
 
-      val = sess.run(q.take_indexed_slices_grad(1))
+      val = self.evaluate(q.take_indexed_slices_grad(1))
       self.assertAllEqual(val.dense_shape, [-1, 2, 2, 3])
 
+  @test_util.run_deprecated_v1
   def testApplyGradtInt32IndicesAndShape(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([3, 3]))
       accum_op = q.apply_grad(
@@ -584,7 +677,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       accum_op.run()
       self.assertEqual(q.num_accumulated().eval(), 2)
 
-      val = sess.run(q.take_indexed_slices_grad(1))
+      val = self.evaluate(q.take_indexed_slices_grad(1))
       self.assertAllEqual(val.indices, [0, 2])
       self.assertAllEqual(val.values, [[0, 0, 1], [3, 0, 4]])
       self.assertAllEqual(val.dense_shape, [3, 3])

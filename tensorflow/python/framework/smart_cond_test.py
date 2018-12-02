@@ -33,9 +33,9 @@ def raise_exception():
   raise RuntimeError("did not expect to be called")
 
 
-@test_util.with_c_api
 class SmartCondTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testTrue(self):
     with ops.Graph().as_default():
       with session.Session():
@@ -45,6 +45,7 @@ class SmartCondTest(test_util.TensorFlowTestCase):
                                   lambda: math_ops.multiply(y, 5))
         self.assertEqual(z.eval(), 32)
 
+  @test_util.run_deprecated_v1
   def testFalse(self):
     with ops.Graph().as_default():
       with session.Session():
@@ -64,9 +65,6 @@ class SmartCondTest(test_util.TensorFlowTestCase):
         self.assertEqual(y.eval(feed_dict={x: -1}), 2)
 
   def testEval(self):
-    # Constant expression evaluation only works with the C API enabled.
-    if not ops._USE_C_API: return
-
     with ops.Graph().as_default():
       with session.Session():
         x = constant_op.constant(1)
@@ -101,9 +99,9 @@ class SmartCondTest(test_util.TensorFlowTestCase):
           smart_cond.smart_cond(True, lambda: x)
 
 
-@test_util.with_c_api
 class SmartCaseTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testTrue(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     conditions = [(True, lambda: constant_op.constant(1)),
@@ -114,9 +112,10 @@ class SmartCaseTest(test_util.TensorFlowTestCase):
                               exclusive=True)
     with session.Session() as sess:
       # No feed_dict necessary
-      self.assertEqual(sess.run(y), 1)
-      self.assertEqual(sess.run(z), 1)
+      self.assertEqual(self.evaluate(y), 1)
+      self.assertEqual(self.evaluate(z), 1)
 
+  @test_util.run_deprecated_v1
   def testFalse(self):
     conditions = [(False, raise_exception)]
     y = smart_cond.smart_case(conditions,
@@ -126,13 +125,11 @@ class SmartCaseTest(test_util.TensorFlowTestCase):
                               default=lambda: constant_op.constant(1),
                               exclusive=True)
     with session.Session() as sess:
-      self.assertEqual(sess.run(y), 1)
-      self.assertEqual(sess.run(z), 1)
+      self.assertEqual(self.evaluate(y), 1)
+      self.assertEqual(self.evaluate(z), 1)
 
+  @test_util.run_deprecated_v1
   def testMix(self):
-    # Constant expression evaluation only works with the C API enabled.
-    if not ops._USE_C_API: return
-
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     y = constant_op.constant(10)
     conditions = [(x > 1, lambda: constant_op.constant(1)),
@@ -145,7 +142,6 @@ class SmartCaseTest(test_util.TensorFlowTestCase):
       self.assertEqual(sess.run(z, feed_dict={x: 0}), 3)
 
 
-@test_util.with_c_api
 class SmartConstantValueTest(test_util.TensorFlowTestCase):
 
   # TODO(skyewm): this is essentially a regression test for

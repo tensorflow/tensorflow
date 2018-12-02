@@ -134,8 +134,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
         meaning the quadratic form `x^H A x` has positive real part for all
         nonzero `x`.  Note that we do not require the operator to be
         self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix\
-            #Extension_for_non_symmetric_matrices
+        https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.  Default is the individual
         operators names joined with `_o_`.
@@ -276,6 +275,3 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     for operator in solve_order_list[1:]:
       solution = operator.solve(solution, adjoint=adjoint)
     return solution
-
-  def _add_to_tensor(self, x):
-    return self.to_dense() + x

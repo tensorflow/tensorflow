@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
-
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -32,6 +31,13 @@ Status InitializableLookupTable::Find(OpKernelContext* ctx, const Tensor& keys,
   return DoFind(keys, values, default_value);
 }
 
+Status InitializableLookupTable::ImportValues(OpKernelContext* ctx,
+                                              const Tensor& keys,
+                                              const Tensor& values) {
+  lookup::KeyValueTensorIterator iter(&keys, &values);
+  return Initialize(iter);
+}
+
 Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
   if (!iter.Valid()) {
     return iter.status();
@@ -44,7 +50,7 @@ Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
     return errors::FailedPrecondition("Table already initialized.");
   }
 
-  TF_RETURN_IF_ERROR(DoPrepare(iter.total_size()));
+  TF_RETURN_IF_ERROR(DoLazyPrepare([&iter]() { return iter.total_size(); }));
   while (iter.Valid()) {
     TF_RETURN_IF_ERROR(DoInsert(iter.keys(), iter.values()));
     iter.Next();

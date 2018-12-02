@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -25,10 +26,11 @@ namespace shape_inference {
 
 namespace {
 
-#define EXPECT_CONTAINS(str, substr)                                 \
-  do {                                                               \
-    string s = (str);                                                \
-    EXPECT_TRUE(StringPiece(s).contains(substr)) << "String: " << s; \
+#define EXPECT_CONTAINS(str, substr)                            \
+  do {                                                          \
+    string s = (str);                                           \
+    EXPECT_TRUE(::tensorflow::str_util::StrContains(s, substr)) \
+        << "String: " << s;                                     \
   } while (false)
 
 static OpShapeInferenceFn* global_fn_ptr = nullptr;
@@ -97,8 +99,8 @@ TEST(ShapeInferenceTestutilTest, Failures) {
   auto error_message = ShapeInferenceTestutil::InferShapes(
                            ShapeInferenceTestOp("NoSuchOp"), "", "")
                            .error_message();
-  EXPECT_TRUE(StringPiece(error_message)
-                  .starts_with("Op type not registered 'NoSuchOp'"));
+  EXPECT_TRUE(
+      str_util::StartsWith(error_message, "Op type not registered 'NoSuchOp'"));
 
   // Wrong shape error messages.
   EXPECT_CONTAINS(RunInferShapes(op, "[1];[2];[1]", "?", fn_copy_input_0),

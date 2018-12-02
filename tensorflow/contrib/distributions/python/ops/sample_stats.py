@@ -25,11 +25,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import spectral_ops
 from tensorflow.python.ops.distributions import util
+from tensorflow.python.ops.signal import fft_ops
 
 __all__ = [
     "auto_correlation",
@@ -133,7 +134,7 @@ def auto_correlation(
     x_len = util.prefer_static_shape(x_rotated)[-1]
 
     # TODO(langmore) Investigate whether this zero padding helps or hurts.  At
-    # the moment is is necessary so that all FFT implementations work.
+    # the moment is necessary so that all FFT implementations work.
     # Zero pad to the next power of 2 greater than 2 * x_len, which equals
     # 2**(ceil(Log_2(2 * x_len))).  Note: Log_2(X) = Log_e(X) / Log_e(2).
     x_len_float64 = math_ops.cast(x_len, np.float64)
@@ -156,11 +157,11 @@ def auto_correlation(
                                        dtype.real_dtype.as_numpy_dtype(0.))
 
     # Autocorrelation is IFFT of power-spectral density (up to some scaling).
-    fft_x_rotated_pad = spectral_ops.fft(x_rotated_pad)
+    fft_x_rotated_pad = fft_ops.fft(x_rotated_pad)
     spectral_density = fft_x_rotated_pad * math_ops.conj(fft_x_rotated_pad)
     # shifted_product is R[m] from above detailed explanation.
     # It is the inner product sum_n X[n] * Conj(X[n - m]).
-    shifted_product = spectral_ops.ifft(spectral_density)
+    shifted_product = fft_ops.ifft(spectral_density)
 
     # Cast back to real-valued if x was real to begin with.
     shifted_product = math_ops.cast(shifted_product, dtype)
@@ -197,7 +198,7 @@ def auto_correlation(
     # Recall R[m] is a sum of N / 2 - m nonzero terms x[n] Conj(x[n - m]).  The
     # other terms were zeros arising only due to zero padding.
     # `denominator = (N / 2 - m)` (defined below) is the proper term to
-    # divide by by to make this an unbiased estimate of the expectation
+    # divide by to make this an unbiased estimate of the expectation
     # E[X[n] Conj(X[n - m])].
     x_len = math_ops.cast(x_len, dtype.real_dtype)
     max_lags = math_ops.cast(max_lags, dtype.real_dtype)
@@ -301,13 +302,16 @@ def percentile(x,
 
   with ops.name_scope(name, [x, q]):
     x = ops.convert_to_tensor(x, name="x")
-    q = math_ops.to_float(q, name="q")
+    # Double is needed here and below, else we get the wrong index if the array
+    # is huge along axis.
+    q = math_ops.to_double(q, name="q")
     _get_static_ndims(q, expect_ndims=0)
 
     if validate_args:
       q = control_flow_ops.with_dependencies([
-          check_ops.assert_rank(q, 0), check_ops.assert_greater_equal(q, 0.),
-          check_ops.assert_less_equal(q, 100.)
+          check_ops.assert_rank(q, 0),
+          check_ops.assert_greater_equal(q, math_ops.to_double(0.)),
+          check_ops.assert_less_equal(q, math_ops.to_double(100.))
       ], q)
 
     if axis is None:
@@ -332,7 +336,7 @@ def percentile(x,
       y = _move_dims_to_flat_end(x, axis, x_ndims)
 
     frac_at_q_or_above = 1. - q / 100.
-    d = math_ops.to_float(array_ops.shape(y)[-1])
+    d = math_ops.to_double(array_ops.shape(y)[-1])
 
     if interpolation == "lower":
       index = math_ops.ceil((d - 1) * frac_at_q_or_above)
@@ -341,12 +345,18 @@ def percentile(x,
     elif interpolation == "nearest":
       index = math_ops.round((d - 1) * frac_at_q_or_above)
 
+    # If d is gigantic, then we would have d == d - 1, even in double... So
+    # let's use max/min to avoid out of bounds errors.
+    d = array_ops.shape(y)[-1]
+    # d - 1 will be distinct from d in int32.
+    index = clip_ops.clip_by_value(math_ops.to_int32(index), 0, d - 1)
+
     # Sort everything, not just the top 'k' entries, which allows multiple calls
     # to sort only once (under the hood) and use CSE.
     sorted_y = _sort_tensor(y)
 
     # result.shape = B
-    result = sorted_y[..., math_ops.to_int32(index)]
+    result = sorted_y[..., index]
     result.set_shape(y.get_shape()[:-1])
 
     if keep_dims:

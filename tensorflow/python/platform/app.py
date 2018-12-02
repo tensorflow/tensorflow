@@ -22,7 +22,6 @@ import errno as _errno
 import sys as _sys
 
 from tensorflow.python.platform import flags
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -109,7 +108,7 @@ def _define_help_flags():
     _define_help_flags_called = True
 
 
-@tf_export('app.run')
+@tf_export(v1=['app.run'])
 def run(main=None, argv=None):
   """Runs the program with an optional 'main' function and 'argv' list."""
 
@@ -125,11 +124,3 @@ def run(main=None, argv=None):
   # to the final program.
   _sys.exit(main(argv))
 
-
-_allowed_symbols = [
-    'run',
-    # Allowed submodule.
-    'flags',
-]
-
-remove_undocumented(__name__, _allowed_symbols)

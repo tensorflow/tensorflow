@@ -19,22 +19,22 @@ from __future__ import division
 from __future__ import print_function
 
 # Activation functions.
-from tensorflow.python.keras._impl.keras.activations import elu
-from tensorflow.python.keras._impl.keras.activations import hard_sigmoid
-from tensorflow.python.keras._impl.keras.activations import linear
-from tensorflow.python.keras._impl.keras.activations import relu
-from tensorflow.python.keras._impl.keras.activations import selu
-from tensorflow.python.keras._impl.keras.activations import sigmoid
-from tensorflow.python.keras._impl.keras.activations import softmax
-from tensorflow.python.keras._impl.keras.activations import softplus
-from tensorflow.python.keras._impl.keras.activations import softsign
-from tensorflow.python.keras._impl.keras.activations import tanh
+from tensorflow.python.keras.activations import elu
+from tensorflow.python.keras.activations import hard_sigmoid
+from tensorflow.python.keras.activations import linear
+from tensorflow.python.keras.activations import relu
+from tensorflow.python.keras.activations import selu
+from tensorflow.python.keras.activations import sigmoid
+from tensorflow.python.keras.activations import softmax
+from tensorflow.python.keras.activations import softplus
+from tensorflow.python.keras.activations import softsign
+from tensorflow.python.keras.activations import tanh
 
 # Auxiliary utils.
 # pylint: disable=g-bad-import-order
-from tensorflow.python.keras._impl.keras.activations import deserialize
-from tensorflow.python.keras._impl.keras.activations import serialize
-from tensorflow.python.keras._impl.keras.activations import get
+from tensorflow.python.keras.activations import deserialize
+from tensorflow.python.keras.activations import serialize
+from tensorflow.python.keras.activations import get
 
 del absolute_import
 del division

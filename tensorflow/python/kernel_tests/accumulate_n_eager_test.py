@@ -43,10 +43,9 @@ class AccumulateNV2EagerTest(test_util.TensorFlowTestCase):
     np.random.seed(12345)
     x = [np.random.random((1, 2, 3, 4, 5)) - 0.5 for _ in range(5)]
     tf_x = ops.convert_n_to_tensor(x)
-    with self.test_session(use_gpu=True):
-      self.assertAllClose(sum(x), math_ops.accumulate_n(tf_x).numpy())
-      self.assertAllClose(x[0] * 5,
-                          math_ops.accumulate_n([tf_x[0]] * 5).numpy())
+    self.assertAllClose(sum(x), math_ops.accumulate_n(tf_x))
+    self.assertAllClose(x[0] * 5,
+                        math_ops.accumulate_n([tf_x[0]] * 5))
 
   def testGrad(self):
     np.random.seed(42)

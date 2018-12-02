@@ -21,17 +21,21 @@ from __future__ import print_function
 import os
 import tempfile
 
-from tensorflow.contrib.eager.python import checkpointable_utils
 from tensorflow.contrib.eager.python import metrics
-from tensorflow.contrib.summary import summary_ops
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 class MetricsTest(test.TestCase):
@@ -92,6 +96,16 @@ class MetricsTest(test.TestCase):
     self.assertEqual(len(events), 2)
     self.assertEqual(events[1].summary.value[0].simple_value, 37.0)
 
+    # Get result without saving the summary.
+    logdir = tempfile.mkdtemp()
+    with summary_ops.create_file_writer(
+        logdir, max_queue=0,
+        name="t0").as_default(), summary_ops.always_record_summaries():
+      m.result(write_summary=False)  # As a side-effect will write summaries.
+      # events_from_logdir(_) asserts the directory exists.
+    events = summary_test_util.events_from_logdir(logdir)
+    self.assertEqual(len(events), 1)
+
   def testWeightedMean(self):
     m = metrics.Mean()
     m([1, 100, 100000], weights=[1, 0.2, 0.3])
@@ -116,6 +130,44 @@ class MetricsTest(test.TestCase):
     self.assertEqual(3.0/8, m.result().numpy())
     self.assertEqual(dtypes.float64, m.dtype)
     self.assertEqual(dtypes.float64, m.result().dtype)
+
+  def testCategoricalAccuracy(self):
+    m = metrics.CategoricalAccuracy()
+    m([[1, 0, 0, 0], [0, 1, 0, 0]],
+      [[0.6, 0.1, 0.25, 0.05], [0.4, 0.05, 0.45, 0.0]])  # 1/2 correct
+    m([[0, 0, 0, 1]], [[0.25, 0.95, 0.25, 0.0]])  # 0/1 correct
+    m([[1, 0, 0, 0], [0, 1, 0, 0]],
+      [[0.99, 0.01, 0.0, 0.0], [0.35, 0.35, 0.3, 0.0]])  # 1/2 correct
+    self.assertEqual(2.0/5, m.result().numpy())
+    self.assertEqual(dtypes.float64, m.dtype)
+    self.assertEqual(dtypes.float64, m.result().dtype)
+
+  def testBinaryAccuracy(self):
+    m = metrics.BinaryAccuracy(threshold=0)
+    # as threshold is 0 hence the predictions are logits
+    m([[0, 0, 0, 0]],
+      [[-4.2, 4.5, 1.2, -1.1]])  # 2/4 correct
+    m([[0, 1]], [[-5.3, 11.65]])  # 2/2 correct
+    m([[0, 1], [1, 1]],
+      [[-5.3, 11.65], [-10.32, 56.38]])  # 3/4 correct
+    self.assertEqual(7.0/10, m.result().numpy())
+    self.assertEqual(dtypes.float64, m.dtype)
+    self.assertEqual(dtypes.float64, m.result().dtype)
+
+  def testSparseAccuracy(self):
+    m = metrics.SparseAccuracy()
+    m([0, 2],
+      [[0.6, 0.1, 0.25, 0.05], [0.4, 0.05, 0.45, 0.0]])  # 2/2 correct
+    m([1], [[0.25, 0.95, 0.25, 0.0]])  # 1/1 correct
+    m([0, 3], [[0.99, 0.01, 0.0, 0.0], [0.35, 0.35, 0.3, 0.0]])  # 1/2 correct
+    self.assertEqual(4.0/5, m.result().numpy())
+    self.assertEqual(dtypes.float64, m.dtype)
+    self.assertEqual(dtypes.float64, m.result().dtype)
+
+  def testAccuracyDifferentShapes(self):
+    m = metrics.Accuracy()
+    with self.assertRaises(errors.InvalidArgumentError):
+      m([[0], [0]], [0, 1])
 
   def testWeightedAccuracy(self):
     m = metrics.Accuracy()
@@ -146,15 +198,13 @@ class MetricsTest(test.TestCase):
     self.assertAllEqual(2.0, m2.result())
 
   def testNamesWithSpaces(self):
-    # Verify two metrics with the same class and name don't
-    # accidentally share state.
     m1 = metrics.Mean("has space")
     m1(0)
     self.assertEqual(m1.name, "has space")
     self.assertEqual(m1.numer.name, "has_space/numer:0")
 
   def testGraphWithPlaceholder(self):
-    with context.graph_mode(), self.test_session() as sess:
+    with context.graph_mode(), self.cached_session() as sess:
       m = metrics.Mean()
       p = array_ops.placeholder(dtypes.float32)
       accumulate = m(p)
@@ -169,7 +219,7 @@ class MetricsTest(test.TestCase):
       sess.run(accumulate, feed_dict={p: 7})
       self.assertAllEqual(m.result().eval(), 7)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGraphAndEagerTensor(self):
     m = metrics.Mean()
     inputs = ops.convert_to_tensor([1.0, 2.0])
@@ -185,9 +235,51 @@ class MetricsTest(test.TestCase):
     value = m.value()
     self.assertEqual(self.evaluate(value), 2.5)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGraphAndEagerTensorGlobalVariables(self):
+    m = metrics.Mean(use_global_variables=True)
+    inputs = ops.convert_to_tensor([1.0, 2.0])
+    accumulate = m(inputs)
+    result = m.result()
+    self.evaluate(m.init_variables())
+    self.evaluate(accumulate)
+    self.assertEqual(self.evaluate(result), 1.5)
+    # Second init resets all the variables.
+    self.evaluate(m.init_variables())
+    inputs = ops.convert_to_tensor([2.0, 3.0])
+    self.evaluate(m(inputs))
+    value = m.value()
+    self.assertEqual(self.evaluate(value), 2.5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGraphAndEagerTensorWhileLoopDoubleCall(self):
+    m = metrics.Mean()
+    init_value = constant_op.constant(1)
+    cond = lambda i: math_ops.less(i, 3)
+    def body(x):
+      with ops.control_dependencies([m(x)]):
+        return math_ops.add(x, 1)
+    accumulate = control_flow_ops.while_loop(cond, body, [init_value])
+
+    result = m.result()
+    self.evaluate(m.init_variables())
+    self.evaluate(accumulate)
+    self.assertEqual(self.evaluate(result), 1.5)
+    # Second init resets all the variables.
+    self.evaluate(m.init_variables())
+    inputs = ops.convert_to_tensor([2.0, 3.0])
+    self.evaluate(m(inputs))
+    if ops.context.executing_eagerly():
+      self.evaluate(control_flow_ops.while_loop(cond, body, [init_value]))
+    else:
+      # Reuse the loop operators in graph mode
+      self.evaluate(accumulate)
+    value = m.value()
+    self.assertEqual(self.evaluate(value), 2.0)
+
   def testTwoMeansGraph(self):
-    # Verify two metrics with the same class and name don't
-    # accidentally share state.
+    # Verify two metrics with the same name in the same graph raises a
+    # ValueError.
     with context.graph_mode():
       m1 = metrics.Mean()
       m1(0)
@@ -195,8 +287,17 @@ class MetricsTest(test.TestCase):
         m2 = metrics.Mean()
         m2(2)
 
+  def testBuildMean(self):
+    # Verify that calling build() on Mean and then calling it won't recreate
+    # variables.
+    m = metrics.Mean()
+    m.build()
+    old_numer = m.numer
+    m(0.0)
+    self.assertTrue(old_numer is m.numer)
+
   def testMetricsChain(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       m1 = metrics.Mean()
       m2 = metrics.Mean(name="m2")
       update_m2 = m2(3.0)
@@ -208,7 +309,7 @@ class MetricsTest(test.TestCase):
       self.assertAllEqual(m2.result().eval(), 2.0)
       self.assertAllEqual(m1.result().eval(), 1.0)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSaveRestore(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")

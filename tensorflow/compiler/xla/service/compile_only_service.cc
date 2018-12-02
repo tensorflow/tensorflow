@@ -19,17 +19,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/computation_tracker.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -37,7 +36,7 @@ limitations under the License.
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<CompileOnlyService>>
-CompileOnlyService::NewService(perftools::gputools::Platform* platform) {
+CompileOnlyService::NewService(se::Platform* platform) {
   ServiceOptions default_options;
   default_options.set_platform(platform);
   return NewService(default_options);
@@ -45,7 +44,7 @@ CompileOnlyService::NewService(perftools::gputools::Platform* platform) {
 
 /* static */ StatusOr<std::unique_ptr<CompileOnlyService>>
 CompileOnlyService::NewService(const ServiceOptions& options) {
-  perftools::gputools::Platform* platform = options.platform();
+  se::Platform* platform = options.platform();
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
@@ -63,54 +62,51 @@ CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
-    const tensorflow::gtl::ArraySlice<AotComputationInstance> computations,
-    const AotCompilationOptions& options) {
+    const absl::Span<const AotXlaComputationInstance> computations,
+    const AotCompilationOptions& options,
+    std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<std::unique_ptr<HloModule>> hlo_modules;
-  for (const AotComputationInstance& instance : computations) {
-    TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
-                        computation_tracker_.Resolve(instance.computation));
-    VersionedComputationHandle versioned_handle =
-        user_computation->GetVersionedHandle();
+  for (const AotXlaComputationInstance& instance : computations) {
+    TF_RET_CHECK(instance.computation.has_host_program_shape());
 
     const DebugOptions& debug_options = options.debug_options();
 
-    // Dump computation proto state if flag is set.
+    // Dump computation proto if flag is set.
     const string& directory_path = debug_options.xla_dump_computations_to();
     if (!directory_path.empty()) {
-      TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<SessionModule> session_module,
-          computation_tracker_.SnapshotComputation(versioned_handle.handle));
-      string filename = tensorflow::strings::StrCat(
-          "computation_", versioned_handle.handle.handle(), "__",
-          session_module->entry().name(), "__version_",
-          versioned_handle.version);
+      HloSnapshot hlo_snapshot;
+      *hlo_snapshot.mutable_hlo()->mutable_hlo_module() = instance.computation;
+      string filename =
+          absl::StrCat("computation_", instance.computation.id(), "__",
+                       instance.computation.entry_computation_name());
       const string& per_host_path = tensorflow::io::JoinPath(
           directory_path, tensorflow::port::Hostname());
 
-      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(per_host_path, filename,
-                                                     *session_module));
+      TF_RETURN_IF_ERROR(
+          Executable::DumpToDirectory(per_host_path, filename, hlo_snapshot));
     }
-
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<const ProgramShape> program_shape,
-        user_computation->ComputeProgramShape(versioned_handle.version));
 
     ExecutionOptions execution_options;
     *execution_options.mutable_debug_options() = debug_options;
+    *execution_options.mutable_shape_with_output_layout() =
+        instance.result_layout->ToProto();
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(*program_shape, instance.argument_layouts,
-                           &execution_options, *user_computation));
+        CreateModuleConfig(
+            ProgramShape(instance.computation.host_program_shape()),
+            instance.argument_layouts, &execution_options));
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                        computation_tracker_.BuildHloModule(
-                            versioned_handle, *module_config,
-                            /*include_unreachable_instructions=*/true));
-    TF_RETURN_IF_ERROR(MaybeDumpHloModule(*hlo_module));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> hlo_module,
+        HloModule::CreateFromProto(instance.computation, *module_config));
+    TF_RETURN_IF_ERROR(MaybeDumpUnoptimizedHloModule(*hlo_module));
     hlo_modules.push_back(std::move(hlo_module));
   }
 
-  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options);
+  return compiler_->CompileAheadOfTime(
+      absl::make_unique<HloModuleGroup>(hlo_modules[0]->name(),
+                                        absl::MakeSpan(hlo_modules)),
+      options, metadata);
 }
 
 }  // namespace xla

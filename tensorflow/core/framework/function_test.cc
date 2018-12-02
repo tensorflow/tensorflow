@@ -495,8 +495,25 @@ MySelect(x:float) -> (z:float) {
   EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
+TEST(TFunc, IntsOnDeviceArgNotSet) {
+  auto fdef = test::function::XTimesTwoInt32();
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
+  EXPECT_EQ(5, result.nodes.size());
+  EXPECT_EQ("_Retval", result.nodes[4].op());
+}
+
+TEST(TFunc, IntsOnDeviceArgSet) {
+  auto fdef = test::function::XTimesTwoInt32();
+  (*fdef.mutable_attr())["experimental_ints_on_device"].set_b(true);
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
+  EXPECT_EQ(5, result.nodes.size());
+  EXPECT_EQ("_DeviceRetval", result.nodes[4].op());
+}
+
 static void HasError(const Status& s, const string& substr) {
-  EXPECT_TRUE(StringPiece(s.ToString()).contains(substr))
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
       << ">>" << s << "<<, expected substring >>" << substr << "<<";
 }
 
@@ -1196,6 +1213,17 @@ TEST(FunctionLibraryDefinitionTest, ToProto) {
   EXPECT_EQ(f3->DebugString(), f4->DebugString());
 }
 
+TEST(FunctionLibraryDefinitionTest, FunctionNames) {
+  FunctionDefLibrary proto;
+  *proto.add_function() = test::function::XTimesTwo();
+  *proto.add_function() = test::function::WXPlusB();
+  const FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
+
+  const std::vector<string> function_names = lib_def.ListFunctionNames();
+  const std::vector<string> expected = {"XTimesTwo", "WXPlusB"};
+  EXPECT_EQ(function_names, expected);
+}
+
 TEST(FunctionLibraryDefinitionTest, GetAttr_FuncNoAttr) {
   FunctionDefLibrary proto;
   *proto.add_function() = test::function::XTimesTwo();
@@ -1274,6 +1302,79 @@ TEST(FunctionLibraryDefinitionTest, GetAttr_Gradient) {
   AddNodeAttr(FunctionLibraryDefinition::kFuncAttr, nal, &ndef);
   TF_EXPECT_OK(lib.GetAttr(ndef, "annotation", &annotation));
   EXPECT_EQ(annotation, false);  // WXPlusB has no custom gradient.
+}
+
+TEST(FunctionLibraryDefinitionTest, ReachableDefinitions) {
+  using ::tensorflow::test::function::GDef;
+  using ::tensorflow::test::function::NDef;
+  using FDH = ::tensorflow::FunctionDefHelper;
+
+  const auto make_simple_fdef = [](const string& name,
+                                   const string& interface_name) {
+    auto func_def = FDH::Create(
+        name, {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
+        {{{"output"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+        /* Mapping between function returns and function node outputs. */
+        {{"z", "output:z:0"}});
+
+    if (!interface_name.empty()) {
+      auto* attr = func_def.mutable_attr();
+      (*attr)["experimental_api_implements"].set_s(interface_name);
+    }
+    return func_def;
+  };
+
+  FunctionDef func_1 = make_simple_fdef("Func1", "");
+  FunctionDef func_2 = make_simple_fdef("Func2", "");
+  FunctionDef func_3 = make_simple_fdef("Func3", "");
+  FunctionDef func_4 = make_simple_fdef("Func4", "api_1");
+  FunctionDef func_5 = make_simple_fdef("Func5", "api_1");
+  FunctionDef func_6 = make_simple_fdef("Func6", "api_2");
+
+  FunctionDef func_2_grad = make_simple_fdef("Func2_grad", "");
+
+  constexpr char kDevice[] = "/device:CPU:0";
+
+  GraphDef graph = GDef(
+      {
+          NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+          NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+          NDef("x", "Func1", {"a", "b"}, {{"T", DT_FLOAT}}, kDevice),
+          NDef("y", "PartitionedCall", {"a", "b"},
+               {{"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+                {"Tout", DataTypeSlice{DT_FLOAT}},
+                {"f", FDH::FunctionRef("Func2", {{"T", DT_FLOAT}})}},
+               kDevice),
+          NDef("z", "Func4", {"a", "b"}, {{"T", DT_FLOAT}}, kDevice),
+      },
+      // FunctionLib
+      {func_1, func_2, func_3, func_2_grad, func_4, func_5, func_6});
+
+  // Register custom function gradient after the graph was constructed.
+  GradientDef* func3_grad_def = graph.mutable_library()->add_gradient();
+  func3_grad_def->set_function_name("Func2");
+  func3_grad_def->set_gradient_func("Func2_grad");
+
+  FunctionLibraryDefinition flib(OpRegistry::Global(), graph.library());
+
+  // - 'Func1' is called directly from the graph.
+  // - 'Func2' is called indirectly via a PartitionedCall attribute, and it also
+  //   has a custom gradient ('Func2_grad') that must remain in the library.
+  // - 'Func3' is unreachable and has to be removed from the library
+  // - 'Func4' is called directly from the graph
+  // - 'Func5' is not called directly, but it implements same interface as Func4
+  //   which is directly called.
+  // - 'Func6' is not called directly, and the interface it implements has not
+  //   not been called by another nodes in the graph.
+  FunctionLibraryDefinition reachable_flib = flib.ReachableDefinitions(graph);
+  EXPECT_EQ(reachable_flib.num_functions(), 5);
+  EXPECT_TRUE(reachable_flib.Contains("Func1"));
+  EXPECT_TRUE(reachable_flib.Contains("Func2"));
+  EXPECT_TRUE(reachable_flib.Contains("Func2_grad"));
+  EXPECT_FALSE(reachable_flib.Contains("Func3"));
+  EXPECT_TRUE(reachable_flib.Contains("Func4"));
+  EXPECT_TRUE(reachable_flib.Contains("Func5"));
+  EXPECT_FALSE(reachable_flib.Contains("Func6"));
 }
 
 // TODO(skyewm): this could be more thorough

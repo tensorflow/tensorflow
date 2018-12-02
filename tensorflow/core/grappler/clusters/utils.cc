@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/mem.h"
 
@@ -54,7 +55,7 @@ DeviceProperties GetLocalCPUInfo() {
 
   int64 free_mem = port::AvailableRam();
   if (free_mem < INT64_MAX) {
-    device.set_memory_size(free_mem * 1024);
+    device.set_memory_size(free_mem);
   }
 
   (*device.mutable_environment())["cpu_instruction_set"] =
@@ -69,13 +70,14 @@ DeviceProperties GetLocalCPUInfo() {
   return device;
 }
 
-DeviceProperties GetLocalGPUInfo(CudaGpuId cuda_gpu_id) {
+DeviceProperties GetLocalGPUInfo(PlatformGpuId platform_gpu_id) {
   DeviceProperties device;
   device.set_type("GPU");
 
 #if GOOGLE_CUDA
   cudaDeviceProp properties;
-  cudaError_t error = cudaGetDeviceProperties(&properties, cuda_gpu_id.value());
+  cudaError_t error =
+      cudaGetDeviceProperties(&properties, platform_gpu_id.value());
   if (error != cudaSuccess) {
     device.set_type("UNKNOWN");
     LOG(ERROR) << "Failed to get device properties, error code: " << error;
@@ -121,15 +123,15 @@ DeviceProperties GetDeviceInfo(const DeviceNameUtils::ParsedName& device) {
   } else if (device.type == "GPU") {
     if (device.has_id) {
       TfGpuId tf_gpu_id(device.id);
-      CudaGpuId cuda_gpu_id;
-      Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
+      PlatformGpuId platform_gpu_id;
+      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
       if (!s.ok()) {
         LOG(ERROR) << s;
         return unknown;
       }
-      return GetLocalGPUInfo(cuda_gpu_id);
+      return GetLocalGPUInfo(platform_gpu_id);
     } else {
-      return GetLocalGPUInfo(CudaGpuId(0));
+      return GetLocalGPUInfo(PlatformGpuId(0));
     }
   }
   return unknown;

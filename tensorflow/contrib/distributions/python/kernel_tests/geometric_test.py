@@ -34,7 +34,7 @@ from tensorflow.python.platform import test
 class GeometricTest(test.TestCase):
 
   def testGeometricShape(self):
-    with self.test_session():
+    with self.cached_session():
       probs = constant_op.constant([.1] * 5)
       geom = geometric.Geometric(probs=probs)
 
@@ -45,19 +45,19 @@ class GeometricTest(test.TestCase):
 
   def testInvalidP(self):
     invalid_ps = [-.01, -0.01, -2.]
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Condition x >= 0"):
         geom = geometric.Geometric(probs=invalid_ps, validate_args=True)
         geom.probs.eval()
 
     invalid_ps = [1.1, 3., 5.]
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Condition x <= y"):
         geom = geometric.Geometric(probs=invalid_ps, validate_args=True)
         geom.probs.eval()
 
   def testGeomLogPmf(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       probs = constant_op.constant([.2] * batch_size)
       probs_v = .2
@@ -73,7 +73,7 @@ class GeometricTest(test.TestCase):
       self.assertAllClose(np.exp(expected_log_prob), pmf.eval())
 
   def testGeometricLogPmf_validate_args(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       probs = constant_op.constant([.9] * batch_size)
       x = array_ops.placeholder(dtypes.float32, shape=[6])
@@ -95,7 +95,7 @@ class GeometricTest(test.TestCase):
       self.assertEqual([6,], pmf.get_shape())
 
   def testGeometricLogPmfMultidimensional(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       probs = constant_op.constant([[.2, .3, .5]] * batch_size)
       probs_v = np.array([.2, .3, .5])
@@ -113,7 +113,7 @@ class GeometricTest(test.TestCase):
       self.assertAllClose(np.exp(expected_log_prob), pmf_values)
 
   def testGeometricCDF(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       probs = constant_op.constant([[.2, .4, .5]] * batch_size)
       probs_v = np.array([.2, .4, .5])
@@ -127,7 +127,7 @@ class GeometricTest(test.TestCase):
       self.assertAllClose(expected_cdf, cdf.eval())
 
   def testGeometricEntropy(self):
-    with self.test_session():
+    with self.cached_session():
       probs_v = np.array([.1, .3, .25], dtype=np.float32)
       geom = geometric.Geometric(probs=probs_v)
       expected_entropy = stats.geom.entropy(probs_v, loc=-1)
@@ -135,7 +135,7 @@ class GeometricTest(test.TestCase):
       self.assertAllClose(expected_entropy, geom.entropy().eval())
 
   def testGeometricMean(self):
-    with self.test_session():
+    with self.cached_session():
       probs_v = np.array([.1, .3, .25])
       geom = geometric.Geometric(probs=probs_v)
       expected_means = stats.geom.mean(probs_v, loc=-1)
@@ -143,7 +143,7 @@ class GeometricTest(test.TestCase):
       self.assertAllClose(expected_means, geom.mean().eval())
 
   def testGeometricVariance(self):
-    with self.test_session():
+    with self.cached_session():
       probs_v = np.array([.1, .3, .25])
       geom = geometric.Geometric(probs=probs_v)
       expected_vars = stats.geom.var(probs_v, loc=-1)
@@ -151,7 +151,7 @@ class GeometricTest(test.TestCase):
       self.assertAllClose(expected_vars, geom.variance().eval())
 
   def testGeometricStddev(self):
-    with self.test_session():
+    with self.cached_session():
       probs_v = np.array([.1, .3, .25])
       geom = geometric.Geometric(probs=probs_v)
       expected_stddevs = stats.geom.std(probs_v, loc=-1)
@@ -159,14 +159,14 @@ class GeometricTest(test.TestCase):
       self.assertAllClose(geom.stddev().eval(), expected_stddevs)
 
   def testGeometricMode(self):
-    with self.test_session():
+    with self.cached_session():
       probs_v = np.array([.1, .3, .25])
       geom = geometric.Geometric(probs=probs_v)
       self.assertEqual([3,], geom.mode().get_shape())
       self.assertAllClose([0.] * 3, geom.mode().eval())
 
   def testGeometricSample(self):
-    with self.test_session():
+    with self.cached_session():
       probs_v = [.3, .9]
       probs = constant_op.constant(probs_v)
       n = constant_op.constant(100000)
@@ -186,7 +186,7 @@ class GeometricTest(test.TestCase):
                             rtol=.02)
 
   def testGeometricSampleMultiDimensional(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 2
       probs_v = [.3, .9]
       probs = constant_op.constant([probs_v] * batch_size)
@@ -215,7 +215,7 @@ class GeometricTest(test.TestCase):
                             rtol=.02)
 
   def testGeometricAtBoundary(self):
-    with self.test_session():
+    with self.cached_session():
       geom = geometric.Geometric(probs=1., validate_args=True)
 
       x = np.array([0., 2., 3., 4., 5., 6., 7.], dtype=np.float32)

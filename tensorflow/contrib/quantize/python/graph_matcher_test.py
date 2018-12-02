@@ -22,6 +22,7 @@ from tensorflow.contrib.framework.python import ops as contrib_ops
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import graph_matcher
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -162,6 +163,44 @@ class GraphMatcherTest(test_util.TensorFlowTestCase):
       self.assertEqual(match_result.get_tensor(reshape_pattern), reshape)
       self.assertEqual(match_result.get_tensor('slice'), slicing)
       self.assertEqual(match_result.get_op('transpose'), transpose.op)
+
+  def test_ordered_pattern(self):
+    #   +            +
+    #  / \          / \
+    # x   y  and   y   x  should both match when ordered inputs is False.
+    # Even when x and y are different operations.
+    g = ops.Graph()
+    with g.as_default():
+      x = array_ops.placeholder(dtypes.float32, shape=[], name='x')
+      y = constant_op.constant(1.0, dtype=dtypes.float32)
+      plus = x + y
+
+    add_pattern_a = graph_matcher.OpTypePattern(
+        'Add', inputs=['Const', 'Placeholder'], ordered_inputs=False)
+    add_pattern_b = graph_matcher.OpTypePattern(
+        'Add', inputs=['Placeholder', 'Const'], ordered_inputs=False)
+    add_pattern_fail = graph_matcher.OpTypePattern(
+        'Add', inputs=['Const', 'Placeholder'], ordered_inputs=True)
+    # Both add_pattern_a and add_pattern_b should match the graph since
+    # ordered_input was set False.
+    matcher_a = graph_matcher.GraphMatcher(add_pattern_a)
+    self.assertEqual([
+        match_result.get_op(add_pattern_a)
+        for match_result in matcher_a.match_graph(g)
+    ], [plus.op])
+    matcher_b = graph_matcher.GraphMatcher(add_pattern_b)
+    self.assertEqual([
+        match_result.get_op(add_pattern_b)
+        for match_result in matcher_b.match_graph(g)
+    ], [plus.op])
+    # But if ordered_inputs is True, the inputs list match should fail if not
+    # specified in the right order.
+    matcher_fail = graph_matcher.GraphMatcher(add_pattern_fail)
+    self.assertEqual(
+        len([
+            match_result.get_op(add_pattern_fail)
+            for match_result in matcher_fail.match_graph(g)
+        ]), 0)
 
 
 if __name__ == '__main__':

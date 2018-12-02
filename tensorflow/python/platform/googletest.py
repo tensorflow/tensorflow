@@ -36,6 +36,7 @@ from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 Benchmark = benchmark.TensorFlowBenchmark  # pylint: disable=invalid-name
@@ -103,10 +104,13 @@ def GetTempDir():
   """Return a temporary directory for tests to use."""
   global _googletest_temp_dir
   if not _googletest_temp_dir:
-    first_frame = tf_inspect.stack()[-1][0]
-    temp_dir = os.path.join(tempfile.gettempdir(),
-                            os.path.basename(tf_inspect.getfile(first_frame)))
-    temp_dir = tempfile.mkdtemp(prefix=temp_dir.rstrip('.py'))
+    if os.environ.get('TEST_TMPDIR'):
+      temp_dir = tempfile.mkdtemp(prefix=os.environ['TEST_TMPDIR'])
+    else:
+      first_frame = tf_inspect.stack()[-1][0]
+      temp_dir = os.path.join(tempfile.gettempdir(),
+                              os.path.basename(tf_inspect.getfile(first_frame)))
+      temp_dir = tempfile.mkdtemp(prefix=temp_dir.rstrip('.py'))
 
     def delete_temp_dir(dirname=temp_dir):
       try:
@@ -138,6 +142,7 @@ def StatefulSessionAvailable():
   return False
 
 
+@tf_export('test.StubOutForTesting')
 class StubOutForTesting(object):
   """Support class for stubbing methods out for unit testing.
 

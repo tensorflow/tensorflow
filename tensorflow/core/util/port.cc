@@ -31,19 +31,17 @@ bool IsGoogleCudaEnabled() {
 
 bool CudaSupportsHalfMatMulAndConv() {
 #if GOOGLE_CUDA
-  // NOTE: We check compile-time and not runtime, since the check for
-  // whether we include the fp16 kernels or not is compile-time.
-  return CUDA_VERSION >= 7050;
+  return true;
 #else
   return false;
 #endif
 }
 
 bool IsMklEnabled() {
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
   return true;
 #else
   return false;
-#endif
+#endif  // INTEL_MKL && ENABLE_MKL
 }
 }  // end namespace tensorflow

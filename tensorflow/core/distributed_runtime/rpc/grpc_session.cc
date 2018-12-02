@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 
@@ -51,8 +52,9 @@ Status GrpcSession::Create(const SessionOptions& options,
   }
   if (!master) {
     SharedGrpcChannelPtr master_channel;
-    TF_RETURN_IF_ERROR(NewHostPortGrpcChannel(
-        options.target.substr(kSchemePrefixLength), &master_channel));
+    TF_RETURN_IF_ERROR(
+        NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength),
+                               &options.config.rpc_options(), &master_channel));
     master.reset(NewGrpcMaster(master_channel));
   }
   session->SetRemoteMaster(std::move(master));
@@ -89,6 +91,15 @@ void ReEncodeConsts(GraphDef* gdef) {
   }
 }
 }  // namespace
+
+Status GrpcSession::Handle(string* out_handle) {
+  mutex_lock l(mu_);
+  if (handle_.empty()) {
+    return errors::InvalidArgument("A session is not created yet....");
+  }
+  *out_handle = handle_;
+  return Status::OK();
+}
 
 Status GrpcSession::CreateImpl(CallOptions* call_options,
                                const GraphDef& graph) {
@@ -273,14 +284,9 @@ Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
 Status GrpcSession::RunProto(CallOptions* call_options,
                              MutableRunStepRequestWrapper* req,
                              MutableRunStepResponseWrapper* resp) {
-  {
-    mutex_lock l(mu_);
-    if (handle_.empty()) {
-      return errors::InvalidArgument("A session is not created yet....");
-    }
-
-    req->set_session_handle(handle_);
-  }
+  string handle;
+  TF_RETURN_IF_ERROR(Handle(&handle));
+  req->set_session_handle(handle);
   return master_->RunStep(call_options, req, resp);
 }
 
@@ -292,14 +298,7 @@ Status GrpcSession::PRunSetup(const std::vector<string>& input_names,
   PartialRunSetupRequest req;
   PartialRunSetupResponse resp;
   CallOptions call_options;
-  {
-    mutex_lock l(mu_);
-    if (handle_.empty()) {
-      return errors::InvalidArgument("A session is not created yet....");
-    }
-
-    req.set_session_handle(handle_);
-  }
+  TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
   for (const string& feed : input_names) {
     req.add_feed(feed);
   }
@@ -386,8 +385,9 @@ void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {
 Status GrpcSession::Reset(const SessionOptions& options,
                           const std::vector<string>& containers) {
   SharedGrpcChannelPtr master_channel;
-  TF_RETURN_IF_ERROR(NewHostPortGrpcChannel(
-      options.target.substr(kSchemePrefixLength), &master_channel));
+  TF_RETURN_IF_ERROR(
+      NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength),
+                             /*rpc_options=*/nullptr, &master_channel));
   auto master = NewGrpcMaster(master_channel);
   ResetRequest req;
   for (const auto& c : containers) req.add_container(c);
@@ -399,21 +399,67 @@ Status GrpcSession::Reset(const SessionOptions& options,
   return ret;
 }
 
+Status GrpcSession::MakeCallable(const CallableOptions& callable_options,
+                                 CallableHandle* out_handle) {
+  MakeCallableRequest req;
+  TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
+  *req.mutable_options() = callable_options;
+  MakeCallableResponse resp;
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  TF_RETURN_IF_ERROR(master_->MakeCallable(&call_options, &req, &resp));
+  *out_handle = resp.handle();
+  return Status::OK();
+}
+
+Status GrpcSession::RunCallable(CallableHandle handle,
+                                const std::vector<Tensor>& feed_tensors,
+                                std::vector<Tensor>* fetch_tensors,
+                                RunMetadata* run_metadata) {
+  RunCallableRequest req;
+  TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
+  req.set_handle(handle);
+  for (const Tensor& feed : feed_tensors) {
+    feed.AsProtoTensorContent(req.mutable_feed()->Add());
+  }
+
+  RunCallableResponse resp;
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  TF_RETURN_IF_ERROR(master_->RunCallable(&call_options, &req, &resp));
+  for (const TensorProto& fetch : resp.fetch()) {
+    Tensor fetch_tensor;
+    if (!fetch_tensor.FromProto(cpu_allocator(), fetch)) {
+      return errors::Internal(
+          "Could not parse fetched tensor data in response from master.");
+    }
+    fetch_tensors->push_back(std::move(fetch_tensor));
+  }
+  return Status::OK();
+}
+
+Status GrpcSession::ReleaseCallable(CallableHandle handle) {
+  ReleaseCallableRequest req;
+  TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
+  req.set_handle(handle);
+  ReleaseCallableResponse resp;
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  return master_->ReleaseCallable(&call_options, &req, &resp);
+}
+
 class GrpcSessionFactory : public SessionFactory {
  public:
   bool AcceptsOptions(const SessionOptions& options) override {
-    return StringPiece(options.target).starts_with(kSchemePrefix);
+    return str_util::StartsWith(options.target, kSchemePrefix);
   }
 
-  Session* NewSession(const SessionOptions& options) override {
-    std::unique_ptr<GrpcSession> ret;
-    Status s = GrpcSession::Create(options, &ret);
-    if (s.ok()) {
-      return ret.release();
-    } else {
-      LOG(ERROR) << "Error during session construction: " << s.ToString();
-      return nullptr;
-    }
+  Status NewSession(const SessionOptions& options,
+                    Session** out_session) override {
+    std::unique_ptr<GrpcSession> session;
+    TF_RETURN_IF_ERROR(GrpcSession::Create(options, &session));
+    *out_session = session.release();
+    return Status::OK();
   }
 
   // Invokes the session specific static method to reset containers.

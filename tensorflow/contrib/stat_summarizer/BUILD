@@ -31,16 +31,5 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    tags = ["notap"],  # TODO(b/80546574): test is flaky
 )

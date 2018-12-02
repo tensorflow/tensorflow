@@ -17,13 +17,12 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform/port.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 string PlatformKindString(PlatformKind kind) {
   switch (kind) {
@@ -36,7 +35,7 @@ string PlatformKindString(PlatformKind kind) {
     case PlatformKind::kMock:
       return "Mock";
     default:
-      return port::StrCat("InvalidPlatformKind(", static_cast<int>(kind), ")");
+      return absl::StrCat("InvalidPlatformKind(", static_cast<int>(kind), ")");
   }
 }
 
@@ -135,5 +134,4 @@ port::Status Platform::EnablePeerAccess() {
   return port::Status::OK();
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

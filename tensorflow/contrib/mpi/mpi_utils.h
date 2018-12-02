@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 // Skip MPI C++ bindings support, this matches the usage in other places

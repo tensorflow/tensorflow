@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -372,7 +373,8 @@ TEST_F(RollOpTest, Error_InputMustBeVectorOrHigher) {
   AddInputFromArray<int32>(TensorShape({}), {1});
   AddInputFromArray<int32>(TensorShape({}), {0});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString()).contains("input must be 1-D or higher"))
+  EXPECT_TRUE(
+      str_util::StrContains(s.ToString(), "input must be 1-D or higher"))
       << s;
 }
 
@@ -384,8 +386,8 @@ TEST_F(RollOpTest, Error_AxisMustBeScalarOrVector) {
   AddInputFromArray<int32>(TensorShape({}), {1});
   AddInputFromArray<int32>(TensorShape({1, 2}), {0, 1});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("axis must be a scalar or a 1-D vector"))
+  EXPECT_TRUE(str_util::StrContains(s.ToString(),
+                                    "axis must be a scalar or a 1-D vector"))
       << s;
 }
 
@@ -397,8 +399,8 @@ TEST_F(RollOpTest, Error_ShiftMustBeScalarOrVector) {
   AddInputFromArray<int32>(TensorShape({1, 2}), {0, 1});
   AddInputFromArray<int32>(TensorShape({}), {1});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("shift must be a scalar or a 1-D vector"))
+  EXPECT_TRUE(str_util::StrContains(s.ToString(),
+                                    "shift must be a scalar or a 1-D vector"))
       << s;
 }
 
@@ -410,8 +412,8 @@ TEST_F(RollOpTest, Error_ShiftAndAxisMustBeSameSize) {
   AddInputFromArray<int32>(TensorShape({1}), {1});
   AddInputFromArray<int32>(TensorShape({2}), {0, 1});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("shift and axis must have the same size"))
+  EXPECT_TRUE(str_util::StrContains(s.ToString(),
+                                    "shift and axis must have the same size"))
       << s;
 }
 
@@ -423,7 +425,7 @@ TEST_F(RollOpTest, Error_AxisOutOfRange) {
   AddInputFromArray<int32>(TensorShape({}), {1});
   AddInputFromArray<int32>(TensorShape({}), {1});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString()).contains("is out of range")) << s;
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), "is out of range")) << s;
 }
 
 // isd - (inner shift dimension) The inner most dimension to be shifted.

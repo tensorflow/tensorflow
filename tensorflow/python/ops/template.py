@@ -26,7 +26,8 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import util as checkpointable_util
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.deprecation import deprecated
@@ -36,7 +37,7 @@ from tensorflow.python.util.tf_export import tf_export
 __all__ = ["make_template"]
 
 
-@tf_export("make_template")
+@tf_export(v1=["make_template"])
 def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
                   custom_getter_=None, **kwargs):
   """Given an arbitrary function, wrap it so that it does variable sharing.
@@ -127,7 +128,7 @@ def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
       template of the same scope/unique_name already exists and reuse is false,
       an error is raised. Defaults to None.
     custom_getter_: Optional custom getter for variables used in `func_`. See
-      the @{tf.get_variable} `custom_getter` documentation for
+      the `tf.get_variable` `custom_getter` documentation for
       more information.
     **kwargs: Keyword arguments to apply to `func_`.
 
@@ -175,7 +176,7 @@ def make_template_internal(name_,
       template of the same scope/unique_name already exists and reuse is false,
       an error is raised. Defaults to None. If executing eagerly, must be None.
     custom_getter_: Optional custom getter for variables used in `func_`. See
-      the @{tf.get_variable} `custom_getter` documentation for
+      the `tf.get_variable` `custom_getter` documentation for
       more information.
     create_graph_function_: When True, `func_` will be executed as a graph
       function. This implies that `func_` must satisfy the properties that
@@ -295,121 +296,25 @@ class Template(checkpointable.CheckpointableBase):
     # which is not the same as whether the scope has been created.
     self._variables_created = False
 
-  @property
-  def _checkpoint_dependencies(self):
-    """Sanity checking for object-based saving.
-
-    Does not override Checkpointable dependency tracking, but checks that
-    variables accessible through Checkpointable dependencies on other `Template`
-    objects include all of the variable_scope-filtered `Template.variables`.
-
-    Returns:
-      A list of checkpointable.CheckpointableReference objects.
-    Raises:
-      ValueError: If this object is not compatible with object-based saving.
-    """
-    dependencies = super(Template, self)._checkpoint_dependencies
-    dependency_variables = []
-    for _, dependency in dependencies:
-      if isinstance(dependency, Template):
-        dependency_variables.extend(dependency.variables)
-      else:
-        dependency_variables.append(dependency)
-    dependency_variables = set(dependency_variables)
-    not_included_variables = []
-    for expected_variable in sorted(self.variables, key=lambda v: v.name):
-      if expected_variable not in dependency_variables:
-        not_included_variables.append(expected_variable)
-    if not_included_variables:
-      # Trying to save a Template which improperly tracks its variables.
-      raise ValueError(
-          ("The Template '%s' references variables which are not included via "
-           "object-based dependency tracking. Most likely a custom "
-           "getter/creator was registered which does not call Template's "
-           "custom variable creator (which is responsible for tracking "
-           "dependencies).\n\nExpected these variables to be dependencies: %s")
-          % (self, not_included_variables))
-    return dependencies
-
-  def _checkpointable_custom_creator(self, next_creator, name, initial_value,
-                                     checkpointable_parent=None, **kwargs):
-    """A variable creation hook which adds Checkpointable dependencies.
-
-    Set during the `Template`'s first wrapped function execution. Ensures that
-    (a) `Template` objects depend on `Template`s created inside them which
-    create variables, and (b) that any variables not in a more deeply nested
-    `Template` are added as dependencies directly.
-
-    The `checkpointable_parent` argument is passed between `Template` custom
-    creators but ignored when the variable object itself is created. This
-    argument indicates (if not `None`) that a more deeply nested `Template` has
-    already added the variable as a dependency, and that parent `Template`s
-    should add a dependency on that `Template` rather than on the variable
-    directly.
-
-    Args:
-      next_creator: See `variable_scope.variable_creator_scope`; the next
-        creator in the chain.
-      name: The (full, scope-influenced) name of the variable. The scope name
-        for the Template itself is stripped for the purposes of object-based
-        dependency tracking, but scopes within Templates are respected.
-      initial_value: See `variable_scope.variable_creator_scope`. Taken
-        explicitly so the argument can be re-named and used with
-        `Checkpointable._add_variable_with_custom_getter`.
-      checkpointable_parent: If not None, a more deeply nested Template object
-        to add a dependency on (rather than depending on the variable directly).
-      **kwargs: Passed through to the next creator.
-    Returns:
-      The output of `next_creator`: the fetched/created variable object.
-    """
-    def _call_next_creator_renaming_initializer(initializer, **inner_kwargs):
-      inner_kwargs.pop("name")  # Ignored; this is the scope-stripped name which
-      # we don't want to propagate.
-      return next_creator(
-          initial_value=initializer,
-          name=name,
-          **inner_kwargs)
-    if name.startswith(self._variable_scope.name):
-      scope_stripped_name = name[len(self._variable_scope.name) + 1:]
-      if not checkpointable_parent:
-        return self._add_variable_with_custom_getter(
-            initializer=initial_value,
-            name=scope_stripped_name,
-            getter=_call_next_creator_renaming_initializer,
-            # Disable error checking for Checkpointable. Exceptions are instead
-            # raised if necessary when the object-based saver tries to
-            # save/restore the object.
-            overwrite=True,
-            checkpointable_parent=self,
-            **kwargs)
-      else:
-        self._track_checkpointable(
-            checkpointable_parent,
-            name=checkpointable_parent._variable_scope.name[  # pylint: disable=protected-access
-                len(self._variable_scope.name) + 1:],
-            overwrite=True)
-    return next_creator(name=name, initial_value=initial_value,
-                        checkpointable_parent=self, **kwargs)
-
   def _call_func(self, args, kwargs):
     try:
-      vars_at_start = len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+      vars_at_start = len(
+          ops.get_collection_ref(ops.GraphKeys.GLOBAL_VARIABLES))
       trainable_at_start = len(
-          ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
+          ops.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES))
       if self._variables_created:
         result = self._func(*args, **kwargs)
       else:
         # The first time we run, restore variables if necessary (via
         # Checkpointable).
-        with variable_scope.variable_creator_scope(
-            self._checkpointable_custom_creator):
+        with checkpointable_util.capture_dependencies(template=self):
           result = self._func(*args, **kwargs)
 
       if self._variables_created:
         # Variables were previously created, implying this is not the first
         # time the template has been called. Check to make sure that no new
         # trainable variables were created this time around.
-        trainable_variables = ops.get_collection(
+        trainable_variables = ops.get_collection_ref(
             ops.GraphKeys.TRAINABLE_VARIABLES)
         # If a variable that we intend to train is created as a side effect
         # of creating a template, then that is almost certainly an error.
@@ -422,7 +327,7 @@ class Template(checkpointable.CheckpointableBase):
         # Non-trainable tracking variables are a legitimate reason why a new
         # variable would be created, but it is a relatively advanced use-case,
         # so log it.
-        variables = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+        variables = ops.get_collection_ref(ops.GraphKeys.GLOBAL_VARIABLES)
         if vars_at_start != len(variables):
           logging.info("New variables created when calling a template after "
                        "the first time, perhaps you used tf.Variable when you "
@@ -452,8 +357,7 @@ class Template(checkpointable.CheckpointableBase):
       # Only reuse variables if they were already created.
       with variable_scope.variable_scope(
           self._variable_scope, reuse=self._variables_created):
-        result = self._call_func(args, kwargs)
-      return result
+        return self._call_func(args, kwargs)
     else:
       # The scope was not created at construction time, so create it here.
       # Subsequent calls should reuse variables.
@@ -461,8 +365,7 @@ class Template(checkpointable.CheckpointableBase):
           self._unique_name, self._name,
           custom_getter=self._custom_getter) as vs:
         self._variable_scope = vs
-        result = self._call_func(args, kwargs)
-        return result
+        return self._call_func(args, kwargs)
 
   @property
   def name(self):
@@ -583,7 +486,7 @@ class _EagerTemplateVariableStore(object):
       if self._variable_scope_name is None:
         raise RuntimeError("A variable scope must be set before an "
                            "_EagerTemplateVariableStore object exits.")
-      self._eager_variable_store._store.close_variable_subscopes(  # pylint: disable=protected-access
+      variable_scope.get_variable_scope_store().close_variable_subscopes(
           self._variable_scope_name)
 
   def _variables_in_scope(self, variable_list):
@@ -672,8 +575,7 @@ class EagerTemplate(Template):
       else:
         # The first time we run, restore variables if necessary (via
         # Checkpointable).
-        with variable_scope.variable_creator_scope(
-            self._checkpointable_custom_creator):
+        with checkpointable_util.capture_dependencies(template=self):
           result = self._func(*args, **kwargs)
 
       if self._variables_created:
@@ -730,8 +632,7 @@ class EagerTemplate(Template):
             self._variable_scope, reuse=variable_scope.AUTO_REUSE)
       with self._variable_scope_context_manager:
         with self._template_store.as_default():
-          result = self._call_func(args, kwargs)
-      return result
+          return self._call_func(args, kwargs)
     else:
       # The scope was not created at construction time, so create it here.
       # Subsequent calls should reuse variables.
@@ -743,8 +644,7 @@ class EagerTemplate(Template):
         # store's variable scope name is unset; set it here.
         self._template_store.set_variable_scope_name(vs.name)
         with self._template_store.as_default():
-          result = self._call_func(args, kwargs)
-        return result
+          return self._call_func(args, kwargs)
 
   @property
   def name(self):

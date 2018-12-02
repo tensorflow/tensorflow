@@ -111,8 +111,8 @@ class FusedConv2DBiasActivationOp : public OpKernel {
         context,
         (GetTensorDim(strides, data_format_, 'N') == 1 &&
          GetTensorDim(strides, data_format_, 'C') == 1),
-        errors::InvalidArgument("Convolutional strides are not supported in "
-                                "the batch or depth dimensions."));
+        errors::Unimplemented("Convolutional strides are not supported in "
+                              "the batch and depth dimensions."));
 
     // Assuming qint8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
     constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
@@ -135,9 +135,12 @@ class FusedConv2DBiasActivationOp : public OpKernel {
                    context->GetAttr("activation_mode", &activation_mode_str));
     OP_REQUIRES_OK(context, GetActivationModeFromString(activation_mode_str,
                                                         &activation_mode_));
-    OP_REQUIRES(context, activation_mode_ == ActivationMode::RELU,
-                errors::InvalidArgument("Current implementation only supports "
-                                        "RELU as the activation function."));
+    OP_REQUIRES(context,
+                activation_mode_ == ActivationMode::RELU ||
+                    activation_mode_ == ActivationMode::NONE,
+                errors::InvalidArgument(
+                    "Current implementation only supports RELU or NONE "
+                    "as the activation function."));
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
 
@@ -171,7 +174,7 @@ class FusedConv2DBiasActivationOp : public OpKernel {
 
     // Input bias is a 1-D tensor, with size matching output depth.
     const Tensor& bias = context->input(kBias);
-    OP_REQUIRES_OK(context, CheckShape(bias, "conv_input"));
+    OP_REQUIRES_OK(context, CheckShape(bias, "bias"));
 
     const Tensor& conv_input_scale_tensor = context->input(kConvInputScale);
     const Tensor& side_input_scale_tensor = context->input(kSideInputScale);
@@ -247,7 +250,7 @@ class FusedConv2DBiasActivationOp : public OpKernel {
 };
 
 #if GOOGLE_CUDA
-namespace dnn = ::perftools::gputools::dnn;
+namespace dnn = se::dnn;
 
 // A dummy type to group forward convolution autotune results together.
 struct ConvBiasActivationAutoTuneGroup {
@@ -440,6 +443,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                                          : dnn::DataLayout::kBatchDepthYX;
   constexpr auto filter_layout = is_int8x4 ? dnn::FilterLayout::kOutputInputYX4
                                            : dnn::FilterLayout::kOutputInputYX;
+  constexpr auto compute_data_format =
+      is_int8x4 ? FORMAT_NCHW_VECT_C : FORMAT_NCHW;
 
   dnn::BatchDescriptor conv_input_desc;
   conv_input_desc.set_count(batch_size)
@@ -492,7 +497,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                                 FORMAT_OIHW, filter_param.shape(), FORMAT_HWIO),
                             &maybe_transformed_filter));
     functor::TransformFilter<GPUDevice, T, int, 4>()(
-        ctx->eigen_device<GPUDevice>(), To32Bit(filter_param.tensor<T, 4>()),
+        ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+        To32Bit(filter_param.tensor<T, 4>()),
         To32Bit(maybe_transformed_filter.tensor<T, 4>()));
     filter = &maybe_transformed_filter;
   }
@@ -526,6 +532,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       batch_size,
       conv_input_depth,
       {{conv_input_rows, conv_input_cols}},
+      compute_data_format,
       output_depth,
       {{filter_rows, filter_cols}},
       // TODO(yangzihao): Add support for arbitrary dilations for fused conv.
@@ -538,12 +545,25 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       activation_mode,
   };
 
+  dnn::ActivationMode dnn_activation_mode;
+  switch (activation_mode) {
+    case ActivationMode::NONE:
+      dnn_activation_mode = dnn::ActivationMode::kNone;
+      break;
+    case ActivationMode::RELU:
+      dnn_activation_mode = dnn::ActivationMode::kRelu;
+      break;
+    default:
+      LOG(FATAL) << "Activation mode " << activation_mode << " not supported";
+  }
+
   dnn::AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBiasActivation::GetInstance()->Find(
                                 fused_conv_parameters, &algorithm_config)) {
     std::vector<dnn::AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveAlgorithms(
-        fused_conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(),
+        fused_conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+            stream->parent()),
         &algorithms));
     dnn::ProfileResult best_result;
     dnn::ProfileResult best_result_no_scratch;
@@ -557,10 +577,9 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
               ->ThenFusedConvolveWithAlgorithm(
                   conv_input_desc, conv_input_ptr, conv_input_scale,
                   filter_desc, filter_ptr, conv_desc, side_input_ptr,
-                  side_input_scale, bias_desc, bias_ptr,
-                  dnn::ActivationMode::kRelu, output_desc, &output_ptr,
-                  &scratch_allocator, dnn::AlgorithmConfig(profile_algorithm),
-                  &profile_result)
+                  side_input_scale, bias_desc, bias_ptr, dnn_activation_mode,
+                  output_desc, &output_ptr, &scratch_allocator,
+                  dnn::AlgorithmConfig(profile_algorithm), &profile_result)
               .ok();
       if (cudnn_launch_status) {
         if (profile_result.is_valid()) {
@@ -596,7 +615,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
           ->ThenFusedConvolveWithAlgorithm(
               conv_input_desc, conv_input_ptr, conv_input_scale, filter_desc,
               filter_ptr, conv_desc, side_input_ptr, side_input_scale,
-              bias_desc, bias_ptr, dnn::ActivationMode::kRelu, output_desc,
+              bias_desc, bias_ptr, dnn_activation_mode, output_desc,
               &output_ptr, &scratch_allocator, algorithm_config,
               /*output_profile_result=*/nullptr)
           .ok();

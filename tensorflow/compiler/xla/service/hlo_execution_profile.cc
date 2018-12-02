@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
@@ -26,7 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
-HloProfileIndexMap::HloProfileIndexMap(const HloModule& module) {
+HloProfileIndexMap::HloProfileIndexMap(const HloModule& module,
+                                       absl::Span<const string> extra_metrics) {
   size_t current_profile_index = 0;
   for (xla::HloComputation* computation : module.MakeComputationPostOrder()) {
     InsertOrDie(&computation_to_profile_idx_, computation,
@@ -38,18 +41,22 @@ HloProfileIndexMap::HloProfileIndexMap(const HloModule& module) {
                   current_profile_index++);
     }
   }
+  for (const string& key : extra_metrics) {
+    InsertOrDie(&extra_metric_to_profile_idx_, key, current_profile_index++);
+  }
 }
 
 std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     const HloProfileIndexMap& hlo_profile_index_map,
-    const HloCostAnalysis& cost_analysis) {
+    const HloCostAnalysis& cost_analysis,
+    const string& entry_computation_name) {
   using HloComputationInfo = HloProfilePrinterData::HloComputationInfo;
   using HloInstructionInfo = HloProfilePrinterData::HloInstructionInfo;
 
   size_t profile_counters_size = hlo_profile_index_map.total_count();
 
   std::unique_ptr<HloProfilePrinterData> profile_printer_data =
-      MakeUnique<HloProfilePrinterData>();
+      absl::make_unique<HloProfilePrinterData>();
   profile_printer_data->set_profile_counters_size(profile_counters_size);
   profile_printer_data->mutable_computation_infos()->Reserve(
       hlo_profile_index_map.computation_count());
@@ -67,11 +74,11 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
 
   // The profile indices were computed deterministically in
   // HloProfileIndexMap::HloProfileIndexMap.
-  c_sort(computation_and_profile_idx_list,
-         [](const std::pair<const HloComputation*, int64>& left,
-            const std::pair<const HloComputation*, int64>& right) {
-           return left.second < right.second;
-         });
+  absl::c_sort(computation_and_profile_idx_list,
+               [](const std::pair<const HloComputation*, int64>& left,
+                  const std::pair<const HloComputation*, int64>& right) {
+                 return left.second < right.second;
+               });
 
   for (const auto& pair : computation_and_profile_idx_list) {
     CHECK_LT(pair.second, profile_counters_size);
@@ -88,8 +95,9 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
       HloInstructionInfo* instruction_info =
           computation_info->add_instruction_infos();
       instruction_info->set_long_name(hlo->ToString());
-      instruction_info->set_short_name(
-          hlo->ToString(HloPrintOptions().set_compact_operands(true)));
+      instruction_info->set_short_name(hlo->ToString(
+          HloPrintOptions().set_compact_operands(true).set_print_operand_names(
+              false)));
       instruction_info->set_category(hlo->ToCategory());
       instruction_info->set_flop_count(cost_analysis.flop_count(*hlo));
       instruction_info->set_transcendental_count(
@@ -102,6 +110,14 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     }
   }
 
+  // Add extra metrics if any.
+  for (const auto& pair : hlo_profile_index_map.extra_metric_to_profile_idx()) {
+    profile_printer_data->mutable_extra_metrics()->insert(
+        {pair.first, pair.second});
+  }
+
+  profile_printer_data->set_entry_computation(entry_computation_name);
+
   return profile_printer_data;
 }
 
@@ -111,8 +127,8 @@ HloExecutionProfile::HloExecutionProfile(
     : hlo_profile_printer_data_(*hlo_profile_printer_data),
       hlo_profile_index_map_(*hlo_profile_index_map),
       profile_counters_(
-          /*count*/ hlo_profile_index_map_.total_count(),
-          /*value*/ 0) {}
+          /*count=*/hlo_profile_index_map_.total_count(),
+          /*value=*/0) {}
 
 void HloExecutionProfile::SetCyclesTakenBy(const HloInstruction* hlo,
                                            uint64 cycles_taken) {

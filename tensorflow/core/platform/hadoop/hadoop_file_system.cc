@@ -21,10 +21,11 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/posix/error.h"
 #include "third_party/hadoop/hdfs.h"
 
 namespace tensorflow {
@@ -108,22 +109,23 @@ class LibHDFS {
 // in the libhdfs documentation.
 #if defined(PLATFORM_WINDOWS)
     const char* kLibHdfsDso = "hdfs.dll";
+#elif defined(MACOS) || defined(TARGET_OS_MAC)
+    const char* kLibHdfsDso = "libhdfs.dylib";
 #else
     const char* kLibHdfsDso = "libhdfs.so";
 #endif
     char* hdfs_home = getenv("HADOOP_HDFS_HOME");
-    if (hdfs_home == nullptr) {
-      status_ = errors::FailedPrecondition(
-          "Environment variable HADOOP_HDFS_HOME not set");
-      return;
+    if (hdfs_home != nullptr) {
+      string path = io::JoinPath(hdfs_home, "lib", "native", kLibHdfsDso);
+      status_ = TryLoadAndBind(path.c_str(), &handle_);
+      if (status_.ok()) {
+        return;
+      }
     }
-    string path = io::JoinPath(hdfs_home, "lib", "native", kLibHdfsDso);
-    status_ = TryLoadAndBind(path.c_str(), &handle_);
-    if (!status_.ok()) {
-      // try load libhdfs.so using dynamic loader's search path in case
-      // libhdfs.so is installed in non-standard location
-      status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
-    }
+
+    // Try to load the library dynamically in case it has been installed
+    // to a in non-standard location.
+    status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
   }
 
   Status status_;
@@ -142,7 +144,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
 
   StringPiece scheme, namenode, path;
   io::ParseURI(fname, &scheme, &namenode, &path);
-  const string nn = namenode.ToString();
+  const string nn(namenode);
 
   hdfsBuilder* builder = hdfs_->hdfsNewBuilder();
   if (scheme == "file") {
@@ -181,7 +183,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
 string HadoopFileSystem::TranslateName(const string& name) const {
   StringPiece scheme, namenode, path;
   io::ParseURI(name, &scheme, &namenode, &path);
-  return path.ToString();
+  return string(path);
 }
 
 class HDFSRandomAccessFile : public RandomAccessFile {
@@ -280,7 +282,7 @@ class HDFSWritableFile : public WritableFile {
     }
   }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     if (hdfs_->hdfsWrite(fs_, file_, data.data(),
                          static_cast<tSize>(data.size())) == -1) {
       return IOError(filename_, errno);
@@ -390,10 +392,15 @@ Status HadoopFileSystem::GetChildren(const string& dir,
     return IOError(dir, errno);
   }
   for (int i = 0; i < entries; i++) {
-    result->push_back(io::Basename(info[i].mName).ToString());
+    result->push_back(string(io::Basename(info[i].mName)));
   }
   hdfs_->hdfsFreeFileInfo(info, entries);
   return Status::OK();
+}
+
+Status HadoopFileSystem::GetMatchingPaths(const string& pattern,
+                                          std::vector<string>* results) {
+  return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
 Status HadoopFileSystem::DeleteFile(const string& fname) {

@@ -42,8 +42,8 @@ class SparsifyGatherTest : public ::testing::Test {
                       const std::vector<NodeDef*>& inputs, GraphDef* graph_def,
                       bool control_dep = false) {
     NodeDef* node_def = graph_def->add_node();
-    node_def->set_name(name.ToString());
-    node_def->set_op(op.ToString());
+    node_def->set_name(string(name));
+    node_def->set_op(string(op));
     if (!control_dep) {
       std::for_each(inputs.begin(), inputs.end(), [&node_def](NodeDef* input) {
         node_def->add_input(input->name());

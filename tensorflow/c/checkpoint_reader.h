@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_C_CHECKPOINT_READER_H
-#define TENSORFLOW_C_CHECKPOINT_READER_H
+#ifndef TENSORFLOW_C_CHECKPOINT_READER_H_
+#define TENSORFLOW_C_CHECKPOINT_READER_H_
 
 #include <memory>
 #include <string>
@@ -79,4 +79,4 @@ class CheckpointReader {
 }  // namespace checkpoint
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_CHECKPOINT_READER_H
+#endif  // TENSORFLOW_C_CHECKPOINT_READER_H_

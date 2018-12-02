@@ -114,9 +114,12 @@ class PadOp : public OpKernel {
       Tensor collapsed_input;
       CHECK(collapsed_input.CopyFrom(in0, collapsed_input_shape));
       Tensor collapsed_output;
-      OP_REQUIRES_OK(context, context->allocate_temp(collapsed_input.dtype(),
-                                                     collapsed_output_shape,
-                                                     &collapsed_output));
+      AllocatorAttributes alloc_attrs;
+      alloc_attrs.set_on_host(context->input_memory_type(0) == HOST_MEMORY);
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(collapsed_input.dtype(),
+                                            collapsed_output_shape,
+                                            &collapsed_output, alloc_attrs));
       const Tensor& collapsed_paddings_ref = collapsed_paddings;
       typename TTypes<Tpadding>::ConstMatrix collapsed_paddings_matrix =
           collapsed_paddings_ref.matrix<Tpadding>();
@@ -317,7 +320,8 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 5);    \
   DECLARE_GPU_SPEC(T, 6);
 
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
+TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPECS);
+TF_CALL_int8(DECLARE_GPU_SPECS);
 }  // namespace functor
 
 // Registration of the GPU implementations.
@@ -349,7 +353,8 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
                               .HostMemory("constant_values"),     \
                           PadOp<GPUDevice, T, int64>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_int8(REGISTER_GPU_KERNEL);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

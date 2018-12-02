@@ -88,7 +88,7 @@ def _rank_resample(weights, biases, inputs, sampled_values, num_resampled,
     return math_ops.reduce_logsumexp(
         math_ops.matmul(embeddings, reweighted_inputs, transpose_b=True),
         axis=1,
-        keep_dims=False)
+        keepdims=False)
 
   # Calling this protected form of embedding_lookup allows co-locating
   # the logsumexp computation with the partitioned weights, which yields
@@ -123,15 +123,15 @@ def rank_sampled_softmax_loss(weights,
   """Computes softmax loss using rank-based adaptive resampling.
 
   This has been shown to improve rank loss after training compared to
-  @{tf.nn.sampled_softmax_loss}. For a description of the algorithm and some
+  `tf.nn.sampled_softmax_loss`. For a description of the algorithm and some
   experimental results, please see: [TAPAS: Two-pass Approximate Adaptive
   Sampling for Softmax](https://arxiv.org/abs/1707.03073).
 
   Sampling follows two phases:
   * In the first phase, `num_sampled` classes are selected using
-    @{tf.nn.learned_unigram_candidate_sampler} or supplied `sampled_values`.
+    `tf.nn.learned_unigram_candidate_sampler` or supplied `sampled_values`.
     The logits are calculated on those sampled classes. This phases is
-    similar to @{tf.nn.sampled_softmax_loss}.
+    similar to `tf.nn.sampled_softmax_loss`.
   * In the second phase, the `num_resampled` classes with highest predicted
     probability are kept. Probabilities are
     `LogSumExp(logits / resampling_temperature)`, where the sum is over
@@ -142,7 +142,7 @@ def rank_sampled_softmax_loss(weights,
   picks more candidates close to the predicted classes. A common strategy is
   to decrease the temperature as training proceeds.
 
-  See @{tf.nn.sampled_softmax_loss} for more documentation on sampling and
+  See `tf.nn.sampled_softmax_loss` for more documentation on sampling and
   for typical default values for some of the parameters.
 
   This operation is for training only. It is generally an underestimate of
@@ -197,7 +197,7 @@ def rank_sampled_softmax_loss(weights,
         where a sampled class equals one of the target classes.
     partition_strategy: A string specifying the partitioning strategy, relevant
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
-        See @{tf.nn.embedding_lookup} for more details.
+        See `tf.nn.embedding_lookup` for more details.
     name: A name for the operation (optional).
 
   Returns:

@@ -33,7 +33,7 @@ class OpsTest(test.TestCase):
   """Ops tests."""
 
   def test_softmax_classifier(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       features = array_ops.placeholder(dtypes.float32, [None, 3])
       labels = array_ops.placeholder(dtypes.float32, [None, 2])
       weights = constant_op.constant([[0.1, 0.1], [0.1, 0.1], [0.1, 0.1]])
@@ -52,7 +52,7 @@ class OpsTest(test.TestCase):
     ids_shape = (2, 3, 4)
     embeds = np.random.randn(n_embed, d_embed)
     ids = np.random.randint(0, n_embed, ids_shape)
-    with self.test_session():
+    with self.cached_session():
       embed_np = embeds[ids]
       embed_tf = ops.embedding_lookup(embeds, ids).eval()
     self.assertEqual(embed_np.shape, embed_tf.shape)
@@ -60,7 +60,7 @@ class OpsTest(test.TestCase):
 
   def test_categorical_variable(self):
     random_seed.set_random_seed(42)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       cat_var_idx = array_ops.placeholder(dtypes.int64, [2, 2])
       embeddings = ops.categorical_variable(
           cat_var_idx, n_classes=5, embedding_size=10, name="my_cat_var")

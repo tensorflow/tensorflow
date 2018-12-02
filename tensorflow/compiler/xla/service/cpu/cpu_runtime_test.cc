@@ -19,15 +19,16 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -45,7 +46,7 @@ std::unique_ptr<Array2D<float>> MaybeTransposeArray2D(const Array2D<T>& array,
   if (transpose) {
     std::swap(output_width, output_height);
   }
-  auto output = MakeUnique<Array2D<float>>(output_height, output_width);
+  auto output = absl::make_unique<Array2D<float>>(output_height, output_width);
   for (int y = 0; y < array.height(); y++) {
     for (int x = 0; x < array.width(); x++) {
       if (transpose) {
@@ -92,7 +93,7 @@ std::unique_ptr<Array2D<float>> EigenMatrixMultiply(const Array2D<float>& a,
 
   // Since we're going to transpose c before returning it. Swap the order of the
   // dimension sizes to ensure the returned array is properly dimensioned.
-  auto c_transpose = MakeUnique<Array2D<float>>(n, m);
+  auto c_transpose = absl::make_unique<Array2D<float>>(n, m);
   if (single_threaded) {
     __xla_cpu_runtime_EigenSingleThreadedMatMulF32(
         nullptr, c_transpose->data(), a_transpose->data(), b_transpose->data(),
@@ -130,25 +131,23 @@ MatMulShape MatMulShapes[] = {
 // * transpose_lhs
 // * transpose_rhs
 // * single_threaded
-using EigenMatMulTestParam = std::tuple<MatMulShape, bool, bool, bool>;
+using MatMulTestParam = std::tuple<MatMulShape, bool, bool, bool>;
 
-class EigenMatMulTest
-    : public CpuRuntimeTest,
-      public ::testing::WithParamInterface<EigenMatMulTestParam> {
+class EigenMatMulTest : public CpuRuntimeTest,
+                        public ::testing::WithParamInterface<MatMulTestParam> {
  public:
-  static string Name(
-      const ::testing::TestParamInfo<EigenMatMulTestParam>& info) {
+  static string Name(const ::testing::TestParamInfo<MatMulTestParam>& info) {
     MatMulShape shape = std::get<0>(info.param);
     bool transpose_lhs = std::get<1>(info.param);
     bool transpose_rhs = std::get<2>(info.param);
     bool single_threaded = std::get<3>(info.param);
 
-    return tensorflow::strings::Printf(
-        "MatMul_%lld_%lld_%lld_%s%s%s_threaded", shape.m, shape.k, shape.n,
-        transpose_lhs ? "Tlhs_" : "", transpose_rhs ? "Trhs_" : "",
-        single_threaded ? "single" : "multi");
+    return absl::StrFormat("EigenMatMul_%d_%d_%d_%s%s%s_threaded", shape.m,
+                           shape.k, shape.n, transpose_lhs ? "Tlhs_" : "",
+                           transpose_rhs ? "Trhs_" : "",
+                           single_threaded ? "single" : "multi");
   }
-};  // namespace xla
+};
 
 TEST_P(EigenMatMulTest, DoIt) {
   MatMulShape shape = std::get<0>(GetParam());
@@ -168,6 +167,75 @@ INSTANTIATE_TEST_CASE_P(EigenMatMulTestInstantiaion, EigenMatMulTest,
                                            ::testing::Bool(), ::testing::Bool(),
                                            ::testing::Bool()),
                         EigenMatMulTest::Name);
+
+#ifdef INTEL_MKL
+class MKLMatMulTest : public CpuRuntimeTest,
+                      public ::testing::WithParamInterface<MatMulTestParam> {
+ public:
+  static string Name(const ::testing::TestParamInfo<MatMulTestParam>& info) {
+    MatMulShape shape = std::get<0>(info.param);
+    bool transpose_lhs = std::get<1>(info.param);
+    bool transpose_rhs = std::get<2>(info.param);
+    bool single_threaded = std::get<3>(info.param);
+
+    return absl::StrFormat("MKLMatMul_%d_%d_%d_%s%s%s_threaded", shape.m,
+                           shape.k, shape.n, transpose_lhs ? "Tlhs_" : "",
+                           transpose_rhs ? "Trhs_" : "",
+                           single_threaded ? "single" : "multi");
+  }
+};
+
+std::unique_ptr<Array2D<float>> MKLMatrixMultiply(const Array2D<float>& a,
+                                                  const Array2D<float>& b,
+                                                  bool transpose_lhs,
+                                                  bool transpose_rhs,
+                                                  bool single_threaded) {
+  CHECK_EQ(a.width(), b.height());
+  int64 m = a.height();
+  int64 n = b.width();
+  int64 k = a.width();
+
+  // The MKL matmul runtime function expects the matrix to be in column major
+  // order and array2d is in row-major order. Create transposes of a and b. The
+  // 'data' buffer in the transposed array is the original array in column major
+  // order.
+  auto a_transpose = MaybeTransposeArray2D(a, !transpose_lhs);
+  auto b_transpose = MaybeTransposeArray2D(b, !transpose_rhs);
+
+  // Since we're going to transpose c before returning it, swap the order of the
+  // dimension sizes to ensure the returned array is properly dimensioned.
+  auto c_transpose = absl::make_unique<Array2D<float>>(n, m);
+  if (single_threaded) {
+    __xla_cpu_runtime_MKLSingleThreadedMatMulF32(
+        nullptr, c_transpose->data(), a_transpose->data(), b_transpose->data(),
+        m, n, k, transpose_lhs, transpose_rhs);
+  } else {
+    __xla_cpu_runtime_MKLMatMulF32(nullptr, c_transpose->data(),
+                                   a_transpose->data(), b_transpose->data(), m,
+                                   n, k, transpose_lhs, transpose_rhs);
+  }
+  return MaybeTransposeArray2D(*c_transpose, true);
+}
+
+TEST_P(MKLMatMulTest, DoIt) {
+  MatMulShape shape = std::get<0>(GetParam());
+  bool transpose_lhs = std::get<1>(GetParam());
+  bool transpose_rhs = std::get<2>(GetParam());
+  bool single_threaded = std::get<3>(GetParam());
+
+  auto a = MakeLinspaceArray2D(0.0, 1.0, shape.m, shape.k);
+  auto b = MakeLinspaceArray2D(-2.0, 2.0, shape.k, shape.n);
+  auto c =
+      MKLMatrixMultiply(*a, *b, transpose_lhs, transpose_rhs, single_threaded);
+  CheckMatrixMultiply(*a, *b, *c);
+}
+
+INSTANTIATE_TEST_CASE_P(MKLMatMulTestInstantiaion, MKLMatMulTest,
+                        ::testing::Combine(::testing::ValuesIn(MatMulShapes),
+                                           ::testing::Bool(), ::testing::Bool(),
+                                           ::testing::Bool()),
+                        MKLMatMulTest::Name);
+#endif  // INTEL_MKL
 
 }  // namespace
 }  // namespace xla

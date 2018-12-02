@@ -22,6 +22,10 @@ from __future__ import print_function
 
 import abc
 
+import six
+
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -34,10 +38,27 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training import distribution_strategy_context as distribute_ctx
 from tensorflow.python.training import slot_creator
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+
+
+def get_filtered_grad_fn(grad_fn):
+  # `distributed_context.join()` requires that its arguments are parallel
+  # across threads, and in particular that `grads_and_vars` has the same
+  # variables in the same order.
+
+  # When computing gradients in eager mode with multiple threads, you
+  # can get extra variables with a gradient of `None`. This happens when
+  # those variables are accessed in another thread during the gradient
+  # computation. To get a consistent set of variables, we filter out
+  # those with `None` gradients.
+  def filtered_grad_fn(*args, **kwargs):
+    return [(g, v) for g, v in grad_fn(*args, **kwargs) if g is not None]
+
+  return filtered_grad_fn
 
 
 def _deduplicate_indexed_slices(values, indices):
@@ -60,11 +81,13 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 def _var_key(var):
-  if context.executing_eagerly():
-    return var._shared_name  # pylint: disable=protected-access
-  return (var.op.graph, var.op.name)
+  # TODO(ashankar): Consolidate handling for eager and graph
+  if hasattr(var, "op"):
+    return (var.op.graph, var.op.name)
+  return var._unique_id  # pylint: disable=protected-access
 
 
+@six.add_metaclass(abc.ABCMeta)
 class _OptimizableVariable(object):
   """Interface for abstracting over variables in the optimizers."""
 
@@ -153,19 +176,6 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
       return update_op
 
 
-class _StreamingModelPortProcessor(_OptimizableVariable):
-  """Processor for streaming ModelPorts."""
-
-  def __init__(self, v):
-    self._v = v
-
-  def target(self):
-    return self._v
-
-  def update_op(self, optimizer, g):
-    return g
-
-
 class _TensorProcessor(_OptimizableVariable):
   """Processor for ordinary Tensors.
 
@@ -191,18 +201,19 @@ def _get_processor(v):
       return _TensorProcessor(v)
     else:
       return _DenseResourceVariableProcessor(v)
+  if resource_variable_ops.is_resource_variable(v) and not v._in_graph_mode:  # pylint: disable=protected-access
+    # True if and only if `v` was initialized eagerly.
+    return _DenseResourceVariableProcessor(v)
   if v.op.type == "VarHandleOp":
     return _DenseResourceVariableProcessor(v)
   if isinstance(v, variables.Variable):
     return _RefVariableProcessor(v)
-  if v.op.type == "SubmodelPort":
-    return _StreamingModelPortProcessor(v)
   if isinstance(v, ops.Tensor):
     return _TensorProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
-@tf_export("train.Optimizer")
+@tf_export(v1=["train.Optimizer"])
 class Optimizer(
     # Optimizers inherit from CheckpointableBase rather than Checkpointable
     # since they do most of their dependency management themselves (slot
@@ -331,6 +342,13 @@ class Optimizer(
     #   ... }
     self._deferred_slot_restorations = {}
 
+    # TODO(isaprykin): When using a DistributionStrategy, and when an
+    # optimizer is created in each replica, it might be dangerous to
+    # rely on some Optimizer methods.  When such methods are called on a
+    # per-replica optimizer, an exception needs to be thrown.  We do
+    # allow creation per-replica optimizers however, because the
+    # compute_gradients()->apply_gradients() sequence is safe.
+
   def get_name(self):
     return self._name
 
@@ -370,13 +388,12 @@ class Optimizer(
 
     @compatibility(eager)
     When eager execution is enabled, `loss` should be a Python function that
-    takes elements of `var_list` as arguments and computes the value to be
-    minimized. If `var_list` is None, `loss` should take no arguments.
-    Minimization (and gradient computation) is done with respect to the
-    elements of `var_list` if not None, else with respect to any trainable
-    variables created during the execution of the `loss` function.
-    `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
-    `grad_loss` are ignored when eager execution is enabled.
+    takes no arguments and computes the value to be minimized. Minimization (and
+    gradient computation) is done with respect to the elements of `var_list` if
+    not None, else with respect to any trainable variables created during the
+    execution of the `loss` function. `gate_gradients`, `aggregation_method`,
+    `colocate_gradients_with_ops` and `grad_loss` are ignored when eager
+    execution is enabled.
     @end_compatibility
     """
     grads_and_vars = self.compute_gradients(
@@ -443,14 +460,30 @@ class Optimizer(
         if var_list is not None:
           tape.watch(var_list)
         loss_value = loss()
+
+        # Scale loss if using a "mean" loss reduction and multiple replicas.
+        # Have to be careful to call distribute_lib.get_loss_reduction()
+        # *after* loss() is evaluated, so we know what loss reduction it uses.
+        # TODO(josh11b): Test that we handle weight decay in a reasonable way.
+        loss_value = self._scale_loss(loss_value)
+
       if var_list is None:
         var_list = tape.watched_variables()
-      grads = tape.gradient(loss_value, var_list, grad_loss)
+      # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
+      # to be executed.
+      with ops.control_dependencies([loss_value]):
+        grads = tape.gradient(loss_value, var_list, grad_loss)
       return list(zip(grads, var_list))
+
+    # Non-callable/Tensor loss case
     if context.executing_eagerly():
       raise RuntimeError(
           "`loss` passed to Optimizer.compute_gradients should "
           "be a function when eager execution is enabled.")
+
+    # Scale loss if using a "mean" loss reduction and multiple replicas.
+    loss = self._scale_loss(loss)
+
     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
                               Optimizer.GATE_GRAPH]:
       raise ValueError("gate_gradients must be one of: Optimizer.GATE_NONE, "
@@ -485,6 +518,15 @@ class Optimizer(
          if g is not None and v.dtype != dtypes.resource])
     return grads_and_vars
 
+  @staticmethod
+  def _scale_loss(loss_value):
+    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
+      num_replicas = \
+        distribute_ctx.get_distribution_strategy().num_replicas_in_sync
+      if num_replicas > 1:
+        loss_value *= (1. / num_replicas)
+    return loss_value
+
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
 
@@ -506,11 +548,25 @@ class Optimizer(
     Raises:
       TypeError: If `grads_and_vars` is malformed.
       ValueError: If none of the variables have gradients.
+      RuntimeError: If you should use `_distributed_apply()` instead.
     """
     # This is a default implementation of apply_gradients() that can be shared
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
 
+    # Handle DistributionStrategy case.
+    if distribute_ctx.get_cross_replica_context():
+      raise RuntimeError("Use `_distributed_apply()` instead of "
+                         "`apply_gradients()` in a cross-replica context.")
+    # TODO(isaprykin): Get rid of `has_distribution_strategy()` check by
+    # always calling _distributed_apply(), using the default distribution
+    # as needed.
+    if distribute_ctx.has_distribution_strategy():
+      grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
+      return distribute_ctx.get_replica_context().merge_call(
+          self._distributed_apply, args=(grads_and_vars, global_step, name))
+
+    # No DistributionStrategy case.
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
     if not grads_and_vars:
       raise ValueError("No variables provided.")
@@ -534,7 +590,7 @@ class Optimizer(
     var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
     if not var_list:
       raise ValueError("No gradients provided for any variable: %s." %
-                       ([str(v) for _, _, v in converted_grads_and_vars],))
+                       ([str(v) for _, v, _ in converted_grads_and_vars],))
     with ops.init_scope():
       self._create_slots(var_list)
     update_ops = []
@@ -546,7 +602,12 @@ class Optimizer(
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
         # TODO(apassos): figure out how to get the variable name here.
-        scope_name = "" if context.executing_eagerly() else var.op.name
+        if context.executing_eagerly() or isinstance(
+            var,
+            resource_variable_ops.ResourceVariable) and not var._in_graph_mode:  # pylint: disable=protected-access
+          scope_name = ""
+        else:
+          scope_name = var.op.name
         with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
           update_ops.append(processor.update_op(self, grad))
       if global_step is None:
@@ -563,6 +624,99 @@ class Optimizer(
                   name=name)
             else:
               apply_updates = state_ops.assign_add(global_step, 1, name=name)
+
+      if not context.executing_eagerly():
+        if isinstance(apply_updates, ops.Tensor):
+          apply_updates = apply_updates.op
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        if apply_updates not in train_op:
+          train_op.append(apply_updates)
+
+      return apply_updates
+
+  def _distributed_apply(self,
+                         distribution,
+                         grads_and_vars,
+                         global_step=None,
+                         name=None):
+    """A version of `apply_gradients` for cross-replica context.
+
+    This is a version of `apply_gradients()` for when you are using a
+    `DistributionStrategy` and are in a cross-replica context. If in a
+    replica context, use `apply_gradients()` as normal.
+
+    Args:
+      distribution: A `DistributionStrategy` object.
+      grads_and_vars: List of (gradient, variable) pairs as returned by
+        `compute_gradients()`, and then aggregated across replicas.
+      global_step: Optional (mirrored) `Variable` to increment by one
+        after the variables have been updated.
+      name: Optional name for the returned operation.  Default to the
+        name passed to the `Optimizer` constructor.
+
+    Returns:
+      An `Operation` that applies the specified gradients across all
+      replicas. If `global_step` was not None, that operation also
+      increments `global_step`
+    """
+    reduced_grads = distribution.extended.batch_reduce_to(
+        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
+    var_list = [v for _, v in grads_and_vars]
+    grads_and_vars = zip(reduced_grads, var_list)
+    # Note that this is called in a cross-replica context.
+    self._create_slots(var_list)
+
+    def update(v, g):
+      """Apply gradients to a replica variable."""
+      assert v is not None
+
+      try:
+        # Convert the grad to Tensor or IndexedSlices if necessary.
+        g = ops.convert_to_tensor_or_indexed_slices(g)
+      except TypeError:
+        raise TypeError("Gradient must be convertible to a Tensor"
+                        " or IndexedSlices, or None: %s" % g)
+      if not isinstance(g, (ops.Tensor, ops.IndexedSlices)):
+        raise TypeError(
+            "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
+      p = _get_processor(v)
+
+      if context.executing_eagerly() or (
+          resource_variable_ops.is_resource_variable(v) and
+          not v._in_graph_mode):  # pylint: disable=protected-access
+        scope_name = v.name.split(":")[0]
+      else:
+        scope_name = v.op.name
+
+      # device_policy is set because non-mirrored tensors will be read in
+      # `update_op`. `_resource_apply_dense`, `lr_t`, `beta1_t` and `beta2_t`
+      # is an example.
+      with ops.name_scope("update_" + scope_name):
+        return p.update_op(self, g)
+
+    with ops.name_scope(name, self._name) as name:
+      self._prepare()
+
+      update_ops = [
+          op
+          for grad, var in grads_and_vars
+          for op in distribution.extended.update(
+              var, update, args=(grad,), group=False)
+      ]
+
+      def finish(self, update_ops):
+        return self._finish(update_ops, "update")
+
+      non_slot_devices = distribution.extended.non_slot_devices(var_list)
+      finish_updates = distribution.extended.update_non_slot(
+          non_slot_devices, finish, args=(self, update_ops), group=False)
+      if global_step is None:
+        apply_updates = distribution.group(finish_updates, name=name)
+      else:
+        with ops.control_dependencies(finish_updates):
+          apply_updates = distribution.extended.update(
+              global_step, state_ops.assign_add, args=(1,),
+              kwargs={"name": name})
 
       if not context.executing_eagerly():
         if isinstance(apply_updates, ops.Tensor):
@@ -590,9 +744,25 @@ class Optimizer(
     Returns:
       The `Variable` for the slot if it was created, `None` otherwise.
     """
+    # pylint: disable=protected-access
     named_slots = self._slots.get(name, None)
     if not named_slots:
       return None
+
+    if hasattr(var, "_distributed_container"):
+      # NOTE: If this isn't patched, then there is no `handle` in
+      # `_resource_apply_dense`.
+      distributed_container = var._distributed_container()
+      assert distributed_container is not None
+      if context.executing_eagerly():
+        key = distributed_container._unique_id
+      else:
+        key = (distributed_container.graph, distributed_container._shared_name)
+      # pylint: enable=protected-access
+      mirrored_slot = named_slots.get(key, None)
+      if mirrored_slot is None: return None
+      return mirrored_slot.get(device=var.device)
+
     return named_slots.get(_var_key(var), None)
 
   def get_slot_names(self):
@@ -614,16 +784,15 @@ class Optimizer(
     Returns:
       A list of variables.
     """
-    executing_eagerly = context.executing_eagerly()
     current_graph = ops.get_default_graph()
 
     def _from_current_graph(variable):
-      if executing_eagerly:
+      if variable._in_graph_mode:  # pylint: disable=protected-access
+        return variable.op.graph is current_graph
+      else:
         # No variable.op in eager mode. We don't expect lots of eager graphs,
         # but behavior should be consistent with graph mode.
         return variable._graph_key == current_graph._graph_key  # pylint: disable=protected-access
-      else:
-        return variable.op.graph is current_graph
 
     optimizer_variables = [v for v in self._non_slot_variables()
                            if _from_current_graph(v)]
@@ -636,6 +805,7 @@ class Optimizer(
 
   def _create_non_slot_variable(self, initial_value, name, colocate_with):
     """Add an extra variable, not associated with a slot."""
+    # Recommendation: Use OptimizerV2 if your optimizer uses non-slot variables.
     eager = context.executing_eagerly()
     graph = None if eager else colocate_with.graph
 
@@ -643,20 +813,21 @@ class Optimizer(
     v = self._non_slot_dict.get(key, None)
     if v is None:
       self._maybe_initialize_checkpointable()
-      with ops.colocate_with(colocate_with):
+      distribution_strategy = distribute_ctx.get_distribution_strategy()
+      with distribution_strategy.colocate_vars_with(colocate_with):
         if eager:
           restored_initial_value = self._preload_simple_restoration(
               name=name, shape=None)
           if restored_initial_value is not None:
             initial_value = restored_initial_value
         v = variable_scope.variable(initial_value, name=name, trainable=False)
-        # Restore this variable by name if necessary, but don't add a
-        # Checkpointable dependency. Optimizers return the current graph's
-        # non-slot variables from _checkpoint_dependencies explicitly rather
-        # than unconditionally adding dependencies (since there may be multiple
-        # non-slot variables with the same name in different graphs, trying to
-        # save all of them would result in errors).
-        self._handle_deferred_dependencies(name=name, checkpointable=v)
+      # Restore this variable by name if necessary, but don't add a
+      # Checkpointable dependency. Optimizers return the current graph's
+      # non-slot variables from _checkpoint_dependencies explicitly rather
+      # than unconditionally adding dependencies (since there may be multiple
+      # non-slot variables with the same name in different graphs, trying to
+      # save all of them would result in errors).
+      self._handle_deferred_dependencies(name=name, checkpointable=v)
       self._non_slot_dict[key] = v
 
     return v
@@ -685,7 +856,13 @@ class Optimizer(
     return self._get_non_slot_variable(name, graph=graph)
 
   def _get_non_slot_variable(self, name, graph=None):
-    return self._non_slot_dict.get((name, graph), None)
+    non_slot = self._non_slot_dict.get((name, graph), None)
+    if hasattr(non_slot, "_distributed_container"):
+      # This is a mirrored non-slot.  In order to enable code like `_finish`
+      # to assign to a non-slot, return the current context replica.
+      return non_slot.get()
+    else:
+      return non_slot
 
   def _non_slot_variables(self):
     """Additional variables created by the `Optimizer`.
@@ -1016,7 +1193,16 @@ class Optimizer(
     variable_key = _var_key(variable)
     slot_variable = named_slots.get(variable_key, None)
     if (slot_variable is None and context.executing_eagerly() and
-        slot_variable_position.is_simple_variable()):
+        slot_variable_position.is_simple_variable()
+        # Defer slot variable creation if there is an active variable creator
+        # scope. Generally we'd like to eagerly create/restore slot variables
+        # when possible, but this may mean that scopes intended to catch
+        # `variable` also catch its eagerly created slot variable
+        # unintentionally (specifically make_template would add a dependency on
+        # a slot variable if not for this case). Deferring is mostly harmless
+        # (aside from double initialization), and makes variable creator scopes
+        # behave the same way they do when graph building.
+        and not ops.get_default_graph()._variable_creator_stack):  # pylint: disable=protected-access
       initializer = checkpointable.CheckpointInitialValue(
           checkpoint_position=slot_variable_position)
       slot_variable = self._get_or_make_slot(
@@ -1043,3 +1229,7 @@ class Optimizer(
       self._deferred_slot_restorations.setdefault(
           slot_name, {}).setdefault(variable_key, []).append(
               slot_variable_position)
+
+  def _call_if_callable(self, param):
+    """Call the function if param is callable."""
+    return param() if callable(param) else param

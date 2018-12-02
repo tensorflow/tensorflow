@@ -21,9 +21,12 @@ import json
 import os
 import random
 
+import numpy as np
+
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import session
-from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -64,11 +67,17 @@ class TestReportingBenchmark(test.Benchmark):
                 "other_key": "string"})
 
   def benchmark_times_an_op(self):
-    with session.Session() as sess:
-      a = constant_op.constant(0.0)
+    input_size = 5
+    with session.Session(config=benchmark.benchmark_config()) as sess:
+      a = array_ops.placeholder(dtype=dtypes.float32, shape=(input_size))
       a_plus_a = a + a
-      self.run_op_benchmark(
-          sess, a_plus_a, min_iters=1000, store_trace=True, name="op_benchmark")
+      return self.run_op_benchmark(
+          sess,
+          a_plus_a,
+          feed_dict={a: np.arange(input_size)},
+          min_iters=1000,
+          store_trace=True,
+          name="op_benchmark")
 
 
 class BenchmarkTest(test.TestCase):
@@ -148,7 +157,7 @@ class BenchmarkTest(test.TestCase):
       reporting = TestReportingBenchmark()
       reporting.benchmarkReport1()  # This should write
       reporting.benchmarkReport2()  # This should write
-      reporting.benchmark_times_an_op()  # This should write
+      benchmark_values3 = reporting.benchmark_times_an_op()  # This should write
 
       # Check the files were written
       self.assertTrue(gfile.Exists(expected_output_file))
@@ -186,8 +195,12 @@ class BenchmarkTest(test.TestCase):
       self.assertEquals(expected_3.name, read_benchmark_3.name)
       self.assertEquals(expected_3.iters, read_benchmark_3.iters)
       self.assertGreater(read_benchmark_3.wall_time, 0)
-      full_trace = read_benchmark_3.extras["full_trace_chrome_format"]
-      json_trace = json.loads(full_trace.string_value)
+
+      # Trace is not stored in benchmark entry. Instead we get it from
+      # return value of `run_op_benchmark` call.
+      full_trace = benchmark_values3["extras"]["full_trace_chrome_format"]
+      json_trace = json.loads(full_trace)
+
       self.assertTrue(isinstance(json_trace, dict))
       self.assertTrue("traceEvents" in json_trace.keys())
       allocator_keys = [k for k in read_benchmark_3.extras.keys()

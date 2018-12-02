@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class ZipDatasetOp : public DatasetOpKernel {
@@ -38,11 +38,11 @@ class ZipDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx,
                      const std::vector<DatasetBase*>& inputs)
-        : GraphDatasetBase(ctx), inputs_(inputs) {
+        : DatasetBase(DatasetContext(ctx)), inputs_(inputs) {
       for (const auto& input : inputs_) {
         input->Ref();
         for (DataType dt : input->output_dtypes()) {
@@ -60,7 +60,7 @@ class ZipDatasetOp : public DatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Zip")}));
@@ -74,16 +74,17 @@ class ZipDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "ZipDatasetOp::Dataset"; }
+    string DebugString() const override { return "ZipDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       std::vector<Node*> input_graph_nodes;
       input_graph_nodes.reserve(inputs_.size());
       for (const auto& input : inputs_) {
         Node* input_node;
-        TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input, &input_node));
+        TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &input_node));
         input_graph_nodes.emplace_back(input_node);
       }
       TF_RETURN_IF_ERROR(b->AddDataset(
@@ -95,13 +96,16 @@ class ZipDatasetOp : public DatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params) {
-        input_impls_.reserve(params.dataset->inputs_.size());
-        size_t idx = 0;
-        for (const auto& input : params.dataset->inputs_) {
-          input_impls_.emplace_back(input->MakeIterator(
-              strings::StrCat(params.prefix, "[", idx++, "]")));
+          : DatasetIterator<Dataset>(params) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        mutex_lock l(mu_);
+        input_impls_.resize(dataset()->inputs_.size());
+        for (size_t i = 0; i < input_impls_.size(); ++i) {
+          TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
+              ctx, strings::StrCat(prefix(), "[", i, "]"), &input_impls_[i]));
         }
+        return Status::OK();
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -132,6 +136,14 @@ class ZipDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        // NOTE: Although this dataset may have multiple inputs, it always
+        // consumes one element per input to produce an output.
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impls_.empty()) {
@@ -139,7 +151,7 @@ class ZipDatasetOp : public DatasetOpKernel {
               writer->WriteScalar(full_name("input_impls_empty"), ""));
         } else {
           for (auto& input_impl : input_impls_)
-            TF_RETURN_IF_ERROR(SaveParent(writer, input_impl));
+            TF_RETURN_IF_ERROR(SaveInput(writer, input_impl));
         }
         return Status::OK();
       }
@@ -152,7 +164,7 @@ class ZipDatasetOp : public DatasetOpKernel {
         } else {
           DCHECK_EQ(input_impls_.size(), dataset()->inputs_.size());
           for (auto& input_impl : input_impls_)
-            TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl));
+            TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl));
         }
         return Status::OK();
       }
@@ -171,5 +183,5 @@ class ZipDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("ZipDataset").Device(DEVICE_CPU), ZipDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

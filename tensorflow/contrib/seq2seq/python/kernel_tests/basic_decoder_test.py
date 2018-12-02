@@ -50,7 +50,7 @@ class BasicDecoderTest(test.TestCase):
     cell_depth = 10
     output_layer_depth = 3
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
       cell = rnn_cell.LSTMCell(cell_depth)
@@ -136,7 +136,7 @@ class BasicDecoderTest(test.TestCase):
     start_tokens = np.random.randint(0, vocabulary_size, size=batch_size)
     end_token = 1
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       embeddings = np.random.randn(vocabulary_size,
                                    input_depth).astype(np.float32)
       cell = rnn_cell.LSTMCell(vocabulary_size)
@@ -209,7 +209,7 @@ class BasicDecoderTest(test.TestCase):
     start_tokens = np.random.randint(0, vocabulary_size, size=batch_size)
     end_token = 1
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       with variable_scope.variable_scope(
           "testStepWithSampleEmbeddingHelper",
           initializer=init_ops.constant_initializer(0.01)):
@@ -278,7 +278,7 @@ class BasicDecoderTest(test.TestCase):
     input_depth = 7
     vocabulary_size = 10
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       inputs = np.random.randn(
           batch_size, max_time, input_depth).astype(np.float32)
       embeddings = np.random.randn(
@@ -371,7 +371,7 @@ class BasicDecoderTest(test.TestCase):
     else:
       auxiliary_inputs = None
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
       cell = rnn_cell.LSTMCell(cell_depth)
@@ -523,7 +523,7 @@ class BasicDecoderTest(test.TestCase):
         lambda x: array_ops.one_hot(x, vocabulary_size, dtype=dtypes.float32))
     end_fn = lambda sample_ids: math_ops.equal(sample_ids, end_token)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       with variable_scope.variable_scope(
           "testStepWithInferenceHelper",
           initializer=init_ops.constant_initializer(0.01)):
@@ -604,7 +604,7 @@ class BasicDecoderTest(test.TestCase):
     next_inputs_fn = math_ops.to_float
     end_fn = lambda sample_ids: sample_ids[:, end_token]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       with variable_scope.variable_scope(
           "testStepWithInferenceHelper",
           initializer=init_ops.constant_initializer(0.01)):

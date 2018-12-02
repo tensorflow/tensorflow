@@ -24,14 +24,14 @@ namespace {
 
 class TestTime : public EnvTime {
  public:
-  uint64 NowMicros() override { return now_; }
+  uint64 NowNanos() override { return now_micros_ * kMicrosToNanos; }
 
-  void SetTime(uint64 now_micros) { now_ = now_micros; }
+  void SetTime(uint64 now_micros) { now_micros_ = now_micros; }
 
-  void AdvanceSeconds(int64 secs) { now_ += secs * 1000000L; }
+  void AdvanceSeconds(int64 secs) { now_micros_ += secs * kSecondsToMicros; }
 
  private:
-  uint64 now_ = 1234567890000000ULL;
+  uint64 now_micros_ = 1234567890000000ULL;
 };
 
 class GcsThrottleTest : public ::testing::Test {

@@ -42,7 +42,7 @@ class GatherTest(xla_test.XLATestCase):
     return data
 
   def testScalar1D(self):
-    with self.test_session() as session, self.test_scope():
+    with self.cached_session() as session, self.test_scope():
       data = np.array([0, 1, 2, 3, 7, 5])
       for dtype in self.all_tf_types:
         for indices in 4, [4], [1, 2, 2, 4, 5]:
@@ -51,11 +51,11 @@ class GatherTest(xla_test.XLATestCase):
           indices_tf = constant_op.constant(indices)
           gather_t = array_ops.gather(params, indices_tf)
           gather_val = session.run(gather_t, feed_dict={params: params_np})
-          np_val = params_np[indices]
+          np_val = constant_op.constant(params_np[indices])
           self.assertAllEqual(np_val, gather_val)
 
   def testScalar2D(self):
-    with self.test_session() as session, self.test_scope():
+    with self.cached_session() as session, self.test_scope():
       data = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
                        [12, 13, 14]])
       for dtype in self.all_tf_types:
@@ -65,11 +65,12 @@ class GatherTest(xla_test.XLATestCase):
           indices = constant_op.constant(2)
           gather_t = array_ops.gather(params, indices, axis=axis)
           gather_val = session.run(gather_t, feed_dict={params: params_np})
-          expected = np.take(params_np, 2, axis=axis)
+          expected = constant_op.constant(
+              np.take(params_np, 2, axis=axis), dtype)
           self.assertAllEqual(expected, gather_val)
 
   def testSimpleTwoD32(self):
-    with self.test_session() as session, self.test_scope():
+    with self.cached_session() as session, self.test_scope():
       data = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
                        [12, 13, 14]])
       for dtype in self.all_tf_types:
@@ -80,14 +81,15 @@ class GatherTest(xla_test.XLATestCase):
           indices = constant_op.constant([0, 1, 0, 2])
           gather_t = array_ops.gather(params, indices, axis=axis)
           gather_val = session.run(gather_t, feed_dict={params: params_np})
-          expected = np.take(params_np, [0, 1, 0, 2], axis=axis)
+          expected = constant_op.constant(
+              np.take(params_np, [0, 1, 0, 2], axis=axis), dtype)
           self.assertAllEqual(expected, gather_val)
 
   def testSimpleTwoD32_Int64Indices(self):
     if np.int64 not in self.int_types:
       return
 
-    with self.test_session() as session, self.test_scope():
+    with self.cached_session() as session, self.test_scope():
       data = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
                        [12, 13, 14]])
       # The indices must be in bounds for any axis.
@@ -103,7 +105,8 @@ class GatherTest(xla_test.XLATestCase):
                   params: params_np,
                   indices: indices_np
               })
-          expected = np.take(params_np, [0, 1, 0, 2], axis=axis)
+          expected = constant_op.constant(
+              np.take(params_np, [0, 1, 0, 2], axis=axis), dtype)
           self.assertAllEqual(expected, gather_val)
 
   def testHigherRank(self):
@@ -114,16 +117,17 @@ class GatherTest(xla_test.XLATestCase):
         for axis in 0, 1, 2, 3, -1, -2:
           params = self._buildParams(np.random.randn(*shape), dtype)
           indices = np.random.randint(shape[axis], size=indices_shape)
-          with self.test_session() as sess, self.test_scope():
+          with self.cached_session() as sess, self.test_scope():
             tf_params = array_ops.placeholder(dtype=dtype)
             tf_indices = constant_op.constant(indices, dtype=dtypes.int32)
             gather = array_ops.gather(tf_params, tf_indices, axis=axis)
             gather_value = sess.run(gather, feed_dict={tf_params: params})
-            gather_np = np.take(params, indices, axis=axis)
+            gather_np = constant_op.constant(
+                np.take(params, indices, axis=axis), dtype)
             self.assertAllEqual(gather_np, gather_value)
 
   def testIndicesWithDifferentDimensions(self):
-    with self.test_session():
+    with self.cached_session():
       for dtype in self.numeric_tf_types:
         params = array_ops.placeholder(dtype=dtype)
         indices = array_ops.placeholder(dtype=np.int32)
@@ -135,6 +139,20 @@ class GatherTest(xla_test.XLATestCase):
             [7], gather.eval(feed_dict={params: [4, 7, 2], indices: [1]}))
         self.assertAllEqual(
             [[7]], gather.eval(feed_dict={params: [4, 7, 2], indices: [[1]]}))
+
+  def testGatherPrecision(self):
+    with self.cached_session() as session, self.test_scope():
+      data = np.array([[0, 0, 0, 0], [0, 2 * (1 + np.exp2(-8)), 0, 0],
+                       [0, 0, 0, 0], [0.015789, 0.0985, 0.55789, 0.3842]])
+      indices = np.array([1, 2, 3, 1])
+      dtype = dtypes.float32
+      params_np = self._buildParams(data, dtype)
+      params = array_ops.placeholder(dtype=dtype)
+      indices_tf = constant_op.constant(indices)
+      gather_t = array_ops.gather(params, indices_tf)
+      gather_val = session.run(gather_t, feed_dict={params: params_np})
+      np_val = params_np[indices]
+      self.assertAllEqual(np_val, gather_val)
 
 
 class GatherBenchmark(test.Benchmark):

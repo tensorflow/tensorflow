@@ -448,8 +448,9 @@ class StatsAccumulatorScalarAddOp : public OpKernel {
          stamp_token](int64 start, int64 end) {
           for (int resource_handle_idx = start; resource_handle_idx < end;
                ++resource_handle_idx) {
-            ResourceHandle handle = resource_handle_list[resource_handle_idx]
-                                        .flat<ResourceHandle>()(0);
+            const ResourceHandle& handle =
+                resource_handle_list[resource_handle_idx]
+                    .flat<ResourceHandle>()(0);
 
             StatsAccumulatorScalarResource* accumulator_resource;
             OP_REQUIRES_OK(context, LookupResource(context, handle,
@@ -512,8 +513,9 @@ class StatsAccumulatorTensorAddOp : public OpKernel {
          stamp_token](int64 start, int64 end) {
           for (int resource_handle_idx = start; resource_handle_idx < end;
                ++resource_handle_idx) {
-            ResourceHandle handle = resource_handle_list[resource_handle_idx]
-                                        .flat<ResourceHandle>()(0);
+            const ResourceHandle& handle =
+                resource_handle_list[resource_handle_idx]
+                    .flat<ResourceHandle>()(0);
 
             StatsAccumulatorTensorResource* accumulator_resource;
             OP_REQUIRES_OK(context, LookupResource(context, handle,

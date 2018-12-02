@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import pickle
 import threading
 
 import numpy as np
@@ -63,6 +65,16 @@ class TFETest(test_util.TensorFlowTestCase):
     ctx.scope_name = 'foo'
     self.assertEqual('foo', ctx.scope_name)
 
+    self.assertEqual(context.SYNC, ctx.get_execution_mode())
+    ctx.set_execution_mode(context.ASYNC)
+    self.assertEqual(context.ASYNC, ctx.get_execution_mode())
+    ctx.set_execution_mode(context.SYNC)
+    self.assertEqual(context.SYNC, ctx.get_execution_mode())
+    with ctx.execution_mode(context.ASYNC):
+      self.assertEqual(context.ASYNC, ctx.get_execution_mode())
+    ctx.set_execution_mode(context.SYNC)
+    self.assertEqual(context.SYNC, ctx.get_execution_mode())
+
     self.assertIsNone(ctx.summary_writer_resource)
     ctx.summary_writer_resource = 'mock'
     self.assertEqual('mock', ctx.summary_writer_resource)
@@ -87,6 +99,14 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertTrue(has_cpu_device)
     del ctx
 
+  def testAsyncBasic(self):
+    ctx = context.Context(execution_mode=context.ASYNC)
+    has_cpu_device = False
+    for x in ctx.devices():
+      has_cpu_device = has_cpu_device or 'CPU' in x
+    self.assertTrue(has_cpu_device)
+    del ctx
+
   def testRunMetadata(self):
     context.enable_run_metadata()
     t = constant_op.constant(1.0)
@@ -98,8 +118,7 @@ class TFETest(test_util.TensorFlowTestCase):
     cpu_stats = step_stats.dev_stats[0]
     self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
                      cpu_stats.device)
-    self.assertEqual(len(cpu_stats.node_stats), 1)
-    self.assertEqual(cpu_stats.node_stats[0].node_name, 'Add')
+    self.assertGreaterEqual(len(cpu_stats.node_stats), 1)
 
   def testShouldCopy(self):
     if not context.context().num_gpus():
@@ -113,19 +132,18 @@ class TFETest(test_util.TensorFlowTestCase):
     # available, when no device is explicitly provided)
     self.assertEqual(y.device, '/job:localhost/replica:0/task:0/device:CPU:0')
 
-  def testContextStackContainsEagerMode(self):
-    # Eager execution has been enabled, and no other context
-    # switch has occurred, so `context_stack` should contain
-    # exactly one entry.
-    self.assertEqual(len(context.context_stack.stack), 1)
-    stack_entry = context.context_stack.stack[0]
+  def testContextSwitchStackContainsEagerMode(self):
+    # Eager execution has been enabled, and no other context switch has
+    # occurred, so `context_switches` should contain exactly one entry.
+    self.assertEqual(len(context.context().context_switches.stack), 1)
+    switch = context.context().context_switches.stack[0]
 
     # The entry should log that eager mode was entered.
-    self.assertIs(stack_entry.enter_context_fn, context.eager_mode)
+    self.assertIs(switch.enter_context_fn, context.eager_mode)
 
     # It is not possible to build a graph function when eager execution
     # is enabled; the stack entry should reflect this fact.
-    self.assertFalse(stack_entry.is_building_function)
+    self.assertFalse(switch.is_building_function)
 
   def testInt32GPU(self):
     if not context.context().num_gpus():
@@ -169,6 +187,17 @@ class TFETest(test_util.TensorFlowTestCase):
         device_count={'GPU': 0}))
     self.assertEquals(0, ctx.num_gpus())
 
+  def testPickle(self):
+    tmp_dir = self.get_temp_dir()
+    fname = os.path.join(tmp_dir, 't.pickle')
+    with open(fname, 'wb') as f:
+      t = constant_op.constant(10.0)
+      pickle.dump(t, f)
+
+    with open(fname, 'rb') as f:
+      t = pickle.load(f)
+      self.assertAllEqual(t.numpy(), 10.0)
+
   def testTensorPlacement(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
@@ -207,6 +236,23 @@ class TFETest(test_util.TensorFlowTestCase):
     # Invalid device
     with self.assertRaises(RuntimeError):
       x.gpu(context.context().num_gpus() + 1)
+
+  def testCopyBetweenDevicesAsync(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    with context.execution_mode(context.ASYNC):
+      x = constant_op.constant([[1., 2.], [3., 4.]])
+      x = x.cpu()
+      x = x.gpu()
+      x = x.gpu()
+      x = x.cpu()
+      context.async_wait()
+
+    # Invalid device
+    with self.assertRaises(RuntimeError):
+      x.gpu(context.context().num_gpus() + 1)
+      context.async_wait()
+    context.async_clear_error()
 
   def testCopyScope(self):
     if not context.context().num_gpus():
@@ -248,18 +294,41 @@ class TFETest(test_util.TensorFlowTestCase):
         attrs=('T', three.dtype.as_datatype_enum))[0]
     self.assertAllEqual(15, product)
 
+  def testExecuteBasicAsync(self):
+    with context.execution_mode(context.ASYNC):
+      three = constant_op.constant(3)
+      five = constant_op.constant(5)
+      product = execute(
+          b'Mul',
+          num_outputs=1,
+          inputs=[three, five],
+          attrs=('T', three.dtype.as_datatype_enum))[0]
+      self.assertAllEqual(15, product)
+    # Error: Invalid arguments
+    context.set_execution_mode(context.ASYNC)
+    with self.assertRaises(errors.InvalidArgumentError):
+      execute(
+          b'MatMul',
+          num_outputs=1,
+          inputs=[three, five],
+          attrs=('transpose_a', False, 'transpose_b', False, 'T',
+                 three.dtype.as_datatype_enum))
+      context.async_wait()
+    context.async_clear_error()
+    context.set_execution_mode(context.SYNC)
+
   def testExecuteTooManyNumOutputs(self):
     # num_outputs provided is 50, but only one output is produced.
-    with self.assertRaises(errors.InvalidArgumentError):
-      _ = execute(
-          b'Mul',
-          num_outputs=50,
-          inputs=[constant_op.constant(3),
-                  constant_op.constant(5)],
-          attrs=('T', dtypes.int32.as_datatype_enum))[0]
+    product = execute(
+        b'Mul',
+        num_outputs=50,
+        inputs=[constant_op.constant(3),
+                constant_op.constant(5)],
+        attrs=('T', dtypes.int32.as_datatype_enum))[0]
+    self.assertAllEqual(15, product)
 
   def testExecuteTooFewNumOutputs(self):
-    # num_outputs provided is 50, but only one output is produced.
+    # num_outputs provided is 0, but one output is produced.
     with self.assertRaises(errors.InvalidArgumentError):
       _ = execute(
           b'Mul',
@@ -554,6 +623,42 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertEquals(typ, dtypes.float32)
       self.assertIsInstance(t, ops.EagerTensor)
 
+  def testConvertMixedEagerTensorsWithVariables(self):
+    var = resource_variable_ops.ResourceVariable(1.0)
+    types, tensors = execute_lib.convert_to_mixed_eager_tensors(
+        ['foo', var], context.context())
+    self.assertAllEqual([dtypes.string, dtypes.float32], types)
+    for t in tensors:
+      self.assertIsInstance(t, ops.EagerTensor)
+
+  def testSmallIntegerOpsForcedToCPU(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+
+    a = constant_op.constant((1, 2, 3, 4, 5), dtype=dtypes.int64)
+    b = constant_op.constant((2, 3, 4, 5, 6), dtype=dtypes.int64)
+    with context.device('gpu:0'):
+      c = a + b
+
+    # Op forced to CPU since all constants are integers and small.
+    self.assertEqual(c.device, '/job:localhost/replica:0/task:0/device:CPU:0')
+
+    a = array_ops.zeros((8, 10), dtype=dtypes.int64)
+    b = array_ops.ones((8, 10), dtype=dtypes.int64)
+
+    with context.device('gpu:0'):
+      c = a + b
+
+    # Op not forced to CPU since the tensors are larger than 64 elements.
+    self.assertEqual(c.device, '/job:localhost/replica:0/task:0/device:GPU:0')
+
+    a = constant_op.constant((1, 2, 3, 4, 5), dtype=dtypes.float32)
+    b = constant_op.constant((2, 3, 4, 5, 6), dtype=dtypes.float32)
+    with context.device('gpu:0'):
+      c = a + b
+
+    # Op not forced to CPU since the constants are not integers.
+    self.assertEqual(c.device, '/job:localhost/replica:0/task:0/device:GPU:0')
 
 class SendRecvTest(test_util.TensorFlowTestCase):
 
@@ -601,14 +706,26 @@ class SendRecvTest(test_util.TensorFlowTestCase):
     with ops.device('GPU:0'):
       t0 = constant_op.constant(1.0)
       self._send(t0, 't0', self.cpu_device)
-    self.assertAllEqual(
-        self._recv(dtypes.float32, 't0', gpu_device_name),
-        1.0)
-    self._send(constant_op.constant(2.0), 't1', gpu_device_name)
+    with ops.device('cpu:0'):
+      self.assertAllEqual(
+          self._recv(dtypes.float32, 't0', gpu_device_name),
+          1.0)
+      self._send(constant_op.constant(2.0), 't1', gpu_device_name)
     with ops.device('GPU:0'):
       self.assertAllEqual(
           self._recv(dtypes.float32, 't1', self.cpu_device),
           2.0)
+
+
+class EagerTensorCacheTest(test_util.TensorFlowTestCase):
+
+  def testCacheSkipsTensorsTooLarge(self):
+    cache = context._EagerTensorCache(max_items=100, max_tensor_size=3)
+    cache.put('1', array_ops.zeros((2, 2)))
+    self.assertEqual(cache.get('1'), None)
+
+    cache.put('2', array_ops.zeros((2)))
+    self.assertNotEqual(cache.get('2'), None)
 
 
 if __name__ == '__main__':

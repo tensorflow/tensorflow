@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -38,13 +38,13 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status GetStackShape(xla::ComputationBuilder* builder, XlaResource* resource,
+Status GetStackShape(xla::XlaBuilder* builder, XlaResource* resource,
                      TensorShape* stack_shape) {
   auto shape_or_status = builder->GetShape(resource->value());
   if (!shape_or_status.ok()) {
     return shape_or_status.status();
   }
-  xla::Shape shape = *shape_or_status.ValueOrDie();
+  xla::Shape shape = shape_or_status.ValueOrDie();
   TF_RET_CHECK(xla::ShapeUtil::IsTuple(shape));
   return XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(shape, 0),
                                stack_shape);
@@ -60,9 +60,8 @@ Status GetStackShape(xla::ComputationBuilder* builder, XlaResource* resource,
 //
 // TODO(phawkins): consider changing the API of the stack operators to
 // allow an optional element shape at stack construction time.
-Status MaybeInitializeStack(xla::ComputationBuilder* builder,
-                            XlaResource* resource, DataType dtype,
-                            const TensorShape& elem_shape) {
+Status MaybeInitializeStack(xla::XlaBuilder* builder, XlaResource* resource,
+                            DataType dtype, const TensorShape& elem_shape) {
   if (resource->type() != dtype) {
     return errors::InvalidArgument(
         "Stack dtype is ", DataTypeString(resource->type()),
@@ -70,13 +69,11 @@ Status MaybeInitializeStack(xla::ComputationBuilder* builder,
   }
 
   TensorShape stack_shape;
-  stack_shape.AddDim(resource->tensor_array_size());
+  stack_shape.AddDim(resource->max_array_size());
   stack_shape.AppendShape(elem_shape);
 
   if (!resource->initialized()) {
     // Stack has not been initialized.
-    xla::ComputationDataHandle zero =
-        XlaHelpers::Zero(builder, resource->type());
     TF_RETURN_IF_ERROR(resource->SetTypeAndShape(dtype, elem_shape));
     TF_RETURN_IF_ERROR(resource->SetZeroValue(builder));
   } else {
@@ -100,10 +97,10 @@ class StackOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    int64 size;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &size));
+    int64 max_size;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &max_size));
     OP_REQUIRES(
-        ctx, size >= 0,
+        ctx, max_size >= 0,
         errors::InvalidArgument(
             "XLA compilation requires a fixed stack size upper bound. If "
             "you are using tf.while_loop, set the maximum_iterations parameter "
@@ -111,14 +108,9 @@ class StackOp : public XlaOpKernel {
 
     // We defer initializing the Stack resource until we see the first push.
     // Otherwise we do not know the shape of the stack elements.
-    xla::ComputationDataHandle value;
-    XlaContext& xc = XlaContext::Get(ctx);
-    XlaResource* resource;
-    string name = strings::StrCat("Stack: ", stack_name_);
-    OP_REQUIRES_OK(
-        ctx, xc.CreateResource(XlaResource::kStack, -1, std::move(name), dtype_,
-                               TensorShape(), value, /*tensor_array_size=*/size,
-                               /*tensor_array_gradients=*/{}, &resource));
+    XlaResource* resource =
+        ctx->xla_context()->AddResource(XlaResource::CreateStack(
+            /*name=*/absl::StrCat("Stack: ", stack_name_), dtype_, max_size));
     ctx->SetResourceOutput(0, resource);
   }
 
@@ -129,7 +121,9 @@ class StackOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StackOp);
 };
 
-REGISTER_XLA_OP(Name("StackV2").CompileTimeConstInput("max_size"), StackOp);
+REGISTER_XLA_OP(
+    Name("StackV2").CompileTimeConstantInput("max_size").CompilationOnly(),
+    StackOp);
 
 class StackPushOp : public XlaOpKernel {
  public:
@@ -138,7 +132,7 @@ class StackPushOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
     TensorShape elem_shape = ctx->InputShape(1);
 
     XlaResource* resource;
@@ -147,24 +141,25 @@ class StackPushOp : public XlaOpKernel {
     // Initializes the Stack, if the element shape was not already known.
     OP_REQUIRES_OK(ctx, MaybeInitializeStack(b, resource, dtype_, elem_shape));
 
-    xla::ComputationDataHandle ta = b->GetTupleElement(resource->value(), 0);
-    xla::ComputationDataHandle index = b->GetTupleElement(resource->value(), 1);
-    xla::ComputationDataHandle value = ctx->Input(1);
+    xla::XlaOp ta = xla::GetTupleElement(resource->value(), 0);
+    xla::XlaOp index = xla::GetTupleElement(resource->value(), 1);
+    xla::XlaOp value = ctx->Input(1);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
     auto start_indices =
-        b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
-               xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
+        xla::Pad(xla::Reshape(index, {1}), xla::ConstantR0<int32>(b, 0),
+                 xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
 
     TensorShape slice_shape = elem_shape;
     slice_shape.InsertDim(0, 1LL);
-    auto update = b->Reshape(value, slice_shape.dim_sizes());
+    auto update = xla::Reshape(value, slice_shape.dim_sizes());
 
     // TODO(phawkins): We don't check the index is in bounds --- there is no
     // error mechanism in XLA.
-    OP_REQUIRES_OK(ctx, resource->SetValue(b->Tuple(
-                            {b->DynamicUpdateSlice(ta, update, start_indices),
-                             b->Add(index, b->ConstantR0<int32>(1))})));
+    OP_REQUIRES_OK(ctx,
+                   resource->SetValue(xla::Tuple(
+                       b, {xla::DynamicUpdateSlice(ta, update, start_indices),
+                           xla::Add(index, xla::ConstantR0<int32>(b, 1))})));
 
     ctx->SetOutput(0, value);
   }
@@ -175,7 +170,7 @@ class StackPushOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StackPushOp);
 };
 
-REGISTER_XLA_OP(Name("StackPushV2"), StackPushOp);
+REGISTER_XLA_OP(Name("StackPushV2").CompilationOnly(), StackPushOp);
 
 class StackPopOp : public XlaOpKernel {
  public:
@@ -184,7 +179,7 @@ class StackPopOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
 
     XlaResource* resource;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &resource));
@@ -199,29 +194,28 @@ class StackPopOp : public XlaOpKernel {
     TensorShape stack_shape;
     OP_REQUIRES_OK(ctx, GetStackShape(b, resource, &stack_shape));
 
-    xla::ComputationDataHandle state = resource->value();
-    xla::ComputationDataHandle ta = b->GetTupleElement(state, 0);
-    xla::ComputationDataHandle index = b->GetTupleElement(state, 1);
+    xla::XlaOp state = resource->value();
+    xla::XlaOp ta = xla::GetTupleElement(state, 0);
+    xla::XlaOp index = xla::GetTupleElement(state, 1);
 
-    index = b->Sub(index, b->ConstantR0<int32>(1));
-    OP_REQUIRES_OK(ctx, resource->SetValue(b->Tuple({ta, index})));
+    index = Sub(index, xla::ConstantR0<int32>(b, 1));
+    OP_REQUIRES_OK(ctx, resource->SetValue(xla::Tuple(b, {ta, index})));
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
     auto start_indices =
-        b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
-               xla::MakeEdgePaddingConfig({{0, stack_shape.dims() - 1}}));
+        xla::Pad(xla::Reshape(index, {1}), xla::ConstantR0<int32>(b, 0),
+                 xla::MakeEdgePaddingConfig({{0, stack_shape.dims() - 1}}));
 
     auto slice_shape = stack_shape.dim_sizes();
     slice_shape[0] = 1LL;
 
     // TODO(phawkins): We don't check the index is in bounds --- there is no
     // error mechanism in XLA.
-    xla::ComputationDataHandle read =
-        b->DynamicSlice(ta, start_indices, slice_shape);
+    xla::XlaOp read = xla::DynamicSlice(ta, start_indices, slice_shape);
 
     // Remove the leading '1' dimension.
     std::vector<int64> value_shape(slice_shape.begin() + 1, slice_shape.end());
-    ctx->SetOutput(0, b->Reshape(read, value_shape));
+    ctx->SetOutput(0, xla::Reshape(read, value_shape));
   }
 
  private:
@@ -230,7 +224,7 @@ class StackPopOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StackPopOp);
 };
 
-REGISTER_XLA_OP(Name("StackPopV2"), StackPopOp);
+REGISTER_XLA_OP(Name("StackPopV2").CompilationOnly(), StackPopOp);
 
 class StackCloseOp : public XlaOpKernel {
  public:
@@ -244,7 +238,7 @@ class StackCloseOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StackCloseOp);
 };
 
-REGISTER_XLA_OP(Name("StackCloseV2"), StackCloseOp);
+REGISTER_XLA_OP(Name("StackCloseV2").CompilationOnly(), StackCloseOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

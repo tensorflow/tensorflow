@@ -189,7 +189,6 @@ TEST(OpGenLibTest, ApiDefInitializedFromOpDef) {
 visibility: VISIBLE
 endpoint {
   name: "testop"
-  deprecation_version: 123
 }
 in_arg {
   name: "arg_a"

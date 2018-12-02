@@ -18,25 +18,53 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+namespace {
+
+// Releases a set of global data handles owned by the parent service
+// interface.
+void ReleaseHandles(ServiceInterface* parent,
+                    const absl::Span<const GlobalDataHandle> handles) {
+  UnregisterRequest request;
+  for (auto& handle : handles) {
+    VLOG(1) << "Requesting to unregister " << handle.ShortDebugString();
+    *request.add_data() = handle;
+  }
+  UnregisterResponse response;
+  Status status = parent->Unregister(&request, &response);
+  VLOG(1) << "Done with request";
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to unregister handles: " << status
+                 << "; continuing anyway...";
+  }
+}
+
+}  // namespace
 
 GlobalData::GlobalData(ServiceInterface* parent, GlobalDataHandle handle)
     : handle_(std::move(handle)), parent_(parent) {}
 
 GlobalData::~GlobalData() {
-  UnregisterRequest request;
-  *request.mutable_data() = handle_;
-  UnregisterResponse response;
-  VLOG(1) << "requesting to unregister " << handle_.ShortDebugString();
-  tensorflow::Status s = parent_->Unregister(&request, &response);
-  VLOG(1) << "done with request";
+  if (parent_ != nullptr) {
+    ReleaseHandles(parent_, {handle_});
+  }
+}
 
-  if (!s.ok()) {
-    LOG(WARNING) << "failed to unregister " << handle_.ShortDebugString()
-                 << "; continuing anyway...";
+/* static */ void GlobalData::Release(
+    std::vector<std::unique_ptr<GlobalData>> instances) {
+  absl::flat_hash_map<ServiceInterface*, std::vector<GlobalDataHandle>>
+      parent_handles_map;
+  for (auto& instance : instances) {
+    if (instance->parent_ != nullptr) {
+      parent_handles_map[instance->parent_].push_back(instance->Release());
+    }
+  }
+  for (auto& parent_handles : parent_handles_map) {
+    ReleaseHandles(parent_handles.first, parent_handles.second);
   }
 }
 

@@ -29,10 +29,11 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("distributions.Uniform")
+@tf_export(v1=["distributions.Uniform"])
 class Uniform(distribution.Distribution):
   """Uniform distribution with `low` and `high` parameters.
 
@@ -76,6 +77,14 @@ class Uniform(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                low=0.,
                high=1.,
@@ -102,8 +111,8 @@ class Uniform(distribution.Distribution):
     Raises:
       InvalidArgumentError: if `low >= high` and `validate_args=False`.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[low, high]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[low, high]) as name:
       with ops.control_dependencies([
           check_ops.assert_less(
               low, high, message="uniform not defined when low >= high.")
@@ -166,7 +175,8 @@ class Uniform(distribution.Distribution):
     return self.low + self.range() * samples
 
   def _prob(self, x):
-    broadcasted_x = x * array_ops.ones(self.batch_shape_tensor())
+    broadcasted_x = x * array_ops.ones(
+        self.batch_shape_tensor(), dtype=x.dtype)
     return array_ops.where(
         math_ops.is_nan(broadcasted_x),
         broadcasted_x,

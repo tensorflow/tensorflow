@@ -76,8 +76,13 @@ Status VerbsServer::ChannelCacheFactory(const ServerDef& server_def,
   return Status::OK();
 }
 
+namespace {
+std::once_flag reg_mem_visitors_call;
+}  // namespace
+
 Status VerbsServer::Init(ServiceInitFunction service_func,
                          RendezvousMgrCreationFunction rendezvous_mgr_func) {
+  std::call_once(reg_mem_visitors_call, []() { RdmaMgr::RegMemVisitors(); });
   Status s = GrpcServer::Init(service_func, rendezvous_mgr_func);
   {
     mutex_lock l(mu_);

@@ -20,15 +20,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
+import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_sharding
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.util import nest
 
 
 class InfeedQueue(object):
@@ -85,8 +91,7 @@ class InfeedQueue(object):
       else:
         raise ValueError(
             "number of tuple elements cannot be inferred from InfeedQueue "
-            "constructor"
-        )
+            "constructor")
     if number_of_tuple_elements <= 0:
       raise ValueError("number_of_tuple_elements %d must be > 0" %
                        number_of_tuple_elements)
@@ -286,9 +291,8 @@ class InfeedQueue(object):
         self.number_of_tuple_elements
     """
     if len(input_tensors) != self.number_of_tuple_elements:
-      raise ValueError(
-          "input_tensors is %s, but should be a list of %d Tensors", (
-              str(input_tensors), self.number_of_tuple_elements))
+      raise ValueError("input_tensors is %s, but should be a list of %d Tensors"
+                       % (str(input_tensors), self.number_of_tuple_elements))
     self.set_tuple_shapes([t.shape for t in input_tensors])
     self.set_tuple_types([t.dtype for t in input_tensors])
 
@@ -368,12 +372,19 @@ class InfeedQueue(object):
       policy.freeze()
     self._validate()
 
-  def generate_dequeue_op(self):
+  def generate_dequeue_op(self, tpu_device=0):
     """Generates the device-side Op to dequeue a tuple from the queue.
 
     Implicitly freezes the queue configuration if it is not already
     frozen, which will raise errors if the shapes and types have not
     been fully specified.
+
+    Args:
+      tpu_device: The TPU device ordinal where the infeed instruction should be
+        placed. If None, no explicit placement will be performed, and it is up
+        to the user to call this API from within a proper TPU device scope.
+        The XLA code will fail if the TPU dequeue instruction is not bound to
+        any device.
 
     Returns:
       A list of Outputs corresponding to a shard of infeed dequeued
@@ -392,8 +403,13 @@ class InfeedQueue(object):
         policy.get_sharded_shape(shape)
         for (shape, policy) in zip(self._tuple_shapes, self._sharding_policies)
     ]
-    return tpu_ops.infeed_dequeue_tuple(
-        dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
+    if tpu_device is not None:
+      with ops.device(tpu.core(tpu_device)):
+        return tpu_ops.infeed_dequeue_tuple(
+            dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
+    else:
+      return tpu_ops.infeed_dequeue_tuple(
+          dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
 
   def _generate_enqueue_op(self,
                            inputs,
@@ -432,8 +448,8 @@ class InfeedQueue(object):
       for i in xrange(1, self.number_of_tuple_elements):
         if devices[0] != devices[i]:
           raise ValueError(
-              "input devices for shard %d are %s, but should all be the same",
-              index, str(devices))
+              "input devices for shard %d are %s, but should all be the same" %
+              (index, str(devices)))
       with ops.colocate_with(inputs[0]):
         return tpu_ops.infeed_enqueue_tuple(
             inputs=inputs,
@@ -448,7 +464,10 @@ class InfeedQueue(object):
             name=full_name,
             device_ordinal=tpu_ordinal)
 
-  def generate_enqueue_ops(self, sharded_inputs, tpu_ordinal_function=None):
+  def generate_enqueue_ops(self,
+                           sharded_inputs,
+                           tpu_ordinal_function=None,
+                           placement_function=None):
     """Generates the host-side Ops to enqueue the shards of a tuple.
 
     sharded_inputs is a list, one for each shard, of lists of
@@ -470,6 +489,9 @@ class InfeedQueue(object):
         shard index as input and returns the ordinal of the TPU device
         the shard's infeed should be placed on. tpu_ordinal_function must be
         set if the inputs are placed on CPU devices.
+      placement_function: if not None, a function that takes the shard index as
+        input and returns the host device where the enqueue op should be placed
+        on.
 
     Returns:
       A list of host-side Ops, one for each shard, that when executed together
@@ -495,8 +517,12 @@ class InfeedQueue(object):
       tpu_ordinal_function = lambda index: -1
     name_prefix = "%s/enqueue" % self._name
     return [
-        self._generate_enqueue_op(shard, name_prefix, index,
-                                  tpu_ordinal=tpu_ordinal_function(index))
+        self._generate_enqueue_op(
+            shard,
+            name_prefix,
+            index,
+            tpu_ordinal=tpu_ordinal_function(index),
+            device=placement_function(index) if placement_function else None)
         for (shard, index) in zip(sharded_inputs, xrange(self.number_of_shards))
     ]
 
@@ -617,3 +643,256 @@ class InfeedQueue(object):
             tpu_ordinal=tpu_ordinal_function(index))
         for (shard, index) in zip(sharded_inputs, xrange(self.number_of_shards))
     ]
+
+
+class _PartitionedInfeedQueue(InfeedQueue):
+  """A helper object to build a device infeed queue with input partition.
+
+  Args:
+    number_of_tuple_elements: the number of Tensors fed atomically through the
+      queue, must be present unless it can be inferred from other arguments.
+    device_assignment: A TPU `DeviceAssignment` which is used to place all the
+      partitions to different TPU infeed queues.
+    host_id: The id of the host machine.
+    input_partition_dims: A nested list/tuple of integers. Each inner
+      list/tuple describes how to partition the corresponding input tensor.
+    tuple_types: If not None, a list of types of the elements of the queue.
+    tuple_shapes: If not None, a list of shapes of the elements of the queue.
+    name: The name of the queue.
+  """
+
+  def __init__(self,
+               number_of_tuple_elements,
+               device_assignment,
+               host_id,
+               input_partition_dims=None,
+               tuple_types=None,
+               tuple_shapes=None,
+               name=None):
+    super(_PartitionedInfeedQueue, self).__init__(
+        number_of_tuple_elements=number_of_tuple_elements,
+        tuple_types=tuple_types,
+        tuple_shapes=None,
+        shard_dimensions=None,
+        name="PartitionedInfeedQueue" if name is None else name)
+    self._input_partition_dims = input_partition_dims
+    self._host_id = host_id
+    self._device_assignment = device_assignment
+
+  def generate_dequeue_op(self, tpu_device=0):
+    """Generate TPU dequeue ops.
+
+    Args:
+      tpu_device: The TPU device ordinal where the infeed instruction should be
+        placed.
+
+    Returns:
+      A list of Outputs corresponding to a partition of infeed dequeued
+      into XLA, suitable for use within a replicated block.
+
+    Raises:
+      ValueError: if the types or shapes of the tuple elements have not been
+      set; or if a dequeue op has already been generated.
+    """
+    self.freeze()
+    if self._generated_dequeue_op:
+      raise ValueError("Can't generate two dequeue Ops from the same queue")
+    self._generated_dequeue_op = True
+    full_name = "%s/dequeue" % self._name
+    sharded_shapes = [
+        policy.get_sharded_shape(shape)
+        for (shape, policy) in zip(self._tuple_shapes, self._sharding_policies)
+    ]
+    with ops.device(tpu.core(tpu_device)):
+      values = tpu_ops.infeed_dequeue_tuple(
+          dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
+    return self._tag_sharding_attribute_for_dequeued_tensors(
+        values, self._input_partition_dims)
+
+  def generate_enqueue_ops(self, per_host_sharded_inputs):
+    """Generates the host-side Ops to enqueue the partitioned inputs.
+
+    per_host_sharded_inputs is a list, one for each replica, of lists of
+    Tensors. sharded_inputs[i] is the tuple of Tensors to use to feed
+    replica i.
+    sharded_inputs[i][j] is partitioned by self._input_partition_dims[j].
+
+    For example, if sharded_inputs[i][j] is a 2-D Tensor:
+    [[A, B, C, D],
+     [E ,F, G, H]]
+    self._input_partition_dims[j] is [2, 4].
+
+    sharded_inputs[i][j] will be partitioned and flattened into:
+    [A, B, C, D, E, F, G, H] and fed into the logical core ids:
+    [0, 1, 2, 3, 4, 5, 6, 7] respectively.
+
+    Args:
+      per_host_sharded_inputs: a list of lists of Tensors. The length of the
+        outer list determines the number of shards. Each inner list indicates
+        the types and shapes of the tuples in the corresponding shard.
+
+    Returns:
+      A list of host-side Ops, one for each shard, that when executed together
+      will enqueue a full-size element of infeed.
+
+    Raises:
+      ValueError: if the queue configuration has previously been frozen and the
+        shapes of the elements of sharded_inputs are not compatible with the
+        frozen configuration; or if the shapes of the elements of sharded_inputs
+        don't form a consistent unsharded tuple; or if the elements of a tuple
+        have different device constraints; or if the partition dims are invalid.
+      TypeError: if the queue configuration has previously been frozen and the
+        types of the elements of sharded_inputs are not compatible with the
+        frozen configuration; or if the types of the elements of sharded_inputs
+        don't form a consistent unsharded tuple.
+    """
+    self.set_configuration_from_sharded_input_tensors(per_host_sharded_inputs)
+    number_of_replicas_per_host = len(per_host_sharded_inputs)
+    number_of_tuple_elements = len(per_host_sharded_inputs[0])
+
+    assert len(self._input_partition_dims) == number_of_tuple_elements
+    per_host_enqueue_ops = []
+
+    for replica_index in range(number_of_replicas_per_host):
+      flattened_inputs = per_host_sharded_inputs[replica_index]
+      inputs_part_dims_flat = nest.flatten_up_to(flattened_inputs,
+                                                 self._input_partition_dims)
+      inputs_parted_iters = [
+          iter(self._partition_or_replicate_on_host(x, dims)) for x, dims in
+          zip(per_host_sharded_inputs[replica_index], inputs_part_dims_flat)
+      ]
+
+      for logical_core in xrange(self._device_assignment.num_cores_per_replica):
+        # Places different partitions to different logic cores.
+        replica_id = self._device_assignment.lookup_replicas(
+            self._host_id, logical_core)[replica_index]
+        ordinal = self._device_assignment.tpu_ordinal(
+            replica=replica_id, logical_core=logical_core)
+        infeed_inputs = []
+        for it in inputs_parted_iters:
+          input_for_device = next(it, None)
+          if input_for_device is not None:
+            infeed_inputs.append(input_for_device)
+
+        if infeed_inputs:
+          per_host_enqueue_ops.append(
+              tpu_ops.infeed_enqueue_tuple(
+                  inputs=infeed_inputs,
+                  shapes=[x.shape for x in infeed_inputs],
+                  name="enqueue/replica_{0}/input_{1}".format(
+                      replica_index, logical_core),
+                  device_ordinal=ordinal))
+    return per_host_enqueue_ops
+
+  def _check_input_partition_dims(self, tensor, dims):
+    """Checks that input partition dims are valid for the `Tensor`.
+
+    Args:
+      tensor: Input tensor for partitioning.
+      dims: 1-D np.array of the list of integer describes how to partition the
+        input tensor.
+
+    Raises:
+      ValueError: If the tensor can't be partitioned by dims or the
+        num_cores_per_replica doesn't match the number of
+        partitions(dims.prod()).
+    """
+    if (dims < 1).any():
+      raise ValueError("All input partition dims must be >= 1.")
+
+    # No partitioning, so don't perform further checks.
+    if dims.prod() == 1:
+      return
+
+    if dims.prod() != self._device_assignment.num_cores_per_replica:
+      raise ValueError(
+          "The product of each input parition dim should equal to "
+          "num_cores_per_replica. (dim = {}, num_cores_per_replica "
+          "= {})".format(dims, self._device_assignment.num_cores_per_replica))
+    if dims.shape[0] != tensor.shape.ndims:
+      raise ValueError(
+          "Input partition dims must have the same number of dimensions "
+          "as the `Tensor` to be partitioned. (tensor shape = {}, input "
+          "partition dims = {}).".format(tensor.shape.as_list(), dims))
+
+    tensor.shape.assert_is_fully_defined()
+
+  def _partition_or_replicate_on_host(self, tensor, dims):
+    """Partitions or replicates the input tensor.
+
+      The ops inside this function are placed on the host side.
+
+    Args:
+      tensor: The input tensor which will be partioned or replicated.
+      dims: A list of integer describes how to partition the input tensor.
+    Returns:
+      An iterator of `Tensor`s or a list of partioned tensors.
+    """
+    if dims is None:
+      return itertools.repeat(tensor)
+    dims = np.array(dims)
+    self._check_input_partition_dims(tensor, dims)
+    output = [tensor]
+    shape_list = np.array(tensor.shape.as_list())
+    quotients, remainders = np.divmod(shape_list, dims)
+    for axis, (quotient, remainder, dim, original_size) in enumerate(
+        zip(quotients, remainders, dims, shape_list)):
+      if dim <= 1:
+        continue
+      if remainder > 0:
+        # For each dimension, when it cannot be evenly partitioned, XLA assumes
+        # tensors are partitioned in a greedy manner by using
+        # ceil_ratio(size/dim) first. E.g. 2D tensor with shape (5, 14) and dims
+        # are (2, 4). Since 5 % 2 = 1 and 14 % 4 = 2, [5, 14] =>
+        # [[(3, 4), (3, 4), (2, 4), (2, 2)],
+        # [(2, 4), (2, 4), (2, 4), (2, 2)]]
+        ceil_ratio = quotient + 1
+        num_full_slots, left_over = np.divmod(original_size, ceil_ratio)
+        num_or_size_splits = [ceil_ratio] * num_full_slots + [left_over]
+        if len(num_or_size_splits) < dim:
+          num_or_size_splits += [0] * (dim - len(num_or_size_splits))
+        new_output = []
+        for x in output:
+          new_output.append(
+              array_ops.split(
+                  x, num_or_size_splits=num_or_size_splits, axis=axis))
+        output = new_output
+      else:
+        output = [array_ops.split(x, dim, axis=axis) for x in output]
+      output = nest.flatten(output)
+    return output
+
+  def _tag_sharding_attribute_for_dequeued_tensor(self, tensor, dims):
+    """Tags appropriate XLA sharding attribute to the dequeued tensor.
+
+    Args:
+      tensor: The dequeued tensor on TPU.
+      dims: A list of integer describes how the tensor is partitioned.
+
+    Returns:
+      The same tensor with the xla_sharding attribute.
+    """
+    if dims is None:
+      return xla_sharding.replicate(tensor)
+    elif np.prod(dims) == 1:
+      return xla_sharding.assign_device(tensor, 0)
+    else:
+      tile_assignment = np.arange(np.prod(dims)).reshape(dims)
+      return xla_sharding.tile(
+          tensor=tensor,
+          tile_assignment=tile_assignment)
+
+  def _tag_sharding_attribute_for_dequeued_tensors(self, dequeues, dims):
+    """Tags appropriate XLA sharding attribute to the dequeued tensors.
+
+    Args:
+      dequeues: A list of dequeued tensors on TPU.
+      dims: A list of integer describes how the tensor is partitioned.
+
+    Returns:
+      The same dequeues with appropriate xla_sharding attribute.
+    """
+    nest.assert_shallow_structure(dequeues, dims)
+    return nest.map_structure_up_to(
+        dequeues, self._tag_sharding_attribute_for_dequeued_tensor, dequeues,
+        dims)

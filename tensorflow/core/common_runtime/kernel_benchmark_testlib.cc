@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -42,7 +44,7 @@ namespace test {
 // TODO(hongm): Convert `g` and `init` to using std::unique_ptr.
 Benchmark::Benchmark(const string& device, Graph* g,
                      const SessionOptions* options, Graph* init,
-                     Rendezvous* rendez) {
+                     Rendezvous* rendez, const char* executor_type) {
   SessionOptions default_options;
   if (!options) {
     options = &default_options;
@@ -73,36 +75,39 @@ Benchmark::Benchmark(const string& device, Graph* g,
   const int graph_def_version = g->versions().producer();
 
   LocalExecutorParams params;
-  params.device = device_;
+  params.device = device_.get();
   params.function_library = nullptr;
   params.create_kernel = [this, graph_def_version](const NodeDef& ndef,
                                                    OpKernel** kernel) {
-    return CreateNonCachedKernel(device_, nullptr, ndef, graph_def_version,
-                                 kernel);
+    return CreateNonCachedKernel(device_.get(), nullptr, ndef,
+                                 graph_def_version, kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
   };
 
   if (init) {
-    Executor* init_exec;
-    TF_CHECK_OK(
-        NewLocalExecutor(params, std::unique_ptr<Graph>(init), &init_exec));
+    std::unique_ptr<Executor> init_exec;
+    TF_CHECK_OK(NewExecutor(executor_type, params, std::unique_ptr<Graph>(init),
+                            &init_exec));
     Executor::Args args;
     args.rendezvous = rendez_;
     args.runner = runner;
     TF_CHECK_OK(init_exec->Run(args));
-    delete init_exec;
   }
 
-  TF_CHECK_OK(NewLocalExecutor(params, std::unique_ptr<Graph>(g), &exec_));
+  TF_CHECK_OK(
+      NewExecutor(executor_type, params, std::unique_ptr<Graph>(g), &exec_));
 }
 
 Benchmark::~Benchmark() {
   if (device_) {
     rendez_->Unref();
-    delete exec_;
-    delete device_;
+    // We delete `exec_` before `device_` because the `exec_` destructor may
+    // run kernel destructors that may attempt to access state borrowed from
+    // `device_`, such as the resource manager.
+    exec_.reset();
+    device_.reset();
     delete pool_;
   }
 }

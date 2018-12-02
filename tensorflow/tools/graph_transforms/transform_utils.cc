@@ -88,12 +88,12 @@ void NodeNamePartsFromInput(const string& input_name, string* prefix,
     *suffix = ":" + input_parts[1];
   }
   StringPiece node_name_piece(input_parts[0]);
-  if (node_name_piece.Consume("^")) {
+  if (str_util::ConsumePrefix(&node_name_piece, "^")) {
     *prefix = "^";
   } else {
     *prefix = "";
   }
-  *node_name = node_name_piece.ToString();
+  *node_name = string(node_name_piece);
 }
 
 string NodeNameFromInput(const string& input_name) {
@@ -200,8 +200,7 @@ Status SortByExecutionOrder(const GraphDef& input_graph_def,
       // for merge only wait for one non-control input.
       int32 num_control_edges = 0;
       for (int i = 0; i < node_def.input_size(); ++i) {
-        StringPiece input_name(node_def.input(i));
-        if (input_name.starts_with("^")) {
+        if (str_util::StartsWith(node_def.input(i), "^")) {
           num_control_edges++;
         }
       }
@@ -248,9 +247,16 @@ Status SortByExecutionOrder(const GraphDef& input_graph_def,
     }
   }
 
-  if (processed < input_graph_def.node_size()) {
-    return errors::InvalidArgument(input_graph_def.node_size() - processed,
-                                   " nodes in a cycle");
+  if (processed < num_nodes) {
+    LOG(WARNING) << "IN " << __func__ << (num_nodes - processed)
+                 << " NODES IN A CYCLE";
+    for (int64 i = 0; i < num_nodes; i++) {
+      if (pending_count[i] != 0) {
+        LOG(WARNING) << "PENDING: " << SummarizeNodeDef(input_graph_def.node(i))
+                     << "WITH PENDING COUNT = " << pending_count[i];
+      }
+    }
+    return errors::InvalidArgument(num_nodes - processed, " nodes in a cycle");
   }
   return Status::OK();
 }
@@ -504,7 +510,7 @@ Status RenameNodeInputs(const GraphDef& input_graph_def,
           const string& dest_name = input_to_rename.second;
           bool is_match;
           string match_name;
-          if (StringPiece(source_name).ends_with(":*")) {
+          if (str_util::EndsWith(source_name, ":*")) {
             is_match = true;
             string prefix;
             string unused_node_name;

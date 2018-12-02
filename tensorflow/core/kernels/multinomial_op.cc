@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/stateless_random_ops.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
@@ -74,7 +75,7 @@ struct MultinomialFunctor<CPUDevice, T, OutputType> {
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "gen" by reference and explicitly do a copy assignment here.
       random::PhiloxRandom gen_copy = gen;
-      // Skip takes units of 128 bytes.  +3 is so rounding doesn't lead to
+      // Skip takes units of 128 bits.  +3 is so rounding doesn't lead to
       // us using the same state in different batches.
       gen_copy.Skip(start_row * (num_samples + 3) / 4);
       random::SimplePhilox simple_philox(&gen_copy);
@@ -127,18 +128,16 @@ struct MultinomialFunctor<CPUDevice, T, OutputType> {
 
 }  // namespace functor
 
+namespace {
+
 // Samples from a multinomial distribution.
 template <typename Device, typename T, typename OutputType>
 class MultinomialOp : public OpKernel {
  public:
-  explicit MultinomialOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, generator_.Init(context));
-  }
+  explicit MultinomialOp(OpKernelConstruction* context) : OpKernel(context) {}
 
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor& logits_t = ctx->input(0);
-    const Tensor& num_samples_t = ctx->input(1);
-
+  void DoCompute(OpKernelContext* ctx, const Tensor& logits_t,
+                 const Tensor& num_samples_t, GuardedPhiloxRandom* generator) {
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(logits_t.shape()),
                 errors::InvalidArgument("logits should be a matrix, got shape ",
                                         logits_t.shape().DebugString()));
@@ -194,7 +193,7 @@ class MultinomialOp : public OpKernel {
       // CPU generates doubles = 2 samples per number.
       if (std::is_same<Device, CPUDevice>::value) num_samples_ceil_4 *= 2;
       auto rng =
-          generator_.ReserveRandomOutputs(batch_size * num_samples_ceil_4, 256);
+          generator->ReserveRandomOutputs(batch_size * num_samples_ceil_4, 256);
       functor::MultinomialFunctor<Device, T, OutputType>()(
           ctx, ctx->eigen_device<Device>(), logits_t.matrix<T>(),
           noises.flat<float>(), scores.flat<float>(), scratch.flat<float>(),
@@ -202,24 +201,38 @@ class MultinomialOp : public OpKernel {
           samples_t->matrix<OutputType>());
     }
   }
+};
+
+template <typename Device, typename T, typename OutputType>
+class StatefulMultinomialOp : public MultinomialOp<Device, T, OutputType> {
+ public:
+  explicit StatefulMultinomialOp(OpKernelConstruction* ctx)
+      : MultinomialOp<Device, T, OutputType>(ctx) {
+    OP_REQUIRES_OK(ctx, generator_.Init(ctx));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& logits_t = ctx->input(0);
+    const Tensor& num_samples_t = ctx->input(1);
+    this->DoCompute(ctx, logits_t, num_samples_t, &generator_);
+  }
 
  private:
   GuardedPhiloxRandom generator_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(MultinomialOp);
 };
 
-#define REGISTER(TYPE)                                                   \
-  REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
-                              .Device(DEVICE_CPU)                        \
-                              .TypeConstraint<TYPE>("T")                 \
-                              .TypeConstraint("output_dtype", DT_INT32), \
-                          MultinomialOp<CPUDevice, TYPE, int32>);        \
-  REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
-                              .Device(DEVICE_CPU)                        \
-                              .TypeConstraint<TYPE>("T")                 \
-                              .TypeConstraint("output_dtype", DT_INT64), \
-                          MultinomialOp<CPUDevice, TYPE, int64>);
+// TODO(b/77906027): Add a TPU implementation.
+#define REGISTER(TYPE)                                                    \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                             \
+                              .Device(DEVICE_CPU)                         \
+                              .TypeConstraint<TYPE>("T")                  \
+                              .TypeConstraint("output_dtype", DT_INT32),  \
+                          StatefulMultinomialOp<CPUDevice, TYPE, int32>); \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                             \
+                              .Device(DEVICE_CPU)                         \
+                              .TypeConstraint<TYPE>("T")                  \
+                              .TypeConstraint("output_dtype", DT_INT64),  \
+                          StatefulMultinomialOp<CPUDevice, TYPE, int64>);
 
 TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
@@ -233,13 +246,13 @@ TF_CALL_double(REGISTER);
                               .HostMemory("num_samples")                 \
                               .TypeConstraint<TYPE>("T")                 \
                               .TypeConstraint("output_dtype", DT_INT32), \
-                          MultinomialOp<GPUDevice, TYPE, int32>)         \
+                          StatefulMultinomialOp<GPUDevice, TYPE, int32>) \
   REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
                               .Device(DEVICE_GPU)                        \
                               .HostMemory("num_samples")                 \
                               .TypeConstraint<TYPE>("T")                 \
                               .TypeConstraint("output_dtype", DT_INT64), \
-                          MultinomialOp<GPUDevice, TYPE, int64>)
+                          StatefulMultinomialOp<GPUDevice, TYPE, int64>)
 
 TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
@@ -247,5 +260,77 @@ TF_CALL_double(REGISTER);
 #undef REGISTER
 
 #endif  // GOOGLE_CUDA
+
+template <typename Device, typename T, typename OutputType>
+class StatelessMultinomialOp : public MultinomialOp<Device, T, OutputType> {
+ public:
+  explicit StatelessMultinomialOp(OpKernelConstruction* ctx)
+      : MultinomialOp<Device, T, OutputType>(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& logits_t = ctx->input(0);
+    const Tensor& num_samples_t = ctx->input(1);
+
+    const Tensor& seed_t = ctx->input(2);
+    OP_REQUIRES(ctx, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
+                errors::InvalidArgument("seed must have shape [2], not ",
+                                        seed_t.shape().DebugString()));
+
+    random::PhiloxRandom::Key key;
+    random::PhiloxRandom::ResultType counter;
+    OP_REQUIRES_OK(ctx, GenerateKey(seed_t, &key, &counter));
+
+    GuardedPhiloxRandom generator;
+    generator.Init(counter, key);
+
+    this->DoCompute(ctx, logits_t, num_samples_t, &generator);
+  }
+
+ private:
+  GuardedPhiloxRandom generator_;
+};
+
+#define REGISTER(TYPE)                                                     \
+  REGISTER_KERNEL_BUILDER(Name("StatelessMultinomial")                     \
+                              .Device(DEVICE_CPU)                          \
+                              .TypeConstraint<TYPE>("T")                   \
+                              .TypeConstraint("output_dtype", DT_INT32),   \
+                          StatelessMultinomialOp<CPUDevice, TYPE, int32>); \
+  REGISTER_KERNEL_BUILDER(Name("StatelessMultinomial")                     \
+                              .Device(DEVICE_CPU)                          \
+                              .TypeConstraint<TYPE>("T")                   \
+                              .TypeConstraint("output_dtype", DT_INT64),   \
+                          StatelessMultinomialOp<CPUDevice, TYPE, int64>);
+
+TF_CALL_half(REGISTER);
+TF_CALL_float(REGISTER);
+TF_CALL_double(REGISTER);
+#undef REGISTER
+
+#if GOOGLE_CUDA
+#define REGISTER(TYPE)                                                    \
+  REGISTER_KERNEL_BUILDER(Name("StatelessMultinomial")                    \
+                              .Device(DEVICE_GPU)                         \
+                              .HostMemory("num_samples")                  \
+                              .HostMemory("seed")                         \
+                              .TypeConstraint<TYPE>("T")                  \
+                              .TypeConstraint("output_dtype", DT_INT32),  \
+                          StatelessMultinomialOp<GPUDevice, TYPE, int32>) \
+  REGISTER_KERNEL_BUILDER(Name("StatelessMultinomial")                    \
+                              .Device(DEVICE_GPU)                         \
+                              .HostMemory("num_samples")                  \
+                              .HostMemory("seed")                         \
+                              .TypeConstraint<TYPE>("T")                  \
+                              .TypeConstraint("output_dtype", DT_INT64),  \
+                          StatelessMultinomialOp<GPUDevice, TYPE, int64>)
+
+TF_CALL_half(REGISTER);
+TF_CALL_float(REGISTER);
+TF_CALL_double(REGISTER);
+#undef REGISTER
+
+#endif  // GOOGLE_CUDA
+
+}  // end namespace
 
 }  // end namespace tensorflow

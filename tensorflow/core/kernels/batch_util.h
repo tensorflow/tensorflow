@@ -12,37 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// NOTE(lespeholt): This file is deprecated. Use
+// "tensorflow/core/util/batch_util.h" instead.
+
 #ifndef TENSORFLOW_CORE_KERNELS_BATCH_UTIL_H_
 #define TENSORFLOW_CORE_KERNELS_BATCH_UTIL_H_
 
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/status.h"
-
-namespace tensorflow {
-namespace batch_util {
-
-// Copies element into the index^th slice of parent (in the 0th dimension).
-//
-// NOTE(mrry): The `element` argument is taken by value. Use `std::move()`
-// to move the `element` argument into this function, and the implementation
-// may be able to optimize the copy to a move. This is particularly important
-// for DT_STRING tensors.
-Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
-
-// Copies the index^th slice of parent (in the 0th dimension) into element.
-Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index);
-
-// Zero-initializes the tensor `element` using the scalar stored in `padding`.
-// Both `element` and `padding` must have matching `dtype`.
-Status SetElementZero(Tensor* element, const Tensor& padding);
-
-// Copies `element` into a (0th dimension) slice of `parent`, assuming
-// the shape of `element` is strictly not larger along any axis than a
-// slice.
-Status CopyElementToLargerSlice(const Tensor& element, Tensor* parent,
-                                int index);
-
-}  // namespace batch_util
-}  // namespace tensorflow
+#include "tensorflow/core/util/batch_util.h"
 
 #endif  // TENSORFLOW_CORE_KERNELS_BATCH_UTIL_H_

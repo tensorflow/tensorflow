@@ -16,15 +16,36 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_FUNCTIONALIZE_CONTROL_FLOW_H_
 #define TENSORFLOW_COMPILER_TF2XLA_FUNCTIONALIZE_CONTROL_FLOW_H_
 
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
 
 // Transformation that converts tf.while_loop() loops into functional While
-// operators, suitable for XLA compilation.
+// operators and tf.cond() conditionals into function If operators, suitable for
+// XLA compilation. If lookup_library is provided, use it to make the library
+// for control flow self-contained.
 Status FunctionalizeControlFlow(Graph* graph,
                                 FunctionLibraryDefinition* library);
+Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
+                                Graph* graph,
+                                FunctionLibraryDefinition* library);
+
+Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
+                                           FunctionLibraryDefinition* library);
+Status FunctionalizeControlFlowForGraphDef(
+    const FunctionLibraryDefinition* lookup_library, GraphDef* graph_def,
+    FunctionLibraryDefinition* library);
+
+// This pass looks at the graph and all associated FunctionDefs, and turns
+// traditional control flow structure (Switch/Merge/etc.) into functional
+// control flow structure (If/While).
+class FunctionalizeControlFlowPass : public GraphOptimizationPass {
+ public:
+  Status Run(const GraphOptimizationPassOptions& options) override;
+};
 
 }  // namespace tensorflow
 

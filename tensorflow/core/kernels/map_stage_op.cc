@@ -410,8 +410,9 @@ class StagingMap : public ResourceBase {
         copy_or_move_tensors(&it->second, *key, *indices, tuple));
 
     // Remove entry if all the values have been consumed
-    if (!std::any_of(it->second.begin(), it->second.end(),
-                     std::mem_fn(&OptionalTensor::has_value))) {
+    if (!std::any_of(
+            it->second.begin(), it->second.end(),
+            [](const OptionalTensor& tensor) { return tensor.has_value(); })) {
       map_.erase(it);
     }
 
@@ -444,8 +445,9 @@ class StagingMap : public ResourceBase {
     *key = it->first;
 
     // Remove entry if all the values have been consumed
-    if (!std::any_of(it->second.begin(), it->second.end(),
-                     std::mem_fn(&OptionalTensor::has_value))) {
+    if (!std::any_of(
+            it->second.begin(), it->second.end(),
+            [](const OptionalTensor& tensor) { return tensor.has_value(); })) {
       map_.erase(it);
     }
 

@@ -22,8 +22,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 #include <vector>
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -31,21 +29,25 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/util/work_sharder.h"
 #endif
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 using mkldnn::lrn_across_channels;
 using mkldnn::lrn_backward;
 using mkldnn::lrn_forward;
 using mkldnn::prop_kind;
 using mkldnn::stream;
+#else
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #endif
+
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -67,7 +69,7 @@ void GetBandMatrix(int depth, int depth_radius,
 
 }  // namespace
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 template <typename T>
 class MklLRNOp : public OpKernel {
@@ -752,7 +754,8 @@ class MklLRNOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
     OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
     workspace_enabled_ = false;
-    context->GetAttr("workspace_enabled", &workspace_enabled_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("workspace_enabled", &workspace_enabled_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -844,12 +847,12 @@ class MklLRNOp : public OpKernel {
                             MklDnnData<T>* src_dnn_data,
                             MklDnnData<T>* dst_dnn_data,
                             MklDnnData<uint8>* wksp_dnn_data = nullptr) {
-    std::vector<primitive> net;
 
     // Check for input reorder
-    src_dnn_data->CheckReorderToOpMem(lrn_fwd_desc.src_primitive_desc(), &net);
+    src_dnn_data->CheckReorderToOpMem(lrn_fwd_desc.src_primitive_desc());
 
     // Create pooling primitive and add it to net
+    std::vector<primitive> net;
     if (wksp_dnn_data != nullptr) {
       net.push_back(lrn_forward(lrn_fwd_desc, src_dnn_data->GetOpMem(),
                                 wksp_dnn_data->GetOpMem(),
@@ -1001,7 +1004,8 @@ class MklLRNGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
     OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
     workspace_enabled_ = false;
-    context->GetAttr("workspace_enabled", &workspace_enabled_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("workspace_enabled", &workspace_enabled_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1043,7 +1047,6 @@ class MklLRNGradOp : public OpKernel {
       // Naming: diff_dst is input_gradient_tensor; src is orig_input_tensor.
       const Tensor& input_grad_tensor = MklGetInput(context, kIdxGradient);
       const Tensor& orig_input_tensor = MklGetInput(context, kIdxOrigInput);
-      const Tensor& orig_output_tensor = MklGetInput(context, kIdxOrigOutput);
 
       // Get input sizes in MKL-DNN required NCHW format.
       // LRN does not have data_format attribute. But by default it has
@@ -1157,15 +1160,15 @@ class MklLRNGradOp : public OpKernel {
       MklDnnData<T>* output_diff_src,
       const memory::primitive_desc& target_diff_dst_pd,
       const MklDnnData<uint8>* workspace_dnn_data = nullptr) {
-    std::vector<primitive> net;
 
     // Check for input reordering on the diff dst input
     input_gradient_diff_dst->CheckReorderToOpMem(
-        lrn_bkwd_desc.diff_dst_primitive_desc(), &net);
+        lrn_bkwd_desc.diff_dst_primitive_desc());
 
     // Check for input reordering on the original input
-    src_dnn_data->CheckReorderToOpMem(lrn_fwd_desc.src_primitive_desc(), &net);
+    src_dnn_data->CheckReorderToOpMem(lrn_fwd_desc.src_primitive_desc());
     // Create pooling primitive and add it to net
+    std::vector<primitive> net;
     if (nullptr == workspace_dnn_data) {
       net.push_back(lrn_backward(lrn_bkwd_desc, src_dnn_data->GetOpMem(),
                                  input_gradient_diff_dst->GetOpMem(),
@@ -1235,7 +1238,7 @@ class MklLRNGradOp : public OpKernel {
     auto activations = orig_output_tensor.shaped<T, 2>({nodes * batch, depth});
 
     Tensor* output_dnn_data;
-    MklShape mkl_output_mkl_shape;
+    MklDnnShape mkl_output_mkl_shape;
     mkl_output_mkl_shape.SetMklTensor(false);
     mkl_output_mkl_shape.SetDimensions(4);
     AllocateOutputSetMklShape(context, kIdxOutput, &output_dnn_data,
@@ -1342,7 +1345,7 @@ class MklLRNGradOp : public OpKernel {
   float beta_;
 };
 
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 
 #define REGISTER_MKL_LRN_CPU(T)                                     \
   REGISTER_KERNEL_BUILDER(Name("_MklLRN")                           \

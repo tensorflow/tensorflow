@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -40,9 +41,17 @@ class Inline(bijector.Bijector):
     name="exp")
   ```
 
-  The above example is equivalent to the `Bijector` `Exp(event_ndims=1)`.
+  The above example is equivalent to the `Bijector` `Exp()`.
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                forward_fn=None,
                inverse_fn=None,
@@ -54,6 +63,8 @@ class Inline(bijector.Bijector):
                inverse_event_shape_tensor_fn=None,
                is_constant_jacobian=False,
                validate_args=False,
+               forward_min_event_ndims=None,
+               inverse_min_event_ndims=None,
                name="inline"):
     """Creates a `Bijector` from callables.
 
@@ -76,10 +87,15 @@ class Inline(bijector.Bijector):
         constant for all input arguments.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
+      forward_min_event_ndims: Python `int` indicating the minimal
+        dimensionality this bijector acts on.
+      inverse_min_event_ndims: Python `int` indicating the minimal
+        dimensionality this bijector acts on.
       name: Python `str`, name given to ops managed by this object.
     """
     super(Inline, self).__init__(
-        event_ndims=0,
+        forward_min_event_ndims=forward_min_event_ndims,
+        inverse_min_event_ndims=inverse_min_event_ndims,
         is_constant_jacobian=is_constant_jacobian,
         validate_args=validate_args,
         name=name)
@@ -134,8 +150,8 @@ class Inline(bijector.Bijector):
           "inverse_log_det_jacobian_fn is not a callable function.")
     return self._inverse_log_det_jacobian_fn(y, **kwargs)
 
-  def _forward_log_det_jacobian(self, y, **kwargs):
+  def _forward_log_det_jacobian(self, x, **kwargs):
     if not callable(self._forward_log_det_jacobian_fn):
       raise NotImplementedError(
           "forward_log_det_jacobian_fn is not a callable function.")
-    return self._forward_log_det_jacobian_fn(y, **kwargs)
+    return self._forward_log_det_jacobian_fn(x, **kwargs)

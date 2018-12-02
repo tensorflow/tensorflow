@@ -657,4 +657,27 @@ REGISTER_OP("ComplexStruct")
     .Attr("t_c: list(type) >= 0")
     .SetShapeFn(shape_inference::UnknownShape);
 
+// An op which returns its own device placement as a string, useful for testing
+// where ops get placed.
+REGISTER_OP("DevicePlacementOp")
+    .Output("device: string")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
+
+class DevicePlacementOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* output;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output("device", TensorShape({}), &output));
+    output->scalar<string>()() = ctx->device()->name();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_CPU),
+                        DevicePlacementOp);
+REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_GPU),
+                        DevicePlacementOp);
 }  // end namespace tensorflow

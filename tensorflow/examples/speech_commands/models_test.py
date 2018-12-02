@@ -21,18 +21,37 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tensorflow.examples.speech_commands import models
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class ModelsTest(test.TestCase):
 
+  def _modelSettings(self):
+    return models.prepare_model_settings(
+        label_count=10,
+        sample_rate=16000,
+        clip_duration_ms=1000,
+        window_size_ms=20,
+        window_stride_ms=10,
+        feature_bin_count=40,
+        preprocess="mfcc")
+
   def testPrepareModelSettings(self):
     self.assertIsNotNone(
-        models.prepare_model_settings(10, 16000, 1000, 20, 10, 40))
+        models.prepare_model_settings(
+            label_count=10,
+            sample_rate=16000,
+            clip_duration_ms=1000,
+            window_size_ms=20,
+            window_stride_ms=10,
+            feature_bin_count=40,
+            preprocess="mfcc"))
 
+  @test_util.run_deprecated_v1
   def testCreateModelConvTraining(self):
-    model_settings = models.prepare_model_settings(10, 16000, 1000, 20, 10, 40)
-    with self.test_session() as sess:
+    model_settings = self._modelSettings()
+    with self.cached_session() as sess:
       fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
       logits, dropout_prob = models.create_model(fingerprint_input,
                                                  model_settings, "conv", True)
@@ -41,18 +60,20 @@ class ModelsTest(test.TestCase):
       self.assertIsNotNone(sess.graph.get_tensor_by_name(logits.name))
       self.assertIsNotNone(sess.graph.get_tensor_by_name(dropout_prob.name))
 
+  @test_util.run_deprecated_v1
   def testCreateModelConvInference(self):
-    model_settings = models.prepare_model_settings(10, 16000, 1000, 20, 10, 40)
-    with self.test_session() as sess:
+    model_settings = self._modelSettings()
+    with self.cached_session() as sess:
       fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
       logits = models.create_model(fingerprint_input, model_settings, "conv",
                                    False)
       self.assertIsNotNone(logits)
       self.assertIsNotNone(sess.graph.get_tensor_by_name(logits.name))
 
+  @test_util.run_deprecated_v1
   def testCreateModelLowLatencyConvTraining(self):
-    model_settings = models.prepare_model_settings(10, 16000, 1000, 20, 10, 40)
-    with self.test_session() as sess:
+    model_settings = self._modelSettings()
+    with self.cached_session() as sess:
       fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
       logits, dropout_prob = models.create_model(
           fingerprint_input, model_settings, "low_latency_conv", True)
@@ -61,9 +82,10 @@ class ModelsTest(test.TestCase):
       self.assertIsNotNone(sess.graph.get_tensor_by_name(logits.name))
       self.assertIsNotNone(sess.graph.get_tensor_by_name(dropout_prob.name))
 
+  @test_util.run_deprecated_v1
   def testCreateModelFullyConnectedTraining(self):
-    model_settings = models.prepare_model_settings(10, 16000, 1000, 20, 10, 40)
-    with self.test_session() as sess:
+    model_settings = self._modelSettings()
+    with self.cached_session() as sess:
       fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
       logits, dropout_prob = models.create_model(
           fingerprint_input, model_settings, "single_fc", True)
@@ -73,13 +95,25 @@ class ModelsTest(test.TestCase):
       self.assertIsNotNone(sess.graph.get_tensor_by_name(dropout_prob.name))
 
   def testCreateModelBadArchitecture(self):
-    model_settings = models.prepare_model_settings(10, 16000, 1000, 20, 10, 40)
-    with self.test_session():
+    model_settings = self._modelSettings()
+    with self.cached_session():
       fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
       with self.assertRaises(Exception) as e:
         models.create_model(fingerprint_input, model_settings,
                             "bad_architecture", True)
       self.assertTrue("not recognized" in str(e.exception))
+
+  @test_util.run_deprecated_v1
+  def testCreateModelTinyConvTraining(self):
+    model_settings = self._modelSettings()
+    with self.cached_session() as sess:
+      fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
+      logits, dropout_prob = models.create_model(
+          fingerprint_input, model_settings, "tiny_conv", True)
+      self.assertIsNotNone(logits)
+      self.assertIsNotNone(dropout_prob)
+      self.assertIsNotNone(sess.graph.get_tensor_by_name(logits.name))
+      self.assertIsNotNone(sess.graph.get_tensor_by_name(dropout_prob.name))
 
 
 if __name__ == "__main__":

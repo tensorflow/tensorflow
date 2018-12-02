@@ -23,13 +23,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/batch_util.h"
 #include "tensorflow/core/kernels/fifo_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
@@ -364,6 +364,21 @@ Status FIFOQueue::MatchesNodeDef(const NodeDef& node_def) {
   TF_RETURN_IF_ERROR(MatchesNodeDefTypes(node_def));
   TF_RETURN_IF_ERROR(MatchesNodeDefShapes(node_def));
   return Status::OK();
+}
+
+// Defines a FIFOQueueOp, which produces a Queue (specifically, one
+// backed by FIFOQueue) that persists across different graph
+// executions, and sessions. Running this op produces a single-element
+// tensor of handles to Queues in the corresponding device.
+FIFOQueueOp::FIFOQueueOp(OpKernelConstruction* context)
+    : TypedQueueOp(context) {
+  OP_REQUIRES_OK(context, context->GetAttr("shapes", &component_shapes_));
+}
+
+Status FIFOQueueOp::CreateResource(QueueInterface** ret) {
+  FIFOQueue* queue = new FIFOQueue(capacity_, component_types_,
+                                   component_shapes_, cinfo_.name());
+  return CreateTypedQueue(queue, ret);
 }
 
 }  // namespace tensorflow

@@ -13,43 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Evaluation-related metrics.
-
-@@accuracy
-@@auc
-@@false_negatives
-@@false_negatives_at_thresholds
-@@false_positives
-@@false_positives_at_thresholds
-@@mean
-@@mean_absolute_error
-@@mean_cosine_distance
-@@mean_iou
-@@mean_per_class_accuracy
-@@mean_relative_error
-@@mean_squared_error
-@@mean_tensor
-@@percentage_below
-@@precision
-@@precision_at_thresholds
-@@recall
-@@recall_at_k
-@@recall_at_top_k
-@@recall_at_thresholds
-@@root_mean_squared_error
-@@sensitivity_at_specificity
-@@sparse_average_precision_at_k
-@@average_precision_at_k
-@@sparse_precision_at_k
-@@precision_at_k
-@@precision_at_top_k
-@@specificity_at_sensitivity
-@@true_negatives
-@@true_negatives_at_thresholds
-@@true_positives
-@@true_positives_at_thresholds
-
-"""
+"""Evaluation-related metrics."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -58,8 +22,3 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.metrics_impl import *
 # pylint: enable=wildcard-import
-
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = []
-remove_undocumented(__name__, _allowed_symbols)

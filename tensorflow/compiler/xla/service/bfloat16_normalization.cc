@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -34,9 +35,6 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
 
   Status DefaultAction(HloInstruction* hlo) override;
 
-  // Special handling for cross-replica-sum which can have a tuple output.
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
-
   static bool Run(HloComputation* computation,
                   const BFloat16Support* bfloat16_support) {
     BFloat16NormalizationVisitor visitor(computation, bfloat16_support);
@@ -48,6 +46,10 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
   // Checks if the HLO uses BF16 in an unsupported way, and if so, inserts
   // conversions between F32 and BF16 to make it supported.
   Status HandleInstruction(HloInstruction* hlo);
+
+  // Handle instructions with tuple outputs by examining each output
+  // independently.
+  Status HandleMultipleOutputs(HloInstruction* hlo);
 
   // Inserts a conversion HLO that changes the given HLO's output type.
   Status InsertConvertAfterOutput(HloInstruction* hlo, PrimitiveType to,
@@ -67,8 +69,7 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
   // Inserts conversion HLOs to replace the called computations' BF16
   // operands/outputs to F32.
   Status ConvertCalledComputations(
-      HloInstruction* hlo,
-      tensorflow::gtl::ArraySlice<HloComputation*> bf16_called_comps);
+      HloInstruction* hlo, absl::Span<HloComputation* const> bf16_called_comps);
 
   HloComputation* computation_;
   const BFloat16Support* bfloat16_support_;
@@ -112,8 +113,7 @@ Status BFloat16NormalizationVisitor::InsertConvertBeforeOperand(
 }
 
 Status BFloat16NormalizationVisitor::ConvertCalledComputations(
-    HloInstruction* hlo,
-    tensorflow::gtl::ArraySlice<HloComputation*> bf16_called_comps) {
+    HloInstruction* hlo, absl::Span<HloComputation* const> bf16_called_comps) {
   std::map<HloComputation*, HloComputation*> cloned_computations;
   for (auto& comp : bf16_called_comps) {
     auto cloned = comp->parent()->AddEmbeddedComputation(comp->Clone());
@@ -144,26 +144,22 @@ Status BFloat16NormalizationVisitor::ConvertCalledComputations(
   return Status::OK();
 }
 
-Status BFloat16NormalizationVisitor::HandleCrossReplicaSum(
-    HloInstruction* crs) {
-  if (!ShapeUtil::IsTuple(crs->shape())) {
-    return HandleInstruction(crs);
-  }
-
-  std::vector<PrimitiveType> operand_types(crs->operand_count());
-  std::vector<PrimitiveType> output_types(crs->operand_count());
+Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
+    HloInstruction* hlo) {
+  std::vector<PrimitiveType> operand_types(hlo->operand_count());
+  std::vector<PrimitiveType> output_types(hlo->operand_count());
   int64 f32_count = 0;
   int64 bf16_count = 0;
   bool has_unsupported_bf16_operand = false;
   bool has_unsupported_bf16_output = false;
-  for (int64 i = 0; i < crs->operand_count(); ++i) {
-    operand_types[i] = crs->operand(i)->shape().element_type();
-    output_types[i] = ShapeUtil::GetSubshape(crs->shape(), {i}).element_type();
+  for (int64 i = 0; i < hlo->operand_count(); ++i) {
+    operand_types[i] = hlo->operand(i)->shape().element_type();
+    output_types[i] = ShapeUtil::GetSubshape(hlo->shape(), {i}).element_type();
     if (operand_types[i] == F32) {
       f32_count += 1;
     } else if (operand_types[i] == BF16) {
       bf16_count += 1;
-      if (!bfloat16_support_->SupportsBF16Operand(*crs, i)) {
+      if (!bfloat16_support_->SupportsBF16Operand(*hlo, i)) {
         has_unsupported_bf16_operand = true;
       }
     }
@@ -171,7 +167,7 @@ Status BFloat16NormalizationVisitor::HandleCrossReplicaSum(
       f32_count += 1;
     } else if (output_types[i] == BF16) {
       bf16_count += 1;
-      if (!bfloat16_support_->SupportsBF16Output(*crs)) {
+      if (!bfloat16_support_->SupportsBF16Output(*hlo)) {
         has_unsupported_bf16_output = true;
       }
     }
@@ -185,43 +181,43 @@ Status BFloat16NormalizationVisitor::HandleCrossReplicaSum(
     if (operand_types[i] != BF16) {
       return false;
     }
-    if (!bfloat16_support_->SupportsBF16Operand(*crs, i)) {
+    if (!bfloat16_support_->SupportsBF16Operand(*hlo, i)) {
       return true;
     }
-    if (bfloat16_support_->SupportsMixedPrecisions(*crs)) {
+    if (bfloat16_support_->SupportsMixedPrecisions(*hlo)) {
       return false;
     }
     return has_unsupported_bf16_operand || has_unsupported_bf16_output ||
            f32_count > 0;
   };
 
-  for (int64 i = 0; i < crs->operand_count(); ++i) {
+  for (int64 i = 0; i < hlo->operand_count(); ++i) {
     if (should_convert_operand(i)) {
-      TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(crs, i, F32, computation_));
+      TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(hlo, i, F32, computation_));
       f32_count += 1;
       bf16_count -= 1;
     }
   }
 
   if (!has_unsupported_bf16_output &&
-      (bfloat16_support_->SupportsMixedPrecisions(*crs) || f32_count == 0 ||
+      (bfloat16_support_->SupportsMixedPrecisions(*hlo) || f32_count == 0 ||
        bf16_count == 0)) {
     return Status::OK();
   }
 
-  std::vector<HloInstruction*> materialized_users = crs->users();
-  std::vector<HloInstruction*> output_elements(crs->operand_count());
-  auto original_shape = crs->shape();
-  for (int64 i = 0; i < crs->operand_count(); ++i) {
-    auto subshape = ShapeUtil::GetMutableSubshape(crs->mutable_shape(), {i});
+  std::vector<HloInstruction*> materialized_users = hlo->users();
+  std::vector<HloInstruction*> output_elements(hlo->operand_count());
+  auto original_shape = hlo->shape();
+  for (int64 i = 0; i < hlo->operand_count(); ++i) {
+    auto subshape = ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), {i});
     if (output_types[i] != BF16) {
       output_elements[i] = computation_->AddInstruction(
-          HloInstruction::CreateGetTupleElement(*subshape, crs, i));
+          HloInstruction::CreateGetTupleElement(*subshape, hlo, i));
       continue;
     }
     subshape->set_element_type(F32);
     auto gte = computation_->AddInstruction(
-        HloInstruction::CreateGetTupleElement(*subshape, crs, i));
+        HloInstruction::CreateGetTupleElement(*subshape, hlo, i));
     output_elements[i] =
         computation_->AddInstruction(HloInstruction::CreateConvert(
             ShapeUtil::ChangeElementType(*subshape, BF16), gte));
@@ -229,11 +225,15 @@ Status BFloat16NormalizationVisitor::HandleCrossReplicaSum(
   auto tuple = computation_->AddInstruction(
       HloInstruction::CreateTuple(output_elements));
 
-  // Use the crs' shape temporarily, in order to pass checks in
+  // Use the hlo' shape temporarily, in order to pass checks in
   // ReplaceUseWith.
-  *tuple->mutable_shape() = crs->shape();
+  *tuple->mutable_shape() = hlo->shape();
   for (auto* user : materialized_users) {
-    TF_RETURN_IF_ERROR(crs->ReplaceUseWith(user, tuple));
+    TF_RETURN_IF_ERROR(hlo->ReplaceUseWith(user, tuple));
+  }
+  bool is_root = computation_->root_instruction() == hlo;
+  if (is_root) {
+    computation_->set_root_instruction(tuple);
   }
   *tuple->mutable_shape() = original_shape;
   return Status::OK();
@@ -346,11 +346,9 @@ Status BFloat16NormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
 
 Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
   // Do not change instructions related to entry and exit of a computation,
-  // tuples, fusion, convert, and control flow.
+  // tuples, fusion, convert, side-effecting instructions, and control flow.
   if (hlo->opcode() == HloOpcode::kTuple ||            //
       hlo->opcode() == HloOpcode::kGetTupleElement ||  //
-      hlo->opcode() == HloOpcode::kInfeed ||           //
-      hlo->opcode() == HloOpcode::kOutfeed ||          //
       hlo->opcode() == HloOpcode::kConstant ||         //
       hlo->opcode() == HloOpcode::kParameter ||        //
       hlo->opcode() == HloOpcode::kFusion ||           //
@@ -358,8 +356,15 @@ Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
       hlo->opcode() == HloOpcode::kCall ||             //
       hlo->opcode() == HloOpcode::kCustomCall ||       //
       hlo->opcode() == HloOpcode::kWhile ||            //
-      hlo->opcode() == HloOpcode::kConditional) {
+      hlo->opcode() == HloOpcode::kConditional ||      //
+      hlo->HasSideEffectNoRecurse()) {
     return Status::OK();
+  }
+  // TODO(b/112040122): Correctly normalize variadic reduce.
+  if ((hlo->opcode() == HloOpcode::kSort ||
+       hlo->opcode() == HloOpcode::kCrossReplicaSum) &&
+      ShapeUtil::IsTuple(hlo->shape())) {
+    return HandleMultipleOutputs(hlo);
   }
   return HandleInstruction(hlo);
 }

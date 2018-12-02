@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
@@ -44,12 +46,13 @@ class MatrixBandPartOp : public XlaOpKernel {
                 errors::InvalidArgument("num_upper must be scalar, got shape ",
                                         num_upper_in_shape.DebugString()));
 
-    xla::ComputationBuilder* builder = context->builder();
-    xla::ComputationDataHandle input = context->Input(0);
-    xla::ComputationDataHandle num_lower = context->Input(1);
-    xla::ComputationDataHandle num_upper = context->Input(2);
+    xla::XlaBuilder* builder = context->builder();
+    xla::XlaOp input = context->Input(0);
+    xla::XlaOp num_lower = context->Input(1);
+    xla::XlaOp num_upper = context->Input(2);
     DataType input_type = context->input_type(0);
     DataType index_type = context->input_type(1);
+    xla::PrimitiveType index_xla_type = context->input_xla_type(1);
 
     TensorShape batch_shape = input_shape;
     batch_shape.RemoveLastDims(2);
@@ -58,33 +61,29 @@ class MatrixBandPartOp : public XlaOpKernel {
 
     // Compute 'offset', which is how many diagonals we are above/below the
     // diagonal.
-    xla::ComputationDataHandle iota_m;
-    OP_REQUIRES_OK(context, XlaHelpers::Iota(builder, index_type, m, &iota_m));
+    xla::Shape iota_shape = xla::ShapeUtil::MakeShape(index_xla_type, {m, n});
+    xla::XlaOp iota_m = xla::Iota(builder, iota_shape, /*iota_dimension=*/0);
+    xla::XlaOp iota_n = xla::Iota(builder, iota_shape, /*iota_dimension=*/1);
 
-    xla::ComputationDataHandle iota_n;
-    OP_REQUIRES_OK(context, XlaHelpers::Iota(builder, index_type, n, &iota_n));
-
-    auto offset = builder->Sub(builder->Broadcast(iota_n, {m}), iota_m,
-                               /*broadcast_dimensions=*/{0});
+    auto offset = xla::Sub(iota_n, iota_m);
 
     // If num_lower or num_upper are negative, include all lower/upper
     // diagonals.
     auto zero_index = XlaHelpers::Zero(builder, index_type);
-    num_lower = builder->Select(
-        builder->Lt(num_lower, zero_index),
-        XlaHelpers::IntegerLiteral(builder, index_type, m), num_lower);
-    num_upper = builder->Select(
-        builder->Lt(num_upper, zero_index),
-        XlaHelpers::IntegerLiteral(builder, index_type, n), num_upper);
+    num_lower = xla::Select(xla::Lt(num_lower, zero_index),
+                            XlaHelpers::IntegerLiteral(builder, index_type, m),
+                            num_lower);
+    num_upper = xla::Select(xla::Lt(num_upper, zero_index),
+                            XlaHelpers::IntegerLiteral(builder, index_type, n),
+                            num_upper);
 
-    auto indicator = builder->And(builder->Le(builder->Neg(num_lower), offset),
-                                  builder->Le(offset, num_upper));
-    indicator = builder->Broadcast(indicator, batch_shape.dim_sizes());
+    auto indicator = xla::And(xla::Le(xla::Neg(num_lower), offset),
+                              xla::Le(offset, num_upper));
+    indicator = xla::Broadcast(indicator, batch_shape.dim_sizes());
 
     auto zero_input = XlaHelpers::Zero(builder, input_type);
-    auto output = builder->Select(
-        indicator, input,
-        builder->Broadcast(zero_input, input_shape.dim_sizes()));
+    auto output = xla::Select(
+        indicator, input, xla::Broadcast(zero_input, input_shape.dim_sizes()));
 
     context->SetOutput(0, output);
   }

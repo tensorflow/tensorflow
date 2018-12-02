@@ -6,12 +6,13 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "py_test",
+    "tf_cc_test",
     "tf_gen_op_libs",
     "tf_custom_op_library",
-    "tf_custom_op_py_library",
     "tf_gen_op_wrapper_py",
 )
+load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 cc_library(
     name = "all_ops",
@@ -84,6 +85,22 @@ py_test(
         ":init_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradient_checker",
+    ],
+)
+
+tf_cc_test(
+    name = "periodic_resample_op_cc_test",
+    size = "small",
+    srcs = [
+        "ops/array_ops_test.cc",
+    ],
+    deps = [
+        ":all_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -93,18 +110,6 @@ py_test(
 #     data = ["python/ops/_periodic_resample_op.so"],
 #     srcs_version = "PY2AND3",
 # )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
 
 filegroup(
     name = "custom_op_sources",

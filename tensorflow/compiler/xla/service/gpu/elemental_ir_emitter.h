@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace gpu {
@@ -38,89 +38,87 @@ namespace gpu {
 class GpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   // A NestedComputer computes an element of the output of the given computation
-  // given an ArraySlice of its input elements.
+  // given a Span of its input elements.
   using NestedComputer = std::function<StatusOr<llvm::Value*>(
-      const HloComputation&, tensorflow::gtl::ArraySlice<llvm::Value*>)>;
+      const HloComputation&, absl::Span<llvm::Value* const>)>;
 
   GpuElementalIrEmitter(const HloModuleConfig& hlo_module_config,
-                        llvm::Module* module, llvm::IRBuilder<>* ir_builder,
+                        llvm::Module* module, llvm::IRBuilder<>* b,
                         NestedComputer compute_nested);
 
   llvm_ir::ElementGenerator MakeElementGenerator(
       const HloInstruction* hlo,
-      const HloToElementGeneratorMap& operand_to_generator) const override;
+      const HloToElementGeneratorMap& operand_to_generator) override;
 
  protected:
-  StatusOr<llvm::Value*> EmitFloatUnaryOp(
-      const HloInstruction* op, llvm::Value* operand_value) const override;
-
-  StatusOr<llvm::Value*> EmitFloatBinaryOp(
-      const HloInstruction* op, llvm::Value* lhs_value,
-      llvm::Value* rhs_value) const override;
+  StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
+                                           llvm::Value* lhs_value,
+                                           llvm::Value* rhs_value) override;
 
   StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
-                                     llvm::Value* value) const override;
+                                     llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
-                                 llvm::Value* value) const override;
+                                 llvm::Value* value) override;
+
+  StatusOr<llvm::Value*> EmitLog1p(PrimitiveType prim_type,
+                                   llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
-                                 llvm::Value* value) const override;
+                                 llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
-                                 llvm::Value* value) const override;
+                                 llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
-                                 llvm::Value* value) const override;
+                                 llvm::Value* value) override;
+
+  StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
+                                   llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type, llvm::Value* lhs,
-                                 llvm::Value* rhs) const override;
+                                 llvm::Value* rhs) override;
 
   StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type, llvm::Value* lhs,
-                                   llvm::Value* rhs) const override;
+                                   llvm::Value* rhs) override;
 
-  llvm::Value* EmitThreadId() const override;
+  StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
+                                  llvm::Value* value) override;
+
+  llvm::Value* EmitThreadId() override;
 
  private:
   // Emits IR for op, which must have opcode kPower.
   StatusOr<llvm::Value*> EmitPowerOp(const HloInstruction* op,
                                      llvm::Value* lhs_value,
-                                     llvm::Value* rhs_value) const;
+                                     llvm::Value* rhs_value);
 
   // Emits IR to call a device function named "callee_name" on the given
   // operand. Returns the IR value that represents the return value.
   llvm::Value* EmitDeviceFunctionCall(
-      const string& callee_name,
-      tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-      tensorflow::gtl::ArraySlice<PrimitiveType> input_type,
-      PrimitiveType output_type,
-      tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes) const;
+      const string& callee_name, absl::Span<llvm::Value* const> operands,
+      absl::Span<const PrimitiveType> input_type, PrimitiveType output_type,
+      absl::Span<const llvm::Attribute::AttrKind> attributes);
 
   // Emits IR to call an LLVM intrinsic of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
   // return value of the function.
   StatusOr<llvm::Value*> EmitLlvmIntrinsicMathCall(
-      const string& callee_name,
-      tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-      tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-      PrimitiveType output_type) const;
+      const string& callee_name, absl::Span<llvm::Value* const> operands,
+      absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
   // Emits IR to call a libdevice function of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
   // return value of the function.
   StatusOr<llvm::Value*> EmitLibdeviceMathCall(
-      const string& callee_name,
-      tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-      tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-      PrimitiveType output_type) const;
+      const string& callee_name, absl::Span<llvm::Value* const> operands,
+      absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
   // Emits IR to call a function of type [T] -> T.  Does not munge callee_name.
   // Returns the IR value that represents the return value of the function.
   StatusOr<llvm::Value*> EmitMathCall(
-      const string& callee_name,
-      tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-      tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-      PrimitiveType output_type) const;
+      const string& callee_name, absl::Span<llvm::Value* const> operands,
+      absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
   const HloModuleConfig& hlo_module_config_;
   NestedComputer compute_nested_;

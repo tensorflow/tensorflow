@@ -38,6 +38,11 @@ def IsInXLAContext(op):
   return GetContainingXLAContext(ctxt) is not None
 
 
+def InXlaContext(graph):
+  ctxt = graph._get_control_flow_context()  # pylint: disable=protected-access
+  return GetContainingXLAContext(ctxt) is not None
+
+
 def IsInWhileLoop(op):
   ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
   return GetContainingWhileContext(ctxt) is not None
@@ -53,6 +58,11 @@ def IsSwitch(op):
   return op.type == "Switch" or op.type == "RefSwitch"
 
 
+def IsMerge(op):
+  """Return true if `op` is a Merge."""
+  return op.type == "Merge" or op.type == "RefMerge"
+
+
 def IsLoopEnter(op):
   """Returns true if `op` is an Enter."""
   return op.type == "Enter" or op.type == "RefEnter"
@@ -63,11 +73,57 @@ def IsLoopExit(op):
   return op.type == "Exit" or op.type == "RefExit"
 
 
+def IsCondSwitch(op):
+  """Return true if `op` is the Switch for a conditional."""
+  if not IsSwitch(op):
+    return False
+  if not op.outputs:
+    return False
+  # Switch nodes are not part of the cond control flow context that they
+  # represent, so consider the consumers of its outputs to determine if it is
+  # cond switch or not. A switch is a cond switch iff all its consumers are in
+  # cond contexts.
+  is_cond_switch = True
+  for o in op.outputs:
+    for c in o.consumers():
+      ctxt = c._get_control_flow_context()  # pylint: disable=protected-access
+      if IsLoopEnter(c):
+        ctxt = ctxt.outer_context
+      is_cond_switch = is_cond_switch and (ctxt is not None and
+                                           ctxt.IsCondContext())
+  return is_cond_switch
+
+
+def IsCondMerge(op):
+  """Return true if `op` is the Merge for a conditional."""
+  if not IsMerge(op):
+    return False
+  if not op.inputs:
+    return False
+  # Merge nodes are not part of the cond control flow context that they
+  # represent, so consider the inputs to the merge of to determine if it is
+  # cond merge or not: A merge is a cond merge iff all its inputs are in
+  # cond contexts.
+  is_cond_merge = True
+  for i in op.inputs:
+    ctxt = GetOutputContext(i.op)
+    is_cond_merge = is_cond_merge and ctxt is not None and ctxt.IsCondContext()
+  return is_cond_merge
+
+
 def IsLoopSwitch(op):
   """Return true if `op` is the Switch for a while loop."""
   if IsSwitch(op):
     ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
-    return ctxt and ctxt.IsWhileContext()
+    return ctxt is not None and ctxt.IsWhileContext() and not IsCondSwitch(op)
+  return False
+
+
+def IsLoopMerge(op):
+  """Return true if `op` is the Merge for a while loop."""
+  if IsMerge(op):
+    ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
+    return ctxt is not None and ctxt.IsWhileContext() and not IsCondMerge(op)
   return False
 
 
@@ -161,6 +217,14 @@ def IsContainingContext(ctxt, maybe_containing_ctxt):
     if ctxt is None: return False
     ctxt = ctxt.outer_context
   return True
+
+
+def OpInContext(op, ctxt):
+  return IsContainingContext(op._get_control_flow_context(), ctxt)  # pylint: disable=protected-access
+
+
+def TensorInContext(tensor, ctxt):
+  return OpInContext(tensor.op, ctxt)
 
 
 def CheckInputFromValidContext(op, input_op):

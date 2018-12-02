@@ -8,18 +8,6 @@ load(
     "tf_cuda_tests_tags",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 config_setting(
     name = "xsmm",
     licenses = ["notice"],
@@ -32,6 +20,9 @@ tf_cuda_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
+    cuda_deps = [
+        "@local_config_cuda//cuda:cudnn_header",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//third_party/eigen3",
@@ -68,6 +59,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -85,6 +77,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",
+        ":utils",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/costs:op_level_cost_estimator",

@@ -27,15 +27,15 @@ namespace {
 class LayoutUtilTest : public ::testing::Test {
  protected:
   Shape MakeShapeWithLayout(PrimitiveType element_type,
-                            tensorflow::gtl::ArraySlice<int64> dimensions,
-                            tensorflow::gtl::ArraySlice<int64> minor_to_major) {
+                            absl::Span<const int64> dimensions,
+                            absl::Span<const int64> minor_to_major) {
     Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
     *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
     return shape;
   }
 
   Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
-                                  tensorflow::gtl::ArraySlice<int64> dimensions,
+                                  absl::Span<const int64> dimensions,
                                   int64 max_sparse_elements) {
     Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
     *shape.mutable_layout() = LayoutUtil::MakeSparseLayout(max_sparse_elements);
@@ -218,6 +218,47 @@ TEST_F(LayoutUtilTest, CopyLayoutBogusLayout) {
                                "elements, but shape is rank"));
 }
 
+TEST_F(LayoutUtilTest, CopyTokenLayout) {
+  Shape src = ShapeUtil::MakeTokenShape();
+  Shape dst = ShapeUtil::MakeTokenShape();
+
+  // Layouts are trivially the same for token types and copying layouts should
+  // be a nop.
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+}
+
+TEST_F(LayoutUtilTest, CopyOpaqueLayout) {
+  Shape src = ShapeUtil::MakeOpaqueShape();
+  Shape dst = ShapeUtil::MakeOpaqueShape();
+
+  // Layouts are trivially the same for opaque types and copying layouts should
+  // be a nop.
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+}
+
+TEST_F(LayoutUtilTest, CopyTupleLayoutWithTokenAndOpaque) {
+  Shape src = ShapeUtil::MakeTupleShape(
+      {MakeShapeWithLayout(F32, {2, 3}, {0, 1}),
+       MakeShapeWithLayout(F32, {42, 123}, {1, 0}), ShapeUtil::MakeTokenShape(),
+       ShapeUtil::MakeTupleShape(
+           {ShapeUtil::MakeOpaqueShape(), MakeShapeWithLayout(F32, {}, {}),
+            MakeShapeWithLayout(F32, {1, 2, 3}, {0, 2, 1})})});
+  Shape dst = ShapeUtil::MakeTupleShape(
+      {MakeShapeWithLayout(F32, {2, 3}, {1, 0}),
+       MakeShapeWithLayout(F32, {42, 123}, {1, 0}), ShapeUtil::MakeTokenShape(),
+       ShapeUtil::MakeTupleShape(
+           {ShapeUtil::MakeOpaqueShape(), MakeShapeWithLayout(F32, {}, {}),
+            MakeShapeWithLayout(F32, {1, 2, 3}, {1, 2, 0})})});
+
+  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+}
+
 TEST_F(LayoutUtilTest, ClearLayoutTuple) {
   Shape shape = ShapeUtil::MakeTupleShape(
       {MakeShapeWithLayout(F32, {2, 3}, {1, 0}),
@@ -236,6 +277,16 @@ TEST_F(LayoutUtilTest, ClearLayoutTuple) {
   EXPECT_FALSE(shape.tuple_shapes(2).tuple_shapes(1).has_layout());
 }
 
+TEST_F(LayoutUtilTest, ClearLayoutOpaqueAndToken) {
+  // Opaque and token types trivially have layouts.
+  for (Shape shape :
+       {ShapeUtil::MakeOpaqueShape(), ShapeUtil::MakeTokenShape()}) {
+    EXPECT_TRUE(LayoutUtil::HasLayout(shape));
+    LayoutUtil::ClearLayout(&shape);
+    EXPECT_TRUE(LayoutUtil::HasLayout(shape));
+  }
+}
+
 TEST_F(LayoutUtilTest, SetToDefaultLayoutTuple) {
   Shape shape = ShapeUtil::MakeTupleShape(
       {MakeShapeWithLayout(F32, {2, 3, 4}, {1, 0, 2}),
@@ -251,30 +302,6 @@ TEST_F(LayoutUtilTest, SetToDefaultLayoutTuple) {
   EXPECT_TRUE(LayoutUtil::Equal(
       LayoutUtil::GetDefaultLayoutForShape(shape.tuple_shapes(0)),
       shape.tuple_shapes(1).layout()));
-}
-
-TEST_F(LayoutUtilTest, IsPadded) {
-  Shape shape_without_layout = ShapeUtil::MakeShape(F32, {2, 3, 4});
-  LayoutUtil::ClearLayout(&shape_without_layout);
-  EXPECT_FALSE(LayoutUtil::IsPadded(shape_without_layout));
-
-  Shape shape_with_layout = ShapeUtil::MakeShape(F32, {2, 3, 4});
-  LayoutUtil::SetToDefaultLayout(&shape_with_layout);
-  EXPECT_FALSE(LayoutUtil::IsPadded(shape_with_layout));
-
-  // Add padding equal to the dimension sizes. In this case the padding is a
-  // nop.
-  Shape shape_with_degenerate_padding = ShapeUtil::MakeShape(F32, {2, 3, 4});
-  shape_with_degenerate_padding.mutable_layout()->add_padded_dimensions(2);
-  shape_with_degenerate_padding.mutable_layout()->add_padded_dimensions(3);
-  shape_with_degenerate_padding.mutable_layout()->add_padded_dimensions(4);
-  EXPECT_FALSE(LayoutUtil::IsPadded(shape_with_degenerate_padding));
-
-  Shape shape_with_padding = ShapeUtil::MakeShape(F32, {2, 3, 4});
-  shape_with_padding.mutable_layout()->add_padded_dimensions(2);
-  shape_with_padding.mutable_layout()->add_padded_dimensions(14);
-  shape_with_padding.mutable_layout()->add_padded_dimensions(42);
-  EXPECT_TRUE(LayoutUtil::IsPadded(shape_with_padding));
 }
 
 TEST_F(LayoutUtilTest, DefaultLayoutGettersMajorToMinor) {
@@ -299,6 +326,93 @@ TEST_F(LayoutUtilTest, StreamOut) {
   std::ostringstream oss;
   oss << LayoutUtil::MakeLayout({0, 1, 2});
   EXPECT_EQ(oss.str(), "{0,1,2}");
+}
+
+TEST_F(LayoutUtilTest, ValidateLayout_ValidArrayLayout) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {0, 1});
+  auto status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
+  EXPECT_TRUE(status.ok());
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(LayoutUtilTest, ValidateLayout_InvalidArrayLayout) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2});
+  auto status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("layout minor_to_major field "
+                                   "contains 3 elements, but shape is rank 2"));
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("layout minor_to_major field "
+                                   "contains 3 elements, but shape is rank 2"));
+}
+
+TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  LayoutUtil::ClearLayout(&shape);
+  auto status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("shape f32[2,3] does not have a layout"));
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(LayoutUtilTest, ValidateLayout_TupleWithLayout) {
+  Shape shape = ShapeUtil::MakeTupleShape({});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({0});
+  auto status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("tuple should not have a layout field"));
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("tuple should not have a layout field"));
+}
+
+TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {
+  Shape sub_1_1_1 = ShapeUtil::MakeShape(F32, {1, 2});
+  Shape sub_1_1 = ShapeUtil::MakeTupleShape({sub_1_1_1});
+  Shape sub_1_2 = ShapeUtil::MakeShape(F32, {1, 2});
+  LayoutUtil::ClearLayout(&sub_1_2);
+  Shape sub_1 = ShapeUtil::MakeTupleShape({sub_1_1, sub_1_2});
+  Shape sub_2_1 = ShapeUtil::MakeShape(F32, {9});
+  LayoutUtil::ClearLayout(&sub_2_1);
+  Shape sub_2 = ShapeUtil::MakeTupleShape({sub_2_1});
+  Shape shape = ShapeUtil::MakeTupleShape({sub_1, sub_2});
+
+  auto status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("shape f32[1,2] does not have a layout"));
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_TRUE(status.ok());
+
+  // Add invalid layout on one of sub-shapes.
+  *shape.mutable_tuple_shapes(1)->mutable_tuple_shapes(0)->mutable_layout() =
+      LayoutUtil::MakeLayout({0, 2, 3});
+
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("layout minor_to_major field "
+                                   "contains 3 elements, but shape is rank 1"));
 }
 
 }  // namespace

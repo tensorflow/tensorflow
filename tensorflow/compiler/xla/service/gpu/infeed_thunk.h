@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -32,23 +33,19 @@ namespace gpu {
 class InfeedThunk : public Thunk {
  public:
   // Constructs a InfeedThunk that copies data from the on-device
-  // infeed queue to the device buffer
-  // `destination_buffer`. `mem_size` is the size of the data in
-  // bytes.
-  InfeedThunk(tensorflow::gtl::ArraySlice<BufferAllocation::Slice>
-                  tuple_element_buffers,
-              const BufferAllocation::Slice& destination_buffer,
+  // infeed queue into the buffers in the given shape tree.
+  InfeedThunk(const ShapeTree<BufferAllocation::Slice>& infeed_slices,
               const HloInstruction* hlo_instruction);
 
   InfeedThunk(const InfeedThunk&) = delete;
   InfeedThunk& operator=(const InfeedThunk&) = delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         perftools::gputools::Stream* stream) override;
+                         se::Stream* stream,
+                         HloExecutionProfiler* profiler) override;
 
  private:
-  const std::vector<BufferAllocation::Slice> tuple_element_buffers_;
-  const BufferAllocation::Slice destination_buffer_;
+  const ShapeTree<BufferAllocation::Slice> infeed_slices_;
 };
 
 }  // namespace gpu

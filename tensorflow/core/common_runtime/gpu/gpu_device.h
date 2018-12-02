@@ -17,8 +17,8 @@ limitations under the License.
 #error This file must only be included when building with Cuda support
 #endif
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 
 #include <memory>
 #include <string>
@@ -33,11 +33,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
@@ -63,6 +65,11 @@ class BaseGPUDevice : public LocalDevice {
   // completes.
   bool RequiresRecordingAccessedTensors() const override;
 
+  // GPU kernel execution requires us to use `tracing::ScopedAnnotation()`
+  // rather than `tracing::ScopedActivity()`, in order to relate asynchronously
+  // launched GPU kernels to the OpKernel.
+  bool TraceUsingAnnotations() const { return true; }
+
   void ConsumeListOfAccessedTensors(
       DeviceContext* device_context,
       const TensorReferenceVector& tensor_refs) override;
@@ -84,33 +91,47 @@ class BaseGPUDevice : public LocalDevice {
   // The caller owns the returned device.
   PerOpGpuDevice* MakeGpuDevice() override;
 
-  void ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
-                             DeviceContext* dc, Allocator* allocator) override;
+  Status ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
+                               DeviceContext* dc,
+                               Allocator* allocator) override;
 
-  // Returns the CUDA GPU id of this device within the native driver system;
+  // Returns the platform GPU id of this device within the native driver system;
   // e.g., for CUDA this is the ordinal of the GPU within the system.
-  int gpu_id() const { return GpuIdManager::TfToCudaGpuId(tf_gpu_id_).value(); }
+  int gpu_id() const {
+    PlatformGpuId platform_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf_gpu_id_, &platform_gpu_id));
+    return platform_gpu_id.value();
+  }
 
   // The executor that provides control for the device; e.g., for CUDA this
   // corresponds to the cuda context.
-  gpu::StreamExecutor* executor() const { return executor_; }
+  se::StreamExecutor* executor() const { return executor_; }
+
+  Allocator* GetScopedAllocator(AllocatorAttributes attr,
+                                int64 step_id) override;
+
+  ScopedAllocatorMgr* GetScopedAllocatorMgr() const override {
+    return scoped_allocator_mgr_.get();
+  }
 
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
 
-  gpu::StreamExecutor* executor_;  // not owned
+  se::StreamExecutor* executor_;  // not owned
+  std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;
 
  private:
   struct StreamGroup {
-    gpu::Stream* compute = nullptr;
-    gpu::Stream* host_to_device = nullptr;
-    gpu::Stream* device_to_host = nullptr;
-    gpu::Stream* device_to_device = nullptr;
+    se::Stream* compute = nullptr;
+    se::Stream* host_to_device = nullptr;
+    se::Stream* device_to_host = nullptr;
+    gtl::InlinedVector<se::Stream*, 4> device_to_device;
   };
   class StreamGroupFactory;
 
   gtl::InlinedVector<StreamGroup*, 4> streams_;
+  mutex scratch_init_mutex_;
   gtl::InlinedVector<char*, 4> scratch_;
   std::vector<GPUDeviceContext*> device_contexts_;
   GpuDeviceInfo* gpu_device_info_ = nullptr;
@@ -121,10 +142,16 @@ class BaseGPUDevice : public LocalDevice {
   std::unique_ptr<EventMgr> em_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
+  // Initialize scractch buffers used by Eigen.
+  Status InitScratchBuffers();
+
   void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
                           int stream_id, Allocator* allocator);
 
   void ComputeHelper(OpKernel* op_kernel, OpKernelContext* context);
+
+  string ComputeOpKernelDebugString(const OpKernel& op_kernel,
+                                    const int& stream_id);
 
   // This method returns an initialization status, in addition to
   // calling the "done" StatusCallback, if there is a failure to
@@ -139,7 +166,7 @@ class BaseGPUDevice : public LocalDevice {
 class BaseGPUDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override;
+                       std::vector<std::unique_ptr<Device>>* devices) override;
 
   struct InterconnectMap {
     // Name of interconnect technology, if known.
@@ -151,15 +178,15 @@ class BaseGPUDeviceFactory : public DeviceFactory {
     int32 strength;
     static const int kSameDeviceStrength;
     static const int kStreamExecutorStrength;
-    std::set<std::pair<CudaGpuId, CudaGpuId>> directed_links;
+    std::set<std::pair<PlatformGpuId, PlatformGpuId>> directed_links;
   };
 
  protected:
   // Populates *maps with interconnect maps for all local direct access
   // pathways between GPUs.
   virtual Status GetInterconnectMaps(
-      const std::vector<CudaGpuId>& visible_gpu_order,
-      gpu::Platform* gpu_manager, std::vector<InterconnectMap>* maps);
+      const std::vector<PlatformGpuId>& visible_gpu_order,
+      se::Platform* gpu_manager, std::vector<InterconnectMap>* maps);
 
   struct TfGpuIdHash {
     std::size_t operator()(const TfGpuId& id) const noexcept {
@@ -180,29 +207,27 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   Status CreateGPUDevice(const SessionOptions& options,
                          const string& name_prefix, TfGpuId tf_gpu_id,
                          int64 memory_limit, const DeviceLocality& dev_locality,
-                         std::vector<Device*>* devices);
+                         std::vector<std::unique_ptr<Device>>* devices);
 
-  virtual BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
-                                         const string& name, Bytes memory_limit,
-                                         const DeviceLocality& dev_locality,
-                                         TfGpuId tf_gpu_id,
-                                         const string& physical_device_desc,
-                                         Allocator* gpu_allocator,
-                                         Allocator* cpu_allocator) = 0;
+  virtual std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
+      const SessionOptions& options, const string& name, Bytes memory_limit,
+      const DeviceLocality& dev_locality, TfGpuId tf_gpu_id,
+      const string& physical_device_desc, Allocator* gpu_allocator,
+      Allocator* cpu_allocator) = 0;
 
-  // Returns into 'ids' the list of valid CUDA GPU ids, in the order that
+  // Returns into 'ids' the list of valid platform GPU ids, in the order that
   // they should map to TF GPU ids "/device:GPU:0", "/device:GPU:1", etc,
   // based upon 'visible_gpu_order' which was generated by parsing
   // GPUOptions::visible_device_list which is a comma-separated list of CUDA GPU
   // ids.
-  Status GetValidDeviceIds(const std::vector<CudaGpuId>& visible_gpu_order,
-                           std::vector<CudaGpuId>* ids);
+  Status GetValidDeviceIds(const std::vector<PlatformGpuId>& visible_gpu_order,
+                           std::vector<PlatformGpuId>* ids);
 
-  // visible_gpu_initialized_[cuda_gpu_id] is true if visible GPU cuda_gpu_id
-  // has been initialized by the process.
+  // visible_gpu_initialized_[platform_gpu_id] is true if visible GPU
+  // platform_gpu_id has been initialized by the process.
   std::unordered_map<int, bool> visible_gpu_initialized_;
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_

@@ -40,7 +40,17 @@ typedef Eigen::GpuDevice GPUDevice;
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                 \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_GPU),                \
-                          TensorListStack<GPUDevice, T>)
+                          TensorListStack<GPUDevice, T>)          \
+  REGISTER_KERNEL_BUILDER(Name("TensorListGather")                \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("indices"),             \
+                          TensorListGather<GPUDevice, T>)         \
+  REGISTER_KERNEL_BUILDER(Name("TensorListConcat")                \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("lengths"),             \
+                          TensorListConcat<GPUDevice, T>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_STACK_GPU);
 REGISTER_TENSOR_LIST_STACK_GPU(bfloat16);
@@ -51,12 +61,39 @@ REGISTER_TENSOR_LIST_STACK_GPU(bool);
 
 #undef REGISTER_TENSOR_LIST_STACK_GPU
 
+#define REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU(T)               \
+  REGISTER_KERNEL_BUILDER(Name("TensorListPushBackBatch")         \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_GPU),                \
+                          TensorListPushBackBatch<GPUDevice, T>)
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU(bfloat16);
+TF_CALL_complex64(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU);
+TF_CALL_complex128(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU);
+TF_CALL_int64(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU(bool);
+
+#undef REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU
+
 #define REGISTER_TENSOR_LIST_FROM_TENSOR_GPU(T)                   \
   REGISTER_KERNEL_BUILDER(Name("TensorListFromTensor")            \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_GPU)                 \
                               .HostMemory("element_shape"),       \
-                          TensorListFromTensor<GPUDevice, T>)
+                          TensorListFromTensor<GPUDevice, T>)     \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatter")               \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("element_shape")        \
+                              .HostMemory("indices"),             \
+                          TensorListScatter<GPUDevice, T>)        \
+  REGISTER_KERNEL_BUILDER(Name("TensorListSplit")                 \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("element_shape")        \
+                              .HostMemory("lengths"),             \
+                          TensorListSplit<GPUDevice, T>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_FROM_TENSOR_GPU);
 REGISTER_TENSOR_LIST_FROM_TENSOR_GPU(bfloat16);
@@ -68,11 +105,10 @@ REGISTER_TENSOR_LIST_FROM_TENSOR_GPU(bool);
 #undef REGISTER_TENSOR_LIST_FROM_TENSOR_GPU
 
 REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_GPU,
-                                          TensorList, TensorList::kTypeName,
+                                          TensorList,
                                           TensorListBinaryAdd<GPUDevice>);
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_GPU, TensorList,
-                                         TensorList::kTypeName,
                                          TensorListZerosLike<GPUDevice>);
 
 }  // namespace tensorflow

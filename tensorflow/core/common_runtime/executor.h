@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_EXECUTOR_H_
-#define TENSORFLOW_COMMON_RUNTIME_EXECUTOR_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -83,12 +83,13 @@ class Executor {
   struct Args {
     int64 step_id = 0;
     Rendezvous* rendezvous = nullptr;
-    StepStatsCollector* stats_collector = nullptr;
+    StepStatsCollectorInterface* stats_collector = nullptr;
     CallFrameInterface* call_frame = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     SessionState* session_state = nullptr;
     TensorStore* tensor_store = nullptr;
     ScopedStepContainer* step_container = nullptr;
+    CollectiveExecutor* collective_executor = nullptr;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;
@@ -96,13 +97,6 @@ class Executor {
     typedef std::function<void()> Closure;
     typedef std::function<void(Closure)> Runner;
     Runner runner = nullptr;
-
-    // A callback that is invoked each time a node has finished executing.
-    typedef std::function<Status(const string& node_name, const int output_slot,
-                                 const Tensor* tensor, const bool is_ref,
-                                 OpKernelContext* ctx)>
-        NodeOutputsCallback;
-    NodeOutputsCallback node_outputs_cb = nullptr;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
@@ -138,8 +132,6 @@ struct LocalExecutorParams {
   // when the executor is deleted.
   std::function<Status(const NodeDef&, OpKernel**)> create_kernel;
   std::function<void(OpKernel*)> delete_kernel;
-
-  Executor::Args::NodeOutputsCallback node_outputs_cb;
 };
 ::tensorflow::Status NewLocalExecutor(const LocalExecutorParams& params,
                                       std::unique_ptr<const Graph> graph,
@@ -237,4 +229,4 @@ void DeleteNonCachedKernel(OpKernel* kernel);
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_EXECUTOR_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_

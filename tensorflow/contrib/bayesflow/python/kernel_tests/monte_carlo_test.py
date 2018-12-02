@@ -29,7 +29,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution as distribution_lib
-from tensorflow.python.ops.distributions import gamma as gamma_lib
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import normal as normal_lib
 from tensorflow.python.platform import test
@@ -43,7 +42,7 @@ class ExpectationImportanceSampleTest(test.TestCase):
 
   def test_normal_integral_mean_and_var_correctly_estimated(self):
     n = int(1e6)
-    with self.test_session():
+    with self.cached_session():
       mu_p = constant_op.constant([-1.0, 1.0], dtype=dtypes.float64)
       mu_q = constant_op.constant([0.0, 0.0], dtype=dtypes.float64)
       sigma_p = constant_op.constant([0.5, 0.5], dtype=dtypes.float64)
@@ -73,7 +72,7 @@ class ExpectationImportanceSampleTest(test.TestCase):
     # Test that importance sampling can correctly estimate the probability that
     # the product of components in a MultivariateNormal are > 0.
     n = 1000
-    with self.test_session():
+    with self.cached_session():
       p = mvn_diag_lib.MultivariateNormalDiag(
           loc=[0.], scale_diag=[1.0, 1.0])
       q = mvn_diag_lib.MultivariateNormalDiag(
@@ -82,7 +81,7 @@ class ExpectationImportanceSampleTest(test.TestCase):
       # Compute E_p[X_1 * X_2 > 0], with X_i the ith component of X ~ p(x).
       # Should equal 1/2 because p is a spherical Gaussian centered at (0, 0).
       def indicator(x):
-        x1_times_x2 = math_ops.reduce_prod(x, reduction_indices=[-1])
+        x1_times_x2 = math_ops.reduce_prod(x, axis=[-1])
         return 0.5 * (math_ops.sign(x1_times_x2) + 1.0)
 
       prob = mc.expectation_importance_sampler(
@@ -100,7 +99,7 @@ class ExpectationImportanceSampleLogspaceTest(test.TestCase):
   def test_normal_distribution_second_moment_estimated_correctly(self):
     # Test the importance sampled estimate against an analytical result.
     n = int(1e6)
-    with self.test_session():
+    with self.cached_session():
       mu_p = constant_op.constant([0.0, 0.0], dtype=dtypes.float64)
       mu_q = constant_op.constant([-1.0, 1.0], dtype=dtypes.float64)
       sigma_p = constant_op.constant([1.0, 2 / 3.], dtype=dtypes.float64)
@@ -128,7 +127,7 @@ class GetSamplesTest(test.TestCase):
   """Test the private method 'get_samples'."""
 
   def test_raises_if_both_z_and_n_are_none(self):
-    with self.test_session():
+    with self.cached_session():
       dist = normal_lib.Normal(loc=0., scale=1.)
       z = None
       n = None
@@ -137,7 +136,7 @@ class GetSamplesTest(test.TestCase):
         _get_samples(dist, z, n, seed)
 
   def test_raises_if_both_z_and_n_are_not_none(self):
-    with self.test_session():
+    with self.cached_session():
       dist = normal_lib.Normal(loc=0., scale=1.)
       z = dist.sample(seed=42)
       n = 1
@@ -146,7 +145,7 @@ class GetSamplesTest(test.TestCase):
         _get_samples(dist, z, n, seed)
 
   def test_returns_n_samples_if_n_provided(self):
-    with self.test_session():
+    with self.cached_session():
       dist = normal_lib.Normal(loc=0., scale=1.)
       z = None
       n = 10
@@ -155,7 +154,7 @@ class GetSamplesTest(test.TestCase):
       self.assertEqual((10,), z.get_shape())
 
   def test_returns_z_if_z_provided(self):
-    with self.test_session():
+    with self.cached_session():
       dist = normal_lib.Normal(loc=0., scale=1.)
       z = dist.sample(10, seed=42)
       n = None
@@ -167,7 +166,7 @@ class GetSamplesTest(test.TestCase):
 class ExpectationTest(test.TestCase):
 
   def test_works_correctly(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = constant_op.constant([-1e6, -100, -10, -1, 1, 10, 100, 1e6])
       p = normal_lib.Normal(loc=x, scale=1.)
 
@@ -214,7 +213,7 @@ class ExpectationTest(test.TestCase):
                           rtol=0.05, atol=0.)
 
   def test_docstring_example_normal(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       num_draws = int(1e5)
       mu_p = constant_op.constant(0.)
       mu_q = constant_op.constant(1.)
@@ -255,50 +254,6 @@ class ExpectationTest(test.TestCase):
       self.assertAllClose(gradq_exact_kl_normal_normal_,
                           gradq_approx_kl_normal_normal_,
                           rtol=0.01, atol=0.)
-
-  def test_docstring_example_gamma(self):
-    with self.test_session() as sess:
-      num_draws = int(1e5)
-      concentration_p = constant_op.constant(1.)
-      concentration_q = constant_op.constant(2.)
-      p = gamma_lib.Gamma(concentration=concentration_p, rate=1.)
-      q = gamma_lib.Gamma(concentration=concentration_q, rate=3.)
-      approx_kl_gamma_gamma = monte_carlo_lib.expectation(
-          f=lambda x: p.log_prob(x) - q.log_prob(x),
-          samples=p.sample(num_draws, seed=42),
-          log_prob=p.log_prob,
-          use_reparametrization=(p.reparameterization_type
-                                 == distribution_lib.FULLY_REPARAMETERIZED))
-      exact_kl_gamma_gamma = kullback_leibler.kl_divergence(p, q)
-      [exact_kl_gamma_gamma_, approx_kl_gamma_gamma_] = sess.run([
-          exact_kl_gamma_gamma, approx_kl_gamma_gamma])
-      self.assertEqual(
-          False,
-          p.reparameterization_type == distribution_lib.FULLY_REPARAMETERIZED)
-      self.assertAllClose(exact_kl_gamma_gamma_, approx_kl_gamma_gamma_,
-                          rtol=0.01, atol=0.)
-
-      # Compare gradients. (Not present in `docstring`.)
-      gradp = lambda fp: gradients_impl.gradients(fp, concentration_p)[0]
-      gradq = lambda fq: gradients_impl.gradients(fq, concentration_q)[0]
-      [
-          gradp_exact_kl_gamma_gamma_,
-          gradq_exact_kl_gamma_gamma_,
-          gradp_approx_kl_gamma_gamma_,
-          gradq_approx_kl_gamma_gamma_,
-      ] = sess.run([
-          gradp(exact_kl_gamma_gamma),
-          gradq(exact_kl_gamma_gamma),
-          gradp(approx_kl_gamma_gamma),
-          gradq(approx_kl_gamma_gamma),
-      ])
-      # Notice that variance (i.e., `rtol`) is higher when using score-trick.
-      self.assertAllClose(gradp_exact_kl_gamma_gamma_,
-                          gradp_approx_kl_gamma_gamma_,
-                          rtol=0.05, atol=0.)
-      self.assertAllClose(gradq_exact_kl_gamma_gamma_,
-                          gradq_approx_kl_gamma_gamma_,
-                          rtol=0.03, atol=0.)
 
 
 if __name__ == '__main__':

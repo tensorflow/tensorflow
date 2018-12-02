@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/posix/error.h"
 #include "tensorflow/core/platform/posix/posix_file_system.h"
@@ -90,7 +91,7 @@ class PosixWritableFile : public WritableFile {
     }
   }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     size_t r = fwrite(data.data(), 1, data.size(), file_);
     if (r != data.size()) {
       return IOError(filename_, errno);
@@ -225,6 +226,11 @@ Status PosixFileSystem::GetChildren(const string& dir,
   return Status::OK();
 }
 
+Status PosixFileSystem::GetMatchingPaths(const string& pattern,
+                                         std::vector<string>* results) {
+  return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
+}
+
 Status PosixFileSystem::DeleteFile(const string& fname) {
   Status result;
   if (unlink(TranslateName(fname).c_str()) != 0) {
@@ -234,11 +240,14 @@ Status PosixFileSystem::DeleteFile(const string& fname) {
 }
 
 Status PosixFileSystem::CreateDir(const string& name) {
-  Status result;
-  if (mkdir(TranslateName(name).c_str(), 0755) != 0) {
-    result = IOError(name, errno);
+  string translated = TranslateName(name);
+  if (translated.empty()) {
+    return errors::AlreadyExists(name);
   }
-  return result;
+  if (mkdir(translated.c_str(), 0755) != 0) {
+    return IOError(name, errno);
+  }
+  return Status::OK();
 }
 
 Status PosixFileSystem::DeleteDir(const string& name) {

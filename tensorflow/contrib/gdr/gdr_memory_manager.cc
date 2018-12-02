@@ -22,7 +22,6 @@ limitations under the License.
 #include <fstream>
 #include <list>
 #include <map>
-#include <set>
 
 #include <fcntl.h>
 #include <rdma/rdma_cma.h>
@@ -30,17 +29,17 @@ limitations under the License.
 #include <sys/epoll.h>
 
 #include "tensorflow/contrib/gdr/gdr.pb.h"
-#include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/common_runtime/process_state.h"
 #if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
 #endif  // GOOGLE_CUDA
-#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numa.h"
 
 namespace tensorflow {
 
@@ -68,14 +67,11 @@ bool IsGDRAvailable() {
 int TryToReadNumaNode(ibv_device* device) {
 #if defined(__APPLE__)
   LOG(INFO) << "OS X does not support NUMA - returning NUMA node 0";
-  return 0;
+  return port::kNUMANoAffinity;
 #elif defined(PLATFORM_WINDOWS)
   // Windows support for NUMA is not currently implemented. Return node 0.
-  return 0;
+  return port::kNUMANoAffinity;
 #else
-  VLOG(2) << "Trying to read NUMA node for device: " << device->name;
-  static const int kUnknownNumaNode = -1;
-
   auto filename = string(device->ibdev_path) + "/device/numa_node";
 
   std::ifstream ifs(filename.c_str());
@@ -89,12 +85,12 @@ int TryToReadNumaNode(ibv_device* device) {
                 << value
                 << "), but there must be at least one NUMA node"
                    ", so returning NUMA node zero";
-      return 0;
+      return port::kNUMANoAffinity;
     }
     LOG(INFO) << "NUMA node for device: " << device->name << " is " << value;
     return value;
   }
-  return kUnknownNumaNode;
+  return port::kNUMANoAffinity;
 #endif
 }
 
@@ -146,7 +142,8 @@ class GdrMemoryManager : public RemoteMemoryManager {
 
   ibv_mr* FindMemoryRegion(void* addr, size_t length);
 
-  void InsertMemoryRegion(void* addr, size_t length);
+  void InsertMemoryRegion(void* addr, size_t length,
+                          const std::string& allocator_name);
 
   void EvictMemoryRegion(void* addr, size_t length);
 
@@ -156,6 +153,7 @@ class GdrMemoryManager : public RemoteMemoryManager {
   RdmaEndpointPtr listening_;
   std::atomic<bool> stopped_;
   int epfd_;
+  int numa_node_;
 
   // Server side endpoints
   // Accessed sequentially in Run() so not protected by lock
@@ -172,7 +170,7 @@ class GdrMemoryManager : public RemoteMemoryManager {
   // Client side endpoints
   mutex client_mu_;
   std::map<std::pair<string, string>, RdmaEndpointPtr> clients_
-      GUARDED_BY(cient_mu_);
+      GUARDED_BY(client_mu_);
 
   // Managed memory regions
   mutex alloc_mu_;
@@ -180,29 +178,6 @@ class GdrMemoryManager : public RemoteMemoryManager {
 
   TF_DISALLOW_COPY_AND_ASSIGN(GdrMemoryManager);
 };
-
-// TODO(byronyi): remove this class duplicated from the one in
-// common/runtime/gpu/pool_allocator.h when it is available in common_runtime
-class BasicCPUAllocator : public SubAllocator {
- public:
-  ~BasicCPUAllocator() override {}
-
-  void* Alloc(size_t alignment, size_t num_bytes) override {
-    return port::AlignedMalloc(num_bytes, alignment);
-  }
-  void Free(void* ptr, size_t) override { port::AlignedFree(ptr); }
-};
-
-// TODO(byronyi): remove this class and its registration when the default
-// cpu_allocator() returns visitable allocator
-class BFCRdmaAllocator : public BFCAllocator {
- public:
-  BFCRdmaAllocator()
-      : BFCAllocator(new BasicCPUAllocator(), 1LL << 36, true, "cpu_rdma_bfc") {
-  }
-};
-
-REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 101, BFCRdmaAllocator);
 
 GdrMemoryManager::GdrMemoryManager(const string& host, const string& port)
     : host_(host),
@@ -272,47 +247,44 @@ Status GdrMemoryManager::Init() {
                                "cannot add server to epoll");
   }
 
-  Allocator* allocators[] = {
-#if GOOGLE_CUDA
-    ProcessState::singleton()->GetCUDAHostAllocator(0),
-    ProcessState::singleton()->GetCPUAllocator(0),
-#endif  // GOOGLE_CUDA
-    cpu_allocator(),
+  numa_node_ = TryToReadNumaNode(listening_->verbs->device);
+
+  SubAllocator::Visitor alloc_visitor = [this](void* ptr, int numa_node,
+                                               size_t num_bytes) {
+    VLOG(2) << "Registering RDMA capable memory region on numa_node "
+            << numa_node;
+    InsertMemoryRegion(ptr, num_bytes, strings::StrCat("CPU:", numa_node));
   };
-
-  using namespace std::placeholders;
-  VisitableAllocator::Visitor alloc_visitor =
-      std::bind(&GdrMemoryManager::InsertMemoryRegion, this, _1, _2);
-  VisitableAllocator::Visitor free_visitor =
-      std::bind(&GdrMemoryManager::EvictMemoryRegion, this, _1, _2);
-
-  std::set<Allocator*> instrumented_;
-
-  // Host memory allocators
-  for (Allocator* allocator : allocators) {
-    auto* visitable_allocator = dynamic_cast<VisitableAllocator*>(allocator);
-    CHECK(visitable_allocator)
-        << "is not visitable for instrumentation" << allocator->Name();
-    // Make sure we don't instrument the same allocator twice
-    if (instrumented_.find(allocator) == std::end(instrumented_)) {
-      visitable_allocator->AddAllocVisitor(alloc_visitor);
-      visitable_allocator->AddFreeVisitor(free_visitor);
-      instrumented_.insert(allocator);
-      LOG(INFO) << "Instrumenting CPU allocator " << allocator->Name();
-    }
-  }
+  SubAllocator::Visitor free_visitor = [this](void* ptr, int numa_node,
+                                              size_t num_bytes) {
+    VLOG(2) << "De-registering RDMA capable memory region on numa_node "
+            << numa_node;
+    EvictMemoryRegion(ptr, num_bytes);
+  };
+  ProcessState::singleton()->AddCPUAllocVisitor(alloc_visitor);
+  ProcessState::singleton()->AddCPUFreeVisitor(free_visitor);
+  LOG(INFO) << "Instrumenting CPU allocator(s)";
 
 #if GOOGLE_CUDA
-  VisitableAllocator::Visitor cuda_alloc_visitor =
-      std::bind(&GdrMemoryManager::InsertMemoryRegion, this, _1, _2);
+  for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
+    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(numa_idx,
+                                                          alloc_visitor);
+    GPUProcessState::singleton()->AddCUDAHostFreeVisitor(numa_idx,
+                                                         free_visitor);
+  }
   if (IsGDRAvailable()) {
-    // Note we don't free allocated GPU memory so there is no free visitor
-    int32_t bus_id = TryToReadNumaNode(listening_->verbs->device) + 1;
-    ProcessState::singleton()->AddGPUAllocVisitor(bus_id, cuda_alloc_visitor);
-    LOG(INFO) << "Instrumenting GPU allocator with bus_id " << bus_id;
+    SubAllocator::Visitor cuda_alloc_visitor = [this](void* ptr, int gpu_id,
+                                                      size_t num_bytes) {
+      VLOG(2) << "Registering RDMA capable memory region on GPU " << gpu_id;
+      InsertMemoryRegion(ptr, num_bytes, strings::StrCat("GPU:", gpu_id));
+    };
+    for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
+      GPUProcessState::singleton()->AddGPUAllocVisitor(numa_idx,
+                                                       cuda_alloc_visitor);
+    }
+    VLOG(1) << "Instrumenting GPU allocator(s) for all Numas";
   }
 #endif  // GOOGLE_CUDA
-
   return Status::OK();
 }
 
@@ -429,8 +401,8 @@ void GdrMemoryManager::TransportOptionsFromTensor(
   ibv_mr* mr = FindMemoryRegion(addr, length);
 
 #if GOOGLE_CUDA
-  if (!on_host) {
-    Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+  if (device->tensorflow_gpu_device_info() && !on_host) {
+    Allocator* alloc = GPUProcessState::singleton()->GetCUDAHostAllocator(0);
     Tensor* host_copy = new Tensor(alloc, tensor.dtype(), tensor.shape());
     GPUUtil::CopyGPUTensorToCPU(
         device, device_context, &tensor, host_copy,
@@ -480,11 +452,27 @@ void GdrMemoryManager::TransportOptionsFromTensor(
 #endif
 
   if (mr == nullptr) {
-    done(errors::Unavailable("Cannot find pinned memory region"));
-    return;
+    Allocator* alloc = ProcessState::singleton()->GetCPUAllocator(numa_node_);
+    Tensor host_copy(alloc, tensor.dtype(), tensor.shape());
+
+    std::memcpy(DMAHelper::buffer(&host_copy)->data(), buffer->data(), length);
+    VLOG(2) << "Copying " << length << " bytes unpinned tensor buffer";
+
+    buffer = DMAHelper::buffer(&host_copy);
+    addr = buffer->data();
+    length = buffer->size();
+
+    mr = FindMemoryRegion(addr, length);
+    if (mr == nullptr) {
+      done(errors::Unavailable("Cannot find pinned memory region"));
+      return;
+    }
+
+    buffer->Ref();
+  } else {
+    buffer->Ref();
   }
 
-  buffer->Ref();
   TensorKey tensor_key = next_key_++;
   {
     mutex_lock l(server_mu_);
@@ -494,7 +482,7 @@ void GdrMemoryManager::TransportOptionsFromTensor(
   uint64_t checksum = 0;
   if (VLOG_IS_ON(2)) {
 #ifdef GOOGLE_CUDA
-    if (!on_host) {
+    if (device->tensorflow_gpu_device_info() && !on_host) {
       checksum = GPUUtil::Checksum(device, device_context, tensor);
     } else {
       checksum = GPUUtil::Checksum(tensor);
@@ -532,7 +520,8 @@ void GdrMemoryManager::TensorFromTransportOptions(
   Tensor host_copy;
 #if GOOGLE_CUDA
   if (mr == nullptr && !on_host) {
-    Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+    Allocator* alloc =
+        GPUProcessState::singleton()->GetCUDAHostAllocator(numa_node_);
     host_copy = Tensor(alloc, tensor->dtype(), tensor->shape());
     buffer = DMAHelper::buffer(&host_copy);
     addr = buffer->data();
@@ -542,8 +531,18 @@ void GdrMemoryManager::TensorFromTransportOptions(
 #endif  // GOOGLE_CUDA
 
   if (mr == nullptr) {
-    done(errors::Unavailable("Cannot find pinned memory region"));
-    return;
+    Allocator* alloc = ProcessState::singleton()->GetCPUAllocator(numa_node_);
+    host_copy = Tensor(alloc, tensor->dtype(), tensor->shape());
+
+    buffer = DMAHelper::buffer(&host_copy);
+    addr = buffer->data();
+    length = buffer->size();
+
+    mr = FindMemoryRegion(addr, length);
+    if (mr == nullptr) {
+      done(errors::Unavailable("Cannot find pinned memory region"));
+      return;
+    }
   }
 
   decltype(clients_)::iterator iter;
@@ -592,7 +591,8 @@ void GdrMemoryManager::TensorFromTransportOptions(
   }
 
 #if GOOGLE_CUDA
-  if (host_copy.NumElements() > 0) {
+  if (device->tensorflow_gpu_device_info() && !on_host &&
+      host_copy.NumElements() > 0) {
     uint64_t checksum = 0;
     if (VLOG_IS_ON(2)) {
       checksum = GPUUtil::Checksum(host_copy);
@@ -622,6 +622,12 @@ void GdrMemoryManager::TensorFromTransportOptions(
   }
 #endif  // GOOGLE_CUDA
 
+  if ((on_host || !device->tensorflow_gpu_device_info()) &&
+      host_copy.NumElements() > 0) {
+    std::memcpy(DMAHelper::buffer(tensor)->data(), addr, length);
+    VLOG(2) << "Copying " << length << " bytes unpinned tensor buffer";
+  }
+
   uint64_t end = Env::Default()->NowMicros();
 
   VLOG(2) << "RDMA from remote memory region " << remote_mr.rkey()
@@ -631,7 +637,7 @@ void GdrMemoryManager::TensorFromTransportOptions(
   uint64_t checksum = 0;
   if (VLOG_IS_ON(2)) {
 #ifdef GOOGLE_CUDA
-    if (device->tensorflow_gpu_device_info() && (!on_host)) {
+    if (device->tensorflow_gpu_device_info() && !on_host) {
       checksum = GPUUtil::Checksum(device, device_context, *tensor);
     } else {
       checksum = GPUUtil::Checksum(*tensor);
@@ -692,7 +698,8 @@ ibv_mr* GdrMemoryManager::FindMemoryRegion(void* addr, size_t length) {
   }
 }
 
-void GdrMemoryManager::InsertMemoryRegion(void* addr, size_t length) {
+void GdrMemoryManager::InsertMemoryRegion(void* addr, size_t length,
+                                          const std::string& allocator_name) {
   if (length == 0) return;
   ibv_mr* mr = rdma_reg_read(listening_.get(), addr, length);
   if (mr != nullptr) {
@@ -700,7 +707,8 @@ void GdrMemoryManager::InsertMemoryRegion(void* addr, size_t length) {
     auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
     mrs_.insert(iter, {mr, &MRDeleter});
   } else {
-    LOG(WARNING) << "Cannot register memory region";
+    LOG(WARNING) << "Cannot register memory region allocated by "
+                 << allocator_name;
   }
 }
 

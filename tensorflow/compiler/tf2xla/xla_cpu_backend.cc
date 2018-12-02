@@ -13,22 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 
 namespace tensorflow {
 
 bool CpuOpFilter(KernelDef* kdef) {
-  // TODO(b/34339814): implement inverse erf for double types and remove this
-  // workaround.
-  if (kdef->op() == "RandomStandardNormal") {
-    kdef->clear_constraint();
-    // Change the type constraint to permit only DTD_FLOAT.
-    KernelDef::AttrConstraint* attr_constraint = kdef->add_constraint();
-    attr_constraint->set_name("dtype");
-    attr_constraint->mutable_allowed_values()->mutable_list()->add_type(
-        DT_FLOAT);
-    return true;
+  if (kdef->op() == "Const") {
+    AddDtypeToKernelDefConstraint("dtype", DT_STRING, kdef);
+  }
+  if (kdef->op() == "Assert") {
+    AddDtypeToKernelDefConstraint("T", DT_STRING, kdef);
   }
   return true;
 }

@@ -22,6 +22,7 @@ import collections
 import functools
 import six
 
+from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -38,12 +39,13 @@ from tensorflow.python.ops import string_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_lookup_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.training.checkpointable import tracking as checkpointable
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("initialize_all_tables")
+@tf_export(v1=["initialize_all_tables"])
 @deprecated(None, "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
@@ -58,7 +60,7 @@ def initialize_all_tables(name="init_all_tables"):
   return tables_initializer(name)
 
 
-@tf_export("tables_initializer")
+@tf_export(v1=["initializers.tables_initializer", "tables_initializer"])
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
@@ -95,20 +97,22 @@ def _check_table_dtypes(table, key_dtype, value_dtype):
                     (table.value_dtype, value_dtype))
 
 
-class LookupInterface(object):
+class LookupInterface(checkpointable.TrackableResource):
   """Represent a lookup table that persists across different steps."""
 
-  def __init__(self, key_dtype, value_dtype, name):
+  def __init__(self, key_dtype, value_dtype):
     """Construct a lookup table interface.
 
     Args:
       key_dtype: The table key type.
       value_dtype: The table value type.
-      name: A name for the operation (optional).
     """
     self._key_dtype = dtypes.as_dtype(key_dtype)
     self._value_dtype = dtypes.as_dtype(value_dtype)
-    self._name = name
+    super(LookupInterface, self).__init__()
+
+  def create_resource(self):
+    raise NotImplementedError
 
   @property
   def key_dtype(self):
@@ -123,12 +127,7 @@ class LookupInterface(object):
   @property
   def name(self):
     """The name of the table."""
-    return self._name
-
-  @property
-  def init(self):
-    """The table initialization op."""
-    raise NotImplementedError
+    return NotImplementedError
 
   def size(self, name=None):
     """Compute the number of elements in this table."""
@@ -145,7 +144,7 @@ class InitializableLookupTableBase(LookupInterface):
   An initializable lookup tables persist across different steps.
   """
 
-  def __init__(self, table_ref, default_value, initializer):
+  def __init__(self, default_value, initializer):
     """Construct a table object from a table reference.
 
     If requires a table initializer object (subclass of `TableInitializerBase`).
@@ -153,37 +152,34 @@ class InitializableLookupTableBase(LookupInterface):
     the table. The caller is responsible to execute the initialization op.
 
     Args:
-      table_ref: The table reference, i.e. the output of the lookup table ops.
       default_value: The value to use if a key is missing in the table.
       initializer: The table initializer to use.
     """
-    if context.executing_eagerly():
-      name = context.context().scope_name
-    else:
-      name = table_ref.op.name.split("/")[-1]
-    super(InitializableLookupTableBase,
-          self).__init__(initializer.key_dtype, initializer.value_dtype,
-                         name)
-    self._table_ref = table_ref
+    super(InitializableLookupTableBase, self).__init__(initializer.key_dtype,
+                                                       initializer.value_dtype)
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
     self._default_value.get_shape().merge_with(tensor_shape.scalar())
-    self._init = initializer.initialize(self)
+    self._initializer = initializer
+    self._resource_handle = self.create_resource()
+    self._init_op = self.initialize()
+
+  def initialize(self):
+    return self._initializer.initialize(self)
 
   @property
-  def table_ref(self):
-    """Get the underlying table reference."""
-    return self._table_ref
+  def initializer(self):
+    return self._init_op
+
+  @property
+  @deprecated("2018-12-15", "Use `initializer` instead.")
+  def init(self):
+    return self.initializer
 
   @property
   def default_value(self):
     """The default value of the table."""
     return self._default_value
-
-  @property
-  def init(self):
-    """The table initialization op."""
-    return self._init
 
   def size(self, name=None):
     """Compute the number of elements in this table.
@@ -194,9 +190,10 @@ class InitializableLookupTableBase(LookupInterface):
     Returns:
       A scalar tensor containing the number of elements in this table.
     """
-    with ops.name_scope(name, "%s_Size" % self._name,
-                        [self._table_ref]) as scope:
-      return gen_lookup_ops.lookup_table_size_v2(self._table_ref, name=scope)
+    with ops.name_scope(name, "%s_Size" % self.name,
+                        [self.resource_handle]) as scope:
+      return gen_lookup_ops.lookup_table_size_v2(
+          self.resource_handle, name=scope)
 
   def lookup(self, keys, name=None):
     """Looks up `keys` in a table, outputs the corresponding values.
@@ -222,11 +219,11 @@ class InitializableLookupTableBase(LookupInterface):
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
 
-    with ops.name_scope(name, "%s_Lookup" % self._name,
-                        (self._table_ref, key_tensor,
-                         self._default_value)) as scope:
+    with ops.name_scope(
+        name, "%s_Lookup" % self.name,
+        (self.resource_handle, key_tensor, self._default_value)) as scope:
       values = gen_lookup_ops.lookup_table_find_v2(
-          self._table_ref, key_tensor, self._default_value, name=scope)
+          self.resource_handle, key_tensor, self._default_value, name=scope)
 
     values.set_shape(key_tensor.get_shape())
     if isinstance(keys, sparse_tensor.SparseTensor):
@@ -268,15 +265,48 @@ class HashTable(InitializableLookupTableBase):
     Returns:
       A `HashTable` object.
     """
-    with ops.name_scope(name, "hash_table", (initializer,
-                                             default_value)) as scope:
-      table_ref = gen_lookup_ops.hash_table_v2(
-          shared_name=shared_name,
-          key_dtype=initializer.key_dtype,
-          value_dtype=initializer.value_dtype,
-          name=scope)
+    self._initializer = initializer
+    self._default_value = default_value
+    self._shared_name = shared_name
+    self._name = name
+    self._table_name = ""
+    super(HashTable, self).__init__(default_value, initializer)
+    self._value_shape = self._default_value.get_shape()
 
-      super(HashTable, self).__init__(table_ref, default_value, initializer)
+  def create_resource(self):
+    with ops.name_scope(self._name, "hash_table",
+                        (self._initializer, self._default_value)) as scope:
+      table_ref = gen_lookup_ops.hash_table_v2(
+          shared_name=self._shared_name,
+          key_dtype=self._initializer.key_dtype,
+          value_dtype=self._initializer.value_dtype,
+          name=scope)
+      self._table_name = scope.split("/")[-2]
+    return table_ref
+
+  @property
+  def name(self):
+    return self._table_name
+
+  def export(self, name=None):
+    """Returns tensors of all keys and values in the table.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A pair of tensors with the first tensor containing all keys and the
+        second tensors containing all values in the table.
+    """
+    with ops.name_scope(name, "%s_Export" % self.name,
+                        [self.resource_handle]) as name:
+      with ops.colocate_with(self.resource_handle):
+        exported_keys, exported_values = gen_lookup_ops.lookup_table_export_v2(
+            self.resource_handle, self._key_dtype, self._value_dtype, name=name)
+
+    exported_values.set_shape(exported_keys.get_shape().concatenate(
+        self._value_shape))
+    return exported_keys, exported_values
 
 
 class TableInitializerBase(object):
@@ -344,10 +374,19 @@ class KeyValueTensorInitializer(TableInitializerBase):
     """
     _check_table_dtypes(table, self._keys.dtype, self._values.dtype)
     with ops.name_scope(
-        self._name, values=(table.table_ref, self._keys,
+        self._name, values=(table.resource_handle, self._keys,
                             self._values)) as scope:
-      init_op = gen_lookup_ops.initialize_table_v2(
-          table.table_ref, self._keys, self._values, name=scope)
+      if context.executing_eagerly():
+        # Ensure a unique name when eager execution is enabled to avoid spurious
+        # sharing issues.
+        scope += str(ops.uid())
+      if fwd_compat.forward_compatible(2018, 9, 19):
+        init_op = gen_lookup_ops.lookup_table_import_v2(
+            table.resource_handle, self._keys, self._values, name=scope)
+      else:
+        # To maintain forward compatibiltiy, use the old implementation.
+        init_op = gen_lookup_ops.initialize_table_v2(
+            table.resource_handle, self._keys, self._values, name=scope)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 
@@ -391,7 +430,7 @@ class TextFileInitializer(TableInitializerBase):
   * `palmer -> 30`
 
   ```python
-  table = tf.contrib.lookup.HashTable(tf.contrib.lookup.TextFileInitializer(
+  table = tf.lookup.HashTable(tf.lookup.TextFileInitializer(
       "test.txt", tf.string, 0, tf.int64, 1, delimiter=" "), -1)
   ...
   table.init.run()
@@ -404,9 +443,9 @@ class TextFileInitializer(TableInitializerBase):
   * `palmer 30 -> 2`
 
   ```python
-  table = tf.contrib.lookup.HashTable(tf.contrib.lookup.TextFileInitializer(
-      "test.txt", tf.string, tf.contrib.lookup.TextFileIndex.WHOLE_LINE,
-      tf.int64, tf.contrib.lookup.TextFileIndex.LINE_NUMBER, delimiter=" "), -1)
+  table = tf.lookup.HashTable(tf.lookup.TextFileInitializer(
+      "test.txt", tf.string, tf.lookup.TextFileIndex.WHOLE_LINE,
+      tf.int64, tf.lookup.TextFileIndex.LINE_NUMBER, delimiter=" "), -1)
   ...
   table.init.run()
   ```
@@ -507,11 +546,11 @@ class TextFileInitializer(TableInitializerBase):
     """
     _check_table_dtypes(table, self.key_dtype, self.value_dtype)
     with ops.name_scope(self._name, "text_file_init",
-                        (table.table_ref,)) as scope:
+                        (table.resource_handle,)) as scope:
       filename = ops.convert_to_tensor(
           self._filename, dtypes.string, name="asset_filepath")
       init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
-          table.table_ref,
+          table.resource_handle,
           filename,
           self._key_index,
           self._value_index,
@@ -775,35 +814,41 @@ class IdTableWithHashBuckets(LookupInterface):
       raise TypeError(
           "hasher_spec must be of type HasherSpec, got %s" % hasher_spec)
     self._hasher_spec = hasher_spec
-    super(IdTableWithHashBuckets, self).__init__(key_dtype, dtypes.int64,
-                                                 name.split("/")[-1])
+    self._table_name = name.split("/")[-1]
+    super(IdTableWithHashBuckets, self).__init__(key_dtype, dtypes.int64)
 
-  @property
-  def init(self):
-    """The table initialization op."""
-    if self._table:
-      return self._table.init
+  def create_resource(self):
+    if self._table is not None:
+      return self._table.create_resource()
+    return None
+
+  def initialize(self):
+    if self._table is not None:
+      return self._table.initialize()
     with ops.name_scope(None, "init"):
       return control_flow_ops.no_op()
 
   @property
-  def table_ref(self):
-    """Returns the table_ref of the underlying table, if one exists.
-
-    Only use the table_ref directly if you know what you are doing. The
-    table_ref does not have the "hash bucket" functionality, as that is provided
-    by this class.
-
-    One possible use of the table_ref is subtokenization, i.e. ops which
-    dynamically decompose tokens into subtokens based on the contents of the
-    table_ref.
-
-    Returns:
-      the underlying table_ref, or None if there is no underlying table
-    """
+  def initializer(self):
     if self._table is not None:
-      return self._table.table_ref
+      return self._table._init_op  # pylint: disable=protected-access
+    with ops.name_scope(None, "init"):
+      return control_flow_ops.no_op()
+
+  @property
+  @deprecated("2018-12-15", "Use `initializer` instead.")
+  def init(self):
+    return self.initializer
+
+  @property
+  def resource_handle(self):
+    if self._table is not None:
+      return self._table.resource_handle
     return None
+
+  @property
+  def name(self):
+    return self._table_name
 
   def size(self, name=None):
     """Compute the number of elements in this table."""
@@ -922,7 +967,7 @@ def index_table_from_file(vocabulary_file=None,
 
   ```python
   features = tf.constant(["emerson", "lake", "and", "palmer"])
-  table = tf.contrib.lookup.index_table_from_file(
+  table = tf.lookup.index_table_from_file(
       vocabulary_file="test.txt", num_oov_buckets=1)
   ids = table.lookup(features)
   ...
@@ -1023,21 +1068,21 @@ def index_table_from_tensor(vocabulary_list,
 
   Any lookup of an out-of-vocabulary token will return a bucket ID based on its
   hash if `num_oov_buckets` is greater than zero. Otherwise it is assigned the
-  `default_value`.
-  The bucket ID range is `[mapping size, mapping size + num_oov_buckets - 1]`.
+  `default_value`. The bucket ID range is
+  `[vocabulary list size, vocabulary list size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
 
-  Elements in `mapping` cannot have duplicates, otherwise when executing the
-  table initializer op, it will throw a `FailedPreconditionError`.
+  Elements in `vocabulary_list` cannot have duplicates, otherwise when executing
+  the table initializer op, it will throw a `FailedPreconditionError`.
 
   Sample Usages:
 
   ```python
   vocabulary_list = tf.constant(["emerson", "lake", "palmer"])
-  table = tf.contrib.lookup.index_table_from_tensor(
-      mapping=vocabulary_list, num_oov_buckets=1, default_value=-1)
+  table = tf.lookup.index_table_from_tensor(
+      vocabulary_list=vocabulary_list, num_oov_buckets=1, default_value=-1)
   features = tf.constant(["emerson", "lake", "and", "palmer"])
   ids = table.lookup(features)
   ...
@@ -1062,7 +1107,7 @@ def index_table_from_tensor(vocabulary_list,
     The lookup table to map an input `Tensor` to index `int64` `Tensor`.
 
   Raises:
-    ValueError: If `mapping` is invalid.
+    ValueError: If `vocabulary_list` is invalid.
     ValueError: If `num_oov_buckets` is negative.
   """
   if vocabulary_list is None:
@@ -1088,6 +1133,10 @@ def index_table_from_tensor(vocabulary_list,
 
     shared_name = ""
     with ops.name_scope(None, "hash_table") as hash_table_scope:
+      if context.executing_eagerly():
+        # Ensure a unique name when eager execution is enabled to avoid spurious
+        # sharing issues.
+        shared_name += str(ops.uid())
       table_keys = math_ops.to_int64(keys) if keys.dtype.is_integer else keys
       init = KeyValueTensorInitializer(
           table_keys,
@@ -1104,7 +1153,6 @@ def index_table_from_tensor(vocabulary_list,
           hasher_spec=hasher_spec,
           name=feat_to_id_scope,
           key_dtype=dtype)
-
     return table
 
 
@@ -1150,7 +1198,7 @@ def index_to_string_table_from_file(vocabulary_file,
 
   ```python
   indices = tf.constant([1, 5], tf.int64)
-  table = tf.contrib.lookup.index_to_string_table_from_file(
+  table = tf.lookup.index_to_string_table_from_file(
       vocabulary_file="test.txt", default_value="UNKNOWN")
   values = table.lookup(indices)
   ...
@@ -1215,25 +1263,25 @@ def index_to_string_table_from_tensor(vocabulary_list,
   """Returns a lookup table that maps a `Tensor` of indices into strings.
 
   This operation constructs a lookup table to map int64 indices into string
-  values. The mapping is initialized from a string `mapping` 1-D `Tensor` where
-  each element is a value and the corresponding index within the tensor is the
-  key.
+  values. The mapping is initialized from a string `vocabulary_list` 1-D
+  `Tensor` where each element is a value and the corresponding index within the
+  tensor is the key.
 
-  Any input which does not have a corresponding index in 'mapping'
+  Any input which does not have a corresponding index in 'vocabulary_list'
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
 
-  Elements in `mapping` cannot have duplicates, otherwise when executing the
-  table initializer op, it will throw a `FailedPreconditionError`.
+  Elements in `vocabulary_list` cannot have duplicates, otherwise when executing
+  the table initializer op, it will throw a `FailedPreconditionError`.
 
   Sample Usages:
 
   ```python
   vocabulary_list = tf.constant(["emerson", "lake", "palmer"])
   indices = tf.constant([1, 5], tf.int64)
-  table = tf.contrib.lookup.index_to_string_table_from_tensor(
+  table = tf.lookup.index_to_string_table_from_tensor(
       vocabulary_list, default_value="UNKNOWN")
   values = table.lookup(indices)
   ...

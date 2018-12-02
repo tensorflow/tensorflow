@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/bfloat16_propagation.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -33,7 +34,7 @@ BFloat16Propagation::BFloat16Propagation(
     const BFloat16Support* bfloat16_support)
     : bfloat16_support_(bfloat16_support) {}
 
-void BFloat16Propagation::DetermineAndMutateFusionComputationPrecision(
+void BFloat16Propagation::DetermineFusionComputationPrecision(
     HloInstruction* fusion) {
   CHECK_EQ(fusion->opcode(), HloOpcode::kFusion);
   if (!bfloat16_support_->SupportsMixedPrecisions(*fusion)) {
@@ -48,15 +49,13 @@ void BFloat16Propagation::DetermineAndMutateFusionComputationPrecision(
   auto root = fusion->fused_instructions_computation()->root_instruction();
 
   // Adjust root's element types according to the fusion's output shape.
-  ShapeUtil::ForEachMutableSubshape(
-      root->mutable_shape(), [&](Shape* subshape, const ShapeIndex& index) {
-        if (subshape->element_type() != F32) {
+  ShapeUtil::ForEachSubshape(
+      root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.element_type() != F32) {
           return;
         }
-        if (ShapeUtil::GetSubshape(fusion->shape(), index).element_type() ==
-            BF16) {
-          subshape->set_element_type(BF16);
-          changed_ = true;
+        if (OutputTypeAfterChange(fusion, index) == BF16) {
+          AddToOrRemoveFromBF16ChangeSet(root, index, BF16);
           VLOG(2) << "Fused root " << root->ToString() << " at shape index "
                   << index << " changed to BF16 precision for fusion "
                   << fusion->ToString();
@@ -67,13 +66,101 @@ void BFloat16Propagation::DetermineAndMutateFusionComputationPrecision(
   auto insts =
       fusion->fused_instructions_computation()->MakeInstructionPostOrder();
   for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
-    DetermineAndMutateInstructionPrecision(*inst_it, /*skip_parameters=*/false);
+    DetermineInstructionPrecision(*inst_it, /*skip_parameters=*/false);
   }
-  computations_visited_in_mutation_pass_.insert(
+  computations_visited_in_backward_pass_.insert(
       fusion->fused_instructions_computation());
+
+  RevertIfFusionInternalBF16Changes(fusion);
 }
 
-void BFloat16Propagation::DetermineAndMutateWhileComputationsPrecision(
+void BFloat16Propagation::RevertIfFusionInternalBF16Changes(
+    HloInstruction* fusion) {
+  auto has_changes = [this](HloInstruction* inst) {
+    auto it = changes_to_bf16_.find(inst);
+    return it != changes_to_bf16_.end() && !it->second.empty();
+  };
+
+  auto root = fusion->fused_instructions_computation()->root_instruction();
+  absl::flat_hash_set<const HloValue*> changed_root_buffers;
+
+  auto root_changes_it = changes_to_bf16_.find(root);
+  if (root_changes_it != changes_to_bf16_.end()) {
+    for (const auto& entry : root_changes_it->second) {
+      for (const HloValue* value :
+           dataflow_->GetValueSet(root, entry.second).values()) {
+        changed_root_buffers.insert(value);
+      }
+    }
+  }
+
+  auto aliases_changed_root_buffer =
+      [this, &changed_root_buffers](const HloInstruction* inst) {
+        bool aliasing = false;
+        ShapeUtil::ForEachSubshape(
+            inst->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+              if (aliasing) {
+                // Skip if aliasing is already found.
+                return;
+              }
+              // Only F32 buffers are considered for changing to BF16 in this
+              // pass.
+              if (subshape.element_type() != F32) {
+                return;
+              }
+              for (const HloValue* value :
+                   dataflow_->GetValueSet(inst, index).values()) {
+                if (ContainsKey(changed_root_buffers, value)) {
+                  aliasing = true;
+                  break;
+                }
+              }
+            });
+        return aliasing;
+      };
+
+  for (auto inst :
+       fusion->fused_instructions_computation()->MakeInstructionPostOrder()) {
+    if (inst->opcode() == HloOpcode::kParameter) {
+      continue;
+    }
+    if (aliases_changed_root_buffer(inst)) {
+      continue;
+    }
+    if (inst->opcode() == HloOpcode::kFusion) {
+      bool parameter_reverted = false;
+      for (int64 i = 0; i < inst->operand_count(); ++i) {
+        if (has_changes(inst->mutable_operand(i))) {
+          // Changes on the operand have not been reverted.
+          continue;
+        }
+        auto* fused_parameter = inst->fused_parameter(i);
+        if (has_changes(fused_parameter)) {
+          changes_to_bf16_.erase(fused_parameter);
+          parameter_reverted = true;
+        }
+      }
+      if (parameter_reverted) {
+        RevertIfFusionInternalBF16Changes(inst);
+      }
+    }
+    if (!has_changes(inst)) {
+      continue;
+    }
+    bool revert_changes = true;
+    for (auto operand : inst->operands()) {
+      if (has_changes(operand)) {
+        revert_changes = false;
+        break;
+      }
+    }
+    if (revert_changes) {
+      changes_to_bf16_.erase(inst);
+    }
+  }
+}
+
+void BFloat16Propagation::DetermineWhileComputationsPrecision(
     HloInstruction* while_hlo) {
   CHECK_EQ(while_hlo->opcode(), HloOpcode::kWhile);
 
@@ -86,16 +173,14 @@ void BFloat16Propagation::DetermineAndMutateWhileComputationsPrecision(
   auto body_root = body->root_instruction();
   HloComputation* condition = while_hlo->while_condition();
 
-  ShapeUtil::ForEachMutableSubshape(
-      body_root->mutable_shape(),
-      [this, while_hlo, body_root](Shape* subshape, const ShapeIndex& index) {
-        if (subshape->element_type() != F32) {
+  ShapeUtil::ForEachSubshape(
+      body_root->shape(), [this, while_hlo, body_root](
+                              const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.element_type() != F32) {
           return;
         }
-        if (ShapeUtil::GetSubshape(while_hlo->shape(), index).element_type() ==
-            BF16) {
-          subshape->set_element_type(BF16);
-          changed_ = true;
+        if (OutputTypeAfterChange(while_hlo, index) == BF16) {
+          AddToOrRemoveFromBF16ChangeSet(body_root, index, BF16);
           VLOG(2) << "While body root " << body_root->ToString()
                   << " at shape index " << index
                   << " changed to BF16 precision for while "
@@ -106,30 +191,41 @@ void BFloat16Propagation::DetermineAndMutateWhileComputationsPrecision(
   auto body_insts = body->MakeInstructionPostOrder();
   for (auto inst_it = body_insts.rbegin(); inst_it != body_insts.rend();
        ++inst_it) {
-    DetermineAndMutateInstructionPrecision(*inst_it, /*skip_parameters=*/false);
+    DetermineInstructionPrecision(*inst_it, /*skip_parameters=*/false);
   }
-  computations_visited_in_mutation_pass_.insert(body);
+  computations_visited_in_backward_pass_.insert(body);
 
   auto condition_insts = condition->MakeInstructionPostOrder();
   for (auto inst_it = condition_insts.rbegin();
        inst_it != condition_insts.rend(); ++inst_it) {
-    DetermineAndMutateInstructionPrecision(*inst_it, /*skip_parameters=*/false);
+    DetermineInstructionPrecision(*inst_it, /*skip_parameters=*/false);
   }
-  computations_visited_in_mutation_pass_.insert(condition);
+  computations_visited_in_backward_pass_.insert(condition);
 }
 
 bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
                                               const ShapeIndex& index) const {
-  auto value_set = dataflow_->GetValueSet(&hlo, index);
+  // If the subshape isn't floating point then none of the users will be BF16.
+  const Shape& subshape = ShapeUtil::GetSubshape(hlo.shape(), index);
+  if (subshape.element_type() != BF16 && subshape.element_type() != F32) {
+    return false;
+  }
+
+  auto& value_set = dataflow_->GetValueSet(&hlo, index);
   for (const HloValue* value : value_set.values()) {
     if (ContainsKey(values_that_must_be_kept_as_f32_, value)) {
       return false;
     }
+    // We use the original type for the value because we are going to examine
+    // the uses of it, instead of the value itself. If ValueTypeAfterChange()
+    // were used, it would cause problems when there are aliasing buffers, i.e.,
+    // ResolveInconsistencyOfAliasingBuffers() would fail to revert the
+    // tentative change to BF16 even if the uses require F32.
     if (value->shape().element_type() == BF16) {
       continue;
     }
     for (const HloUse& use : value->uses()) {
-      if (!ContainsKey(instructions_visited_in_mutation_pass_,
+      if (!ContainsKey(instructions_visited_in_backward_pass_,
                        use.instruction)) {
         // We don't know yet whether use.instruction will consume BF16 since it
         // hasn't been visited. Although we visit instructions in reverse
@@ -140,31 +236,32 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
         // the end of the BFloat16Propagation pass.
         continue;
       }
+      if (use.instruction->HasSideEffectNoRecurse()) {
+        // Keep side-effecting instruction's operands unchanged.
+        return false;
+      }
       // Any visited user that can accept BF16 has already been updated if
       // necessary, e.g., the output has been changed to BF16 if it propagates
       // precision, or a called computation's parameters have been changed to
       // BF16 for fusions or whiles.
       if (use.instruction->opcode() == HloOpcode::kFusion) {
-        const auto* fused_parameter =
+        auto* fused_parameter =
             use.instruction->fused_parameter(use.operand_number);
-        if (ShapeUtil::GetSubshape(fused_parameter->shape(), use.operand_index)
-                .element_type() != BF16) {
+        if (OutputTypeAfterChange(fused_parameter, use.operand_index) != BF16) {
           return false;
         }
         continue;
       } else if (use.instruction->opcode() == HloOpcode::kWhile) {
-        const auto* cond_parameter =
+        auto* cond_parameter =
             use.instruction->while_condition()->parameter_instruction(
                 use.operand_number);
-        if (ShapeUtil::GetSubshape(cond_parameter->shape(), use.operand_index)
-                .element_type() != BF16) {
+        if (OutputTypeAfterChange(cond_parameter, use.operand_index) != BF16) {
           return false;
         }
-        const auto* body_parameter =
+        auto* body_parameter =
             use.instruction->while_body()->parameter_instruction(
                 use.operand_number);
-        if (ShapeUtil::GetSubshape(body_parameter->shape(), use.operand_index)
-                .element_type() != BF16) {
+        if (OutputTypeAfterChange(body_parameter, use.operand_index) != BF16) {
           return false;
         }
         continue;
@@ -174,24 +271,36 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
         continue;
       }
       // If the op propagates precision and it outputs a BF16, then it's OK to
-      // supply BF16 also as the input. In the backward mutation pass, the users
-      // shapes should have already been processed.
-      PrimitiveType user_output_type = PRIMITIVE_TYPE_INVALID;
-      if (use.instruction->opcode() == HloOpcode::kTuple ||
-          (use.instruction->opcode() == HloOpcode::kCrossReplicaSum &&
-           ShapeUtil::IsTuple(use.instruction->shape()))) {
-        user_output_type = ShapeUtil::GetSubshape(
-                               ShapeUtil::GetSubshape(use.instruction->shape(),
-                                                      {use.operand_number}),
-                               use.operand_index)
-                               .element_type();
-      } else {
-        user_output_type = use.instruction->shape().element_type();
-      }
+      // supply BF16 also as the input. In the backward pass, the users shapes
+      // should have already been processed.
       if (bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(
-              *use.instruction, use.operand_number) &&
-          user_output_type == BF16) {
-        continue;
+              *use.instruction, use.operand_number)) {
+        if (use.instruction->opcode() == HloOpcode::kTuple ||
+            (use.instruction->opcode() == HloOpcode::kCrossReplicaSum &&
+             ShapeUtil::IsTuple(use.instruction->shape()))) {
+          ShapeIndex use_output_index{use.operand_number};
+          for (int64 i : use.operand_index) {
+            use_output_index.push_back(i);
+          }
+          if (OutputTypeAfterChange(use.instruction, use_output_index) ==
+              BF16) {
+            continue;
+          }
+        } else if (use.instruction->opcode() == HloOpcode::kGetTupleElement) {
+          ShapeIndex use_output_index;
+          for (int64 i = 1; i < use.operand_index.size(); ++i) {
+            use_output_index.push_back(use.operand_index[i]);
+          }
+          if (OutputTypeAfterChange(use.instruction, use_output_index) ==
+              BF16) {
+            continue;
+          }
+        } else {
+          if (OutputTypeAfterChange(use.instruction, use.operand_index) ==
+              BF16) {
+            continue;
+          }
+        }
       }
       return false;
     }
@@ -199,8 +308,8 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
   return true;
 }
 
-void BFloat16Propagation::DetermineAndMutateInstructionPrecision(
-    HloInstruction* hlo, bool skip_parameters) {
+void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
+                                                        bool skip_parameters) {
   // We handle any fusion computation or while body/condition after the
   // instruction is handled, because we need to know the output shape of a
   // fusion or while before propagating inside its  computations.
@@ -209,12 +318,12 @@ void BFloat16Propagation::DetermineAndMutateInstructionPrecision(
       [this, hlo, &postpone_processing_called_computations] {
         if (!postpone_processing_called_computations) {
           if (hlo->opcode() == HloOpcode::kFusion) {
-            DetermineAndMutateFusionComputationPrecision(hlo);
+            DetermineFusionComputationPrecision(hlo);
           } else if (hlo->opcode() == HloOpcode::kWhile) {
-            DetermineAndMutateWhileComputationsPrecision(hlo);
+            DetermineWhileComputationsPrecision(hlo);
           }
         }
-        instructions_visited_in_mutation_pass_.insert(hlo);
+        instructions_visited_in_backward_pass_.insert(hlo);
       });
 
   if (hlo->opcode() == HloOpcode::kWhile &&
@@ -224,30 +333,14 @@ void BFloat16Propagation::DetermineAndMutateInstructionPrecision(
     return;
   }
 
-  // Do not change precision for instructions related to entry and exit of a
-  // computation, and control flow, because this pass might break the interfaces
-  // or assumptions for them.
-  if (hlo->opcode() == HloOpcode::kInfeed ||       //
-      hlo->opcode() == HloOpcode::kOutfeed ||      //
-      hlo->opcode() == HloOpcode::kSend ||         //
-      hlo->opcode() == HloOpcode::kSendDone ||     //
-      hlo->opcode() == HloOpcode::kRecv ||         //
-      hlo->opcode() == HloOpcode::kRecvDone ||     //
-      hlo->opcode() == HloOpcode::kCustomCall ||   //
-      hlo->opcode() == HloOpcode::kCall ||         //
-      hlo->opcode() == HloOpcode::kConditional ||  //
-      (hlo->opcode() == HloOpcode::kParameter && skip_parameters)) {
-    return;
-  }
-
   // Prevent root instructions from having their output modified by recording
   // all F32 output values as needing to stay as F32.
   CHECK(hlo->parent() != nullptr);
   if (hlo == hlo->parent()->root_instruction()) {
     if (!hlo->parent()->IsFusionComputation()) {
-      ShapeUtil::ForEachSubshape(hlo->shape(), [&](const Shape& subshape,
+      ShapeUtil::ForEachSubshape(hlo->shape(), [&](const Shape& /* subshape */,
                                                    const ShapeIndex& index) {
-        if (subshape.element_type() != F32) {
+        if (OutputTypeAfterChange(hlo, index) != F32) {
           return;
         }
         for (const auto* value : dataflow_->GetValueSet(hlo, index).values()) {
@@ -261,6 +354,17 @@ void BFloat16Propagation::DetermineAndMutateInstructionPrecision(
     return;
   }
 
+  // Do not change precision for instructions related to entry and exit of a
+  // computation, side-effecting instructions, and control flow, because this
+  // pass might break the interfaces or assumptions for them.
+  if (hlo->opcode() == HloOpcode::kCustomCall ||   //
+      hlo->opcode() == HloOpcode::kCall ||         //
+      hlo->opcode() == HloOpcode::kConditional ||  //
+      hlo->HasSideEffectNoRecurse() ||             //
+      (hlo->opcode() == HloOpcode::kParameter && skip_parameters)) {
+    return;
+  }
+
   if (!ContainsKey(consider_using_bfloat16_, hlo)) {
     return;
   }
@@ -269,13 +373,12 @@ void BFloat16Propagation::DetermineAndMutateInstructionPrecision(
     return;
   }
 
-  ShapeUtil::ForEachMutableSubshape(
-      hlo->mutable_shape(),
-      [hlo, this](Shape* subshape, const ShapeIndex& index) {
-        if (subshape->element_type() == F32 &&
+  ShapeUtil::ForEachSubshape(
+      hlo->shape(),
+      [hlo, this](const Shape& /* subshape */, const ShapeIndex& index) {
+        if (OutputTypeAfterChange(hlo, index) == F32 &&
             AllUsersConsumeBF16(*hlo, index)) {
-          subshape->set_element_type(BF16);
-          changed_ = true;
+          AddToOrRemoveFromBF16ChangeSet(hlo, index, BF16);
           VLOG(2) << "HloInstruction output at shape index " << index
                   << " changed to BF16 precision: " << hlo->ToString();
         }
@@ -287,6 +390,7 @@ bool BFloat16Propagation::InstructionIsCandidateForBF16Output(
   if (!bfloat16_support_->SupportsMixedPrecisions(*hlo) &&
       hlo->opcode() != HloOpcode::kTuple &&
       hlo->opcode() != HloOpcode::kGetTupleElement &&
+      hlo->opcode() != HloOpcode::kDomain &&
       hlo->shape().element_type() != BF16) {
     for (int64 i = 0; i < hlo->operand_count(); ++i) {
       if (!bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(*hlo,
@@ -303,31 +407,29 @@ void BFloat16Propagation::AdjustCalledComputationParameters(
     HloInstruction* hlo) {
   auto adjust_computation =
       [this, hlo](HloComputation* computation,
-                  tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+                  absl::Span<HloInstruction* const> operands) {
         // Adjust parameters.
         CHECK_EQ(operands.size(), computation->num_parameters());
         for (int64 i = 0; i < operands.size(); ++i) {
           auto parameter = computation->parameter_instruction(i);
-          ShapeUtil::ForEachMutableSubshape(
-              parameter->mutable_shape(),
-              [this, i, hlo, &operands, parameter](Shape* subshape,
+          ShapeUtil::ForEachSubshape(
+              parameter->shape(),
+              [this, i, hlo, &operands, parameter](const Shape& /* subshape */,
                                                    const ShapeIndex& index) {
                 if (!ShapeUtil::IsLeafIndex(parameter->shape(), index)) {
                   return;
                 }
                 PrimitiveType operand_type =
-                    ShapeUtil::GetSubshape(operands[i]->shape(), index)
-                        .element_type();
-                if (subshape->element_type() == operand_type) {
+                    OutputTypeAfterChange(operands[i], index);
+                if (OutputTypeAfterChange(parameter, index) == operand_type) {
                   return;
                 }
-                CHECK(operand_type == F32 || operand_type == BF16);
-                subshape->set_element_type(operand_type);
-                changed_ = true;
+                AddToOrRemoveFromBF16ChangeSet(parameter, index, operand_type);
                 VLOG(2) << "Called computation parameter "
                         << parameter->ToString() << " at shape index " << index
-                        << " adjusted to match operand in HLO "
-                        << hlo->ToString();
+                        << " adjusted to "
+                        << (operand_type == BF16 ? "BF16" : "F32")
+                        << " to match operand in HLO " << hlo->ToString();
               });
         }
       };
@@ -348,52 +450,48 @@ void BFloat16Propagation::AdjustCalledComputationParameters(
 
 void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
   auto adjust_computation = [this, hlo](HloComputation* computation,
-                                        const Shape& output_shape) {
+                                        HloInstruction* output) {
     // Adjust root.
     HloInstruction* root = computation->root_instruction();
-    ShapeUtil::ForEachMutableSubshape(
-        root->mutable_shape(), [this, hlo, root, &output_shape](
-                                   Shape* subshape, const ShapeIndex& index) {
-          if (!ShapeUtil::IsLeafIndex(hlo->shape(), index)) {
-            return;
-          }
-          const PrimitiveType output_type =
-              ShapeUtil::GetSubshape(output_shape, index).element_type();
-          if (subshape->element_type() == output_type) {
-            return;
-          }
-          CHECK(output_type == F32 || output_type == BF16);
-          subshape->set_element_type(output_type);
-          // It's possible that output_type is F32, but the root instruction's
-          // type is BF16; e.g., a fusion node's output was changed to BF16
-          // initially but then adjusted back to F32, and the fusion computation
-          // is now being adjusted after the fusion node.
-          if (output_type == F32) {
-            for (const auto* value :
-                 dataflow_->GetValueSet(root, index).values()) {
-              // We rely on the fact that this adjustment works in reverse
-              // topological order so that called computation will be
-              // processed later. Adding the value to
-              // values_that_must_be_kept_as_f32_ will ensure the
-              // correctness of the adjustment for HLOs that will be
-              // processed later.
-              values_that_must_be_kept_as_f32_.insert(value);
-            }
-          }
-          changed_ = true;
-          VLOG(2) << "Called computation root " << root->ToString()
-                  << " at shape index " << index
-                  << " adjusted to match output shape of " << hlo->ToString();
-        });
+    ShapeUtil::ForEachSubshape(root->shape(), [this, hlo, root, output](
+                                                  const Shape& /* subshape */,
+                                                  const ShapeIndex& index) {
+      if (!ShapeUtil::IsLeafIndex(hlo->shape(), index)) {
+        return;
+      }
+      const PrimitiveType output_type = OutputTypeAfterChange(output, index);
+      if (OutputTypeAfterChange(root, index) == output_type) {
+        return;
+      }
+      AddToOrRemoveFromBF16ChangeSet(root, index, output_type);
+      // It's possible that output_type is F32, but the root instruction's
+      // type is BF16; e.g., a fusion node's output was changed to BF16
+      // initially but then adjusted back to F32, and the fusion computation
+      // is now being adjusted after the fusion node.
+      if (output_type == F32) {
+        for (const auto* value : dataflow_->GetValueSet(root, index).values()) {
+          // We rely on the fact that this adjustment works in reverse
+          // topological order so that called computation will be
+          // processed later. Adding the value to
+          // values_that_must_be_kept_as_f32_ will ensure the
+          // correctness of the adjustment for HLOs that will be
+          // processed later.
+          values_that_must_be_kept_as_f32_.insert(value);
+        }
+      }
+      VLOG(2) << "Called computation root " << root->ToString()
+              << " at shape index " << index << " adjusted to "
+              << (output_type == BF16 ? "BF16" : "F32")
+              << " to match output shape of " << hlo->ToString();
+    });
   };
 
   switch (hlo->opcode()) {
     case HloOpcode::kFusion:
-      adjust_computation(hlo->fused_instructions_computation(), hlo->shape());
+      adjust_computation(hlo->fused_instructions_computation(), hlo);
       break;
     case HloOpcode::kWhile:
-      adjust_computation(hlo->while_condition(), hlo->shape());
-      adjust_computation(hlo->while_body(), hlo->shape());
+      adjust_computation(hlo->while_body(), hlo);
       break;
     default:
       break;
@@ -402,7 +500,7 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
 
 bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
     HloComputation* computation,
-    tensorflow::gtl::FlatSet<const HloComputation*>* visited_computations) {
+    absl::flat_hash_set<const HloComputation*>* visited_computations) {
   bool parameter_changed = false;
   auto insts = computation->MakeInstructionPostOrder();
   // Do the adjustment on each instruction in the computation in reverse
@@ -410,16 +508,19 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
   for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
     auto hlo = *inst_it;
     auto adjust_hlo_output = [this, hlo, &parameter_changed](
-                                 Shape* subshape, const ShapeIndex& index) {
-      if (subshape->element_type() != F32 && subshape->element_type() != BF16) {
+                                 const Shape& /* subshape */,
+                                 const ShapeIndex& index) {
+      auto output_type = OutputTypeAfterChange(hlo, index);
+      if (output_type != F32 && output_type != BF16) {
         return;
       }
       PrimitiveType type = BF16;
       for (const auto* value : dataflow_->GetValueSet(hlo, index).values()) {
-        if (value->shape().element_type() == BF16) {
+        auto value_type = ValueTypeAfterChange(value);
+        if (value_type == BF16) {
           continue;
         }
-        CHECK_EQ(value->shape().element_type(), F32);
+        CHECK_EQ(value_type, F32);
         type = F32;
         break;
       }
@@ -438,16 +539,17 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
           values_that_must_be_kept_as_f32_.insert(value);
         }
       }
-      if (type != subshape->element_type()) {
-        subshape->set_element_type(type);
+      if (type != output_type) {
+        AddToOrRemoveFromBF16ChangeSet(hlo, index, type);
         VLOG(2) << "HloInstruction output at shape index " << index
-                << " adjusted to " << *subshape << ": " << hlo->ToString();
+                << " adjusted to " << (type == BF16 ? "BF16" : "F32") << ": "
+                << hlo->ToString();
         if (hlo->opcode() == HloOpcode::kParameter) {
           parameter_changed = true;
         }
       }
     };
-    ShapeUtil::ForEachMutableSubshape(hlo->mutable_shape(), adjust_hlo_output);
+    ShapeUtil::ForEachSubshape(hlo->shape(), adjust_hlo_output);
     AdjustCalledComputationRoot(hlo);
     if (hlo->opcode() == HloOpcode::kWhile) {
       // We need to run on the while body and condition repeatedly until a fixed
@@ -458,18 +560,20 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
       // another input parameter. A fixed point will be reached because the
       // parameters can only be changed from BF16 to F32, not the other way
       // around.
-      tensorflow::gtl::FlatSet<const HloComputation*> visited_in_while;
+      absl::flat_hash_set<const HloComputation*> visited_in_while;
       while (ResolveInconsistencyOfAliasingBuffersHelper(hlo->while_condition(),
                                                          &visited_in_while) ||
              ResolveInconsistencyOfAliasingBuffersHelper(hlo->while_body(),
                                                          &visited_in_while)) {
         visited_in_while.clear();
-        ShapeUtil::ForEachMutableSubshape(hlo->mutable_shape(),
-                                          adjust_hlo_output);
+        ShapeUtil::ForEachSubshape(hlo->shape(), adjust_hlo_output);
         AdjustCalledComputationRoot(hlo);
       }
       visited_computations->insert(visited_in_while.begin(),
                                    visited_in_while.end());
+    } else if (hlo->opcode() == HloOpcode::kFusion) {
+      ResolveInconsistencyOfAliasingBuffersHelper(
+          hlo->fused_instructions_computation(), visited_computations);
     }
   }
   // Now adjust parameters of called computations.
@@ -479,11 +583,11 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
   return parameter_changed;
 }
 
-Status BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
+void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
     HloModule* module) {
-  std::list<HloComputation*> computations_topological_order =
+  const auto& computations_topological_order =
       module->MakeComputationPostOrder();
-  tensorflow::gtl::FlatSet<const HloComputation*> resolved;
+  absl::flat_hash_set<const HloComputation*> resolved;
   for (auto comp_it = computations_topological_order.rbegin();
        comp_it != computations_topological_order.rend(); ++comp_it) {
     if (ContainsKey(resolved, *comp_it)) {
@@ -491,7 +595,9 @@ Status BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
     }
     ResolveInconsistencyOfAliasingBuffersHelper(*comp_it, &resolved);
   }
+}
 
+Status BFloat16Propagation::ResolveInconsistentFusions(HloModule* module) {
   // We could have changed a fusion computation's root shape to have a different
   // precision than the fusion node's output, if the fusion root does not
   // define a buffer (e.g., a tuple). Now we add conversions after such fusion
@@ -517,8 +623,7 @@ Status BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
   // (1) a is F32 but tuple is BF16
   // (2) after adding conversion
   // (3) after tuple simplifier and DCE.
-  bool needs_tuple_simplifier = false;
-  for (auto computation : computations_topological_order) {
+  for (auto computation : module->MakeComputationPostOrder()) {
     auto insts = computation->MakeInstructionPostOrder();
     for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
       auto hlo = *inst_it;
@@ -531,64 +636,29 @@ Status BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
         continue;
       }
       ShapeTree<HloInstruction*> converted_outputs(hlo->shape());
-      // Iterate through nodes in the shape tree in pre-order and initialize
-      // each non-root node with a corresponding get-tuple-element. For a leaf
-      // node, if its shape does not match the fusion output, create a
-      // conversion node to overwrite the node value.
-      for (auto it = converted_outputs.begin(); it != converted_outputs.end();
-           ++it) {
-        ShapeIndex output_index = it->first;
-        HloInstruction*& output = it->second;
-        const Shape subshape =
-            ShapeUtil::GetSubshape(hlo->shape(), output_index);
-        if (output_index.empty()) {
-          output = fusion_root;
-        } else {
-          ShapeIndex parent_index = output_index;
-          parent_index.pop_back();
-          output = fusion_computation->AddInstruction(
-              HloInstruction::CreateGetTupleElement(
-                  subshape, converted_outputs.element(parent_index),
-                  output_index.back()));
-        }
-        if (ShapeUtil::IsTuple(subshape)) {
-          continue;
-        }
-        if (!ShapeUtil::Compatible(
-                subshape,
-                ShapeUtil::GetSubshape(fusion_root->shape(), output_index))) {
-          output = fusion_computation->AddInstruction(
-              HloInstruction::CreateConvert(subshape, output));
-        }
-      }
-      // Iterate through nodes in the shape tree in reverse pre-order and create
-      // a tuple instruction for each non-leaf node where the elements are the
-      // values of its child nodes.
-      for (auto it = converted_outputs.rbegin(); it != converted_outputs.rend();
-           ++it) {
-        ShapeIndex output_index = it->first;
-        HloInstruction*& output = it->second;
-        const Shape& subshape =
-            ShapeUtil::GetSubshape(hlo->shape(), output_index);
-        if (!ShapeUtil::IsTuple(subshape)) {
-          continue;
-        }
-        std::vector<HloInstruction*> elements(
-            ShapeUtil::TupleElementCount(subshape));
-        ShapeIndex child_index = output_index;
-        for (int64 i = 0; i < elements.size(); ++i) {
-          child_index.push_back(i);
-          elements[i] = converted_outputs.element(child_index);
-          child_index.pop_back();
-        }
-        output = fusion_computation->AddInstruction(
-            HloInstruction::CreateTuple(elements));
-      }
-      fusion_computation->set_root_instruction(converted_outputs.element({}));
-      needs_tuple_simplifier |= ShapeUtil::IsTuple(hlo->shape());
+      // Deep copy the fusion root, and convert a leaf node only if its shape
+      // does not match the fusion output.
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * copy,
+          fusion_computation->DeepCopyInstructionWithCustomCopier(
+              fusion_root,
+              [hlo](HloInstruction* leaf, const ShapeIndex& leaf_index,
+                    HloComputation* comp) {
+                const Shape& hlo_subshape =
+                    ShapeUtil::GetSubshape(hlo->shape(), leaf_index);
+                if (ShapeUtil::Compatible(leaf->shape(), hlo_subshape)) {
+                  return leaf;
+                }
+                return comp->AddInstruction(
+                    HloInstruction::CreateConvert(hlo_subshape, leaf));
+              }));
+      fusion_computation->set_root_instruction(copy);
     }
   }
+  return Status::OK();
+}
 
+Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
   // We may have converted some constants from F32 to BF16, so adjust the
   // constant literals in such cases. We do this here instead of when the
   // constant node's is changed because 1) the HloInstruction interface does not
@@ -599,8 +669,7 @@ Status BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
   // can avoid repeated conversions.
   //
   // TODO(b/73833576): Consider resetting literal in HloInstruction.
-  bool needs_dce = needs_tuple_simplifier;
-  for (auto computation : computations_topological_order) {
+  for (auto computation : module->MakeComputationPostOrder()) {
     for (auto hlo : computation->MakeInstructionPostOrder()) {
       if (hlo->opcode() != HloOpcode::kConstant) {
         continue;
@@ -611,18 +680,28 @@ Status BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
         auto new_constant = computation->AddInstruction(
             HloInstruction::CreateConstant(std::move(converted_literal)));
         TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));
-        needs_dce = true;
       }
     }
   }
+  return Status::OK();
+}
 
-  if (needs_tuple_simplifier) {
-    TupleSimplifier tuple_simplifier;
-    TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
-  }
-  if (needs_dce) {
-    HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module).status());
+Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
+  for (auto computation : module->computations()) {
+    for (auto hlo : computation->MakeInstructionPostOrder()) {
+      if (hlo->opcode() != HloOpcode::kConvert) {
+        continue;
+      }
+      auto source = hlo->mutable_operand(0);
+      if (!ShapeUtil::Equal(source->shape(), hlo->shape())) {
+        continue;
+      }
+      const bool is_root = hlo == computation->root_instruction();
+      TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(source));
+      if (is_root) {
+        computation->set_root_instruction(source);
+      }
+    }
   }
   return Status::OK();
 }
@@ -630,12 +709,50 @@ Status BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
 // The algorithm first does a forward pass (parameters to root) to determine a
 // set of instructions to consider using bfloat16, then does a backward pass to
 // determine the precisions of those instructions according to the need of
-// their users.
+// their users. During the backward pass, the potential changes are stored in
+// changes_to_bf16_ which are subject to further adjustments then applied to the
+// HLOs.
 StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
+  consider_using_bfloat16_.clear();
+  instructions_visited_in_backward_pass_.clear();
+  computations_visited_in_backward_pass_.clear();
+  values_that_must_be_kept_as_f32_.clear();
+  caller_counts_.clear();
+  changes_to_bf16_.clear();
+  changed_ = false;
+
+  auto computations_topological_order = module->MakeComputationPostOrder();
+
+  // Before running the propagation pass, we insert copies (kConvert to the same
+  // type) of F32 inputs to while loops. This prevents other uses of the same
+  // input from aliasing the while loop input/output, so that there's greater
+  // chance to use BF16 inside the loop. If some of these added copies do not
+  // help, they will remain F32 after BF16 propagation and will be removed since
+  // they are no-ops.
+  for (auto computation : computations_topological_order) {
+    for (auto inst : computation->MakeInstructionPostOrder()) {
+      if (inst->opcode() != HloOpcode::kWhile) {
+        continue;
+      }
+
+      auto operand = inst->mutable_operand(0);
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * copy,
+          computation->DeepCopyInstructionWithCustomCopier(
+              operand, [](HloInstruction* leaf, const ShapeIndex& leaf_index,
+                          HloComputation* comp) {
+                if (leaf->shape().element_type() != F32) {
+                  return leaf;
+                }
+                return comp->AddInstruction(
+                    HloInstruction::CreateConvert(leaf->shape(), leaf));
+              }));
+      TF_RETURN_IF_ERROR(operand->ReplaceUseWith(inst, copy));
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
 
-  std::list<HloComputation*> computations_topological_order =
-      module->MakeComputationPostOrder();
   // The first step is a forward pass (parameters to root), where we determine
   // the potential candidate instructions to use bfloat16 in the outputs that
   // are not likely to cause overhead from extra explicit conversions. This is
@@ -658,26 +775,92 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
   // propagation in reverse topological order.
   for (auto comp_it = computations_topological_order.rbegin();
        comp_it != computations_topological_order.rend(); ++comp_it) {
-    if ((*comp_it)->IsFusionComputation()) {
-      // Fusion computations are handled when visiting the fusion instruction.
+    if (ContainsKey(computations_visited_in_backward_pass_, *comp_it)) {
       continue;
     }
     auto insts = (*comp_it)->MakeInstructionPostOrder();
     for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
-      DetermineAndMutateInstructionPrecision(*inst_it,
-                                             /*skip_parameters=*/true);
+      DetermineInstructionPrecision(*inst_it,
+                                    /*skip_parameters=*/true);
     }
-  }
-
-  if (!changed_) {
-    return false;
+    computations_visited_in_backward_pass_.insert(*comp_it);
   }
 
   // It's possible that an instruction does not define a buffer, but the
   // defining instruction's shape has changed. So we need to adjust the output
   // shapes of instructions according to the HLO values they refer to.
-  TF_RETURN_IF_ERROR(ResolveInconsistencyOfAliasingBuffers(module));
+  ResolveInconsistencyOfAliasingBuffers(module);
+
+  // Apply the changes in changes_to_bf16_.
+  for (auto& change : changes_to_bf16_) {
+    for (const auto& entry : change.second) {
+      auto subshape = entry.first;
+      CHECK_EQ(subshape->element_type(), F32);
+      subshape->set_element_type(BF16);
+      changed_ = true;
+    }
+  }
+
+  // Removes redundant HLOs added by this pass, either when inserting
+  // de-aliasing copies to while loop inputs, or later when converting output
+  // types.
+  auto clean_up = [this, module]() {
+    TF_RETURN_IF_ERROR(SkipNoopConversions(module));
+    TupleSimplifier tuple_simplifier;
+    TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
+    HloDCE dce;
+    TF_RETURN_IF_ERROR(dce.Run(module).status());
+    return Status::OK();
+  };
+
+  if (!changed_) {
+    TF_RETURN_IF_ERROR(clean_up());
+    return false;
+  }
+
+  TF_RETURN_IF_ERROR(ResolveInconsistentFusions(module));
+  TF_RETURN_IF_ERROR(ResolveConvertedConstants(module));
+
+  TF_RETURN_IF_ERROR(clean_up());
   return true;
+}
+
+PrimitiveType BFloat16Propagation::OutputTypeAfterChange(
+    HloInstruction* hlo, const ShapeIndex& index) const {
+  Shape* subshape = ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), index);
+  const PrimitiveType type_on_hlo = subshape->element_type();
+  if (type_on_hlo != F32) {
+    return type_on_hlo;
+  }
+  auto it = changes_to_bf16_.find(hlo);
+  if (it == changes_to_bf16_.end()) {
+    return type_on_hlo;
+  }
+  return ContainsKey(it->second, subshape) ? BF16 : F32;
+}
+
+PrimitiveType BFloat16Propagation::ValueTypeAfterChange(
+    const HloValue* value) const {
+  auto hlo = value->defining_instruction();
+  const auto& position = value->defining_position();
+  return OutputTypeAfterChange(hlo, position.index);
+}
+
+void BFloat16Propagation::AddToOrRemoveFromBF16ChangeSet(
+    HloInstruction* hlo, const ShapeIndex& index, PrimitiveType target_type) {
+  if (target_type == BF16) {
+    auto& entry = changes_to_bf16_[hlo];
+    entry.emplace(ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), index),
+                  index);
+  } else {
+    CHECK_EQ(target_type, F32);
+    auto it = changes_to_bf16_.find(hlo);
+    if (it == changes_to_bf16_.end()) {
+      return;
+    }
+    it->second.erase(
+        ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), index));
+  }
 }
 
 }  // namespace xla

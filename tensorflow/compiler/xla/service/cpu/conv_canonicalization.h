@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CONV_CANONICALIZATION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CONV_CANONICALIZATION_H_
 
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -30,14 +31,21 @@ namespace cpu {
 // called canonical convolutions). This pass expands non-canonical convolutions
 // into reshapes and canonical convolutions, so that these non-canonical
 // convolutions can run faster.
-class ConvCanonicalization : public HloPassInterface {
+class ConvCanonicalization : public HloModulePass {
  public:
+  explicit ConvCanonicalization(
+      const TargetMachineFeatures* target_machine_features)
+      : target_machine_features_(*target_machine_features) {}
+
   ~ConvCanonicalization() override {}
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "convolution-canonicalization";
   }
 
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  const TargetMachineFeatures& target_machine_features_;
 };
 
 }  // namespace cpu

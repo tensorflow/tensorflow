@@ -19,19 +19,75 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import time
 
+from absl.testing import parameterized
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
 
-class NestTest(test.TestCase):
 
+class _CustomMapping(collections.Mapping):
+
+  def __init__(self, *args, **kwargs):
+    self._wrapped = dict(*args, **kwargs)
+
+  def __getitem__(self, key):
+    return self._wrapped[key]
+
+  def __iter__(self):
+    return iter(self._wrapped)
+
+  def __len__(self):
+    return len(self._wrapped)
+
+
+class NestTest(parameterized.TestCase, test.TestCase):
+
+  PointXY = collections.namedtuple("Point", ["x", "y"])  # pylint: disable=invalid-name
+
+  if attr:
+    class BadAttr(object):
+      """Class that has a non-iterable __attrs_attrs__."""
+      __attrs_attrs__ = None
+
+    @attr.s
+    class SampleAttr(object):
+      field1 = attr.ib()
+      field2 = attr.ib()
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testAttrsFlattenAndPack(self):
+    if attr is None:
+      self.skipTest("attr module is unavailable.")
+
+    field_values = [1, 2]
+    sample_attr = NestTest.SampleAttr(*field_values)
+    self.assertFalse(nest._is_attrs(field_values))
+    self.assertTrue(nest._is_attrs(sample_attr))
+    flat = nest.flatten(sample_attr)
+    self.assertEqual(field_values, flat)
+    restructured_from_flat = nest.pack_sequence_as(sample_attr, flat)
+    self.assertIsInstance(restructured_from_flat, NestTest.SampleAttr)
+    self.assertEqual(restructured_from_flat, sample_attr)
+
+    # Check that flatten fails if attributes are not iterable
+    with self.assertRaisesRegexp(TypeError, "object is not iterable"):
+      flat = nest.flatten(NestTest.BadAttr())
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testFlattenAndPack(self):
     structure = ((3, 4), 5, (6, 7, (9, 10), 8))
     flat = ["a", "b", "c", "d", "e", "f", "g", "h"]
@@ -39,8 +95,8 @@ class NestTest(test.TestCase):
     self.assertEqual(
         nest.pack_sequence_as(structure, flat), (("a", "b"), "c",
                                                  ("d", "e", ("f", "g"), "h")))
-    point = collections.namedtuple("Point", ["x", "y"])
-    structure = (point(x=4, y=2), ((point(x=1, y=0),),))
+    structure = (NestTest.PointXY(x=4, y=2),
+                 ((NestTest.PointXY(x=1, y=0),),))
     flat = [4, 2, 1, 0]
     self.assertEqual(nest.flatten(structure), flat)
     restructured_from_flat = nest.pack_sequence_as(structure, flat)
@@ -66,34 +122,45 @@ class NestTest(test.TestCase):
     with self.assertRaises(ValueError):
       nest.pack_sequence_as([5, 6, [7, 8]], ["a", "b", "c"])
 
-  def testFlattenDictOrder(self):
+  @parameterized.parameters({"mapping_type": collections.OrderedDict},
+                            {"mapping_type": _CustomMapping})
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testFlattenDictOrder(self, mapping_type):
     """`flatten` orders dicts by key, including OrderedDicts."""
-    ordered = collections.OrderedDict([("d", 3), ("b", 1), ("a", 0), ("c", 2)])
+    ordered = mapping_type([("d", 3), ("b", 1), ("a", 0), ("c", 2)])
     plain = {"d": 3, "b": 1, "a": 0, "c": 2}
     ordered_flat = nest.flatten(ordered)
     plain_flat = nest.flatten(plain)
     self.assertEqual([0, 1, 2, 3], ordered_flat)
     self.assertEqual([0, 1, 2, 3], plain_flat)
 
-  def testPackDictOrder(self):
+  @parameterized.parameters({"mapping_type": collections.OrderedDict},
+                            {"mapping_type": _CustomMapping})
+  def testPackDictOrder(self, mapping_type):
     """Packing orders dicts by key, including OrderedDicts."""
-    ordered = collections.OrderedDict([("d", 0), ("b", 0), ("a", 0), ("c", 0)])
+    custom = mapping_type([("d", 0), ("b", 0), ("a", 0), ("c", 0)])
     plain = {"d": 0, "b": 0, "a": 0, "c": 0}
     seq = [0, 1, 2, 3]
-    ordered_reconstruction = nest.pack_sequence_as(ordered, seq)
+    custom_reconstruction = nest.pack_sequence_as(custom, seq)
     plain_reconstruction = nest.pack_sequence_as(plain, seq)
+    self.assertIsInstance(custom_reconstruction, mapping_type)
+    self.assertIsInstance(plain_reconstruction, dict)
     self.assertEqual(
-        collections.OrderedDict([("d", 3), ("b", 1), ("a", 0), ("c", 2)]),
-        ordered_reconstruction)
+        mapping_type([("d", 3), ("b", 1), ("a", 0), ("c", 2)]),
+        custom_reconstruction)
     self.assertEqual({"d": 3, "b": 1, "a": 0, "c": 2}, plain_reconstruction)
 
+  Abc = collections.namedtuple("A", ("b", "c"))  # pylint: disable=invalid-name
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testFlattenAndPack_withDicts(self):
     # A nice messy mix of tuples, lists, dicts, and `OrderedDict`s.
-    named_tuple = collections.namedtuple("A", ("b", "c"))
     mess = [
         "z",
-        named_tuple(3, 4),
-        {
+        NestTest.Abc(3, 4), {
+            "d": _CustomMapping({
+                41: 4
+            }),
             "c": [
                 1,
                 collections.OrderedDict([
@@ -102,17 +169,19 @@ class NestTest(test.TestCase):
                 ]),
             ],
             "b": 5
-        },
-        17
+        }, 17
     ]
 
     flattened = nest.flatten(mess)
-    self.assertEqual(flattened, ["z", 3, 4, 5, 1, 2, 3, 17])
+    self.assertEqual(flattened, ["z", 3, 4, 5, 1, 2, 3, 4, 17])
 
     structure_of_mess = [
         14,
-        named_tuple("a", True),
+        NestTest.Abc("a", True),
         {
+            "d": _CustomMapping({
+                41: 42
+            }),
             "c": [
                 0,
                 collections.OrderedDict([
@@ -132,6 +201,10 @@ class NestTest(test.TestCase):
     unflattened_ordered_dict = unflattened[2]["c"][1]
     self.assertIsInstance(unflattened_ordered_dict, collections.OrderedDict)
     self.assertEqual(list(unflattened_ordered_dict.keys()), ["b", "a"])
+
+    unflattened_custom_mapping = unflattened[2]["d"]
+    self.assertIsInstance(unflattened_custom_mapping, _CustomMapping)
+    self.assertEqual(list(unflattened_custom_mapping.keys()), [41])
 
   def testFlatten_numpyIsNotFlattened(self):
     structure = np.array([1, 2, 3])
@@ -157,6 +230,7 @@ class NestTest(test.TestCase):
       nest.pack_sequence_as(["hello", "world"],
                             ["and", "goodbye", "again"])
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testIsSequence(self):
     self.assertFalse(nest.is_sequence("1234"))
     self.assertTrue(nest.is_sequence([1, 3, [4, 5]]))
@@ -169,23 +243,44 @@ class NestTest(test.TestCase):
     self.assertFalse(nest.is_sequence(math_ops.tanh(ones)))
     self.assertFalse(nest.is_sequence(np.ones((4, 5))))
 
-  def testFlattenDictItems(self):
-    dictionary = {(4, 5, (6, 8)): ("a", "b", ("c", "d"))}
+  @parameterized.parameters({"mapping_type": _CustomMapping},
+                            {"mapping_type": dict})
+  def testFlattenDictItems(self, mapping_type):
+    dictionary = mapping_type({(4, 5, (6, 8)): ("a", "b", ("c", "d"))})
     flat = {4: "a", 5: "b", 6: "c", 8: "d"}
     self.assertEqual(nest.flatten_dict_items(dictionary), flat)
 
     with self.assertRaises(TypeError):
       nest.flatten_dict_items(4)
 
-    bad_dictionary = {(4, 5, (4, 8)): ("a", "b", ("c", "d"))}
+    bad_dictionary = mapping_type({(4, 5, (4, 8)): ("a", "b", ("c", "d"))})
     with self.assertRaisesRegexp(ValueError, "not unique"):
       nest.flatten_dict_items(bad_dictionary)
 
-    another_bad_dictionary = {(4, 5, (6, 8)): ("a", "b", ("c", ("d", "e")))}
+    another_bad_dictionary = mapping_type({
+        (4, 5, (6, 8)): ("a", "b", ("c", ("d", "e")))
+    })
     with self.assertRaisesRegexp(
         ValueError, "Key had [0-9]* elements, but value had [0-9]* elements"):
       nest.flatten_dict_items(another_bad_dictionary)
 
+  # pylint does not correctly recognize these as class names and
+  # suggests to use variable style under_score naming.
+  # pylint: disable=invalid-name
+  Named0ab = collections.namedtuple("named_0", ("a", "b"))
+  Named1ab = collections.namedtuple("named_1", ("a", "b"))
+  SameNameab = collections.namedtuple("same_name", ("a", "b"))
+  SameNameab2 = collections.namedtuple("same_name", ("a", "b"))
+  SameNamexy = collections.namedtuple("same_name", ("x", "y"))
+  SameName1xy = collections.namedtuple("same_name_1", ("x", "y"))
+  SameName1xy2 = collections.namedtuple("same_name_1", ("x", "y"))
+  NotSameName = collections.namedtuple("not_same_name", ("a", "b"))
+  # pylint: enable=invalid-name
+
+  class SameNamedType1(SameNameab):
+    pass
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testAssertSameStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))
     structure2 = ((("foo1", "foo2"), "foo3"), "foo4", ("foo5", "foo6"))
@@ -198,23 +293,36 @@ class NestTest(test.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError,
-        ("don't have the same number of elements\\.\n\n"
-         "First structure \\(6 elements\\):.*?"
-         "\n\nSecond structure \\(2 elements\\):")):
+        ("The two structures don't have the same nested structure\\.\n\n"
+         "First structure:.*?\n\n"
+         "Second structure:.*\n\n"
+         "More specifically: Substructure "
+         r'"type=tuple str=\(\(1, 2\), 3\)" is a sequence, while '
+         'substructure "type=str str=spam" is not\n'
+         "Entire first structure:\n"
+         r"\(\(\(\., \.\), \.\), \., \(\., \.\)\)\n"
+         "Entire second structure:\n"
+         r"\(\., \.\)")):
       nest.assert_same_structure(structure1, structure_different_num_elements)
 
     with self.assertRaisesRegexp(
         ValueError,
-        ("don't have the same number of elements\\.\n\n"
-         "First structure \\(2 elements\\):.*?"
-         "\n\nSecond structure \\(1 elements\\):")):
+        ("The two structures don't have the same nested structure\\.\n\n"
+         "First structure:.*?\n\n"
+         "Second structure:.*\n\n"
+         r'More specifically: Substructure "type=list str=\[0, 1\]" '
+         r'is a sequence, while substructure "type=ndarray str=\[0 1\]" '
+         "is not")):
       nest.assert_same_structure([0, 1], np.array([0, 1]))
 
     with self.assertRaisesRegexp(
         ValueError,
-        ("don't have the same number of elements\\.\n\n"
-         "First structure \\(1 elements\\):.*"
-         "\n\nSecond structure \\(2 elements\\):")):
+        ("The two structures don't have the same nested structure\\.\n\n"
+         "First structure:.*?\n\n"
+         "Second structure:.*\n\n"
+         r'More specifically: Substructure "type=list str=\[0, 1\]" '
+         'is a sequence, while substructure "type=int str=0" '
+         "is not")):
       nest.assert_same_structure(0, [0, 1])
 
     self.assertRaises(TypeError, nest.assert_same_structure, (0, 1), [0, 1])
@@ -225,21 +333,21 @@ class NestTest(test.TestCase):
          "First structure: .*?\n\nSecond structure: ")):
       nest.assert_same_structure(structure1, structure_different_nesting)
 
-    named_type_0 = collections.namedtuple("named_0", ("a", "b"))
-    named_type_1 = collections.namedtuple("named_1", ("a", "b"))
     self.assertRaises(TypeError, nest.assert_same_structure, (0, 1),
-                      named_type_0("a", "b"))
+                      NestTest.Named0ab("a", "b"))
 
-    nest.assert_same_structure(named_type_0(3, 4), named_type_0("a", "b"))
+    nest.assert_same_structure(NestTest.Named0ab(3, 4),
+                               NestTest.Named0ab("a", "b"))
 
     self.assertRaises(TypeError, nest.assert_same_structure,
-                      named_type_0(3, 4), named_type_1(3, 4))
+                      NestTest.Named0ab(3, 4), NestTest.Named1ab(3, 4))
 
     with self.assertRaisesRegexp(
         ValueError,
         ("don't have the same nested structure\\.\n\n"
          "First structure: .*?\n\nSecond structure: ")):
-      nest.assert_same_structure(named_type_0(3, 4), named_type_0([3], 4))
+      nest.assert_same_structure(NestTest.Named0ab(3, 4),
+                                 NestTest.Named0ab([3], 4))
 
     with self.assertRaisesRegexp(
         ValueError,
@@ -258,36 +366,37 @@ class NestTest(test.TestCase):
                                  "don't have the same set of keys"):
       nest.assert_same_structure({"a": 1}, {"b": 1})
 
-    same_name_type_0 = collections.namedtuple("same_name", ("a", "b"))
-    same_name_type_1 = collections.namedtuple("same_name", ("a", "b"))
-    nest.assert_same_structure(same_name_type_0(0, 1), same_name_type_1(2, 3))
+    nest.assert_same_structure(NestTest.SameNameab(0, 1),
+                               NestTest.SameNameab2(2, 3))
 
     # This assertion is expected to pass: two namedtuples with the same
     # name and field names are considered to be identical.
-    same_name_type_2 = collections.namedtuple("same_name_1", ("x", "y"))
-    same_name_type_3 = collections.namedtuple("same_name_1", ("x", "y"))
     nest.assert_same_structure(
-        same_name_type_0(same_name_type_2(0, 1), 2),
-        same_name_type_1(same_name_type_3(2, 3), 4))
+        NestTest.SameNameab(NestTest.SameName1xy(0, 1), 2),
+        NestTest.SameNameab2(NestTest.SameName1xy2(2, 3), 4))
 
     expected_message = "The two structures don't have the same.*"
     with self.assertRaisesRegexp(ValueError, expected_message):
-      nest.assert_same_structure(same_name_type_0(0, same_name_type_1(1, 2)),
-                                 same_name_type_1(same_name_type_0(0, 1), 2))
+      nest.assert_same_structure(
+          NestTest.SameNameab(0, NestTest.SameNameab2(1, 2)),
+          NestTest.SameNameab2(NestTest.SameNameab(0, 1), 2))
 
-    same_name_type_1 = collections.namedtuple("not_same_name", ("a", "b"))
     self.assertRaises(TypeError, nest.assert_same_structure,
-                      same_name_type_0(0, 1), same_name_type_1(2, 3))
+                      NestTest.SameNameab(0, 1), NestTest.NotSameName(2, 3))
 
-    same_name_type_1 = collections.namedtuple("same_name", ("x", "y"))
     self.assertRaises(TypeError, nest.assert_same_structure,
-                      same_name_type_0(0, 1), same_name_type_1(2, 3))
+                      NestTest.SameNameab(0, 1), NestTest.SameNamexy(2, 3))
 
-    class SameNamedType1(collections.namedtuple("same_name", ("a", "b"))):
-      pass
     self.assertRaises(TypeError, nest.assert_same_structure,
-                      same_name_type_0(0, 1), SameNamedType1(2, 3))
+                      NestTest.SameNameab(0, 1), NestTest.SameNamedType1(2, 3))
 
+  EmptyNT = collections.namedtuple("empty_nt", "")  # pylint: disable=invalid-name
+
+  def testHeterogeneousComparison(self):
+    nest.assert_same_structure({"a": 4}, _CustomMapping(a=3))
+    nest.assert_same_structure(_CustomMapping(b=3), {"b": 4})
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testMapStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))
     structure2 = (((7, 8), 9), 10, (11, 12))
@@ -310,9 +419,8 @@ class NestTest(test.TestCase):
     self.assertEqual((), nest.map_structure(lambda x: x + 1, ()))
     self.assertEqual([], nest.map_structure(lambda x: x + 1, []))
     self.assertEqual({}, nest.map_structure(lambda x: x + 1, {}))
-    empty_nt = collections.namedtuple("empty_nt", "")
-    self.assertEqual(empty_nt(), nest.map_structure(lambda x: x + 1,
-                                                    empty_nt()))
+    self.assertEqual(NestTest.EmptyNT(), nest.map_structure(lambda x: x + 1,
+                                                            NestTest.EmptyNT()))
 
     # This is checking actual equality of types, empty list != empty tuple
     self.assertNotEqual((), nest.map_structure(lambda x: x + 1, []))
@@ -352,10 +460,12 @@ class NestTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "Only valid keyword argument"):
       nest.map_structure(lambda x: None, structure1, check_types=False, foo="a")
 
+  ABTuple = collections.namedtuple("ab_tuple", "a, b")  # pylint: disable=invalid-name
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testMapStructureWithStrings(self):
-    ab_tuple = collections.namedtuple("ab_tuple", "a, b")
-    inp_a = ab_tuple(a="foo", b=("bar", "baz"))
-    inp_b = ab_tuple(a=2, b=(1, 3))
+    inp_a = NestTest.ABTuple(a="foo", b=("bar", "baz"))
+    inp_b = NestTest.ABTuple(a=2, b=(1, 3))
     out = nest.map_structure(lambda string, repeats: string * repeats,
                              inp_a,
                              inp_b)
@@ -363,8 +473,8 @@ class NestTest(test.TestCase):
     self.assertEqual("bar", out.b[0])
     self.assertEqual("bazbazbaz", out.b[1])
 
-    nt = ab_tuple(a=("something", "something_else"),
-                  b="yet another thing")
+    nt = NestTest.ABTuple(a=("something", "something_else"),
+                          b="yet another thing")
     rev_nt = nest.map_structure(lambda x: x[::-1], nt)
     # Check the output is the correct structure, and all strings are reversed.
     nest.assert_same_structure(nt, rev_nt)
@@ -372,6 +482,7 @@ class NestTest(test.TestCase):
     self.assertEqual(nt.a[1][::-1], rev_nt.a[1])
     self.assertEqual(nt.b[::-1], rev_nt.b)
 
+  @test_util.run_deprecated_v1
   def testMapStructureOverPlaceholders(self):
     inp_a = (array_ops.placeholder(dtypes.float32, shape=[3, 4]),
              array_ops.placeholder(dtypes.float32, shape=[3, 7]))
@@ -389,7 +500,7 @@ class NestTest(test.TestCase):
         inp_b: (np.random.randn(3, 4), np.random.randn(3, 7))
     }
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output_np = sess.run(output, feed_dict=feed_dict)
     self.assertAllClose(output_np[0],
                         feed_dict[inp_a][0] + feed_dict[inp_b][0])
@@ -431,10 +542,8 @@ class NestTest(test.TestCase):
 
     # This assertion is expected to pass: two namedtuples with the same
     # name and field names are considered to be identical.
-    same_name_type_0 = collections.namedtuple("same_name", ("a", "b"))
-    same_name_type_1 = collections.namedtuple("same_name", ("a", "b"))
-    inp_shallow = same_name_type_0(1, 2)
-    inp_deep = same_name_type_1(1, [1, 2, 3])
+    inp_shallow = NestTest.SameNameab(1, 2)
+    inp_deep = NestTest.SameNameab2(1, [1, 2, 3])
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=False)
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=True)
 
@@ -466,7 +575,7 @@ class NestTest(test.TestCase):
                      [1, {"c": 2}, 3, (4, 5)])
 
     # Namedtuples.
-    ab_tuple = collections.namedtuple("ab_tuple", "a, b")
+    ab_tuple = NestTest.ABTuple
     input_tree = ab_tuple(a=[0, 1], b=2)
     shallow_tree = ab_tuple(a=0, b=1)
     input_tree_flattened_as_shallow_tree = nest.flatten_up_to(shallow_tree,
@@ -598,6 +707,40 @@ class NestTest(test.TestCase):
         name_list, data_list)
     self.assertEqual(out, ["first_4_evens", ["first_5_odds", "first_3_primes"]])
 
+    # Dicts.
+    inp_val = dict(a=2, b=3)
+    inp_ops = dict(a=dict(add=1, mul=2), b=dict(add=2, mul=3))
+    out = nest.map_structure_up_to(
+        inp_val,
+        lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)
+    self.assertEqual(out["a"], 6)
+    self.assertEqual(out["b"], 15)
+
+    # Non-equal dicts.
+    inp_val = dict(a=2, b=3)
+    inp_ops = dict(a=dict(add=1, mul=2), c=dict(add=2, mul=3))
+    with self.assertRaisesRegexp(ValueError, "same keys"):
+      nest.map_structure_up_to(
+          inp_val,
+          lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)
+
+    # Dict+custom mapping.
+    inp_val = dict(a=2, b=3)
+    inp_ops = _CustomMapping(a=dict(add=1, mul=2), b=dict(add=2, mul=3))
+    out = nest.map_structure_up_to(
+        inp_val,
+        lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)
+    self.assertEqual(out["a"], 6)
+    self.assertEqual(out["b"], 15)
+
+    # Non-equal dict/mapping.
+    inp_val = dict(a=2, b=3)
+    inp_ops = _CustomMapping(a=dict(add=1, mul=2), c=dict(add=2, mul=3))
+    with self.assertRaisesRegexp(ValueError, "same keys"):
+      nest.map_structure_up_to(
+          inp_val,
+          lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)
+
   def testGetTraverseShallowStructure(self):
     scalar_traverse_input = [3, 4, (1, 2, [0]), [5, 6], {"a": (7,)}, []]
     scalar_traverse_r = nest.get_traverse_shallow_structure(
@@ -679,6 +822,61 @@ class NestTest(test.TestCase):
     for inputs, expected in test_cases:
       self.assertEqual(
           list(nest.flatten_with_joined_string_paths(inputs)), expected)
+
+  @parameterized.named_parameters(
+      ("tuples", (1, 2), (3, 4), True, (("0", 4), ("1", 6))),
+      ("dicts", {"a": 1, "b": 2}, {"b": 4, "a": 3}, True,
+       {"a": ("a", 4), "b": ("b", 6)}),
+      ("mixed", (1, 2), [3, 4], False, (("0", 4), ("1", 6))),
+      ("nested",
+       {"a": [2, 3], "b": [1, 2, 3]}, {"b": [5, 6, 7], "a": [8, 9]}, True,
+       {"a": [("a/0", 10), ("a/1", 12)],
+        "b": [("b/0", 6), ("b/1", 8), ("b/2", 10)]}))
+  def testMapWithPathsCompatibleStructures(self, s1, s2, check_types, expected):
+    def format_sum(path, *values):
+      return (path, sum(values))
+    result = nest.map_structure_with_paths(format_sum, s1, s2,
+                                           check_types=check_types)
+    self.assertEqual(expected, result)
+
+  @parameterized.named_parameters(
+      ("tuples", (1, 2), (3, 4, 5), ValueError),
+      ("dicts", {"a": 1}, {"b": 2}, ValueError),
+      ("mixed", (1, 2), [3, 4], TypeError),
+      ("nested",
+       {"a": [2, 3], "b": [1, 3]},
+       {"b": [5, 6, 7], "a": [8, 9]},
+       ValueError
+      ))
+  def testMapWithPathsIncompatibleStructures(self, s1, s2, error_type):
+    with self.assertRaises(error_type):
+      nest.map_structure_with_paths(lambda path, *s: 0, s1, s2)
+
+
+class NestBenchmark(test.Benchmark):
+
+  def run_and_report(self, s1, s2, name):
+    burn_iter, test_iter = 100, 30000
+
+    for _ in xrange(burn_iter):
+      nest.assert_same_structure(s1, s2)
+
+    t0 = time.time()
+    for _ in xrange(test_iter):
+      nest.assert_same_structure(s1, s2)
+    t1 = time.time()
+
+    self.report_benchmark(iters=test_iter, wall_time=(t1 - t0) / test_iter,
+                          name=name)
+
+  def benchmark_assert_structure(self):
+    s1 = (((1, 2), 3), 4, (5, 6))
+    s2 = ((("foo1", "foo2"), "foo3"), "foo4", ("foo5", "foo6"))
+    self.run_and_report(s1, s2, "assert_same_structure_6_elem")
+
+    s1 = (((1, 2), 3), 4, (5, 6)) * 10
+    s2 = ((("foo1", "foo2"), "foo3"), "foo4", ("foo5", "foo6")) * 10
+    self.run_and_report(s1, s2, "assert_same_structure_60_elem")
 
 
 if __name__ == "__main__":

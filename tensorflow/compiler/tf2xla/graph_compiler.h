@@ -55,17 +55,17 @@ namespace tensorflow {
 // op registration infrastructure instead of FunctionLibraryRuntime.
 class GraphCompiler {
  public:
-  GraphCompiler(XlaContext* xla_context, XlaCompilationDevice* device,
-                Graph* graph, FunctionLibraryRuntime* flib,
+  GraphCompiler(XlaCompilationDevice* device, Graph* graph,
+                FunctionLibraryRuntime* flib,
                 ScopedStepContainer* step_container)
-      : xla_context_(xla_context),
-        device_(device),
+      : device_(device),
         graph_(graph),
         flib_(flib),
         step_container_(step_container) {}
 
-  // Compiles the graph. The results are written in `xla_context` that is passed
-  // into the compiler.
+  // Compiles the graph. The results are written in xla_context stored in the
+  // resource_manager of the 'XlaCompilationDevice' that's passed into the
+  // constructor.
   Status Compile();
 
  private:
@@ -82,14 +82,13 @@ class GraphCompiler {
   // using `compiler_`.
   Status CompileFunctionalNode(Node* n, OpKernelContext* op_context);
 
-  XlaContext* xla_context_;
   XlaCompilationDevice* device_;
   Graph* graph_;
   FunctionLibraryRuntime* flib_;
   ScopedStepContainer* step_container_;
   // A buffer to hold tensor inputs to a node, this is reused across the graph
   // traversal.
-  gtl::InlinedVector<TensorValue, 4> tensor_inputs_;
+  absl::InlinedVector<TensorValue, 4> tensor_inputs_;
 };
 
 }  // namespace tensorflow
