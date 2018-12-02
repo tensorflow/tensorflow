@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import numpy as np
 
 from tensorflow.python.autograph.converters import call_trees
@@ -98,6 +100,20 @@ class CallTreesTest(converter_testing.TestCase):
 
     with self.compiled(node, ns) as result:
       self.assertEquals(1, result.test_fn(1))
+
+  def test_known_called_namedtuple(self):
+
+    nt = collections.namedtuple('TestNamedTuple', ['a'])
+
+    def test_fn(a):
+      return nt(a)
+
+    ns = {'nt': nt}
+    node, ctx = self.prepare(test_fn, ns)
+    node = call_trees.transform(node, ctx)
+
+    with self.compiled(node, ns) as result:
+      self.assertEquals(nt(1), result.test_fn(1))
 
   def test_py_func_known_function(self):
 
