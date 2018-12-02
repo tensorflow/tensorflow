@@ -72,6 +72,14 @@ int inline GetTensorMetaDataIndex(int n, int total_tensors) {
   return DataIndexToMetaDataIndex(tidx, total_tensors);
 }
 
+// Helper function to compare fused_ops attributes strings
+// TODO(Intel-tf) this code is also in mkl_conv_ops.h, we need to move to
+// mkl_util.h
+inline bool CompareFusedOps(const std::vector<string>& fused_ops,
+                            const std::vector<string>& expected) {
+  return fused_ops == expected;
+}
+
 namespace mkl_op_registry {
 static const char* kMklOpLabel = "MklOp";
 static const char* kMklOpLabelPattern = "label='MklOp'";
