@@ -63,6 +63,9 @@ def initialize_all_tables(name="init_all_tables"):
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
+  See the [Low Level Intro](https://www.tensorflow.org/guide/low_level_intro)
+  guide.
+  
   Args:
     name: Optional name for the initialization op.
 
