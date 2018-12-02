@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/test.h"
 
@@ -132,14 +133,108 @@ bool HloCustomCallMatcher::MatchAndExplain(
   return result;
 }
 
+bool HloShapeMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (ShapeUtil::Compatible(instruction->shape(), shape_)) {
+    return true;
+  }
+  *listener << instruction->ToString() << " has incorrect shape (expected: "
+            << ShapeUtil::HumanString(shape_) << ")";
+  return false;
+}
+
+void HloShapeMatcher::DescribeTo(std::ostream* os) const {
+  *os << ShapeUtil::HumanString(shape_);
+}
+
+bool HloShapeAndLayoutMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (ShapeUtil::Equal(instruction->shape(), shape_)) {
+    return true;
+  }
+  *listener << instruction->ToString() << " has incorrect shape (expected: "
+            << ShapeUtil::HumanStringWithLayout(shape_) << ")";
+  return false;
+}
+
+void HloShapeAndLayoutMatcher::DescribeTo(std::ostream* os) const {
+  *os << ShapeUtil::HumanStringWithLayout(shape_);
+}
+
+bool HloShardingMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!sharding_.has_value()) {
+    if (!instruction->has_sharding()) {
+      return true;
+    }
+    *listener << instruction->ToString() << " expected to have no sharding.";
+    return false;
+  }
+  if (instruction->has_sharding()) {
+    if (instruction->sharding() == sharding_.value()) {
+      return true;
+    }
+    *listener << instruction->ToString()
+              << " has incorrect sharding (expected: " << sharding_->ToString()
+              << ")";
+    return false;
+  } else {
+    *listener << instruction->ToString()
+              << " has no sharding (expected: " << sharding_->ToString() << ")";
+    return false;
+  }
+}
+
+void HloShardingMatcher::DescribeTo(std::ostream* os) const {
+  if (sharding_.has_value()) {
+    *os << sharding_->ToString();
+  } else {
+    *os << "<no-sharding>";
+  }
+}
+
+bool HloDotWithContractingDimsMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!HloMatcher::MatchAndExplain(instruction, listener)) {
+    return false;
+  }
+
+  const DotDimensionNumbers& dim_nums = instruction->dot_dimension_numbers();
+  if (dim_nums.lhs_contracting_dimensions_size() != 1 ||
+      dim_nums.lhs_contracting_dimensions(0) != lhs_contracting_dim_) {
+    *listener << instruction->ToString()
+              << " has wrong lhs_contracting_dimensions (got {"
+              << absl::StrJoin(dim_nums.lhs_contracting_dimensions(), ",")
+              << "} want {" << lhs_contracting_dim_ << "})";
+    return false;
+  }
+
+  if (dim_nums.rhs_contracting_dimensions_size() != 1 ||
+      dim_nums.rhs_contracting_dimensions(0) != rhs_contracting_dim_) {
+    *listener << instruction->ToString()
+              << " has wrong rhs_contracting_dimensions (got {"
+              << absl::StrJoin(dim_nums.rhs_contracting_dimensions(), ",")
+              << "} want {" << rhs_contracting_dim_ << "})";
+    return false;
+  }
+
+  return true;
+}
+
+void HloDotWithContractingDimsMatcher::DescribeTo(std::ostream* os) const {
+  HloMatcher::DescribeTo(os);
+  *os << " with lhs_contracting_dims={" << lhs_contracting_dim_
+      << "} and rhs_contracting_dims={" << rhs_contracting_dim_ << "}";
+}
+
 }  // namespace testing
 
 void PrintTo(const HloInstruction* inst, ::std::ostream* os) {
   *os << (inst ? inst->ToString() : "nullptr");
-}
-
-void PrintTo(HloInstruction* inst, ::std::ostream* os) {
-  PrintTo(const_cast<const HloInstruction*>(inst), os);
 }
 
 }  // namespace xla

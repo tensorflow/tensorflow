@@ -13,17 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 
 namespace tensorflow {
 
 bool GpuOpFilter(KernelDef* kdef) {
-  // TODO(b/31361304): The GPU backend does not parallelize PRNG ops, leading to
-  // slow code.
-  if (kdef->op() == "RandomStandardNormal" || kdef->op() == "RandomUniform" ||
-      kdef->op() == "RandomUniformInt" || kdef->op() == "TruncatedNormal") {
-    return false;
+  if (kdef->op() == "Const") {
+    AddDtypeToKernelDefConstraint("dtype", DT_STRING, kdef);
+  }
+  if (kdef->op() == "Assert") {
+    AddDtypeToKernelDefConstraint("T", DT_STRING, kdef);
   }
   return true;
 }

@@ -15,10 +15,9 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/blas.h"
 
-#include "tensorflow/stream_executor/lib/strcat.h"
+#include "absl/strings/str_cat.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace blas {
 
 string TransposeString(Transpose t) {
@@ -69,7 +68,7 @@ string SideString(Side s) {
 
 // -- AlgorithmConfig
 
-string AlgorithmConfig::ToString() const { return port::StrCat(algorithm_); }
+string AlgorithmConfig::ToString() const { return absl::StrCat(algorithm_); }
 
 string ComputationTypeString(ComputationType ty) {
   switch (ty) {
@@ -95,5 +94,4 @@ std::ostream& operator<<(std::ostream& os, ComputationType ty) {
 }
 
 }  // namespace blas
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

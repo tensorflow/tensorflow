@@ -51,13 +51,12 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/stream_executor/platform/port.h"
 
-#include "tensorflow/stream_executor/lib/stringpiece.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // Describes how to load a kernel on a target platform.
 //
@@ -77,7 +76,7 @@ class KernelLoaderSpec {
   const string &kernelname() const { return kernelname_; }
 
  protected:
-  explicit KernelLoaderSpec(port::StringPiece kernelname);
+  explicit KernelLoaderSpec(absl::string_view kernelname);
 
  private:
   // The kernel name that should be loaded out of the program description given
@@ -102,8 +101,8 @@ class OnDiskKernelLoaderSpec : public KernelLoaderSpec {
   virtual const char *CanonicalSuffix() const = 0;
 
  protected:
-  OnDiskKernelLoaderSpec(port::StringPiece filename,
-                         port::StringPiece kernelname);
+  OnDiskKernelLoaderSpec(absl::string_view filename,
+                         absl::string_view kernelname);
 
   string filename_;
 
@@ -114,7 +113,7 @@ class OnDiskKernelLoaderSpec : public KernelLoaderSpec {
 // Kernel loader specification for PTX text that resides on disk.
 class CudaPtxOnDisk : public OnDiskKernelLoaderSpec {
  public:
-  CudaPtxOnDisk(port::StringPiece filename, port::StringPiece kernelname);
+  CudaPtxOnDisk(absl::string_view filename, absl::string_view kernelname);
   ~CudaPtxOnDisk() override {}
 
   const char *CanonicalSuffix() const override { return ".ptx"; }
@@ -126,7 +125,7 @@ class CudaPtxOnDisk : public OnDiskKernelLoaderSpec {
 // Kernel loader specification for CUBIN binary that resides on disk.
 class CudaCubinOnDisk : public OnDiskKernelLoaderSpec {
  public:
-  CudaCubinOnDisk(port::StringPiece filename, port::StringPiece kernelname);
+  CudaCubinOnDisk(absl::string_view filename, absl::string_view kernelname);
   ~CudaCubinOnDisk() override {}
 
   const string &filename() const { return filename_; }
@@ -144,7 +143,7 @@ class CudaPtxInMemory : public KernelLoaderSpec {
  public:
   // Components: compute capability major number, compute capability minor
   // number, and PTX source.
-  typedef std::tuple<int, int, port::StringPiece> PtxSpec;
+  typedef std::tuple<int, int, absl::string_view> PtxSpec;
 
   // Single-PTX constructor. Adds the provided PTX version with an unknown
   // compute capability. Since the CC is unknown, the PTX is assumed to be very
@@ -152,16 +151,16 @@ class CudaPtxInMemory : public KernelLoaderSpec {
   // likely to be used as the default! Note that the PTX can be compressed,
   // which is indicated by the argument ptx_compressed.
   //
-  // Warning: the string backing the provided port::StringPiece ptx must outlive this
-  // instance.
-  CudaPtxInMemory(port::StringPiece ptx, port::StringPiece kernelname,
+  // Warning: the string backing the provided absl::string_view ptx must outlive
+  // this instance.
+  CudaPtxInMemory(absl::string_view ptx, absl::string_view kernelname,
                   bool ptx_compressed = false);
 
   // Multiple-PTX-version constructor. Adds each item in spec_list to this
   // object. Note that the PTX can be compressed, which is indicated by the
   // argument ptx_compressed.
   CudaPtxInMemory(const std::initializer_list<PtxSpec> &spec_list,
-                  port::StringPiece kernel_name, bool ptx_compressed = false);
+                  absl::string_view kernel_name, bool ptx_compressed = false);
   ~CudaPtxInMemory() override {}
 
   // Add the PTX implementation described by ptx_spec to this object. On
@@ -219,7 +218,7 @@ class CudaPtxInMemory : public KernelLoaderSpec {
 // Kernel loader specification for OpenCL text that resides on disk.
 class OpenCLTextOnDisk : public OnDiskKernelLoaderSpec {
  public:
-  OpenCLTextOnDisk(port::StringPiece filename, port::StringPiece kernelname);
+  OpenCLTextOnDisk(absl::string_view filename, absl::string_view kernelname);
   ~OpenCLTextOnDisk() override {}
 
   const char *CanonicalSuffix() const override { return ".ocl"; }
@@ -231,7 +230,7 @@ class OpenCLTextOnDisk : public OnDiskKernelLoaderSpec {
 // Kernel loader specification for OpenCL binary that resides on disk.
 class OpenCLBinaryOnDisk : public OnDiskKernelLoaderSpec {
  public:
-  OpenCLBinaryOnDisk(port::StringPiece filename, port::StringPiece kernelname);
+  OpenCLBinaryOnDisk(absl::string_view filename, absl::string_view kernelname);
   ~OpenCLBinaryOnDisk() override {}
 
   const char *CanonicalSuffix() const override { return ".aocx"; }
@@ -243,7 +242,7 @@ class OpenCLBinaryOnDisk : public OnDiskKernelLoaderSpec {
 // Kernel loader specification for OpenCL text that resides in memory.
 class OpenCLTextInMemory : public KernelLoaderSpec {
  public:
-  OpenCLTextInMemory(port::StringPiece text, port::StringPiece kernelname);
+  OpenCLTextInMemory(absl::string_view text, absl::string_view kernelname);
   ~OpenCLTextInMemory() override {}
 
   // Returns the OpenCL text contents.
@@ -259,7 +258,7 @@ class OpenCLTextInMemory : public KernelLoaderSpec {
 // Kernel loader specification for a CUBIN blob that resides in memory.
 class CudaCubinInMemory : public KernelLoaderSpec {
  public:
-  CudaCubinInMemory(const char *bytes, port::StringPiece kernelname);
+  CudaCubinInMemory(const char *bytes, absl::string_view kernelname);
   ~CudaCubinInMemory() override {}
 
   const char *bytes() const { return bytes_; }
@@ -329,28 +328,28 @@ class MultiKernelLoaderSpec {
   // the PTX or OpenCL being loaded. Also be aware that in CUDA C++ the kernel
   // name may be mangled by the compiler if it is not declared in an
   // extern "C" scope.
-  MultiKernelLoaderSpec *AddOpenCLTextOnDisk(port::StringPiece filename,
-                                             port::StringPiece kernelname);
-  MultiKernelLoaderSpec *AddOpenCLBinaryOnDisk(port::StringPiece filename,
-                                               port::StringPiece kernelname);
-  MultiKernelLoaderSpec *AddOpenCLTextInMemory(port::StringPiece ocl_text,
-                                               port::StringPiece kernelname);
-  MultiKernelLoaderSpec *AddCudaPtxOnDisk(port::StringPiece filename,
-                                          port::StringPiece kernelname);
-  MultiKernelLoaderSpec *AddCudaCubinOnDisk(port::StringPiece filename,
-                                            port::StringPiece kernelname);
+  MultiKernelLoaderSpec *AddOpenCLTextOnDisk(absl::string_view filename,
+                                             absl::string_view kernelname);
+  MultiKernelLoaderSpec *AddOpenCLBinaryOnDisk(absl::string_view filename,
+                                               absl::string_view kernelname);
+  MultiKernelLoaderSpec *AddOpenCLTextInMemory(absl::string_view ocl_text,
+                                               absl::string_view kernelname);
+  MultiKernelLoaderSpec *AddCudaPtxOnDisk(absl::string_view filename,
+                                          absl::string_view kernelname);
+  MultiKernelLoaderSpec *AddCudaCubinOnDisk(absl::string_view filename,
+                                            absl::string_view kernelname);
   MultiKernelLoaderSpec *AddCudaCubinInMemory(const char *cubin_bytes,
-                                              port::StringPiece kernelname);
-  MultiKernelLoaderSpec *AddCudaPtxInMemory(port::StringPiece ptx,
-                                            port::StringPiece kernelname);
+                                              absl::string_view kernelname);
+  MultiKernelLoaderSpec *AddCudaPtxInMemory(absl::string_view ptx,
+                                            absl::string_view kernelname);
   MultiKernelLoaderSpec *AddCudaCompressedPtxInMemory(
-      port::StringPiece ptx, port::StringPiece kernelname);
+      absl::string_view ptx, absl::string_view kernelname);
   MultiKernelLoaderSpec *AddCudaPtxInMemory(
       std::initializer_list<CudaPtxInMemory::PtxSpec> spec_list,
-      port::StringPiece kernelname);
+      absl::string_view kernelname);
   MultiKernelLoaderSpec *AddCudaCompressedPtxInMemory(
       std::initializer_list<CudaPtxInMemory::PtxSpec> spec_list,
-      port::StringPiece kernelname);
+      absl::string_view kernelname);
 
  private:
   std::unique_ptr<CudaPtxOnDisk>
@@ -374,7 +373,6 @@ class MultiKernelLoaderSpec {
   size_t arity_;
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_KERNEL_SPEC_H_

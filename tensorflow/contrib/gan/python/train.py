@@ -34,27 +34,32 @@ from __future__ import print_function
 from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.gan.python import losses as tfgan_losses
 from tensorflow.contrib.gan.python import namedtuples
+from tensorflow.contrib.gan.python.losses.python import losses_impl as tfgan_losses_impl
 from tensorflow.contrib.slim.python.slim import learning as slim_learning
 from tensorflow.contrib.training.python.training import training
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.distributions import distribution as ds
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.summary import summary
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
-
 
 __all__ = [
     'gan_model',
     'infogan_model',
     'acgan_model',
     'cyclegan_model',
+    'stargan_model',
     'gan_loss',
     'cyclegan_loss',
+    'stargan_loss',
     'gan_train_ops',
     'gan_train',
     'get_sequential_train_hooks',
@@ -109,7 +114,7 @@ def gan_model(
     discriminator_gen_outputs = discriminator_fn(generated_data,
                                                  generator_inputs)
   with variable_scope.variable_scope(dis_scope, reuse=True):
-    real_data = ops.convert_to_tensor(real_data)
+    real_data = _convert_tensor_or_l_or_d(real_data)
     discriminator_real_outputs = discriminator_fn(real_data, generator_inputs)
 
   if check_shapes:
@@ -123,16 +128,9 @@ def gan_model(
   discriminator_variables = variables_lib.get_trainable_variables(dis_scope)
 
   return namedtuples.GANModel(
-      generator_inputs,
-      generated_data,
-      generator_variables,
-      gen_scope,
-      generator_fn,
-      real_data,
-      discriminator_real_outputs,
-      discriminator_gen_outputs,
-      discriminator_variables,
-      dis_scope,
+      generator_inputs, generated_data, generator_variables, gen_scope,
+      generator_fn, real_data, discriminator_real_outputs,
+      discriminator_gen_outputs, discriminator_variables, dis_scope,
       discriminator_fn)
 
 
@@ -201,8 +199,7 @@ def infogan_model(
 
   # Get model-specific variables.
   generator_variables = variables_lib.get_trainable_variables(gen_scope)
-  discriminator_variables = variables_lib.get_trainable_variables(
-      disc_scope)
+  discriminator_variables = variables_lib.get_trainable_variables(disc_scope)
 
   return namedtuples.InfoGANModel(
       generator_inputs,
@@ -279,12 +276,12 @@ def acgan_model(
     generator_inputs = _convert_tensor_or_l_or_d(generator_inputs)
     generated_data = generator_fn(generator_inputs)
   with variable_scope.variable_scope(discriminator_scope) as dis_scope:
-    with ops.name_scope(dis_scope.name+'/generated/'):
+    with ops.name_scope(dis_scope.name + '/generated/'):
       (discriminator_gen_outputs, discriminator_gen_classification_logits
       ) = _validate_acgan_discriminator_outputs(
           discriminator_fn(generated_data, generator_inputs))
   with variable_scope.variable_scope(dis_scope, reuse=True):
-    with ops.name_scope(dis_scope.name+'/real/'):
+    with ops.name_scope(dis_scope.name + '/real/'):
       real_data = ops.convert_to_tensor(real_data)
       (discriminator_real_outputs, discriminator_real_classification_logits
       ) = _validate_acgan_discriminator_outputs(
@@ -297,8 +294,7 @@ def acgan_model(
 
   # Get model-specific variables.
   generator_variables = variables_lib.get_trainable_variables(gen_scope)
-  discriminator_variables = variables_lib.get_trainable_variables(
-      dis_scope)
+  discriminator_variables = variables_lib.get_trainable_variables(dis_scope)
 
   return namedtuples.ACGANModel(
       generator_inputs, generated_data, generator_variables, gen_scope,
@@ -379,6 +375,108 @@ def cyclegan_model(
                                    reconstructed_y)
 
 
+def stargan_model(generator_fn,
+                  discriminator_fn,
+                  input_data,
+                  input_data_domain_label,
+                  generator_scope='Generator',
+                  discriminator_scope='Discriminator'):
+  """Returns a StarGAN model outputs and variables.
+
+  See https://arxiv.org/abs/1711.09020 for more details.
+
+  Args:
+    generator_fn: A python lambda that takes `inputs` and `targets` as inputs
+      and returns 'generated_data' as the transformed version of `input` based
+      on the `target`. `input` has shape (n, h, w, c), `targets` has shape (n,
+      num_domains), and `generated_data` has the same shape as `input`.
+    discriminator_fn: A python lambda that takes `inputs` and `num_domains` as
+      inputs and returns a tuple (`source_prediction`, `domain_prediction`).
+      `source_prediction` represents the source(real/generated) prediction by
+      the discriminator, and `domain_prediction` represents the domain
+      prediction/classification by the discriminator. `source_prediction` has
+      shape (n) and `domain_prediction` has shape (n, num_domains).
+    input_data: Tensor or a list of tensor of shape (n, h, w, c) representing
+      the real input images.
+    input_data_domain_label: Tensor or a list of tensor of shape (batch_size,
+      num_domains) representing the domain label associated with the real
+      images.
+    generator_scope: Optional generator variable scope. Useful if you want to
+      reuse a subgraph that has already been created.
+    discriminator_scope: Optional discriminator variable scope. Useful if you
+      want to reuse a subgraph that has already been created.
+
+  Returns:
+    StarGANModel nametuple return the tensor that are needed to compute the
+    loss.
+
+  Raises:
+    ValueError: If the shape of `input_data_domain_label` is not rank 2 or fully
+    defined in every dimensions.
+  """
+
+  # Convert to tensor.
+  input_data = _convert_tensor_or_l_or_d(input_data)
+  input_data_domain_label = _convert_tensor_or_l_or_d(input_data_domain_label)
+
+  # Convert list of tensor to a single tensor if applicable.
+  if isinstance(input_data, (list, tuple)):
+    input_data = array_ops.concat(
+        [ops.convert_to_tensor(x) for x in input_data], 0)
+  if isinstance(input_data_domain_label, (list, tuple)):
+    input_data_domain_label = array_ops.concat(
+        [ops.convert_to_tensor(x) for x in input_data_domain_label], 0)
+
+  # Get batch_size, num_domains from the labels.
+  input_data_domain_label.shape.assert_has_rank(2)
+  input_data_domain_label.shape.assert_is_fully_defined()
+  batch_size, num_domains = input_data_domain_label.shape.as_list()
+
+  # Transform input_data to random target domains.
+  with variable_scope.variable_scope(generator_scope) as generator_scope:
+    generated_data_domain_target = _generate_stargan_random_domain_target(
+        batch_size, num_domains)
+    generated_data = generator_fn(input_data, generated_data_domain_target)
+
+  # Transform generated_data back to the original input_data domain.
+  with variable_scope.variable_scope(generator_scope, reuse=True):
+    reconstructed_data = generator_fn(generated_data, input_data_domain_label)
+
+  # Predict source and domain for the generated_data using the discriminator.
+  with variable_scope.variable_scope(
+      discriminator_scope) as discriminator_scope:
+    disc_gen_data_source_pred, disc_gen_data_domain_pred = discriminator_fn(
+        generated_data, num_domains)
+
+  # Predict source and domain for the input_data using the discriminator.
+  with variable_scope.variable_scope(discriminator_scope, reuse=True):
+    disc_input_data_source_pred, disc_input_data_domain_pred = discriminator_fn(
+        input_data, num_domains)
+
+  # Collect trainable variables from the neural networks.
+  generator_variables = variables_lib.get_trainable_variables(generator_scope)
+  discriminator_variables = variables_lib.get_trainable_variables(
+      discriminator_scope)
+
+  # Create the StarGANModel namedtuple.
+  return namedtuples.StarGANModel(
+      input_data=input_data,
+      input_data_domain_label=input_data_domain_label,
+      generated_data=generated_data,
+      generated_data_domain_target=generated_data_domain_target,
+      reconstructed_data=reconstructed_data,
+      discriminator_input_data_source_predication=disc_input_data_source_pred,
+      discriminator_generated_data_source_predication=disc_gen_data_source_pred,
+      discriminator_input_data_domain_predication=disc_input_data_domain_pred,
+      discriminator_generated_data_domain_predication=disc_gen_data_domain_pred,
+      generator_variables=generator_variables,
+      generator_scope=generator_scope,
+      generator_fn=generator_fn,
+      discriminator_variables=discriminator_variables,
+      discriminator_scope=discriminator_scope,
+      discriminator_fn=discriminator_fn)
+
+
 def _validate_aux_loss_weight(aux_loss_weight, name='aux_loss_weight'):
   if isinstance(aux_loss_weight, ops.Tensor):
     aux_loss_weight.shape.assert_is_compatible_with([])
@@ -419,33 +517,42 @@ def _tensor_pool_adjusted_model(model, tensor_pool_fn):
   Raises:
     ValueError: If tensor pool does not support the `model`.
   """
-  if tensor_pool_fn is None:
-    return model
-
-  pooled_generated_data, pooled_generator_inputs = tensor_pool_fn(
-      (model.generated_data, model.generator_inputs))
-
   if isinstance(model, namedtuples.GANModel):
+    pooled_generator_inputs, pooled_generated_data = tensor_pool_fn(
+        (model.generator_inputs, model.generated_data))
     with variable_scope.variable_scope(model.discriminator_scope, reuse=True):
       dis_gen_outputs = model.discriminator_fn(pooled_generated_data,
                                                pooled_generator_inputs)
-    return model._replace(discriminator_gen_outputs=dis_gen_outputs)
+    return model._replace(
+        generator_inputs=pooled_generator_inputs,
+        generated_data=pooled_generated_data,
+        discriminator_gen_outputs=dis_gen_outputs)
   elif isinstance(model, namedtuples.ACGANModel):
+    pooled_generator_inputs, pooled_generated_data = tensor_pool_fn(
+        (model.generator_inputs, model.generated_data))
     with variable_scope.variable_scope(model.discriminator_scope, reuse=True):
-      (dis_pooled_gen_outputs,
-       dis_pooled_gen_classification_logits) = model.discriminator_fn(
+      (pooled_discriminator_gen_outputs,
+       pooled_discriminator_gen_classification_logits) = model.discriminator_fn(
            pooled_generated_data, pooled_generator_inputs)
     return model._replace(
-        discriminator_gen_outputs=dis_pooled_gen_outputs,
+        generator_inputs=pooled_generator_inputs,
+        generated_data=pooled_generated_data,
+        discriminator_gen_outputs=pooled_discriminator_gen_outputs,
         discriminator_gen_classification_logits=
-        dis_pooled_gen_classification_logits)
+        pooled_discriminator_gen_classification_logits)
   elif isinstance(model, namedtuples.InfoGANModel):
+    pooled_generator_inputs, pooled_generated_data, pooled_structured_input = (
+        tensor_pool_fn((model.generator_inputs, model.generated_data,
+                        model.structured_generator_inputs)))
     with variable_scope.variable_scope(model.discriminator_scope, reuse=True):
-      (dis_pooled_gen_outputs,
+      (pooled_discriminator_gen_outputs,
        pooled_predicted_distributions) = model.discriminator_and_aux_fn(
            pooled_generated_data, pooled_generator_inputs)
     return model._replace(
-        discriminator_gen_outputs=dis_pooled_gen_outputs,
+        generator_inputs=pooled_generator_inputs,
+        generated_data=pooled_generated_data,
+        structured_generator_inputs=pooled_structured_input,
+        discriminator_gen_outputs=pooled_discriminator_gen_outputs,
         predicted_distributions=pooled_predicted_distributions)
   else:
     raise ValueError('Tensor pool does not support `model`: %s.' % type(model))
@@ -461,6 +568,7 @@ def gan_loss(
     gradient_penalty_weight=None,
     gradient_penalty_epsilon=1e-10,
     gradient_penalty_target=1.0,
+    gradient_penalty_one_sided=False,
     mutual_information_penalty_weight=None,
     aux_cond_generator_weight=None,
     aux_cond_discriminator_weight=None,
@@ -485,6 +593,8 @@ def gan_loss(
     gradient_penalty_target: If `gradient_penalty_weight` is not None, a Python
       number or `Tensor` indicating the target value of gradient norm. See the
       CIFAR10 section of https://arxiv.org/abs/1710.10196. Defaults to 1.0.
+    gradient_penalty_one_sided: If `True`, penalty proposed in
+      https://arxiv.org/abs/1709.08894 is used. Defaults to `False`.
     mutual_information_penalty_weight: If not `None`, must be a non-negative
       Python number or Tensor indicating how much to weight the mutual
       information penalty. See https://arxiv.org/abs/1606.03657 for more
@@ -509,8 +619,8 @@ def gan_loss(
       `model` isn't an `InfoGANModel`.
   """
   # Validate arguments.
-  gradient_penalty_weight = _validate_aux_loss_weight(gradient_penalty_weight,
-                                                      'gradient_penalty_weight')
+  gradient_penalty_weight = _validate_aux_loss_weight(
+      gradient_penalty_weight, 'gradient_penalty_weight')
   mutual_information_penalty_weight = _validate_aux_loss_weight(
       mutual_information_penalty_weight, 'infogan_weight')
   aux_cond_generator_weight = _validate_aux_loss_weight(
@@ -534,32 +644,40 @@ def gan_loss(
         'is provided, `model` must be an `ACGANModel`. Instead, was %s.' %
         type(model))
 
+  # Optionally create pooled model.
+  pooled_model = (
+      _tensor_pool_adjusted_model(model, tensor_pool_fn)
+      if tensor_pool_fn else model)
+
   # Create standard losses.
   gen_loss = generator_loss_fn(model, add_summaries=add_summaries)
-  dis_loss = discriminator_loss_fn(
-      _tensor_pool_adjusted_model(model, tensor_pool_fn),
-      add_summaries=add_summaries)
+  dis_loss = discriminator_loss_fn(pooled_model, add_summaries=add_summaries)
 
   # Add optional extra losses.
   if _use_aux_loss(gradient_penalty_weight):
     gp_loss = tfgan_losses.wasserstein_gradient_penalty(
-        model,
+        pooled_model,
         epsilon=gradient_penalty_epsilon,
         target=gradient_penalty_target,
+        one_sided=gradient_penalty_one_sided,
         add_summaries=add_summaries)
     dis_loss += gradient_penalty_weight * gp_loss
   if _use_aux_loss(mutual_information_penalty_weight):
-    info_loss = tfgan_losses.mutual_information_penalty(
+    gen_info_loss = tfgan_losses.mutual_information_penalty(
         model, add_summaries=add_summaries)
-    dis_loss += mutual_information_penalty_weight * info_loss
-    gen_loss += mutual_information_penalty_weight * info_loss
+    dis_info_loss = (
+        gen_info_loss
+        if tensor_pool_fn is None else tfgan_losses.mutual_information_penalty(
+            pooled_model, add_summaries=add_summaries))
+    gen_loss += mutual_information_penalty_weight * gen_info_loss
+    dis_loss += mutual_information_penalty_weight * dis_info_loss
   if _use_aux_loss(aux_cond_generator_weight):
     ac_gen_loss = tfgan_losses.acgan_generator_loss(
         model, add_summaries=add_summaries)
     gen_loss += aux_cond_generator_weight * ac_gen_loss
   if _use_aux_loss(aux_cond_discriminator_weight):
     ac_disc_loss = tfgan_losses.acgan_discriminator_loss(
-        model, add_summaries=add_summaries)
+        pooled_model, add_summaries=add_summaries)
     dis_loss += aux_cond_discriminator_weight * ac_disc_loss
   # Gathers auxiliary losses.
   if model.generator_scope:
@@ -627,8 +745,8 @@ def cyclegan_loss(
         generator_loss_fn=generator_loss_fn,
         discriminator_loss_fn=discriminator_loss_fn,
         **kwargs)
-    return partial_loss._replace(
-        generator_loss=partial_loss.generator_loss + aux_loss)
+    return partial_loss._replace(generator_loss=partial_loss.generator_loss +
+                                 aux_loss)
 
   with ops.name_scope('cyclegan_loss_x2y'):
     loss_x2y = _partial_loss(model.model_x2y)
@@ -636,6 +754,130 @@ def cyclegan_loss(
     loss_y2x = _partial_loss(model.model_y2x)
 
   return namedtuples.CycleGANLoss(loss_x2y, loss_y2x)
+
+
+def stargan_loss(
+    model,
+    generator_loss_fn=tfgan_losses.stargan_generator_loss_wrapper(
+        tfgan_losses_impl.wasserstein_generator_loss),
+    discriminator_loss_fn=tfgan_losses.stargan_discriminator_loss_wrapper(
+        tfgan_losses_impl.wasserstein_discriminator_loss),
+    gradient_penalty_weight=10.0,
+    gradient_penalty_epsilon=1e-10,
+    gradient_penalty_target=1.0,
+    gradient_penalty_one_sided=False,
+    reconstruction_loss_fn=losses.absolute_difference,
+    reconstruction_loss_weight=10.0,
+    classification_loss_fn=losses.softmax_cross_entropy,
+    classification_loss_weight=1.0,
+    classification_one_hot=True,
+    add_summaries=True):
+  """StarGAN Loss.
+
+  The four major part can be found here: http://screen/tMRMBAohDYG.
+
+  Args:
+    model: (StarGAN) Model output of the stargan_model() function call.
+    generator_loss_fn: The loss function on the generator. Takes a
+      `StarGANModel` named tuple.
+    discriminator_loss_fn: The loss function on the discriminator. Takes a
+      `StarGANModel` namedtuple.
+    gradient_penalty_weight: (float) Gradient penalty weight. Default to 10 per
+      the original paper https://arxiv.org/abs/1711.09020. Set to 0 or None to
+      turn off gradient penalty.
+    gradient_penalty_epsilon: (float) A small positive number added for
+      numerical stability when computing the gradient norm.
+    gradient_penalty_target: (float, or tf.float `Tensor`) The target value of
+      gradient norm. Defaults to 1.0.
+    gradient_penalty_one_sided: (bool) If `True`, penalty proposed in
+      https://arxiv.org/abs/1709.08894 is used. Defaults to `False`.
+    reconstruction_loss_fn: The reconstruction loss function. Default to L1-norm
+      and the function must conform to the `tf.losses` API.
+    reconstruction_loss_weight: Reconstruction loss weight. Default to 10.0.
+    classification_loss_fn: The loss function on the discriminator's ability to
+      classify domain of the input. Default to one-hot softmax cross entropy
+      loss, and the function must conform to the `tf.losses` API.
+    classification_loss_weight: (float) Classification loss weight. Default to
+      1.0.
+    classification_one_hot: (bool) If the label is one hot representation.
+      Default to True. If False, classification classification_loss_fn need to
+      be sigmoid cross entropy loss instead.
+    add_summaries: (bool) Add the loss to the summary
+
+  Returns:
+    GANLoss namedtuple where we have generator loss and discriminator loss.
+
+  Raises:
+    ValueError: If input StarGANModel.input_data_domain_label does not have rank
+    2, or dimension 2 is not defined.
+  """
+
+  def _classification_loss_helper(true_labels, predict_logits, scope_name):
+    """Classification Loss Function Helper.
+
+    Args:
+      true_labels: Tensor of shape [batch_size, num_domains] representing the
+        label where each row is an one-hot vector.
+      predict_logits: Tensor of shape [batch_size, num_domains] representing the
+        predicted label logit, which is UNSCALED output from the NN.
+      scope_name: (string) Name scope of the loss component.
+
+    Returns:
+      Single scalar tensor representing the classification loss.
+    """
+
+    with ops.name_scope(scope_name, values=(true_labels, predict_logits)):
+
+      loss = classification_loss_fn(
+          onehot_labels=true_labels, logits=predict_logits)
+
+      if not classification_one_hot:
+        loss = math_ops.reduce_sum(loss, axis=1)
+      loss = math_ops.reduce_mean(loss)
+
+      if add_summaries:
+        summary.scalar(scope_name, loss)
+
+      return loss
+
+  # Check input shape.
+  model.input_data_domain_label.shape.assert_has_rank(2)
+  model.input_data_domain_label.shape[1:].assert_is_fully_defined()
+
+  # Adversarial Loss.
+  generator_loss = generator_loss_fn(model, add_summaries=add_summaries)
+  discriminator_loss = discriminator_loss_fn(model, add_summaries=add_summaries)
+
+  # Gradient Penalty.
+  if _use_aux_loss(gradient_penalty_weight):
+    gradient_penalty_fn = tfgan_losses.stargan_gradient_penalty_wrapper(
+        tfgan_losses_impl.wasserstein_gradient_penalty)
+    discriminator_loss += gradient_penalty_fn(
+        model,
+        epsilon=gradient_penalty_epsilon,
+        target=gradient_penalty_target,
+        one_sided=gradient_penalty_one_sided,
+        add_summaries=add_summaries) * gradient_penalty_weight
+
+  # Reconstruction Loss.
+  reconstruction_loss = reconstruction_loss_fn(model.input_data,
+                                               model.reconstructed_data)
+  generator_loss += reconstruction_loss * reconstruction_loss_weight
+  if add_summaries:
+    summary.scalar('reconstruction_loss', reconstruction_loss)
+
+  # Classification Loss.
+  generator_loss += _classification_loss_helper(
+      true_labels=model.generated_data_domain_target,
+      predict_logits=model.discriminator_generated_data_domain_predication,
+      scope_name='generator_classification_loss') * classification_loss_weight
+  discriminator_loss += _classification_loss_helper(
+      true_labels=model.input_data_domain_label,
+      predict_logits=model.discriminator_input_data_domain_predication,
+      scope_name='discriminator_classification_loss'
+  ) * classification_loss_weight
+
+  return namedtuples.GANLoss(generator_loss, discriminator_loss)
 
 
 def _get_update_ops(kwargs, gen_scope, dis_scope, check_for_unused_ops=True):
@@ -682,6 +924,7 @@ def gan_train_ops(
     generator_optimizer,
     discriminator_optimizer,
     check_for_unused_update_ops=True,
+    is_chief=True,
     # Optional args to pass directly to the `create_train_op`.
     **kwargs):
   """Returns GAN train ops.
@@ -697,6 +940,8 @@ def gan_train_ops(
     discriminator_optimizer: The optimizer for the discriminator updates.
     check_for_unused_update_ops: If `True`, throws an exception if there are
       update ops outside of the generator or discriminator scopes.
+    is_chief: Specifies whether or not the training is being run by the primary
+      replica during replica training.
     **kwargs: Keyword args to pass directly to
       `training.create_train_op` for both the generator and
       discriminator train op.
@@ -706,7 +951,10 @@ def gan_train_ops(
     be used to train a generator/discriminator pair.
   """
   if isinstance(model, namedtuples.CycleGANModel):
-    saved_params = locals()
+    # Get and store all arguments other than model and loss from locals.
+    # Contents of locals should not be modified, may not affect values. So make
+    # a copy. https://docs.python.org/2/library/functions.html#locals.
+    saved_params = dict(locals())
     saved_params.pop('model', None)
     saved_params.pop('loss', None)
     kwargs = saved_params.pop('kwargs', {})
@@ -735,6 +983,9 @@ def gan_train_ops(
       kwargs, model.generator_scope.name, model.discriminator_scope.name,
       check_for_unused_update_ops)
 
+  # Get the sync hooks if these are needed.
+  sync_hooks = []
+
   generator_global_step = None
   if isinstance(generator_optimizer,
                 sync_replicas_optimizer.SyncReplicasOptimizer):
@@ -750,6 +1001,7 @@ def gan_train_ops(
         trainable=False,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES])
     gen_update_ops += [generator_global_step.assign(global_step)]
+    sync_hooks.append(generator_optimizer.make_session_run_hook(is_chief))
   with ops.name_scope('generator_train'):
     gen_train_op = training.create_train_op(
         total_loss=loss.generator_loss,
@@ -771,6 +1023,7 @@ def gan_train_ops(
         trainable=False,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES])
     dis_update_ops += [discriminator_global_step.assign(global_step)]
+    sync_hooks.append(discriminator_optimizer.make_session_run_hook(is_chief))
   with ops.name_scope('discriminator_train'):
     disc_train_op = training.create_train_op(
         total_loss=loss.discriminator_loss,
@@ -780,7 +1033,8 @@ def gan_train_ops(
         update_ops=dis_update_ops,
         **kwargs)
 
-  return namedtuples.GANTrainOps(gen_train_op, disc_train_op, global_step_inc)
+  return namedtuples.GANTrainOps(gen_train_op, disc_train_op, global_step_inc,
+                                 sync_hooks)
 
 
 # TODO(joelshor): Implement a dynamic GAN train loop, as in `Real-Time Adaptive
@@ -815,17 +1069,30 @@ def get_sequential_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
   Returns:
     A function that takes a GANTrainOps tuple and returns a list of hooks.
   """
+
   def get_hooks(train_ops):
     generator_hook = RunTrainOpsHook(train_ops.generator_train_op,
                                      train_steps.generator_train_steps)
     discriminator_hook = RunTrainOpsHook(train_ops.discriminator_train_op,
                                          train_steps.discriminator_train_steps)
-    return [generator_hook, discriminator_hook]
+    return [generator_hook, discriminator_hook] + list(train_ops.train_hooks)
+
   return get_hooks
 
 
+def _num_joint_steps(train_steps):
+  g_steps = train_steps.generator_train_steps
+  d_steps = train_steps.discriminator_train_steps
+  # Get the number of each type of step that should be run.
+  num_d_and_g_steps = min(g_steps, d_steps)
+  num_g_steps = g_steps - num_d_and_g_steps
+  num_d_steps = d_steps - num_d_and_g_steps
+
+  return num_d_and_g_steps, num_g_steps, num_d_steps
+
+
 def get_joint_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
-  """Returns a hooks function for sequential GAN training.
+  """Returns a hooks function for joint GAN training.
 
   When using these train hooks, IT IS RECOMMENDED TO USE `use_locking=True` ON
   ALL OPTIMIZERS TO AVOID RACE CONDITIONS.
@@ -858,12 +1125,7 @@ def get_joint_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
   Returns:
     A function that takes a GANTrainOps tuple and returns a list of hooks.
   """
-  g_steps = train_steps.generator_train_steps
-  d_steps = train_steps.discriminator_train_steps
-  # Get the number of each type of step that should be run.
-  num_d_and_g_steps = min(g_steps, d_steps)
-  num_g_steps = g_steps - num_d_and_g_steps
-  num_d_steps = d_steps - num_d_and_g_steps
+  num_d_and_g_steps, num_g_steps, num_d_steps = _num_joint_steps(train_steps)
 
   def get_hooks(train_ops):
     g_op = train_ops.generator_train_op
@@ -873,24 +1135,24 @@ def get_joint_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
     g_hook = RunTrainOpsHook(g_op, num_g_steps)
     d_hook = RunTrainOpsHook(d_op, num_d_steps)
 
-    return [joint_hook, g_hook, d_hook]
+    return [joint_hook, g_hook, d_hook] + list(train_ops.train_hooks)
+
   return get_hooks
 
 
 # TODO(joelshor): This function currently returns the global step. Find a
 # good way for it to return the generator, discriminator, and final losses.
-def gan_train(
-    train_ops,
-    logdir,
-    get_hooks_fn=get_sequential_train_hooks(),
-    master='',
-    is_chief=True,
-    scaffold=None,
-    hooks=None,
-    chief_only_hooks=None,
-    save_checkpoint_secs=600,
-    save_summaries_steps=100,
-    config=None):
+def gan_train(train_ops,
+              logdir,
+              get_hooks_fn=get_sequential_train_hooks(),
+              master='',
+              is_chief=True,
+              scaffold=None,
+              hooks=None,
+              chief_only_hooks=None,
+              save_checkpoint_secs=600,
+              save_summaries_steps=100,
+              config=None):
   """A wrapper around `contrib.training.train` that uses GAN hooks.
 
   Args:
@@ -936,8 +1198,7 @@ def gan_train(
       config=config)
 
 
-def get_sequential_train_steps(
-    train_steps=namedtuples.GANTrainSteps(1, 1)):
+def get_sequential_train_steps(train_steps=namedtuples.GANTrainSteps(1, 1)):
   """Returns a thin wrapper around slim.learning.train_step, for GANs.
 
   This function is to provide support for the Supervisor. For new code, please
@@ -1017,10 +1278,6 @@ def _validate_distributions(distributions_l, noise_l):
   if not isinstance(distributions_l, (tuple, list)):
     raise ValueError('`predicted_distributions` must be a list. Instead, found '
                      '%s.' % type(distributions_l))
-  for dist in distributions_l:
-    if not isinstance(dist, ds.Distribution):
-      raise ValueError('Every element in `predicted_distributions` must be a '
-                       '`tf.Distribution`. Instead, found %s.' % type(dist))
   if len(distributions_l) != len(noise_l):
     raise ValueError('Length of `predicted_distributions` %i must be the same '
                      'as the length of structured noise %i.' %
@@ -1035,3 +1292,19 @@ def _validate_acgan_discriminator_outputs(discriminator_output):
         'A discriminator function for ACGAN must output a tuple '
         'consisting of (discrimination logits, classification logits).')
   return a, b
+
+
+def _generate_stargan_random_domain_target(batch_size, num_domains):
+  """Generate random domain label.
+
+  Args:
+    batch_size: (int) Number of random domain label.
+    num_domains: (int) Number of domains representing with the label.
+
+  Returns:
+    Tensor of shape (batch_size, num_domains) representing random label.
+  """
+  domain_idx = random_ops.random_uniform(
+      [batch_size], minval=0, maxval=num_domains, dtype=dtypes.int32)
+
+  return array_ops.one_hot(domain_idx, num_domains)

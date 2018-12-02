@@ -106,6 +106,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:png_internal",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -134,10 +135,4 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core/lib/db:sqlite",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(["*"]),
-    visibility = ["//tensorflow:__pkg__"],
 )

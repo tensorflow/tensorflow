@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
@@ -27,8 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -89,7 +88,7 @@ class BufferLiveness {
 
   // Perform buffer liveness analysis. This method must be called prior to
   // MayInterfere or MaybeLiveOut.
-  tensorflow::Status Analyze();
+  Status Analyze();
 
   // Returns true if the live range of the buffer of 'a' is strictly before the
   // live range of the buffer of 'b' (they do not overlap).
@@ -102,7 +101,7 @@ class BufferLiveness {
   // Set of LogicalBuffers which are aliased in the output of other
   // instructions. For example, a LogicalBuffer which is inserted into a tuple
   // is considered to be aliased and will be in this set.
-  tensorflow::gtl::FlatSet<const LogicalBuffer*> aliased_buffers_;
+  absl::flat_hash_set<const LogicalBuffer*> aliased_buffers_;
 
   // LogicalBuffers that may be live out of the entry computation.
   PointsToSet::BufferSet maybe_live_out_buffers_;

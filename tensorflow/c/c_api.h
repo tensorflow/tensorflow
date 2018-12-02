@@ -44,6 +44,7 @@ limitations under the License.
 // * size_t is used to represent byte sizes of objects that are
 //   materialized in the address space of the calling process.
 // * int is used as an index into arrays.
+// * Deletion functions are safe to call on nullptr.
 //
 // Questions left to address:
 // * Might at some point need a way for callers to provide their own Env.
@@ -72,7 +73,7 @@ limitations under the License.
 #ifdef SWIG
 #define TF_CAPI_EXPORT
 #else
-#if defined(COMPILER_MSVC)
+#if defined(_WIN32)
 #ifdef TF_COMPILE_LIBRARY
 #define TF_CAPI_EXPORT __declspec(dllexport)
 #else
@@ -80,7 +81,7 @@ limitations under the License.
 #endif  // TF_COMPILE_LIBRARY
 #else
 #define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // COMPILER_MSVC
+#endif  // _WIN32
 #endif  // SWIG
 
 #ifdef __cplusplus
@@ -894,9 +895,16 @@ TF_CAPI_EXPORT extern void TF_DeleteImportGraphDefOptions(
     TF_ImportGraphDefOptions* opts);
 
 // Set the prefix to be prepended to the names of nodes in `graph_def` that will
-// be imported into `graph`.
+// be imported into `graph`. `prefix` is copied and has no lifetime
+// requirements.
 TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetPrefix(
     TF_ImportGraphDefOptions* opts, const char* prefix);
+
+// Set the execution device for nodes in `graph_def`.
+// Only applies to nodes where a device was not already explicitly specified.
+// `device` is copied and has no lifetime requirements.
+TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetDefaultDevice(
+    TF_ImportGraphDefOptions* opts, const char* device);
 
 // Set whether to uniquify imported operation names. If true, imported operation
 // names will be modified if their name already exists in the graph. If false,
@@ -915,6 +923,7 @@ TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetUniquifyPrefix(
 // Set any imported nodes with input `src_name:src_index` to have that input
 // replaced with `dst`. `src_name` refers to a node in the graph to be imported,
 // `dst` references a node already existing in the graph being imported into.
+// `src_name` is copied and has no lifetime requirements.
 TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsAddInputMapping(
     TF_ImportGraphDefOptions* opts, const char* src_name, int src_index,
     TF_Output dst);
@@ -922,7 +931,7 @@ TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsAddInputMapping(
 // Set any imported nodes with control input `src_name` to have that input
 // replaced with `dst`. `src_name` refers to a node in the graph to be imported,
 // `dst` references an operation already existing in the graph being imported
-// into.
+// into. `src_name` is copied and has no lifetime requirements.
 TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsRemapControlDependency(
     TF_ImportGraphDefOptions* opts, const char* src_name, TF_Operation* dst);
 
@@ -934,6 +943,7 @@ TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsAddControlDependency(
 // Add an output in `graph_def` to be returned via the `return_outputs` output
 // parameter of TF_GraphImportGraphDef(). If the output is remapped via an input
 // mapping, the corresponding existing tensor in `graph` will be returned.
+// `oper_name` is copied and has no lifetime requirements.
 TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsAddReturnOutput(
     TF_ImportGraphDefOptions* opts, const char* oper_name, int index);
 
@@ -943,7 +953,8 @@ TF_CAPI_EXPORT extern int TF_ImportGraphDefOptionsNumReturnOutputs(
     const TF_ImportGraphDefOptions* opts);
 
 // Add an operation in `graph_def` to be returned via the `return_opers` output
-// parameter of TF_GraphImportGraphDef().
+// parameter of TF_GraphImportGraphDef(). `oper_name` is copied and has no
+// lifetime requirements.
 TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsAddReturnOperation(
     TF_ImportGraphDefOptions* opts, const char* oper_name);
 
@@ -1126,6 +1137,7 @@ TF_CAPI_EXPORT extern void TF_AbortWhile(const TF_WhileParams* params);
 
 // Adds operations to compute the partial derivatives of sum of `y`s w.r.t `x`s,
 // i.e., d(y_1 + y_2 + ...)/dx_1, d(y_1 + y_2 + ...)/dx_2...
+//
 // `dx` are used as initial gradients (which represent the symbolic partial
 // derivatives of some loss function `L` w.r.t. `y`).
 // `dx` must be nullptr or have size `ny`.
@@ -1134,6 +1146,12 @@ TF_CAPI_EXPORT extern void TF_AbortWhile(const TF_WhileParams* params);
 // The partial derivatives are returned in `dy`. `dy` should be allocated to
 // size `nx`.
 //
+// Gradient nodes are automatically named under the "gradients/" prefix. To
+// guarantee name uniqueness, subsequent calls to the same graph will
+// append an incremental tag to the prefix: "gradients_1/", "gradients_2/", ...
+// See TF_AddGradientsWithPrefix, which provides a means to specify a custom
+// name prefix for operations added to a graph to compute the gradients.
+//
 // WARNING: This function does not yet support all the gradients that python
 // supports. See
 // https://www.tensorflow.org/code/tensorflow/cc/gradients/README.md
@@ -1141,6 +1159,33 @@ TF_CAPI_EXPORT extern void TF_AbortWhile(const TF_WhileParams* params);
 TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
                                     TF_Output* x, int nx, TF_Output* dx,
                                     TF_Status* status, TF_Output* dy);
+
+// Adds operations to compute the partial derivatives of sum of `y`s w.r.t `x`s,
+// i.e., d(y_1 + y_2 + ...)/dx_1, d(y_1 + y_2 + ...)/dx_2...
+// This is a variant of TF_AddGradients that allows to caller to pass a custom
+// name prefix to the operations added to a graph to compute the gradients.
+//
+// `dx` are used as initial gradients (which represent the symbolic partial
+// derivatives of some loss function `L` w.r.t. `y`).
+// `dx` must be nullptr or have size `ny`.
+// If `dx` is nullptr, the implementation will use dx of `OnesLike` for all
+// shapes in `y`.
+// The partial derivatives are returned in `dy`. `dy` should be allocated to
+// size `nx`.
+// `prefix` names the scope into which all gradients operations are being added.
+// `prefix` must be unique within the provided graph otherwise this operation
+// will fail. If `prefix` is nullptr, the default prefixing behaviour takes
+// place, see TF_AddGradients for more details.
+//
+// WARNING: This function does not yet support all the gradients that python
+// supports. See
+// https://www.tensorflow.org/code/tensorflow/cc/gradients/README.md
+// for instructions on how to add C++ more gradients.
+TF_CAPI_EXPORT void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix,
+                                              TF_Output* y, int ny,
+                                              TF_Output* x, int nx,
+                                              TF_Output* dx, TF_Status* status,
+                                              TF_Output* dy);
 
 // Create a TF_Function from a TF_Graph
 //
@@ -1230,6 +1275,11 @@ TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunction(
     const TF_Operation* const* opers, int ninputs, const TF_Output* inputs,
     int noutputs, const TF_Output* outputs, const char* const* output_names,
     const TF_FunctionOptions* opts, const char* description, TF_Status* status);
+
+// Returns the name of the graph function.
+// The return value points to memory that is only usable until the next
+// mutation to *func.
+TF_CAPI_EXPORT extern const char* TF_FunctionName(TF_Function* func);
 
 // Write out a serialized representation of `func` (as a FunctionDef protocol
 // message) to `output_func_def` (allocated by TF_NewBuffer()).
@@ -1496,7 +1546,8 @@ TF_CAPI_EXPORT extern int TF_DeviceListCount(const TF_DeviceList* list);
 // If index is out of bounds, an error code will be set in the status object,
 // and a null pointer will be returned.
 TF_CAPI_EXPORT extern const char* TF_DeviceListName(const TF_DeviceList* list,
-                                                    int index, TF_Status*);
+                                                    int index,
+                                                    TF_Status* status);
 
 // Retrieves the type of the device at the given index.
 //
@@ -1506,14 +1557,22 @@ TF_CAPI_EXPORT extern const char* TF_DeviceListName(const TF_DeviceList* list,
 // If index is out of bounds, an error code will be set in the status object,
 // and a null pointer will be returned.
 TF_CAPI_EXPORT extern const char* TF_DeviceListType(const TF_DeviceList* list,
-                                                    int index, TF_Status*);
+                                                    int index,
+                                                    TF_Status* status);
 
 // Retrieve the amount of memory associated with a given device.
 //
 // If index is out of bounds, an error code will be set in the status object,
 // and -1 will be returned.
 TF_CAPI_EXPORT extern int64_t TF_DeviceListMemoryBytes(
-    const TF_DeviceList* list, int index, TF_Status*);
+    const TF_DeviceList* list, int index, TF_Status* status);
+
+// Retrieve the incarnation number of a given device.
+//
+// If index is out of bounds, an error code will be set in the status object,
+// and 0 will be returned.
+TF_CAPI_EXPORT extern uint64_t TF_DeviceListIncarnation(
+    const TF_DeviceList* list, int index, TF_Status* status);
 
 // --------------------------------------------------------------------------
 // Load plugins containing custom ops and kernels
@@ -1596,6 +1655,59 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map,
                                                  const char* name,
                                                  size_t name_len,
                                                  TF_Status* status);
+
+// --------------------------------------------------------------------------
+// Kernel definition information.
+
+// Returns a serialized KernelList protocol buffer containing KernelDefs for all
+// registered kernels.
+TF_CAPI_EXPORT extern TF_Buffer* TF_GetAllRegisteredKernels(TF_Status* status);
+
+// Returns a serialized KernelList protocol buffer containing KernelDefs for all
+// kernels registered for the operation named `name`.
+TF_CAPI_EXPORT extern TF_Buffer* TF_GetRegisteredKernelsForOp(
+    const char* name, TF_Status* status);
+
+// --------------------------------------------------------------------------
+// In-process TensorFlow server functionality, for use in distributed training.
+// A Server instance encapsulates a set of devices and a Session target that
+// can participate in distributed training. A server belongs to a cluster
+// (specified by a ClusterSpec), and corresponds to a particular task in a
+// named job. The server can communicate with any other server in the same
+// cluster.
+
+// In-process TensorFlow server.
+typedef struct TF_Server TF_Server;
+
+// Creates a new in-process TensorFlow server configured using a serialized
+// ServerDef protocol buffer provided via `proto` and `proto_len`.
+//
+// The server will not serve any requests until TF_ServerStart is invoked.
+// The server will stop serving requests once TF_ServerStop or
+// TF_DeleteServer is invoked.
+TF_CAPI_EXPORT extern TF_Server* TF_NewServer(const void* proto,
+                                              size_t proto_len,
+                                              TF_Status* status);
+
+// Starts an in-process TensorFlow server.
+TF_CAPI_EXPORT extern void TF_ServerStart(TF_Server* server, TF_Status* status);
+
+// Stops an in-process TensorFlow server.
+TF_CAPI_EXPORT extern void TF_ServerStop(TF_Server* server, TF_Status* status);
+
+// Blocks until the server has been successfully stopped (via TF_ServerStop or
+// TF_ServerClose).
+TF_CAPI_EXPORT extern void TF_ServerJoin(TF_Server* server, TF_Status* status);
+
+// Returns the target string that can be provided to TF_SetTarget() to connect
+// a TF_Session to `server`.
+//
+// The returned string is valid only until TF_DeleteServer is invoked.
+TF_CAPI_EXPORT extern const char* TF_ServerTarget(TF_Server* server);
+
+// Destroy an in-process TensorFlow server, frees memory. If server is running
+// it will be stopped and joined.
+TF_CAPI_EXPORT extern void TF_DeleteServer(TF_Server* server);
 
 #ifdef __cplusplus
 } /* end extern "C" */

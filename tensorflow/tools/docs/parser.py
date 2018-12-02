@@ -21,20 +21,48 @@ from __future__ import print_function
 import ast
 import collections
 import functools
+import itertools
 import json
 import os
 import re
-import sys
 
-import codegen
+import astor
 import six
 
 from google.protobuf.message import Message as ProtoMessage
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
+from tensorflow.tools.docs import doc_controls
+
+
+def is_free_function(py_object, full_name, index):
+  """Check if input is a free function (and not a class- or static method).
+
+  Args:
+    py_object: The the object in question.
+    full_name: The full name of the object, like `tf.module.symbol`.
+    index: The {full_name:py_object} dictionary for the public API.
+
+  Returns:
+    True if the obeject is a stand-alone function, and not part of a class
+    definition.
+  """
+  if not tf_inspect.isfunction(py_object):
+    return False
+
+  parent_name = full_name.rsplit('.', 1)[0]
+  if tf_inspect.isclass(index[parent_name]):
+    return False
+
+  return True
 
 
 # A regular expression capturing a python identifier.
-IDENTIFIER_RE = '[a-zA-Z_][a-zA-Z0-9_]*'
+IDENTIFIER_RE = r'[a-zA-Z_]\w*'
+
+
+class TFDocsError(Exception):
+  pass
 
 
 class _Errors(object):
@@ -48,7 +76,7 @@ class _Errors(object):
     template = 'ERROR:\n    output file name: %s\n    %s\n\n'
 
     for full_name, message in self._errors:
-      print(template % (full_name, message), file=sys.stderr)
+      logging.warn(template, full_name, message)
 
   def append(self, full_name, message):
     """Add an error to the collection.
@@ -68,7 +96,7 @@ class _Errors(object):
     return self._errors == other._errors  # pylint: disable=protected-access
 
 
-def documentation_path(full_name):
+def documentation_path(full_name, is_fragment=False):
   """Returns the file path for the documentation for the given API symbol.
 
   Given the fully qualified name of a library symbol, compute the path to which
@@ -78,12 +106,22 @@ def documentation_path(full_name):
 
   Args:
     full_name: Fully qualified name of a library symbol.
-
+    is_fragment: If `False` produce a direct markdown link (`tf.a.b.c` -->
+      `tf/a/b/c.md`). If `True` produce fragment link, `tf.a.b.c` -->
+      `tf/a/b.md#c`
   Returns:
     The file path to which to write the documentation for `full_name`.
   """
-  dirs = full_name.split('.')
-  return os.path.join(*dirs) + '.md'
+  parts = full_name.split('.')
+  if is_fragment:
+    parts, fragment = parts[:-1], parts[-1]
+
+  result = os.path.join(*parts) + '.md'
+
+  if is_fragment:
+    result = result + '#' + fragment
+
+  return result
 
 
 def _get_raw_docstring(py_object):
@@ -118,6 +156,8 @@ SYMBOL_REFERENCE_RE = re.compile(
     """,
     flags=re.VERBOSE)
 
+AUTO_REFERENCE_RE = re.compile(r'`([a-zA-Z0-9_.]+?)`')
+
 
 class ReferenceResolver(object):
   """Class for replacing @{...} references with Markdown links.
@@ -128,8 +168,7 @@ class ReferenceResolver(object):
       doc.
   """
 
-  def __init__(self, duplicate_of, doc_index, is_class, is_module,
-               py_module_names):
+  def __init__(self, duplicate_of, doc_index, is_fragment, py_module_names):
     """Initializes a Reference Resolver.
 
     Args:
@@ -137,15 +176,15 @@ class ReferenceResolver(object):
         symbols.
       doc_index: A `dict` mapping symbol name strings to objects with `url`
         and `title` fields. Used to resolve @{$doc} references in docstrings.
-      is_class: A map from full names to bool for each symbol.
-      is_module: A map from full names to bool for each symbol.
+      is_fragment: A map from full names to bool for each symbol. If True the
+        object lives at a page fragment `tf.a.b.c` --> `tf/a/b#c`. If False
+        object has a page to itself: `tf.a.b.c` --> `tf/a/b/c`.
       py_module_names: A list of string names of Python modules.
     """
     self._duplicate_of = duplicate_of
     self._doc_index = doc_index
-    self._is_class = is_class
-    self._is_module = is_module
-    self._all_names = set(is_class.keys())
+    self._is_fragment = is_fragment
+    self._all_names = set(is_fragment.keys())
     self._py_module_names = py_module_names
 
     self.current_doc_full_name = None
@@ -172,21 +211,18 @@ class ReferenceResolver(object):
     Returns:
       an instance of `ReferenceResolver` ()
     """
-    is_class = {
-        name: tf_inspect.isclass(visitor.index[name])
-        for name, obj in visitor.index.items()
-    }
+    is_fragment = {}
+    for name, obj in visitor.index.items():
+      has_page = (
+          tf_inspect.isclass(obj) or tf_inspect.ismodule(obj) or
+          is_free_function(obj, name, visitor.index))
 
-    is_module = {
-        name: tf_inspect.ismodule(visitor.index[name])
-        for name, obj in visitor.index.items()
-    }
+      is_fragment[name] = not has_page
 
     return cls(
         duplicate_of=visitor.duplicate_of,
         doc_index=doc_index,
-        is_class=is_class,
-        is_module=is_module,
+        is_fragment=is_fragment,
         **kwargs)
 
   @classmethod
@@ -202,6 +238,10 @@ class ReferenceResolver(object):
     Args:
       filepath: The file path to write the json to.
     """
+    try:
+      os.makedirs(os.path.dirname(filepath))
+    except OSError:
+      pass
     json_dict = {}
     for key, value in self.__dict__.items():
       # Drop these two fields. `_doc_index` is not serializable. `_all_names` is
@@ -215,7 +255,7 @@ class ReferenceResolver(object):
       json_dict[key.lstrip('_')] = value
 
     with open(filepath, 'w') as f:
-      json.dump(json_dict, f)
+      json.dump(json_dict, f, indent=2, sort_keys=True)
 
   def replace_references(self, string, relative_path_to_root):
     """Replace "@{symbol}" references with links to symbol's documentation page.
@@ -240,10 +280,25 @@ class ReferenceResolver(object):
     Returns:
       `string`, with "@{symbol}" references replaced by Markdown links.
     """
-    def one_ref(match):
-      return self._one_ref(match, relative_path_to_root)
 
-    return re.sub(SYMBOL_REFERENCE_RE, one_ref, string)
+    def strict_one_ref(match):
+      try:
+        return self._one_ref(match, relative_path_to_root)
+      except TFDocsError as e:
+        self.add_error(e.message)
+        return 'BAD_LINK'
+
+    string = re.sub(SYMBOL_REFERENCE_RE, strict_one_ref, string)
+
+    def sloppy_one_ref(match):
+      try:
+        return self._one_ref(match, relative_path_to_root)
+      except TFDocsError:
+        return match.group(0)
+
+    string = re.sub(AUTO_REFERENCE_RE, sloppy_one_ref, string)
+
+    return string
 
   def python_link(self, link_text, ref_full_name, relative_path_to_root,
                   code_ref=True):
@@ -307,28 +362,16 @@ class ReferenceResolver(object):
 
     Raises:
       RuntimeError: If `ref_full_name` is not documented.
+      TFDocsError: If the @{} syntax cannot be decoded.
     """
     master_name = self._duplicate_of.get(ref_full_name, ref_full_name)
 
     # Check whether this link exists
     if master_name not in self._all_names:
-      message = 'Cannot make link to "%s": Not in index.' % master_name
-      self.add_error(message)
-      return 'BROKEN_LINK'
+      raise TFDocsError(
+          'Cannot make link to "%s": Not in index.' % master_name)
 
-    # If this is a member of a class, link to the class page with an anchor.
-    ref_path = None
-    if not (self._is_class[master_name] or self._is_module[master_name]):
-      idents = master_name.split('.')
-      if len(idents) > 1:
-        class_name = '.'.join(idents[:-1])
-        assert class_name in self._all_names
-        if self._is_class[class_name]:
-          ref_path = documentation_path(class_name) + '#%s' % idents[-1]
-
-    if not ref_path:
-      ref_path = documentation_path(master_name)
-
+    ref_path = documentation_path(master_name, self._is_fragment[master_name])
     return os.path.join(relative_path_to_root, ref_path)
 
   def _one_ref(self, match, relative_path_to_root):
@@ -369,8 +412,8 @@ class ReferenceResolver(object):
             code_ref=not manual_link_text)
 
     # Error!
-    self.add_error('Did not understand "%s"' % match.group(0))
-    return 'BROKEN_LINK'
+    raise TFDocsError('Did not understand "%s"' % match.group(0),
+                      'BROKEN_LINK')
 
   def _doc_link(self, string, link_text, manual_link_text,
                 relative_path_to_root):
@@ -395,11 +438,10 @@ class ReferenceResolver(object):
     return self._doc_missing(string, hash_tag, link_text, manual_link_text,
                              relative_path_to_root)
 
-  def _doc_missing(self, string, unused_hash_tag, link_text,
+  def _doc_missing(self, string, unused_hash_tag, unused_link_text,
                    unused_manual_link_text, unused_relative_path_to_root):
     """Generate an error for unrecognized @{$...} references."""
-    self.add_error('Unknown Document "%s"' % string)
-    return link_text
+    raise TFDocsError('Unknown Document "%s"' % string)
 
   def _cc_link(self, string, link_text, unused_manual_link_text,
                relative_path_to_root):
@@ -416,8 +458,8 @@ class ReferenceResolver(object):
     elif string == 'tensorflow::ops::Const':
       ret = 'namespace/tensorflow/ops.md#const'
     else:
-      self.add_error('C++ reference not understood: "%s"' % string)
-      return 'TODO_C++:%s' % string
+      raise TFDocsError('C++ reference not understood: "%s"' % string)
+
     # relative_path_to_root gets you to api_docs/python, we go from there
     # to api_docs/cc, and then add ret.
     cc_relative_path = os.path.normpath(os.path.join(
@@ -594,6 +636,9 @@ def _parse_md_docstring(py_object, relative_path_to_root, reference_resolver):
   docstring, compatibility = _handle_compatibility(raw_docstring)
   docstring, function_details = _parse_function_details(docstring)
 
+  if 'Generated by: tensorflow/tools/api/generator' in docstring:
+    docstring = ''
+
   return _DocstringInfo(
       docstring.split('\n')[0], docstring, function_details, compatibility)
 
@@ -601,20 +646,20 @@ def _parse_md_docstring(py_object, relative_path_to_root, reference_resolver):
 def _get_arg_spec(func):
   """Extracts signature information from a function or functools.partial object.
 
-  For functions, uses `tf_inspect.getargspec`. For `functools.partial` objects,
-  corrects the signature of the underlying function to take into account the
-  removed arguments.
+  For functions, uses `tf_inspect.getfullargspec`. For `functools.partial`
+  objects, corrects the signature of the underlying function to take into
+  account the removed arguments.
 
   Args:
     func: A function whose signature to extract.
 
   Returns:
-    An `ArgSpec` namedtuple `(args, varargs, keywords, defaults)`, as returned
-    by `tf_inspect.getargspec`.
+    An `FullArgSpec` namedtuple `(args, varargs, varkw, defaults, etc.)`,
+    as returned by `tf_inspect.getfullargspec`.
   """
-  # getargspec does not work for functools.partial objects directly.
+  # getfullargspec does not work for functools.partial objects directly.
   if isinstance(func, functools.partial):
-    argspec = tf_inspect.getargspec(func.func)
+    argspec = tf_inspect.getfullargspec(func.func)
     # Remove the args from the original function that have been used up.
     first_default_arg = (
         len(argspec.args or []) - len(argspec.defaults or []))
@@ -637,12 +682,16 @@ def _get_arg_spec(func):
           argspec_defaults.pop(i-first_default_arg)
         else:
           first_default_arg -= 1
-    return tf_inspect.ArgSpec(args=argspec_args,
-                              varargs=argspec.varargs,
-                              keywords=argspec.keywords,
-                              defaults=tuple(argspec_defaults))
+    return tf_inspect.FullArgSpec(
+        args=argspec_args,
+        varargs=argspec.varargs,
+        varkw=argspec.varkw,
+        defaults=tuple(argspec_defaults),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
   else:  # Regular function or method, getargspec will work fine.
-    return tf_inspect.getargspec(func)
+    return tf_inspect.getfullargspec(func)
 
 
 def _remove_first_line_indent(string):
@@ -650,11 +699,14 @@ def _remove_first_line_indent(string):
   return '\n'.join([line[indent:] for line in string.split('\n')])
 
 
+PAREN_NUMBER_RE = re.compile(r'^\(([0-9.e-]+)\)')
+
+
 def _generate_signature(func, reverse_index):
   """Given a function, returns a list of strings representing its args.
 
   This function produces a list of strings representing the arguments to a
-  python function. It uses tf_inspect.getargspec, which
+  python function. It uses tf_inspect.getfullargspec, which
   does not generalize well to Python 3.x, which is more flexible in how *args
   and **kwargs are handled. This is not a problem in TF, since we have to remain
   compatible to Python 2.7 anyway.
@@ -705,7 +757,11 @@ def _generate_signature(func, reverse_index):
       if id(default) in reverse_index:
         default_text = reverse_index[id(default)]
       elif ast_default is not None:
-        default_text = codegen.to_source(ast_default)
+        default_text = (
+            astor.to_source(ast_default).rstrip('\n').replace('\t', '\\t')
+            .replace('\n', '\\n').replace('"""', "'"))
+        default_text = PAREN_NUMBER_RE.sub('\\1', default_text)
+
         if default_text != repr(default):
           # This may be an internal name. If so, handle the ones we know about.
           # TODO(wicke): This should be replaced with a lookup in the index.
@@ -726,8 +782,9 @@ def _generate_signature(func, reverse_index):
                 lookup_text = public_name + default_text[len(internal_name):]
                 break
             if default_text is lookup_text:
-              print('WARNING: Using default arg, failed lookup: %s, repr: %r' %
-                    (default_text, default))
+              logging.warn(
+                  'WARNING: Using default arg, failed lookup: %s, repr: %r',
+                  default_text, default)
             else:
               default_text = lookup_text
       else:
@@ -738,8 +795,8 @@ def _generate_signature(func, reverse_index):
   # Add *args and *kwargs.
   if argspec.varargs:
     args_list.append('*' + argspec.varargs)
-  if argspec.keywords:
-    args_list.append('**' + argspec.keywords)
+  if argspec.varkw:
+    args_list.append('**' + argspec.varkw)
 
   return args_list
 
@@ -875,6 +932,9 @@ class _FunctionPageInfo(object):
   def add_decorator(self, dec):
     self._decorators.append(dec)
 
+  def get_metadata_html(self):
+    return _Metadata(self.full_name).build_html()
+
 
 class _ClassPageInfo(object):
   """Collects docs for a class page.
@@ -907,6 +967,7 @@ class _ClassPageInfo(object):
     self._aliases = None
     self._doc = None
     self._guides = None
+    self._namedtuplefields = None
 
     self._bases = None
     self._properties = []
@@ -990,6 +1051,17 @@ class _ClassPageInfo(object):
     self._guides = guides
 
   @property
+  def namedtuplefields(self):
+    return self._namedtuplefields
+
+  def set_namedtuplefields(self, py_class):
+    if issubclass(py_class, tuple):
+      if all(
+          hasattr(py_class, attr)
+          for attr in ('_asdict', '_fields', '_make', '_replace')):
+        self._namedtuplefields = py_class._fields
+
+  @property
   def bases(self):
     """Returns a list of `_LinkInfo` objects pointing to the class' parents."""
     return self._bases
@@ -1026,7 +1098,15 @@ class _ClassPageInfo(object):
   @property
   def properties(self):
     """Returns a list of `_PropertyInfo` describing the class' properties."""
-    return self._properties
+    props_dict = {prop.short_name: prop for prop in self._properties}
+    props = []
+    if self.namedtuplefields:
+      for field in self.namedtuplefields:
+        props.append(props_dict.pop(field))
+
+    props.extend(sorted(props_dict.values()))
+
+    return props
 
   def _add_property(self, short_name, full_name, obj, doc):
     """Adds a `_PropertyInfo` entry to the `properties` list.
@@ -1037,6 +1117,9 @@ class _ClassPageInfo(object):
       obj: The property object itself
       doc: The property's parsed docstring, a `_DocstringInfo`.
     """
+    # Hide useless namedtuple docs-trings
+    if re.match('Alias for field number [0-9]+', doc.docstring):
+      doc = doc._replace(docstring='', brief='')
     property_info = _PropertyInfo(short_name, full_name, obj, doc)
     self._properties.append(property_info)
 
@@ -1067,6 +1150,14 @@ class _ClassPageInfo(object):
   def classes(self):
     """Returns a list of `_LinkInfo` pointing to any nested classes."""
     return self._classes
+
+  def get_metadata_html(self):
+    meta_data = _Metadata(self.full_name)
+    for item in itertools.chain(self.classes, self.properties, self.methods,
+                                self.other_members):
+      meta_data.append(item)
+
+    return meta_data.build_html()
 
   def _add_class(self, short_name, full_name, obj, doc, url):
     """Adds a `_LinkInfo` for a nested class to `classes` list.
@@ -1108,6 +1199,7 @@ class _ClassPageInfo(object):
       py_class: The class object being documented
       parser_config: An instance of ParserConfig.
     """
+    self.set_namedtuplefields(py_class)
     doc_path = documentation_path(self.full_name)
     relative_path = os.path.relpath(
         path='.', start=os.path.dirname(doc_path) or '.')
@@ -1116,9 +1208,11 @@ class _ClassPageInfo(object):
 
     for short_name in parser_config.tree[self.full_name]:
       # Remove builtin members that we never want to document.
-      if short_name in ['__class__', '__base__', '__weakref__', '__doc__',
-                        '__module__', '__dict__', '__abstractmethods__',
-                        '__slots__', '__getnewargs__']:
+      if short_name in [
+          '__class__', '__base__', '__weakref__', '__doc__', '__module__',
+          '__dict__', '__abstractmethods__', '__slots__', '__getnewargs__',
+          '__str__', '__repr__', '__hash__', '__reduce__'
+      ]:
         continue
 
       child_name = '.'.join([self.full_name, short_name])
@@ -1126,14 +1220,17 @@ class _ClassPageInfo(object):
 
       # Don't document anything that is defined in object or by protobuf.
       defining_class = _get_defining_class(py_class, short_name)
-      if (defining_class is object or
-          defining_class is type or defining_class is tuple or
-          defining_class is BaseException or defining_class is Exception or
-          # The following condition excludes most protobuf-defined symbols.
-          defining_class and defining_class.__name__ in ['CMessage', 'Message',
-                                                         'MessageMeta']):
+      if defining_class in [object, type, tuple, BaseException, Exception]:
+        continue
+
+      # The following condition excludes most protobuf-defined symbols.
+      if (defining_class and
+          defining_class.__name__ in ['CMessage', 'Message', 'MessageMeta']):
         continue
       # TODO(markdaoust): Add a note in child docs showing the defining class.
+
+      if doc_controls.should_skip_class_attr(py_class, short_name):
+        continue
 
       child_doc = _parse_md_docstring(child, relative_path,
                                       parser_config.reference_resolver)
@@ -1163,9 +1260,8 @@ class _ClassPageInfo(object):
         # obvious what they do, don't include them in the docs if there's no
         # docstring.
         if not child_doc.brief.strip() and short_name in [
-            '__str__', '__repr__', '__hash__', '__del__', '__copy__']:
-          print('Skipping %s, defined in %s, no docstring.' % (child_name,
-                                                               defining_class))
+            '__del__', '__copy__'
+        ]:
           continue
 
         try:
@@ -1296,6 +1392,16 @@ class _ModulePageInfo(object):
     self._other_members.append(
         _OtherMemberInfo(short_name, full_name, obj, doc))
 
+  def get_metadata_html(self):
+    meta_data = _Metadata(self.full_name)
+
+    # Objects with their own pages are not added to the matadata list for the
+    # module, the module only has a link to the object page. No docs.
+    for item in self.other_members:
+      meta_data.append(item)
+
+    return meta_data.build_html()
+
   def collect_docs_for_module(self, parser_config):
     """Collect information necessary specifically for a module's doc page.
 
@@ -1312,7 +1418,8 @@ class _ModulePageInfo(object):
     for name in member_names:
 
       if name in ['__builtins__', '__doc__', '__file__',
-                  '__name__', '__path__', '__package__']:
+                  '__name__', '__path__', '__package__',
+                  '__cached__', '__loader__', '__spec__']:
         continue
 
       member_full_name = self.full_name + '.' + name if self.full_name else name
@@ -1372,7 +1479,7 @@ class ParserConfig(object):
     self.base_dir = base_dir
     self.defined_in_prefix = 'tensorflow/'
     self.code_url_prefix = (
-        'https://www.tensorflow.org/code/tensorflow/')  # pylint: disable=line-too-long
+        '/code/stable/tensorflow/')  # pylint: disable=line-too-long
 
   def py_name_to_object(self, full_name):
     """Return the Python object for a Python symbol name."""
@@ -1541,7 +1648,8 @@ class _GeneratedFile(object):
     return True
 
   def __str__(self):
-    return 'Defined in `%s%s`.\n\n' % (self.path_prefix, self.path)
+    return 'Defined in generated file: `%s%s`.\n\n' % (self.path_prefix,
+                                                       self.path)
 
 
 def _get_defined_in(py_object, parser_config):
@@ -1577,6 +1685,8 @@ def _get_defined_in(py_object, parser_config):
     return None
 
   if re.match(r'.*/gen_[^/]*\.py$', path):
+    return _GeneratedFile(path, parser_config)
+  if 'genfiles' in path or 'tools/api/generator' in path:
     return _GeneratedFile(path, parser_config)
   elif re.match(r'.*_pb2\.py$', path):
     # The _pb2.py files all appear right next to their defining .proto file.
@@ -1622,3 +1732,45 @@ def generate_global_index(library_name, index, reference_resolver):
 
   # TODO(markdaoust): use a _ModulePageInfo -> prety_docs.build_md_page()
   return '\n'.join(lines)
+
+
+class _Metadata(object):
+  """A class for building a page's Metadata block.
+
+  Attributes:
+    name: The name of the page being described by the Metadata block.
+    version: The source version.
+  """
+
+  def __init__(self, name, version='Stable'):
+    """Creates a Metadata builder.
+
+    Args:
+      name: The name of the page being described by the Metadata block.
+      version: The source version.
+    """
+    self.name = name
+    self.version = version
+    self._content = []
+
+  def append(self, item):
+    """Adds an item from the page to the Metadata block.
+
+    Args:
+      item: The parsed page section to add.
+    """
+    self._content.append(item.short_name)
+
+  def build_html(self):
+    """Returns the Metadata block as an Html string."""
+    schema = 'http://developers.google.com/ReferenceObject'
+    parts = ['<div itemscope itemtype="%s">' % schema]
+
+    parts.append('<meta itemprop="name" content="%s" />' % self.name)
+    parts.append('<meta itemprop="path" content="%s" />' % self.version)
+    for item in self._content:
+      parts.append('<meta itemprop="property" content="%s"/>' % item)
+
+    parts.extend(['</div>', ''])
+
+    return '\n'.join(parts)

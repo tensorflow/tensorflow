@@ -24,7 +24,7 @@ extern "C" {
 // threads before returning. See comments in runtime_fork_join.cc for details.
 extern void __xla_cpu_runtime_ParallelForkJoin(
     void* result_ptr, const void* run_options_ptr, const void** params,
-    void** temps, tensorflow::uint64* prof_counters,
+    void** buffer_table, tensorflow::uint64* prof_counters,
     tensorflow::int32 num_partitions, tensorflow::int64* partitions,
     tensorflow::int32 num_partitioned_dims, void* function_ptr);
 

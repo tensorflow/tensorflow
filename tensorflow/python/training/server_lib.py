@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
@@ -42,8 +42,8 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
       Defaults to the value in `server_or_cluster_def`, if specified. Otherwise
       defaults to 0 if the server's job has only one task.
     protocol: (Optional.) Specifies the protocol to be used by the server.
-      Acceptable values include `"grpc"`. Defaults to the value in
-      `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
+      Acceptable values include `"grpc", "grpc+verbs"`. Defaults to the value
+      in `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
     config: (Options.) A `tf.ConfigProto` that specifies default configuration
       options for all sessions that run on this server.
 
@@ -98,9 +98,9 @@ class Server(object):
   """An in-process TensorFlow server, for use in distributed training.
 
   A `tf.train.Server` instance encapsulates a set of devices and a
-  @{tf.Session} target that
+  `tf.Session` target that
   can participate in distributed training. A server belongs to a
-  cluster (specified by a @{tf.train.ClusterSpec}), and
+  cluster (specified by a `tf.train.ClusterSpec`), and
   corresponds to a particular task in a named job. The server can
   communicate with any other server in the same cluster.
   """
@@ -129,8 +129,9 @@ class Server(object):
         job. Defaults to the value in `server_or_cluster_def`, if specified.
         Otherwise defaults to 0 if the server's job has only one task.
       protocol: (Optional.) Specifies the protocol to be used by the server.
-        Acceptable values include `"grpc"`. Defaults to the value in
-        `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
+        Acceptable values include `"grpc", "grpc+verbs"`. Defaults to the
+        value in `server_or_cluster_def`, if specified. Otherwise defaults to
+        `"grpc"`.
       config: (Options.) A `tf.ConfigProto` that specifies default
         configuration options for all sessions that run on this server.
       start: (Optional.) Boolean, indicating whether to start the server
@@ -142,11 +143,23 @@ class Server(object):
     """
     self._server_def = _make_server_def(server_or_cluster_def,
                                         job_name, task_index, protocol, config)
-    with errors.raise_exception_on_not_ok_status() as status:
-      self._server = pywrap_tensorflow.PyServer_New(
-          self._server_def.SerializeToString(), status)
+    self._server = c_api.TF_NewServer(self._server_def.SerializeToString())
     if start:
       self.start()
+
+  def __del__(self):
+    try:
+      c_api.TF_ServerStop(self._server)
+      # Clean shutdown of servers is not yet implemented, so
+      # we leak instead of calling c_api.TF_DeleteServer here.
+      # See:
+      # https://github.com/tensorflow/tensorflow/blob/0495317a6e9dd4cac577b9d5cf9525e62b571018/tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h#L73
+    except errors.UnimplementedError:
+      pass
+    except AttributeError:
+      # At shutdown, `c_api` may have been garbage collected.
+      pass
+    self._server = None
 
   def start(self):
     """Starts this server.
@@ -155,8 +168,7 @@ class Server(object):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         starting the TensorFlow server.
     """
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.PyServer_Start(self._server, status)
+    c_api.TF_ServerStart(self._server)
 
   def join(self):
     """Blocks until the server has shut down.
@@ -167,8 +179,7 @@ class Server(object):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         joining the TensorFlow server.
     """
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.PyServer_Join(self._server, status)
+    c_api.TF_ServerJoin(self._server)
 
   @property
   def server_def(self):
@@ -185,7 +196,7 @@ class Server(object):
     """Returns the target for a `tf.Session` to connect to this server.
 
     To create a
-    @{tf.Session} that
+    `tf.Session` that
     connects to this server, use the following snippet:
 
     ```python
@@ -197,7 +208,7 @@ class Server(object):
     Returns:
       A string containing a session target for this server.
     """
-    return self._server.target()
+    return c_api.TF_ServerTarget(self._server)
 
   @staticmethod
   def create_local_server(config=None, start=True):
@@ -229,7 +240,7 @@ class ClusterSpec(object):
 
   A `tf.train.ClusterSpec` represents the set of processes that
   participate in a distributed TensorFlow computation. Every
-  @{tf.train.Server} is constructed in a particular cluster.
+  `tf.train.Server` is constructed in a particular cluster.
 
   To create a cluster with two jobs and five tasks, you specify the
   mapping from job names to lists of network addresses (typically
@@ -420,7 +431,7 @@ class ClusterSpec(object):
     NOTE: For backwards compatibility, this method returns a list. If
     the given job was defined with a sparse set of task indices, the
     length of this list may not reflect the number of tasks defined in
-    this job. Use the @{tf.train.ClusterSpec.num_tasks} method
+    this job. Use the `tf.train.ClusterSpec.num_tasks` method
     to find the number of tasks defined in a particular job.
 
     Args:

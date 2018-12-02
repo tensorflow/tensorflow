@@ -34,7 +34,7 @@ from tensorflow.python.util import deprecation
 # where <rhs> is either a single token or [] enclosed list of tokens.
 # For example:  "var[1] = a" or "x = [1,2,3]"
 PARAM_RE = re.compile(r"""
-  (?P<name>[a-zA-Z][\w]*)      # variable name: "var" or "x"
+  (?P<name>[a-zA-Z][\w\.]*)      # variable name: "var" or "x"
   (\[\s*(?P<index>\d+)\s*\])?  # (optional) index: "1" or None
   \s*=\s*
   ((?P<val>[^,\[]*)            # single value: "a" or None
@@ -200,6 +200,13 @@ def parse_values(values, type_map):
   If a hyperparameter name in both an index assignment and scalar assignment,
   a ValueError is raised.  (e.g. 'a=[1,2,3],a[0] = 1').
 
+  The hyperparameter name may contain '.' symbols, which will result in an
+  attribute name that is only accessible through the getattr and setattr
+  functions.  (And must be first explicit added through add_hparam.)
+
+  WARNING: Use of '.' in your variable names is allowed, but is not well
+  supported and not recommended.
+
   The `value` in `name=value` must follows the syntax according to the
   type of the parameter:
 
@@ -315,7 +322,7 @@ class HParams(object):
 
   Hyperparameters have type, which is inferred from the type of their value
   passed at construction type.   The currently supported types are: integer,
-  float, string, and list of integer, float, or string.
+  float, boolean, string, and list of integer, float, boolean, or string.
 
   You can override hyperparameter values by calling the
   [`parse()`](#HParams.parse) method, passing a string of comma separated
@@ -502,6 +509,16 @@ class HParams(object):
             'Must pass a list for multi-valued parameter: %s.' % name)
       setattr(self, name, _cast_to_type_if_compatible(name, param_type, value))
 
+  def del_hparam(self, name):
+    """Removes the hyperparameter with key 'name'.
+
+    Args:
+      name: Name of the hyperparameter.
+    """
+    if hasattr(self, name):
+      delattr(self, name)
+      del self._hparam_types[name]
+
   def parse(self, values):
     """Override hyperparameter values, parsing new values from a string.
 
@@ -629,6 +646,9 @@ class HParams(object):
 
   def __str__(self):
     return str(sorted(self.values().items()))
+
+  def __repr__(self):
+    return '%s(%s)' % (type(self).__name__, self.__str__())
 
   @staticmethod
   def _get_kind_name(param_type, is_list):

@@ -51,7 +51,7 @@ class SelfAdjointEigTest(test.TestCase):
 
   def testConcurrentExecutesWithoutError(self):
     all_ops = []
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for compute_v_ in True, False:
         matrix1 = random_ops.random_normal([5, 5], seed=42)
         matrix2 = random_ops.random_normal([5, 5], seed=42)
@@ -63,13 +63,30 @@ class SelfAdjointEigTest(test.TestCase):
           e1 = linalg_ops.self_adjoint_eigvals(matrix1)
           e2 = linalg_ops.self_adjoint_eigvals(matrix2)
           all_ops += [e1, e2]
-      val = sess.run(all_ops)
+      val = self.evaluate(all_ops)
       self.assertAllEqual(val[0], val[2])
       # The algorithm is slightly different for compute_v being True and False,
       # so require approximate equality only here.
       self.assertAllClose(val[2], val[4])
       self.assertAllEqual(val[4], val[5])
       self.assertAllEqual(val[1], val[3])
+
+  def testMatrixThatFailsWhenFlushingDenormsToZero(self):
+    # Test a 32x32 matrix which is known to fail if denorm floats are flushed to
+    # zero.
+    matrix = np.genfromtxt(
+        test.test_src_dir_path(
+            "python/kernel_tests/testdata/"
+            "self_adjoint_eig_fail_if_denorms_flushed.txt")).astype(np.float32)
+    self.assertEqual(matrix.shape, (32, 32))
+    matrix_tensor = constant_op.constant(matrix)
+    with self.session(use_gpu=True) as sess:
+      (e, v) = self.evaluate(linalg_ops.self_adjoint_eig(matrix_tensor))
+      self.assertEqual(e.size, 32)
+      self.assertAllClose(
+          np.matmul(v, v.transpose()), np.eye(32, dtype=np.float32), atol=2e-3)
+      self.assertAllClose(matrix,
+                          np.matmul(np.matmul(v, np.diag(e)), v.transpose()))
 
 
 def SortEigenDecomposition(e, v):
@@ -135,7 +152,7 @@ def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
     else:
       atol = 1e-12
     np_e, np_v = np.linalg.eigh(a)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       if compute_v_:
         tf_e, tf_v = linalg_ops.self_adjoint_eig(constant_op.constant(a))
 
@@ -147,8 +164,8 @@ def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
         self.assertAllClose(a_ev.eval(), a, atol=atol)
 
         # Compare to numpy.linalg.eigh.
-        CompareEigenDecompositions(self, np_e, np_v,
-                                   tf_e.eval(), tf_v.eval(), atol)
+        CompareEigenDecompositions(self, np_e, np_v, self.evaluate(tf_e),
+                                   self.evaluate(tf_v), atol)
       else:
         tf_e = linalg_ops.self_adjoint_eigvals(constant_op.constant(a))
         self.assertAllClose(
@@ -184,7 +201,7 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
       tol = 1e-2
     else:
       tol = 1e-7
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       tf_a = constant_op.constant(a)
       if compute_v_:
         tf_e, tf_v = linalg_ops.self_adjoint_eig(tf_a)

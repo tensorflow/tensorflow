@@ -27,17 +27,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifndef INTEL_MKL_ML
 using mkldnn::stream;
-#endif
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -61,7 +58,6 @@ class MklToTfOp : public OpKernel {
     VLOG(1) << "MKLToTFConversion complete successfully.";
   }
 
-#ifndef INTEL_MKL_ML
   static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
                              string data_format_str, DataType op_data_type,
                              bool has_avx512f, uint input_number) {
@@ -108,74 +104,19 @@ class MklToTfOp : public OpKernel {
       // Do we need to reorder Mkl layout into TensorFlow layout?
       if (input.IsReorderNeeded(output_tf_pd)) {
         // Insert reorder between Mkl layout and TensorFlow layout.
-        std::vector<primitive> net;
-        CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, output_tensor, &net),
-                 true);
-        stream(stream::kind::eager).submit(net).wait();
+        CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, output_tensor), true);
       } else {
         // If not, just forward input tensor to output tensor.
         CHECK(output_tensor->CopyFrom(input_tensor, output_shape));
       }
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + std::string(e.message) + ", in file " +
-                         std::string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
-          errors::Aborted("Operation received an exception:", error_msg));
+          errors::Aborted("Operation received an exception: Status: ", e.status,
+                          ", message: ", StringPiece(e.message), ", in file ",
+                          __FILE__, ":", __LINE__));
     }
   }
-#else
-  static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
-                             string data_format_str, DataType op_data_type,
-                             bool has_avx512f, uint32 input_number) {
-    // Check that input tensor is in MKL format.
-    const Tensor& input_tensor = MklGetInput(context, input_number);
-    MklShape input_shape;
-    GetMklShape(context, input_number, &input_shape);
-
-    // if input is already in Tf format, then just copy input tensor to output.
-    if (!input_shape.IsMklTensor()) {
-      context->set_output(input_number, input_tensor);
-      VLOG(1) << "MKLToTFConversion: No conversion needed, "
-              << "copying input to output";
-      return;
-    }
-
-    // Check that input data type is same as operator data type and that it is
-    // same as output data type.
-    DataType input_data_type = op_kernel->input_type(input_number);
-    DataType output_data_type = op_kernel->output_type(input_number);
-    CHECK_EQ(op_data_type, input_data_type);
-    CHECK_EQ(op_data_type, output_data_type);
-
-    TensorShape output_shape;
-    size_t ndims = input_shape.GetDimension();
-    size_t* in_sizes = new size_t[ndims];
-    for (size_t i = 0; i < ndims; i++) {
-      // Outermost to innermost dimension
-      output_shape.AddDim(input_shape.GetSizes()[input_shape.tf_dim_idx(i)]);
-      in_sizes[i] = input_shape.GetSizes()[i];
-    }
-
-    // Allocate output tensor.
-    Tensor* output_tensor = NULL;
-    OP_REQUIRES_OK(context, context->allocate_output(input_number, output_shape,
-                                                     &output_tensor));
-
-    dnnLayout_t output_layout =
-        static_cast<dnnLayout_t>(input_shape.GetTfLayout());
-    // Execute DNNConversion.
-    void* input_buffer =
-        static_cast<void*>(const_cast<T*>(input_tensor.flat<T>().data()));
-    delete[] in_sizes;
-    void* output_buffer =
-        static_cast<void*>(const_cast<T*>(output_tensor->flat<T>().data()));
-    input_shape.GetConvertedFlatData(output_layout, input_buffer,
-                                     output_buffer);
-    VLOG(1) << "MKLToTFConversion complete successfully.";
-  }
-#endif
 
  private:
   /// Data format of the operation
@@ -200,6 +141,7 @@ class MklToTfOp : public OpKernel {
                           MklToTfOp<CPUDevice, T>);
 
 TF_CALL_NUMBER_TYPES(REGISTER_CPU);
+TF_CALL_QUANTIZED_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 }  // namespace tensorflow
 #endif  // INTEL_MKL

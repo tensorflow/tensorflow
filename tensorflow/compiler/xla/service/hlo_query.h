@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_QUERY_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_QUERY_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
@@ -41,11 +43,17 @@ bool AllOperandsAreConstants(const HloInstruction& instruction);
 // Returns whether the instruction is a scalar constant.
 bool IsScalarConstant(const HloInstruction* instruction);
 
+// Determines whether the given computation contains an instruction with one of
+// the given opcodes.  Checks both comp's instructions and the instructions of
+// any computations nested within it.
+bool ContainsInstrWithOpcode(const HloComputation* comp,
+                             const absl::flat_hash_set<HloOpcode>& opcodes);
+
 // Returns an operand of an instruction with the given opcode. If there are
 // multiple matching operands, then the first matching operand is returned. If
 // there are no matching operands then nullptr is returned.
 HloInstruction* GetMatchingOperand(
-    std::function<bool(const HloInstruction*)> matcher,
+    const std::function<bool(const HloInstruction*)>& matcher,
     HloInstruction* instruction);
 
 // Returns whether a binary instruction has a matching operand. Sets
@@ -53,7 +61,7 @@ HloInstruction* GetMatchingOperand(
 // other_operand. Note: in the case where both operands match, the first operand
 // of the instruction is returned.
 bool MatchBinaryInstructionOperand(
-    std::function<bool(const HloInstruction*)> matcher,
+    const std::function<bool(const HloInstruction*)>& matcher,
     HloInstruction* instruction, HloInstruction** matching_operand,
     HloInstruction** other_operand);
 

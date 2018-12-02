@@ -14,6 +14,10 @@
 # ==============================================================================
 """Stateless random ops which take seed as a tensor input.
 
+DEPRECATED: Use `tf.random.stateless_uniform` rather than
+`tf.contrib.stateless.stateless_random_uniform`, and similarly for the other
+routines.
+
 Instead of taking `seed` as an attr which initializes a mutable state within
 the op, these random ops take `seed` as an input, and the random numbers are
 a deterministic function of `shape` and `seed`.
@@ -22,6 +26,7 @@ WARNING: These ops are in contrib, and are not stable.  They should be
 consistent across multiple runs on the same hardware, but only for the same
 version of the code.
 
+@@stateless_multinomial
 @@stateless_random_uniform
 @@stateless_random_normal
 @@stateless_truncated_normal
@@ -31,14 +36,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=wildcard-import
-from tensorflow.contrib.stateless.gen_stateless_random_ops import *
+from tensorflow.python.ops.stateless_random_ops import stateless_random_uniform
+from tensorflow.python.ops.stateless_random_ops import stateless_random_normal
+from tensorflow.python.ops.stateless_random_ops import stateless_truncated_normal
+from tensorflow.python.ops.stateless_random_ops import stateless_multinomial
 
-from tensorflow.python.framework import ops
 from tensorflow.python.util.all_util import remove_undocumented
-
-ops.NotDifferentiable("StatelessRandomNormal")
-ops.NotDifferentiable("StatelessRandomUniform")
-ops.NotDifferentiable("StatelessTruncatedNormal")
 
 remove_undocumented(__name__)

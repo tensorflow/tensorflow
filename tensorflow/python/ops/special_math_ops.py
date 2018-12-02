@@ -14,9 +14,7 @@
 # ==============================================================================
 """Arithmetic Operations that don't fit into math_ops due to dependencies.
 
-To avoid circular dependencies, some math_ops should go here.  Documentation
-callouts, e.g. "@@my_op" should go in math_ops.  To the user, these are just
-normal math_ops.
+To avoid circular dependencies, some math_ops should go here.
 """
 
 from __future__ import absolute_import
@@ -31,12 +29,14 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
-@tf_export('lbeta')
-def lbeta(x, name='lbeta'):
+@tf_export('math.lbeta', v1=['math.lbeta', 'lbeta'])
+@deprecation.deprecated_endpoints('lbeta')
+def lbeta(x, name=None):
   r"""Computes \\(ln(|Beta(x)|)\\), reducing along the last dimension.
 
   Given one-dimensional `z = [z_0,...,z_{K-1}]`, we define
@@ -66,12 +66,11 @@ def lbeta(x, name='lbeta'):
   # This is consistent with a convention that the sum over the empty set 0, and
   # the product is 1.
   # This is standard.  See https://en.wikipedia.org/wiki/Empty_set.
-  with ops.name_scope(name, values=[x]):
+  with ops.name_scope(name, 'lbeta', [x]):
     x = ops.convert_to_tensor(x, name='x')
 
     # Note reduce_sum([]) = 0.
-    log_prod_gamma_x = math_ops.reduce_sum(
-        math_ops.lgamma(x), reduction_indices=[-1])
+    log_prod_gamma_x = math_ops.reduce_sum(math_ops.lgamma(x), axis=[-1])
 
     # Note lgamma(0) = infinity, so if x = []
     # log_gamma_sum_x = lgamma(0) = infinity, and
@@ -82,6 +81,54 @@ def lbeta(x, name='lbeta'):
     result = log_prod_gamma_x - log_gamma_sum_x
 
     return result
+
+
+@tf_export('math.bessel_i0')
+def bessel_i0(x, name=None):
+  """Computes the Bessel i0 function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  It is preferable to use the numerically stabler function `i0e(x)` instead.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i0
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_i0', [x]):
+    return math_ops.exp(math_ops.abs(x)) * math_ops.bessel_i0e(x)
+
+
+@tf_export('math.bessel_i1')
+def bessel_i1(x, name=None):
+  """Computes the Bessel i1 function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  It is preferable to use the numerically stabler function `i1e(x)` instead.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i1
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_i1', [x]):
+    return math_ops.exp(math_ops.abs(x)) * math_ops.bessel_i1e(x)
 
 
 @tf_export('einsum', 'linalg.einsum')
@@ -134,7 +181,6 @@ def einsum(equation, *inputs, **kwargs):
   * Ellipses (subscripts like `ij...,jk...->ik...`)
   * Subscripts where an axis appears more than once for a single input
     (e.g. `ijj,k->ik`).
-  * Subscripts that are summed across multiple inputs (e.g., `ij,ij,jk->ik`).
 
   Args:
     equation: a `str` describing the contraction, in the same format as
@@ -155,6 +201,8 @@ def einsum(equation, *inputs, **kwargs):
         indices in its subscript, or
       - the input shapes are inconsistent along a particular axis.
   """
+  equation = equation.replace(' ', '')
+
   name = kwargs.pop('name', None)
   if kwargs:
     raise TypeError('invalid keyword arguments for this function: ' + ', '.join(
@@ -189,6 +237,13 @@ def einsum(equation, *inputs, **kwargs):
           sorted(ax for ax in indices if counts[ax] == 1))
 
     for a in axis_labels:
+      for input_labels in input_axis_labels:
+        if input_labels.count(a) > 1:
+          raise ValueError(
+              'Subscript not supported: an axis appears more than once: %s' %
+              input_labels)
+
+    for a in axis_labels:
       input_count = sum(1 for s in input_axis_labels if a in s)
       if input_count > 2 and a not in output_axis_labels:
         logging.warn(
@@ -208,11 +263,11 @@ def einsum(equation, *inputs, **kwargs):
 
     missing_indices = set(temp_axis_labels) - set(output_axis_labels)
     if missing_indices:
-      reduction_indices = [
+      axis = [
           i for i, a in enumerate(temp_axis_labels)
           if a not in output_axis_labels
       ]
-      temp = math_ops.reduce_sum(temp, reduction_indices=reduction_indices)
+      temp = math_ops.reduce_sum(temp, axis=axis)
       temp_axis_labels = ''.join(
           a for a in temp_axis_labels if a in output_axis_labels)
 
@@ -363,7 +418,7 @@ def _reshape_if_necessary(tensor, new_shape):
   """Like reshape(), but avoids creating a new tensor if possible."""
   # Accept None as an alias for -1 in new_shape.
   new_shape = tuple(-1 if x is None else x for x in new_shape)
-  cur_shape = tuple(x.value for x in tensor.get_shape())
+  cur_shape = tuple(x.value for x in tensor.get_shape().dims)
   if (len(new_shape) == len(cur_shape) and
       all(d0 == d1 or d1 == -1 for d0, d1 in zip(cur_shape, new_shape))):
     return tensor

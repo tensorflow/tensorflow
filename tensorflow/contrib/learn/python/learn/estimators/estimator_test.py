@@ -715,7 +715,9 @@ class EstimatorTest(test.TestCase):
     ckpt = checkpoint_state_pb2.CheckpointState()
     text_format.Merge(checkpoint_file_content, ckpt)
     self.assertEqual(ckpt.model_checkpoint_path, 'model.ckpt-5')
-    self.assertAllEqual(['model.ckpt-1', 'model.ckpt-5'],
+    # TODO(b/78461127): Please modify tests to not directly rely on names of
+    # checkpoints.
+    self.assertAllEqual(['model.ckpt-0', 'model.ckpt-5'],
                         ckpt.all_model_checkpoint_paths)
 
   def test_train_save_copy_reload(self):
@@ -1366,7 +1368,7 @@ class ReplicaDeviceSetterTest(test.TestCase):
       table = lookup.MutableHashTable(dtypes.string, dtypes.int64, default_val)
       input_string = constant_op.constant(['brain', 'salad', 'tank'])
       output = table.lookup(input_string)
-    self.assertDeviceEqual('/job:ps/task:0', table._table_ref.device)
+    self.assertDeviceEqual('/job:ps/task:0', table.resource_handle.device)
     self.assertDeviceEqual('/job:ps/task:0', output.device)
 
   def testMutableHashTableIsLocal(self):
@@ -1376,7 +1378,7 @@ class ReplicaDeviceSetterTest(test.TestCase):
       table = lookup.MutableHashTable(dtypes.string, dtypes.int64, default_val)
       input_string = constant_op.constant(['brain', 'salad', 'tank'])
       output = table.lookup(input_string)
-    self.assertDeviceEqual('', table._table_ref.device)
+    self.assertDeviceEqual('', table.resource_handle.device)
     self.assertDeviceEqual('', output.device)
 
   def testTaskIsSetOnWorkerWhenJobNameIsSet(self):

@@ -129,7 +129,7 @@ with specially crafted inputs.
 ### What is a vulnerability?
 
 Given TensorFlow's flexibility, it is possible to specify computation graphs
-which exhibit unexpected or unwanted behaviors. The fact that TensorFlow models
+which exhibit unexpected or unwanted behavior. The fact that TensorFlow models
 can perform arbitrary computations means that they may read and write files,
 communicate via the network, produce deadlocks and infinite loops, or run out
 of memory. It is only when these behaviors are outside the specifications of the
@@ -169,6 +169,17 @@ below).
 Please use a descriptive subject line for your report email. After the initial
 reply to your report, the security team will endeavor to keep you informed of
 the progress being made towards a fix and announcement.
+
+In addition, please include the following information along with your report:
+
+* Your name and affiliation (if any).
+* A description of the technical details of the vulnerabilities. It is very
+  important to let us know how we can reproduce your findings.
+* An explanation who can exploit this vulnerability, and what they gain when
+  doing so -- write an attack scenario. This will help us evaluate your report
+  quickly, especially if the issue is complex.
+* Whether this vulnerability public or known to third parties. If it is, please
+  provide details.
 
 If you believe that an existing (public) issue is security-related, please send
 an email to `security@tensorflow.org`. The email should include the issue ID and
@@ -231,9 +242,7 @@ v//Fw6ZeY+HmRDFdirjD7wXtIuER4vqCryIqR6Xe9X8oJXz9L/Jhslc=
 -----END PGP PUBLIC KEY BLOCK-----
 ```
 
-### Known vulnerabilities
+### Known Vulnerabilities
 
-| Type              | Versions affected |        Reported by | Additional Information      |
-|-------------------|:-----------------:|--------------------|-----------------------------|
-| out of bounds read|             <=1.4 | TenCent Blade Team | [issue report](https://github.com/tensorflow/tensorflow/issues/14959) |
-
+For a list of known vulnerabilities and security advisories for TensorFlow,
+[click here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/index.md).

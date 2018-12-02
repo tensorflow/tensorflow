@@ -33,12 +33,60 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import resources
 from tensorflow.python.training import saver
+from tensorflow.python.training.checkpointable import tracking
 
 # Pattern to remove all non alpha numeric from a string.
 _PATTERN = re.compile(r"[\W_]+")
 
 
-class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
+class QuantileAccumulatorSaveable(saver.BaseSaverBuilder.SaveableObject):
+  """SaveableObject implementation for QuantileAccumulator."""
+
+  def __init__(self, resource_handle, create_op, name):
+    self._resource_handle = resource_handle
+    self._create_op = create_op
+    stamp_token, state, are_buckets_ready, buckets = (
+        gen_quantile_ops.quantile_accumulator_serialize(resource_handle))
+    # slice_spec is useful for saving a slice from a variable.
+    # It's not meaningful in quantile accumulator.
+    slice_spec = ""
+    def make_save_spec(tensor, suffix):
+      return saver.BaseSaverBuilder.SaveSpec(tensor, slice_spec, name + suffix)
+
+    specs = [make_save_spec(stamp_token, "_stamp")]
+    specs += [make_save_spec(state, "_state")]
+    specs += [make_save_spec(are_buckets_ready, "_are_buckets_ready")]
+    specs += [make_save_spec(buckets, "buckets")]
+    super(QuantileAccumulatorSaveable, self).__init__(self._resource_handle,
+                                                      specs, name)
+
+  def restore(self, restored_tensors, unused_restored_shapes):
+    """Restores the associated quantile accumulator from 'restored_tensors'.
+
+    Args:
+      restored_tensors: the tensors that were loaded from a checkpoint.
+      unused_restored_shapes: the shapes this object should conform to after
+        restore.
+
+    Returns:
+      The operation that restores the state of the quantile accumulator.
+    """
+    # Read the restored tensors with the same order that were added to saving
+    # spec.
+    stamp_token = restored_tensors[:1]
+    state = restored_tensors[1:2]
+    are_buckets_ready = restored_tensors[2:3]
+    buckets = restored_tensors[3]
+    with ops.control_dependencies([self._create_op]):
+      return gen_quantile_ops.quantile_accumulator_deserialize(
+          self._resource_handle,
+          stamp_token=stamp_token,
+          stream_state=state,
+          are_buckets_ready=are_buckets_ready,
+          buckets=buckets)
+
+
+class QuantileAccumulator(tracking.TrackableResource):
   """A resource that allows distributed quantile computation."""
 
   def __init__(self,
@@ -61,82 +109,64 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
       generate_quantiles: Generate quantiles instead of approximate boundaries.
         If true, exactly `num_quantiles` will be produced in the final summary.
     """
+    self._init_stamp_token = init_stamp_token
     self._epsilon = epsilon
+    self._num_quantiles = num_quantiles
+    self._max_elements = max_elements
+    self._container = container
     self._generate_quantiles = generate_quantiles
+    super(QuantileAccumulator, self).__init__()
 
     name = _PATTERN.sub("", name)
     with ops.name_scope(name, "QuantileAccumulator") as name:
-      self._quantile_accumulator_handle = (
-          gen_quantile_ops.quantile_stream_resource_handle_op(
-              container=container, shared_name=name, name=name))
-      self._create_op = gen_quantile_ops.create_quantile_accumulator(
-          self._quantile_accumulator_handle,
-          init_stamp_token,
-          epsilon=epsilon,
-          max_elements=max_elements,
-          num_quantiles=num_quantiles,
-          generate_quantiles=generate_quantiles)
-      is_initialized_op = gen_quantile_ops.quantile_accumulator_is_initialized(
-          self._quantile_accumulator_handle)
-    resources.register_resource(self._quantile_accumulator_handle,
-                                self._create_op, is_initialized_op)
-    self._make_savable(name)
+      self._name = name
+      self._resource_handle = self.create_resource()
+      self._init_op = self.initialize()
+      is_initialized_op = self.is_initialized()
+    resources.register_resource(self.resource_handle, self._init_op,
+                                is_initialized_op)
+    self._saveable = QuantileAccumulatorSaveable(self.resource_handle,
+                                                 self._init_op, name)
+    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
 
-  def _make_savable(self, name):
-    stamp_token, state, are_buckets_ready, buckets = (
-        gen_quantile_ops.quantile_accumulator_serialize(
-            self._quantile_accumulator_handle))
-    # slice_spec is useful for saving a slice from a variable.
-    # It's not meaningful in quantile accumulator.
-    slice_spec = ""
-    def make_save_spec(tensor, suffix):
-      return saver.BaseSaverBuilder.SaveSpec(tensor, slice_spec, name + suffix)
+  def create_resource(self):
+    return gen_quantile_ops.quantile_stream_resource_handle_op(
+        container=self._container, shared_name=self._name, name=self._name)
 
-    specs = [make_save_spec(stamp_token, "_stamp")]
-    specs += [make_save_spec(state, "_state")]
-    specs += [make_save_spec(are_buckets_ready, "_are_buckets_ready")]
-    specs += [make_save_spec(buckets, "buckets")]
-    super(QuantileAccumulator,
-          self).__init__(self._quantile_accumulator_handle, specs, name)
-    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self)
+  def initialize(self):
+    return gen_quantile_ops.create_quantile_accumulator(
+        self.resource_handle,
+        self._init_stamp_token,
+        epsilon=self._epsilon,
+        max_elements=self._max_elements,
+        num_quantiles=self._num_quantiles,
+        generate_quantiles=self._generate_quantiles)
 
-  def restore(self, restored_tensors, unused_restored_shapes):
-    """Restores the associated quantile accumulator from 'restored_tensors'.
+  @property
+  def initializer(self):
+    if self._init_op is None:
+      self._init_op = self.initialize()
+    return self._init_op
 
-    Args:
-      restored_tensors: the tensors that were loaded from a checkpoint.
-      unused_restored_shapes: the shapes this object should conform to after
-        restore.
+  def is_initialized(self):
+    return gen_quantile_ops.quantile_accumulator_is_initialized(
+        self.resource_handle)
 
-    Returns:
-      The operation that restores the state of the quantile accumulator.
-    """
-    # Read the restored tensors with the same order that were added to saving
-    # spec.
-    stamp_token = restored_tensors[:1]
-    state = restored_tensors[1:2]
-    are_buckets_ready = restored_tensors[2:3]
-    buckets = restored_tensors[3]
-    with ops.control_dependencies([self._create_op]):
-      return gen_quantile_ops.quantile_accumulator_deserialize(
-          self._quantile_accumulator_handle,
-          stamp_token=stamp_token,
-          stream_state=state,
-          are_buckets_ready=are_buckets_ready,
-          buckets=buckets)
+  def _gather_saveables_for_checkpoint(self):
+    return {"quantile_accumulator", self.saveable}
 
   def get_buckets(self, stamp_token):
     """Returns quantile buckets created during previous flush."""
     are_buckets_ready, buckets = (
         gen_quantile_ops.quantile_accumulator_get_buckets(
-            quantile_accumulator_handles=[self._quantile_accumulator_handle],
+            quantile_accumulator_handles=[self.resource_handle],
             stamp_token=stamp_token))
     return are_buckets_ready[0], buckets[0]
 
   def schedule_get_buckets(self):
     """Returns a scheduled read of buckets created during previous flush."""
     return batch_ops_utils.ScheduledStampedResourceOp(
-        resource_handle=self._quantile_accumulator_handle,
+        resource_handle=self.resource_handle,
         op=gen_quantile_ops.quantile_accumulator_get_buckets)
 
   def _make_summary(self, column, example_weights):
@@ -161,14 +191,14 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
     """Adds quantile summary to its stream in resource."""
     summary = self._make_summary(column, example_weights)
     return gen_quantile_ops.quantile_accumulator_add_summaries(
-        quantile_accumulator_handles=[self._quantile_accumulator_handle],
+        quantile_accumulator_handles=[self.resource_handle],
         stamp_token=stamp_token,
         summaries=[summary])
 
   def add_prebuilt_summary(self, stamp_token, summary):
     """Adds quantile summary to its stream in resource."""
     return gen_quantile_ops.quantile_accumulator_add_summaries(
-        quantile_accumulator_handles=[self._quantile_accumulator_handle],
+        quantile_accumulator_handles=[self.resource_handle],
         stamp_token=stamp_token,
         summaries=[summary])
 
@@ -177,27 +207,27 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
     summary = self._make_summary(column, example_weights)
     return batch_ops_utils.ScheduledStampedResourceOp(
         op=gen_quantile_ops.quantile_accumulator_add_summaries,
-        resource_handle=self._quantile_accumulator_handle,
+        resource_handle=self.resource_handle,
         summaries=summary)
 
   def flush(self, stamp_token, next_stamp_token):
     """Finalizes quantile summary stream and resets it for next iteration.
 
     Args:
-      stamp_token: Exepcted current token.
+      stamp_token: Expected current token.
       next_stamp_token: Next value for the token.
     Returns:
-      A list of quantiles or approximate boundaries.
+      The flush operation.
     """
     return gen_quantile_ops.quantile_accumulator_flush(
-        quantile_accumulator_handle=self._quantile_accumulator_handle,
+        quantile_accumulator_handle=self.resource_handle,
         stamp_token=stamp_token,
         next_stamp_token=next_stamp_token)
 
   def flush_summary(self, stamp_token, next_stamp_token):
     """Finalizes quantile summary stream and resets it for next iteration."""
     result = gen_quantile_ops.quantile_accumulator_flush_summary(
-        quantile_accumulator_handle=self._quantile_accumulator_handle,
+        quantile_accumulator_handle=self.resource_handle,
         stamp_token=stamp_token,
         next_stamp_token=next_stamp_token)
     return result

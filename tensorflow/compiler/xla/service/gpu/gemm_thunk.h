@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -35,31 +36,29 @@ namespace gpu {
 class GemmThunk : public Thunk {
  public:
   // Constructs a thunk that computes "output = (lhs <dot> rhs) * alpha" using
-  // BLAS gemm. transpose_lhs and transpose_rhs indicate whether gemm should
-  // transpose the lhs and rhs operand. hlo_instruction is as in Thunk. alpha is
-  // a constant.
+  // BLAS gemm.  hlo_instruction is as in Thunk. alpha is a constant.
   GemmThunk(const BufferAllocation::Slice& lhs_buffer,
             const BufferAllocation::Slice& rhs_buffer,
             const BufferAllocation::Slice& output_buffer,
             const Shape& lhs_shape, const Shape& rhs_shape,
-            const Shape& output_shape, bool transpose_lhs, bool transpose_rhs,
-            double alpha, const HloInstruction* hlo_instruction);
+            const Shape& output_shape, double alpha, double beta,
+            const HloInstruction* hlo_instruction,
+            bool implements_whole_instruction);
 
   GemmThunk(const GemmThunk&) = delete;
   GemmThunk& operator=(const GemmThunk&) = delete;
 
   // Does the gemm operation for the thunk on "stream", which must be non-null.
-  tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) override;
+  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                         se::Stream* stream,
+                         HloExecutionProfiler* profiler) override;
 
-  // Returns true if we'll perform autotuning if run on the given stream.  If
-  // so, we want the GPU to be quiescent during autotuning, so as not to
-  // introduce noise in our results.
-  bool ShouldHaltAllActivityBeforeRunning(
-      perftools::gputools::Stream* stream) override {
-    return autotune_results_.count(
-               stream->parent()->GetDeviceDescription().name()) != 0;
+  bool WillAutotuneKernel(se::Stream* stream) override {
+    // We will autotune this kernel if we don't already have a autotune result
+    // for the stream device.
+    return autotune_results_.find(
+               stream->parent()->GetDeviceDescription().name()) ==
+           autotune_results_.end();
   }
 
  private:
@@ -71,16 +70,18 @@ class GemmThunk : public Thunk {
   const Shape rhs_shape_;
   const Shape output_shape_;
 
-  const bool transpose_lhs_;
-  const bool transpose_rhs_;
   const double alpha_;
+  const double beta_;
+
+  const bool implements_whole_instruction_;
 
   // Maps device names (StreamExecutor::DeviceDescription::name()) to autotune
   // results.  The map's value is the best algorithm we've found for this thunk
   // on this device, or an error if none of the algorithms worked and we should
   // use the regular gemm without an algorithm.
-  std::unordered_map<string,
-                     StatusOr<::perftools::gputools::blas::AlgorithmType>>
+  //
+  // TODO(b/112415150):  Make this thread safe.
+  std::unordered_map<string, StatusOr<se::blas::AlgorithmType>>
       autotune_results_;
 };
 

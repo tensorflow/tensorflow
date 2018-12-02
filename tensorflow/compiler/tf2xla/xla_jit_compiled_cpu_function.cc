@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -34,41 +36,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-
-// Returns a vector of positional argument buffer sizes.
-xla::StatusOr<std::vector<intptr_t>> ComputeArgSizes(
-    const xla::ProgramShape& program_shape) {
-  std::vector<intptr_t> arg_sizes;
-  const size_t num_args = program_shape.parameters_size();
-  arg_sizes.reserve(num_args);
-  for (int i = 0; i < num_args; ++i) {
-    const xla::Shape& arg_shape = program_shape.parameters(i);
-    constexpr size_t kPointerSize = sizeof(void*);
-    arg_sizes.push_back(xla::ShapeUtil::ByteSizeOf(arg_shape, kPointerSize));
-  }
-  return std::move(arg_sizes);
-}
-
-// Returns a vector of positional temporary buffer sizes.
-xla::StatusOr<std::vector<intptr_t>> ComputeTempSizes(
-    const xla::BufferAssignment& buffer_assignment) {
-  const std::vector<xla::BufferAllocation>& allocations =
-      buffer_assignment.Allocations();
-  std::vector<intptr_t> temp_sizes;
-  temp_sizes.reserve(allocations.size());
-  for (const xla::BufferAllocation& allocation : allocations) {
-    // Callers don't allocate temporary buffers for parameters. Nor for
-    // thread-local buffers, which are lowered to alloca.
-    if (allocation.is_entry_computation_parameter() ||
-        allocation.is_thread_local()) {
-      temp_sizes.push_back(-1);
-    } else {
-      temp_sizes.push_back(allocation.size());
-    }
-  }
-  return std::move(temp_sizes);
-}
-
 // Returns the index of the result in the temp buffers.
 xla::StatusOr<size_t> ComputeResultIndex(
     const xla::BufferAssignment& buffer_assignment) {
@@ -112,10 +79,10 @@ void CollectNames(const T& entries, std::vector<string>* nonempty_names,
 XlaJitCompiledCpuFunction::Compile(
     const GraphDef& graph_def, const tf2xla::Config& config,
     const xla::ExecutableBuildOptions& build_options) {
-  // Convert the graph_def into an xla::Computation.
+  // Convert the graph_def into an xla::XlaComputation.
   TF_ASSIGN_OR_RETURN(xla::LocalClient * client,
                       xla::ClientLibrary::GetOrCreateLocalClient());
-  xla::Computation computation;
+  xla::XlaComputation computation;
   TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToXla(graph_def, config, client,
                                                       &computation));
 
@@ -152,11 +119,11 @@ XlaJitCompiledCpuFunction::Compile(
   const xla::BufferAssignment& buffer_assignment =
       cpu_executable->buffer_assignment();
 
-  // Compute buffer sizes and the result index, needed to run the raw function.
-  TF_ASSIGN_OR_RETURN(std::vector<intptr_t> arg_sizes,
-                      ComputeArgSizes(*program_shape));
-  TF_ASSIGN_OR_RETURN(std::vector<intptr_t> temp_sizes,
-                      ComputeTempSizes(buffer_assignment));
+  // Compute buffer infos and the result index, needed to run the raw function.
+  std::vector<cpu_function_runtime::BufferInfo> buffer_infos =
+      xla::cpu::CreateBufferInfosFromBufferAssignment(buffer_assignment);
+  std::vector<int32> arg_index_table =
+      xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
   TF_ASSIGN_OR_RETURN(size_t result_index,
                       ComputeResultIndex(buffer_assignment));
 
@@ -164,28 +131,29 @@ XlaJitCompiledCpuFunction::Compile(
       new XlaJitCompiledCpuFunction);
   XlaJitCompiledCpuFunction* jit = jit_unique_ptr.get();
   jit->executable_ = std::move(executable);
-  jit->arg_sizes_ = std::move(arg_sizes);
-  jit->temp_sizes_ = std::move(temp_sizes);
-  jit->program_shape_ = std::move(program_shape);
-  jit->static_data_.raw_function = std::move(raw_function);
-  jit->static_data_.arg_sizes = jit->arg_sizes_.data();
-  jit->static_data_.num_args = jit->arg_sizes_.size();
-  jit->static_data_.temp_sizes = jit->temp_sizes_.data();
-  jit->static_data_.num_temps = jit->temp_sizes_.size();
-  jit->static_data_.result_index = result_index;
+  jit->buffer_infos_ = std::move(buffer_infos);
+  jit->arg_index_table_ = std::move(arg_index_table);
+  jit->program_shape_ =
+      absl::make_unique<xla::ProgramShapeProto>(program_shape->ToProto());
+  jit->static_data_.set_raw_function(raw_function);
+  jit->static_data_.set_buffer_infos(jit->buffer_infos_.data());
+  jit->static_data_.set_num_buffers(jit->buffer_infos_.size());
+  jit->static_data_.set_arg_index_table(jit->arg_index_table_.data());
+  jit->static_data_.set_num_args(jit->arg_index_table_.size());
+  jit->static_data_.set_result_index(result_index);
   // Optional metadata is collected and set below.
   CollectNames(config.feed(), &jit->nonempty_arg_names_, &jit->arg_names_);
   CollectNames(config.fetch(), &jit->nonempty_result_names_,
                &jit->result_names_);
-  jit->static_data_.arg_names = jit->arg_names_.data();
-  jit->static_data_.result_names = jit->result_names_.data();
-  jit->static_data_.program_shape = jit->program_shape_.get();
+  jit->static_data_.set_arg_names(jit->arg_names_.data());
+  jit->static_data_.set_result_names(jit->result_names_.data());
+  jit->static_data_.set_program_shape(jit->program_shape_.get());
 
   if (cpu_executable->hlo_profiling_enabled()) {
-    jit->static_data_.hlo_profile_printer_data =
-        &cpu_executable->hlo_profile_printer_data();
-    jit->static_data_.profile_counters_size =
-        cpu_executable->hlo_profile_printer_data().profile_counters_size();
+    jit->static_data_.set_hlo_profile_printer_data(
+        &cpu_executable->hlo_profile_printer_data());
+    jit->static_data_.set_profile_counters_size(
+        cpu_executable->hlo_profile_printer_data().profile_counters_size());
   }
 
   return std::move(jit_unique_ptr);

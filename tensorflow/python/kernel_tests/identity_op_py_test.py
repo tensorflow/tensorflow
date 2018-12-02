@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import variables
@@ -30,25 +31,28 @@ from tensorflow.python.platform import test
 
 class IdentityOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testInt32_6(self):
-    with self.test_session():
+    with self.cached_session():
       value = array_ops.identity([1, 2, 3, 4, 5, 6]).eval()
     self.assertAllEqual(np.array([1, 2, 3, 4, 5, 6]), value)
 
+  @test_util.run_deprecated_v1
   def testInt32_2_3(self):
-    with self.test_session():
+    with self.cached_session():
       inp = constant_op.constant([10, 20, 30, 40, 50, 60], shape=[2, 3])
       value = array_ops.identity(inp).eval()
     self.assertAllEqual(np.array([[10, 20, 30], [40, 50, 60]]), value)
 
+  @test_util.run_deprecated_v1
   def testString(self):
     source = [b"A", b"b", b"C", b"d", b"E", b"f"]
-    with self.test_session():
+    with self.cached_session():
       value = array_ops.identity(source).eval()
     self.assertAllEqual(source, value)
 
   def testIdentityShape(self):
-    with self.test_session():
+    with self.cached_session():
       shape = [2, 3]
       array_2x3 = [[1, 2, 3], [6, 5, 4]]
       tensor = constant_op.constant(array_2x3)
@@ -58,14 +62,15 @@ class IdentityOpTest(test.TestCase):
       self.assertEquals(shape,
                         array_ops.identity(np.array(array_2x3)).get_shape())
 
+  @test_util.run_deprecated_v1
   def testRefIdentityShape(self):
-    with self.test_session():
+    with self.cached_session():
       shape = [2, 3]
-      tensor = variables.Variable(
+      tensor = variables.VariableV1(
           constant_op.constant(
               [[1, 2, 3], [6, 5, 4]], dtype=dtypes.int32))
       self.assertEquals(shape, tensor.get_shape())
-      self.assertEquals(shape, gen_array_ops._ref_identity(tensor).get_shape())
+      self.assertEquals(shape, gen_array_ops.ref_identity(tensor).get_shape())
 
 
 if __name__ == "__main__":

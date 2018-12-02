@@ -60,6 +60,8 @@ class RamFileBlockCache : public FileBlockCache {
       pruning_thread_.reset(env_->StartThread(ThreadOptions(), "TF_prune_FBC",
                                               [this] { Prune(); }));
     }
+    VLOG(1) << "GCS file block cache is "
+            << (IsCacheEnabled() ? "enabled" : "disabled");
   }
 
   ~RamFileBlockCache() override {
@@ -88,11 +90,19 @@ class RamFileBlockCache : public FileBlockCache {
   Status Read(const string& filename, size_t offset, size_t n, char* buffer,
               size_t* bytes_transferred) override;
 
+  // Validate the given file signature with the existing file signature in the
+  // cache. Returns true if the signature doesn't change or the file doesn't
+  // exist before. If the signature changes, update the existing signature with
+  // the new one and remove the file from cache.
+  bool ValidateAndUpdateFileSignature(const string& filename,
+                                      int64 file_signature) override
+      LOCKS_EXCLUDED(mu_);
+
   /// Remove all cached blocks for `filename`.
   void RemoveFile(const string& filename) override LOCKS_EXCLUDED(mu_);
 
   /// Remove all cached data.
-  void Flush() LOCKS_EXCLUDED(mu_) override;
+  void Flush() override LOCKS_EXCLUDED(mu_);
 
   /// Accessors for cache parameters.
   size_t block_size() const override { return block_size_; }
@@ -101,6 +111,12 @@ class RamFileBlockCache : public FileBlockCache {
 
   /// The current size (in bytes) of the cache.
   size_t CacheSize() const override LOCKS_EXCLUDED(mu_);
+
+  // Returns true if the cache is enabled. If false, the BlockFetcher callback
+  // is always executed during Read.
+  bool IsCacheEnabled() const override {
+    return block_size_ > 0 && max_bytes_ > 0;
+  }
 
  private:
   /// The size of the blocks stored in the LRU cache, as well as the size of the
@@ -222,6 +238,9 @@ class RamFileBlockCache : public FileBlockCache {
 
   /// The combined number of bytes in all of the cached blocks.
   size_t cache_size_ GUARDED_BY(mu_) = 0;
+
+  // A filename->file_signature map.
+  std::map<string, int64> file_signature_map_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

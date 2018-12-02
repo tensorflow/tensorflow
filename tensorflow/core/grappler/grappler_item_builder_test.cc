@@ -35,96 +35,6 @@ namespace {
 
 class GrapplerItemBuilderTest : public ::testing::Test {};
 
-// Create a sample graph with a symbolic gradient for sum.
-void SampleSumSymbolicGradientGraphdef(
-    GraphDef *def, CollectionDef *fetches,
-    std::vector<string> *names_of_ops_of_inline) {
-  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
-
-  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
-
-  auto dummy_variable = Variable(scope, {2, 2}, DT_FLOAT);
-  auto x = Const(scope, 1.0f);
-  auto y = Const(scope, 2);
-  auto z = Const(scope, 3.0f);
-  TF_ASSERT_OK(scope.status());
-
-  NameAttrList fn;
-  fn.set_name("Sum");
-  (*fn.mutable_attr())["T"].set_type(DT_FLOAT);
-  auto g0 = SymbolicGradient(scope, std::initializer_list<Input>{x, y, z},
-                             {DT_FLOAT, DT_INT32}, fn);
-
-  // TODO(bsteiner): we should rewrite the feed/fetch nodes to reflect the
-  // inlining that's done in the item builder
-  // fetches->mutable_node_list()->add_value(g0[0].name());
-  fetches->mutable_node_list()->add_value("SymbolicGradient/dx");
-  fetches->mutable_node_list()->add_value("SymbolicGradient/dy_reshaped");
-
-  TF_CHECK_OK(scope.ToGraphDef(def));
-
-  // Add names of the ops that replace the Mul symbolic gradient during
-  // inlining. This is for validation.
-  *names_of_ops_of_inline = {
-      "SymbolicGradient/dx",          "SymbolicGradient/tile_scaling",
-      "SymbolicGradient/dy_reshaped", "SymbolicGradient/y_shape",
-      "SymbolicGradient/x_shape",     "SymbolicGradient/stitch_idx0",
-      "SymbolicGradient/x_rank",      "SymbolicGradient/stitch_val1",
-      "SymbolicGradient/i_shape",     "SymbolicGradient/di",
-      "SymbolicGradient/zero",        "SymbolicGradient/one"};
-}
-
-std::unique_ptr<GrapplerItem> CreateGrapplerItem(const GraphDef &def,
-                                                 const CollectionDef &fetches) {
-  MetaGraphDef meta_def;
-  ItemConfig cfg;
-  cfg.inline_functions = true;
-  *meta_def.mutable_graph_def() = def;
-  (*meta_def.mutable_collection_def())["train_op"] = fetches;
-  return GrapplerItemFromMetaGraphDef("0", meta_def, cfg);
-}
-
-int CountSymbolicGradientOps(const std::unique_ptr<GrapplerItem> &item) {
-  int n_symb_grads = 0;
-  for (const auto &node : item->graph.node()) {
-    if (node.op() == FunctionLibraryDefinition::kGradientOp) {
-      n_symb_grads++;
-    }
-  }
-  return n_symb_grads;
-}
-
-int CountOpsWithNames(const std::unique_ptr<GrapplerItem> &item,
-                      const std::vector<string> &names) {
-  std::set<string> names_set(names.begin(), names.end());
-  int n_with_names = 0;
-  for (const auto &node : item->graph.node()) {
-    if (names_set.find(node.name()) != names_set.end()) {
-      n_with_names++;
-    }
-  }
-  return n_with_names;
-}
-
-TEST_F(GrapplerItemBuilderTest, SymbolicGradientInlining) {
-  // Create sample sum symbolic gradient graph.
-  GraphDef def;
-  CollectionDef fetches;
-  std::vector<string> ops_of_inline;
-  SampleSumSymbolicGradientGraphdef(&def, &fetches, &ops_of_inline);
-
-  // Create the inlined graph.
-  std::unique_ptr<GrapplerItem> with_inline = CreateGrapplerItem(def, fetches);
-
-  // For the inlined graph, there should be 0 symbolic gradient ops.
-  EXPECT_EQ(0, CountSymbolicGradientOps(with_inline));
-
-  // For the inlined graph, make sure all the required expanded op’s are in the
-  // graph.
-  EXPECT_EQ(ops_of_inline.size(),
-            CountOpsWithNames(with_inline, ops_of_inline));
-}
-
 TEST_F(GrapplerItemBuilderTest, AssetFilepathOverrideTest) {
   MetaGraphDef meta_graph;
 
@@ -273,7 +183,6 @@ TEST_F(GrapplerItemBuilderTest, GraphWithFunctions) {
   (*meta_graph.mutable_collection_def())["train_op"] = train_op;
 
   ItemConfig cfg;
-  cfg.inline_functions = false;
 
   std::unique_ptr<GrapplerItem> item =
       GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
@@ -294,7 +203,6 @@ TEST_F(GrapplerItemBuilderTest, GraphWithCustomOps) {
   (*meta_graph.mutable_collection_def())["train_op"] = train_op;
 
   ItemConfig cfg;
-  cfg.inline_functions = false;
 
   std::unique_ptr<GrapplerItem> item =
       GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
@@ -319,10 +227,22 @@ TEST_F(GrapplerItemBuilderTest, FromGraphWithSignatureDef) {
   (*serving_signature.mutable_outputs())["output"] = output;
   (*meta_graph.mutable_signature_def())["serving"] = serving_signature;
 
+  // It should be able to dedup the input and output with same names.
+  TensorInfo input2, output2;
+  input.set_name("x");
+  input.set_dtype(DT_FLOAT);
+  output.set_name("z");
+  SignatureDef serving_signature2;
+  (*serving_signature.mutable_inputs())["input2"] = input2;
+  (*serving_signature.mutable_outputs())["output2"] = output2;
+  (*meta_graph.mutable_signature_def())["serving2"] = serving_signature2;
+
   std::unique_ptr<GrapplerItem> item =
       GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
   ASSERT_TRUE(item != nullptr);
 
+  EXPECT_EQ(item->feed.size(), 1);
+  EXPECT_EQ(item->fetch.size(), 1);
   EXPECT_EQ(item->feed[0].first, "x");
   EXPECT_EQ(item->fetch[0], "z");
 }
@@ -352,6 +272,68 @@ TEST_F(GrapplerItemBuilderTest, FromGraphWithIncompleteSignatureDef) {
   std::unique_ptr<GrapplerItem> item =
       GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
   ASSERT_TRUE(item == nullptr);
+}
+
+TEST_F(GrapplerItemBuilderTest, FromGraphWithUnknownDimInSignatureInput) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto shape_1d = PartialTensorShape({-1});
+  auto x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                            ops::Placeholder::Shape(shape_1d));
+  auto y = ops::Const(s.WithOpName("y"), static_cast<float>(1.0));
+  auto z = ops::Add(s.WithOpName("z"), x, y);
+
+  MetaGraphDef meta_graph;
+  TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
+
+  TensorInfo input, output;
+  input.set_name("x");
+  input.set_dtype(DT_FLOAT);
+  shape_1d.AsProto(input.mutable_tensor_shape());
+  output.set_name("z");
+
+  SignatureDef serving_signature;
+  (*serving_signature.mutable_inputs())["input"] = input;
+  (*serving_signature.mutable_outputs())["output"] = output;
+  (*meta_graph.mutable_signature_def())["serving"] = serving_signature;
+
+  ItemConfig cfg;
+  cfg.placeholder_unknown_output_shape_dim = 64;
+  std::unique_ptr<GrapplerItem> item1 =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
+  ASSERT_TRUE(item1 != nullptr);
+
+  ASSERT_EQ(item1->feed.size(), 1);
+  EXPECT_EQ(item1->feed[0].second.NumElements(), 64);
+
+  std::unique_ptr<GrapplerItem> item2 =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+  ASSERT_TRUE(item2 != nullptr);
+
+  ASSERT_EQ(item2->feed.size(), 1);
+  EXPECT_EQ(item2->feed[0].second.NumElements(), 1);
+}
+
+TEST_F(GrapplerItemBuilderTest, ExplicitFeedAndFetch) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), 0);
+  auto y = ops::Const(s.WithOpName("y"), 1);
+  auto z = ops::Add(s.WithOpName("z"), x, y);
+
+  MetaGraphDef meta_graph;
+  TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
+
+  ItemConfig config;
+  config.feed_nodes.insert("x");
+  config.fetch_nodes.insert("z");
+
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, config);
+  ASSERT_TRUE(item != nullptr);
+
+  EXPECT_EQ(item->feed.size(), 1);
+  EXPECT_EQ(item->fetch.size(), 1);
+  EXPECT_EQ(item->feed[0].first, "x");
+  EXPECT_EQ(item->fetch[0], "z");
 }
 
 }  // namespace

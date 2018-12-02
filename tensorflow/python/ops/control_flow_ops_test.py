@@ -51,7 +51,6 @@ TestTuple = collections.namedtuple("TestTuple", "a b")
 SingletonTestTuple = collections.namedtuple("SingletonTestTuple", "a")
 
 
-@test_util.with_c_api
 class GroupTestCase(test_util.TensorFlowTestCase):
 
   def _StripNode(self, nd):
@@ -133,7 +132,6 @@ class GroupTestCase(test_util.TensorFlowTestCase):
         control_flow_ops.group(1, 2)
 
 
-@test_util.with_c_api
 class ShapeTestCase(test_util.TensorFlowTestCase):
 
   def testShape(self):
@@ -145,7 +143,6 @@ class ShapeTestCase(test_util.TensorFlowTestCase):
                             [constant_op.constant(1.0)], tensor).get_shape())
 
 
-@test_util.with_c_api
 class WithDependenciesTestCase(test_util.TensorFlowTestCase):
 
   def testTupleDependencies(self):
@@ -156,11 +153,11 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
       const_with_dep = control_flow_ops.with_dependencies(
           (increment_counter, constant_op.constant(42)),
           constant_op.constant(7))
-      with self.test_session():
+      with self.cached_session():
         variables.global_variables_initializer().run()
-        self.assertEquals(0, counter.eval())
-        self.assertEquals(7, const_with_dep.eval())
-        self.assertEquals(1, counter.eval())
+        self.assertEquals(0, self.evaluate(counter))
+        self.assertEquals(7, self.evaluate(const_with_dep))
+        self.assertEquals(1, self.evaluate(counter))
 
   def testListDependencies(self):
     with ops.Graph().as_default():
@@ -170,18 +167,17 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
       const_with_dep = control_flow_ops.with_dependencies(
           [increment_counter, constant_op.constant(42)],
           constant_op.constant(7))
-      with self.test_session():
+      with self.cached_session():
         variables.global_variables_initializer().run()
-        self.assertEquals(0, counter.eval())
-        self.assertEquals(7, const_with_dep.eval())
-        self.assertEquals(1, counter.eval())
+        self.assertEquals(0, self.evaluate(counter))
+        self.assertEquals(7, self.evaluate(const_with_dep))
+        self.assertEquals(1, self.evaluate(counter))
 
 
-@test_util.with_c_api
 class SwitchTestCase(test_util.TensorFlowTestCase):
 
   def testIndexedSlicesWithDenseShape(self):
-    with self.test_session():
+    with self.cached_session():
       data = ops.IndexedSlices(
           constant_op.constant([1, 2, 3]),
           constant_op.constant([0, 1]),
@@ -212,10 +208,10 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
                        constant_op.constant(0.0)])
       optimizer = momentum.MomentumOptimizer(0.1, 0.9)
       train_op = optimizer.minimize(cost)
-      with self.test_session() as sess:
-        sess.run(variables.global_variables_initializer())
+      with self.cached_session() as sess:
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
-          sess.run([train_op])
+          self.evaluate([train_op])
 
   def testResourceReadInLoop(self):
     with ops.Graph().as_default():
@@ -235,9 +231,9 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       _, cost = control_flow_ops.while_loop(
           cond, body, [constant_op.constant(0),
                        constant_op.constant(0.0)])
-      with self.test_session() as sess:
-        sess.run(variables.global_variables_initializer())
-        self.assertAllEqual(10.0, cost.eval())
+      with self.cached_session() as sess:
+        self.evaluate(variables.global_variables_initializer())
+        self.assertAllEqual(10.0, self.evaluate(cost))
 
   def doTestIndexedSlicesGradientInCondInWhileLoop(self, use_resource=False):
     with ops.Graph().as_default():
@@ -272,9 +268,9 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       static_grads = math_ops.segment_sum(static_grads.values,
                                           static_grads.indices)
 
-      with self.test_session() as sess:
-        sess.run(variables.global_variables_initializer())
-        self.assertAllEqual(*sess.run([static_grads, dynamic_grads]))
+      with self.cached_session() as sess:
+        self.evaluate(variables.global_variables_initializer())
+        self.assertAllEqual(*self.evaluate([static_grads, dynamic_grads]))
 
   def testIndexedSlicesGradientInCondInWhileLoop(self):
     self.doTestIndexedSlicesGradientInCondInWhileLoop(use_resource=False)
@@ -284,7 +280,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
 
   def testIndexedSlicesWithShapeGradientInWhileLoop(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         num_steps = 9
 
         inputs = array_ops.placeholder(dtype=dtype, shape=[num_steps])
@@ -313,7 +309,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
 
   def testIndexedSlicesWithDynamicShapeGradientInWhileLoop(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         inputs = array_ops.placeholder(dtype=dtype)
         initial_outputs = tensor_array_ops.TensorArray(
             dtype=dtype, dynamic_size=True, size=1)
@@ -339,7 +335,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
         self.assertAllEqual(grad, [1] * 3)
 
   def testGradientThroughSingleBranchOutsideOfContext(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(2.)
       s = constant_op.constant(True)
       x_false, x_true = control_flow_ops.switch(x, s)
@@ -349,12 +345,9 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       self.assertEquals(grad_x_false.eval(), 0.)
 
 
-@test_util.with_c_api
 class CondTest(test_util.TensorFlowTestCase):
 
   def testCondTrue(self):
-    # Create new Graph and Session for each test so we pick up _USE_C_API
-    # correctly.
     with ops.Graph().as_default():
       with session.Session():
         x = constant_op.constant(2)
@@ -405,9 +398,9 @@ class CondTest(test_util.TensorFlowTestCase):
             pred=bool_var,
             true_fn=lambda: state_ops.assign(bool_var, False),
             false_fn=lambda: True)
-        sess.run(bool_var.initializer)
-        self.assertEquals(sess.run(cond_on_bool_var), False)
-        self.assertEquals(sess.run(cond_on_bool_var), True)
+        self.evaluate(bool_var.initializer)
+        self.assertEquals(self.evaluate(cond_on_bool_var), False)
+        self.assertEquals(self.evaluate(cond_on_bool_var), True)
 
   def testCondMissingArg1(self):
     with ops.Graph().as_default():
@@ -438,11 +431,10 @@ class CondTest(test_util.TensorFlowTestCase):
           control_flow_ops.cond(True, lambda: x, lambda: x, fn2=lambda: x)
 
 
-@test_util.with_c_api
 class ContextTest(test_util.TensorFlowTestCase):
 
   def testCondContext(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = constant_op.constant(2)
       y = constant_op.constant(5)
       control_flow_ops.cond(
@@ -456,7 +448,7 @@ class ContextTest(test_util.TensorFlowTestCase):
               control_flow_ops.CondContext.from_proto(c.to_proto()).to_proto())
 
   def _testWhileContextHelper(self, maximum_iterations=None):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       i = constant_op.constant(0)
       c = lambda i: math_ops.less(i, 10)
       b = lambda i: math_ops.add(i, 1)
@@ -477,17 +469,28 @@ class ContextTest(test_util.TensorFlowTestCase):
     self._testWhileContextHelper(maximum_iterations=10)
 
   def testControlContextImportScope(self):
-    with self.test_session():
+    class NoABCControlFlowContext(control_flow_ops.ControlFlowContext):
+      """A noop wrapper around `ControlFlowContext`.
+
+      `ControlFlowContext` is an ABC and therefore cannot be instantiated.
+      """
+      # pylint: disable=useless-super-delegation
+
+      def to_control_flow_context_def(self, context_def, export_scope=None):
+        super(NoABCControlFlowContext, self).to_control_flow_context_def(
+            context_def, export_scope)
+
+    with self.cached_session():
       constant_op.constant(0, name="a")
       constant_op.constant(2, name="test_scope/a")
       b1 = constant_op.constant(1, name="b")
       b2 = constant_op.constant(3, name="test_scope/b")
 
-      c = control_flow_ops.ControlFlowContext()
+      c = NoABCControlFlowContext()
       c._values = ["a", "b"]
       c._external_values = {"a": b1}
 
-      c_with_scope = control_flow_ops.ControlFlowContext(
+      c_with_scope = NoABCControlFlowContext(
           values_def=c._to_values_def(), import_scope="test_scope")
 
       # _values and _external_values should be have scope prepended.
@@ -527,7 +530,7 @@ def _raw_nested_shape(nested_shape):
 
   def _raw_shape(shape):
     if isinstance(shape, tensor_shape.TensorShape) and shape.ndims is not None:
-      return [x.value for x in shape]
+      return [x.value for x in shape.dims]
     else:
       return None
 
@@ -535,7 +538,6 @@ def _raw_nested_shape(nested_shape):
 
 
 # TODO(yori): Add tests for indexed slices.
-@test_util.with_c_api
 class DataTypesTest(test_util.TensorFlowTestCase):
 
   def assertAllEqualNested(self, a, b):
@@ -571,7 +573,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     output_case = control_flow_ops.case([(condition, fn_true)], fn_false,
                                         strict=strict)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables.global_variables_initializer().run()
       true_feed_dict = {condition: True}
       true_feed_dict.update(feed_dict)
@@ -885,7 +887,6 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(matrix.get_shape(), tensor_shape.TensorShape([2, 2]))
 
 
-@test_util.with_c_api
 class CaseTest(test_util.TensorFlowTestCase):
 
   def testCase_withDefault(self):
@@ -894,7 +895,7 @@ class CaseTest(test_util.TensorFlowTestCase):
                   (math_ops.equal(x, 2), lambda: constant_op.constant(4))]
     default = lambda: constant_op.constant(6)
     output = control_flow_ops.case(conditions, default, exclusive=True)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 6)
@@ -906,7 +907,7 @@ class CaseTest(test_util.TensorFlowTestCase):
                   (math_ops.equal(x, 2), lambda: constant_op.constant(6))]
     default = lambda: constant_op.constant(8)
     output = control_flow_ops.case(conditions, default, exclusive=True)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 8)
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
@@ -919,7 +920,7 @@ class CaseTest(test_util.TensorFlowTestCase):
                   (math_ops.equal(x, 2), lambda: constant_op.constant(6))]
     default = lambda: constant_op.constant(8)
     output = control_flow_ops.case(conditions, default, exclusive=False)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 8)
@@ -930,7 +931,7 @@ class CaseTest(test_util.TensorFlowTestCase):
                   (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
                   (math_ops.equal(x, 3), lambda: constant_op.constant(6))]
     output = control_flow_ops.case(conditions, exclusive=True)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 6)
@@ -941,10 +942,77 @@ class CaseTest(test_util.TensorFlowTestCase):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2))]
     output = control_flow_ops.case(conditions, exclusive=True)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 4})
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCase_dict(self):
+    x = constant_op.constant(2)
+    conditions = {
+        math_ops.equal(x, 1): lambda: constant_op.constant(2),
+        math_ops.equal(x, 2): lambda: constant_op.constant(4)
+    }
+    output = control_flow_ops.case(conditions, exclusive=True)
+    self.assertEqual(4, self.evaluate(output))
+
+
+class WhileLoopTestCase(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testWhileLoopWithSingleVariable(self):
+    i = constant_op.constant(0)
+    c = lambda i: math_ops.less(i, 10)
+    b = lambda i: math_ops.add(i, 1)
+    r = control_flow_ops.while_loop(c, b, [i])
+
+    self.assertEqual(self.evaluate(r), 10)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEagerWhileLoopWithSingleVariable_bodyReturnsTuple(self):
+    i = constant_op.constant(0)
+    c = lambda i: math_ops.less(i, 10)
+    b = lambda i: (math_ops.add(i, 1),)
+    r = control_flow_ops.while_loop(c, b, [i])
+
+    # Expect a tuple since that is what the body returns.
+    self.assertEqual(self.evaluate(r), (10,))
+
+  def testWhileLoopSameReturnShape_False(self):
+    i = constant_op.constant(0)
+    c = lambda i, _: math_ops.less(i, 10)
+
+    # Body returns a [tensor, []]
+    b = lambda i, _: [math_ops.add(i, 1), []]
+
+    # Should only return the tensor.
+    r = control_flow_ops.while_loop(c, b, [i, []])
+    self.assertEqual(self.evaluate(r), 10)
+
+  def testWhileLoopSameReturnShape_True(self):
+    i = constant_op.constant(0)
+    c = lambda i, _: math_ops.less(i, 10)
+
+    # Body returns a [tensor, []]
+    b = lambda i, _: [math_ops.add(i, 1), []]
+
+    # Should only return the original structure.
+    r = control_flow_ops.while_loop(c, b, [i, []], return_same_structure=True)
+    self.assertEqual(self.evaluate(r), [10, []])
+
+
+class AssertTest(test_util.TensorFlowTestCase):
+
+  def testAssert(self):
+    i = constant_op.constant(0)
+    c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+    self.evaluate(c)
+
+    i = constant_op.constant(10)
+    c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(c)
 
 
 if __name__ == "__main__":

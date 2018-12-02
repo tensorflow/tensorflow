@@ -18,11 +18,14 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/types/span.h"
+#include "llvm/Target/TargetMachine.h"
+#include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -53,7 +56,7 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
                            RelocationModel relocation_model);
   ~CpuAotCompilationOptions() override;
 
-  perftools::gputools::Platform::Id PlatformId() const override;
+  se::Platform::Id PlatformId() const override;
 
   // The triple used for compilation, similar to clang's -target flag.
   const string& triple() const { return triple_; }
@@ -76,27 +79,41 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 
 class CpuAotCompilationResult : public AotCompilationResult {
  public:
-  CpuAotCompilationResult(ObjectFileData object_file_data,
-                          BufferSizes buffer_sizes, int64 result_buffer_index);
+  CpuAotCompilationResult(
+      ObjectFileData object_file_data,
+      std::vector<::tensorflow::cpu_function_runtime::BufferInfo> buffer_infos,
+      int64 result_buffer_index,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
   ~CpuAotCompilationResult();
 
+  HloProfilePrinterData* hlo_profile_printer_data() const {
+    return hlo_profile_printer_data_.get();
+  }
+
   const ObjectFileData& object_file_data() const { return object_file_data_; }
-  const BufferSizes& buffer_sizes() const { return buffer_sizes_; }
+  const std::vector<::tensorflow::cpu_function_runtime::BufferInfo>&
+  buffer_infos() const {
+    return buffer_infos_;
+  }
   int64 result_buffer_index() const { return result_buffer_index_; }
 
  private:
   // Contains the compiled computation: an object file.
   const ObjectFileData object_file_data_;
 
-  // The list of buffer sizes which should be allocated in order to execute the
-  // compiled computation.  These buffers are used for temporary buffers used
-  // ephemerally during computation as well as the output result.
-  const BufferSizes buffer_sizes_;
+  // A list of BufferInfo objects describing the buffers used by the XLA
+  // computation.
+  const std::vector<::tensorflow::cpu_function_runtime::BufferInfo>
+      buffer_infos_;
 
   // Contains which buffer index into |buffer_sizes| was designated to the
   // result of the computation.  This buffer should be passed into the output
   // parameter when calling the compiled computation.
   const int64 result_buffer_index_;
+
+  // Contains an instance of HloProfilePrinterData if HLO profiling is enabled,
+  // otherwise is nullptr.
+  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
 };
 
 // CPU-targeting implementation of the XLA Compiler interface.
@@ -112,25 +129,23 @@ class CpuCompiler : public LLVMCompiler {
   // Bring in
   // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
   //     std::vector<std::unique_ptr<HloModule>> modules,
-  //     std::vector<std::vector<perftools::gputools::StreamExecutor*>>
+  //     std::vector<std::vector<se::StreamExecutor*>>
   //        stream_execs)
   using LLVMCompiler::Compile;
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
-      std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* stream_exec,
+      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
-      std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* stream_exec,
+      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      const AotCompilationOptions& options) override;
 
-  perftools::gputools::Platform::Id PlatformId() const override;
+  se::Platform::Id PlatformId() const override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
@@ -140,7 +155,18 @@ class CpuCompiler : public LLVMCompiler {
 
   // Runs the HLO passes which are necessary for both optimizations and
   // correctness.
-  Status RunHloPasses(HloModule* module, bool is_aot_compile);
+  Status RunHloPasses(HloModule* module, bool is_aot_compile,
+                      llvm::TargetMachine* target_machine);
+
+  // Runs HLO passes up to and including layout assignment.
+  Status RunHloPassesThroughLayoutAssn(
+      HloModule* module, bool /*is_aot_compile*/,
+      LLVMTargetMachineFeatures* target_machine_features);
+
+  // Runs HLO passes after layout assignment.
+  Status RunHloPassesAfterLayoutAssn(
+      HloModule* module, bool is_aot_compile,
+      LLVMTargetMachineFeatures* target_machine_features);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
 };

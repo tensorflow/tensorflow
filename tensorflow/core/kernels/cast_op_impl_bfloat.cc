@@ -22,30 +22,19 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetCpuCastFromBfloat(DataType dst_dtype) {
-  if (dst_dtype == DT_FLOAT) {
-    return [](OpKernelContext* ctx, const Tensor& inp, Tensor* out) {
-      int64 N = out->NumElements();
-      auto worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
-      auto work = [&inp, &out](int64 start, int64 end) {
-        BFloat16ToFloat(inp.flat<bfloat16>().data() + start,
-                        out->flat<float>().data() + start, end - start);
-      };
-      Shard(worker_threads->num_threads, worker_threads->workers, N, 2, work);
-    };
-  }
+CastFunctorType GetCpuCastFromBfloat(DataType dst_dtype) {
+  CURRY_TYPES3(CAST_CASE, CPUDevice, bfloat16);
   return nullptr;
 }
 
 #if GOOGLE_CUDA
-std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetGpuCastFromBfloat(DataType dst_dtype) {
+CastFunctorType GetGpuCastFromBfloat(DataType dst_dtype) {
   if (dst_dtype == DT_FLOAT) {
-    return [](OpKernelContext* ctx, const Tensor& inp, Tensor* out) {
+    return [](OpKernelContext* ctx, const Tensor& inp, Tensor* out,
+              bool truncate) {
       functor::CastFunctor<GPUDevice, float, bfloat16> func;
       func(ctx->eigen_device<GPUDevice>(), out->flat<float>(),
-           inp.flat<bfloat16>());
+           inp.flat<bfloat16>(), truncate);
     };
   }
   return nullptr;

@@ -17,64 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import random_seed
-from tensorflow.python.data.util import sparse
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.data.experimental.ops import shuffle_ops
+from tensorflow.python.util import deprecation
 
 
-class _ShuffleAndRepeatDataset(dataset_ops.Dataset):
-  """A `Dataset` that fuses `shuffle` and `repeat`."""
-
-  def __init__(self,
-               input_dataset,
-               buffer_size,
-               count=None,
-               seed=None):
-    """See `Dataset.map()` for details."""
-    super(_ShuffleAndRepeatDataset, self).__init__()
-    self._input_dataset = input_dataset
-    self._buffer_size = ops.convert_to_tensor(
-        buffer_size, dtype=dtypes.int64, name="buffer_size")
-    if count is None:
-      self._count = constant_op.constant(-1, dtype=dtypes.int64, name="count")
-    else:
-      self._count = ops.convert_to_tensor(
-          count, dtype=dtypes.int64, name="count")
-    self._seed, self._seed2 = random_seed.get_seed(seed)
-
-  def _as_variant_tensor(self):
-    # pylint: disable=protected-access
-    input_resource = self._input_dataset._as_variant_tensor()
-    return gen_dataset_ops.shuffle_and_repeat_dataset(
-        input_resource,
-        buffer_size=self._buffer_size,
-        count=self._count,
-        seed=self._seed,
-        seed2=self._seed2,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
-    # pylint: enable=protected-access
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-
+@deprecation.deprecated(None,
+                        "Use `tf.data.experimental.shuffle_and_repeat(...)`.")
 def shuffle_and_repeat(buffer_size, count=None, seed=None):
   """Shuffles and repeats a Dataset returning a new permutation for each epoch.
 
@@ -97,14 +45,10 @@ def shuffle_and_repeat(buffer_size, count=None, seed=None):
       indefinitely.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
-
-  def _apply_fn(dataset):  # pylint: disable=missing-docstring
-    return _ShuffleAndRepeatDataset(dataset, buffer_size, count, seed)
-
-  return _apply_fn
+  return shuffle_ops.shuffle_and_repeat(buffer_size, count, seed)

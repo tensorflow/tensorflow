@@ -39,7 +39,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.tools import optimize_for_inference_lib
 
 
-@test_util.with_c_api
 class OptimizeForInferenceTest(test.TestCase):
 
   def create_node_def(self, op, name, inputs):
@@ -129,8 +128,9 @@ class OptimizeForInferenceTest(test.TestCase):
         graph_def, [], [add_name], dtypes.float32.as_datatype_enum)
     self.assertProtoEquals(expected_output, output)
 
+  @test_util.run_deprecated_v1
   def testFoldBatchNorms(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
       input_op = constant_op.constant(
           np.array(inputs), shape=[1, 1, 6, 2], dtype=dtypes.float32)
@@ -162,7 +162,7 @@ class OptimizeForInferenceTest(test.TestCase):
     optimized_graph_def = optimize_for_inference_lib.fold_batch_norms(
         original_graph_def)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")
       optimized_result = sess.run(["optimized/output:0"])
@@ -172,9 +172,10 @@ class OptimizeForInferenceTest(test.TestCase):
     for node in optimized_graph_def.node:
       self.assertNotEqual("BatchNormWithGlobalNormalization", node.op)
 
+  @test_util.run_deprecated_v1
   def testFoldFusedBatchNorms(self):
     for data_format, use_gpu in [("NHWC", False), ("NCHW", True)]:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
         input_op = constant_op.constant(
             np.array(inputs),
@@ -213,10 +214,9 @@ class OptimizeForInferenceTest(test.TestCase):
       optimized_graph_def = optimize_for_inference_lib.fold_batch_norms(
           original_graph_def)
 
-      with self.test_session(use_gpu=use_gpu) as sess:
-        _ = importer.import_graph_def(
-            optimized_graph_def, input_map={}, name="optimized")
-        optimized_result = sess.run(["optimized/output:0"])
+      _ = importer.import_graph_def(
+          optimized_graph_def, input_map={}, name="optimized")
+      optimized_result = sess.run(["optimized/output:0"])
 
       self.assertAllClose(
           original_result, optimized_result, rtol=1e-04, atol=1e-06)
@@ -224,8 +224,9 @@ class OptimizeForInferenceTest(test.TestCase):
       for node in optimized_graph_def.node:
         self.assertNotEqual("FusedBatchNorm", node.op)
 
+  @test_util.run_deprecated_v1
   def testFuseResizePadAndConv(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
       input_op = constant_op.constant(
           np.array(inputs), shape=[1, 2, 3, 2], dtype=dtypes.float32)
@@ -243,7 +244,7 @@ class OptimizeForInferenceTest(test.TestCase):
     optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
         original_graph_def, ["output"])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")
       optimized_result = sess.run(["optimized/output:0"])
@@ -255,8 +256,9 @@ class OptimizeForInferenceTest(test.TestCase):
       self.assertNotEqual("MirrorPad", node.op)
       self.assertNotEqual("ResizeBilinear", node.op)
 
+  @test_util.run_deprecated_v1
   def testFuseResizeAndConv(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
       input_op = constant_op.constant(
           np.array(inputs), shape=[1, 2, 3, 2], dtype=dtypes.float32)
@@ -272,7 +274,7 @@ class OptimizeForInferenceTest(test.TestCase):
     optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
         original_graph_def, ["output"])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")
       optimized_result = sess.run(["optimized/output:0"])
@@ -284,8 +286,9 @@ class OptimizeForInferenceTest(test.TestCase):
       self.assertNotEqual("MirrorPad", node.op)
 
 
+  @test_util.run_deprecated_v1
   def testFusePadAndConv(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
       input_op = constant_op.constant(
           np.array(inputs), shape=[1, 2, 3, 2], dtype=dtypes.float32)
@@ -301,7 +304,7 @@ class OptimizeForInferenceTest(test.TestCase):
     optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
         original_graph_def, ["output"])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")
       optimized_result = sess.run(["optimized/output:0"])

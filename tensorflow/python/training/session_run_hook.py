@@ -84,11 +84,6 @@ Note that if sess.run() raises OutOfRangeError or StopIteration then
 hooks.after_run() will not be called but hooks.end() will still be called.
 If sess.run() raises any other exception then neither hooks.after_run() nor
 hooks.end() will be called.
-
-@@SessionRunHook
-@@SessionRunArgs
-@@SessionRunContext
-@@SessionRunValues
 """
 
 from __future__ import absolute_import
@@ -191,7 +186,7 @@ class SessionRunHook(object):
     pass
 
 
-@tf_export("train.SessionRunArgs")
+@tf_export(v1=["train.SessionRunArgs"])
 class SessionRunArgs(
     collections.namedtuple("SessionRunArgs",
                            ["fetches", "feed_dict", "options"])):
@@ -216,7 +211,7 @@ class SessionRunArgs(
     return super(SessionRunArgs, cls).__new__(cls, fetches, feed_dict, options)
 
 
-@tf_export("train.SessionRunContext")
+@tf_export(v1=["train.SessionRunContext"])
 class SessionRunContext(object):
   """Provides information about the `session.run()` call being made.
 
@@ -268,7 +263,7 @@ class SessionRunContext(object):
     self._stop_requested = True
 
 
-@tf_export("train.SessionRunValues")
+@tf_export(v1=["train.SessionRunValues"])
 class SessionRunValues(
     collections.namedtuple("SessionRunValues",
                            ["results", "options", "run_metadata"])):

@@ -34,6 +34,46 @@ cc_library(
 )
 
 cc_library(
+    name = "reader",
+    srcs = ["reader.cc"],
+    hdrs = ["reader.h"],
+    deps = [
+        ":constants",
+    ] + if_not_mobile([
+        # TODO(b/111634734): :lib and :protos_all contain dependencies that
+        # cannot be built on mobile platforms. Instead, include the appropriate
+        # tf_lib depending on the build platform.
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ]) + if_mobile([
+        # Mobile-friendly SavedModel proto. See go/portable-proto for more info.
+        "//tensorflow/core:saved_model_portable_proto",
+    ]) + if_android([
+        "//tensorflow/core:android_tensorflow_lib",
+    ]) + if_ios([
+        "//tensorflow/core:ios_tensorflow_lib",
+    ]),
+)
+
+tf_cc_test(
+    name = "reader_test",
+    srcs = ["reader_test.cc"],
+    data = [
+        ":saved_model_half_plus_two",
+    ],
+    linkstatic = 1,
+    deps = [
+        ":constants",
+        ":reader",
+        ":tag_constants",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
     name = "loader",
     hdrs = ["loader.h"],
     deps = [
@@ -54,6 +94,7 @@ cc_library(
     hdrs = ["loader.h"],
     deps = [
         ":constants",
+        ":reader",
     ] + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -92,20 +133,6 @@ filegroup(
         "testdata/half_plus_two_pbtxt/**",
         "testdata/half_plus_two_main_op/**",
         "testdata/half_plus_two/**",
+        "testdata/half_plus_two_v2/**",
     ]),
-)
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

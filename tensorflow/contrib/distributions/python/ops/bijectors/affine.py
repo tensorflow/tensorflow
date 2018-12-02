@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops.shape import _DistributionShape
 from tensorflow.python.framework import dtypes
@@ -29,6 +28,8 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.ops.linalg import linalg
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -36,6 +37,14 @@ __all__ = [
 ]
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _as_tensor(x, name):
   """Convenience to convert to `Tensor` or leave as `None`."""
   return None if x is None else ops.convert_to_tensor(x, name=name)
@@ -62,7 +71,7 @@ class Affine(bijector.Bijector):
   matrices, i.e., the matmul is [matrix-free](
   https://en.wikipedia.org/wiki/Matrix-free_methods) when possible.
 
-  Examples:
+  #### Examples
 
   ```python
   # Y = X
@@ -97,6 +106,14 @@ class Affine(bijector.Bijector):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                shift=None,
                scale_identity_multiplier=None,
@@ -184,6 +201,7 @@ class Affine(bijector.Bijector):
     with self._name_scope("init", values=[
         shift, scale_identity_multiplier, scale_diag, scale_tril,
         scale_perturb_diag, scale_perturb_factor]):
+
       # In the absence of `loc` and `scale`, we'll assume `dtype` is `float32`.
       dtype = dtypes.float32
 
@@ -234,7 +252,7 @@ class Affine(bijector.Bijector):
           event_ndims=1,
           validate_args=validate_args)
       super(Affine, self).__init__(
-          event_ndims=1,
+          forward_min_event_ndims=1,
           graph_parents=(
               [self._scale] if tensor_util.is_tensor(self._scale)
               else self._scale.graph_parents +
@@ -360,16 +378,17 @@ class Affine(bijector.Bijector):
         x, sample_shape, expand_batch_dim=False)
     return x
 
-  def _inverse_log_det_jacobian(self, y):
-    return -self._forward_log_det_jacobian(y)
-
   def _forward_log_det_jacobian(self, x):
+    # is_constant_jacobian = True for this bijector, hence the
+    # `log_det_jacobian` need only be specified for a single input, as this will
+    # be tiled to match `event_ndims`.
     if self._is_only_identity_multiplier:
       # We don't pad in this case and instead let the fldj be applied
       # via broadcast.
       event_size = array_ops.shape(x)[-1]
       event_size = math_ops.cast(event_size, dtype=self._scale.dtype)
       return math_ops.log(math_ops.abs(self._scale)) * event_size
+
     return self.scale.log_abs_determinant()
 
   def _maybe_check_scale(self):

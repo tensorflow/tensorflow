@@ -26,8 +26,8 @@ limitations under the License.
 // * Task numbers are within the specified replica, so there are as
 //   many "task zeros" as replicas.
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_DEVICE_H_
-#define TENSORFLOW_COMMON_RUNTIME_DEVICE_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_H_
 
 #include <memory>
 #include <string>
@@ -51,8 +51,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+class DeviceMgr;
+
 class Device : public DeviceBase {
  public:
+  // Callback type that takes a Status and returns void.
+  typedef std::function<void(const Status&)> DoneCallback;
+
   Device(Env* env, const DeviceAttributes& device_attributes);
   ~Device() override;
 
@@ -99,10 +104,27 @@ class Device : public DeviceBase {
     }
   }
 
+  // If true, and tracing is enabled, the `tracing::ScopedAnnotation()` tracing
+  // mechanism will be used instead of `tracing::ScopedActivity()`. Some devices
+  // may override this method to use annotations, which enable child activities
+  // (such as GPU kernel launches) to be related to the OpKernel invocation.
+  virtual bool TraceUsingAnnotations() const { return false; }
+
   // Blocks until all operations queued on the device at the time of
   // the call have completed.  Returns any error pending on the device
   // at completion.
   virtual Status Sync() = 0;
+
+  // Calls the given callback when all operations queued on the device at the
+  // time of the call have completed. The callback is passed any error pending
+  // on the device at completion.
+  // TODO(b/112409994): Consolidate these two APIs, removing the synchronous
+  // version.
+  virtual void Sync(const DoneCallback& done);
+
+  // Override this to return true for devices that require a Sync() call before
+  // session completion.
+  virtual bool RequiresSyncOnCompletion() const { return false; }
 
   // Optionally modify the device's GraphDef before execution.
   //
@@ -133,6 +155,10 @@ class Device : public DeviceBase {
   // Returns the resource manager associated w/ this device.
   virtual ResourceMgr* resource_manager() { return rmgr_; }
 
+  // Returns the device manager that owns this device, or nullptr if this Device
+  // is not owned by a device manager.
+  DeviceMgr* device_mgr() const { return device_mgr_; }
+
   // Summarizes the status of this Device, for debugging.
   string DebugString() const { return ProtoDebugString(device_attributes_); }
 
@@ -158,6 +184,11 @@ class Device : public DeviceBase {
   }
 
  private:
+  friend class DeviceMgr;
+
+  // Pointer to the device manager that owns this device. Not owned.
+  DeviceMgr* device_mgr_ = nullptr;
+
   const DeviceAttributes device_attributes_;
   DeviceNameUtils::ParsedName parsed_name_;
 
@@ -172,4 +203,4 @@ class Device : public DeviceBase {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_DEVICE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_H_

@@ -25,6 +25,7 @@ import logging as _logging
 import os as _os
 import sys as _sys
 import time as _time
+import traceback as _traceback
 from logging import DEBUG
 from logging import ERROR
 from logging import FATAL
@@ -34,16 +35,52 @@ import threading
 
 import six
 
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
 
-
-# Don't use this directly. Use _get_logger() instead.
+# Don't use this directly. Use get_logger() instead.
 _logger = None
 _logger_lock = threading.Lock()
 
 
-def _get_logger():
+def _get_caller(offset=3):
+  """Returns a code and frame object for the lowest non-logging stack frame."""
+  # Use sys._getframe().  This avoids creating a traceback object.
+  # pylint: disable=protected-access
+  f = _sys._getframe(offset)
+  # pylint: enable=protected-access
+  our_file = f.f_code.co_filename
+  f = f.f_back
+  while f:
+    code = f.f_code
+    if code.co_filename != our_file:
+      return code, f
+    f = f.f_back
+  return None, None
+
+
+# The definition of `findCaller` changed in Python 3.2
+if _sys.version_info.major >= 3 and _sys.version_info.minor >= 2:
+  def _logger_find_caller(stack_info=False):  # pylint: disable=g-wrong-blank-lines
+    code, frame = _get_caller(4)
+    sinfo = None
+    if stack_info:
+      sinfo = '\n'.join(_traceback.format_stack())
+    if code:
+      return (code.co_filename, frame.f_lineno, code.co_name, sinfo)
+    else:
+      return '(unknown file)', 0, '(unknown function)', sinfo
+else:
+  def _logger_find_caller():  # pylint: disable=g-wrong-blank-lines
+    code, frame = _get_caller(4)
+    if code:
+      return (code.co_filename, frame.f_lineno, code.co_name)
+    else:
+      return '(unknown file)', 0, '(unknown function)'
+
+
+@tf_export('get_logger')
+def get_logger():
+  """Return TF logger instance."""
   global _logger
 
   # Use double-checked locking to avoid taking lock unnecessarily.
@@ -58,6 +95,9 @@ def _get_logger():
 
     # Scope the TensorFlow logger to not conflict with users' loggers.
     logger = _logging.getLogger('tensorflow')
+
+    # Override findCaller on the logger to skip internal helper functions
+    logger.findCaller = _logger_find_caller
 
     # Don't further configure the TensorFlow logger if the root logger is
     # already configured. This prevents double logging in those cases.
@@ -91,39 +131,39 @@ def _get_logger():
     _logger_lock.release()
 
 
-@tf_export('logging.log')
+@tf_export(v1=['logging.log'])
 def log(level, msg, *args, **kwargs):
-  _get_logger().log(level, msg, *args, **kwargs)
+  get_logger().log(level, msg, *args, **kwargs)
 
 
-@tf_export('logging.debug')
+@tf_export(v1=['logging.debug'])
 def debug(msg, *args, **kwargs):
-  _get_logger().debug(msg, *args, **kwargs)
+  get_logger().debug(msg, *args, **kwargs)
 
 
-@tf_export('logging.error')
+@tf_export(v1=['logging.error'])
 def error(msg, *args, **kwargs):
-  _get_logger().error(msg, *args, **kwargs)
+  get_logger().error(msg, *args, **kwargs)
 
 
-@tf_export('logging.fatal')
+@tf_export(v1=['logging.fatal'])
 def fatal(msg, *args, **kwargs):
-  _get_logger().fatal(msg, *args, **kwargs)
+  get_logger().fatal(msg, *args, **kwargs)
 
 
-@tf_export('logging.info')
+@tf_export(v1=['logging.info'])
 def info(msg, *args, **kwargs):
-  _get_logger().info(msg, *args, **kwargs)
+  get_logger().info(msg, *args, **kwargs)
 
 
-@tf_export('logging.warn')
+@tf_export(v1=['logging.warn'])
 def warn(msg, *args, **kwargs):
-  _get_logger().warn(msg, *args, **kwargs)
+  get_logger().warn(msg, *args, **kwargs)
 
 
-@tf_export('logging.warning')
+@tf_export(v1=['logging.warning'])
 def warning(msg, *args, **kwargs):
-  _get_logger().warning(msg, *args, **kwargs)
+  get_logger().warning(msg, *args, **kwargs)
 
 
 _level_names = {
@@ -144,20 +184,20 @@ _log_prefix = None  # later set to google2_log_prefix
 _log_counter_per_token = {}
 
 
-@tf_export('logging.TaskLevelStatusMessage')
+@tf_export(v1=['logging.TaskLevelStatusMessage'])
 def TaskLevelStatusMessage(msg):
   error(msg)
 
 
-@tf_export('logging.flush')
+@tf_export(v1=['logging.flush'])
 def flush():
   raise NotImplementedError()
 
 
 # Code below is taken from pyglib/logging
-@tf_export('logging.vlog')
+@tf_export(v1=['logging.vlog'])
 def vlog(level, msg, *args, **kwargs):
-  _get_logger().log(level, msg, *args, **kwargs)
+  get_logger().log(level, msg, *args, **kwargs)
 
 
 def _GetNextLogCountPerToken(token):
@@ -175,7 +215,7 @@ def _GetNextLogCountPerToken(token):
   return _log_counter_per_token[token]
 
 
-@tf_export('logging.log_every_n')
+@tf_export(v1=['logging.log_every_n'])
 def log_every_n(level, msg, n, *args):
   """Log 'msg % args' at level 'level' once per 'n' times.
 
@@ -192,7 +232,7 @@ def log_every_n(level, msg, n, *args):
   log_if(level, msg, not (count % n), *args)
 
 
-@tf_export('logging.log_first_n')
+@tf_export(v1=['logging.log_first_n'])
 def log_first_n(level, msg, n, *args):  # pylint: disable=g-bad-name
   """Log 'msg % args' at level 'level' only first 'n' times.
 
@@ -208,7 +248,7 @@ def log_first_n(level, msg, n, *args):  # pylint: disable=g-bad-name
   log_if(level, msg, count < n, *args)
 
 
-@tf_export('logging.log_if')
+@tf_export(v1=['logging.log_if'])
 def log_if(level, msg, condition, *args):
   """Log 'msg % args' at level 'level' only if condition is fulfilled."""
   if condition:
@@ -217,18 +257,10 @@ def log_if(level, msg, condition, *args):
 
 def _GetFileAndLine():
   """Returns (filename, linenumber) for the stack frame."""
-  # Use sys._getframe().  This avoids creating a traceback object.
-  # pylint: disable=protected-access
-  f = _sys._getframe()
-  # pylint: enable=protected-access
-  our_file = f.f_code.co_filename
-  f = f.f_back
-  while f:
-    code = f.f_code
-    if code.co_filename != our_file:
-      return (code.co_filename, f.f_lineno)
-    f = f.f_back
-  return ('<unknown>', 0)
+  code, f = _get_caller()
+  if not code:
+    return ('<unknown>', 0)
+  return (code.co_filename, f.f_lineno)
 
 
 def google2_log_prefix(level, timestamp=None, file_and_line=None):
@@ -265,16 +297,16 @@ def google2_log_prefix(level, timestamp=None, file_and_line=None):
   return s
 
 
-@tf_export('logging.get_verbosity')
+@tf_export(v1=['logging.get_verbosity'])
 def get_verbosity():
   """Return how much logging output will be produced."""
-  return _get_logger().getEffectiveLevel()
+  return get_logger().getEffectiveLevel()
 
 
-@tf_export('logging.set_verbosity')
+@tf_export(v1=['logging.set_verbosity'])
 def set_verbosity(v):
   """Sets the threshold for what messages will be logged."""
-  _get_logger().setLevel(v)
+  get_logger().setLevel(v)
 
 
 def _get_thread_id():
@@ -287,35 +319,8 @@ def _get_thread_id():
 
 _log_prefix = google2_log_prefix
 
-# Controls which methods from pyglib.logging are available within the project.
-# Do not add methods here without also adding to platform/tf_logging.py.
-_allowed_symbols = [
-    'DEBUG',
-    'ERROR',
-    'FATAL',
-    'INFO',
-    'TaskLevelStatusMessage',
-    'WARN',
-    'debug',
-    'error',
-    'fatal',
-    'flush',
-    'get_verbosity',
-    'info',
-    'log',
-    'log_if',
-    'log_every_n',
-    'log_first_n',
-    'set_verbosity',
-    'vlog',
-    'warn',
-    'warning',
-]
-
-tf_export('logging.DEBUG').export_constant(__name__, 'DEBUG')
-tf_export('logging.ERROR').export_constant(__name__, 'ERROR')
-tf_export('logging.FATAL').export_constant(__name__, 'FATAL')
-tf_export('logging.INFO').export_constant(__name__, 'INFO')
-tf_export('logging.WARN').export_constant(__name__, 'WARN')
-
-remove_undocumented(__name__, _allowed_symbols)
+tf_export(v1=['logging.DEBUG']).export_constant(__name__, 'DEBUG')
+tf_export(v1=['logging.ERROR']).export_constant(__name__, 'ERROR')
+tf_export(v1=['logging.FATAL']).export_constant(__name__, 'FATAL')
+tf_export(v1=['logging.INFO']).export_constant(__name__, 'INFO')
+tf_export(v1=['logging.WARN']).export_constant(__name__, 'WARN')

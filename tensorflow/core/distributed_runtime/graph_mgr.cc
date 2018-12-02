@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 
+#include <chrono>  // NOLINT(build/c++11)
 #include <vector>
 
+#include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -24,12 +26,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -88,7 +92,7 @@ static Status ValidateGraphDefForDevices(const GraphDef& gdef) {
   for (const auto& ndef : gdef.node()) {
     if (!DeviceNameUtils::ParseFullName(ndef.device(), &parsed)) {
       return errors::InvalidArgument("Missing device name in: ",
-                                     SummarizeNodeDef(ndef));
+                                     FormatNodeDefForError(ndef));
     }
   }
   return Status::OK();
@@ -118,9 +122,11 @@ Status GraphMgr::DecorateAndPublishGraphForDebug(
 Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
                           const GraphOptions& graph_options,
                           const DebugOptions& debug_options,
+                          int64 collective_graph_key,
                           DistributedFunctionLibraryRuntime* cluster_flr,
                           Item* item) {
   item->session = session;
+  item->collective_graph_key = collective_graph_key;
   item->lib_def.reset(
       new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library()));
 
@@ -229,14 +235,11 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     params.function_library = lib;
     params.create_kernel = [session, lib, opseg](const NodeDef& ndef,
                                                  OpKernel** kernel) {
-      // We do not share the kernel via the OpSegment if the node is
-      // stateless, or a function.
       // NOTE(mrry): We must not share function kernels (implemented
       // using `CallOp`) between subgraphs, because `CallOp::handle_`
       // is tied to a particular subgraph. Even if the function itself
       // is stateful, the `CallOp` that invokes it is not.
-      if (!lib->IsStateful(ndef.op()) ||
-          lib->GetFunctionLibraryDefinition()->Find(ndef.op()) != nullptr) {
+      if (!OpSegment::ShouldOwnKernel(lib, ndef.op())) {
         return lib->CreateKernel(ndef, kernel);
       }
       auto create_fn = [lib, &ndef](OpKernel** kernel) {
@@ -248,8 +251,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       return opseg->FindOrCreate(session, ndef.name(), kernel, create_fn);
     };
     params.delete_kernel = [lib](OpKernel* kernel) {
-      // If the node is stateful, opseg owns it. Otherwise, delete it.
-      if (kernel && !lib->IsStateful(kernel->type_string())) {
+      if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string())) {
         delete kernel;
       }
     };
@@ -257,7 +259,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph,
                        /*shape_map=*/nullptr);
 
-    // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph.
+    // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
     if (!debug_options.debug_tensor_watch_opts().empty()) {
       TF_RETURN_IF_ERROR(DecorateAndPublishGraphForDebug(
           debug_options, subgraph.get(), params.device));
@@ -280,11 +282,12 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 Status GraphMgr::Register(const string& session, const GraphDef& gdef,
                           const GraphOptions& graph_options,
                           const DebugOptions& debug_options,
+                          int64 collective_graph_key,
                           DistributedFunctionLibraryRuntime* cluster_flr,
                           string* handle) {
   Item* item = new Item;
-  Status s =
-      InitItem(session, gdef, graph_options, debug_options, cluster_flr, item);
+  Status s = InitItem(session, gdef, graph_options, debug_options,
+                      collective_graph_key, cluster_flr, item);
   if (!s.ok()) {
     item->Unref();
     return s;
@@ -385,6 +388,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             MutableRunGraphResponseWrapper* response,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
+  const uint64 start_time_usecs = Env::Default()->NowMicros();
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -415,7 +419,12 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   RemoteRendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
   Status s = rendezvous->Initialize(session);
-
+  CollectiveExecutor::Handle* ce_handle =
+      item->collective_graph_key != BuildGraphOptions::kNoCollectiveGraphKey
+          ? new CollectiveExecutor::Handle(
+                worker_env_->collective_executor_mgr->FindOrCreate(step_id),
+                true)
+          : nullptr;
   // Sends values specified by the caller.
   if (s.ok()) {
     std::vector<string> keys;
@@ -431,22 +440,27 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   if (!s.ok()) {
     done(s);
+    delete ce_handle;
     item->Unref();
     rendezvous->Unref();
     return;
   }
 
-  StartParallelExecutors(handle, step_id, item, rendezvous, collector,
-                         cost_graph, cancellation_manager,
-                         [item, rendezvous, done](const Status& s) {
-                           done(s);
-                           rendezvous->Unref();
-                           item->Unref();
-                         });
+  StartParallelExecutors(
+      handle, step_id, item, rendezvous, ce_handle, collector, cost_graph,
+      cancellation_manager,
+      [item, rendezvous, ce_handle, done, start_time_usecs](const Status& s) {
+        done(s);
+        UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
+        rendezvous->Unref();
+        item->Unref();
+        delete ce_handle;
+      });
 }
 
 void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
                                       Item* item, Rendezvous* rendezvous,
+                                      CollectiveExecutor::Handle* ce_handle,
                                       StepStatsCollector* collector,
                                       CostGraphDef* cost_graph,
                                       CancellationManager* cancellation_manager,
@@ -466,11 +480,9 @@ void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
                             delete step_container;
                           });
   Executor::Args args;
-  {
-    mutex_lock l(mu_);
-    args.step_id = ++next_id_;
-  }
+  args.step_id = step_id;
   args.rendezvous = rendezvous;
+  args.collective_executor = ce_handle ? ce_handle->get() : nullptr;
   args.cancellation_manager = cancellation_manager;
   args.stats_collector = collector;
   args.step_container = step_container;

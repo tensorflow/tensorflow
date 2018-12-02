@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -88,9 +89,9 @@ TEST_F(DynamicStitchOpTest, Error_IndicesMultiDimensional) {
   AddInputFromArray<float>(TensorShape({3}), {0, 40, 70});
   AddInputFromArray<float>(TensorShape({5}), {10, 60, 20, 30, 50});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("data[1].shape = [5] does not start with "
-                            "indices[1].shape = [1,5]"))
+  EXPECT_TRUE(str_util::StrContains(
+      s.ToString(),
+      "data[1].shape = [5] does not start with indices[1].shape = [1,5]"))
       << s;
 }
 
@@ -103,9 +104,9 @@ TEST_F(DynamicStitchOpTest, Error_DataNumDimsMismatch) {
   AddInputFromArray<float>(TensorShape({3}), {0, 40, 70});
   AddInputFromArray<float>(TensorShape({1, 5}), {10, 60, 20, 30, 50});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("data[1].shape = [1,5] does not start with "
-                            "indices[1].shape = [5]"))
+  EXPECT_TRUE(str_util::StrContains(
+      s.ToString(),
+      "data[1].shape = [1,5] does not start with indices[1].shape = [5]"))
       << s;
 }
 
@@ -119,9 +120,10 @@ TEST_F(DynamicStitchOpTest, Error_DataDimSizeMismatch) {
   AddInputFromArray<float>(TensorShape({4, 2}),
                            {10, 11, 60, 61, 20, 21, 30, 31});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Need data[0].shape[1:] = data[1].shape[1:], "
-                            "got data[0].shape = [3,1], data[1].shape = [4,2]"))
+  EXPECT_TRUE(
+      str_util::StrContains(s.ToString(),
+                            "Need data[0].shape[1:] = data[1].shape[1:], got "
+                            "data[0].shape = [3,1], data[1].shape = [4,2]"))
       << s;
 }
 
@@ -134,10 +136,9 @@ TEST_F(DynamicStitchOpTest, Error_DataAndIndicesSizeMismatch) {
   AddInputFromArray<float>(TensorShape({3}), {0, 40, 70});
   AddInputFromArray<float>(TensorShape({4}), {10, 60, 20, 30});
   Status s = RunOpKernel();
-  EXPECT_TRUE(
-      StringPiece(s.ToString())
-          .contains(
-              "data[1].shape = [4] does not start with indices[1].shape = [5]"))
+  EXPECT_TRUE(str_util::StrContains(
+      s.ToString(),
+      "data[1].shape = [4] does not start with indices[1].shape = [5]"))
       << s;
 }
 

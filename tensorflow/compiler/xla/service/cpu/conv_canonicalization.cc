@@ -33,7 +33,8 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
   for (HloInstruction* hlo :
        module->entry_computation()->MakeInstructionPostOrder()) {
     if (hlo->opcode() == HloOpcode::kConvolution &&
-        !PotentiallyImplementedAsEigenConvolution(*hlo)) {
+        !PotentiallyImplementedAsEigenConvolution(*hlo,
+                                                  target_machine_features_)) {
       const ConvolutionDimensionNumbers& dnums =
           hlo->convolution_dimension_numbers();
       auto input_batch_dim = dnums.input_batch_dimension();
@@ -129,8 +130,9 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       // change the dimension mapping but not the dimension sizes. For
       // example, input height and width are the same as before the reshapes.
       HloInstruction* new_conv = module->entry_computation()->AddInstruction(
-          HloInstruction::CreateConvolve(new_conv_shape, new_input, new_kernel,
-                                         hlo->window(), new_dnums));
+          HloInstruction::CreateConvolve(
+              new_conv_shape, new_input, new_kernel, hlo->feature_group_count(),
+              hlo->window(), new_dnums, hlo->precision_config()));
 
       // Reshape the output back to the shape of the original convolution.
       TF_RETURN_IF_ERROR(module->entry_computation()->ReplaceWithNewInstruction(

@@ -81,10 +81,10 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertIs(dtypes.int8, dtypes.as_dtype(np.int8))
     self.assertIs(dtypes.complex64, dtypes.as_dtype(np.complex64))
     self.assertIs(dtypes.complex128, dtypes.as_dtype(np.complex128))
-    self.assertIs(dtypes.string, dtypes.as_dtype(np.object))
+    self.assertIs(dtypes.string, dtypes.as_dtype(np.object_))
     self.assertIs(dtypes.string,
                   dtypes.as_dtype(np.array(["foo", "bar"]).dtype))
-    self.assertIs(dtypes.bool, dtypes.as_dtype(np.bool))
+    self.assertIs(dtypes.bool, dtypes.as_dtype(np.bool_))
     with self.assertRaises(TypeError):
       dtypes.as_dtype(np.dtype([("f1", np.uint), ("f2", np.int32)]))
 
@@ -295,6 +295,20 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertNotEqual(dtypes.int32, int)
     self.assertNotEqual(dtypes.float64, 2.1)
 
+  def testPythonTypesConversion(self):
+    self.assertIs(dtypes.float32, dtypes.as_dtype(float))
+    self.assertIs(dtypes.bool, dtypes.as_dtype(bool))
+
+  def testReduce(self):
+    for enum in dtypes._TYPE_TO_STRING:
+      dtype = dtypes.DType(enum)
+      ctor, args = dtype.__reduce__()
+      self.assertEquals(ctor, dtypes.as_dtype)
+      self.assertEquals(args, (dtype.name,))
+      reconstructed = ctor(*args)
+      self.assertEquals(reconstructed, dtype)
+
 
 if __name__ == "__main__":
   googletest.main()
+

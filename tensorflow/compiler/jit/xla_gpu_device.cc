@@ -16,7 +16,8 @@ limitations under the License.
 // Registers the XLA_GPU device, which is an XlaDevice instantiation that runs
 // operators using XLA via the XLA "CUDA" (GPU) backend.
 
-#include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -28,26 +29,49 @@ namespace tensorflow {
 class XlaGpuDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override;
+                       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
-Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
-                                          const string& name_prefix,
-                                          std::vector<Device*>* devices) {
+Status XlaGpuDeviceFactory::CreateDevices(
+    const SessionOptions& session_options, const string& name_prefix,
+    std::vector<std::unique_ptr<Device>>* devices) {
+  XlaOpRegistry::DeviceRegistration registration;
+  registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
+  registration.autoclustering_policy =
+      XlaOpRegistry::AutoclusteringPolicy::kAlways;
+  registration.compile_resource_ops = true;
+  XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_GPU, registration);
+
   static XlaDeviceOpRegistrations* registrations =
       RegisterXlaDeviceKernels(DEVICE_XLA_GPU, DEVICE_GPU_XLA_JIT);
   (void)registrations;
 
-  std::unique_ptr<XlaDevice> device;
-  Status status = XlaDevice::Create(
-      "CUDA", DEVICE_XLA_GPU, 0, DEVICE_GPU_XLA_JIT, options, name_prefix,
-      /*register_device_for_compilation=*/true, &device);
-  if (!status.ok()) {
+  auto platform = se::MultiPlatformManager::PlatformWithName("CUDA");
+  if (!platform.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
-    VLOG(1) << "Failed to create XLA_GPU device: " << status;
+    VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
     return Status::OK();
   }
-  devices->push_back(device.release());
+
+  for (int i = 0; i < platform.ValueOrDie()->VisibleDeviceCount(); ++i) {
+    XlaDevice::Options options;
+    options.platform = platform.ValueOrDie();
+    options.device_name_prefix = name_prefix;
+    options.device_name = DEVICE_XLA_GPU;
+    options.device_ordinal = i;
+    options.compilation_device_name = DEVICE_GPU_XLA_JIT;
+    options.use_multiple_streams = true;
+    auto device = absl::make_unique<XlaDevice>(session_options, options);
+
+    Status status = device->UseGpuDeviceInfo();
+    if (!status.ok()) {
+      errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
+                              " device number ", i);
+      return status;
+    }
+
+    devices->push_back(std::move(device));
+  }
   return Status::OK();
 }
 
@@ -55,10 +79,14 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_GPU, XlaGpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 6> kAllXlaGpuTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL}};
+constexpr std::array<DataType, 13> kAllXlaGpuTypes = {
+    {DT_UINT8, DT_QUINT8, DT_INT8, DT_QINT8, DT_INT32, DT_QINT32, DT_INT64,
+     DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL, DT_BFLOAT16}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_GPU, XlaLocalLaunchOp, kAllXlaGpuTypes);
+REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_GPU, XlaCompileOp, kAllXlaGpuTypes);
+REGISTER_XLA_RUN_KERNEL(DEVICE_XLA_GPU, XlaRunOp, kAllXlaGpuTypes);
+
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_GPU, kAllXlaGpuTypes);
 
 }  // namespace tensorflow

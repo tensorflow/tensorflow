@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
@@ -33,10 +34,26 @@ VirtualCluster::VirtualCluster(
 
 VirtualCluster::VirtualCluster(
     const std::unordered_map<string, DeviceProperties>& devices,
-    OpLevelCostEstimator* node_estimator, ReadyNodeManager* node_manager)
-    : Cluster(0), node_estimator_(node_estimator), node_manager_(node_manager) {
+    std::unique_ptr<OpLevelCostEstimator> node_estimator,
+    std::unique_ptr<ReadyNodeManager> node_manager)
+    : Cluster(0),
+      node_estimator_(std::move(node_estimator)),
+      node_manager_(std::move(node_manager)) {
   devices_ = devices;
 }
+
+VirtualCluster::VirtualCluster(const DeviceSet* device_set)
+    : VirtualCluster(std::unordered_map<string, DeviceProperties>()) {
+  device_set_ = device_set;
+  for (const auto& device : device_set_->devices()) {
+    DeviceProperties props = GetDeviceInfo(device->parsed_name());
+    if (props.type() == "UNKNOWN") continue;
+    auto attrs = device->attributes();
+    props.set_memory_size(attrs.memory_limit());
+    devices_[device->name()] = props;
+  }
+}
+
 VirtualCluster::~VirtualCluster() {}
 
 Status VirtualCluster::Provision() { return Status::OK(); }
@@ -56,8 +73,8 @@ Status VirtualCluster::Run(const GraphDef& graph,
   item.graph = graph;
   item.feed = feed;
   item.fetch = fetch;
-  VirtualScheduler scheduler(&item, true, this, node_manager_.get());
-  TF_RETURN_IF_ERROR(scheduler.Init());
+  VirtualScheduler scheduler(true, this, node_manager_.get());
+  TF_RETURN_IF_ERROR(scheduler.Init(&item));
 
   if (metadata) {
     metadata->clear_step_stats();
@@ -66,6 +83,7 @@ Status VirtualCluster::Run(const GraphDef& graph,
   }
 
   Costs node_costs;
+  int node_id = 0;
   do {
     OpContext op_context = scheduler.GetCurrNode();
     node_costs = node_estimator_->PredictCosts(op_context);
@@ -73,6 +91,7 @@ Status VirtualCluster::Run(const GraphDef& graph,
       CostGraphDef::Node* cost_node =
           metadata->mutable_cost_graph()->add_node();
       const string& op_name = op_context.name;
+      cost_node->set_id(node_id++);
       cost_node->set_name(op_name);
       cost_node->set_device(op_context.device_name);
       cost_node->set_compute_cost(

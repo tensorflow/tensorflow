@@ -120,6 +120,82 @@ TEST(GrpcSessionTest, BasicNonProtoAPI) {
   }
 }
 
+TEST(GrpcSessionTest, BasicCallable) {
+  GraphDef graph;
+  string node_names[3];
+  // c = a * b
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  std::unique_ptr<Session> session(
+      NewRemote(Options(cluster->targets()[0], 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  for (int iters = 0; iters < 25; ++iters) {
+    TF_CHECK_OK(session->Create(graph));
+    {
+      // Just run to target node
+      CallableOptions opts;
+      opts.add_target(node_names[2]);
+      Session::CallableHandle handle;
+      TF_CHECK_OK(session->MakeCallable(opts, &handle));
+      TF_CHECK_OK(session->RunCallable(handle, {}, nullptr, nullptr));
+      TF_CHECK_OK(session->ReleaseCallable(handle));
+    }
+    {
+      // Run to a target node and a real tensor
+      CallableOptions opts;
+      opts.add_target(node_names[1]);
+      opts.add_fetch(node_names[2] + ":0");
+      Session::CallableHandle handle;
+      TF_CHECK_OK(session->MakeCallable(opts, &handle));
+      std::vector<Tensor> outputs;
+      TF_CHECK_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+      ASSERT_EQ(1, outputs.size());
+      ASSERT_TRUE(outputs[0].IsInitialized());
+      ASSERT_EQ(4.0, outputs[0].flat<float>()(0));
+      TF_CHECK_OK(session->ReleaseCallable(handle));
+    }
+
+    TF_CHECK_OK(session->Close());
+  }
+}
+
+TEST(GrpcSessionTest, CallableWithOnDeviceFeedsAndFetches) {
+  // Specifying feeds/fetch devices for remote sessions is not yet defined.
+  // Ensure that the error is graceful.
+  GraphDef graph;
+  string node_names[3];
+  // c = a * b
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  std::unique_ptr<Session> session(
+      NewRemote(Options(cluster->targets()[0], 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(graph));
+
+  std::vector<DeviceAttributes> devices;
+  TF_CHECK_OK(session->ListDevices(&devices));
+  ASSERT_GT(devices.size(), 0);
+  const string device_name = devices.back().name();
+
+  CallableOptions opts;
+  const string fetch = node_names[2] + ":0";
+  opts.add_fetch(fetch);
+  opts.mutable_fetch_devices()->insert({fetch, device_name});
+
+  Session::CallableHandle handle;
+  Status status = session->MakeCallable(opts, &handle);
+  EXPECT_EQ(error::UNIMPLEMENTED, status.code());
+  TF_CHECK_OK(session->Close());
+}
+
 TEST(GrpcSessionTest, BasicNonProtoAPIConsistentOrder) {
   GraphDef graph;
   string node_names[3];
@@ -988,6 +1064,33 @@ TEST(SessionTest, RunTimeoutWithRunOptions) {
   // GRPC_CHTTP2_INTERNAL_ERROR which is mapped to error::INTERNAL.
   EXPECT_TRUE(error::DEADLINE_EXCEEDED == status.code() ||
               error::INTERNAL == status.code());
+}
+
+TEST(SessionTest, TestCompression) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 1, &cluster));
+  SessionOptions options = Options(cluster->targets()[0], 100);
+  RPCOptions* rpc_options = options.config.mutable_rpc_options();
+  rpc_options->set_compression_algorithm("deflate");
+  rpc_options->set_compression_level(GRPC_COMPRESS_LEVEL_HIGH);
+
+  std::unique_ptr<Session> session(NewRemote(options));
+
+  static const float kTestValue = 409.1934f;
+  Graph graph(OpRegistry::Global());
+  Tensor tensor(DT_FLOAT, TensorShape({1, 1}));
+  tensor.flat<float>()(0) = kTestValue;
+  Node* b = test::graph::Constant(&graph, tensor);
+  GraphDef gdef;
+  graph.ToGraphDef(&gdef);
+  RunOptions run_options;
+  TF_CHECK_OK(session->Create(run_options, gdef));
+
+  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<Tensor> outputs;
+  TF_CHECK_OK(session->Run(inputs, {b->name()}, {}, &outputs));
+  ASSERT_EQ(1, outputs.size());
+  IsSingleFloatValue(outputs[0], kTestValue);
 }
 
 }  // namespace tensorflow

@@ -35,7 +35,7 @@ class ForwardAdTest(test.TestCase):
     dydx_tf = fwd_gradients.fwd_gradients([y], [x], [grad_x])[0]
     dydx_py = 2. * grad_x
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllClose(sess.run(dydx_tf), dydx_py, 1e-6)
 
   def testGather(self):
@@ -44,7 +44,7 @@ class ForwardAdTest(test.TestCase):
     y.set_shape([2])
     dydx = fwd_gradients.fwd_gradients([y], [x], assert_unused=True)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(dydx)
 
 

@@ -15,7 +15,8 @@ limitations under the License.
 
 // Registers the XLA_INTERPRETER device which exposes the XLA Interpreter.
 
-#include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -25,27 +26,43 @@ namespace tensorflow {
 const char* const DEVICE_XLA_INTERPRETER = "XLA_INTERPRETER";
 const char* const DEVICE_INTERPRETER_XLA_JIT = "XLA_INTERPRETER_JIT";
 
-constexpr std::array<DataType, 6> kExecAllTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL}};
+constexpr std::array<DataType, 9> kExecAllTypes = {
+    {DT_INT8, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64,
+     DT_BOOL, DT_BFLOAT16}};
 
 class XlaInterpreterDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override;
+                       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
 Status XlaInterpreterDeviceFactory::CreateDevices(
-    const SessionOptions& options, const string& name_prefix,
-    std::vector<Device*>* devices) {
+    const SessionOptions& session_options, const string& name_prefix,
+    std::vector<std::unique_ptr<Device>>* devices) {
   static XlaDeviceOpRegistrations* registrations = RegisterXlaDeviceKernels(
       DEVICE_XLA_INTERPRETER, DEVICE_INTERPRETER_XLA_JIT);
   (void)registrations;
 
-  std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create(
-      "Interpreter", DEVICE_XLA_INTERPRETER, 0, DEVICE_INTERPRETER_XLA_JIT,
-      options, name_prefix, /*register_device_for_compilation=*/true, &device));
-  devices->push_back(device.release());
+  XlaOpRegistry::DeviceRegistration registration;
+  registration.compilation_device_name = DEVICE_INTERPRETER_XLA_JIT;
+  registration.autoclustering_policy =
+      XlaOpRegistry::AutoclusteringPolicy::kAlways;
+  registration.compile_resource_ops = true;
+  XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_INTERPRETER,
+                                           registration);
+
+  TF_ASSIGN_OR_RETURN(
+      auto platform, se::MultiPlatformManager::PlatformWithName("Interpreter"));
+
+  XlaDevice::Options options;
+  options.platform = platform;
+  options.device_name_prefix = name_prefix;
+  options.device_name = DEVICE_XLA_INTERPRETER;
+  options.device_ordinal = 0;
+  options.compilation_device_name = DEVICE_INTERPRETER_XLA_JIT;
+  options.use_multiple_streams = false;
+  devices->push_back(absl::make_unique<XlaDevice>(session_options, options));
+
   return Status::OK();
 }
 
@@ -62,6 +79,10 @@ static bool OpFilter(KernelDef* kdef) { return true; }
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_INTERPRETER, XlaLocalLaunchOp,
                            kExecAllTypes);
+REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_INTERPRETER, XlaCompileOp,
+                            kExecAllTypes);
+REGISTER_XLA_RUN_KERNEL(DEVICE_XLA_INTERPRETER, XlaRunOp, kExecAllTypes);
+
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_INTERPRETER, kExecAllTypes);
 REGISTER_XLA_BACKEND(DEVICE_INTERPRETER_XLA_JIT, kExecAllTypes, OpFilter);
 

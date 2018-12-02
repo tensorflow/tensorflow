@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SOURCE_MAP_UTIL_H_
-#define TENSORFLOW_COMPILER_XLA_SOURCE_MAP_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SOURCE_MAP_UTIL_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_SOURCE_MAP_UTIL_H_
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/core/platform/macros.h"
@@ -23,24 +24,41 @@ limitations under the License.
 namespace xla {
 namespace source_map_util {
 
-// Creates an INVALID_ARUGMENT status with the given format string.
+// Creates an INVALID_ARGUMENT status with the given format string.
+template <typename... Args>
+Status InvalidParameterArgument(const OpMetadata& op_metadata,
+                                const absl::FormatSpec<Args...>& format,
+                                const Args&... args) {
+  string message = absl::StrFormat(format, args...);
+  if (!op_metadata.source_file().empty()) {
+    absl::StrAppendFormat(&message, " (%s:%d)", op_metadata.source_file(),
+                          op_metadata.source_line());
+  }
+  return InvalidArgument("%s", message);
+}
+
+// Creates an INVALID_ARGUMENT status with the given format string.
 //
 // Also, attempts to extract the OpMetadata for parameter_number on executable
 // and append it to the status message for source mapping to user code.
 //
 // executable may be nullptr, but parameter_number should not be out of bounds
 // or a CHECK-failure may occur.
+template <typename... Args>
 Status InvalidParameterArgument(Executable* executable, int parameter_number,
-                                const char* format, ...)
-    TF_PRINTF_ATTRIBUTE(3, 4);
-
-// As above, but takes the parameter metadata directly instead of extracting it
-// from the executable.
-Status InvalidParameterArgument(const OpMetadata& op_metadata,
-                                const char* format, ...)
-    TF_PRINTF_ATTRIBUTE(2, 3);
+                                const absl::FormatSpec<Args...>& format,
+                                const Args&... args) {
+  if (executable != nullptr && executable->has_module()) {
+    const HloModule& module = executable->module();
+    const HloComputation& computation = *module.entry_computation();
+    HloInstruction* param = computation.parameter_instruction(parameter_number);
+    const OpMetadata& metadata = param->metadata();
+    return InvalidParameterArgument(metadata, format, args...);
+  }
+  return InvalidArgument(format, args...);
+}
 
 }  // namespace source_map_util
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SOURCE_MAP_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_SOURCE_MAP_UTIL_H_

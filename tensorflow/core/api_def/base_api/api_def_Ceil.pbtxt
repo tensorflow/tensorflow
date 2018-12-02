@@ -1,4 +1,4 @@
 op {
   graph_op_name: "Ceil"
-  summary: "Returns element-wise smallest integer in not less than x."
+  summary: "Returns element-wise smallest integer not less than x."
 }

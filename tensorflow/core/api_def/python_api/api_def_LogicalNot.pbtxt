@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "LogicalNot"
+  endpoint {
+    name: "math.logical_not"
+  }
+  endpoint {
+    name: "logical_not"
+  }
+}

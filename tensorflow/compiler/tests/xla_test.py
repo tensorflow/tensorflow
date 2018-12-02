@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import os
 import random
 import re
 
@@ -44,6 +45,34 @@ flags.DEFINE_string('test_device', None,
 flags.DEFINE_string('types', None, 'Types to test. Comma-separated list.')
 flags.DEFINE_string('disabled_manifest', None,
                     'Path to a file with a list of tests that should not run.')
+flags.DEFINE_string('tf_xla_flags', None,
+                    'Value to set the TF_XLA_FLAGS environment variable to')
+
+
+def parse_disabled_manifest(manifest_content):
+  comments_re = re.compile('#.*$')
+  disabled_tests = []
+  disabled_method_types = []
+  for l in manifest_content.splitlines():
+    stripped = comments_re.sub('', l).strip()
+    if not stripped:
+      continue
+    entry = stripped.split(' ')
+    if len(entry) == 1:
+      disabled_tests.append(entry[0])
+    elif len(entry) == 2:
+      disabled_method_types.append((entry[0], entry[1].strip().split(',')))
+    else:
+      raise ValueError('Bad entry in manifest file.')
+
+  disabled_regex = '|'.join(disabled_tests)
+  method_types_filter = dict()
+  for method, types in disabled_method_types:
+    method_types_filter[method] = set([
+        dtypes.as_dtype(types_pb2.DataType.Value(name)).as_numpy_dtype
+        for name in types
+    ])
+  return disabled_regex, method_types_filter
 
 
 class XLATestCase(test.TestCase):
@@ -68,10 +97,23 @@ class XLATestCase(test.TestCase):
     ])
     self._numeric_tf_types = set(
         self.int_tf_types | self._float_tf_types | self.complex_tf_types)
+    self.quantized_tf_types = set(
+        dtype for dtype in self._all_tf_types if dtype.is_quantized)
 
-    self._all_types = set(
-        [dtype.as_numpy_dtype for dtype in self._all_tf_types])
+    # Quantized types don't have a numpy equivalent, include them in
+    # all_tf_types but not in all_types.
+    # TODO(b/115960798): Parametrize tests on TF types instead of numpy types
+    # and remove all_types.
+    self._all_types = set(dtype.as_numpy_dtype
+                          for dtype in self._all_tf_types
+                          if not dtype.is_quantized)
     self._int_types = set([dtype.as_numpy_dtype for dtype in self.int_tf_types])
+    self.signed_int_types = set(dtype.as_numpy_dtype
+                                for dtype in self.int_tf_types
+                                if not dtype.is_unsigned)
+    self.unsigned_int_types = set(dtype.as_numpy_dtype
+                                  for dtype in self.int_tf_types
+                                  if dtype.is_unsigned)
     self._float_types = set(
         [dtype.as_numpy_dtype for dtype in self._float_tf_types])
     self.complex_types = set([
@@ -82,36 +124,24 @@ class XLATestCase(test.TestCase):
 
     # Parse the manifest file, if any, into a regex identifying tests to
     # disable
-    self.disabled_regex = None
-    self._method_types_filter = dict()
     # TODO(xpan): Make it text proto if it doesn't scale.
     # Each line of the manifest file specifies an entry. The entry can be
     # 1) TestNameRegex  // E.g. CumprodTest.* Or
     # 2) TestName TypeName  // E.g. AdamOptimizerTest.testSharing DT_BFLOAT16
     # The 1) disables the entire test. While 2) only filter some numeric types
     # so that they are not used in those tests.
+    self.disabled_regex = None
+    self._method_types_filter = {}
 
     if FLAGS.disabled_manifest is not None:
-      comments_re = re.compile('#.*$')
-      manifest_file = open(FLAGS.disabled_manifest, 'r')
-      disabled_tests = []
-      disabled_method_types = []
-      for l in manifest_file.read().splitlines():
-        entry = comments_re.sub('', l).strip().split(' ')
-        if len(entry) == 1:
-          disabled_tests.append(entry[0])
-        elif len(entry) == 2:
-          disabled_method_types.append(
-              (entry[0], entry[1].strip().split(',')))
-        else:
-          raise ValueError('Bad entry in manifest file.')
+      with open(FLAGS.disabled_manifest, 'r') as manifest_file:
+        disabled_regex, self._method_types_filter = (
+            parse_disabled_manifest(manifest_file.read()))
+        if disabled_regex:
+          self.disabled_regex = re.compile(disabled_regex)
 
-      self.disabled_regex = re.compile('|'.join(disabled_tests))
-      for method, types in disabled_method_types:
-        self._method_types_filter[method] = set([
-            dtypes.as_dtype(types_pb2.DataType.Value(name)).as_numpy_dtype
-            for name in types])
-      manifest_file.close()
+    if FLAGS.tf_xla_flags is not None:
+      os.environ['TF_XLA_FLAGS'] = FLAGS.tf_xla_flags
 
   @property
   def all_tf_types(self):

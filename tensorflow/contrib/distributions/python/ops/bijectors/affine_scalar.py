@@ -18,12 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -51,6 +53,14 @@ class AffineScalar(bijector.Bijector):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                shift=None,
                scale=None,
@@ -99,7 +109,7 @@ class AffineScalar(bijector.Bijector):
               self._scale)
 
       super(AffineScalar, self).__init__(
-          event_ndims=0,
+          forward_min_event_ndims=0,
           is_constant_jacobian=True,
           validate_args=validate_args,
           name=name)
@@ -131,8 +141,10 @@ class AffineScalar(bijector.Bijector):
     return x
 
   def _forward_log_det_jacobian(self, x):
-    log_det_jacobian = array_ops.zeros_like(x)
+    # is_constant_jacobian = True for this bijector, hence the
+    # `log_det_jacobian` need only be specified for a single input, as this will
+    # be tiled to match `event_ndims`.
     if self.scale is None:
-      return log_det_jacobian
-    log_det_jacobian += math_ops.log(math_ops.abs(self.scale))
-    return log_det_jacobian
+      return constant_op.constant(0., dtype=x.dtype.base_dtype)
+
+    return math_ops.log(math_ops.abs(self.scale))

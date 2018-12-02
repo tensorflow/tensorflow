@@ -31,22 +31,22 @@ class AffineScalarBijectorTest(test.TestCase):
   """Tests correctness of the Y = scale @ x + shift transformation."""
 
   def testProperties(self):
-    with self.test_session():
+    with self.cached_session():
       mu = -1.
       # scale corresponds to 1.
       bijector = AffineScalar(shift=mu)
       self.assertEqual("affine_scalar", bijector.name)
 
   def testNoBatchScalar(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value)
         x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(fun(x, **kwargs), feed_dict={x: x_value})
 
       for run in (static_run, dynamic_run):
         mu = -1.
@@ -55,19 +55,20 @@ class AffineScalarBijectorTest(test.TestCase):
         x = [1., 2, 3]  # Three scalar samples (no batches).
         self.assertAllClose([1., 3, 5], run(bijector.forward, x))
         self.assertAllClose([1., 1.5, 2.], run(bijector.inverse, x))
-        self.assertAllClose([-np.log(2.)] * 3,
-                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            -np.log(2.),
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=0))
 
   def testOneBatchScalarViaIdentityIn64BitUserProvidesShiftOnly(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value).astype(np.float64)
         x = array_ops.placeholder(dtypes.float64, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(fun(x, **kwargs), feed_dict={x: x_value})
 
       for run in (static_run, dynamic_run):
         mu = np.float64([1.])
@@ -77,18 +78,20 @@ class AffineScalarBijectorTest(test.TestCase):
         x = np.float64([1.])  # One sample from one batches.
         self.assertAllClose([2.], run(bijector.forward, x))
         self.assertAllClose([0.], run(bijector.inverse, x))
-        self.assertAllClose([0.], run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            0.,
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=0))
 
   def testOneBatchScalarViaIdentityIn64BitUserProvidesScaleOnly(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
+      def dynamic_run(fun, x_value, **kwargs):
         x_value = np.array(x_value).astype(np.float64)
         x = array_ops.placeholder(dtypes.float64, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(fun(x, **kwargs), feed_dict={x: x_value})
 
       for run in (static_run, dynamic_run):
         multiplier = np.float64([2.])
@@ -98,19 +101,20 @@ class AffineScalarBijectorTest(test.TestCase):
         x = np.float64([1.])  # One sample from one batches.
         self.assertAllClose([2.], run(bijector.forward, x))
         self.assertAllClose([0.5], run(bijector.inverse, x))
-        self.assertAllClose([np.log(0.5)],
-                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            [np.log(0.5)],
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=0))
 
   def testTwoBatchScalarIdentityViaIdentity(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
-        x_value = np.array(x_value)
+      def dynamic_run(fun, x_value, **kwargs):
+        x_value = np.array(x_value).astype(np.float32)
         x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(fun(x, **kwargs), feed_dict={x: x_value})
 
       for run in (static_run, dynamic_run):
         mu = [1., -1]
@@ -120,18 +124,20 @@ class AffineScalarBijectorTest(test.TestCase):
         x = [1., 1]  # One sample from each of two batches.
         self.assertAllClose([2., 0], run(bijector.forward, x))
         self.assertAllClose([0., 2], run(bijector.inverse, x))
-        self.assertAllClose([0., 0.], run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            0.,
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=0))
 
   def testTwoBatchScalarIdentityViaScale(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
-      def static_run(fun, x):
-        return fun(x).eval()
+      def static_run(fun, x, **kwargs):
+        return fun(x, **kwargs).eval()
 
-      def dynamic_run(fun, x_value):
-        x_value = np.array(x_value)
+      def dynamic_run(fun, x_value, **kwargs):
+        x_value = np.array(x_value).astype(np.float32)
         x = array_ops.placeholder(dtypes.float32, name="x")
-        return sess.run(fun(x), feed_dict={x: x_value})
+        return sess.run(fun(x, **kwargs), feed_dict={x: x_value})
 
       for run in (static_run, dynamic_run):
         mu = [1., -1]
@@ -142,10 +148,11 @@ class AffineScalarBijectorTest(test.TestCase):
         self.assertAllClose([3., 0], run(bijector.forward, x))
         self.assertAllClose([0., 2], run(bijector.inverse, x))
         self.assertAllClose(
-            [-np.log(2), 0.], run(bijector.inverse_log_det_jacobian, x))
+            [-np.log(2), 0.],
+            run(bijector.inverse_log_det_jacobian, x, event_ndims=0))
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = AffineScalar(shift=3.6, scale=0.42)
       assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.)
 

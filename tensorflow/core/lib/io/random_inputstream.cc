@@ -45,16 +45,8 @@ Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
   result->resize(data.size());
   if (s.ok() || errors::IsOutOfRange(s)) {
     pos_ += data.size();
-  } else {
-    return s;
   }
-  // If the amount of data we read is less than what we wanted, we return an
-  // out of range error. We need to catch this explicitly since file_->Read()
-  // would not do so if at least 1 byte is read (b/30839063).
-  if (data.size() < bytes_to_read) {
-    return errors::OutOfRange("reached end of file");
-  }
-  return Status::OK();
+  return s;
 }
 
 // To limit memory usage, the default implementation of SkipNBytes() only reads

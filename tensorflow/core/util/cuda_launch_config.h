@@ -128,12 +128,12 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
   CudaLaunchConfig config;
   const int virtual_thread_count = work_element_count;
   const int physical_thread_count = std::min(
-      d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor(),
+      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
       virtual_thread_count);
-  const int thread_per_block = std::min(1024, d.maxCudaThreadsPerBlock());
+  const int thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
   const int block_count =
       std::min(DivUp(physical_thread_count, thread_per_block),
-               d.getNumCudaMultiProcessors());
+               d.getNumGpuMultiProcessors());
 
   config.virtual_thread_count = virtual_thread_count;
   config.thread_per_block = thread_per_block;
@@ -184,7 +184,7 @@ inline CudaLaunchConfig GetCudaLaunchConfigFixedBlockSize(
   cudaError_t err = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
       &block_count, func, fixed_block_size, dynamic_shared_memory_size);
   CHECK_EQ(err, cudaSuccess);
-  block_count = std::min(block_count * d.getNumCudaMultiProcessors(),
+  block_count = std::min(block_count * d.getNumGpuMultiProcessors(),
                          DivUp(work_element_count, fixed_block_size));
 
   config.virtual_thread_count = work_element_count;
@@ -213,7 +213,7 @@ inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
   int block_rows = std::max(kThreadsPerBlock / block_cols, 1);
 
   const int physical_thread_count =
-      d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor();
+      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor();
 
   const int max_blocks = std::max(physical_thread_count / kThreadsPerBlock, 1);
 
@@ -295,7 +295,7 @@ inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
       reinterpret_cast<const cudaStream_t*>(context->op_device_context()
                                                 ->stream()
                                                 ->implementation()
-                                                ->CudaStreamMemberHack()));
+                                                ->GpuStreamMemberHack()));
   return *ptr;
 }
 

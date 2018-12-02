@@ -13,70 +13,110 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class MapDatasetOp : public UnaryDatasetOpKernel {
  public:
-  explicit MapDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx),
-        graph_def_version_(ctx->graph_def_version()) {
+  using MapIteratorFunction =
+      std::function<Status(IteratorContext*, InstantiatedCapturedFunction*,
+                           std::vector<Tensor>, std::vector<Tensor>*)>;
+
+  explicit MapDatasetOp(OpKernelConstruction* ctx) : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
+                                     &use_inter_op_parallelism_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
+    std::unique_ptr<CapturedFunction> captured_func;
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
+                                                 use_inter_op_parallelism_,
+                                                 &captured_func));
+
+    std::vector<int> indices;
+    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
+
+    MapIteratorFunction map_func;
+    CapturedFunction* raw_captured_func = captured_func.get();
+    if (indices.empty()) {
+      map_func = [](IteratorContext* ctx,
+                    InstantiatedCapturedFunction* inst_captured_func,
+                    std::vector<Tensor> args,
+                    std::vector<Tensor>* out_tensors) {
+        return inst_captured_func->Run(ctx, std::move(args), out_tensors);
+      };
+    } else {
+      std::vector<bool> can_move = ComputeMoveVector(indices);
+      map_func = [raw_captured_func, indices, can_move](
+                     IteratorContext* ctx,
+                     InstantiatedCapturedFunction* inst_captured_func,
+                     std::vector<Tensor> args,
+                     std::vector<Tensor>* out_tensors) {
+        const std::vector<Tensor>& captured_inputs =
+            raw_captured_func->captured_inputs();
+        size_t num_args = args.size();
+        for (size_t i = 0; i < indices.size(); ++i) {
+          if (indices[i] < num_args) {
+            if (can_move[i]) {
+              out_tensors->push_back(std::move(args[indices[i]]));
+            } else {
+              out_tensors->push_back(args[indices[i]]);
+            }
+          } else {
+            out_tensors->push_back(captured_inputs[indices[i] - num_args]);
+          }
+        }
+        return Status::OK();
+      };
     }
 
-    std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            func_, std::move(other_arguments), &captured_func));
-
     *output = new Dataset(ctx, input, func_, std::move(captured_func),
-                          output_types_, output_shapes_);
+                          output_types_, output_shapes_,
+                          use_inter_op_parallelism_, std::move(map_func));
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func,
             const DataTypeVector& output_types,
-            const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+            const std::vector<PartialTensorShape>& output_shapes,
+            bool use_inter_op_parallelism, MapIteratorFunction map_func)
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
+          use_inter_op_parallelism_(use_inter_op_parallelism),
           captured_func_(std::move(captured_func)),
           output_types_(output_types),
-          output_shapes_(output_shapes) {
+          output_shapes_(output_shapes),
+          map_func_(std::move(map_func)) {
       input_->Ref();
     }
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Map")}));
+      return MakeUnique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Map")}, map_func_);
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -86,14 +126,15 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "MapDatasetOp::Dataset"; }
+    string DebugString() const override { return "MapDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       DataTypeVector other_arguments_types;
       other_arguments_types.reserve(captured_func_->captured_inputs().size());
@@ -105,16 +146,28 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         other_arguments.emplace_back(node);
         other_arguments_types.emplace_back(t.dtype());
       }
-      AttrValue f;
-      b->BuildAttrValue(func_, &f);
+
+      // Attr: f
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
+      AttrValue f_attr;
+      b->BuildAttrValue(func_, &f_attr);
+
+      // Attr: Targuments
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+
+      // Attr: use_inter_op_parallelism
+      AttrValue use_inter_op_parallelism_attr;
+      b->BuildAttrValue(use_inter_op_parallelism_,
+                        &use_inter_op_parallelism_attr);
 
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {std::make_pair(0, input_graph_node)},  // Single tensor inputs.
           {std::make_pair(1, other_arguments)},         // Tensor list inputs.
-          {std::make_pair("f", f),
-           std::make_pair("Targuments", other_arguments_types_attr)},  // Attrs
+          {std::make_pair("f", f_attr),
+           std::make_pair("Targuments", other_arguments_types_attr),
+           std::make_pair("use_inter_op_parallelism",
+                          use_inter_op_parallelism_attr)},  // Attrs
           output));
       return Status::OK();
     }
@@ -122,9 +175,15 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+      explicit Iterator(const Params& params, MapIteratorFunction map_func)
+          : DatasetIterator<Dataset>(params), map_func_(std::move(map_func)) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        TF_RETURN_IF_ERROR(
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -140,10 +199,8 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
-        // TODO(mrry): Avoid blocking a threadpool thread. We will need to
-        // stack-rip the iterators and use async kernels.
-        Status s =
-            dataset()->captured_func_->Run(ctx, std::move(args), out_tensors);
+        Status s = map_func_(ctx, instantiated_captured_func_.get(), args,
+                             out_tensors);
         if (errors::IsOutOfRange(s)) {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.
@@ -155,36 +212,51 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 
      private:
-      const std::unique_ptr<IteratorBase> input_impl_;
+      std::unique_ptr<IteratorBase> input_impl_;
+      const MapIteratorFunction map_func_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;
     const NameAttrList func_;
+    const bool use_inter_op_parallelism_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
+    const MapIteratorFunction map_func_;
   };
 
-  const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList func_;
+  bool use_inter_op_parallelism_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("MapDataset").Device(DEVICE_CPU), MapDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("ExperimentalMapDataset")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input_dataset")
+                            .HostMemory("handle"),
+                        MapDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

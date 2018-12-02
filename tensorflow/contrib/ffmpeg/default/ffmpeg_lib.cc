@@ -28,7 +28,7 @@
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
 
 using tensorflow::strings::StrCat;

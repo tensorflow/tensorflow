@@ -22,7 +22,6 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
-from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
@@ -51,6 +50,13 @@ def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
       [ExtractBitsFromFloat16(x) for x in proto_values])
 
 
+def _MediumAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
+  # TODO: Remove the conversion if cython supports np.float16_t
+  fast_tensor_util.AppendFloat16ArrayToTensorProto(
+      tensor_proto,
+      np.asarray(proto_values, dtype=np.float16).view(np.uint16))
+
+
 def ExtractBitsFromBFloat16(x):
   return np.asscalar(
       np.asarray(x, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
@@ -61,15 +67,18 @@ def SlowAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
       [ExtractBitsFromBFloat16(x) for x in proto_values])
 
 
+def FastAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
+  fast_tensor_util.AppendBFloat16ArrayToTensorProto(
+      tensor_proto, np.asarray(
+          proto_values, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
+
+
 if _FAST_TENSOR_UTIL_AVAILABLE:
   _NP_TO_APPEND_FN = {
       dtypes.bfloat16.as_numpy_dtype:
-          SlowAppendBFloat16ArrayToTensorProto,
-      # TODO(sesse): We should have a
-      # fast_tensor_util.AppendFloat16ArrayToTensorProto,
-      # but it seems np.float16_t doesn't exist?
+          FastAppendBFloat16ArrayToTensorProto,
       np.float16:
-          SlowAppendFloat16ArrayToTensorProto,
+          _MediumAppendFloat16ArrayToTensorProto,
       np.float32:
           fast_tensor_util.AppendFloat32ArrayToTensorProto,
       np.float64:
@@ -330,11 +339,29 @@ _TF_TO_IS_OK = {
     dtypes.string: [_FilterStr],
     dtypes.uint16: [_FilterInt],
     dtypes.uint8: [_FilterInt],
+    dtypes.uint32: [_FilterInt],
+    dtypes.uint64: [_FilterInt],
 }
 
 
 def _AssertCompatible(values, dtype):
-  fn_list = _TF_TO_IS_OK.get(dtype, [_FilterNotTensor])
+  if dtype is None:
+    fn_list = [_FilterNotTensor]
+  else:
+    try:
+      fn_list = _TF_TO_IS_OK[dtype]
+    except KeyError:
+      # There isn't a specific fn_list, so we try to do the best possible.
+      if dtype.is_integer:
+        fn_list = [_FilterInt]
+      elif dtype.is_floating:
+        fn_list = [_FilterFloat]
+      elif dtype.is_complex:
+        fn_list = [_FilterComplex]
+      elif dtype.is_quantized:
+        fn_list = [_FilterInt, _FilterTuple]
+      else:
+        fn_list = [_FilterNotTensor]
   mismatch = _FirstNotNone([fn(values) for fn in fn_list])
   if mismatch is not None:
     if dtype is None:
@@ -344,8 +371,10 @@ def _AssertCompatible(values, dtype):
                       (dtype.name, repr(mismatch), type(mismatch).__name__))
 
 
-@tf_export("make_tensor_proto")
-def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
+# pylint: disable=invalid-name
+@tf_export(v1=["make_tensor_proto"])
+def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
+                      allow_broadcast=False):
   """Create a TensorProto.
 
   Args:
@@ -353,12 +382,14 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     dtype:          Optional tensor_pb2 DataType value.
     shape:          List of integers representing the dimensions of tensor.
     verify_shape:   Boolean that enables verification of a shape of values.
+    allow_broadcast:Boolean that enables allowing scalars and 1 length vector
+        broadcasting. Cannot be true when verify_shape is true.
 
   Returns:
     A `TensorProto`. Depending on the type, it may contain data in the
     "tensor_content" attribute, which is not directly useful to Python programs.
     To access the values you should convert the proto back to a numpy ndarray
-    with `tensor_util.MakeNdarray(proto)`.
+    with `tf.make_ndarray(proto)`.
 
     If `values` is a `TensorProto`, it is immediately returned; `dtype` and
     `shape` are ignored.
@@ -389,6 +420,8 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   can not have more elements than what "shape" specifies.
 
   """
+  if allow_broadcast and verify_shape:
+    raise ValueError("allow_broadcast and verify_shape are not both allowed.")
   if isinstance(values, tensor_pb2.TensorProto):
     return values
 
@@ -477,15 +510,22 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     shape_size = np.prod(shape, dtype=np.int64)
     is_same_size = shape_size == nparray.size
 
-    if verify_shape:
-      if not nparray.shape == tuple(shape):
+    if allow_broadcast:
+      if nparray.shape == (1,) or nparray.shape == tuple():
+        pass
+      elif nparray.size != shape_size:
         raise TypeError("Expected Tensor's shape: %s, got %s." %
                         (tuple(shape), nparray.shape))
 
-    if nparray.size > shape_size:
-      raise ValueError(
-          "Too many elements provided. Needed at most %d, but received %d" %
-          (shape_size, nparray.size))
+    else:
+      if verify_shape and nparray.shape != tuple(shape):
+        raise TypeError("Expected Tensor's shape: %s, got %s." %
+                        (tuple(shape), nparray.shape))
+
+      if nparray.size > shape_size:
+        raise ValueError(
+            "Too many elements provided. Needed at most %d, but received %d" %
+            (shape_size, nparray.size))
 
   tensor_proto = tensor_pb2.TensorProto(
       dtype=numpy_dtype.as_datatype_enum,
@@ -533,6 +573,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   append_fn(tensor_proto, proto_values)
 
   return tensor_proto
+# pylint: enable=invalid-name
 
 
 @tf_export("make_ndarray")
@@ -823,17 +864,32 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   all-or-nothing.
 
   Args:
-    tensor: The rank-1 Tensor to be evaluated.
+    tensor: The rank-0 or rank-1 Tensor to be evaluated.
 
   Returns:
     A `TensorShape` based on the constant value of the given `tensor`.
+
+  Raises:
+    ValueError: If the shape is rank-0 and is not statically known to be -1.
   """
-  if context.executing_eagerly():
+  if isinstance(tensor, ops.EagerTensor):
     return tensor_shape.as_shape(
         [dim if dim != -1 else None for dim in tensor.numpy()])
 
+  if tensor.get_shape().ndims == 0:
+    value = constant_value(tensor)
+    if value is None:
+      raise ValueError(
+          "Received a scalar with unknown value as shape; require a statically "
+          "known scalar with value '-1' to describe an unknown shape.")
+    if value != -1:
+      raise ValueError(
+          "Received a scalar value '%s' as shape; require a statically known "
+          "scalar with value '-1' to describe an unknown shape." % value)
+    return tensor_shape.unknown_shape()
+
   shape = tensor.get_shape().with_rank(1)
-  if tensor.get_shape() == [0]:
+  if shape == [0]:
     return tensor_shape.scalar()
   elif tensor.op.type == "Shape":
     return tensor.op.inputs[0].get_shape()
@@ -906,7 +962,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     except TypeError:  # Could come from slicing prev.
       pass
 
-  ret = tensor_shape.unknown_shape(shape[0].value)
+  ret = tensor_shape.unknown_shape(shape.dims[0].value)
   value = constant_value(tensor)
   if value is not None:
     ret = ret.merge_with(
@@ -917,8 +973,10 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
 def is_tensor(x):  # pylint: disable=invalid-name
   """Check whether `x` is of tensor type.
 
-  Check whether an object is a tensor. Equivalent to
-  `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
+  Check whether an object is a tensor. This check is equivalent to calling
+  `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.Variable))` and also checks
+  if all the component variables of a MirroredVariable or a ReplicaLocalVariable
+  are tensors.
 
   Args:
     x: A python object to check.
@@ -926,4 +984,5 @@ def is_tensor(x):  # pylint: disable=invalid-name
   Returns:
     `True` if `x` is a tensor, `False` if not.
   """
-  return isinstance(x, ops._TensorLike) or ops.is_dense_tensor_like(x)  # pylint: disable=protected-access
+  return (isinstance(x, ops._TensorLike) or ops.is_dense_tensor_like(x) or  # pylint: disable=protected-access
+          (hasattr(x, "is_tensor_like") and x.is_tensor_like))

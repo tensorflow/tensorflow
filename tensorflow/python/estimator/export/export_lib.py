@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,34 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utility methods for exporting Estimator."""
+"""export_lib python module.
+
+Importing from tensorflow.python.estimator is unsupported
+and will soon break!
+"""
+# pylint: disable=unused-import,g-bad-import-order,g-import-not-at-top,wildcard-import
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,line-too-long
-from tensorflow.python.estimator.export.export import build_parsing_serving_input_receiver_fn
-from tensorflow.python.estimator.export.export import build_raw_serving_input_receiver_fn
-from tensorflow.python.estimator.export.export import ServingInputReceiver
-from tensorflow.python.estimator.export.export import TensorServingInputReceiver
-from tensorflow.python.estimator.export.export_output import ClassificationOutput
-from tensorflow.python.estimator.export.export_output import ExportOutput
-from tensorflow.python.estimator.export.export_output import PredictOutput
-from tensorflow.python.estimator.export.export_output import RegressionOutput
+from tensorflow_estimator.python.estimator.export import export_lib
 
-from tensorflow.python.util.all_util import remove_undocumented
-# pylint: enable=unused-import,line-too-long
+# Include attrs that start with single underscore.
+_HAS_DYNAMIC_ATTRIBUTES = True
+export_lib.__all__ = [s for s in dir(export_lib) if not s.startswith('__')]
 
-_allowed_symbols = [
-    'build_parsing_serving_input_receiver_fn',
-    'build_raw_serving_input_receiver_fn',
-    'ServingInputReceiver',
-    'TensorServingInputReceiver',
-    'ClassificationOutput',
-    'ExportOutput',
-    'PredictOutput',
-    'RegressionOutput',
-]
-
-remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
+from tensorflow_estimator.python.estimator.export.export_lib import *

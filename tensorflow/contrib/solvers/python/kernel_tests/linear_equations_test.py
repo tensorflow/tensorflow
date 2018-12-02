@@ -54,7 +54,7 @@ def _get_linear_equations_tests(dtype_, use_static_shape_, shape_):
     x_np = np.zeros_like(rhs_np)
     tol = 1e-6 if dtype_ == np.float64 else 1e-3
     max_iter = 20
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if use_static_shape_:
         a = constant_op.constant(a_np)
         rhs = constant_op.constant(rhs_np)

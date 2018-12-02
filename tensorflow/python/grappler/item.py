@@ -51,9 +51,7 @@ class Item(object):
     self._BuildTFItem()
 
   def IdentifyImportantOps(self, sort_topologically=False):
-    with errors.raise_exception_on_not_ok_status() as status:
-      return tf_item.TF_IdentifyImportantOps(self.tf_item, sort_topologically,
-                                             status)
+    return tf_item.TF_IdentifyImportantOps(self.tf_item, sort_topologically)
 
   def GetOpProperties(self):
     ret_from_swig = tf_item.TF_GetOpProperties(self.tf_item)

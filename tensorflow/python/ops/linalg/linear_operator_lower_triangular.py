@@ -21,7 +21,6 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
@@ -120,8 +119,7 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
     Args:
       tril:  Shape `[B1,...,Bb, N, N]` with `b >= 0`, `N >= 0`.
         The lower triangular part of `tril` defines this operator.  The strictly
-        upper triangle is ignored.  Allowed dtypes: `float16`, `float32`,
-        `float64`.
+        upper triangle is ignored.
       is_non_singular:  Expect that this operator is non-singular.
         This operator is non-singular if and only if its diagonal elements are
         all non-zero.
@@ -133,13 +131,11 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
         meaning the quadratic form `x^H A x` has positive real part for all
         nonzero `x`.  Note that we do not require the operator to be
         self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix\
-            #Extension_for_non_symmetric_matrices
+        https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
 
     Raises:
-      TypeError:  If `diag.dtype` is not an allowed type.
       ValueError:  If `is_square` is `False`.
     """
 
@@ -165,12 +161,12 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
 
   def _check_tril(self, tril):
     """Static check of the `tril` argument."""
-    # TODO(langmore) Add complex types once matrix_triangular_solve works for
-    # them.
     allowed_dtypes = [
         dtypes.float16,
         dtypes.float32,
         dtypes.float64,
+        dtypes.complex64,
+        dtypes.complex128,
     ]
     dtype = tril.dtype
     if dtype not in allowed_dtypes:
@@ -195,19 +191,19 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
         message="Singular operator:  Diagonal contained zero values.")
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
-    return math_ops.matmul(
+    return linear_operator_util.matmul_with_broadcast(
         self._tril, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 
   def _determinant(self):
-    return math_ops.reduce_prod(self._diag, reduction_indices=[-1])
+    return math_ops.reduce_prod(self._diag, axis=[-1])
 
   def _log_abs_determinant(self):
     return math_ops.reduce_sum(
-        math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
+        math_ops.log(math_ops.abs(self._diag)), axis=[-1])
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
-    return linalg_ops.matrix_triangular_solve(
+    return linear_operator_util.matrix_triangular_solve_with_broadcast(
         self._tril, rhs, lower=True, adjoint=adjoint)
 
   def _to_dense(self):

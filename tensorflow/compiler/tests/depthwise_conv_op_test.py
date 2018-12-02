@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -114,7 +114,7 @@ def CheckGradConfigsToTest():
     yield i, f, o, s, p
 
 
-class DepthwiseConv2DTest(XLATestCase):
+class DepthwiseConv2DTest(xla_test.XLATestCase):
 
   # This is testing that depthwise_conv2d and depthwise_conv2d_native
   # produce the same results.  It also tests that NCHW and NWHC
@@ -151,9 +151,9 @@ class DepthwiseConv2DTest(XLATestCase):
                   dtype=data_type).reshape(tensor_in_sizes)
     x2 = np.array([f * 1.0 for f in range(1, total_size_2 + 1)],
                   dtype=data_type).reshape(filter_in_sizes)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if data_type == np.float32:
-        tolerance = 1e-5
+        tolerance = 1e-4
       else:
         self.assertEqual(data_type, np.float64)
         tolerance = 1e-8
@@ -247,7 +247,7 @@ class DepthwiseConv2DTest(XLATestCase):
                   dtype=np.float32).reshape(tensor_in_sizes)
     x2 = np.array([f * 1.0 for f in range(1, total_size_2 + 1)],
                   dtype=np.float32).reshape(filter_in_sizes)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       t1 = array_ops.placeholder(shape=tensor_in_sizes, dtype=np.float32)
       t2 = array_ops.placeholder(shape=filter_in_sizes, dtype=np.float32)
       with self.test_scope():
@@ -255,7 +255,7 @@ class DepthwiseConv2DTest(XLATestCase):
             t1, t2, strides=[1, stride, stride, 1], padding=padding)
       value = sess.run(conv, {t1: x1, t2: x2})
     print("value = ", value)
-    self.assertArrayNear(expected, np.ravel(value), 1e-5)
+    self.assertArrayNear(expected, np.ravel(value), 1e-4)
     self.assertShapeEqual(value, conv)
 
   def testConv2D2x2Filter(self):
@@ -321,7 +321,7 @@ class DepthwiseConv2DTest(XLATestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(use_xla):
-      with self.test_session():
+      with self.cached_session():
         t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
         t1 = array_ops.placeholder(np.float32, shape=filter_sizes)
         t2 = array_ops.placeholder(np.float32, shape=output_sizes)
@@ -339,7 +339,7 @@ class DepthwiseConv2DTest(XLATestCase):
 
     gpu_value = _GetVal(use_xla=True)
     cpu_value = _GetVal(use_xla=False)
-    self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
+    self.assertAllClose(cpu_value, gpu_value, rtol=1e-3, atol=1e-3)
 
   def testDepthwiseConv2DInputGradCompare(self):
     for index, (input_size, filter_size, output_size, stride,
@@ -356,7 +356,7 @@ class DepthwiseConv2DTest(XLATestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(use_xla):
-      with self.test_session():
+      with self.cached_session():
         t0 = array_ops.placeholder(np.float32, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = array_ops.placeholder(np.float32, shape=output_sizes)

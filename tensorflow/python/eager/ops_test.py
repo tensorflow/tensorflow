@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -369,12 +370,32 @@ class OpsTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError):
       float(x)
 
+  def testRange(self):
+    x = constant_op.constant(2)
+    self.assertEqual([0, 1], list(range(x)))
+
   def testFormatString(self):
     x = constant_op.constant(3.1415)
     self.assertEqual('3.14', '{:.2f}'.format(x))
 
   def testNoOpIsNone(self):
     self.assertTrue(control_flow_ops.no_op() is None)
+
+  def testEagerContextPreservedAcrossThreads(self):
+    def init_fn():
+      self.assertTrue(context.executing_eagerly())
+      with ops.init_scope():
+        self.assertTrue(context.executing_eagerly())
+        context_switches = context.context().context_switches
+        self.assertEqual(len(context_switches.stack), 1)
+        self.assertFalse(context_switches.stack[0].is_building_function)
+        self.assertEqual(context_switches.stack[0].enter_context_fn,
+                         context.eager_mode)
+
+    self.assertTrue(context.executing_eagerly())
+    t1 = threading.Thread(target=init_fn)
+    t1.start()
+    t1.join()
 
 
 if __name__ == '__main__':

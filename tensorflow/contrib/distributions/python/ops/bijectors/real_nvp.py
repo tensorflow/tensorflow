@@ -20,12 +20,14 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import core as layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import template as template_ops
-from tensorflow.python.ops.distributions import bijector as bijector_lib
+from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -34,11 +36,11 @@ __all__ = [
 ]
 
 
-class RealNVP(bijector_lib.Bijector):
+class RealNVP(bijector.Bijector):
   """RealNVP "affine coupling layer" for vector-valued events.
 
   Real NVP models a normalizing flow on a `D`-dimensional distribution via a
-  single `D-d`-dimensional conditional distribution [1]:
+  single `D-d`-dimensional conditional distribution [(Dinh et al., 2017)][1]:
 
   `y[d:D] = y[d:D] * math_ops.exp(log_scale_fn(y[d:D])) + shift_fn(y[d:D])`
   `y[0:d] = x[0:d]`
@@ -51,31 +53,34 @@ class RealNVP(bijector_lib.Bijector):
 
   Masking is currently only supported for base distributions with
   `event_ndims=1`. For more sophisticated masking schemes like checkerboard or
-  channel-wise masking [2], use the `tfb.Permute` bijector to re-order desired
-  masked units into the first `d` units. For base distributions with
-  `event_ndims > 1`, use the `tfb.Reshape` bijector to flatten the event shape.
+  channel-wise masking [(Papamakarios et al., 2016)[4], use the `tfb.Permute`
+  bijector to re-order desired masked units into the first `d` units. For base
+  distributions with `event_ndims > 1`, use the `tfb.Reshape` bijector to
+  flatten the event shape.
 
-  Recall that the MAF bijector [2] implements a normalizing flow via an
-  autoregressive transformation. MAF and IAF have opposite computational
-  tradeoffs - MAF can train all units in parallel but must sample units
-  sequentially, while IAF must train units sequentially but can sample in
-  parallel. In contrast, Real NVP can compute both forward and inverse
-  computations in parallel. However, the lack of an autoregressive
+  Recall that the MAF bijector [(Papamakarios et al., 2016)][4] implements a
+  normalizing flow via an autoregressive transformation. MAF and IAF have
+  opposite computational tradeoffs - MAF can train all units in parallel but
+  must sample units sequentially, while IAF must train units sequentially but
+  can sample in parallel. In contrast, Real NVP can compute both forward and
+  inverse computations in parallel. However, the lack of an autoregressive
   transformations makes it less expressive on a per-bijector basis.
 
   A "valid" `shift_and_log_scale_fn` must compute each `shift` (aka `loc` or
-  "mu" [2]) and `log(scale)` (aka "alpha" [2]) such that each are broadcastable
-  with the arguments to `forward` and `inverse`, i.e., such that the
-  calculations in `forward`, `inverse` [below] are possible. For convenience,
+  "mu" in [Papamakarios et al. (2016)][4]) and `log(scale)` (aka "alpha" in
+  [Papamakarios et al. (2016)][4]) such that each are broadcastable with the
+  arguments to `forward` and `inverse`, i.e., such that the calculations in
+  `forward`, `inverse` [below] are possible. For convenience,
   `real_nvp_default_nvp` is offered as a possible `shift_and_log_scale_fn`
   function.
 
-  NICE [3] is a special case of the Real NVP bijector which discards the scale
-  transformation, resulting in a constant-time inverse-log-determinant-Jacobian.
-  To use a NICE bijector instead of Real NVP, `shift_and_log_scale_fn` should
-  return `(shift, None)`, and `is_constant_jacobian` should be set to `True` in
-  the `RealNVP` constructor. Calling `real_nvp_default_template` with
-  `shift_only=True` returns one such NICE-compatible `shift_and_log_scale_fn`.
+  NICE [(Dinh et al., 2014)][2] is a special case of the Real NVP bijector
+  which discards the scale transformation, resulting in a constant-time
+  inverse-log-determinant-Jacobian. To use a NICE bijector instead of Real
+  NVP, `shift_and_log_scale_fn` should return `(shift, None)`, and
+  `is_constant_jacobian` should be set to `True` in the `RealNVP` constructor.
+  Calling `real_nvp_default_template` with `shift_only=True` returns one such
+  NICE-compatible `shift_and_log_scale_fn`.
 
   Caching: the scalar input depth `D` of the base distribution is not known at
   construction time. The first call to any of `forward(x)`, `inverse(x)`,
@@ -86,42 +91,54 @@ class RealNVP(bijector_lib.Bijector):
   #### Example Use
 
   ```python
-  tfd = tf.contrib.distributions
-  tfb = tfd.bijectors
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+  tfb = tfp.bijectors
 
   # A common choice for a normalizing flow is to use a Gaussian for the base
   # distribution. (However, any continuous distribution would work.) E.g.,
+  num_dims = 3
+  num_samples = 1
   nvp = tfd.TransformedDistribution(
-      distribution=tfd.MultivariateNormalDiag(loc=[0., 0., 0.])),
+      distribution=tfd.MultivariateNormalDiag(loc=np.zeros(num_dims)),
       bijector=tfb.RealNVP(
           num_masked=2,
           shift_and_log_scale_fn=tfb.real_nvp_default_template(
               hidden_layers=[512, 512])))
 
-  x = nvp.sample()
+  x = nvp.sample(num_samples)
   nvp.log_prob(x)
-  nvp.log_prob(0.)
+  nvp.log_prob(np.zeros([num_samples, num_dims]))
   ```
 
-  For more examples, see [4].
+  For more examples, see [Jang (2018)][3].
 
-  [1]: "Density Estimation using Real NVP."
-       Laurent Dinh, Jascha Sohl-Dickstein, Samy Bengio. ICLR. 2017.
-       https://arxiv.org/abs/1605.08803
+  #### References
 
-  [2]: "Masked Autoregressive Flow for Density Estimation."
-       George Papamakarios, Theo Pavlakou, Iain Murray. Arxiv. 2017.
-       https://arxiv.org/abs/1705.07057
+  [1]: Laurent Dinh, Jascha Sohl-Dickstein, and Samy Bengio. Density Estimation
+       using Real NVP. In _International Conference on Learning
+       Representations_, 2017. https://arxiv.org/abs/1605.08803
 
-  [3]: "NICE: Non-linear Independent Components Estimation."
-       Laurent Dinh, David Krueger, Yoshua Bengio. ICLR. 2015.
-       https://arxiv.org/abs/1410.8516
+  [2]: Laurent Dinh, David Krueger, and Yoshua Bengio. NICE: Non-linear
+       Independent Components Estimation. _arXiv preprint arXiv:1410.8516_,
+       2014. https://arxiv.org/abs/1410.8516
 
-  [4]: "Normalizing Flows Tutorial, Part 2: Modern Normalizing Flows."
-       Eric Jang. Blog post. January 2018.
-       http://blog.evjang.com/2018/01/nf2.html
+  [3]: Eric Jang. Normalizing Flows Tutorial, Part 2: Modern Normalizing Flows.
+       _Technical Report_, 2018. http://blog.evjang.com/2018/01/nf2.html
+
+  [4]: George Papamakarios, Theo Pavlakou, and Iain Murray. Masked
+       Autoregressive Flow for Density Estimation. In _Neural Information
+       Processing Systems_, 2017. https://arxiv.org/abs/1705.07057
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                num_masked,
                shift_and_log_scale_fn,
@@ -162,14 +179,15 @@ class RealNVP(bijector_lib.Bijector):
     self._input_depth = None
     self._shift_and_log_scale_fn = shift_and_log_scale_fn
     super(RealNVP, self).__init__(
-        event_ndims=1,
+        forward_min_event_ndims=1,
         is_constant_jacobian=is_constant_jacobian,
         validate_args=validate_args,
         name=name)
 
   def _cache_input_depth(self, x):
     if self._input_depth is None:
-      self._input_depth = x.shape.with_rank_at_least(1)[-1].value
+      self._input_depth = tensor_shape.dimension_value(
+          x.shape.with_rank_at_least(1)[-1])
       if self._input_depth is None:
         raise NotImplementedError(
             "Rightmost dimension must be known prior to graph execution.")
@@ -220,10 +238,18 @@ class RealNVP(bijector_lib.Bijector):
     _, log_scale = self._shift_and_log_scale_fn(
         x0, self._input_depth - self._num_masked)
     if log_scale is None:
-      return constant_op.constant(0., dtype=x.dtype, name="ildj")
+      return constant_op.constant(0., dtype=x.dtype, name="fldj")
     return math_ops.reduce_sum(log_scale, axis=-1)
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def real_nvp_default_template(
     hidden_layers,
     shift_only=False,
@@ -250,12 +276,20 @@ def real_nvp_default_template(
     **kwargs: `tf.layers.dense` keyword arguments.
 
   Returns:
-    shift: `Float`-like `Tensor` of shift terms (the "mu" in [2]).
-    log_scale: `Float`-like `Tensor` of log(scale) terms (the "alpha" in [2]).
+    shift: `Float`-like `Tensor` of shift terms ("mu" in
+      [Papamakarios et al.  (2016)][1]).
+    log_scale: `Float`-like `Tensor` of log(scale) terms ("alpha" in
+      [Papamakarios et al. (2016)][1]).
 
   Raises:
     NotImplementedError: if rightmost dimension of `inputs` is unknown prior to
       graph execution.
+
+  #### References
+
+  [1]: George Papamakarios, Theo Pavlakou, and Iain Murray. Masked
+       Autoregressive Flow for Density Estimation. In _Neural Information
+       Processing Systems_, 2017. https://arxiv.org/abs/1705.07057
   """
 
   with ops.name_scope(name, "real_nvp_default_template"):

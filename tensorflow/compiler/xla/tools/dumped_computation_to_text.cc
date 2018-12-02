@@ -17,17 +17,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/service/computation_tracker.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/service.h"
-#include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -35,21 +34,21 @@ limitations under the License.
 namespace xla {
 namespace tools {
 
-void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool compile) {
+void RealMain(absl::Span<char* const> args, bool compile) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
   LocalService* local_service =
       ClientLibrary::GetXlaService(client->platform());
   for (char* arg : args) {
-    SessionModule session_module;
+    HloSnapshot snapshot;
     TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg,
-                                            &session_module));
-    auto computation_status = client->LoadSnapshot(session_module);
+                                            &snapshot));
+    auto computation_status = client->LoadSnapshot(snapshot);
     if (!computation_status.ok()) {
       fprintf(stderr, "could not load snapshot for %s: %s\n", arg,
               computation_status.status().ToString().c_str());
       continue;
     }
-    Computation computation = computation_status.ConsumeValueOrDie();
+    XlaComputation computation = computation_status.ConsumeValueOrDie();
 
     if (compile) {
       std::unique_ptr<ProgramShape> program_shape =
@@ -65,8 +64,7 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool compile) {
       build_options.set_device_ordinal(0);
       build_options.set_result_layout(program_shape->result());
       StatusOr<std::unique_ptr<Executable>> executable =
-          local_service->CompileExecutable(computation.handle(), layouts,
-                                           build_options);
+          local_service->CompileExecutable(computation, layouts, build_options);
 
       const HloModule& module = executable.ValueOrDie()->module();
 
@@ -74,13 +72,11 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool compile) {
               local_service->backend().platform()->Name().c_str(),
               module.ToString(HloPrintOptions::ShortParsable()).c_str());
     } else {
-      const ComputationTracker& tracker = local_service->computation_tracker();
-      UserComputation* user_computation =
-          tracker.Resolve(computation.handle()).ConsumeValueOrDie();
-      VersionedComputationHandle versioned_handle =
-          user_computation->GetVersionedHandle();
+      auto config = HloModule::CreateModuleConfigFromProto(computation.proto(),
+                                                           DebugOptions())
+                        .ConsumeValueOrDie();
       std::unique_ptr<HloModule> module =
-          tracker.BuildHloModule(versioned_handle, HloModuleConfig())
+          HloModule::CreateFromProto(computation.proto(), config)
               .ConsumeValueOrDie();
 
       fprintf(stdout, "%s\n",
@@ -106,8 +102,8 @@ int main(int argc, char** argv) {
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(argc > 1) << "\nERROR: must specify at least one module\n" << usage;
 
-  tensorflow::gtl::ArraySlice<char*> args(argv, argc);
-  args.pop_front();  // Pop off the binary name, argv[0]
+  absl::Span<char* const> args(argv, argc);
+  args.remove_prefix(1);  // Pop off the binary name, argv[0]
   xla::tools::RealMain(args, compile);
   return 0;
 }

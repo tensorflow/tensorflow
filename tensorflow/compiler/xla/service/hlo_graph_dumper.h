@@ -56,7 +56,7 @@ string MaybeDumpHloModule(const HloModule& module, const string& label,
 string DumpGraph(const HloComputation& computation, const string& label,
                  const DebugOptions& debug_options,
                  const HloExecutionProfile* hlo_execution_profile = nullptr,
-                 bool show_metadata = false);
+                 bool show_backend_config = false);
 
 // Like DumpGraph, but renders only nodes "near" the given node in the graph.
 //
@@ -64,7 +64,13 @@ string DumpGraph(const HloComputation& computation, const string& label,
 // (roughly) corresponds to the max distance a node may be from the primary node
 // before it's omitted from the graph.
 string DumpNeighborhoodAround(const HloInstruction& node, int radius,
-                              bool show_metadata = false);
+                              bool show_backend_config = false);
+
+// Dumps nodes on any of the paths from `from` to `to`.  If there are more than
+// max_nodes on all paths, restricts to the max_nodes nodes on the shortest
+// paths.
+string DumpAllPathsFromTo(const HloInstruction& from, const HloInstruction& to,
+                          int64 max_nodes, bool show_backend_config = false);
 
 // Dumps the HloModule::ToString() as a file into the provided directory path
 // suffixed with the provided label.
@@ -87,13 +93,13 @@ void DumpText(const HloModule& module, const string& label,
 // Class that registers a graph renderer.
 class Registrar {
  public:
-  Registrar(GraphRendererInterface* dumper);
+  Registrar(std::shared_ptr<GraphRendererInterface> dumper);
 };
 
-#define XLA_INTERNAL_REGISTER_GRAPH_RENDERER(factory, ctr, ...)   \
-  static ::xla::hlo_graph_dumper::Registrar                       \
-      XLA_INTERNAL_REGISTER_GRAPH_RENDERER_NAME(ctr)(new factory, \
-                                                     ##__VA_ARGS__)
+#define XLA_INTERNAL_REGISTER_GRAPH_RENDERER(factory, ctr, ...) \
+  static ::xla::hlo_graph_dumper::Registrar                     \
+      XLA_INTERNAL_REGISTER_GRAPH_RENDERER_NAME(ctr)(           \
+          std::make_shared<factory>(), ##__VA_ARGS__)
 
 // __COUNTER__ must go through another macro to be properly expanded
 #define XLA_INTERNAL_REGISTER_GRAPH_RENDERER_NAME(ctr) ___##ctr##__object_

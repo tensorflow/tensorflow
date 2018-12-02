@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -36,12 +37,44 @@ Status OptimizationPassRegistry::RunGrouping(
     for (auto& phase : group->second) {
       VLOG(1) << "Running optimization phase " << phase.first;
       for (auto& pass : phase.second) {
+        VLOG(1) << "Running optimization pass: " << pass->name();
         Status s = pass->Run(options);
         if (!s.ok()) return s;
+        if (VLOG_IS_ON(1)) {
+          DumpGraphToFile(
+              strings::StrCat("after_phase_", phase.first, "_", pass->name()),
+              **options.graph);
+          if (options.partition_graphs) {
+            for (auto& part : *options.partition_graphs) {
+              DumpGraphToFile(
+                  strings::StrCat("after_phase_", phase.first, "_",
+                                  pass->name(), "_partition_", part.first),
+                  *part.second);
+            }
+          }
+        }
       }
     }
   }
   return Status::OK();
+}
+
+void OptimizationPassRegistry::LogGrouping(Grouping grouping, int vlog_level) {
+  auto group = groups_.find(grouping);
+  if (group != groups_.end()) {
+    for (auto& phase : group->second) {
+      for (auto& pass : phase.second) {
+        VLOG(vlog_level) << "Registered optimization pass grouping " << grouping
+                         << " phase " << phase.first << ": " << pass->name();
+      }
+    }
+  }
+}
+
+void OptimizationPassRegistry::LogAllGroupings(int vlog_level) {
+  for (auto group = groups_.begin(); group != groups_.end(); ++group) {
+    LogGrouping(group->first, vlog_level);
+  }
 }
 
 }  // namespace tensorflow

@@ -22,18 +22,48 @@ import numpy as np
 from scipy import stats
 
 from tensorflow.contrib import distributions
-from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.platform import test
 
 bs = bijectors
 ds = distributions
 la = linalg
+
+
+class DummyMatrixTransform(bs.Bijector):
+  """Tractable matrix transformation.
+
+  This is a non-sensical bijector that has forward/inverse_min_event_ndims=2.
+  The main use is to check that transformed distribution calculations are done
+  appropriately.
+  """
+
+  def __init__(self):
+    super(DummyMatrixTransform, self).__init__(
+        forward_min_event_ndims=2,
+        is_constant_jacobian=False,
+        validate_args=False,
+        name="dummy")
+
+  def _forward(self, x):
+    return x
+
+  def _inverse(self, y):
+    return y
+
+  # Note: These jacobians don't make sense.
+  def _forward_log_det_jacobian(self, x):
+    return -linalg_ops.matrix_determinant(x)
+
+  def _inverse_log_det_jacobian(self, x):
+    return linalg_ops.matrix_determinant(x)
 
 
 class TransformedDistributionTest(test.TestCase):
@@ -55,13 +85,13 @@ class TransformedDistributionTest(test.TestCase):
       # you may or may not need a reduce_sum.
       log_normal = self._cls()(
           distribution=ds.Normal(loc=mu, scale=sigma),
-          bijector=bs.Exp(event_ndims=0))
+          bijector=bs.Exp())
       sp_dist = stats.lognorm(s=sigma, scale=np.exp(mu))
 
       # sample
       sample = log_normal.sample(100000, seed=235)
       self.assertAllEqual([], log_normal.event_shape)
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         self.assertAllEqual([], log_normal.event_shape_tensor().eval())
         self.assertAllClose(
             sp_dist.mean(), np.mean(sample.eval()), atol=0.0, rtol=0.05)
@@ -77,7 +107,7 @@ class TransformedDistributionTest(test.TestCase):
                    [log_normal.log_survival_function, sp_dist.logsf]]:
         actual = func[0](test_vals)
         expected = func[1](test_vals)
-        with self.test_session(graph=g):
+        with self.session(graph=g):
           self.assertAllClose(expected, actual.eval(), atol=0, rtol=0.01)
 
   def testNonInjectiveTransformedDistribution(self):
@@ -87,13 +117,13 @@ class TransformedDistributionTest(test.TestCase):
       sigma = 2.0
       abs_normal = self._cls()(
           distribution=ds.Normal(loc=mu, scale=sigma),
-          bijector=bs.AbsoluteValue(event_ndims=0))
+          bijector=bs.AbsoluteValue())
       sp_normal = stats.norm(mu, sigma)
 
       # sample
       sample = abs_normal.sample(100000, seed=235)
       self.assertAllEqual([], abs_normal.event_shape)
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         sample_ = sample.eval()
         self.assertAllEqual([], abs_normal.event_shape_tensor().eval())
 
@@ -117,7 +147,7 @@ class TransformedDistributionTest(test.TestCase):
             abs_normal.log_prob(2.13).eval())
 
   def testQuantile(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       logit_normal = self._cls()(
           distribution=ds.Normal(loc=0., scale=1.),
           bijector=bs.Sigmoid(),
@@ -129,7 +159,7 @@ class TransformedDistributionTest(test.TestCase):
       self.assertAllClose(grid, cdf_, rtol=1e-6, atol=0.)
 
   def testCachedSamples(self):
-    exp_forward_only = bs.Exp(event_ndims=0)
+    exp_forward_only = bs.Exp()
     exp_forward_only._inverse = self._make_unimplemented(
         "inverse")
     exp_forward_only._inverse_event_shape_tensor = self._make_unimplemented(
@@ -139,7 +169,7 @@ class TransformedDistributionTest(test.TestCase):
     exp_forward_only._inverse_log_det_jacobian = self._make_unimplemented(
         "inverse_log_det_jacobian ")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       mu = 3.0
       sigma = 0.02
       log_normal = self._cls()(
@@ -153,7 +183,7 @@ class TransformedDistributionTest(test.TestCase):
       self.assertAllClose(expected_log_pdf, log_pdf_val, rtol=1e-4, atol=0.)
 
   def testCachedSamplesInvert(self):
-    exp_inverse_only = bs.Exp(event_ndims=0)
+    exp_inverse_only = bs.Exp()
     exp_inverse_only._forward = self._make_unimplemented(
         "forward")
     exp_inverse_only._forward_event_shape_tensor = self._make_unimplemented(
@@ -165,7 +195,7 @@ class TransformedDistributionTest(test.TestCase):
 
     log_forward_only = bs.Invert(exp_inverse_only)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The log bijector isn't defined over the whole real line, so we make
       # sigma sufficiently small so that the draws are positive.
       mu = 2.
@@ -181,17 +211,19 @@ class TransformedDistributionTest(test.TestCase):
       self.assertAllClose(expected_log_pdf, log_pdf_val, atol=0.)
 
   def testShapeChangingBijector(self):
-    with self.test_session():
+    with self.cached_session():
       softmax = bs.SoftmaxCentered()
       standard_normal = ds.Normal(loc=0., scale=1.)
       multi_logit_normal = self._cls()(
           distribution=standard_normal,
-          bijector=softmax)
-      x = [[-np.log(3.), 0.],
-           [np.log(3), np.log(5)]]
+          bijector=softmax,
+          event_shape=[1])
+      x = [[[-np.log(3.)], [0.]],
+           [[np.log(3)], [np.log(5)]]]
       y = softmax.forward(x).eval()
-      expected_log_pdf = (stats.norm(loc=0., scale=1.).logpdf(x) -
-                          np.sum(np.log(y), axis=-1))
+      expected_log_pdf = (
+          np.squeeze(stats.norm(loc=0., scale=1.).logpdf(x)) -
+          np.sum(np.log(y), axis=-1))
       self.assertAllClose(expected_log_pdf,
                           multi_logit_normal.log_prob(y).eval())
       self.assertAllClose(
@@ -203,13 +235,16 @@ class TransformedDistributionTest(test.TestCase):
   def testCastLogDetJacobian(self):
     """Test log_prob when Jacobian and log_prob dtypes do not match."""
 
-    with self.test_session():
+    with self.cached_session():
       # Create an identity bijector whose jacobians have dtype int32
       int_identity = bs.Inline(
           forward_fn=array_ops.identity,
           inverse_fn=array_ops.identity,
-          inverse_log_det_jacobian_fn=lambda x: math_ops.cast(0, dtypes.int32),
-          forward_log_det_jacobian_fn=lambda x: math_ops.cast(0, dtypes.int32),
+          inverse_log_det_jacobian_fn=(
+              lambda y: math_ops.cast(0, dtypes.int32)),
+          forward_log_det_jacobian_fn=(
+              lambda x: math_ops.cast(0, dtypes.int32)),
+          forward_min_event_ndims=0,
           is_constant_jacobian=True)
       normal = self._cls()(
           distribution=ds.Normal(loc=0., scale=1.),
@@ -222,7 +257,7 @@ class TransformedDistributionTest(test.TestCase):
       normal.entropy().eval()
 
   def testEntropy(self):
-    with self.test_session():
+    with self.cached_session():
       shift = np.array([[-1, 0, 1], [-1, -2, -3]], dtype=np.float32)
       diag = np.array([[1, 2, 3], [2, 3, 2]], dtype=np.float32)
       actual_mvn_entropy = np.concatenate([
@@ -242,7 +277,7 @@ class TransformedDistributionTest(test.TestCase):
                           fake_mvn.entropy().eval())
 
   def testScalarBatchScalarEventIdentityScale(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       exp2 = self._cls()(
           ds.Exponential(rate=0.25),
           bijector=ds.bijectors.AffineScalar(scale=2.)
@@ -275,7 +310,7 @@ class ScalarToMultiTest(test.TestCase):
                batch_shape=(),
                event_shape=(),
                not_implemented_message=None):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Overriding shapes must be compatible w/bijector; most bijectors are
       # batch_shape agnostic and only care about event_ndims.
       # In the case of `Affine`, if we got it wrong then it would fire an
@@ -393,7 +428,7 @@ class ScalarToMultiTest(test.TestCase):
         batch_shape=[2],
         not_implemented_message="not implemented")
 
-    with self.test_session():
+    with self.cached_session():
       # Can't override event_shape for scalar batch, non-scalar event.
       with self.assertRaisesRegexp(ValueError, "base distribution not scalar"):
         self._cls()(
@@ -410,7 +445,7 @@ class ScalarToMultiTest(test.TestCase):
         event_shape=[3],
         not_implemented_message="not implemented when overriding event_shape")
 
-    with self.test_session():
+    with self.cached_session():
       # Can't override batch_shape for non-scalar batch, scalar event.
       with self.assertRaisesRegexp(ValueError, "base distribution not scalar"):
         self._cls()(
@@ -421,7 +456,7 @@ class ScalarToMultiTest(test.TestCase):
             validate_args=True)
 
   def testNonScalarBatchNonScalarEvent(self):
-    with self.test_session():
+    with self.cached_session():
       # Can't override event_shape and/or batch_shape for non_scalar batch,
       # non-scalar event.
       with self.assertRaisesRegexp(ValueError, "base distribution not scalar"):
@@ -432,6 +467,82 @@ class ScalarToMultiTest(test.TestCase):
             batch_shape=[2],
             event_shape=[3],
             validate_args=True)
+
+  def testMatrixEvent(self):
+    with self.cached_session() as sess:
+      batch_shape = [2]
+      event_shape = [2, 3, 3]
+      batch_shape_pl = array_ops.placeholder(
+          dtypes.int32, name="dynamic_batch_shape")
+      event_shape_pl = array_ops.placeholder(
+          dtypes.int32, name="dynamic_event_shape")
+      feed_dict = {batch_shape_pl: np.array(batch_shape, dtype=np.int32),
+                   event_shape_pl: np.array(event_shape, dtype=np.int32)}
+
+      scale = 2.
+      loc = 0.
+      fake_mvn_dynamic = self._cls()(
+          distribution=ds.Normal(
+              loc=loc,
+              scale=scale),
+          bijector=DummyMatrixTransform(),
+          batch_shape=batch_shape_pl,
+          event_shape=event_shape_pl,
+          validate_args=True)
+
+      fake_mvn_static = self._cls()(
+          distribution=ds.Normal(
+              loc=loc,
+              scale=scale),
+          bijector=DummyMatrixTransform(),
+          batch_shape=batch_shape,
+          event_shape=event_shape,
+          validate_args=True)
+
+      def actual_mvn_log_prob(x):
+        # This distribution is the normal PDF, reduced over the
+        # last 3 dimensions + a jacobian term which corresponds
+        # to the determinant of x.
+        return (np.sum(
+            stats.norm(loc, scale).logpdf(x), axis=(-1, -2, -3)) +
+                np.sum(np.linalg.det(x), axis=-1))
+
+      self.assertAllEqual([2, 3, 3], fake_mvn_static.event_shape)
+      self.assertAllEqual([2], fake_mvn_static.batch_shape)
+
+      self.assertAllEqual(tensor_shape.TensorShape(None),
+                          fake_mvn_dynamic.event_shape)
+      self.assertAllEqual(tensor_shape.TensorShape(None),
+                          fake_mvn_dynamic.batch_shape)
+
+      num_samples = 5e3
+      for fake_mvn, feed_dict in ((fake_mvn_static, {}),
+                                  (fake_mvn_dynamic, feed_dict)):
+        # Ensure sample works by checking first, second moments.
+        y = fake_mvn.sample(int(num_samples), seed=0)
+        x = y[0:5, ...]
+        [
+            x_,
+            fake_event_shape_,
+            fake_batch_shape_,
+            fake_log_prob_,
+            fake_prob_,
+        ] = sess.run([
+            x,
+            fake_mvn.event_shape_tensor(),
+            fake_mvn.batch_shape_tensor(),
+            fake_mvn.log_prob(x),
+            fake_mvn.prob(x),
+        ], feed_dict=feed_dict)
+
+        # Ensure all other functions work as intended.
+        self.assertAllEqual([5, 2, 2, 3, 3], x_.shape)
+        self.assertAllEqual([2, 3, 3], fake_event_shape_)
+        self.assertAllEqual([2], fake_batch_shape_)
+        self.assertAllClose(actual_mvn_log_prob(x_), fake_log_prob_,
+                            atol=0., rtol=1e-6)
+        self.assertAllClose(np.exp(actual_mvn_log_prob(x_)), fake_prob_,
+                            atol=0., rtol=1e-5)
 
 
 if __name__ == "__main__":

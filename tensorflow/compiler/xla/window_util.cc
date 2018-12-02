@@ -17,16 +17,15 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace window_util {
 
-Window MakeWindow(tensorflow::gtl::ArraySlice<int64> sizes) {
+Window MakeWindow(absl::Span<const int64> sizes) {
   Window window;
   for (int64 size : sizes) {
     auto* dimension = window.add_dimensions();
@@ -38,7 +37,7 @@ Window MakeWindow(tensorflow::gtl::ArraySlice<int64> sizes) {
   return window;
 }
 
-PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes) {
+PaddingConfig MakeSymmetricPadding(absl::Span<const int64> sizes) {
   PaddingConfig config;
   for (int64 size : sizes) {
     auto* dimension = config.add_dimensions();
@@ -49,8 +48,8 @@ PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes) {
 }
 
 /* static */ string ToString(const WindowDimension& dim) {
-  using tensorflow::strings::StrAppend;
-  using tensorflow::strings::StrCat;
+  using absl::StrAppend;
+  using absl::StrCat;
   string str = StrCat("(size=", dim.size());
   if (dim.stride() != 1) {
     StrAppend(&str, ",stride=", dim.stride());
@@ -75,8 +74,8 @@ PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes) {
 }
 
 string ToString(const Window& window) {
-  using tensorflow::strings::StrAppend;
-  using tensorflow::strings::StrCat;
+  using absl::StrAppend;
+  using absl::StrCat;
 
   string str;
   const auto add_field =
@@ -186,6 +185,17 @@ bool HasWindowReversal(const Window& window) {
   return false;
 }
 
+bool AllOrNoneReversed(const Window& window) {
+  if (window.dimensions().empty()) {
+    return true;
+  }
+  bool reversed = window.dimensions()[0].window_reversal();
+  return std::all_of(window.dimensions().begin(), window.dimensions().end(),
+                     [&](const WindowDimension& dim) {
+                       return dim.window_reversal() == reversed;
+                     });
+}
+
 bool HasDilation(const Window& window) {
   return HasBaseDilation(window) || HasWindowDilation(window);
 }
@@ -199,6 +209,9 @@ bool IsInactiveWindowDimension(const Window& window, int64 logical_dim) {
 int64 DilatedBound(int64 bound, int64 dilation) {
   CHECK_GE(bound, 0);
   CHECK_GE(dilation, 1);
+  if (bound == 0) {
+    return 0;
+  }
 
   // Suppose the array has three entries 123 and the dilation factor is 4. Then
   // the dilated array has 9 entries 1xxx2xxx3. Here, each original entry except
@@ -212,7 +225,7 @@ int64 StridedBound(int64 bound, int64 window_size, int64 stride) {
   CHECK_GE(bound, 0);
   CHECK_GE(stride, 1);
 
-  if (window_size > bound) {
+  if (bound == 0 || window_size > bound) {
     return 0;
   }
 

@@ -21,7 +21,7 @@ config_setting(
     name = "using_sycl_trisycl",
     define_values = {
         "using_sycl": "true",
-        "using_trisycl": "false",
+        "using_trisycl": "true",
     },
 )
 

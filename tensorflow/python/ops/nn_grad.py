@@ -18,16 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import sparse_ops
 
 
 @ops.RegisterGradient("Conv2DBackpropInput")
@@ -94,6 +93,7 @@ def _Conv3DGrad(op, grad):
           array_ops.shape(op.inputs[0]),
           op.inputs[1],
           grad,
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format),
@@ -101,6 +101,7 @@ def _Conv3DGrad(op, grad):
           op.inputs[0],
           array_ops.shape(op.inputs[1]),
           grad,
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format)
@@ -116,12 +117,14 @@ def _Conv3DBackpropInputGrad(op, grad):
           grad,
           array_ops.shape(op.inputs[1]),
           op.inputs[2],
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format),
       nn_ops.conv3d(
           grad,
           op.inputs[1],
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format)
@@ -136,12 +139,14 @@ def _Conv3DBackpropFilterGrad(op, grad):
           array_ops.shape(op.inputs[0]),
           grad,
           op.inputs[2],
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format), None,
       nn_ops.conv3d(
           op.inputs[0],
           grad,
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format)
@@ -234,13 +239,9 @@ def _SoftmaxGrad(op, grad_softmax):
      gradient w.r.t the input to the softmax
 
   """
-  # TODO(ilyasu): assert that the tensor has two dimensions at
-  # graph-construction time?  Alternatively: do different things
-  # depending on the dimensionality of the input tensors.
   softmax = op.outputs[0]
-  grad_x = ((grad_softmax - array_ops.reshape(
-      math_ops.reduce_sum(grad_softmax * softmax, [1]), [-1, 1])) * softmax)
-  return grad_x
+  sum_channels = math_ops.reduce_sum(grad_softmax * softmax, -1, keepdims=True)
+  return (grad_softmax - sum_channels) * softmax
 
 
 @ops.RegisterGradient("LogSoftmax")
@@ -258,7 +259,7 @@ def _LogSoftmaxGrad(op, grad):
     The gradients w.r.t. the input.
   """
   softmax = math_ops.exp(op.outputs[0])
-  return grad - math_ops.reduce_sum(grad, 1, keepdims=True) * softmax
+  return grad - math_ops.reduce_sum(grad, -1, keepdims=True) * softmax
 
 
 @ops.RegisterGradient("BiasAdd")
@@ -388,6 +389,21 @@ def _Relu6GradGrad(op, grad):
           array_ops.zeros(shape=array_ops.shape(x), dtype=x.dtype))
 
 
+@ops.RegisterGradient("LeakyRelu")
+def _LeakyReluGrad(op, grad):
+  x = op.inputs[0]
+  alpha = op.get_attr("alpha")
+  return gen_nn_ops.leaky_relu_grad(grad, x, alpha=alpha)
+
+
+@ops.RegisterGradient("LeakyReluGrad")
+def _LeakyReluGradGrad(op, grad):
+  x = op.inputs[1]
+  alpha = op.get_attr("alpha")
+  return (gen_nn_ops.leaky_relu_grad(grad, x, alpha=alpha),
+          array_ops.zeros(shape=array_ops.shape(x), dtype=x.dtype))
+
+
 @ops.RegisterGradient("Elu")
 def _EluGrad(op, grad):
   return gen_nn_ops.elu_grad(grad, op.outputs[0])
@@ -469,7 +485,9 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
     softmax = nn_ops.softmax(logits)
 
     grad += ((grad_grad - array_ops.squeeze(
-        math_ops.matmul(grad_grad[:, None, :], softmax[:, :, None]), axis=1)) *
+        math_ops.matmul(array_ops.expand_dims(grad_grad, 1),
+                        array_ops.expand_dims(softmax, 2)),
+        axis=1)) *
              softmax)
 
   return grad, _BroadcastMul(grad_loss, -nn_ops.log_softmax(logits))
@@ -930,10 +948,14 @@ def _FusedBatchNormGradGrad(op, *grad):
   grad_grad_x = grad[0]
   grad_grad_scale = grad[1]
   grad_grad_offset = grad[2]
-  grad_x, grad_scale, grad_offset = _BatchNormGrad(
-      grad_y, x, scale, pop_mean, pop_var, epsilon, data_format, is_training)
-  grad_initial = [grad_grad_x, grad_grad_scale, grad_grad_offset]
-  grad_grad_y, grad_x, grad_scale = gradients_impl.gradients(
+  with backprop.GradientTape() as tape:
+    tape.watch(grad_y)
+    tape.watch(x)
+    tape.watch(scale)
+    grad_x, grad_scale, grad_offset = _BatchNormGrad(
+        grad_y, x, scale, pop_mean, pop_var, epsilon, data_format, is_training)
+    grad_initial = [grad_grad_x, grad_grad_scale, grad_grad_offset]
+  grad_grad_y, grad_x, grad_scale = tape.gradient(
       [grad_x, grad_scale, grad_offset], [grad_y, x, scale], grad_initial)
   return grad_grad_y, grad_x, grad_scale, None, None
 
@@ -973,25 +995,30 @@ def _TopKGrad(op, grad, _):
   in_shape = array_ops.shape(op.inputs[0])
   ind_shape = array_ops.shape(op.outputs[1])
 
-  ind_lastdim = array_ops.gather(ind_shape, array_ops.size(ind_shape) - 1)
+  # int32 is not supported on GPU hence up-casting
+  ind_lastdim = array_ops.gather(math_ops.cast(
+      ind_shape, dtypes.int64), array_ops.size(ind_shape) - 1)
   # Flatten indices to 2D.
   ind_2d = array_ops.reshape(op.outputs[1], array_ops.stack([-1, ind_lastdim]))
 
-  in_lastdim = array_ops.gather(in_shape, array_ops.size(in_shape) - 1)
+  in_lastdim = array_ops.gather(math_ops.cast(
+      in_shape, dtypes.int64), array_ops.size(in_shape) - 1)
   outerdim = array_ops.shape(ind_2d)[0]
   # Compute linear indices (flattened to 1D).
-  ind = array_ops.reshape(ind_2d + array_ops.expand_dims(
-      math_ops.range(0, outerdim * in_lastdim, in_lastdim), -1), [-1])
+  ind = array_ops.reshape(ind_2d + math_ops.cast(array_ops.expand_dims(
+      math_ops.range(0, math_ops.cast(outerdim, dtypes.int64)
+                     * in_lastdim, in_lastdim), -1), dtypes.int32), [-1])
 
   # Substitute grad to appropriate locations and fill the rest with zeros,
   # finally reshaping it to the original input shape.
   return [
       array_ops.reshape(
-          sparse_ops.sparse_to_dense(
-              ind,
-              array_ops.reshape(math_ops.reduce_prod(in_shape), [1]),
+          array_ops.scatter_nd(
+              array_ops.expand_dims(ind, -1),
               array_ops.reshape(grad, [-1]),
-              validate_indices=False), in_shape),
+              [math_ops.reduce_prod(in_shape)]
+          ),
+          in_shape),
       array_ops.zeros([], dtype=dtypes.int32)
   ]
 

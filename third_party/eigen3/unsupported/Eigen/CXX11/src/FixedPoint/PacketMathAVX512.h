@@ -1,5 +1,5 @@
-#ifndef EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_PACKETMATHAVX512_H_
-#define EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_PACKETMATHAVX512_H_
+#ifndef CXX11_SRC_FIXEDPOINT_PACKETMATHAVX512_H_
+#define CXX11_SRC_FIXEDPOINT_PACKETMATHAVX512_H_
 
 #include "PacketMathAVX2.h"
 
@@ -127,25 +127,25 @@ template <>
 struct unpacket_traits<Packet64q8i> {
   typedef QInt8 type;
   typedef Packet32q8i half;
-  enum { size = 64, alignment=Aligned64 };
+  enum { size = 64, alignment = Aligned64 };
 };
 template <>
 struct unpacket_traits<Packet32q16i> {
   typedef QInt16 type;
   typedef Packet16q16i half;
-  enum { size = 32, alignment=Aligned64 };
+  enum { size = 32, alignment = Aligned64 };
 };
 template <>
 struct unpacket_traits<Packet64q8u> {
   typedef QUInt8 type;
   typedef Packet32q8u half;
-  enum { size = 64, alignment=Aligned64 };
+  enum { size = 64, alignment = Aligned64 };
 };
 template <>
 struct unpacket_traits<Packet16q32i> {
   typedef QInt32 type;
   typedef Packet8q32i half;
-  enum { size = 16, alignment=Aligned64 };
+  enum { size = 16, alignment = Aligned64 };
 };
 
 // Unaligned load
@@ -244,7 +244,7 @@ EIGEN_STRONG_INLINE QInt32 pfirst<Packet16q32i>(const Packet16q32i& a) {
 template <>
 EIGEN_STRONG_INLINE QUInt8 pfirst<Packet64q8u>(const Packet64q8u& a) {
   return static_cast<uint8_t>(
-           _mm_extract_epi8(_mm512_extracti32x4_epi32(a.val, 0), 0));
+      _mm_extract_epi8(_mm512_extracti32x4_epi32(a.val, 0), 0));
 }
 template <>
 EIGEN_STRONG_INLINE QInt8 pfirst<Packet64q8i>(const Packet64q8i& a) {
@@ -410,9 +410,7 @@ EIGEN_STRONG_INLINE QInt32 predux_min<Packet16q32i>(const Packet16q32i& a) {
       _mm_min_epi32(_mm_min_epi32(lane0, lane1), _mm_min_epi32(lane2, lane3));
   res = _mm_min_epi32(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 3, 2)));
   return pfirst(
-           _mm_min_epi32(
-             res,
-             _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
+      _mm_min_epi32(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
 }
 template <>
 EIGEN_STRONG_INLINE QInt32 predux_max<Packet16q32i>(const Packet16q32i& a) {
@@ -424,9 +422,7 @@ EIGEN_STRONG_INLINE QInt32 predux_max<Packet16q32i>(const Packet16q32i& a) {
       _mm_max_epi32(_mm_max_epi32(lane0, lane1), _mm_max_epi32(lane2, lane3));
   res = _mm_max_epi32(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 3, 2)));
   return pfirst(
-           _mm_max_epi32(
-             res,
-             _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
+      _mm_max_epi32(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
 }
 template <>
 EIGEN_STRONG_INLINE QInt16 predux_min<Packet32q16i>(const Packet32q16i& a) {
@@ -437,13 +433,10 @@ EIGEN_STRONG_INLINE QInt16 predux_min<Packet32q16i>(const Packet32q16i& a) {
   Packet4i res =
       _mm_min_epi16(_mm_min_epi16(lane0, lane1), _mm_min_epi16(lane2, lane3));
   res = _mm_min_epi16(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 3, 2)));
-  std::uint32_t w =
-      pfirst(
-        _mm_min_epi16(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
-  return std::min({
-           static_cast<std::int16_t>(w >> 16),
-           static_cast<std::int16_t>(w)
-         });
+  std::uint32_t w = pfirst(
+      _mm_min_epi16(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
+  return std::min(
+      {static_cast<std::int16_t>(w >> 16), static_cast<std::int16_t>(w)});
 }
 template <>
 EIGEN_STRONG_INLINE QInt16 predux_max<Packet32q16i>(const Packet32q16i& a) {
@@ -454,13 +447,10 @@ EIGEN_STRONG_INLINE QInt16 predux_max<Packet32q16i>(const Packet32q16i& a) {
   Packet4i res =
       _mm_max_epi16(_mm_max_epi16(lane0, lane1), _mm_max_epi16(lane2, lane3));
   res = _mm_max_epi16(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 3, 2)));
-  std::uint32_t w =
-      pfirst(
-        _mm_max_epi16(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
-  return std::max({
-           static_cast<std::int16_t>(w >> 16),
-           static_cast<std::int16_t>(w)
-         });
+  std::uint32_t w = pfirst(
+      _mm_max_epi16(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
+  return std::max(
+      {static_cast<std::int16_t>(w >> 16), static_cast<std::int16_t>(w)});
 }
 template <>
 EIGEN_STRONG_INLINE QUInt8 predux_min<Packet64q8u>(const Packet64q8u& a) {
@@ -471,15 +461,11 @@ EIGEN_STRONG_INLINE QUInt8 predux_min<Packet64q8u>(const Packet64q8u& a) {
   Packet4i res =
       _mm_min_epu8(_mm_min_epu8(lane0, lane1), _mm_min_epu8(lane2, lane3));
   res = _mm_min_epu8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 3, 2)));
-  std::uint32_t w =
-      pfirst(
-        _mm_min_epu8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
-  return std::min({
-           static_cast<std::uint8_t>(w >> 24),
-           static_cast<std::uint8_t>(w >> 16),
-           static_cast<std::uint8_t>(w >> 8),
-           static_cast<std::uint8_t>(w)
-         });
+  std::uint32_t w = pfirst(
+      _mm_min_epu8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
+  return std::min(
+      {static_cast<std::uint8_t>(w >> 24), static_cast<std::uint8_t>(w >> 16),
+       static_cast<std::uint8_t>(w >> 8), static_cast<std::uint8_t>(w)});
 }
 template <>
 EIGEN_STRONG_INLINE QUInt8 predux_max<Packet64q8u>(const Packet64q8u& a) {
@@ -490,15 +476,11 @@ EIGEN_STRONG_INLINE QUInt8 predux_max<Packet64q8u>(const Packet64q8u& a) {
   Packet4i res =
       _mm_max_epu8(_mm_max_epu8(lane0, lane1), _mm_max_epu8(lane2, lane3));
   res = _mm_max_epu8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 3, 2)));
-  std::uint32_t w =
-      pfirst(
-        _mm_max_epu8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
-  return std::max({
-           static_cast<std::uint8_t>(w >> 24),
-           static_cast<std::uint8_t>(w >> 16),
-           static_cast<std::uint8_t>(w >> 8),
-           static_cast<std::uint8_t>(w)
-         });
+  std::uint32_t w = pfirst(
+      _mm_max_epu8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
+  return std::max(
+      {static_cast<std::uint8_t>(w >> 24), static_cast<std::uint8_t>(w >> 16),
+       static_cast<std::uint8_t>(w >> 8), static_cast<std::uint8_t>(w)});
 }
 template <>
 EIGEN_STRONG_INLINE QInt8 predux_min<Packet64q8i>(const Packet64q8i& a) {
@@ -509,15 +491,11 @@ EIGEN_STRONG_INLINE QInt8 predux_min<Packet64q8i>(const Packet64q8i& a) {
   Packet4i res =
       _mm_min_epi8(_mm_min_epi8(lane0, lane1), _mm_min_epi8(lane2, lane3));
   res = _mm_min_epi8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 3, 2)));
-  std::uint32_t w =
-      pfirst(
-        _mm_min_epi8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
-  return std::min({
-           static_cast<std::int8_t>(w >> 24),
-           static_cast<std::int8_t>(w >> 16),
-           static_cast<std::int8_t>(w >> 8),
-           static_cast<std::int8_t>(w)
-         });
+  std::uint32_t w = pfirst(
+      _mm_min_epi8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
+  return std::min(
+      {static_cast<std::int8_t>(w >> 24), static_cast<std::int8_t>(w >> 16),
+       static_cast<std::int8_t>(w >> 8), static_cast<std::int8_t>(w)});
 }
 template <>
 EIGEN_STRONG_INLINE QInt8 predux_max<Packet64q8i>(const Packet64q8i& a) {
@@ -528,18 +506,14 @@ EIGEN_STRONG_INLINE QInt8 predux_max<Packet64q8i>(const Packet64q8i& a) {
   Packet4i res =
       _mm_max_epi8(_mm_max_epi8(lane0, lane1), _mm_max_epi8(lane2, lane3));
   res = _mm_max_epi8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 3, 2)));
-  std::uint32_t w =
-      pfirst(
-        _mm_max_epi8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
-  return std::min({
-           static_cast<std::int8_t>(w >> 24),
-           static_cast<std::int8_t>(w >> 16),
-           static_cast<std::int8_t>(w >> 8),
-           static_cast<std::int8_t>(w)
-         });
+  std::uint32_t w = pfirst(
+      _mm_max_epi8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
+  return std::min(
+      {static_cast<std::int8_t>(w >> 24), static_cast<std::int8_t>(w >> 16),
+       static_cast<std::int8_t>(w >> 8), static_cast<std::int8_t>(w)});
 }
 
 }  // end namespace internal
 }  // end namespace Eigen
 
-#endif  // EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_PACKETMATHAVX512_H_
+#endif  // CXX11_SRC_FIXEDPOINT_PACKETMATHAVX512_H_

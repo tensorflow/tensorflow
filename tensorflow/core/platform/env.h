@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -228,12 +229,19 @@ class Env {
   /// |suffix|. Returns true if success.
   bool CreateUniqueFileName(string* prefix, const string& suffix);
 
+  /// \brief Return the runfiles directory if running under bazel. Returns
+  /// the directory the executable is located in if not running under bazel.
+  virtual string GetRunfilesDir() = 0;
+
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
 
+  /// \brief Returns the number of nano-seconds since the Unix epoch.
+  virtual uint64 NowNanos() { return envTime->NowNanos(); }
+
   /// \brief Returns the number of micro-seconds since the Unix epoch.
-  virtual uint64 NowMicros() { return envTime->NowMicros(); };
+  virtual uint64 NowMicros() { return envTime->NowMicros(); }
 
   /// \brief Returns the number of seconds since the Unix epoch.
   virtual uint64 NowSeconds() { return envTime->NowSeconds(); }
@@ -291,10 +299,10 @@ class Env {
   virtual string FormatLibraryFileName(const string& name,
                                        const string& version) = 0;
 
- private:
   // Returns a possible list of local temporary directories.
-  void GetLocalTempDirectories(std::vector<string>* list);
+  virtual void GetLocalTempDirectories(std::vector<string>* list) = 0;
 
+ private:
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
   TF_DISALLOW_COPY_AND_ASSIGN(Env);
   EnvTime* envTime = EnvTime::Default();
@@ -357,7 +365,13 @@ class EnvWrapper : public Env {
     return target_->FormatLibraryFileName(name, version);
   }
 
+  string GetRunfilesDir() override { return target_->GetRunfilesDir(); }
+
  private:
+  void GetLocalTempDirectories(std::vector<string>* list) override {
+    target_->GetLocalTempDirectories(list);
+  }
+
   Env* target_;
 };
 
@@ -382,6 +396,7 @@ struct ThreadOptions {
   size_t stack_size = 0;  // 0: use system default value
   /// Guard area size to use near thread stacks to use (in bytes)
   size_t guard_size = 0;  // 0: use system default value
+  int numa_node = port::kNUMANoAffinity;
 };
 
 /// A utility routine: copy contents of `src` in file system `src_fs`
@@ -446,6 +461,6 @@ struct Register {
           ::tensorflow::register_file_system::Register<factory>(env, scheme)
 
 #define REGISTER_FILE_SYSTEM(scheme, factory) \
-  REGISTER_FILE_SYSTEM_ENV(Env::Default(), scheme, factory);
+  REGISTER_FILE_SYSTEM_ENV(::tensorflow::Env::Default(), scheme, factory);
 
 #endif  // TENSORFLOW_CORE_PLATFORM_ENV_H_

@@ -57,7 +57,7 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
 
 
 # Creates the workers and return their sessions, graphs, train_ops.
-# Cheif worker will update at last
+# Chief worker will update at last
 def _get_workers(num_workers, steps, workers):
   sessions = []
   graphs = []
@@ -80,28 +80,28 @@ def _get_workers(num_workers, steps, workers):
         var_0 = variable_scope.get_variable(initializer=0.0, name="v0")
         var_1 = variable_scope.get_variable(initializer=1.0, name="v1")
 
-      with ops.device("/job:worker/task:" + str(worker_id)):
-        if worker_id == 0:
-          grads_0 = constant_op.constant(-1.0)
-          grads_1 = constant_op.constant(-1.0)
-        else:
-          grads_0 = constant_op.constant(-2.0)
-          grads_1 = constant_op.constant(-2.0)
-        sgd_opt = gradient_descent.GradientDescentOptimizer(1.0)
-        opt = model_average_optimizer.ModelAverageOptimizer(
-            opt=sgd_opt,
-            num_worker=num_workers,
-            ma_custom_getter=ma_coustom,
-            is_chief=is_chief,
-            interval_steps=steps)
-        train_op = [
-            opt.apply_gradients([[grads_0, var_0], [grads_1, var_1]],
-                                global_step)
-        ]
-      easgd_hook = opt.make_session_run_hook()
+        with ops.device("/job:worker/task:" + str(worker_id)):
+          if worker_id == 0:
+            grads_0 = constant_op.constant(-1.0)
+            grads_1 = constant_op.constant(-1.0)
+          else:
+            grads_0 = constant_op.constant(-2.0)
+            grads_1 = constant_op.constant(-2.0)
+          sgd_opt = gradient_descent.GradientDescentOptimizer(1.0)
+          opt = model_average_optimizer.ModelAverageOptimizer(
+              opt=sgd_opt,
+              num_worker=num_workers,
+              ma_custom_getter=ma_coustom,
+              is_chief=is_chief,
+              interval_steps=steps)
+          train_op = [
+              opt.apply_gradients([[grads_0, var_0], [grads_1, var_1]],
+                                  global_step)
+          ]
+      ma_hook = opt.make_session_run_hook()
       # Creates MonitoredSession
       sess = training.MonitoredTrainingSession(
-          workers[worker_id].target, hooks=[easgd_hook])
+          workers[worker_id].target, hooks=[ma_hook])
 
     sessions.append(sess)
     graphs.append(graph)
@@ -110,10 +110,11 @@ def _get_workers(num_workers, steps, workers):
 
 
 class ModelAverageOptimizerTest(test.TestCase):
+
   def _run(self, train_op, sess):
     sess.run(train_op)
 
-  def test1Workers2Period(self):
+  def disabled_test1Workers2Period(self):
     num_workers = 2
     steps = 2
     num_ps = 1
@@ -146,7 +147,7 @@ class ModelAverageOptimizerTest(test.TestCase):
     self.assertAllEqual(1.0, sessions[0].run(global_var_1))
     self.assertAllEqual(0, sessions[0].run(global_step))
 
-    # iteration 2, global varibale update
+    # iteration 2, global variable update
     thread_0 = self.checkedThread(
         target=self._run, args=(train_ops[0], sessions[0]))
     thread_1 = self.checkedThread(

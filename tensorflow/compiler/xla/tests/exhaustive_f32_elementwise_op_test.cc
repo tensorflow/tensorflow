@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/base/casts.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/core/casts.h"
 
 namespace xla {
 namespace {
@@ -35,31 +36,31 @@ class ExhaustiveF32ElementwiseOpTest
     int64 input_size = end - begin;
     LOG(INFO) << "Checking range [" << begin << ", " << end << ")";
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
 
-    std::unique_ptr<Literal> input_literal =
-        Literal::CreateFromDimensions(F32, {input_size});
+    Literal input_literal =
+        LiteralUtil::CreateFromDimensions(F32, {input_size});
     for (int64 i = begin; i < end; i++) {
       if (i >= known_incorrect_range.first &&
           i < known_incorrect_range.second) {
         // If the operation is known to be buggy on a specific input clamp that
         // input to 0 under the assumption that the op is at least correct on 0.
-        input_literal->Set({i - begin}, 0.0f);
+        input_literal.Set({i - begin}, 0.0f);
       } else {
-        input_literal->Set({i - begin}, tensorflow::bit_cast<float, int>(i));
+        input_literal.Set({i - begin}, absl::bit_cast<float, int>(i));
       }
     }
 
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
-                            client_->TransferToServer(*input_literal));
+                            client_->TransferToServer(input_literal));
 
-    auto input = builder.Parameter(0, input_literal->shape(), "input");
+    auto input = Parameter(&builder, 0, input_literal.shape(), "input");
     enqueue_op(&builder, input);
 
     std::vector<float> expected_result;
     expected_result.reserve(input_size);
     for (int64 i = 0; i < input_size; i++) {
-      expected_result.push_back(evaluate_op(input_literal->Get<float>({i})));
+      expected_result.push_back(evaluate_op(input_literal.Get<float>({i})));
     }
 
     ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},
@@ -71,17 +72,15 @@ XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, LogF32) {
 #ifdef XLA_TEST_BACKEND_CPU
   // TODO(b/73141998): The vectorized Log implementation gives results outside
   // our error spec in this range (these numbers are bitwise representations of
-  // floats expressed as a zero extended int64):
-  std::pair<int64, int64> known_incorrect_range = {1, 8315654};
+  // floats expressed as a zero extended int64).
+  std::pair<int64, int64> known_incorrect_range = {1, 8388608};
 #else
   std::pair<int64, int64> known_incorrect_range = {0, 0};
 #endif
 
   ExhaustivelyTestF32Op(
-      [](ComputationBuilder* builder, const ComputationDataHandle& input) {
-        builder->Log(input);
-      },
-      std::log, known_incorrect_range);
+      [](XlaBuilder* builder, const XlaOp& input) { Log(input); }, std::log,
+      known_incorrect_range);
 }
 
 XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, ExpF32) {
@@ -96,18 +95,14 @@ XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, ExpF32) {
 #endif
 
   ExhaustivelyTestF32Op(
-      [](ComputationBuilder* builder, const ComputationDataHandle& input) {
-        builder->Exp(input);
-      },
-      std::exp, known_incorrect_range);
+      [](XlaBuilder* builder, const XlaOp& input) { Exp(input); }, std::exp,
+      known_incorrect_range);
 }
 
 XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, TanhF32) {
   ExhaustivelyTestF32Op(
-      [](ComputationBuilder* builder, const ComputationDataHandle& input) {
-        builder->Tanh(input);
-      },
-      std::tanh, /*known_incorrect_range=*/{0, 0});
+      [](XlaBuilder* builder, const XlaOp& input) { Tanh(input); }, std::tanh,
+      /*known_incorrect_range=*/{0, 0});
 }
 
 std::vector<std::pair<int64, int64>> CreateExhaustiveParameters() {

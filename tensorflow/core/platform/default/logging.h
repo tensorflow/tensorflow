@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_DEFAULT_LOGGING_H_
-#define TENSORFLOW_PLATFORM_DEFAULT_LOGGING_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_
+#define TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_
 
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/logging.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/logging.h
@@ -46,6 +46,17 @@ class LogMessage : public std::basic_ostringstream<char> {
   // but VLOG(3) will not. Defaults to 0.
   static int64 MinVLogLevel();
 
+  // Returns whether VLOG level lvl is activated for the file fname.
+  //
+  // E.g. if the environment variable TF_CPP_VMODULE contains foo=3 and fname is
+  // foo.cc and lvl is <= 3, this will return true. It will also return true if
+  // the level is lower or equal to TF_CPP_MIN_VLOG_LEVEL (default zero).
+  //
+  // It is expected that the result of this query will be cached in the VLOG-ing
+  // call site to avoid repeated lookups. This routine performs a hash-map
+  // access against the VLOG-ing specification provided by the env var.
+  static bool VmoduleActivated(const char* fname, int level);
+
  protected:
   void GenerateLogMessage();
 
@@ -53,6 +64,13 @@ class LogMessage : public std::basic_ostringstream<char> {
   const char* fname_;
   int line_;
   int severity_;
+};
+
+// Uses the lower operator & precedence to voidify a LogMessage reference, so
+// that the ternary VLOG() implementation is balanced, type wise.
+struct Voidifier {
+  template <typename T>
+  void operator&(const T&)const {}
 };
 
 // LogMessageFatal ensures the process will exit in failure after
@@ -64,11 +82,11 @@ class LogMessageFatal : public LogMessage {
 };
 
 #define _TF_LOG_INFO \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::INFO)
+  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, ::tensorflow::INFO)
 #define _TF_LOG_WARNING \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::WARNING)
+  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, ::tensorflow::WARNING)
 #define _TF_LOG_ERROR \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::ERROR)
+  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, ::tensorflow::ERROR)
 #define _TF_LOG_FATAL \
   ::tensorflow::internal::LogMessageFatal(__FILE__, __LINE__)
 
@@ -77,18 +95,30 @@ class LogMessageFatal : public LogMessage {
 #define LOG(severity) _TF_LOG_##severity
 
 #ifdef IS_MOBILE_PLATFORM
+
 // Turn VLOG off when under mobile devices for considerations of binary size.
 #define VLOG_IS_ON(lvl) ((lvl) <= 0)
+
 #else
-// Otherwise, Set TF_CPP_MIN_VLOG_LEVEL environment to update minimum log level
-// of VLOG
-#define VLOG_IS_ON(lvl) \
-  ((lvl) <= ::tensorflow::internal::LogMessage::MinVLogLevel())
+
+// Otherwise, set TF_CPP_MIN_VLOG_LEVEL environment to update minimum log level
+// of VLOG, or TF_CPP_VMODULE to set the minimum log level for individual
+// translation units.
+#define VLOG_IS_ON(lvl)                                                     \
+  (([](int level, const char* fname) {                                      \
+    static const bool vmodule_activated =                                   \
+        ::tensorflow::internal::LogMessage::VmoduleActivated(fname, level); \
+    return vmodule_activated;                                               \
+  })(lvl, __FILE__))
+
 #endif
 
-#define VLOG(lvl)                        \
-  if (TF_PREDICT_FALSE(VLOG_IS_ON(lvl))) \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::INFO)
+#define VLOG(level)                                              \
+  TF_PREDICT_TRUE(!VLOG_IS_ON(level))                            \
+  ? (void)0                                                      \
+  : ::tensorflow::internal::Voidifier() &                        \
+          ::tensorflow::internal::LogMessage(__FILE__, __LINE__, \
+                                             tensorflow::INFO)
 
 // CHECK dies with a fatal error if condition is not true.  It is *not*
 // controlled by NDEBUG, so the check will be executed regardless of
@@ -314,4 +344,4 @@ int64 MinVLogLevelFromEnv();
 }  // namespace internal
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_DEFAULT_LOGGING_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_

@@ -42,7 +42,7 @@ within a given variable according to `indices`.
 `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
 
 `indices` must be integer tensor, containing indices into `ref`.
-It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+It must be shape \\([d_0, ..., d_{Q-2}, K]\\) where `0 < K <= P`.
 
 The innermost dimension of `indices` (with length `K`) corresponds to
 indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
@@ -50,9 +50,7 @@ dimension of `ref`.
 
 `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
-```
-[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
-```
+$$[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].$$
 
 For example, say we want to subtract 4 scattered elements from a rank-1 tensor
 with 8 elements. In Python, that subtraction would look like this:
@@ -68,7 +66,7 @@ The resulting update to ref would look like this:
 
     [1, -9, 3, -6, -4, 6, 7, -4]
 
-See @{tf.scatter_nd} for more details about how to make updates to
+See `tf.scatter_nd` for more details about how to make updates to
 slices.
 END
 }

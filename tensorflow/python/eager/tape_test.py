@@ -72,7 +72,7 @@ class TapeTest(test.TestCase):
     a = constant_op.constant([[1., 0.], [0., 1.]])
     b = constant_op.constant([[1., 2.], [3., 4.]])
     da, db = backprop.gradients_function(fn, [0, 1])(a, b)
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       tf_a = constant_op.constant([[1, 0], [0, 1]], dtype=dtypes.float32)
       tf_b = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float32)
       tf_c = tf_a + tf_b
@@ -80,8 +80,8 @@ class TapeTest(test.TestCase):
       tf_e = tf_d + tf_f
       tf_da, tf_db = gradients_impl.gradients(tf_e, [tf_a, tf_b])
 
-      self.assertAllEqual(da, tf_da.eval())
-      self.assertAllEqual(db, tf_db.eval())
+      self.assertAllEqual(da, self.evaluate(tf_da))
+      self.assertAllEqual(db, self.evaluate(tf_db))
 
   def testBasicFunctional(self):
 
@@ -135,15 +135,15 @@ class TapeTest(test.TestCase):
     a = constant_op.constant([[1., 0.], [0., 1.]])
     b = constant_op.constant([[1., 2.], [3., 4.]])
     da, db = backprop.gradients_function(fn, [0, 1])(a, b)
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       tf_a = constant_op.constant([[1, 0], [0, 1]], dtype=dtypes.float32)
       tf_b = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float32)
       tf_mm = math_ops.matmul(tf_a, tf_b)
       tf_rr = 2 * math_ops.reduce_sum(tf_mm)
       tf_da, tf_db = gradients_impl.gradients(tf_rr, [tf_a, tf_b])
 
-      self.assertAllEqual(da, tf_da.eval())
-      self.assertAllEqual(db, tf_db.eval())
+      self.assertAllEqual(da, self.evaluate(tf_da))
+      self.assertAllEqual(db, self.evaluate(tf_db))
 
   def testGcTwoOutputs(self):
 

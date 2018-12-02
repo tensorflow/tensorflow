@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <map>
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/lib/hash/hash.h"
@@ -80,5 +82,76 @@ static void BM_Hash32(int iters, int len) {
   VLOG(1) << h;
 }
 BENCHMARK(BM_Hash32)->Range(1, 1024);
+
+TEST(StringPieceHasher, Equality) {
+  StringPieceHasher hasher;
+
+  StringPiece s1("foo");
+  StringPiece s2("bar");
+  StringPiece s3("baz");
+  StringPiece s4("zot");
+
+  EXPECT_TRUE(hasher(s1) != hasher(s2));
+  EXPECT_TRUE(hasher(s1) != hasher(s3));
+  EXPECT_TRUE(hasher(s1) != hasher(s4));
+  EXPECT_TRUE(hasher(s2) != hasher(s3));
+  EXPECT_TRUE(hasher(s2) != hasher(s4));
+  EXPECT_TRUE(hasher(s3) != hasher(s4));
+
+  EXPECT_TRUE(hasher(s1) == hasher(s1));
+  EXPECT_TRUE(hasher(s2) == hasher(s2));
+  EXPECT_TRUE(hasher(s3) == hasher(s3));
+  EXPECT_TRUE(hasher(s4) == hasher(s4));
+}
+
+TEST(StringPieceHasher, HashMap) {
+  string s1("foo");
+  string s2("bar");
+  string s3("baz");
+
+  StringPiece p1(s1);
+  StringPiece p2(s2);
+  StringPiece p3(s3);
+
+  std::unordered_map<StringPiece, int, StringPieceHasher> map;
+
+  map.insert(std::make_pair(p1, 0));
+  map.insert(std::make_pair(p2, 1));
+  map.insert(std::make_pair(p3, 2));
+  EXPECT_EQ(map.size(), 3);
+
+  bool found[3] = {false, false, false};
+  for (auto const& val : map) {
+    int x = val.second;
+    EXPECT_TRUE(x >= 0 && x < 3);
+    EXPECT_TRUE(!found[x]);
+    found[x] = true;
+  }
+  EXPECT_EQ(found[0], true);
+  EXPECT_EQ(found[1], true);
+  EXPECT_EQ(found[2], true);
+
+  auto new_iter = map.find("zot");
+  EXPECT_TRUE(new_iter == map.end());
+
+  new_iter = map.find("bar");
+  EXPECT_TRUE(new_iter != map.end());
+
+  map.erase(new_iter);
+  EXPECT_EQ(map.size(), 2);
+
+  found[0] = false;
+  found[1] = false;
+  found[2] = false;
+  for (const auto& iter : map) {
+    int x = iter.second;
+    EXPECT_TRUE(x >= 0 && x < 3);
+    EXPECT_TRUE(!found[x]);
+    found[x] = true;
+  }
+  EXPECT_EQ(found[0], true);
+  EXPECT_EQ(found[1], false);
+  EXPECT_EQ(found[2], true);
+}
 
 }  // namespace tensorflow

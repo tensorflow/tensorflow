@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -29,6 +30,8 @@ using ::tensorflow::string;
 
 typedef std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)>
     unique_tensor_ptr;
+
+TF_Tensor* BoolTensor(int32_t v);
 
 // Create a tensor with values of type TF_INT8 provided by `values`.
 TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values);
@@ -48,10 +51,14 @@ TF_Tensor* FloatTensor(float v);
 
 TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s,
                           const char* name = "feed",
-                          TF_DataType dtype = TF_INT32);
+                          TF_DataType dtype = TF_INT32,
+                          const std::vector<int64_t>& dims = {});
 
 TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
                     const char* name = "const");
+
+TF_Operation* ScalarConst(bool v, TF_Graph* graph, TF_Status* s,
+                          const char* name = "scalar");
 
 TF_Operation* ScalarConst(int32_t v, TF_Graph* graph, TF_Status* s,
                           const char* name = "scalar");
@@ -77,6 +84,9 @@ TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
 
 TF_Operation* Min(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                   TF_Status* s, const char* name = "min");
+
+TF_Operation* Mul(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                  TF_Status* s, const char* name = "mul");
 
 // If `op_device` is non-empty, set the created op on that device.
 TF_Operation* MinWithDevice(TF_Operation* l, TF_Operation* r, TF_Graph* graph,

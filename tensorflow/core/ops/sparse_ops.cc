@@ -302,6 +302,20 @@ REGISTER_OP("SparseSplit")
       return Status::OK();
     });
 
+REGISTER_OP("SparseSliceGrad")
+    .Input("backprop_val_grad: T")
+    .Input("input_indices: int64")
+    .Input("input_start: int64")
+    .Input("output_indices: int64")
+    .Output("val_grad: T")
+    .Attr("T: numbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle indices;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &indices));
+      c->set_output(0, c->Vector(c->Dim(indices, 0)));
+      return Status::OK();
+    });
+
 REGISTER_OP("SparseSlice")
     .Input("indices: int64")
     .Input("values: T")
@@ -387,7 +401,7 @@ REGISTER_OP("SparseReduceMax")
     .Attr("keep_dims: bool = False")
     .Output("output: T")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::UnknownShape);
+    .SetShapeFn(shape_inference::SparseReduceShapeFn);
 
 REGISTER_OP("SparseReduceMaxSparse")
     .Input("input_indices: int64")
@@ -409,7 +423,7 @@ REGISTER_OP("SparseReduceSum")
     .Attr("keep_dims: bool = False")
     .Output("output: T")
     .Attr("T: numbertype")
-    .SetShapeFn(shape_inference::UnknownShape);
+    .SetShapeFn(shape_inference::SparseReduceShapeFn);
 
 REGISTER_OP("SparseReduceSumSparse")
     .Input("input_indices: int64")

@@ -40,7 +40,8 @@ rm -rf ${AAR_LIB_TMP}
 for CPU in ${CPUS//,/ }
 do
     echo "========== Building native libs for Android ${CPU} =========="
-    bazel build -c opt --config=monolithic --cpu=${CPU} \
+    bazel build --config=monolithic --cpu=${CPU} \
+        --compilation_mode=opt --cxxopt=-std=c++11 \
         --crosstool_top=//external:android/crosstool \
         --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
         //tensorflow/core:android_tensorflow_lib \
@@ -62,7 +63,8 @@ done
 # in assets/ dir (see https://github.com/bazelbuild/bazel/issues/2334)
 # TODO(gunan): remove extra flags once sandboxing is enabled for all builds.
 echo "========== Building TensorFlow Android Jar and Demo =========="
-bazel --bazelrc=/dev/null build -c opt --config=monolithic --fat_apk_cpu=${CPUS} \
+bazel --bazelrc=/dev/null build --config=monolithic --fat_apk_cpu=${CPUS} \
+    --compilation_mode=opt --cxxopt=-std=c++11 \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
     //tensorflow/contrib/android:android_tensorflow_inference_java \
     //tensorflow/contrib/android:android_tensorflow_inference_java.aar \

@@ -27,6 +27,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import gamma
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -36,7 +37,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.Exponential")
+@tf_export(v1=["distributions.Exponential"])
 class Exponential(gamma.Gamma):
   """Exponential distribution.
 
@@ -70,6 +71,14 @@ class Exponential(gamma.Gamma):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                rate,
                validate_args=False,
@@ -90,12 +99,12 @@ class Exponential(gamma.Gamma):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
+    parameters = dict(locals())
     # Even though all statistics of are defined for valid inputs, this is not
     # true in the parent class "Gamma."  Therefore, passing
     # allow_nan_stats=True
     # through to the parent class results in unnecessary asserts.
-    with ops.name_scope(name, values=[rate]):
+    with ops.name_scope(name, values=[rate]) as name:
       self._rate = ops.convert_to_tensor(rate, name="rate")
     super(Exponential, self).__init__(
         concentration=array_ops.ones([], dtype=self._rate.dtype),
@@ -103,9 +112,6 @@ class Exponential(gamma.Gamma):
         allow_nan_stats=allow_nan_stats,
         validate_args=validate_args,
         name=name)
-    # While the Gamma distribution is not reparameterizable, the exponential
-    # distribution is.
-    self._reparameterization_type = True
     self._parameters = parameters
     self._graph_parents += [self._rate]
 
@@ -116,6 +122,9 @@ class Exponential(gamma.Gamma):
   @property
   def rate(self):
     return self._rate
+
+  def _log_survival_function(self, value):
+    return self._log_prob(value) - math_ops.log(self._rate)
 
   def _sample_n(self, n, seed=None):
     shape = array_ops.concat([[n], array_ops.shape(self._rate)], 0)
@@ -138,13 +147,17 @@ class Exponential(gamma.Gamma):
 class ExponentialWithSoftplusRate(Exponential):
   """Exponential with softplus transform on `rate`."""
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "Use `tfd.Exponential(tf.nn.softplus(rate)).",
+      warn_once=True)
   def __init__(self,
                rate,
                validate_args=False,
                allow_nan_stats=True,
                name="ExponentialWithSoftplusRate"):
-    parameters = locals()
-    with ops.name_scope(name, values=[rate]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[rate]) as name:
       super(ExponentialWithSoftplusRate, self).__init__(
           rate=nn.softplus(rate, name="softplus_rate"),
           validate_args=validate_args,

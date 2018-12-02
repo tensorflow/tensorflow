@@ -138,11 +138,24 @@ void GenerateOneValue(int32 worker_id, int64 max_elements, double *total_weight,
   stream->Finalize();
 }
 
+void GenerateOneZeroWeightedValue(int32 worker_id, int64 max_elements,
+                                  double *total_weight, Stream *stream) {
+  stream->PushEntry(10, 0);
+  stream->Finalize();
+}
+
 TEST(WeightedQuantilesStreamTest, OneValue) {
   const double eps = 0.01;
   const int64 max_elements = 1 << 16;
   TestSingleWorkerStreams(eps, max_elements, GenerateOneValue,
                           {10.0, 10.0, 10.0, 10.0, 10.0}, 1e-2);
+}
+
+TEST(WeightedQuantilesStreamTest, OneZeroWeightValue) {
+  const double eps = 0.01;
+  const int64 max_elements = 1 << 16;
+  TestSingleWorkerStreams(eps, max_elements, GenerateOneZeroWeightedValue, {},
+                          1e-2);
 }
 
 TEST(WeightedQuantilesStreamTest, FixedUniform) {

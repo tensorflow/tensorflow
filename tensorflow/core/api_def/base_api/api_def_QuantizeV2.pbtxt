@@ -42,8 +42,9 @@ In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
 
 ```
 out[i] = (in[i] - min_range) * range(T) / (max_range - min_range)
-if T == qint8, out[i] -= (range(T) + 1) / 2.0
+if T == qint8: out[i] -= (range(T) + 1) / 2.0
 ```
+
 here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
 
 *MIN_COMBINED Mode Example*
@@ -87,6 +88,7 @@ choosing to elide the lowest possible value for symmetry (e.g., output range is
 
 We first find the range of values in our tensor. The
 range we use is always centered on 0, so we find m such that
+
 ```c++
   m = max(abs(input_min), abs(input_max))
 ```
@@ -95,6 +97,7 @@ Our input tensor range is then `[-m, m]`.
 
 Next, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.
 If T is signed, this is
+
 ```
   num_bits = sizeof(T) * 8
   [min_fixed, max_fixed] =
@@ -102,16 +105,19 @@ If T is signed, this is
 ```
 
 Otherwise, if T is unsigned, the fixed-point range is
+
 ```
   [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]
 ```
 
 From this we compute our scaling factor, s:
+
 ```c++
   s = (max_fixed - min_fixed) / (2 * m)
 ```
 
 Now we can quantize the elements of our tensor:
+
 ```c++
 result = round(input * s)
 ```

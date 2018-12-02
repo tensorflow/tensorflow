@@ -95,9 +95,6 @@ TEST(ManualConstructorTest, Alignment) {
 #ifdef ARCH_K8
   EXPECT_EQ(reinterpret_cast<intptr_t>(test2.b.get()) % 16, 0);
 #endif
-#ifdef ARCH_PIII
-  EXPECT_EQ(reinterpret_cast<intptr_t>(test2.b.get()) % 4, 0);
-#endif
 }
 
 TEST(ManualConstructorTest, DefaultInitialize) {

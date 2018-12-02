@@ -17,21 +17,22 @@ limitations under the License.
 
 #include <queue>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
-using ::tensorflow::strings::Appendf;
-using ::tensorflow::strings::StrCat;
+using absl::StrAppendFormat;
+using absl::StrCat;
 
 string CallContextToString(CallContext context) {
   switch (context) {
@@ -51,15 +52,17 @@ std::ostream& operator<<(std::ostream& out, const CallContext& context) {
   return out;
 }
 
-CallContext GetInstructionCallContext(const HloInstruction* instruction) {
-  switch (instruction->opcode()) {
+CallContext GetInstructionCallContext(HloOpcode opcode) {
+  switch (opcode) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
       return CallContext::kSequential;
+    case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kFusion:
       return CallContext::kParallel;
@@ -69,10 +72,10 @@ CallContext GetInstructionCallContext(const HloInstruction* instruction) {
 }
 
 string CallSite::ToString() const {
-  return StrCat(instruction()->name(), " calls in context ",
-                CallContextToString(context()), ": ",
-                tensorflow::str_util::Join(
-                    called_computations(), ", ",
+  return StrCat(
+      instruction()->name(), " calls in context ",
+      CallContextToString(context()), ": ",
+      absl::StrJoin(called_computations(), ", ",
                     [](string* out, const HloComputation* computation) {
                       out->append(computation->name());
                     }));
@@ -101,7 +104,7 @@ void CallGraphNode::AddCallerCallSite(const CallSite& caller_callsite) {
 
 void CallGraphNode::AddCallSiteForInstruction(HloInstruction* instruction) {
   CHECK_EQ(instruction->parent(), computation());
-  const CallContext context = GetInstructionCallContext(instruction);
+  const CallContext context = GetInstructionCallContext(instruction->opcode());
   if (!instruction->called_computations().empty()) {
     CHECK(context == CallContext::kSequential ||
           context == CallContext::kParallel);
@@ -136,7 +139,7 @@ CallGraphNode& CallGraph::GetNode(const HloComputation* computation) {
 
 bool CallGraph::DominatesHelper(
     const HloComputation* a, const HloComputation* b,
-    tensorflow::gtl::FlatSet<const HloComputation*>* visited) const {
+    absl::flat_hash_set<const HloComputation*>* visited) const {
   if (a == b || ContainsKey(*visited, b)) {
     // The call graph is guaranteed to be acyclic so any previously visited node
     // we encounter was already determined to be dominated.
@@ -161,7 +164,7 @@ bool CallGraph::DominatesHelper(
 
 bool CallGraph::Dominates(const HloComputation* a,
                           const HloComputation* b) const {
-  tensorflow::gtl::FlatSet<const HloComputation*> visited;
+  absl::flat_hash_set<const HloComputation*> visited;
   return DominatesHelper(a, b, &visited);
 }
 
@@ -235,8 +238,8 @@ void CallGraph::SetCallContexts() {
 
 /* static */
 std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
-  // Constructor for CallGraph is private so MakeUnique can't be used.
-  auto call_graph = WrapUnique<CallGraph>(new CallGraph(module));
+  // Constructor for CallGraph is private so absl::make_unique can't be used.
+  auto call_graph = absl::WrapUnique<CallGraph>(new CallGraph(module));
 
   VLOG(2) << "Building call graph for:";
   XLA_VLOG_LINES(2, module->ToString());
@@ -275,7 +278,7 @@ std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
 
 Status CallGraph::VisitNodesInternal(
     const VisitorFunction& visitor_func, const CallGraphNode& node,
-    tensorflow::gtl::FlatSet<const CallGraphNode*>* visited) const {
+    absl::flat_hash_set<const CallGraphNode*>* visited) const {
   auto pair = visited->insert(&node);
   if (!pair.second) {
     // Node was not inserted. Node has already been visited.
@@ -292,7 +295,7 @@ Status CallGraph::VisitNodesInternal(
 
 Status CallGraph::VisitNodes(const VisitorFunction& visitor_func,
                              bool visit_unreachable_nodes) const {
-  tensorflow::gtl::FlatSet<const CallGraphNode*> visited;
+  absl::flat_hash_set<const CallGraphNode*> visited;
   if (visit_unreachable_nodes) {
     // Traverse from all roots in the call graph.
     for (const CallGraphNode& node : nodes()) {
@@ -320,6 +323,15 @@ bool CallGraph::IsFlattened() const {
     }
   }
   return true;
+}
+
+std::vector<HloInstruction*> CallGraph::GetComputationCallers(
+    HloComputation* c) {
+  std::vector<HloInstruction*> callers;
+  for (auto callsite : GetNode(c).caller_callsites()) {
+    callers.push_back(callsite.instruction());
+  }
+  return callers;
 }
 
 std::pair<HloInstruction*, HloInstruction*>
@@ -354,20 +366,20 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
 
 string CallGraph::ToString() const {
   string out;
-  Appendf(&out, "Call graph for module %s:\n", module_->name().c_str());
+  StrAppendFormat(&out, "Call graph for module %s:\n", module_->name());
   for (const CallGraphNode& node : nodes()) {
-    Appendf(&out, "Computation %s:\n", node.computation()->name().c_str());
-    Appendf(&out, "  calls:\n");
+    StrAppendFormat(&out, "Computation %s:\n", node.computation()->name());
+    StrAppendFormat(&out, "  calls:\n");
     for (const HloComputation* callee : node.callees()) {
-      Appendf(&out, "    %s\n", callee->name().c_str());
+      StrAppendFormat(&out, "    %s\n", callee->name());
     }
-    Appendf(&out, "  called by:\n");
+    StrAppendFormat(&out, "  called by:\n");
     for (const HloComputation* caller : node.callers()) {
-      Appendf(&out, "    %s\n", caller->name().c_str());
+      StrAppendFormat(&out, "    %s\n", caller->name());
     }
-    Appendf(&out, "  callsites:\n");
+    StrAppendFormat(&out, "  callsites:\n");
     for (const CallSite& callsite : node.callsites()) {
-      Appendf(&out, "    %s\n", callsite.ToString().c_str());
+      StrAppendFormat(&out, "    %s\n", callsite.ToString());
     }
   }
   return out;

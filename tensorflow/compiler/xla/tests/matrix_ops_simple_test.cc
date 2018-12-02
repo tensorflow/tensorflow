@@ -17,12 +17,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -32,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -51,77 +52,69 @@ class MatOpsSimpleTest : public ClientLibraryTestBase {};
 template <typename T>
 class MatOpsSimpleTest_F16F32 : public MatOpsSimpleTest {};
 
-// TODO(bixia): This test for F16 failed on GPU 02-25-2018.
-#ifdef XLA_TEST_BACKEND_GPU
-TYPED_TEST_CASE(MatOpsSimpleTest_F16F32, ::testing::Types<float>);
-#else
 TYPED_TEST_CASE(MatOpsSimpleTest_F16F32, TypesF16F32);
-#endif
 
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, "exp_2x2");
-  auto data = builder.ConstantR2FromArray2D<T>({
-      {1.0f, 0.0f},   // row 0
-      {-1.0f, 0.5f},  // row 1
-  });
-  builder.Exp(data);
+  XlaBuilder builder("exp_2x2");
+  auto data = ConstantR2FromArray2D<T>(&builder, {
+                                                     {1.0f, 0.0f},   // row 0
+                                                     {-1.0f, 0.5f},  // row 1
+                                                 });
+  Exp(data);
 
-  std::unique_ptr<Literal> expected =
-      Literal::CreateR2FromArray2D<T>({{2.71828f, 1.00000f},    // row 0
-                                       {0.36788f, 1.64872f}});  // row 1
+  Literal expected =
+      LiteralUtil::CreateR2FromArray2D<T>({{2.71828f, 1.00000f},    // row 0
+                                           {0.36788f, 1.64872f}});  // row 1
 
-  this->template ComputeAndCompareLiteral(&builder, *expected, {},
-                                          ErrorSpec(1e-5));
+  this->ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-5));
 }
 
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
   using T = TypeParam;
-  Computation add_half;
+  XlaComputation add_half;
   {
     // add_half(x) = x + 0.5
-    ComputationBuilder builder(this->client_, "add_half");
+    XlaBuilder builder("add_half");
     auto x_value =
-        builder.Parameter(0, ShapeUtil::MakeShapeWithType<T>({}), "x_value");
-    auto half = builder.ConstantR0<T>(static_cast<T>(0.5));
-    builder.Add(x_value, half);
+        Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({}), "x_value");
+    auto half = ConstantR0<T>(&builder, static_cast<T>(0.5));
+    Add(x_value, half);
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
     add_half = computation_status.ConsumeValueOrDie();
   }
 
-  ComputationBuilder builder(this->client_, "map_2x2");
-  auto data = builder.ConstantR2FromArray2D<T>({
-      {1.0f, 0.0f},   // row 0
-      {-1.0f, 0.5f},  // row 1
-  });
-  auto map = builder.Map({data}, add_half, {0, 1});
+  XlaBuilder builder("map_2x2");
+  auto data = ConstantR2FromArray2D<T>(&builder, {
+                                                     {1.0f, 0.0f},   // row 0
+                                                     {-1.0f, 0.5f},  // row 1
+                                                 });
+  Map(&builder, {data}, add_half, {0, 1});
 
-  std::unique_ptr<Literal> expected =
-      Literal::CreateR2FromArray2D<T>({{1.5f, 0.5f},     // row 0
-                                       {-0.5f, 1.0f}});  // row 1
-  this->template ComputeAndCompareLiteral(&builder, *expected, {},
-                                          ErrorSpec(1e-5));
+  Literal expected =
+      LiteralUtil::CreateR2FromArray2D<T>({{1.5f, 0.5f},     // row 0
+                                           {-0.5f, 1.0f}});  // row 1
+  this->ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-5));
 }
 
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, "max_2x2");
-  auto lhs = builder.ConstantR2FromArray2D<T>({
-      {7.0f, 2.0f},   // row 0
-      {3.0f, -4.0f},  // row 1
-  });
-  auto rhs = builder.ConstantR2FromArray2D<T>({
-      {5.0f, 6.0f},   // row 0
-      {1.0f, -8.0f},  // row 1
-  });
-  auto max = builder.Max(lhs, rhs);
+  XlaBuilder builder("max_2x2");
+  auto lhs = ConstantR2FromArray2D<T>(&builder, {
+                                                    {7.0f, 2.0f},   // row 0
+                                                    {3.0f, -4.0f},  // row 1
+                                                });
+  auto rhs = ConstantR2FromArray2D<T>(&builder, {
+                                                    {5.0f, 6.0f},   // row 0
+                                                    {1.0f, -8.0f},  // row 1
+                                                });
+  Max(lhs, rhs);
 
-  std::unique_ptr<Literal> expected =
-      Literal::CreateR2FromArray2D<T>({{7.0f, 6.0f},     // row 0
-                                       {3.0f, -4.0f}});  // row 1
-  this->template ComputeAndCompareLiteral(&builder, *expected, {},
-                                          ErrorSpec(1e-6));
+  Literal expected =
+      LiteralUtil::CreateR2FromArray2D<T>({{7.0f, 6.0f},     // row 0
+                                           {3.0f, -4.0f}});  // row 1
+  this->ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-6));
 }
 
 struct TestLinspaceMaxParam {
@@ -141,14 +134,12 @@ class TestLinspaceMaxParametric
     float from = -128.0, to = 256.0;
     std::unique_ptr<Array2D<T>> alhs =
         MakeLinspaceArray2D<T>(from, to, rows, cols);
-    auto arhs = MakeUnique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
+    auto arhs = absl::make_unique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
 
-    ComputationBuilder builder(
-        client_,
-        tensorflow::strings::Printf("max_%lldx%lld_linspace", rows, cols));
-    auto lhs = builder.ConstantR2FromArray2D<T>(*alhs);
-    auto rhs = builder.ConstantR2FromArray2D<T>(*arhs);
-    auto max = builder.Max(lhs, rhs);
+    XlaBuilder builder(absl::StrFormat("max_%dx%d_linspace", rows, cols));
+    auto lhs = ConstantR2FromArray2D<T>(&builder, *alhs);
+    auto rhs = ConstantR2FromArray2D<T>(&builder, *arhs);
+    Max(lhs, rhs);
 
     Array2D<T> expected(rows, cols);
     for (int row = 0; row < rows; ++row) {
@@ -167,14 +158,11 @@ class TestLinspaceMaxParametric
 string PrintTestLinspaceMaxParam(
     const ::testing::TestParamInfo<TestLinspaceMaxParam>& test_param) {
   const TestLinspaceMaxParam& param = test_param.param;
-  return tensorflow::strings::StrCat(param.rows, "r", param.cols, "c");
+  return absl::StrCat(param.rows, "r", param.cols, "c");
 }
 
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-// TODO(bixia): This test failed on GPU 02-25-2018
-#ifdef XLA_TEST_BACKEND_CPU
 XLA_TEST_P(TestLinspaceMaxParametric, TestF16) { TestImpl<Eigen::half>(); }
-#endif
 #endif
 XLA_TEST_P(TestLinspaceMaxParametric, TestF32) { TestImpl<float>(); }
 
@@ -212,31 +200,31 @@ class MatOpsDotAddTest
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto lhs_handle,
-        client_->TransferToServer(*Literal::CreateR2FromArray2DWithLayout<T>(
+        client_->TransferToServer(LiteralUtil::CreateR2FromArray2DWithLayout<T>(
             lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
     TF_ASSERT_OK_AND_ASSIGN(
         auto rhs_handle,
-        client_->TransferToServer(*Literal::CreateR2FromArray2DWithLayout<T>(
+        client_->TransferToServer(LiteralUtil::CreateR2FromArray2DWithLayout<T>(
             rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
 
-    ComputationBuilder builder(client_, TestName());
-    auto lhs_arg = builder.Parameter(0, lhs_shape, "lhs");
+    XlaBuilder builder(TestName());
+    auto lhs_arg = Parameter(&builder, 0, lhs_shape, "lhs");
     auto lhs_mat_arg = lhs_arg;
     if (transpose) {
-      lhs_mat_arg = builder.Transpose(lhs_mat_arg, {1, 0});
+      lhs_mat_arg = Transpose(lhs_mat_arg, {1, 0});
     }
-    auto rhs_arg = builder.Parameter(1, rhs_shape, "rhs");
-    auto result = builder.Dot(lhs_mat_arg, rhs_arg);
+    auto rhs_arg = Parameter(&builder, 1, rhs_shape, "rhs");
+    auto result = Dot(lhs_mat_arg, rhs_arg);
     Array2D<T> expected;
     if (add_lhs) {
-      result = builder.Add(result, lhs_arg);
+      result = Add(result, lhs_arg);
       if (transpose) {
         expected = Array2D<T>({{47.0f, 52.0f}, {71.0f, 78.0f}});
       } else {
         expected = Array2D<T>({{35.0f, 39.0f}, {81.0f, 89.0f}});
       }
     } else {
-      result = builder.Add(result, rhs_arg);
+      result = Add(result, rhs_arg);
       if (transpose) {
         expected = Array2D<T>({{56.0f, 61.0f}, {80.0f, 87.0f}});
       } else {

@@ -9,17 +9,6 @@ package(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "stamped_resource",
     hdrs = ["stamped_resource.h"],

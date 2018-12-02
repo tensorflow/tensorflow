@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -33,12 +34,13 @@ class SameVariablesNoClearTest(test.TestCase):
   # TODO(b/34465411): Starting multiple servers with different configurations
   # in the same test is flaky. Move this test case back into
   # "server_lib_test.py" when this is no longer the case.
+  @test_util.run_deprecated_v1
   def testSameVariablesNoClear(self):
     server = server_lib.Server.create_local_server()
 
     with session.Session(server.target) as sess_1:
-      v0 = variables.Variable([[2, 1]], name="v0")
-      v1 = variables.Variable([[1], [2]], name="v1")
+      v0 = variables.VariableV1([[2, 1]], name="v0")
+      v1 = variables.VariableV1([[1], [2]], name="v1")
       v2 = math_ops.matmul(v0, v1)
       sess_1.run([v0.initializer, v1.initializer])
       self.assertAllEqual([[4]], sess_1.run(v2))

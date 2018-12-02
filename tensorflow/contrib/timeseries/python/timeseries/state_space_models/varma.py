@@ -52,6 +52,7 @@ from tensorflow.contrib.timeseries.python.timeseries import math_utils
 from tensorflow.contrib.timeseries.python.timeseries.state_space_models import state_space_model
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
@@ -107,7 +108,7 @@ class VARMA(state_space_model.StateSpaceModel):
 
     Returns:
       the state transition matrix. It has shape
-        [self.state_dimendion, self.state_dimension].
+        [self.state_dimension, self.state_dimension].
     """
     # Pad any unused AR blocks with zeros. The extra state is necessary if
     # ma_order >= ar_order.
@@ -127,7 +128,7 @@ class VARMA(state_space_model.StateSpaceModel):
 
     Returns:
       the state noise transform matrix. It has shape
-        [self.state_dimendion, self.num_features].
+        [self.state_dimension, self.num_features].
     """
     # Noise is broadcast, through the moving average coefficients, to
     # un-observed parts of the latent state.
@@ -191,7 +192,8 @@ class VARMA(state_space_model.StateSpaceModel):
       initial_transition_noise_scale = 0.
     state_noise_transform = ops.convert_to_tensor(
         self.get_noise_transform(), dtype=self.dtype)
-    state_noise_dimension = state_noise_transform.get_shape()[1].value
+    state_noise_dimension = tensor_shape.dimension_value(
+        state_noise_transform.shape[1])
     return math_utils.variable_covariance_matrix(
         state_noise_dimension, "state_transition_noise",
         dtype=self.dtype,

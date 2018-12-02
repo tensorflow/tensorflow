@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_DIRECT_SESSION_H_
-#define TENSORFLOW_COMMON_RUNTIME_DIRECT_SESSION_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DIRECT_SESSION_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DIRECT_SESSION_H_
 
 #include <atomic>
 #include <memory>
@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -116,6 +117,9 @@ class DirectSession : public Session {
   ::tensorflow::Status ReleaseCallable(CallableHandle handle) override;
 
  private:
+  // For access to collective_graph_key_.
+  friend class DirectSessionCollectiveTest;
+
   // We create one executor and its dependent library runtime for
   // every partition.
   struct PerPartitionExecutorsAndLib {
@@ -149,6 +153,8 @@ class DirectSession : public Session {
     DataTypeVector output_types;
 
     CallableOptions callable_options;
+
+    int64 collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
   };
 
   // A FunctionInfo object is created for every unique set of feeds/fetches.
@@ -175,6 +181,7 @@ class DirectSession : public Session {
     mutex mu_;
     Status status GUARDED_BY(mu_);
     IntraProcessRendezvous* rendez = nullptr;
+    std::unique_ptr<CollectiveExecutor::Handle> collective_executor;
     std::unique_ptr<StepStatsCollector> collector;
     Notification executors_done;
     std::unordered_map<string, bool> pending_inputs;   // true if fed
@@ -201,13 +208,14 @@ class DirectSession : public Session {
     string handle;
     std::unique_ptr<Graph> graph;
     const DebugOptions& debug_options;
+    int64 collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
   };
 
   // Initializes the base execution state given the 'graph',
   // if not already initialized.
   Status MaybeInitializeExecutionState(const GraphDef& graph,
                                        bool* out_already_initialized)
-      EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
+      EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
@@ -232,15 +240,20 @@ class DirectSession : public Session {
       std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
       std::unique_ptr<FunctionLibraryDefinition>* flib_def,
       RunStateArgs* run_state_args, DataTypeVector* input_types,
-      DataTypeVector* output_types);
+      DataTypeVector* output_types, int64* collective_graph_key);
 
   ::tensorflow::Status RunInternal(int64 step_id, const RunOptions& run_options,
                                    CallFrameInterface* call_frame,
                                    ExecutorsAndKeys* executors_and_keys,
                                    RunMetadata* run_metadata);
 
+  // Returns whether inter-op execution uses a global pool or the input
+  // `run_options` requests being run on inter_op_thread_pool = 0 in case
+  // multiple pools are configured.
+  bool ShouldUseRunHandlerPool(const RunOptions& run_options) const;
+
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)
-      EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
+      EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
   ::tensorflow::Status ResourceHandleToInputTensor(
       const Tensor& resource_tensor, Tensor* retrieved_tensor);
@@ -281,7 +294,7 @@ class DirectSession : public Session {
   }
 
   ::tensorflow::Status CheckGraphCreated(const char* method) {
-    mutex_lock l(graph_def_lock_);
+    mutex_lock l(graph_state_lock_);
     if (!graph_created_) {
       return errors::InvalidArgument(
           "Session was not created with a graph before ", method, "!");
@@ -305,10 +318,8 @@ class DirectSession : public Session {
   DeviceSet device_set_;
 
   string session_handle_;
-  bool graph_created_ GUARDED_BY(graph_def_lock_) = false;
-
-  mutex graph_def_lock_;
-  GraphDef graph_def_ GUARDED_BY(graph_def_lock_);
+  mutex graph_state_lock_;
+  bool graph_created_ GUARDED_BY(graph_state_lock_) = false;
 
   // The thread-pools to use for running ops, with a bool indicating if the pool
   // is owned.
@@ -352,17 +363,18 @@ class DirectSession : public Session {
 
   DirectSessionFactory* const factory_;  // not owned
   CancellationManager* cancellation_manager_;
+  std::unique_ptr<CollectiveExecutorMgrInterface> collective_executor_mgr_;
 
   // Map of placed stateful nodes, i.e. nodes for which is_stateful()
   // is true, such as "params" and "queue" nodes.  Once placed these
   // nodes can not be moved to a different device.  Maps node names to
   // device names.
   std::unordered_map<string, string> stateful_placements_
-      GUARDED_BY(graph_def_lock_);
+      GUARDED_BY(graph_state_lock_);
 
   // Execution_state; used when placing the entire graph.
   std::unique_ptr<GraphExecutionState> execution_state_
-      GUARDED_BY(graph_def_lock_);
+      GUARDED_BY(graph_state_lock_);
 
   // The function library, before any rewrites or optimizations have been
   // performed. In particular, CreateGraphs() may need to modify the function
@@ -377,7 +389,7 @@ class DirectSession : public Session {
   std::atomic<int64> edge_name_counter_ = {0};
   std::atomic<int64> handle_name_counter_ = {0};
 
-  // For generating step ids that are unique across all sessions.
+  // For generating step ids that are unique across this sessions.
   static std::atomic_int_fast64_t step_id_counter_;
 
   // Global timeout for all blocking operations in this session.
@@ -386,7 +398,9 @@ class DirectSession : public Session {
   // Manages all the cost models for the graphs executed in this session.
   CostModelManager cost_model_manager_;
 
-  Executor::Args::NodeOutputsCallback node_outputs_callback_ = nullptr;
+  // For testing collective graph key generation.
+  mutex collective_graph_key_lock_;
+  int64 collective_graph_key_ GUARDED_BY(collective_graph_key_lock_) = -1;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 
@@ -396,4 +410,4 @@ class DirectSession : public Session {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_DIRECT_SESSION_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DIRECT_SESSION_H_

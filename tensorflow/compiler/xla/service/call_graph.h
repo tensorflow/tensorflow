@@ -15,16 +15,16 @@ limitations under the License.
 
 // Call graph for an HLO module.
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CALL_GRAPH_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CALL_GRAPH_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CALL_GRAPH_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CALL_GRAPH_H_
 
 #include <ostream>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -53,7 +53,7 @@ enum class CallContext {
 string CallContextToString(CallContext context);
 std::ostream& operator<<(std::ostream& out, const CallContext& context);
 
-CallContext GetInstructionCallContext(const HloInstruction* instruction);
+CallContext GetInstructionCallContext(HloOpcode opcode);
 
 // Represents an HLO instruction which calls one or more computations.
 class CallSite {
@@ -145,19 +145,19 @@ class CallGraphNode {
   // The computations called by this computation. The vector is used for a
   // stable ordering and the set enables fast membership testing.
   std::vector<HloComputation*> callees_;
-  tensorflow::gtl::FlatSet<HloComputation*> callee_set_;
+  absl::flat_hash_set<HloComputation*> callee_set_;
 
   // The computations which call this computation. The vector is used for a
   // stable ordering and the set enables fast membership testing.
   std::vector<HloComputation*> callers_;
-  tensorflow::gtl::FlatSet<HloComputation*> caller_set_;
+  absl::flat_hash_set<HloComputation*> caller_set_;
 
   // The call sites in this computation
   std::vector<CallSite> callsites_;
 
   // The map from instruction to index in callsites_ for looking up the callsite
   // (if any) associated with a particular instruction in this computation.
-  tensorflow::gtl::FlatMap<const HloInstruction*, int64> callsite_instructions_;
+  absl::flat_hash_map<const HloInstruction*, int64> callsite_instructions_;
 
   // The call sites in other computations which call this computation.
   std::vector<CallSite> caller_callsites_;
@@ -236,6 +236,10 @@ class CallGraph {
   // FlattenCallGraph.
   bool IsFlattened() const;
 
+  // Returns a vector of instructions calling the passed computation.
+  // (Often a vector of size 1.)
+  std::vector<HloInstruction*> GetComputationCallers(HloComputation* c);
+
   string ToString() const;
 
  private:
@@ -250,14 +254,14 @@ class CallGraph {
   // 'visited'.
   Status VisitNodesInternal(
       const VisitorFunction& visitor_func, const CallGraphNode& node,
-      tensorflow::gtl::FlatSet<const CallGraphNode*>* visited) const;
+      absl::flat_hash_set<const CallGraphNode*>* visited) const;
 
   // Recursive helper for computing whether 'a' dominates 'b' in the call
   // graph. 'b_ancestor' is the currently visited node (which starts at 'b'),
   // and 'visited' is the set of computations which have been visited.
   bool DominatesHelper(
       const HloComputation* a, const HloComputation* b,
-      tensorflow::gtl::FlatSet<const HloComputation*>* visited) const;
+      absl::flat_hash_set<const HloComputation*>* visited) const;
 
   // The HLO module represented by this call graph.
   const HloModule* module_ = nullptr;
@@ -267,9 +271,9 @@ class CallGraph {
 
   // Map from HLO computation to the index of the corresponding call graph node
   // in nodes_.
-  tensorflow::gtl::FlatMap<const HloComputation*, int64> node_indices_;
+  absl::flat_hash_map<const HloComputation*, int64> node_indices_;
 };
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CALL_GRAPH_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CALL_GRAPH_H_

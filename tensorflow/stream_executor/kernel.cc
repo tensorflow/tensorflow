@@ -21,13 +21,14 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform/port.h"
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/stream_executor/lib/demangle.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 bool KernelMetadata::registers_per_thread(int *registers_per_thread) const {
   if (has_registers_per_thread_) {
@@ -93,14 +94,13 @@ KernelCacheConfig KernelBase::GetPreferredCacheConfig() const {
 // Prefix stub functions emitted by the CUDA splitter.
 static const char *kStubPrefix = "__device_stub_";
 
-void KernelBase::set_name(port::StringPiece name) {
-  name_ = name.ToString();
-  port::StringPiece stubless_name = name;
-  if (name.starts_with(kStubPrefix)) {
+void KernelBase::set_name(absl::string_view name) {
+  name_ = string(name);
+  absl::string_view stubless_name = name;
+  if (tensorflow::str_util::StartsWith(name, kStubPrefix)) {
     stubless_name.remove_prefix(strlen(kStubPrefix));
   }
   demangled_name_ = port::Demangle(stubless_name.data());
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

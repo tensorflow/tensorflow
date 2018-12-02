@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -78,7 +79,7 @@ class CumsumTest(test.TestCase):
 
   def _compare(self, x, axis, exclusive, reverse):
     np_out = handle_options(np.cumsum, x, axis, exclusive, reverse)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_out = math_ops.cumsum(x, axis, exclusive, reverse).eval()
 
     self.assertAllClose(np_out, tf_out)
@@ -88,48 +89,60 @@ class CumsumTest(test.TestCase):
       for reverse in [True, False]:
         self._compare(x, axis, exclusive, reverse)
 
+  @test_util.run_deprecated_v1
   def testEmpty(self):
     for dtype in self.valid_dtypes:
       x = np.zeros([0]).astype(dtype)
       for axis in (-1, 0):
         self._compareAll(x, axis)
 
+  @test_util.run_deprecated_v1
   def testAxisType(self):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 6).reshape([5]).astype(dtype)
       for axis_dtype in [dtypes.int64, dtypes.int32]:
-        with self.test_session(use_gpu=True):
+        with self.cached_session(use_gpu=True):
           axis = constant_op.constant(0, axis_dtype)
           tf_out = math_ops.cumsum(x, axis).eval()
 
+  @test_util.run_deprecated_v1
   def test1D(self):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 6).reshape([5]).astype(dtype)
       for axis in (-1, 0):
         self._compareAll(x, axis)
 
+  @test_util.run_deprecated_v1
   def test2D(self):
     for dtype in self.valid_dtypes:
       x = np.arange(0, 10).reshape([2, 5]).astype(dtype)
       for axis in (-2, -1, 0, 1):
         self._compareAll(x, axis)
 
+  @test_util.run_deprecated_v1
   def test3D(self):
     for dtype in self.valid_dtypes:
       x = np.arange(0, 20).reshape([2, 2, 5]).astype(dtype)
       for axis in (-3, -2, -1, 0, 1, 2):
         self._compareAll(x, axis)
 
+  @test_util.run_deprecated_v1
   def test6D(self):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 145).reshape([2, 2, 3, 3, 2, 2]).astype(dtype)
       for axis in range(-6, 6, 3):
         self._compareAll(x, axis)
 
+  @test_util.run_deprecated_v1
+  def testLarge(self):
+    for dtype in self.valid_dtypes:
+      x = np.ones([1000000], dtype=dtype) / 1024
+      self._compareAll(x, 0)
+
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     input_tensor = ops.convert_to_tensor(x)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
           lambda e: "Expected scan axis in the range [-2, 2)" in str(e)):
@@ -145,29 +158,34 @@ class CumsumTest(test.TestCase):
 
   def _compareGradient(self, shape, axis, exclusive, reverse):
     x = np.arange(0, 50).reshape(shape).astype(np.float64)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       t = ops.convert_to_tensor(x)
       result = math_ops.cumsum(t, axis, exclusive, reverse)
       jacob_t, jacob_n = gradient_checker.compute_gradient(
           t, shape, result, shape, x_init_value=x, delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     for axis in (-1, 0):
       self._compareGradient([50], axis, False, False)
 
+  @test_util.run_deprecated_v1
   def testGradientReverse(self):
     for axis in (-1, 0):
       self._compareGradient([50], axis, False, True)
 
+  @test_util.run_deprecated_v1
   def testGradientExclusive(self):
     for axis in (-1, 0):
       self._compareGradient([50], axis, True, False)
 
+  @test_util.run_deprecated_v1
   def testGradientExclusiveReverse(self):
     for axis in (-1, 0):
       self._compareGradient([50], axis, True, True)
 
+  @test_util.run_deprecated_v1
   def testGradient2D(self):
     for axis in (-1, 0, 1):
       for exclusive in [True, False]:
@@ -184,7 +202,7 @@ class CumprodTest(test.TestCase):
 
   def _compare(self, x, axis, exclusive, reverse):
     np_out = handle_options(np.cumprod, x, axis, exclusive, reverse)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_out = math_ops.cumprod(x, axis, exclusive, reverse).eval()
 
     self.assertAllClose(np_out, tf_out)
@@ -194,38 +212,44 @@ class CumprodTest(test.TestCase):
       for reverse in [True, False]:
         self._compare(x, axis, exclusive, reverse)
 
+  @test_util.run_deprecated_v1
   def testEmpty(self):
     for dtype in self.valid_dtypes:
       x = np.zeros([0]).astype(dtype)
       for axis in (-1, 0):
         self._compareAll(x, axis)
 
+  @test_util.run_deprecated_v1
   def testAxisType(self):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 6).reshape([5]).astype(dtype)
       for axis_dtype in [dtypes.int64, dtypes.int32]:
-        with self.test_session(use_gpu=True):
+        with self.cached_session(use_gpu=True):
           axis = constant_op.constant(0, axis_dtype)
           tf_out = math_ops.cumprod(x, axis).eval()
 
+  @test_util.run_deprecated_v1
   def test1D(self):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 6).reshape([5]).astype(dtype)
       for axis in (-1, 0):
         self._compareAll(x, axis)
 
+  @test_util.run_deprecated_v1
   def test2D(self):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 11).reshape([2, 5]).astype(dtype)
       for axis in (-2, -1, 0, 1):
         self._compareAll(x, axis)
 
+  @test_util.run_deprecated_v1
   def test3D(self):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 21).reshape([2, 2, 5]).astype(dtype)
       for axis in (-3, -2, -1, 0, 1, 2):
         self._compareAll(x, axis)
 
+  @test_util.run_deprecated_v1
   def test6D(self):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 145).reshape([2, 2, 3, 3, 2, 2]).astype(dtype)
@@ -235,7 +259,7 @@ class CumprodTest(test.TestCase):
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     input_tensor = ops.convert_to_tensor(x)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
           lambda e: "Expected scan axis in the range [-2, 2)" in str(e)):
@@ -251,29 +275,34 @@ class CumprodTest(test.TestCase):
 
   def _compareGradient(self, shape, axis, exclusive, reverse):
     x = np.arange(1, 9).reshape(shape).astype(np.float64)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       t = ops.convert_to_tensor(x)
       result = math_ops.cumprod(t, axis, exclusive, reverse)
       jacob_t, jacob_n = gradient_checker.compute_gradient(
           t, shape, result, shape, x_init_value=x, delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     for axis in (-1, 0):
       self._compareGradient([8], axis, False, False)
 
+  @test_util.run_deprecated_v1
   def testGradientReverse(self):
     for axis in (-1, 0):
       self._compareGradient([8], axis, False, True)
 
+  @test_util.run_deprecated_v1
   def testGradientExclusive(self):
     for axis in (-1, 0):
       self._compareGradient([8], axis, True, False)
 
+  @test_util.run_deprecated_v1
   def testGradientExclusiveReverse(self):
     for axis in (-1, 0):
       self._compareGradient([8], axis, True, True)
 
+  @test_util.run_deprecated_v1
   def testGradient2D(self):
     for axis in (-2, -1, 0, 1):
       for exclusive in [True, False]:

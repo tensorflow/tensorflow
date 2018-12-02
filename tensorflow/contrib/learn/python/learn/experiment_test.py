@@ -500,7 +500,7 @@ class ExperimentTest(test.TestCase):
       noop_hook = _NoopHook()
 
       def _predicate_fn(eval_result, checkpoint_path):
-        self.assertEqual(not eval_result,
+        self.assertEqual(eval_result is None,
                          checkpoint_path is None)
         return est.eval_count < 3  # pylint: disable=cell-var-from-loop
 

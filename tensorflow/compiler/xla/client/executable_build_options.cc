@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 
+#include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 
@@ -39,6 +40,13 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_device_ordinal(
 
 int ExecutableBuildOptions::device_ordinal() const { return device_ordinal_; }
 
+DebugOptions* ExecutableBuildOptions::mutable_debug_options() {
+  if (!has_debug_options()) {
+    debug_options_ = GetDebugOptionsFromFlags();
+  }
+  return &debug_options_.value();
+}
+
 ExecutableBuildOptions& ExecutableBuildOptions::set_result_layout(
     const Shape& shape_with_layout) {
   result_layout_set_ = true;
@@ -55,25 +63,10 @@ string ExecutableBuildOptions::ToString() const {
   if (result_layout_set_) {
     result_layout = ShapeUtil::HumanStringWithLayout(result_layout_);
   }
-  string generate_hlo_graph = "nullopt";
-  if (generate_hlo_graph_.has_value()) {
-    generate_hlo_graph = generate_hlo_graph_.value();
-  }
-  return tensorflow::strings::Printf(
+  return absl::StrFormat(
       "ExecutableBuildOptions{device_ordinal=%d, result_layout=%s, "
       "generate_hlo_graph=%s}",
-      device_ordinal_, result_layout.c_str(), generate_hlo_graph.c_str());
-}
-
-ExecutableBuildOptions& ExecutableBuildOptions::set_generate_hlo_graph(
-    string regex) {
-  generate_hlo_graph_ = std::move(regex);
-  return *this;
-}
-
-const tensorflow::gtl::optional<string>&
-ExecutableBuildOptions::generate_hlo_graph() const {
-  return generate_hlo_graph_;
+      device_ordinal_, result_layout, debug_options().xla_generate_hlo_graph());
 }
 
 }  // namespace xla

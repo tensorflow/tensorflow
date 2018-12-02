@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/util/memmapped_file_system.h"
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/memmapped_file_system.pb.h"
 
@@ -157,6 +158,12 @@ Status MemmappedFileSystem::GetChildren(const string& filename,
   return errors::Unimplemented("memmapped format doesn't support GetChildren");
 }
 
+Status MemmappedFileSystem::GetMatchingPaths(const string& pattern,
+                                             std::vector<string>* results) {
+  return errors::Unimplemented(
+      "memmapped format doesn't support GetMatchingPaths");
+}
+
 Status MemmappedFileSystem::DeleteFile(const string& filename) {
   return errors::Unimplemented("memmapped format doesn't support DeleteFile");
 }
@@ -178,7 +185,7 @@ const void* MemmappedFileSystem::GetMemoryWithOffset(uint64 offset) const {
   return reinterpret_cast<const uint8*>(mapped_memory_->data()) + offset;
 }
 
-#if defined(COMPILER_MSVC)
+#if defined(_MSC_VER)
 constexpr char* MemmappedFileSystem::kMemmappedPackagePrefix;
 constexpr char* MemmappedFileSystem::kMemmappedPackageDefaultGraphDef;
 #else
@@ -236,7 +243,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
 }
 
 bool MemmappedFileSystem::IsMemmappedPackageFilename(const string& filename) {
-  return StringPiece(filename).starts_with(kMemmappedPackagePrefix);
+  return str_util::StartsWith(filename, kMemmappedPackagePrefix);
 }
 
 namespace {

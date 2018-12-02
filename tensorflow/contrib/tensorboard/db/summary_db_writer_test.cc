@@ -100,6 +100,56 @@ class SummaryDbWriterTest : public ::testing::Test {
   SummaryWriterInterface* writer_ = nullptr;
 };
 
+TEST_F(SummaryDbWriterTest, WriteHistogram_VerifyTensorValues) {
+  TF_ASSERT_OK(CreateSummaryDbWriter(db_, "histtest", "test1", "user1", &env_,
+                                     &writer_));
+  int step = 0;
+  std::unique_ptr<Event> e{new Event};
+  e->set_step(step);
+  e->set_wall_time(123);
+  Summary::Value* s = e->mutable_summary()->add_value();
+  s->set_tag("normal/myhisto");
+
+  double dummy_value = 10.123;
+  HistogramProto* proto = s->mutable_histo();
+  proto->Clear();
+  proto->set_min(dummy_value);
+  proto->set_max(dummy_value);
+  proto->set_num(dummy_value);
+  proto->set_sum(dummy_value);
+  proto->set_sum_squares(dummy_value);
+
+  int size = 3;
+  double bucket_limits[] = {-30.5, -10.5, -5.5};
+  double bucket[] = {-10, 10, 20};
+  for (int i = 0; i < size; i++) {
+    proto->add_bucket_limit(bucket_limits[i]);
+    proto->add_bucket(bucket[i]);
+  }
+  TF_ASSERT_OK(writer_->WriteEvent(std::move(e)));
+  TF_ASSERT_OK(writer_->Flush());
+  writer_->Unref();
+  writer_ = nullptr;
+
+  // TODO(nickfelt): implement QueryTensor() to encapsulate this
+  // Verify the data
+  string result = QueryString("SELECT data FROM Tensors");
+  const double* val = reinterpret_cast<const double*>(result.data());
+  double histarray[] = {std::numeric_limits<double>::min(),
+                        -30.5,
+                        -10,
+                        -30.5,
+                        -10.5,
+                        10,
+                        -10.5,
+                        -5.5,
+                        20};
+  int histarray_size = 9;
+  for (int i = 0; i < histarray_size; i++) {
+    EXPECT_EQ(histarray[i], val[i]);
+  }
+}
+
 TEST_F(SummaryDbWriterTest, NothingWritten_NoRowsCreated) {
   TF_ASSERT_OK(CreateSummaryDbWriter(db_, "mad-science", "train", "jart", &env_,
                                      &writer_));
@@ -139,7 +189,7 @@ TEST_F(SummaryDbWriterTest, TensorsWritten_RowsGetInitialized) {
   ASSERT_EQ(1LL, QueryInt("SELECT COUNT(*) FROM Experiments"));
   ASSERT_EQ(1LL, QueryInt("SELECT COUNT(*) FROM Runs"));
   ASSERT_EQ(1LL, QueryInt("SELECT COUNT(*) FROM Tags"));
-  ASSERT_EQ(10000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
+  ASSERT_EQ(1000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
 
   int64 user_id = QueryInt("SELECT user_id FROM Users");
   int64 experiment_id = QueryInt("SELECT experiment_id FROM Experiments");
@@ -188,7 +238,7 @@ TEST_F(SummaryDbWriterTest, EmptyParentNames_NoParentsCreated) {
   ASSERT_EQ(0LL, QueryInt("SELECT COUNT(*) FROM Experiments"));
   ASSERT_EQ(0LL, QueryInt("SELECT COUNT(*) FROM Runs"));
   ASSERT_EQ(1LL, QueryInt("SELECT COUNT(*) FROM Tags"));
-  ASSERT_EQ(10000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
+  ASSERT_EQ(1000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
 }
 
 TEST_F(SummaryDbWriterTest, WriteEvent_Scalar) {
@@ -205,7 +255,7 @@ TEST_F(SummaryDbWriterTest, WriteEvent_Scalar) {
   TF_ASSERT_OK(writer_->WriteEvent(std::move(e)));
   TF_ASSERT_OK(writer_->Flush());
   ASSERT_EQ(2LL, QueryInt("SELECT COUNT(*) FROM Tags"));
-  ASSERT_EQ(20000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
+  ASSERT_EQ(2000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
   int64 tag1_id = QueryInt("SELECT tag_id FROM Tags WHERE tag_name = 'π'");
   int64 tag2_id = QueryInt("SELECT tag_id FROM Tags WHERE tag_name = 'φ'");
   EXPECT_GT(tag1_id, 0LL);

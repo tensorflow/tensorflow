@@ -1,0 +1,32 @@
+path: "tensorflow.train.Features"
+tf_proto {
+  descriptor {
+    name: "Features"
+    field {
+      name: "feature"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.Features.FeatureEntry"
+    }
+    nested_type {
+      name: "FeatureEntry"
+      field {
+        name: "key"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "value"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.Feature"
+      }
+      options {
+        map_entry: true
+      }
+    }
+  }
+}

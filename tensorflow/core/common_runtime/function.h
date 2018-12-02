@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_FUNCTION_H_
-#define TENSORFLOW_COMMON_RUNTIME_FUNCTION_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_H_
 
 #include <functional>
 #include <memory>
@@ -155,9 +155,11 @@ FunctionBody* SymbolicGradient(const FunctionBody& f);
 
 // Given a "caller" in graph "g", which is a function call of a function
 // to "fbody". Replaces the "caller" with fbody->graph and connects
-// edges properly.
+// edges properly. "override_device" specifies whether inlining should replace
+// explicitly specified devices inside fbody with the callee's device.
 void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
-                        Node* caller, const FunctionBody* fbody);
+                        Node* caller, const FunctionBody* fbody,
+                        bool override_device = true);
 
 // Instantiates FunctionDef into a graph. Set *fbody to point to the
 // FunctionBody that holds the instantiated FunctionDef.
@@ -168,4 +170,4 @@ Status FunctionDefToBodyHelper(
     FunctionBody** fbody);
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_FUNCTION_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_H_

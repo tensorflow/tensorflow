@@ -156,7 +156,8 @@ class GraphConstructorTest : public ::testing::Test {
       return "";
     }
     StringPiece loc(value[0]);
-    return loc.Consume(kColocationGroupPrefix) ? loc.ToString() : "";
+    return str_util::ConsumePrefix(&loc, kColocationGroupPrefix) ? string(loc)
+                                                                 : "";
   }
 
   string GraphDebugString() const {
@@ -198,6 +199,10 @@ REGISTER_OP("TestOneInputOneOutput")
     .Output("y: T")
     .Attr("T: {float, int64}")
     .SetShapeFn(shape_inference::UnchangedShape);
+REGISTER_OP("TestVariadicOutput")
+    .Output("outputs: N * int32")
+    .Attr("N: int >= 0")
+    .SetShapeFn(shape_inference::UnknownShape);
 REGISTER_OP("TestDefaultAttr")
     .Attr("default_int: int=31415")
     .SetShapeFn(shape_inference::NoOutputs);
@@ -1462,12 +1467,15 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapMissingUnusedKeys) {
   opts.input_map[TensorId("DNE", 0)] = TensorId("input", 0);
   // Unused but not missing
   opts.input_map[TensorId("t1", 0)] = TensorId("W1", 0);
+  // Unused but not missing
+  opts.input_map[TensorId("variadic", 4)] = TensorId("input", 0);
   ExpectOK(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
       node { name: 'new_input' op: 'TestInput' input: [ '^W2' ] }
       node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
-      node { name: 't2' op: 'TestMul' input: [ 't1:0', 't1:0' ] }
+      node { name: 'variadic' op: 'TestVariadicOutput'
+             attr { key: "N" value { i: 5 } } }
       )EOF",
       opts, &refiner, &results);
 
@@ -1500,7 +1508,8 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapMissingUnusedKeys) {
       opts, &refiner, &results);
 
   ASSERT_EQ(results.missing_unused_input_map_keys.size(), 1);
-  EXPECT_EQ(results.missing_unused_input_map_keys[0], TensorId("new_input", 2));
+  EXPECT_EQ(results.missing_unused_input_map_keys[0],
+            SafeTensorId("new_input", 2));
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithUnboundInput) {
@@ -2746,6 +2755,51 @@ TEST_F(GraphConstructorTest, ImportGraphDef_NestedFunctionDefs) {
   EXPECT_EQ(outputs[0].scalar<float>()(), 3.0);
 }
 
+// NOTE(skyewm): the C API depends on this behavior, but it's easier to write
+// the test here.
+TEST_F(GraphConstructorTest, ImportGraphDef_OptionsMemMgmt) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Add some strings to ImportGraphDefOptions and then rewrite the buffers.
+  char buf1[100];
+  char buf2[100];
+  char buf3[100];
+  snprintf(buf1, sizeof(buf1), "input");
+  snprintf(buf2, sizeof(buf2), "new_input");
+  snprintf(buf3, sizeof(buf3), "t1");
+
+  ImportGraphDefOptions opts;
+  opts.input_map[TensorId(buf2, 0)] = TensorId(buf1, 0);
+  opts.return_tensors.push_back(TensorId(buf3, 0));
+
+  snprintf(buf1, sizeof(buf1), "xxxxxxxxxxxxxxxxxxxx");
+  snprintf(buf2, sizeof(buf2), "xxxxxxxxxxxxxxxxxxxx");
+  snprintf(buf3, sizeof(buf3), "xxxxxxxxxxxxxxxxxxxx");
+
+  // Import some new nodes using opts.
+  ImportGraphDefResults results;
+  ExpectOK(
+      R"EOF(
+      node { name: 'new_input' op: 'TestInput' }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      )EOF",
+      opts, &refiner, &results);
+
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("new_input"));
+  EXPECT_TRUE(HasNode("t1"));
+
+  EXPECT_TRUE(HasEdge("input", 0, "t1", 0));
+  EXPECT_TRUE(HasEdge("new_input", 1, "t1", 1));
+
+  ASSERT_EQ(results.return_tensors.size(), 1);
+  EXPECT_EQ(results.return_tensors[0].first->name(), "t1");
+}
+
 TEST_F(GraphConstructorTest, CopyGraph) {
   const int v = TF_GRAPH_DEF_VERSION;
   const int bad = v + 17;
@@ -3156,6 +3210,48 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ValidateColationConstraints) {
   EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
   options.validate_colocation_constraints = false;
   TF_EXPECT_OK(ImportGraphDef(options, def, &graph_, nullptr));
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_ValidateDefaultDevice) {
+  std::string gdef_ascii(
+      R"EOF(
+      node { name: 'test_input' op: 'TestInput' }
+      node { name: 'test_input_with_dev' op: 'TestInput' device: 'some dev'}
+      node { name: 'test_op' op: 'TestMul' input: [ 'test_input:0', 'test_input:1' ] }
+      node { name: 'test_op_with_dev' op: 'TestMul' input: [ 'test_input:0', 'test_input:1' ] device: 'some dev'}
+      )EOF");
+
+  GraphDef gdef;
+  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef));
+
+  ImportGraphDefOptions options;
+  options.default_device = "/gpu:13";
+  ImportGraphDefResults res;
+
+  TF_ASSERT_OK(ImportGraphDef(options, gdef, &graph_, NULL, &res));
+  std::map<string, string> node2dev;
+  for (Node* n : graph_.nodes()) {
+    node2dev[n->name()] = n->requested_device();
+  }
+  EXPECT_EQ(node2dev["test_input"], "/gpu:13");
+  EXPECT_EQ(node2dev["test_op"], "/gpu:13");
+  EXPECT_EQ(node2dev["test_input_with_dev"], "some dev");
+  EXPECT_EQ(node2dev["test_op_with_dev"], "some dev");
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_UnknownOps) {
+  const string pb_ascii = "node { name: 'op_from_contrib' op: 'OpFromContrib'}";
+  // Try load twice to check for two parts of the error message. We cannot check
+  // for the whole thing in one go because the message includes the hostname.
+  ExpectError(pb_ascii, {"Op type not registered 'OpFromContrib'"});
+  ExpectError(
+      pb_ascii,
+      {"Make sure the Op and Kernel are registered in the "
+       "binary running in this process. Note that if you "
+       "are loading a saved graph which used ops from "
+       "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done "
+       "before importing the graph, as contrib ops are lazily registered "
+       "when the module is first accessed."});
 }
 
 }  // namespace

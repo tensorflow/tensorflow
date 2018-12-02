@@ -97,6 +97,7 @@ cc_library(
         "fold_old_batch_norms.cc",
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
+        "fuse_quantized_convolution.cc",
         "insert_logging.cc",
         "obfuscate_names.cc",
         "quantize_nodes.cc",
@@ -178,6 +179,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/util/tensor_bundle",
     ],
@@ -311,15 +313,4 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     main = "python/transform_graph_test.py",
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

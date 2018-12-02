@@ -31,6 +31,7 @@ from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -98,19 +99,19 @@ class FIFOQueueTest(test.TestCase):
       """, q.queue_ref.op.node_def)
 
   def testEnqueue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
       enqueue_op.run()
 
   def testEnqueueHalf(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float16)
       enqueue_op = q.enqueue((10.0,))
       enqueue_op.run()
 
   def testEnqueueWithShape(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shapes=(3, 2))
       enqueue_correct_op = q.enqueue(([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],))
       enqueue_correct_op.run()
@@ -119,21 +120,30 @@ class FIFOQueueTest(test.TestCase):
       self.assertEqual(1, q.size().eval())
 
   def testEnqueueManyWithShape(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(
           10, [dtypes_lib.int32, dtypes_lib.int32], shapes=[(), (2,)])
       q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]).run()
       self.assertEqual(4, q.size().eval())
 
+  @test_util.run_in_graph_and_eager_modes
   def testMultipleDequeues(self):
-    with self.test_session() as session:
-      q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
-      q.enqueue_many([[1, 2, 3]]).run()
-      a, b, c = session.run([q.dequeue(), q.dequeue(), q.dequeue()])
-      self.assertAllEqual(set([1, 2, 3]), set([a, b, c]))
+    q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+    self.evaluate(q.enqueue_many([[1, 2, 3]]))
+    a, b, c = self.evaluate([q.dequeue(), q.dequeue(), q.dequeue()])
+    self.assertAllEqual(set([1, 2, 3]), set([a, b, c]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testQueuesDontShare(self):
+    q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+    self.evaluate(q.enqueue(1))
+    q2 = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+    self.evaluate(q2.enqueue(2))
+    self.assertAllEqual(self.evaluate(q2.dequeue()), 2)
+    self.assertAllEqual(self.evaluate(q.dequeue()), 1)
 
   def testEnqueueDictWithoutNames(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       with self.assertRaisesRegexp(ValueError, "must have names"):
         q.enqueue({"a": 12.0})
@@ -141,7 +151,7 @@ class FIFOQueueTest(test.TestCase):
         q.enqueue_many({"a": [12.0, 13.0]})
 
   def testParallelEnqueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -149,7 +159,7 @@ class FIFOQueueTest(test.TestCase):
 
       # Run one producer thread for each element in elems.
       def enqueue(enqueue_op):
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       threads = [
           self.checkedThread(
@@ -167,7 +177,7 @@ class FIFOQueueTest(test.TestCase):
       self.assertItemsEqual(elems, results)
 
   def testParallelDequeue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -181,7 +191,7 @@ class FIFOQueueTest(test.TestCase):
       results = []
 
       def dequeue():
-        results.append(sess.run(dequeued_t))
+        results.append(self.evaluate(dequeued_t))
 
       threads = [self.checkedThread(target=dequeue) for _ in enqueue_ops]
       for thread in threads:
@@ -191,7 +201,7 @@ class FIFOQueueTest(test.TestCase):
       self.assertItemsEqual(elems, results)
 
   def testDequeue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -201,11 +211,11 @@ class FIFOQueueTest(test.TestCase):
         enqueue_op.run()
 
       for i in xrange(len(elems)):
-        vals = dequeued_t.eval()
+        vals = self.evaluate(dequeued_t)
         self.assertEqual([elems[i]], vals)
 
   def testDequeueHalf(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float16)
       elems = [10.0, 20.0, 30.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -215,11 +225,11 @@ class FIFOQueueTest(test.TestCase):
         enqueue_op.run()
 
       for i in xrange(len(elems)):
-        vals = dequeued_t.eval()
+        vals = self.evaluate(dequeued_t)
         self.assertEqual([elems[i]], vals)
 
   def testEnqueueAndBlockingDequeue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(3, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -230,13 +240,13 @@ class FIFOQueueTest(test.TestCase):
         # TODO(mrry): Figure out how to do this without sleeping.
         time.sleep(0.1)
         for enqueue_op in enqueue_ops:
-          sess.run(enqueue_op)
+          self.evaluate(enqueue_op)
 
       results = []
 
       def dequeue():
         for _ in xrange(len(elems)):
-          results.append(sess.run(dequeued_t))
+          results.append(self.evaluate(dequeued_t))
 
       enqueue_thread = self.checkedThread(target=enqueue)
       dequeue_thread = self.checkedThread(target=dequeue)
@@ -249,7 +259,7 @@ class FIFOQueueTest(test.TestCase):
         self.assertEqual([elem], result)
 
   def testMultiEnqueueAndDequeue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.float32))
       elems = [(5, 10.0), (10, 20.0), (15, 30.0)]
       enqueue_ops = [q.enqueue((x, y)) for x, y in elems]
@@ -259,18 +269,18 @@ class FIFOQueueTest(test.TestCase):
         enqueue_op.run()
 
       for i in xrange(len(elems)):
-        x_val, y_val = sess.run(dequeued_t)
+        x_val, y_val = self.evaluate(dequeued_t)
         x, y = elems[i]
         self.assertEqual([x], x_val)
         self.assertEqual([y], y_val)
 
   def testQueueSizeEmpty(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       self.assertEqual([0], q.size().eval())
 
   def testQueueSizeAfterEnqueueAndDequeue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
       dequeued_t = q.dequeue()
@@ -278,12 +288,12 @@ class FIFOQueueTest(test.TestCase):
       self.assertEqual([], size.get_shape())
 
       enqueue_op.run()
-      self.assertEqual(1, size.eval())
+      self.assertEqual(1, self.evaluate(size))
       dequeued_t.op.run()
-      self.assertEqual(0, size.eval())
+      self.assertEqual(0, self.evaluate(size))
 
   def testEnqueueMany(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -292,50 +302,50 @@ class FIFOQueueTest(test.TestCase):
       enqueue_op.run()
 
       for i in range(8):
-        vals = dequeued_t.eval()
+        vals = self.evaluate(dequeued_t)
         self.assertEqual([elems[i % 4]], vals)
 
   def testEmptyEnqueueMany(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       empty_t = constant_op.constant(
           [], dtype=dtypes_lib.float32, shape=[0, 2, 3])
       enqueue_op = q.enqueue_many((empty_t,))
       size_t = q.size()
 
-      self.assertEqual([0], size_t.eval())
+      self.assertEqual([0], self.evaluate(size_t))
       enqueue_op.run()
-      self.assertEqual([0], size_t.eval())
+      self.assertEqual([0], self.evaluate(size_t))
 
   def testEmptyDequeueMany(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shapes=())
       enqueue_op = q.enqueue((10.0,))
       dequeued_t = q.dequeue_many(0)
 
-      self.assertEqual([], dequeued_t.eval().tolist())
+      self.assertEqual([], self.evaluate(dequeued_t).tolist())
       enqueue_op.run()
-      self.assertEqual([], dequeued_t.eval().tolist())
+      self.assertEqual([], self.evaluate(dequeued_t).tolist())
 
   def testEmptyDequeueUpTo(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shapes=())
       enqueue_op = q.enqueue((10.0,))
       dequeued_t = q.dequeue_up_to(0)
 
-      self.assertEqual([], dequeued_t.eval().tolist())
+      self.assertEqual([], self.evaluate(dequeued_t).tolist())
       enqueue_op.run()
-      self.assertEqual([], dequeued_t.eval().tolist())
+      self.assertEqual([], self.evaluate(dequeued_t).tolist())
 
   def testEmptyDequeueManyWithNoShape(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       # Expect the operation to fail due to the shape not being constrained.
       with self.assertRaisesOpError("specified shapes"):
         q.dequeue_many(0).eval()
 
   def testMultiEnqueueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, (dtypes_lib.float32, dtypes_lib.int32))
       float_elems = [10.0, 20.0, 30.0, 40.0]
       int_elems = [[1, 2], [3, 4], [5, 6], [7, 8]]
@@ -346,12 +356,12 @@ class FIFOQueueTest(test.TestCase):
       enqueue_op.run()
 
       for i in range(8):
-        float_val, int_val = sess.run(dequeued_t)
+        float_val, int_val = self.evaluate(dequeued_t)
         self.assertEqual(float_elems[i % 4], float_val)
         self.assertAllEqual(int_elems[i % 4], int_val)
 
   def testDequeueMany(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -359,11 +369,11 @@ class FIFOQueueTest(test.TestCase):
 
       enqueue_op.run()
 
-      self.assertAllEqual(elems[0:4], dequeued_t.eval())
-      self.assertAllEqual(elems[4:8], dequeued_t.eval())
+      self.assertAllEqual(elems[0:4], self.evaluate(dequeued_t))
+      self.assertAllEqual(elems[4:8], self.evaluate(dequeued_t))
 
   def testDequeueUpToNoBlocking(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -371,11 +381,11 @@ class FIFOQueueTest(test.TestCase):
 
       enqueue_op.run()
 
-      self.assertAllEqual(elems[0:4], dequeued_t.eval())
-      self.assertAllEqual(elems[4:8], dequeued_t.eval())
+      self.assertAllEqual(elems[0:4], self.evaluate(dequeued_t))
+      self.assertAllEqual(elems[4:8], self.evaluate(dequeued_t))
 
   def testMultiDequeueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(
           10, (dtypes_lib.float32, dtypes_lib.int32), shapes=((), (2,)))
       float_elems = [
@@ -389,24 +399,24 @@ class FIFOQueueTest(test.TestCase):
 
       enqueue_op.run()
 
-      float_val, int_val = sess.run(dequeued_t)
+      float_val, int_val = self.evaluate(dequeued_t)
       self.assertAllEqual(float_elems[0:4], float_val)
       self.assertAllEqual(int_elems[0:4], int_val)
       self.assertEqual(float_val.shape, dequeued_t[0].get_shape())
       self.assertEqual(int_val.shape, dequeued_t[1].get_shape())
 
-      float_val, int_val = sess.run(dequeued_t)
+      float_val, int_val = self.evaluate(dequeued_t)
       self.assertAllEqual(float_elems[4:8], float_val)
       self.assertAllEqual(int_elems[4:8], int_val)
 
-      float_val, int_val = sess.run(dequeued_single_t)
+      float_val, int_val = self.evaluate(dequeued_single_t)
       self.assertAllEqual(float_elems[8], float_val)
       self.assertAllEqual(int_elems[8], int_val)
       self.assertEqual(float_val.shape, dequeued_single_t[0].get_shape())
       self.assertEqual(int_val.shape, dequeued_single_t[1].get_shape())
 
   def testMultiDequeueUpToNoBlocking(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(
           10, (dtypes_lib.float32, dtypes_lib.int32), shapes=((), (2,)))
       float_elems = [
@@ -419,18 +429,18 @@ class FIFOQueueTest(test.TestCase):
 
       enqueue_op.run()
 
-      float_val, int_val = sess.run(dequeued_t)
+      float_val, int_val = self.evaluate(dequeued_t)
       self.assertAllEqual(float_elems[0:4], float_val)
       self.assertAllEqual(int_elems[0:4], int_val)
       self.assertEqual([None], dequeued_t[0].get_shape().as_list())
       self.assertEqual([None, 2], dequeued_t[1].get_shape().as_list())
 
-      float_val, int_val = sess.run(dequeued_t)
+      float_val, int_val = self.evaluate(dequeued_t)
       self.assertAllEqual(float_elems[4:8], float_val)
       self.assertAllEqual(int_elems[4:8], int_val)
 
   def testHighDimension(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.int32, (4, 4, 4, 4))
       elems = np.array([[[[[x] * 4] * 4] * 4] * 4 for x in range(10)], np.int32)
       enqueue_op = q.enqueue_many((elems,))
@@ -484,7 +494,7 @@ class FIFOQueueTest(test.TestCase):
                       array_ops.placeholder(dtypes_lib.int32)))
 
   def testEnqueueWrongShapeAtRuntime(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.int32), (
           (2, 2), (3, 3)))
       elems_ok = np.array([1] * 4).reshape((2, 2)).astype(np.int32)
@@ -496,7 +506,7 @@ class FIFOQueueTest(test.TestCase):
                  feed_dict={elems_bad: np.array([1] * 12).reshape((3, 4))})
 
   def testEnqueueDequeueManyWrongShape(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.int32), (
           (2, 2), (3, 3)))
       elems_ok = np.array([1] * 8).reshape((2, 2, 2)).astype(np.int32)
@@ -508,10 +518,10 @@ class FIFOQueueTest(test.TestCase):
                                    r"Expected \[2,3,3\], got \[2,3,4\]"):
         sess.run([enqueue_op],
                  feed_dict={elems_bad: np.array([1] * 24).reshape((2, 3, 4))})
-        dequeued_t.eval()
+        self.evaluate(dequeued_t)
 
   def testParallelEnqueueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(1000, dtypes_lib.float32, shapes=())
       elems = [10.0 * x for x in range(100)]
       enqueue_op = q.enqueue_many((elems,))
@@ -519,7 +529,7 @@ class FIFOQueueTest(test.TestCase):
 
       # Enqueue 100 items in parallel on 10 threads.
       def enqueue():
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       threads = [self.checkedThread(target=enqueue) for _ in range(10)]
       for thread in threads:
@@ -530,7 +540,7 @@ class FIFOQueueTest(test.TestCase):
       self.assertItemsEqual(dequeued_t.eval(), elems * 10)
 
   def testParallelDequeueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(1000, dtypes_lib.float32, shapes=())
       elems = [10.0 * x for x in range(1000)]
       enqueue_op = q.enqueue_many((elems,))
@@ -542,7 +552,7 @@ class FIFOQueueTest(test.TestCase):
       dequeued_elems = []
 
       def dequeue():
-        dequeued_elems.extend(sess.run(dequeued_t))
+        dequeued_elems.extend(self.evaluate(dequeued_t))
 
       threads = [self.checkedThread(target=dequeue) for _ in range(10)]
       for thread in threads:
@@ -552,7 +562,7 @@ class FIFOQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testParallelDequeueUpTo(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(1000, dtypes_lib.float32, shapes=())
       elems = [10.0 * x for x in range(1000)]
       enqueue_op = q.enqueue_many((elems,))
@@ -566,7 +576,7 @@ class FIFOQueueTest(test.TestCase):
       dequeued_elems = []
 
       def dequeue():
-        dequeued_elems.extend(sess.run(dequeued_t))
+        dequeued_elems.extend(self.evaluate(dequeued_t))
 
       threads = [self.checkedThread(target=dequeue) for _ in range(10)]
       for thread in threads:
@@ -576,7 +586,7 @@ class FIFOQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testParallelEnqueueAndDequeue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(50, dtypes_lib.float32, shapes=())
       initial_elements = [10.0] * 49
       q.enqueue_many((initial_elements,)).run()
@@ -586,11 +596,11 @@ class FIFOQueueTest(test.TestCase):
 
       def enqueue():
         for _ in xrange(100):
-          sess.run(enqueue_op)
+          self.evaluate(enqueue_op)
 
       def dequeue():
         for _ in xrange(100):
-          self.assertTrue(sess.run(dequeued_t) in (10.0, 20.0))
+          self.assertTrue(self.evaluate(dequeued_t) in (10.0, 20.0))
 
       enqueue_threads = [self.checkedThread(target=enqueue) for _ in range(10)]
       dequeue_threads = [self.checkedThread(target=dequeue) for _ in range(10)]
@@ -609,7 +619,7 @@ class FIFOQueueTest(test.TestCase):
         self.assertTrue(elem in (10.0, 20.0))
 
   def testMixtureOfEnqueueAndEnqueueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.int32, shapes=())
       enqueue_placeholder = array_ops.placeholder(dtypes_lib.int32, shape=())
       enqueue_op = q.enqueue((enqueue_placeholder,))
@@ -622,7 +632,7 @@ class FIFOQueueTest(test.TestCase):
 
       def dequeue():
         for i in xrange(250):
-          self.assertEqual(i, sess.run(dequeued_t))
+          self.assertEqual(i, self.evaluate(dequeued_t))
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -645,7 +655,7 @@ class FIFOQueueTest(test.TestCase):
       self.assertEqual(0, q.size().eval())
 
   def testMixtureOfDequeueAndDequeueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.int32, shapes=())
       enqueue_op = q.enqueue_many((np.arange(250, dtype=np.int32),))
       dequeued_t = q.dequeue()
@@ -653,7 +663,7 @@ class FIFOQueueTest(test.TestCase):
       dequeuemany_t = q.dequeue_many(count_placeholder)
 
       def enqueue():
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       enqueue_thread = self.checkedThread(target=enqueue)
       enqueue_thread.start()
@@ -662,7 +672,7 @@ class FIFOQueueTest(test.TestCase):
       while elements_dequeued < 250:
         # With equal probability, run Dequeue or dequeue_many.
         if random.random() > 0.5:
-          self.assertEqual(elements_dequeued, dequeued_t.eval())
+          self.assertEqual(elements_dequeued, self.evaluate(dequeued_t))
           elements_dequeued += 1
         else:
           count = random.randint(0, min(20, 250 - elements_dequeued))
@@ -679,7 +689,7 @@ class FIFOQueueTest(test.TestCase):
       self.assertEqual(0, q.size().eval())
 
   def testBlockingDequeueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -691,10 +701,10 @@ class FIFOQueueTest(test.TestCase):
         # The enqueue_op should run after the dequeue op has blocked.
         # TODO(mrry): Figure out how to do this without sleeping.
         time.sleep(0.1)
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       def dequeue():
-        dequeued_elems.extend(sess.run(dequeued_t).tolist())
+        dequeued_elems.extend(self.evaluate(dequeued_t).tolist())
 
       enqueue_thread = self.checkedThread(target=enqueue)
       dequeue_thread = self.checkedThread(target=dequeue)
@@ -706,7 +716,7 @@ class FIFOQueueTest(test.TestCase):
       self.assertAllEqual(elems, dequeued_elems)
 
   def testBlockingDequeueUpTo(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -718,10 +728,10 @@ class FIFOQueueTest(test.TestCase):
         # The enqueue_op should run after the dequeue op has blocked.
         # TODO(mrry): Figure out how to do this without sleeping.
         time.sleep(0.1)
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       def dequeue():
-        dequeued_elems.extend(sess.run(dequeued_t).tolist())
+        dequeued_elems.extend(self.evaluate(dequeued_t).tolist())
 
       enqueue_thread = self.checkedThread(target=enqueue)
       dequeue_thread = self.checkedThread(target=dequeue)
@@ -733,7 +743,7 @@ class FIFOQueueTest(test.TestCase):
       self.assertAllEqual(elems, dequeued_elems)
 
   def testDequeueManyWithTensorParameter(self):
-    with self.test_session():
+    with self.cached_session():
       # Define a first queue that contains integer counts.
       dequeue_counts = [random.randint(1, 10) for _ in range(100)]
       count_q = data_flow_ops.FIFOQueue(100, dtypes_lib.int32, ())
@@ -758,7 +768,7 @@ class FIFOQueueTest(test.TestCase):
       self.assertEqual(elems, dequeued_elems)
 
   def testDequeueFromClosedQueue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -768,15 +778,15 @@ class FIFOQueueTest(test.TestCase):
       enqueue_op.run()
       close_op.run()
       for elem in elems:
-        self.assertEqual([elem], dequeued_t.eval())
+        self.assertEqual([elem], self.evaluate(dequeued_t))
 
       # Expect the operation to fail due to the queue being closed.
       with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                    "is closed and has insufficient"):
-        dequeued_t.eval()
+        self.evaluate(dequeued_t)
 
   def testBlockingDequeueFromClosedQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -787,11 +797,11 @@ class FIFOQueueTest(test.TestCase):
 
       def dequeue():
         for elem in elems:
-          self.assertEqual([elem], sess.run(dequeued_t))
+          self.assertEqual([elem], self.evaluate(dequeued_t))
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -802,7 +812,7 @@ class FIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueFromClosedEmptyQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       close_op = q.close()
       dequeued_t = q.dequeue()
@@ -811,7 +821,7 @@ class FIFOQueueTest(test.TestCase):
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -822,7 +832,7 @@ class FIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueManyFromClosedQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -832,11 +842,11 @@ class FIFOQueueTest(test.TestCase):
       enqueue_op.run()
 
       def dequeue():
-        self.assertAllEqual(elems, sess.run(dequeued_t))
+        self.assertAllEqual(elems, self.evaluate(dequeued_t))
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -847,7 +857,7 @@ class FIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueManyButNotAllFromClosedQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -857,11 +867,11 @@ class FIFOQueueTest(test.TestCase):
       enqueue_op.run()
 
       def dequeue():
-        self.assertAllEqual(elems[:3], sess.run(dequeued_t))
+        self.assertAllEqual(elems[:3], self.evaluate(dequeued_t))
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -872,7 +882,7 @@ class FIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testDequeueUpToFromClosedQueueReturnsRemainder(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -882,8 +892,8 @@ class FIFOQueueTest(test.TestCase):
       enqueue_op.run()
 
       def dequeue():
-        self.assertAllEqual(elems[:3], sess.run(dequeued_t))
-        self.assertAllEqual(elems[3:], sess.run(dequeued_t))
+        self.assertAllEqual(elems[:3], self.evaluate(dequeued_t))
+        self.assertAllEqual(elems[3:], self.evaluate(dequeued_t))
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -894,7 +904,7 @@ class FIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testEnqueueManyLargerThanCapacityWithConcurrentDequeueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -903,16 +913,16 @@ class FIFOQueueTest(test.TestCase):
       cleanup_dequeue_t = q.dequeue()
 
       def enqueue():
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       def dequeue():
-        self.assertAllEqual(elems[0:3], sess.run(dequeued_t))
+        self.assertAllEqual(elems[0:3], self.evaluate(dequeued_t))
         with self.assertRaises(errors_impl.OutOfRangeError):
-          sess.run(dequeued_t)
-        self.assertEqual(elems[3], sess.run(cleanup_dequeue_t))
+          self.evaluate(dequeued_t)
+        self.assertEqual(elems[3], self.evaluate(cleanup_dequeue_t))
 
       def close():
-        sess.run(close_op)
+        self.evaluate(close_op)
 
       enqueue_thread = self.checkedThread(target=enqueue)
       enqueue_thread.start()
@@ -931,7 +941,7 @@ class FIFOQueueTest(test.TestCase):
       close_thread.join()
 
   def testClosedBlockingDequeueManyRestoresPartialBatch(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(4, (dtypes_lib.float32, dtypes_lib.float32), (
           (), ()))
       elems_a = [1.0, 2.0, 3.0]
@@ -945,7 +955,7 @@ class FIFOQueueTest(test.TestCase):
 
       def dequeue():
         with self.assertRaises(errors_impl.OutOfRangeError):
-          sess.run([dequeued_a_t, dequeued_b_t])
+          self.evaluate([dequeued_a_t, dequeued_b_t])
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -958,13 +968,13 @@ class FIFOQueueTest(test.TestCase):
       # Test that the elements in the partially-dequeued batch are
       # restored in the correct order.
       for elem_a, elem_b in zip(elems_a, elems_b):
-        val_a, val_b = sess.run([cleanup_dequeue_a_t, cleanup_dequeue_b_t])
+        val_a, val_b = self.evaluate([cleanup_dequeue_a_t, cleanup_dequeue_b_t])
         self.assertEqual(elem_a, val_a)
         self.assertEqual(elem_b, val_b)
       self.assertEqual(0, q.size().eval())
 
   def testBlockingDequeueManyFromClosedEmptyQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       close_op = q.close()
       dequeued_t = q.dequeue_many(4)
@@ -973,7 +983,7 @@ class FIFOQueueTest(test.TestCase):
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -984,7 +994,7 @@ class FIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueUpToFromClosedEmptyQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       close_op = q.close()
       dequeued_t = q.dequeue_up_to(4)
@@ -993,7 +1003,7 @@ class FIFOQueueTest(test.TestCase):
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -1004,7 +1014,7 @@ class FIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testEnqueueToClosedQueue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
       close_op = q.close()
@@ -1017,7 +1027,7 @@ class FIFOQueueTest(test.TestCase):
         enqueue_op.run()
 
   def testEnqueueManyToClosedQueue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -1031,7 +1041,7 @@ class FIFOQueueTest(test.TestCase):
         enqueue_op.run()
 
   def testBlockingEnqueueToFullQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -1041,7 +1051,7 @@ class FIFOQueueTest(test.TestCase):
       enqueue_op.run()
 
       def blocking_enqueue():
-        sess.run(blocking_enqueue_op)
+        self.evaluate(blocking_enqueue_op)
 
       thread = self.checkedThread(target=blocking_enqueue)
       thread.start()
@@ -1049,12 +1059,12 @@ class FIFOQueueTest(test.TestCase):
       # TODO(mrry): Figure out how to do this without sleeping.
       time.sleep(0.1)
       for elem in elems:
-        self.assertEqual([elem], dequeued_t.eval())
-      self.assertEqual([50.0], dequeued_t.eval())
+        self.assertEqual([elem], self.evaluate(dequeued_t))
+      self.assertEqual([50.0], self.evaluate(dequeued_t))
       thread.join()
 
   def testBlockingEnqueueManyToFullQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -1064,7 +1074,7 @@ class FIFOQueueTest(test.TestCase):
       enqueue_op.run()
 
       def blocking_enqueue():
-        sess.run(blocking_enqueue_op)
+        self.evaluate(blocking_enqueue_op)
 
       thread = self.checkedThread(target=blocking_enqueue)
       thread.start()
@@ -1072,16 +1082,16 @@ class FIFOQueueTest(test.TestCase):
       # TODO(mrry): Figure out how to do this without sleeping.
       time.sleep(0.1)
       for elem in elems:
-        self.assertEqual([elem], dequeued_t.eval())
+        self.assertEqual([elem], self.evaluate(dequeued_t))
         time.sleep(0.01)
-      self.assertEqual([50.0], dequeued_t.eval())
-      self.assertEqual([60.0], dequeued_t.eval())
+      self.assertEqual([50.0], self.evaluate(dequeued_t))
+      self.assertEqual([60.0], self.evaluate(dequeued_t))
 
       # Make sure the thread finishes before exiting.
       thread.join()
 
   def testBlockingEnqueueBeforeClose(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -1093,7 +1103,7 @@ class FIFOQueueTest(test.TestCase):
 
       def blocking_enqueue():
         # Expect the operation to succeed once the dequeue op runs.
-        sess.run(blocking_enqueue_op)
+        self.evaluate(blocking_enqueue_op)
 
       enqueue_thread = self.checkedThread(target=blocking_enqueue)
       enqueue_thread.start()
@@ -1103,22 +1113,22 @@ class FIFOQueueTest(test.TestCase):
       time.sleep(0.1)
 
       def close():
-        sess.run(close_op)
+        self.evaluate(close_op)
 
       close_thread = self.checkedThread(target=close)
       close_thread.start()
 
       # The dequeue will unblock both threads.
-      self.assertEqual(10.0, dequeued_t.eval())
+      self.assertEqual(10.0, self.evaluate(dequeued_t))
       enqueue_thread.join()
       close_thread.join()
 
       for elem in [20.0, 30.0, 40.0, 50.0]:
-        self.assertEqual(elem, dequeued_t.eval())
+        self.assertEqual(elem, self.evaluate(dequeued_t))
       self.assertEqual(0, q.size().eval())
 
   def testBlockingEnqueueManyBeforeClose(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -1128,7 +1138,7 @@ class FIFOQueueTest(test.TestCase):
       enqueue_op.run()
 
       def blocking_enqueue():
-        sess.run(blocking_enqueue_op)
+        self.evaluate(blocking_enqueue_op)
 
       enqueue_thread = self.checkedThread(target=blocking_enqueue)
       enqueue_thread.start()
@@ -1138,20 +1148,20 @@ class FIFOQueueTest(test.TestCase):
       time.sleep(0.1)
 
       def close():
-        sess.run(close_op)
+        self.evaluate(close_op)
 
       close_thread = self.checkedThread(target=close)
       close_thread.start()
 
       # The dequeue will unblock both threads.
-      self.assertEqual(10.0, dequeued_t.eval())
+      self.assertEqual(10.0, self.evaluate(dequeued_t))
       enqueue_thread.join()
       close_thread.join()
       for elem in [20.0, 30.0, 50.0, 60.0]:
-        self.assertEqual(elem, dequeued_t.eval())
+        self.assertEqual(elem, self.evaluate(dequeued_t))
 
   def testDoesNotLoseValue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.FIFOQueue(1, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
       size_t = q.size()
@@ -1161,7 +1171,7 @@ class FIFOQueueTest(test.TestCase):
         self.assertEqual(size_t.eval(), [1])
 
   def testSharedQueueSameSession(self):
-    with self.test_session():
+    with self.cached_session():
       q1 = data_flow_ops.FIFOQueue(
           1, dtypes_lib.float32, shared_name="shared_queue")
       q1.enqueue((10.0,)).run()
@@ -1191,7 +1201,7 @@ class FIFOQueueTest(test.TestCase):
       self.assertEqual(q2_size_t.eval(), [0])
 
   def testIncompatibleSharedQueueErrors(self):
-    with self.test_session():
+    with self.cached_session():
       q_a_1 = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shared_name="q_a")
       q_a_2 = data_flow_ops.FIFOQueue(15, dtypes_lib.float32, shared_name="q_a")
       q_a_1.queue_ref.op.run()
@@ -1234,7 +1244,7 @@ class FIFOQueueTest(test.TestCase):
         q_f_2.queue_ref.op.run()
 
   def testSelectQueue(self):
-    with self.test_session():
+    with self.cached_session():
       num_queues = 10
       qlist = list()
       for _ in xrange(num_queues):
@@ -1247,7 +1257,7 @@ class FIFOQueueTest(test.TestCase):
         self.assertEqual(q.dequeue().eval(), 10.0)
 
   def testSelectQueueOutOfRange(self):
-    with self.test_session():
+    with self.cached_session():
       q1 = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       q2 = data_flow_ops.FIFOQueue(15, dtypes_lib.float32)
       enq_q = data_flow_ops.FIFOQueue.from_list(3, [q1, q2])
@@ -1256,22 +1266,22 @@ class FIFOQueueTest(test.TestCase):
 
   def _blockingDequeue(self, sess, dequeue_op):
     with self.assertRaisesOpError("was cancelled"):
-      sess.run(dequeue_op)
+      self.evaluate(dequeue_op)
 
   def _blockingDequeueMany(self, sess, dequeue_many_op):
     with self.assertRaisesOpError("was cancelled"):
-      sess.run(dequeue_many_op)
+      self.evaluate(dequeue_many_op)
 
   def _blockingEnqueue(self, sess, enqueue_op):
     with self.assertRaisesOpError("was cancelled"):
-      sess.run(enqueue_op)
+      self.evaluate(enqueue_op)
 
   def _blockingEnqueueMany(self, sess, enqueue_many_op):
     with self.assertRaisesOpError("was cancelled"):
-      sess.run(enqueue_many_op)
+      self.evaluate(enqueue_many_op)
 
   def testResetOfBlockingOperation(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q_empty = data_flow_ops.FIFOQueue(5, dtypes_lib.float32, ())
       dequeue_op = q_empty.dequeue()
       dequeue_many_op = q_empty.dequeue_many(1)
@@ -1299,7 +1309,7 @@ class FIFOQueueTest(test.TestCase):
         t.join()
 
   def testBigEnqueueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(5, dtypes_lib.int32, ((),))
       elem = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
       enq = q.enqueue_many((elem,))
@@ -1311,7 +1321,7 @@ class FIFOQueueTest(test.TestCase):
       def blocking_enqueue():
         enq_done.append(False)
         # This will fill the queue and then block until enough dequeues happen.
-        sess.run(enq)
+        self.evaluate(enq)
         enq_done.append(True)
 
       thread = self.checkedThread(target=blocking_enqueue)
@@ -1321,14 +1331,14 @@ class FIFOQueueTest(test.TestCase):
       results = []
       results.append(deq.eval())  # Will only complete after the enqueue starts.
       self.assertEqual(len(enq_done), 1)
-      self.assertEqual(sess.run(size_op), 5)
+      self.assertEqual(self.evaluate(size_op), 5)
 
       for _ in range(3):
         results.append(deq.eval())
 
       time.sleep(0.1)
       self.assertEqual(len(enq_done), 1)
-      self.assertEqual(sess.run(size_op), 5)
+      self.assertEqual(self.evaluate(size_op), 5)
 
       # This dequeue will unblock the thread.
       results.append(deq.eval())
@@ -1344,7 +1354,7 @@ class FIFOQueueTest(test.TestCase):
       self.assertAllEqual(elem, results)
 
   def testBigDequeueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(2, dtypes_lib.int32, ((),))
       elem = np.arange(4, dtype=np.int32)
       enq_list = [q.enqueue((e,)) for e in elem]
@@ -1354,7 +1364,7 @@ class FIFOQueueTest(test.TestCase):
 
       def blocking_dequeue():
         # Will only complete after 4 enqueues complete.
-        results.extend(sess.run(deq))
+        results.extend(self.evaluate(deq))
 
       thread = self.checkedThread(target=blocking_dequeue)
       thread.start()
@@ -1363,14 +1373,14 @@ class FIFOQueueTest(test.TestCase):
         # TODO(mrry): Figure out how to do this without sleeping.
         time.sleep(0.1)
         self.assertEqual(len(results), 0)
-        sess.run(enq)
+        self.evaluate(enq)
 
       # Enough enqueued to unblock the dequeue
       thread.join()
       self.assertAllEqual(elem, results)
 
   def testDtypes(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dtypes = [
           dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
           dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8, dtypes_lib.int64,
@@ -1395,13 +1405,13 @@ class FIFOQueueTest(test.TestCase):
       q.enqueue_many(input_tuple).run()
 
       output_tuple_t = q.dequeue_many(32)
-      output_tuple = sess.run(output_tuple_t)
+      output_tuple = self.evaluate(output_tuple_t)
 
       for (input_elem, output_elem) in zip(input_tuple, output_tuple):
         self.assertAllEqual(input_elem, output_elem)
 
   def testDequeueEnqueueFail(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
       a = q.dequeue()
       b = control_flow_ops.Assert(False, ["Before enqueue"])
@@ -1464,7 +1474,7 @@ class FIFOQueueDictTest(test.TestCase):
     self.assertEqual(["i", "f"], q.names)
 
   def testEnqueueDequeueOneComponent(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(
           10, dtypes_lib.float32, shapes=((),), names="f")
       # Verify that enqueue() checks that when using names we must enqueue a
@@ -1497,10 +1507,10 @@ class FIFOQueueDictTest(test.TestCase):
       enqueue_op4 = q.enqueue_many({"f": [40.0, 50.0]})
       dequeue = q.dequeue()
       dequeue_2 = q.dequeue_many(2)
-      sess.run(enqueue_op)
-      sess.run(enqueue_op2)
-      sess.run(enqueue_op3)
-      sess.run(enqueue_op4)
+      self.evaluate(enqueue_op)
+      self.evaluate(enqueue_op2)
+      self.evaluate(enqueue_op3)
+      self.evaluate(enqueue_op4)
       f = sess.run(dequeue["f"])
       self.assertEqual(10.0, f)
       f = sess.run(dequeue_2["f"])
@@ -1509,7 +1519,7 @@ class FIFOQueueDictTest(test.TestCase):
       self.assertEqual([40.0, 50.0], list(f))
 
   def testEnqueueDequeueMultipleComponent(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(
           10, (dtypes_lib.float32, dtypes_lib.int32, dtypes_lib.string),
           shapes=((), (), ()),
@@ -1555,10 +1565,10 @@ class FIFOQueueDictTest(test.TestCase):
       })
       dequeue = q.dequeue()
       dequeue_2 = q.dequeue_many(2)
-      sess.run(enqueue_op)
-      sess.run(enqueue_op2)
-      sess.run(enqueue_op3)
-      sess.run(enqueue_op4)
+      self.evaluate(enqueue_op)
+      self.evaluate(enqueue_op2)
+      self.evaluate(enqueue_op3)
+      self.evaluate(enqueue_op4)
       i, f, s = sess.run([dequeue["i"], dequeue["f"], dequeue["s"]])
       self.assertEqual(123, i)
       self.assertEqual(10.0, f)
@@ -1576,7 +1586,7 @@ class FIFOQueueDictTest(test.TestCase):
 class FIFOQueueWithTimeoutTest(test.TestCase):
 
   def testDequeueWithTimeout(self):
-    with self.test_session(
+    with self.session(
         config=config_pb2.ConfigProto(operation_timeout_in_ms=20)) as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       self.assertEqual(
@@ -1587,10 +1597,10 @@ class FIFOQueueWithTimeoutTest(test.TestCase):
       # until operation_timeout_in_ms.
       with self.assertRaisesRegexp(errors_impl.DeadlineExceededError,
                                    "Timed out waiting for notification"):
-        sess.run(dequeued_t)
+        self.evaluate(dequeued_t)
 
   def testReusableAfterTimeout(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       dequeued_t = q.dequeue()
       enqueue_op = q.enqueue(37)
@@ -1603,8 +1613,8 @@ class FIFOQueueWithTimeoutTest(test.TestCase):
                                    "Timed out waiting for notification"):
         sess.run(dequeued_t, options=config_pb2.RunOptions(timeout_in_ms=10))
 
-      sess.run(enqueue_op)
-      self.assertEqual(37, sess.run(dequeued_t))
+      self.evaluate(enqueue_op)
+      self.assertEqual(37, self.evaluate(dequeued_t))
 
 
 class QueueContainerTest(test.TestCase):

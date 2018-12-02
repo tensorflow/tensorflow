@@ -20,12 +20,14 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class SparseMaskTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     values = np.random.rand(4, 4).astype(np.single)
     indices = np.array([0, 2, 3, 4], dtype=np.int32)
@@ -34,7 +36,7 @@ class SparseMaskTest(test.TestCase):
     out_values = values[1:, :]
     out_indices = np.array([2, 3, 4], dtype=np.int32)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       values_tensor = ops.convert_to_tensor(values)
       indices_tensor = ops.convert_to_tensor(indices)
       mask_indices_tensor = ops.convert_to_tensor(mask_indices)

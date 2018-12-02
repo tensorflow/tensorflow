@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from tensorflow.contrib.gan.python import namedtuples
 from tensorflow.contrib.gan.python.eval.python import summaries_impl as summaries
 from tensorflow.python.framework import ops
@@ -35,6 +34,10 @@ def generator_model(inputs):
 
 def discriminator_model(inputs, _):
   return variable_scope.get_variable('dummy_d', initializer=2.0) * inputs
+
+
+def stargan_generator_model(inputs, _):
+  return generator_model(inputs)
 
 
 def get_gan_model():
@@ -57,6 +60,31 @@ def get_gan_model():
       discriminator_fn=discriminator_model)
 
 
+def get_stargan_model():
+  """Similar to get_gan_model()."""
+  # TODO(joelshor): Find a better way of creating a variable scope.
+  with variable_scope.variable_scope('discriminator') as dis_scope:
+    pass
+  with variable_scope.variable_scope('generator') as gen_scope:
+    return namedtuples.StarGANModel(
+        input_data=array_ops.ones([1, 2, 2, 3]),
+        input_data_domain_label=array_ops.ones([1, 2]),
+        generated_data=stargan_generator_model(
+            array_ops.ones([1, 2, 2, 3]), None),
+        generated_data_domain_target=array_ops.ones([1, 2]),
+        reconstructed_data=array_ops.ones([1, 2, 2, 3]),
+        discriminator_input_data_source_predication=array_ops.ones([1]),
+        discriminator_generated_data_source_predication=array_ops.ones([1]),
+        discriminator_input_data_domain_predication=array_ops.ones([1, 2]),
+        discriminator_generated_data_domain_predication=array_ops.ones([1, 2]),
+        generator_variables=None,
+        generator_scope=gen_scope,
+        generator_fn=stargan_generator_model,
+        discriminator_variables=None,
+        discriminator_scope=dis_scope,
+        discriminator_fn=discriminator_model)
+
+
 def get_cyclegan_model():
   with variable_scope.variable_scope('x2y'):
     model_x2y = get_gan_model()
@@ -65,15 +93,14 @@ def get_cyclegan_model():
   return namedtuples.CycleGANModel(
       model_x2y=model_x2y,
       model_y2x=model_y2x,
-      reconstructed_x=array_ops.zeros([3, 30, 35, 6]),
-      reconstructed_y=array_ops.zeros([3, 30, 35, 6]))
+      reconstructed_x=array_ops.zeros([4, 32, 32, 3]),
+      reconstructed_y=array_ops.zeros([4, 32, 32, 3]))
 
 
 class SummariesTest(test.TestCase):
 
-  def _test_add_gan_model_image_summaries_impl(self, get_model_fn,
-                                               expected_num_summary_ops,
-                                               model_summaries):
+  def _test_add_gan_model_image_summaries_impl(
+      self, get_model_fn, expected_num_summary_ops, model_summaries):
     summaries.add_gan_model_image_summaries(get_model_fn(), grid_size=2,
                                             model_summaries=model_summaries)
 
@@ -89,8 +116,9 @@ class SummariesTest(test.TestCase):
   def test_add_gan_model_image_summaries_no_model(self):
     self._test_add_gan_model_image_summaries_impl(get_gan_model, 2, False)
 
-  def test_add_gan_model_image_summaries_for_cyclegan(self):
-    self._test_add_gan_model_image_summaries_impl(get_cyclegan_model, 10, True)
+  def test_cyclegan_image_summaries_dont_work(self):
+    with self.assertRaises(ValueError):
+      summaries.add_gan_model_image_summaries(get_cyclegan_model())
 
   def _test_add_gan_model_summaries_impl(self, get_model_fn,
                                          expected_num_summary_ops):
@@ -137,7 +165,21 @@ class SummariesTest(test.TestCase):
     self._test_add_image_comparison_summaries_impl(get_gan_model, 1)
 
   def test_add_image_comparison_summaries_for_cyclegan(self):
-    self._test_add_image_comparison_summaries_impl(get_cyclegan_model, 2)
+    summaries.add_cyclegan_image_summaries(get_cyclegan_model())
+
+    self.assertEquals(2, len(ops.get_collection(ops.GraphKeys.SUMMARIES)))
+    with self.test_session(use_gpu=True):
+      summary.merge_all().eval()
+
+  def test_add_image_comparison_summaries_for_stargan(self):
+
+    summaries.add_stargan_image_summaries(get_stargan_model())
+
+    self.assertEquals(1, len(ops.get_collection(ops.GraphKeys.SUMMARIES)))
+
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(variables.global_variables_initializer())
+      summary.merge_all().eval()
 
 
 if __name__ == '__main__':

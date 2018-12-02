@@ -192,7 +192,6 @@ class VirtualGpuTestUtil(object):
     return True
 
 
-@test_util.with_c_api
 class VirtualGpuTest(test_util.TensorFlowTestCase):
 
   def __init__(self, method_name):
@@ -200,7 +199,7 @@ class VirtualGpuTest(test_util.TensorFlowTestCase):
     self._util = VirtualGpuTestUtil()
 
   def testStatsContainAllDeviceNames(self):
-    with self.test_session(config=self._util.config) as sess:
+    with self.session(config=self._util.config) as sess:
       # TODO(laigd): b/70811538. The is_gpu_available() call will invoke
       # DeviceFactory::AddDevices() with a default SessionOption, which prevents
       # adding virtual devices in the future, thus must be called within a
@@ -217,7 +216,7 @@ class VirtualGpuTest(test_util.TensorFlowTestCase):
       for d in self._util.devices:
         with ops.device(d):
           var = variables.Variable(random_ops.random_uniform(mat_shape))
-          sess.run(var.initializer)
+          self.evaluate(var.initializer)
           data.append(var)
       s = data[0]
       for i in range(1, len(data)):
@@ -233,10 +232,10 @@ class VirtualGpuTest(test_util.TensorFlowTestCase):
     self.assertTrue('/job:localhost/replica:0/task:0/device:GPU:2' in devices)
 
   def testLargeRandomGraph(self):
-    with self.test_session(config=self._util.config) as sess:
+    with self.session(config=self._util.config) as sess:
       if not test.is_gpu_available(cuda_only=True):
         self.skipTest('No GPU available')
-      for _ in range(10):
+      for _ in range(5):
         if not self._util.TestRandomGraph(sess):
           return
 

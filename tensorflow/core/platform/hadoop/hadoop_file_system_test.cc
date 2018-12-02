@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -197,7 +198,7 @@ TEST_F(HadoopFileSystemTest, WriteWhileReading) {
   // Skip the test if we're not testing on HDFS. Hadoop's local filesystem
   // implementation makes no guarantees that writable files are readable while
   // being written.
-  if (!StringPiece(fname).starts_with("hdfs://")) {
+  if (!str_util::StartsWith(fname, "hdfs://")) {
     return;
   }
 

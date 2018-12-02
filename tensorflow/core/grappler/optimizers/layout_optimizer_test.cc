@@ -17,10 +17,15 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/costs/virtual_placer.h"
+#include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
@@ -29,14 +34,24 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-class LayoutOptimizerTest : public ::testing::Test {
+class LayoutOptimizerTest : public GrapplerTest {
  protected:
   void SetUp() override {
-    DeviceProperties device_properties;
-    device_properties.set_type("GPU");
-    device_properties.mutable_environment()->insert({"architecture", "6"});
-    virtual_cluster_.reset(new VirtualCluster({{"/GPU:0", device_properties}}));
+    gpu_available_ = GetNumAvailableGPUs() > 0;
+
+    if (gpu_available_) {
+      virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 1));
+    } else {
+      DeviceProperties device_properties;
+      device_properties.set_type("GPU");
+      device_properties.mutable_environment()->insert({"architecture", "6"});
+      virtual_cluster_.reset(
+          new VirtualCluster({{"/GPU:1", device_properties}}));
+    }
+    TF_CHECK_OK(virtual_cluster_->Provision());
   }
+
+  void TearDown() override { TF_CHECK_OK(virtual_cluster_->Shutdown()); }
 
   Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,
                       const string& padding) {
@@ -72,12 +87,13 @@ class LayoutOptimizerTest : public ::testing::Test {
 
   Output SimpleConv2DBackpropInput(tensorflow::Scope* s, int input_size,
                                    int filter_size, const string& padding) {
-    return SimpleConv2DBackpropInput(s, input_size, filter_size, padding, true);
+    return SimpleConv2DBackpropInput(s, input_size, filter_size, padding, true,
+                                     true);
   }
 
   Output SimpleConv2DBackpropInput(tensorflow::Scope* s, int input_size,
                                    int filter_size, const string& padding,
-                                   bool const_input_size) {
+                                   bool const_input_size, bool dilated) {
     int batch_size = 128;
     int input_height = input_size;
     int input_width = input_size;
@@ -93,10 +109,8 @@ class LayoutOptimizerTest : public ::testing::Test {
 
     TensorShape filter_shape(
         {filter_size, filter_size, input_depth, filter_count});
-    Tensor filter_data(DT_FLOAT, filter_shape);
-    test::FillIota<float>(&filter_data, 1.0f);
     Output filter =
-        ops::Const(s->WithOpName("Filter"), Input::Initializer(filter_data));
+        ops::Variable(s->WithOpName("Filter"), filter_shape, DT_FLOAT);
 
     int output_height = input_height;
     int output_width = input_width;
@@ -110,14 +124,18 @@ class LayoutOptimizerTest : public ::testing::Test {
     Output conv_backprop_input;
     Output input_sizes_i =
         ops::Identity(s->WithOpName("InputSizesIdentity"), input_sizes);
+    ops::Conv2DBackpropInput::Attrs attrs;
+    if (dilated) {
+      attrs = attrs.Dilations({1, 2, 2, 1});
+    }
     if (const_input_size) {
       conv_backprop_input = ops::Conv2DBackpropInput(
           s->WithOpName("Conv2DBackpropInput"), input_sizes, filter, output,
-          {1, stride, stride, 1}, padding);
+          {1, stride, stride, 1}, padding, attrs);
     } else {
       conv_backprop_input = ops::Conv2DBackpropInput(
           s->WithOpName("Conv2DBackpropInput"), input_sizes_i, filter, output,
-          {1, stride, stride, 1}, padding);
+          {1, stride, stride, 1}, padding, attrs);
     }
     return conv_backprop_input;
   }
@@ -126,6 +144,10 @@ class LayoutOptimizerTest : public ::testing::Test {
     Tensor tensor;
     CHECK(tensor.FromProto(node.attr().at({"value"}).tensor()));
     return tensor;
+  }
+
+  TensorShape GetAttrShape(const NodeDef& node) {
+    return TensorShape(node.attr().at({"shape"}).shape());
   }
 
   Output SimpleFusedBatchNormGrad(tensorflow::Scope* s, bool is_training) {
@@ -158,7 +180,8 @@ class LayoutOptimizerTest : public ::testing::Test {
     return output.x_backprop;
   }
 
-  std::unique_ptr<VirtualCluster> virtual_cluster_;
+  std::unique_ptr<Cluster> virtual_cluster_;
+  bool gpu_available_;
 };
 
 TEST_F(LayoutOptimizerTest, Conv2DBackpropInput) {
@@ -182,11 +205,23 @@ TEST_F(LayoutOptimizerTest, Conv2DBackpropInput) {
   Tensor input_sizes_expected(DT_INT32, {4});
   test::FillValues<int>(&input_sizes_expected, {128, 3, 7, 7});
   test::ExpectTensorEqual<int>(input_sizes_expected, input_sizes);
+
+  if (gpu_available_) {
+    TensorShape filter_shape = GetAttrShape(*node_map.GetNode("Filter"));
+    Tensor filter_data = GenerateRandomTensor<DT_FLOAT>(filter_shape);
+    std::vector<string> fetch = {"Fetch"};
+    auto tensors_expected =
+        EvaluateNodes(item.graph, fetch, {{"Filter", filter_data}});
+    auto tensors = EvaluateNodes(output, fetch, {{"Filter", filter_data}});
+    EXPECT_EQ(1, tensors_expected.size());
+    EXPECT_EQ(1, tensors.size());
+    test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  }
 }
 
 TEST_F(LayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2DBackpropInput(&s, 7, 2, "SAME", false);
+  auto conv = SimpleConv2DBackpropInput(&s, 7, 2, "SAME", false, false);
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -1101,6 +1136,55 @@ TEST_F(LayoutOptimizerTest, IdentityNWithInputsVectorAnd4D) {
   EXPECT_EQ(add_node->input(0), "identity_n");
   EXPECT_EQ(add_node->input(1),
             "identity_n-0-1-TransposeNCHWToNHWC-LayoutOptimizer");
+}
+
+TEST_F(LayoutOptimizerTest, LoopNoLiveLock) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto c = ops::Const(s.WithOpName("const"), 3.0f, {8, 3, 3, 2});
+  auto merge = ops::Merge(s.WithOpName("merge"), {c, c});
+  auto i0 = ops::Identity(s.WithOpName("i0"), merge.output);
+  ops::Variable v_ctrl(s.WithOpName("v_ctrl"), {}, DT_BOOL);
+  auto sw = ops::Switch(s.WithOpName("switch"), i0, v_ctrl);
+  auto next = ops::NextIteration(s.WithOpName("next"), sw.output_true);
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
+  auto mul = ops::Mul(s.WithOpName("mul"), conv, sw.output_false);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  NodeMap node_map_original(&item.graph);
+  auto merge_node = node_map_original.GetNode("merge");
+  // Modify the graph to create a loop
+  merge_node->set_input(1, "next");
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto conv_node = node_map.GetNode("Conv2D");
+  EXPECT_EQ(conv_node->input(0),
+            "Conv2D-0-TransposeNHWCToNCHW-LayoutOptimizer");
+  auto mul_node = node_map.GetNode("mul");
+  EXPECT_EQ(mul_node->input(0),
+            "Conv2D-0-0-TransposeNCHWToNHWC-LayoutOptimizer");
+}
+
+TEST_F(LayoutOptimizerTest, DevicePlacement) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
+  auto shape = ops::Shape(s.WithOpName("s"), conv);
+  auto i = ops::Identity(s.WithOpName("i"), shape);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  VirtualPlacer virtual_placer(virtual_cluster_.get());
+  for (auto& node : *item.graph.mutable_node()) {
+    string device = virtual_placer.get_canonical_device_name(node);
+    node.set_device(device);
+  }
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto vec_permute =
+      node_map.GetNode("s-0-0-VecPermuteNCHWToNHWC-LayoutOptimizer");
+  EXPECT_EQ(vec_permute->attr().at("_kernel").s(), "host");
 }
 }  // namespace
 }  // namespace grappler

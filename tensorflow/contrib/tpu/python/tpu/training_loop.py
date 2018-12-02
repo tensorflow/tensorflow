@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.compiler import xla
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 
 from tensorflow.python.framework import ops
@@ -44,7 +45,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
       None (equivalent to an empty list).
     infeed_queue: if not None, the infeed queue from which to append a tuple
       of arguments as inputs to condition.
-    name: an optional name for the loop.
+    name: (Deprecated) Does nothing.
 
   Returns:
     The final values of the loop-carried tensors.
@@ -52,14 +53,14 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
   Raises:
     TypeError: if body or condition has the wrong signature.
   """
-
+  del name
   # Converts inputs to Tensors.
   inputs = [] if inputs is None else [ops.convert_to_tensor(x) for
                                       x in inputs]
   input_types = [x.dtype for x in inputs]
   input_arity = len(inputs)
 
-  body_arg_error = tpu_function.check_function_argument_count(
+  body_arg_error = xla.check_function_argument_count(
       body, input_arity, infeed_queue)
   if body_arg_error is not None:
     if infeed_queue is None:
@@ -74,7 +75,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
           "infeed, but the computation needs %s" % (input_arity, str(
               [i.name for i in inputs]), infeed_queue.number_of_tuple_elements,
                                                     body_arg_error))
-  condition_arg_error = tpu_function.check_function_argument_count(
+  condition_arg_error = xla.check_function_argument_count(
       condition, input_arity, None)
   if condition_arg_error is not None:
     if infeed_queue is None:
@@ -165,12 +166,12 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
   # control dependencies from any side-effecting operations.
   if input_arity == 0:
     inputs = [array_ops.constant(0)]
-  return control_flow_ops.while_loop(condition_wrapper, body_wrapper, inputs,
-                                     name=name)
+  return control_flow_ops.while_loop(
+      condition_wrapper, body_wrapper, inputs, name="", parallel_iterations=1)
 
 
 def repeat(n, body, inputs=None, infeed_queue=None, name=None):
-  """Builds a training loop that executes a fixed number of interations.
+  """Builds a training loop that executes a fixed number of iterations.
 
   The set of loop-carried tensors correspond to `inputs`.
   `body` must be a function that takes and returns the values of the
@@ -183,7 +184,7 @@ def repeat(n, body, inputs=None, infeed_queue=None, name=None):
       None (equivalent to an empty list).
     infeed_queue: if not None, the infeed queue from which to append a tuple
       of arguments as inputs to condition.
-    name: an optional name for the loop.
+    name: (Deprecated) Does nothing.
   Returns:
     The final values of the loop-carried tensors.
   Raises:

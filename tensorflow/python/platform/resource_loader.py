@@ -12,14 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Resource management library.
-
-@@get_data_files_path
-@@get_path_to_datafile
-@@get_root_dir_with_all_resources
-@@load_resource
-@@readahead_file_path
-"""
+"""Resource management library."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -28,11 +21,10 @@ import os as _os
 import sys as _sys
 
 from tensorflow.python.util import tf_inspect as _inspect
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('resource_loader.load_resource')
+@tf_export(v1=['resource_loader.load_resource'])
 def load_resource(path):
   """Load the resource at given path, where path is relative to tensorflow/.
 
@@ -54,7 +46,7 @@ def load_resource(path):
 
 
 # pylint: disable=protected-access
-@tf_export('resource_loader.get_data_files_path')
+@tf_export(v1=['resource_loader.get_data_files_path'])
 def get_data_files_path():
   """Get a direct path to the data files colocated with the script.
 
@@ -65,7 +57,7 @@ def get_data_files_path():
   return _os.path.dirname(_inspect.getfile(_sys._getframe(1)))
 
 
-@tf_export('resource_loader.get_root_dir_with_all_resources')
+@tf_export(v1=['resource_loader.get_root_dir_with_all_resources'])
 def get_root_dir_with_all_resources():
   """Get a root directory containing all the data attributes in the build rule.
 
@@ -105,7 +97,7 @@ def get_root_dir_with_all_resources():
   return data_files_dir or script_dir
 
 
-@tf_export('resource_loader.get_path_to_datafile')
+@tf_export(v1=['resource_loader.get_path_to_datafile'])
 def get_path_to_datafile(path):
   """Get the path to the specified file in the data dependencies.
 
@@ -125,11 +117,7 @@ def get_path_to_datafile(path):
   return _os.path.join(data_files_path, path)
 
 
-@tf_export('resource_loader.readahead_file_path')
+@tf_export(v1=['resource_loader.readahead_file_path'])
 def readahead_file_path(path, readahead='128M'):  # pylint: disable=unused-argument
   """Readahead files not implemented; simply returns given path."""
   return path
-
-
-_allowed_symbols = []
-remove_undocumented(__name__, _allowed_symbols)

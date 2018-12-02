@@ -47,7 +47,7 @@ def _get_least_squares_tests(dtype_, use_static_shape_, shape_):
         low=-1.0, high=1.0, size=shape_[0]).astype(dtype_)
     tol = 1e-12 if dtype_ == np.float64 else 1e-6
     max_iter = 20
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if use_static_shape_:
         a = constant_op.constant(a_np)
         rhs = constant_op.constant(rhs_np)

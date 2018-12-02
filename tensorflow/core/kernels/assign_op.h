@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_ASSIGN_OP_H_
-#define TENSORFLOW_KERNELS_ASSIGN_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_ASSIGN_OP_H_
+#define TENSORFLOW_CORE_KERNELS_ASSIGN_OP_H_
 
 #define EIGEN_USE_THREADS
 
@@ -36,6 +36,12 @@ class AssignOp : public OpKernel {
                    context->GetAttr("validate_shape", &validate_shape_));
     OP_REQUIRES(context, IsRefType(context->input_type(0)),
                 errors::InvalidArgument("lhs input needs to be a ref type"));
+    if (!context
+             ->GetAttr("_grappler_relax_allocator_constraints",
+                       &relax_constraints_)
+             .ok()) {
+      relax_constraints_ = false;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -44,48 +50,37 @@ class AssignOp : public OpKernel {
     // We always return the input ref.
     context->forward_ref_input_to_ref_output(0, 0);
 
-    // We can't always know how this value will be used downstream,
-    // so make conservative assumptions in specifying constraints on
-    // the memory allocation attributes.
-    // TODO(rmlarsen): These conservative constraints make buffer
-    // forwarding unlikely to happen very often. Try to use graph analysis
-    // (possibly the InferAllocAttr pass in the executer) to improve the
-    // situation.
+    // We can't always know how this value will be used downstream, so make
+    // conservative assumptions in specifying constraints on the memory
+    // allocation attributes, unless the Grappler graph analysis determined that
+    // it was safe not to.
     AllocatorAttributes attr;
-    attr.set_gpu_compatible(true);
-    attr.set_nic_compatible(true);
+    if (!relax_constraints_) {
+      attr.set_gpu_compatible(true);
+      attr.set_nic_compatible(true);
+    }
 
     {
       mutex_lock l(*context->input_ref_mutex(0));
       const Tensor& old_lhs = context->mutable_input(0, /* lock_held */ true);
       const bool same_shape = old_lhs.shape().IsSameSize(rhs.shape());
       if (validate_shape_) {
-        OP_REQUIRES(
-            context, same_shape,
-            errors::InvalidArgument(
-                "Assign requires shapes of both tensors to match. lhs shape= ",
-                old_lhs.shape().DebugString(),
-                " rhs shape= ", rhs.shape().DebugString()));
+        OP_REQUIRES(context, same_shape,
+                    errors::InvalidArgument(
+                        "Assign requires shapes of both tensors to match. "
+                        "lhs shape= ",
+                        old_lhs.shape().DebugString(),
+                        " rhs shape= ", rhs.shape().DebugString()));
       }
 
       // In the code below we try to minimize the amount of memory allocation
       // and copying by trying the following two shortcuts:
-      // 1. If we can reuse the rhs buffer we avoid both a memory allocation
-      //   and copying.
-      // 2. If the lhs is initialized and has the same number of elements as the
-      //    rhs we can avoid a memory allocation.
+      // 1. If the lhs is initialized and has the same number of elements as
+      //    the rhs we can avoid a memory allocation.
+      // 2. If we can reuse the rhs buffer we avoid both a memory allocation
+      //    and copying.
 
-      // 1. Try to reuse the rhs.
-      std::unique_ptr<Tensor> input_alias = context->forward_input(
-          1, old_lhs.dtype(), old_lhs.shape(), DEVICE_MEMORY, attr);
-      if (input_alias != nullptr) {
-        // Transfer ownership to the ref.
-        context->replace_ref_input(0, *input_alias.release(),
-                                   /* lock_held */ true);
-        return;
-      }
-
-      // 2. Try to copy into an existing buffer.
+      // 1. Try to copy into an existing buffer.
       if (old_lhs.IsInitialized() &&
           old_lhs.shape().num_elements() == rhs.shape().num_elements()) {
         // The existing lhs tensor has already been initialized and the right
@@ -95,15 +90,26 @@ class AssignOp : public OpKernel {
           reshaped_old_lhs = old_lhs;
         } else {
           CHECK(reshaped_old_lhs.CopyFrom(old_lhs, rhs.shape()));
-          context->replace_ref_input(0, reshaped_old_lhs, /* lock_held */ true);
+          context->replace_ref_input(0, reshaped_old_lhs,
+                                     /* lock_held */ true);
         }
         if (use_exclusive_lock_) {
           Copy(context, &reshaped_old_lhs, rhs);
           return;
         }
       } else {
-        // Create a new persistent tensor whose shape matches the right hand
-        // side, hand off to lhs and copy the rhs into it.
+        // 2. Try to reuse the rhs.
+        std::unique_ptr<Tensor> input_alias = context->forward_input(
+            1, OpKernelContext::Params::kNoReservation /*output_index*/,
+            rhs.dtype(), rhs.shape(), DEVICE_MEMORY, attr);
+        if (input_alias != nullptr) {
+          // Update the ref to point to the new buffer.
+          context->replace_ref_input(0, *input_alias, /* lock_held */ true);
+          return;
+        }
+
+        // Otherwise, create a new persistent tensor whose shape matches the
+        // right hand side, hand off to lhs and copy the rhs into it.
         PersistentTensor copy;
         Tensor* copyTensor = nullptr;
         OP_REQUIRES_OK(
@@ -132,8 +138,9 @@ class AssignOp : public OpKernel {
 
   bool use_exclusive_lock_;
   bool validate_shape_;
+  bool relax_constraints_;
 };
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_ASSIGN_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_ASSIGN_OP_H_

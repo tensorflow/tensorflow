@@ -344,5 +344,28 @@ int CPUModelNum() {
 #endif
 }
 
+int CPUIDNumSMT() {
+#ifdef PLATFORM_IS_X86
+  // https://software.intel.com/en-us/articles/intel-64-architecture-processor-topology-enumeration
+  // https://software.intel.com/en-us/articles/intel-sdm (Vol 3A)
+  // Section: Detecting Hardware Multi-threads Support and Topology
+  // Uses CPUID Leaf 11 to enumerate system topology on Intel x86 architectures
+  // Other cases not supported
+  uint32 eax, ebx, ecx, edx;
+  // Check if system supports Leaf 11
+  GETCPUID(eax, ebx, ecx, edx, 0, 0);
+  if (eax >= 11) {
+    // 1) Leaf 11 available? CPUID.(EAX=11, ECX=0):EBX != 0
+    // 2) SMT_Mask_Width = CPUID.(EAX=11, ECX=0):EAX[4:0] if CPUID.(EAX=11,
+    // ECX=0):ECX[15:8] is 1
+    GETCPUID(eax, ebx, ecx, edx, 11, 0);
+    if (ebx != 0 && ((ecx & 0xff00) >> 8) == 1) {
+      return 1 << (eax & 0x1f);  // 2 ^ SMT_Mask_Width
+    }
+  }
+#endif  // PLATFORM_IS_X86
+  return 0;
+}
+
 }  // namespace port
 }  // namespace tensorflow

@@ -28,9 +28,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/posix/error.h"
 #include "tensorflow/core/platform/windows/error.h"
+#include "tensorflow/core/platform/windows/wide_char.h"
 #include "tensorflow/core/platform/windows/windows_file_system.h"
 
 // TODO(mrry): Prevent this Windows.h #define from leaking out of our headers.
@@ -148,7 +150,7 @@ class WindowsWritableFile : public WritableFile {
     }
   }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     DWORD bytes_written = 0;
     DWORD data_size = static_cast<DWORD>(data.size());
     BOOL write_result =
@@ -382,7 +384,8 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
 
 Status WindowsFileSystem::FileExists(const string& fname) {
   constexpr int kOk = 0;
-  if (_access(TranslateName(fname).c_str(), kOk) == 0) {
+  std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
+  if (_waccess(ws_translated_fname.c_str(), kOk) == 0) {
     return Status::OK();
   }
   return errors::NotFound(fname, " not found");
@@ -436,6 +439,9 @@ Status WindowsFileSystem::DeleteFile(const string& fname) {
 Status WindowsFileSystem::CreateDir(const string& name) {
   Status result;
   std::wstring ws_name = Utf8ToWideChar(name);
+  if (ws_name.empty()) {
+    return errors::AlreadyExists(name);
+  }
   if (_wmkdir(ws_name.c_str()) != 0) {
     result = IOError("Failed to create a directory: " + name, errno);
   }
@@ -493,7 +499,8 @@ Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
   // but no code appears to rely on this behavior.
   string converted_pattern(pattern);
   std::replace(converted_pattern.begin(), converted_pattern.end(), '\\', '/');
-  TF_RETURN_IF_ERROR(FileSystem::GetMatchingPaths(converted_pattern, results));
+  TF_RETURN_IF_ERROR(internal::GetMatchingPaths(this, Env::Default(),
+                                                converted_pattern, results));
   for (string& result : *results) {
     std::replace(result.begin(), result.end(), '/', '\\');
   }

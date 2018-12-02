@@ -29,6 +29,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.util import deprecation
 
 
 class _Gumbel(distribution.Distribution):
@@ -62,7 +63,8 @@ class _Gumbel(distribution.Distribution):
   Examples of initialization of one or a batch of distributions.
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Define a single scalar Gumbel distribution.
   dist = tfd.Gumbel(loc=0., scale=3.)
@@ -96,6 +98,14 @@ class _Gumbel(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                scale,
@@ -124,8 +134,8 @@ class _Gumbel(distribution.Distribution):
     Raises:
       TypeError: if loc and scale are different dtypes.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[loc, scale]) as name:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")

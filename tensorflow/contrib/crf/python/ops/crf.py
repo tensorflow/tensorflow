@@ -38,12 +38,12 @@ tf_unary_scores, tf_sequence_lengths, tf_transition_params, _ = session.run(
     [unary_scores, sequence_lengths, transition_params, train_op])
 for tf_unary_scores_, tf_sequence_length_ in zip(tf_unary_scores,
                                                  tf_sequence_lengths):
-# Remove padding.
-tf_unary_scores_ = tf_unary_scores_[:tf_sequence_length_]
+    # Remove padding.
+    tf_unary_scores_ = tf_unary_scores_[:tf_sequence_length_]
 
-# Compute the highest score and its tag sequence.
-tf_viterbi_sequence, tf_viterbi_score = tf.contrib.crf.viterbi_decode(
-    tf_unary_scores_, tf_transition_params)
+    # Compute the highest score and its tag sequence.
+    tf_viterbi_sequence, tf_viterbi_score = tf.contrib.crf.viterbi_decode(
+        tf_unary_scores_, tf_transition_params)
 """
 
 from __future__ import absolute_import
@@ -52,10 +52,11 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
@@ -66,7 +67,7 @@ __all__ = [
     "crf_sequence_score", "crf_log_norm", "crf_log_likelihood",
     "crf_unary_score", "crf_binary_score", "CrfForwardRnnCell",
     "viterbi_decode", "crf_decode", "CrfDecodeForwardRnnCell",
-    "CrfDecodeBackwardRnnCell"
+    "CrfDecodeBackwardRnnCell", "crf_multitag_sequence_score"
 ]
 
 
@@ -90,9 +91,13 @@ def crf_sequence_score(inputs, tag_indices, sequence_lengths,
     batch_size = array_ops.shape(inputs, out_type=tag_indices.dtype)[0]
     example_inds = array_ops.reshape(
         math_ops.range(batch_size, dtype=tag_indices.dtype), [-1, 1])
-    return array_ops.gather_nd(
+    sequence_scores = array_ops.gather_nd(
         array_ops.squeeze(inputs, [1]),
         array_ops.concat([example_inds, tag_indices], axis=1))
+    sequence_scores = array_ops.where(math_ops.less_equal(sequence_lengths, 0),
+                                      array_ops.zeros_like(sequence_scores),
+                                      sequence_scores)
+    return sequence_scores
 
   def _multi_seq_fn():
     # Compute the scores of the given tag sequence.
@@ -103,8 +108,62 @@ def crf_sequence_score(inputs, tag_indices, sequence_lengths,
     return sequence_scores
 
   return utils.smart_cond(
-      pred=math_ops.equal(inputs.shape[1].value or array_ops.shape(inputs)[1],
-                          1),
+      pred=math_ops.equal(
+          tensor_shape.dimension_value(
+              inputs.shape[1]) or array_ops.shape(inputs)[1],
+          1),
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)
+
+
+def crf_multitag_sequence_score(inputs, tag_bitmap, sequence_lengths,
+                                transition_params):
+  """Computes the unnormalized score of all tag sequences matching tag_bitmap.
+
+  tag_bitmap enables more than one tag to be considered correct at each time
+  step. This is useful when an observed output at a given time step is
+  consistent with more than one tag, and thus the log likelihood of that
+  observation must take into account all possible consistent tags.
+
+  Using one-hot vectors in tag_bitmap gives results identical to
+  crf_sequence_score.
+
+  Args:
+    inputs: A [batch_size, max_seq_len, num_tags] tensor of unary potentials
+        to use as input to the CRF layer.
+    tag_bitmap: A [batch_size, max_seq_len, num_tags] boolean tensor
+        representing all active tags at each index for which to calculate the
+        unnormalized score.
+    sequence_lengths: A [batch_size] vector of true sequence lengths.
+    transition_params: A [num_tags, num_tags] transition matrix.
+  Returns:
+    sequence_scores: A [batch_size] vector of unnormalized sequence scores.
+  """
+
+  # If max_seq_len is 1, we skip the score calculation and simply gather the
+  # unary potentials of all active tags.
+  def _single_seq_fn():
+    filtered_inputs = array_ops.where(
+        tag_bitmap, inputs,
+        array_ops.fill(array_ops.shape(inputs), float("-inf")))
+    return math_ops.reduce_logsumexp(
+        filtered_inputs, axis=[1, 2], keepdims=False)
+
+  def _multi_seq_fn():
+    # Compute the logsumexp of all scores of sequences matching the given tags.
+    filtered_inputs = array_ops.where(
+        tag_bitmap, inputs,
+        array_ops.fill(array_ops.shape(inputs), float("-inf")))
+    return crf_log_norm(
+        inputs=filtered_inputs,
+        sequence_lengths=sequence_lengths,
+        transition_params=transition_params)
+
+  return utils.smart_cond(
+      pred=math_ops.equal(
+          tensor_shape.dimension_value(
+              inputs.shape[1]) or array_ops.shape(inputs)[1],
+          1),
       true_fn=_single_seq_fn,
       false_fn=_multi_seq_fn)
 
@@ -128,7 +187,12 @@ def crf_log_norm(inputs, sequence_lengths, transition_params):
   # If max_seq_len is 1, we skip the algorithm and simply reduce_logsumexp over
   # the "initial state" (the unary potentials).
   def _single_seq_fn():
-    return math_ops.reduce_logsumexp(first_input, [1])
+    log_norm = math_ops.reduce_logsumexp(first_input, [1])
+    # Mask `log_norm` of the sequences with length <= zero.
+    log_norm = array_ops.where(math_ops.less_equal(sequence_lengths, 0),
+                               array_ops.zeros_like(log_norm),
+                               log_norm)
+    return log_norm
 
   def _multi_seq_fn():
     """Forward computation of alpha values."""
@@ -137,19 +201,30 @@ def crf_log_norm(inputs, sequence_lengths, transition_params):
     # Compute the alpha values in the forward algorithm in order to get the
     # partition function.
     forward_cell = CrfForwardRnnCell(transition_params)
+    # Sequence length is not allowed to be less than zero.
+    sequence_lengths_less_one = math_ops.maximum(
+        constant_op.constant(0, dtype=sequence_lengths.dtype),
+        sequence_lengths - 1)
     _, alphas = rnn.dynamic_rnn(
         cell=forward_cell,
         inputs=rest_of_input,
-        sequence_length=sequence_lengths - 1,
+        sequence_length=sequence_lengths_less_one,
         initial_state=first_input,
         dtype=dtypes.float32)
     log_norm = math_ops.reduce_logsumexp(alphas, [1])
+    # Mask `log_norm` of the sequences with length <= zero.
+    log_norm = array_ops.where(math_ops.less_equal(sequence_lengths, 0),
+                               array_ops.zeros_like(log_norm),
+                               log_norm)
     return log_norm
 
-  max_seq_len = array_ops.shape(inputs)[1]
-  return control_flow_ops.cond(pred=math_ops.equal(max_seq_len, 1),
-                               true_fn=_single_seq_fn,
-                               false_fn=_multi_seq_fn)
+  return utils.smart_cond(
+      pred=math_ops.equal(
+          tensor_shape.dimension_value(
+              inputs.shape[1]) or array_ops.shape(inputs)[1],
+          1),
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)
 
 
 def crf_log_likelihood(inputs,
@@ -172,7 +247,7 @@ def crf_log_likelihood(inputs,
         provided by the caller or created in this function.
   """
   # Get shape information.
-  num_tags = inputs.get_shape()[2].value
+  num_tags = tensor_shape.dimension_value(inputs.shape[2])
 
   # Get the transition matrix if not provided.
   if transition_params is None:
@@ -274,7 +349,7 @@ class CrfForwardRnnCell(rnn_cell.RNNCell):
           for the broadcast summation occurring within the cell.
     """
     self._transition_params = array_ops.expand_dims(transition_params, 0)
-    self._num_tags = transition_params.get_shape()[0].value
+    self._num_tags = tensor_shape.dimension_value(transition_params.shape[0])
 
   @property
   def state_size(self):
@@ -360,7 +435,7 @@ class CrfDecodeForwardRnnCell(rnn_cell.RNNCell):
         summation occurring within the cell.
     """
     self._transition_params = array_ops.expand_dims(transition_params, 0)
-    self._num_tags = transition_params.get_shape()[0].value
+    self._num_tags = tensor_shape.dimension_value(transition_params.shape[0])
 
   @property
   def state_size(self):
@@ -472,22 +547,26 @@ def crf_decode(potentials, transition_params, sequence_length):
 
     # For simplicity, in shape comments, denote:
     # 'batch_size' by 'B', 'max_seq_len' by 'T' , 'num_tags' by 'O' (output).
-    num_tags = potentials.get_shape()[2].value
+    num_tags = tensor_shape.dimension_value(potentials.shape[2])
 
     # Computes forward decoding. Get last score and backpointers.
     crf_fwd_cell = CrfDecodeForwardRnnCell(transition_params)
     initial_state = array_ops.slice(potentials, [0, 0, 0], [-1, 1, -1])
     initial_state = array_ops.squeeze(initial_state, axis=[1])  # [B, O]
     inputs = array_ops.slice(potentials, [0, 1, 0], [-1, -1, -1])  # [B, T-1, O]
+    # Sequence length is not allowed to be less than zero.
+    sequence_length_less_one = math_ops.maximum(
+        constant_op.constant(0, dtype=sequence_length.dtype),
+        sequence_length - 1)
     backpointers, last_score = rnn.dynamic_rnn(  # [B, T - 1, O], [B, O]
         crf_fwd_cell,
         inputs=inputs,
-        sequence_length=sequence_length - 1,
+        sequence_length=sequence_length_less_one,
         initial_state=initial_state,
         time_major=False,
         dtype=dtypes.int32)
     backpointers = gen_array_ops.reverse_sequence(  # [B, T - 1, O]
-        backpointers, sequence_length - 1, seq_dim=1)
+        backpointers, sequence_length_less_one, seq_dim=1)
 
     # Computes backward decoding. Extract tag indices from backpointers.
     crf_bwd_cell = CrfDecodeBackwardRnnCell(num_tags)
@@ -497,7 +576,7 @@ def crf_decode(potentials, transition_params, sequence_length):
     decode_tags, _ = rnn.dynamic_rnn(  # [B, T - 1, 1]
         crf_bwd_cell,
         inputs=backpointers,
-        sequence_length=sequence_length - 1,
+        sequence_length=sequence_length_less_one,
         initial_state=initial_state,
         time_major=False,
         dtype=dtypes.int32)
@@ -511,7 +590,7 @@ def crf_decode(potentials, transition_params, sequence_length):
     return decode_tags, best_score
 
   return utils.smart_cond(
-      pred=math_ops.equal(potentials.shape[1].value or
+      pred=math_ops.equal(tensor_shape.dimension_value(potentials.shape[1]) or
                           array_ops.shape(potentials)[1], 1),
       true_fn=_single_seq_fn,
       false_fn=_multi_seq_fn)

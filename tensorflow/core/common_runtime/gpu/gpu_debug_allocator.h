@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEBUG_ALLOCATOR_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEBUG_ALLOCATOR_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEBUG_ALLOCATOR_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEBUG_ALLOCATOR_H_
 
 #include <memory>
 #include <string>
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/framework/visitable_allocator.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
@@ -31,16 +31,14 @@ namespace tensorflow {
 // An allocator that wraps a GPU allocator and adds debugging
 // functionality that verifies that users do not write outside their
 // allocated memory.
-class GPUDebugAllocator : public VisitableAllocator {
+class GPUDebugAllocator : public Allocator {
  public:
-  explicit GPUDebugAllocator(VisitableAllocator* allocator,
-                             CudaGpuId cuda_gpu_id);
+  explicit GPUDebugAllocator(Allocator* allocator,
+                             PlatformGpuId platform_gpu_id);
   ~GPUDebugAllocator() override;
   string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
-  void AddAllocVisitor(Visitor visitor) override;
-  void AddFreeVisitor(Visitor visitor) override;
   bool TracksAllocationSizes() override;
   size_t RequestedSize(const void* ptr) override;
   size_t AllocatedSize(const void* ptr) override;
@@ -53,9 +51,9 @@ class GPUDebugAllocator : public VisitableAllocator {
   bool CheckFooter(void* ptr);
 
  private:
-  VisitableAllocator* base_allocator_ = nullptr;  // owned
+  Allocator* base_allocator_ = nullptr;  // owned
 
-  perftools::gputools::StreamExecutor* stream_exec_;  // Not owned.
+  se::StreamExecutor* stream_exec_;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUDebugAllocator);
 };
@@ -63,29 +61,27 @@ class GPUDebugAllocator : public VisitableAllocator {
 // An allocator that wraps a GPU allocator and resets the memory on
 // allocation and free to 'NaN', helping to identify cases where the
 // user forgets to initialize the memory.
-class GPUNanResetAllocator : public VisitableAllocator {
+class GPUNanResetAllocator : public Allocator {
  public:
-  explicit GPUNanResetAllocator(VisitableAllocator* allocator,
-                                CudaGpuId cuda_gpu_id);
+  explicit GPUNanResetAllocator(Allocator* allocator,
+                                PlatformGpuId platform_gpu_id);
   ~GPUNanResetAllocator() override;
   string Name() override { return "gpu_nan_reset"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
-  void AddAllocVisitor(Visitor visitor) override;
-  void AddFreeVisitor(Visitor visitor) override;
   size_t RequestedSize(const void* ptr) override;
   size_t AllocatedSize(const void* ptr) override;
   void GetStats(AllocatorStats* stats) override;
   void ClearStats() override;
 
  private:
-  VisitableAllocator* base_allocator_ = nullptr;  // owned
+  Allocator* base_allocator_ = nullptr;  // owned
 
-  perftools::gputools::StreamExecutor* stream_exec_;  // Not owned.
+  se::StreamExecutor* stream_exec_;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUNanResetAllocator);
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEBUG_ALLOCATOR_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEBUG_ALLOCATOR_H_

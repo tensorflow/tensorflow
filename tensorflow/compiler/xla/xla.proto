@@ -17,7 +17,6 @@ syntax = "proto3";
 
 import "tensorflow/compiler/xla/xla_data.proto";
 import "tensorflow/compiler/xla/service/hlo.proto";
-import "tensorflow/compiler/xla/service/session.proto";
 
 package xla;
 
@@ -105,15 +104,6 @@ message DebugOptions {
   // interpretation of this value is left to the backends.
   int32 xla_backend_optimization_level = 31;
 
-  // When true, "unsafe" mathematical optimizations are enabled. These
-  // transformations include but are not limited to:
-  //
-  //  - Reducing the precision of operations (e.g. using an approximate sin
-  //    function, or transforming x/y into x * (1/y)).
-  //  - Assuming that operations never produce or consume NaN or +/- Inf.
-  //  - Assuming that +0 and -0 are indistinguishable.
-  bool xla_enable_fast_math = 32;
-
   // Embed the compiler IR as a string in the executable.
   bool xla_embed_ir_in_executable = 33;
 
@@ -189,8 +179,42 @@ message DebugOptions {
   // directory.
   string xla_dump_per_pass_hlo_proto_to = 96;
 
-  // Extra options to pass to the compilation backend; specific interpretation
-  // of these values is left to the backend.
+  // Generate calls to MKL-DNN in the CPU backend.
+  bool xla_cpu_use_mkl_dnn = 97;
+
+  // Maximum kernel unroll factor for the GPU backend.
+  int32 xla_gpu_max_kernel_unroll_factor = 98;
+
+  // When true, "unsafe" mathematical optimizations are enabled. These
+  // transformations include but are not limited to:
+  //
+  //  - Reducing the precision of operations (e.g. using an approximate sin
+  //    function, or transforming x/y into x * (1/y)).
+  //  - Assuming that operations never produce or consume NaN or +/- Inf.
+  //  - Assuming that +0 and -0 are indistinguishable.
+  bool xla_cpu_enable_fast_math = 99;
+
+  // When true we lower the Minimum and Maximum hlos in the GPU backend such
+  // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
+  // this is true we don't propagate NaNs through Min and Max.
+  bool xla_gpu_enable_fast_min_max = 100;
+
+  // Crashes the program when any kind of verification fails, instead of just
+  // logging the failures. One example is cross checking of convolution results
+  // among different algorithms.
+  bool xla_gpu_crash_on_verification_failures = 101;
+
+  // Force the host platform to pretend that there are these many host
+  // "devices".  All these devices are backed by the same threadpool.  Defaults
+  // to 1.
+  //
+  // Setting this to anything other than 1 can increase overhead from context
+  // switching but we let the user override this behavior to help run tests on
+  // the host that run models in parallel across multiple devices.
+  int32 xla_force_host_platform_device_count = 102;
+
+  // Extra options to pass to the compilation backend (e.g. LLVM); specific
+  // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
 }
 
@@ -204,7 +228,7 @@ message ExecutionOptions {
   // may be faster when using this layout.
   //
   // We use a Shape here to accommodate computations that return a tuple.
-  Shape shape_with_output_layout = 2;
+  ShapeProto shape_with_output_layout = 2;
 
   // Used to seed random-number generators used in this computation.  If this is
   // 0, we generate a seed ourselves.
@@ -220,22 +244,6 @@ message ExecutionOptions {
   repeated DeviceHandle device_handles = 5;
 }
 
-message SnapshotComputationRequest {
-  ComputationHandle computation = 1;
-}
-
-message SnapshotComputationResponse {
-  SessionModule module = 1;
-}
-
-message LoadComputationSnapshotRequest {
-  SessionModule module = 1;
-}
-
-message LoadComputationSnapshotResponse {
-  ComputationHandle computation = 1;
-}
-
 message GetDeviceHandlesRequest {
   int64 device_count = 1;
 }
@@ -249,7 +257,7 @@ message TransferToClientRequest {
 
   // This optional field directs the service to return the literal in this
   // layout. A shape is used to hold the layout to accommodate tuples.
-  Shape shape_with_layout = 2;
+  ShapeProto shape_with_layout = 2;
 }
 
 message TransferToClientResponse {
@@ -277,7 +285,7 @@ message TransferToInfeedResponse {
 message TransferFromOutfeedRequest {
   // This optional field directs the service to return the literal in this
   // layout. A shape is used to hold the layout to accommodate tuples.
-  Shape shape_with_layout = 1;
+  ShapeProto shape_with_layout = 1;
 
   int64 replica_id = 2;
   DeviceHandle device_handle = 3;
@@ -294,8 +302,8 @@ message ResetDeviceRequest {
 message ResetDeviceResponse {
 }
 
-message ComputationStatsRequest {
-  ComputationHandle computation = 1;
+message ComputationGraphStatsRequest {
+  HloModuleProto computation = 1;
   DebugOptions debug_options = 2;
 }
 
@@ -303,15 +311,8 @@ message ComputationStatsResponse {
   ComputationStats stats = 1;
 }
 
-message ComputationRequest {
-  string name = 1;
-}
-
-message ComputationResponse {
-  ComputationHandle computation = 1;
-}
-
 message CreateChannelHandleRequest {
+  ChannelHandle.ChannelType channel_type = 1;
 }
 
 message CreateChannelHandleResponse {
@@ -319,30 +320,40 @@ message CreateChannelHandleResponse {
 }
 
 message UnregisterRequest {
-  GlobalDataHandle data = 1;
+  repeated GlobalDataHandle data = 1;
 }
 
 message UnregisterResponse {
 }
 
-message SetReturnValueRequest {
-  ComputationHandle computation = 1;
-  ComputationDataHandle operand = 2;
+message CompileRequest {
+  // The graph to be compiled.
+  HloModuleProto computation = 1;
+
+  // Options that affect how XLA compiles code to service this request.
+  ExecutionOptions execution_options = 2;
+
+  // The layouts of the input arguments. If not set, the default layout will be
+  // used. Although the real arguments are not needed in compilation, the
+  // layouts of the arguments can affect the compilation.
+  repeated ShapeProto input_shape_with_layout = 3;
 }
 
-message SetReturnValueResponse {
+message CompileResponse {
+  // The handle to the executable.
+  ExecutionHandle handle = 1;
 }
 
 message ExecuteRequest {
-  reserved 3, 4;
+  ExecutionHandle handle = 1;
 
-  ComputationHandle computation = 1;
+  // The shape and layout of the arguments must be the same as the those of the
+  // executable's parameters.
   repeated GlobalDataHandle arguments = 2;
-
-  // Options that affect how XLA compiles and runs code to service this request.
-  ExecutionOptions execution_options = 5;
 }
 
+// TODO(b/118493728): Remove this and ExecuteGraphParallelRequest and replace
+// the uses with calls to Compile and Execute.
 message ExecuteGraphRequest {
   HloModuleProto computation = 1;
   repeated GlobalDataHandle arguments = 2;
@@ -351,8 +362,8 @@ message ExecuteGraphRequest {
   ExecutionOptions execution_options = 3;
 }
 
-message ExecuteParallelRequest {
-  repeated ExecuteRequest requests = 1;
+message ExecuteGraphParallelRequest {
+  repeated ExecuteGraphRequest requests = 1;
 }
 
 message ExecuteResponse {
@@ -364,21 +375,6 @@ message ExecuteParallelResponse {
   repeated ExecuteResponse responses = 1;
 }
 
-message ExecuteAsyncRequest {
-  reserved 3, 4;
-
-  ComputationHandle computation = 1;
-  repeated GlobalDataHandle arguments = 2;
-
-  // Options that affect how XLA compiles and runs code to service this request.
-  ExecutionOptions execution_options = 6;
-}
-
-message ExecuteAsyncResponse {
-  // A handle to the execution launched asynchronously.
-  ExecutionHandle execution = 1;
-}
-
 message WaitForExecutionRequest {
   ExecutionHandle execution = 1;
 }
@@ -388,26 +384,13 @@ message WaitForExecutionResponse {
   ExecutionProfile profile = 2;
 }
 
-message IsConstantRequest {
-  ComputationHandle computation = 1;
-  ComputationDataHandle operand = 2;
-  int64 num_parameters = 3;
-}
-
-message IsConstantResponse {
-  bool is_constant = 1;
-}
-
-message ComputeConstantRequest {
-  ComputationHandle computation = 1;
-  ComputationDataHandle operand = 2;
-  Layout output_layout = 3;
-  repeated LiteralProto parameters = 4;
+message ComputeConstantGraphRequest {
+  HloModuleProto computation = 1;
+  Layout output_layout = 2;
 }
 
 message ComputeConstantResponse {
-  // A LiteralProto is returned directly for this request, instead of a
-  // ComputationDataHandle.
+  // A LiteralProto is returned directly for this request.
   LiteralProto literal = 1;
 }
 
@@ -427,7 +410,7 @@ message LoadDataRequest {
   string columnio_field = 2;
 
   // Individual element shape, excluding rows.
-  Shape element_shape = 3;
+  ShapeProto element_shape = 3;
 
   // Warning: ColumnIO does not support random-access, so use offset with
   // caution in performance-critical scenarios.
@@ -443,18 +426,10 @@ message LoadDataRequest {
 
 message LoadDataResponse {
   GlobalDataHandle data = 1;
-  Shape data_shape = 2;
+  ShapeProto data_shape = 2;
   int64 available_rows = 3;
   int64 rows_loaded = 4;
   int64 nanoseconds = 5;
-}
-
-message SpecializeRequest {
-  ComputationHandle computation = 1;
-  repeated GlobalDataHandle arguments = 2;
-}
-
-message SpecializeResponse {
 }
 
 message GetShapeRequest {
@@ -462,15 +437,7 @@ message GetShapeRequest {
 }
 
 message GetShapeResponse {
-  Shape shape = 1;
-}
-
-message GetComputationShapeRequest {
-  ComputationHandle computation = 1;
-}
-
-message GetComputationShapeResponse {
-  ProgramShape program_shape = 1;
+  ShapeProto shape = 1;
 }
 
 message UnpackRequest {

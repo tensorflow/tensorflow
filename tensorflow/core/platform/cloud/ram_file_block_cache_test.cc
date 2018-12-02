@@ -37,6 +37,52 @@ Status ReadCache(RamFileBlockCache* cache, const string& filename,
   return status;
 }
 
+TEST(RamFileBlockCacheTest, IsCacheEnabled) {
+  auto fetcher = [](const string& filename, size_t offset, size_t n,
+                    char* buffer, size_t* bytes_transferred) {
+    // Do nothing.
+    return Status::OK();
+  };
+  RamFileBlockCache cache1(0, 0, 0, fetcher);
+  RamFileBlockCache cache2(16, 0, 0, fetcher);
+  RamFileBlockCache cache3(0, 32, 0, fetcher);
+  RamFileBlockCache cache4(16, 32, 0, fetcher);
+
+  EXPECT_FALSE(cache1.IsCacheEnabled());
+  EXPECT_FALSE(cache2.IsCacheEnabled());
+  EXPECT_FALSE(cache3.IsCacheEnabled());
+  EXPECT_TRUE(cache4.IsCacheEnabled());
+}
+
+TEST(RamFileBlockCacheTest, ValidateAndUpdateFileSignature) {
+  int calls = 0;
+  auto fetcher = [&calls](const string& filename, size_t offset, size_t n,
+                          char* buffer, size_t* bytes_transferred) {
+    calls++;
+    memset(buffer, 'x', n);
+    *bytes_transferred = n;
+    return Status::OK();
+  };
+  string filename = "file";
+  RamFileBlockCache cache(16, 32, 0, fetcher);
+  std::vector<char> out;
+
+  // First read.
+  EXPECT_TRUE(cache.ValidateAndUpdateFileSignature(filename, 123));
+  TF_EXPECT_OK(ReadCache(&cache, filename, 0, 16, &out));
+  EXPECT_EQ(calls, 1);
+
+  // Second read. Hit cache.
+  EXPECT_TRUE(cache.ValidateAndUpdateFileSignature(filename, 123));
+  TF_EXPECT_OK(ReadCache(&cache, filename, 0, 16, &out));
+  EXPECT_EQ(calls, 1);
+
+  // Third read. File signatures are different.
+  EXPECT_FALSE(cache.ValidateAndUpdateFileSignature(filename, 321));
+  TF_EXPECT_OK(ReadCache(&cache, filename, 0, 16, &out));
+  EXPECT_EQ(calls, 2);
+}
+
 TEST(RamFileBlockCacheTest, PassThrough) {
   const string want_filename = "foo/bar";
   const size_t want_offset = 42;
@@ -487,8 +533,7 @@ TEST(RamFileBlockCacheTest, CoalesceConcurrentReads) {
         TF_EXPECT_OK(ReadCache(&cache, "", 0, block_size / 2, &out));
         EXPECT_EQ(out.size(), block_size / 2);
       }));
-  EXPECT_TRUE(WaitForNotificationWithTimeout(&notification, 10000))
-      << "Timeout waiting for concurrent thread to start.";
+  notification.WaitForNotification();
   std::vector<char> out;
   TF_EXPECT_OK(ReadCache(&cache, "", block_size / 2, block_size / 2, &out));
   EXPECT_EQ(out.size(), block_size / 2);

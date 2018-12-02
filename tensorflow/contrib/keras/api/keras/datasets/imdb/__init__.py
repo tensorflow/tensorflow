@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras._impl.keras.datasets.imdb import get_word_index
-from tensorflow.python.keras._impl.keras.datasets.imdb import load_data
+from tensorflow.python.keras.datasets.imdb import get_word_index
+from tensorflow.python.keras.datasets.imdb import load_data
 
 del absolute_import
 del division

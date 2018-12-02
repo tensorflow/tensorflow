@@ -19,8 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import itertools
+
+import six
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Pattern(object):
   """The parent class of all patterns (e.g. OpTypePattern and OneofPattern)."""
 
@@ -33,7 +37,7 @@ class Pattern(object):
 class OpTypePattern(Pattern):
   """A tree pattern that matches TF expressions with certain op types."""
 
-  def __init__(self, op_type, name=None, inputs=None):
+  def __init__(self, op_type, name=None, inputs=None, ordered_inputs=True):
     """Initializes an OpTypePattern.
 
     Args:
@@ -48,16 +52,25 @@ class OpTypePattern(Pattern):
       inputs: Optional list of `Pattern`s or strings that specify the
         patterns for the inputs of a matching op. If None, this pattern accepts
         any inputs of a matching op.
+      ordered_inputs: Defaults to True. If False, will match any op that
+        matches a permutation of the inputs.
+
+    Raises:
+      ValueError: if too many inputs are provided when order_inputs is False.
     """
     self._op_type = op_type
     self._name = name
     if inputs is None:
       inputs = []
+    if len(inputs) > 8:
+      raise ValueError(
+          'Only < 8 inputs are allowed when ordered_inputs is False.')
     self._inputs = [
         input_pattern
         if isinstance(input_pattern, Pattern) else OpTypePattern(input_pattern)
         for input_pattern in inputs
     ]
+    self._ordered_inputs = ordered_inputs
 
   @property
   def name(self):
@@ -78,12 +91,23 @@ class OpTypePattern(Pattern):
     if len(op.inputs) != len(self._inputs):
       return None
 
-    for input_tensor, input_pattern in zip(op.inputs, self._inputs):
-      input_match_result = input_pattern.match(input_tensor.op, input_tensor)
-      if input_match_result is None:
-        return None
-      match_result.merge_from(input_match_result)
-    return match_result
+    input_patterns_list = [self._inputs]
+    # If order doesn't matter for the inputs, then make sure we match at least
+    # one permutation of the inputs.
+    if not self._ordered_inputs:
+      input_patterns_list = list(itertools.permutations(self._inputs))
+
+    for input_patterns in input_patterns_list:
+      match_failed = False
+      for input_tensor, input_pattern in zip(op.inputs, input_patterns):
+        input_match_result = input_pattern.match(input_tensor.op, input_tensor)
+        if input_match_result is None:
+          match_failed = True
+          break
+        match_result.merge_from(input_match_result)
+      if not match_failed:
+        return match_result
+    return None
 
 
 class OneofPattern(Pattern):
@@ -103,7 +127,7 @@ class OneofPattern(Pattern):
 class MatchResult(object):
   r"""Encapsulates the result of a match done by GraphMatcher.
 
-  MatchResult contains a map from OpTypePattern to the matching op and tensor.
+  MatchResult contains a map from Pattern to the matching op and tensor.
   When the matching op has multiple output tensors, the matching tensor is the
   output tensor used by the matching op of the parent pattern. E.g., when we
   match graph
@@ -138,7 +162,7 @@ class MatchResult(object):
       self._name_to_pattern[pattern.name] = pattern
 
   def _to_pattern(self, pattern_or_name):
-    if isinstance(pattern_or_name, OpTypePattern):
+    if isinstance(pattern_or_name, Pattern):
       return pattern_or_name
 
     if isinstance(pattern_or_name, str):
@@ -146,8 +170,8 @@ class MatchResult(object):
         return None
       return self._name_to_pattern[pattern_or_name]
 
-    raise ValueError('pattern_or_name has type %s. Expect OpTypePattern or str.'
-                     % type(pattern_or_name))
+    raise ValueError('pattern_or_name has type %s. Expect Pattern or str.' %
+                     type(pattern_or_name))
 
   def _get_op_tensor(self, pattern_or_name):
     pattern = self._to_pattern(pattern_or_name)

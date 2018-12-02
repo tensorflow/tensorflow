@@ -72,15 +72,54 @@ py_library(
 )
 
 py_library(
+    name = "pruning_utils",
+    srcs = ["python/pruning_utils.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "pruning",
     srcs = ["python/pruning.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
         ":core_layers",
+        ":pruning_utils",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/python:platform",
+    ],
+)
+
+py_library(
+    name = "strip_pruning_vars_lib",
+    srcs = ["python/strip_pruning_vars_lib.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pruning",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
         "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "pruning_utils_test",
+    size = "medium",
+    srcs = ["python/pruning_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pruning_utils",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -107,6 +146,31 @@ py_test(
     ],
 )
 
+py_test(
+    name = "strip_pruning_vars_test",
+    size = "small",
+    srcs = ["python/strip_pruning_vars_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers",
+        ":pruning",
+        ":rnn_cells",
+        ":strip_pruning_vars_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_binary(
+    name = "strip_pruning_vars",
+    srcs = ["python/strip_pruning_vars.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":strip_pruning_vars_lib",
+        "//tensorflow/python:platform",
+    ],
+)
+
 py_library(
     name = "init_py",
     srcs = ["__init__.py"],
@@ -123,17 +187,6 @@ py_library(
         ":learning",
         ":pruning",
         ":rnn_cells",
+        ":strip_pruning_vars_lib",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

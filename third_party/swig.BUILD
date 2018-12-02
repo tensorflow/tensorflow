@@ -71,7 +71,6 @@ cc_binary(
     ],
     copts = ["$(STACK_FRAME_UNLIMITED)"] + select({
         ":windows": [],
-        ":windows_msvc": [],
         "//conditions:default": [
             "-Wno-parentheses",
             "-Wno-unused-variable",
@@ -329,11 +328,6 @@ genrule(
           "    -e '/swig_tcl/d'" +
           "    -e '/swig_uffi/d'" +
           "    $< >$@",
-)
-
-config_setting(
-    name = "windows_msvc",
-    values = {"cpu": "x64_windows_msvc"},
 )
 
 config_setting(

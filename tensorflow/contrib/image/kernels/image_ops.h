@@ -21,6 +21,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -58,6 +59,11 @@ class ProjectiveGenerator {
             ? transforms_.data()
             : &transforms_.data()[transforms_.dimension(1) * coords[0]];
     float projection = transform[6] * output_x + transform[7] * output_y + 1.f;
+    if (projection == 0) {
+      // Return the fill value (0) for infinite coordinates,
+      // which are outside the input image
+      return T(0);
+    }
     const float input_x =
         (transform[0] * output_x + transform[1] * output_y + transform[2]) /
         projection;
@@ -65,14 +71,7 @@ class ProjectiveGenerator {
         (transform[3] * output_x + transform[4] * output_y + transform[5]) /
         projection;
 
-    // TODO(ringwalt): Add a fill value input.
-#if (defined __CUDA_ARCH__) && (CUDART_VERSION < 8000)
-    // On CUDA versions previous to 8.0, only __shared__ variables
-    // could be declared as static in the device code.
     const T fill_value = T(0);
-#else
-    static const T fill_value = T(0);
-#endif
     switch (interpolation_) {
       case INTERPOLATION_NEAREST:
         // Switch the order of x and y again for indexing into the image.
@@ -105,21 +104,21 @@ class ProjectiveGenerator {
     // f(x, y_floor) = (x_ceil - x) / (x_ceil - x_floor) * f(x_floor, y_floor)
     //               + (x - x_floor) / (x_ceil - x_floor) * f(x_ceil, y_floor)
     const float value_yfloor =
-        (x_ceil - x) * read_with_fill_value(batch, DenseIndex(y_floor),
-                                            DenseIndex(x_floor), channel,
-                                            fill_value) +
-        (x - x_floor) * read_with_fill_value(batch, DenseIndex(y_floor),
-                                             DenseIndex(x_ceil), channel,
-                                             fill_value);
+        (x_ceil - x) * static_cast<float>(read_with_fill_value(
+                           batch, DenseIndex(y_floor), DenseIndex(x_floor),
+                           channel, fill_value)) +
+        (x - x_floor) * static_cast<float>(read_with_fill_value(
+                            batch, DenseIndex(y_floor), DenseIndex(x_ceil),
+                            channel, fill_value));
     // f(x, y_ceil) = (x_ceil - x) / (x_ceil - x_floor) * f(x_floor, y_ceil)
     //              + (x - x_floor) / (x_ceil - x_floor) * f(x_ceil, y_ceil)
     const float value_yceil =
-        (x_ceil - x) * read_with_fill_value(batch, DenseIndex(y_ceil),
-                                            DenseIndex(x_floor), channel,
-                                            fill_value) +
-        (x - x_floor) * read_with_fill_value(batch, DenseIndex(y_ceil),
-                                             DenseIndex(x_ceil), channel,
-                                             fill_value);
+        (x_ceil - x) * static_cast<float>(read_with_fill_value(
+                           batch, DenseIndex(y_ceil), DenseIndex(x_floor),
+                           channel, fill_value)) +
+        (x - x_floor) * static_cast<float>(read_with_fill_value(
+                            batch, DenseIndex(y_ceil), DenseIndex(x_ceil),
+                            channel, fill_value));
     // f(x, y) = (y_ceil - y) / (y_ceil - y_floor) * f(x, y_floor)
     //         + (y - y_floor) / (y_ceil - y_floor) * f(x, y_ceil)
     return T((y_ceil - y) * value_yfloor + (y - y_floor) * value_yceil);
@@ -161,7 +160,7 @@ struct FillProjectiveTransform {
   void operator()(const Device& device, OutputType* output,
                   const InputType& images,
                   const TransformsType& transform) const {
-    output->device(device) = images.generate(
+    output->device(device) = output->generate(
         ProjectiveGenerator<Device, T>(images, transform, interpolation_));
   }
 };

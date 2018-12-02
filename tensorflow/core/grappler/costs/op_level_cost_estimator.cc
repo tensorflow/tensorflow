@@ -18,7 +18,9 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 
 namespace tensorflow {
@@ -26,16 +28,25 @@ namespace grappler {
 
 constexpr int kOpsPerMac = 2;
 constexpr char kConst[] = "Const";
+constexpr char kGuaranteeConst[] = "GuaranteeConst";
 constexpr char kConv2d[] = "Conv2D";
 constexpr char kConv2dBackpropFilter[] = "Conv2DBackpropFilter";
 constexpr char kConv2dBackpropInput[] = "Conv2DBackpropInput";
+constexpr char kFusedConv2dBiasActivation[] = "FusedConv2DBiasActivation";
+constexpr char kDepthwiseConv2dNative[] = "DepthwiseConv2dNative";
+constexpr char kDepthwiseConv2dNativeBackpropFilter[] =
+    "DepthwiseConv2dNativeBackpropFilter";
+constexpr char kDepthwiseConv2dNativeBackpropInput[] =
+    "DepthwiseConv2dNativeBackpropInput";
 constexpr char kMatMul[] = "MatMul";
 constexpr char kSparseMatMul[] = "SparseMatMul";
 constexpr char kPlaceholder[] = "Placeholder";
 constexpr char kIdentity[] = "Identity";
+constexpr char kIdentityN[] = "IdentityN";
 constexpr char kRefIdentity[] = "RefIdentity";
 constexpr char kNoOp[] = "NoOp";
 constexpr char kReshape[] = "Reshape";
+constexpr char kSqueeze[] = "Squeeze";
 constexpr char kRecv[] = "_Recv";
 constexpr char kSend[] = "_Send";
 constexpr char kBatchMatMul[] = "BatchMatMul";
@@ -46,6 +57,16 @@ constexpr char kShape[] = "Shape";
 constexpr char kSize[] = "Size";
 constexpr char kStopGradient[] = "StopGradient";
 constexpr char kPreventGradient[] = "PreventGradient";
+constexpr char kGather[] = "Gather";
+constexpr char kGatherV2[] = "GatherV2";
+constexpr char kSlice[] = "Slice";
+constexpr char kMaxPool[] = "MaxPool";
+constexpr char kMaxPoolGrad[] = "MaxPoolGrad";
+constexpr char kAvgPool[] = "AvgPool";
+constexpr char kAvgPoolGrad[] = "AvgPoolGrad";
+constexpr char kFusedBatchNorm[] = "FusedBatchNorm";
+constexpr char kFusedBatchNormGrad[] = "FusedBatchNormGrad";
+constexpr char kQuantizedMatMulV2[] = "QuantizedMatMulV2";
 
 static const Costs::Duration kMinComputeTime(1);
 
@@ -59,6 +80,14 @@ string GetDataFormat(const OpInfo& op_features) {
   return data_format;
 }
 
+string GetFilterFormat(const OpInfo& op_features) {
+  string filter_format = "HWIO";  // Default format.
+  if (op_features.attr().find("filter_format") != op_features.attr().end()) {
+    filter_format = op_features.attr().at("filter_format").s();
+  }
+  return filter_format;
+}
+
 Padding GetPadding(const OpInfo& op_features) {
   if (op_features.attr().find("padding") != op_features.attr().end() &&
       op_features.attr().at("padding").s() == "VALID") {
@@ -67,11 +96,36 @@ Padding GetPadding(const OpInfo& op_features) {
   return Padding::SAME;  // Default padding.
 }
 
+bool IsTraining(const OpInfo& op_info) {
+  if (op_info.attr().find("is_training") != op_info.attr().end() &&
+      op_info.attr().at("is_training").b()) {
+    return true;
+  }
+  return false;
+}
+
+// TODO(dyoon): support non-4D tensors in the c ost functions of convolution
+// related ops (Conv, Pool, BatchNorm, and their backprops) and the related
+// helper functions.
 std::vector<int64> GetStrides(const OpInfo& op_features) {
   if (op_features.attr().find("strides") != op_features.attr().end()) {
     const auto strides = op_features.attr().at("strides").list().i();
+    CHECK(strides.size() == 4) << "Attr strides is not a length-4 vector: "
+                               << op_features.DebugString();
     return {strides[0], strides[1], strides[2], strides[3]};
   }
+  return {1, 1, 1, 1};
+}
+
+std::vector<int64> GetKernelSize(const OpInfo& op_info) {
+  if (op_info.attr().find("ksize") != op_info.attr().end()) {
+    const auto ksize = op_info.attr().at("ksize").list().i();
+    CHECK(ksize.size() == 4)
+        << "Attr ksize is not a length-4 vector: " << op_info.DebugString();
+    return {ksize[0], ksize[1], ksize[2], ksize[3]};
+  }
+  // Note that FusedBatchNorm doesn't have ksize attr, but GetKernelSize returns
+  // {1, 1, 1, 1} in that case.
   return {1, 1, 1, 1};
 }
 
@@ -84,33 +138,6 @@ int64 GetOutputSize(const int64 input, const int64 filter, const int64 stride,
   } else {  // SAME.
     return (input + stride - 1) / stride;
   }
-}
-
-// Return a minimum shape if the shape is unknown. If known, return the original
-// shape.
-TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
-                                      int rank, bool* found_unknown_shapes) {
-  auto shape = original_shape;
-  if (shape.unknown_rank() || shape.dim_size() < rank) {
-    *found_unknown_shapes = true;
-    TensorShapeProto::Dim dim;
-    VLOG(2) << "Use minimum shape because the rank is unknown.";
-    // The size of each dimension is at least 1, if unknown.
-    dim.set_size(1);
-    for (int i = 0; i < rank; i++) {
-      *shape.add_dim() = dim;
-    }
-  } else {
-    for (int i = 0; i < shape.dim_size(); i++) {
-      if (shape.dim(i).size() < 0) {
-        *found_unknown_shapes = true;
-        VLOG(2) << "Use minimum dim size 1 because the shape is unknown.";
-        // The size of each dimension is at least 1, if unknown.
-        shape.mutable_dim(i)->set_size(1);
-      }
-    }
-  }
-  return shape;
 }
 
 // Return the output element count of a binary element-wise op considering
@@ -144,6 +171,43 @@ int64 CwiseOutputElementCount(const TensorShapeProto& input_shape_1,
 
 }  // namespace
 
+// Return a minimum shape if the shape is unknown. If known, return the original
+// shape.
+TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
+                                      int rank, bool* found_unknown_shapes) {
+  auto shape = original_shape;
+  bool is_scalar = !shape.unknown_rank() && shape.dim_size() == 0;
+
+  if (shape.unknown_rank() || (!is_scalar && shape.dim_size() < rank)) {
+    *found_unknown_shapes = true;
+    VLOG(2) << "Use minimum shape because the rank is unknown.";
+    // The size of each dimension is at least 1, if unknown.
+    for (int i = shape.dim_size(); i < rank; i++) {
+      shape.add_dim()->set_size(1);
+    }
+  } else if (is_scalar) {
+    for (int i = 0; i < rank; i++) {
+      shape.add_dim()->set_size(1);
+    }
+  } else if (shape.dim_size() > rank) {
+    *found_unknown_shapes = true;
+    shape.clear_dim();
+    for (int i = 0; i < rank; i++) {
+      shape.add_dim()->set_size(original_shape.dim(i).size());
+    }
+  } else {
+    for (int i = 0; i < shape.dim_size(); i++) {
+      if (shape.dim(i).size() < 0) {
+        *found_unknown_shapes = true;
+        VLOG(2) << "Use minimum dim size 1 because the shape is unknown.";
+        // The size of each dimension is at least 1, if unknown.
+        shape.mutable_dim(i)->set_size(1);
+      }
+    }
+  }
+  return shape;
+}
+
 OpLevelCostEstimator::OpLevelCostEstimator() {
   // Syntactic sugar to build and return a lambda that takes an OpInfo and
   // returns a cost.
@@ -161,18 +225,36 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
        wrap(&OpLevelCostEstimator::PredictConv2DBackpropFilter)},
       {kConv2dBackpropInput,
        wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput)},
+      {kFusedConv2dBiasActivation,
+       wrap(&OpLevelCostEstimator::PredictFusedConv2DBiasActivation)},
+      // reuse Conv2D for DepthwiseConv2dNative because the caculation is the
+      // same although the actual meaning of the parameters are different. See
+      // comments in PredictConv2D and related functions
+      {kDepthwiseConv2dNative, wrap(&OpLevelCostEstimator::PredictConv2D)},
+      {kDepthwiseConv2dNativeBackpropFilter,
+       wrap(&OpLevelCostEstimator::PredictConv2DBackpropFilter)},
+      {kDepthwiseConv2dNativeBackpropInput,
+       wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput)},
       {kMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
+      {kQuantizedMatMulV2, wrap(&OpLevelCostEstimator::PredictMatMul)},
 
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kGuaranteeConst, wrap(&OpLevelCostEstimator::PredictNoOp)},
+
+      {kGather, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
+      {kGatherV2, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
+      {kSlice, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
 
       {kPlaceholder, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kIdentityN, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kRefIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kStopGradient, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kPreventGradient, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kReshape, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kSqueeze, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kRecv, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kSend, wrap(&OpLevelCostEstimator::PredictIdentity)},
 
@@ -182,109 +264,89 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
       {kRank, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
-      {kSize, wrap(&OpLevelCostEstimator::PredictMetadata)}};
+      {kSize, wrap(&OpLevelCostEstimator::PredictMetadata)},
+      {kMaxPool, wrap(&OpLevelCostEstimator::PredictMaxPool)},
+      {kMaxPoolGrad, wrap(&OpLevelCostEstimator::PredictMaxPoolGrad)},
+      {kAvgPool, wrap(&OpLevelCostEstimator::PredictAvgPool)},
+      {kAvgPoolGrad, wrap(&OpLevelCostEstimator::PredictAvgPoolGrad)},
+      {kFusedBatchNorm, wrap(&OpLevelCostEstimator::PredictFusedBatchNorm)},
+      {kFusedBatchNormGrad,
+       wrap(&OpLevelCostEstimator::PredictFusedBatchNormGrad)},
+  };
+
+#define EIGEN_COST(X) Eigen::internal::functor_traits<Eigen::internal::X>::Cost
+
+  // Quantize = apply min and max bounds, multiply by scale factor and round.
+  const int quantize_v2_cost =
+      EIGEN_COST(scalar_product_op<float>) + EIGEN_COST(scalar_max_op<float>) +
+      EIGEN_COST(scalar_min_op<float>) + EIGEN_COST(scalar_round_op<float>);
 
   elementwise_ops_ = {
       // Unary ops alphabetically sorted
-      {"Acos", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_acos_op<float>>::Cost},
-      {"Asin", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_asin_op<float>>::Cost},
-      {"Atan", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_atan_op<float>>::Cost},
-      {"Atan2", Eigen::internal::functor_traits<
-                    Eigen::internal::scalar_quotient_op<float>>::Cost +
-                    Eigen::internal::functor_traits<
-                        Eigen::internal::scalar_atan_op<float>>::Cost},
-      {"Ceil", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_ceil_op<float>>::Cost},
-      {"Cos", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_cos_op<float>>::Cost},
+      {"Acos", EIGEN_COST(scalar_acos_op<float>)},
+      {"Asin", EIGEN_COST(scalar_asin_op<float>)},
+      {"Atan", EIGEN_COST(scalar_atan_op<float>)},
+      {"Atan2", EIGEN_COST(scalar_quotient_op<float>) +
+                    EIGEN_COST(scalar_atan_op<float>)},
+      {"Ceil", EIGEN_COST(scalar_ceil_op<float>)},
+      {"Cos", EIGEN_COST(scalar_cos_op<float>)},
+      {"Dequantize", EIGEN_COST(scalar_product_op<float>)},
       {"Erf", 1},
       {"Erfc", 1},
-      {"Exp", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_exp_op<float>>::Cost},
-      {"Expm1", Eigen::internal::functor_traits<
-                    Eigen::internal::scalar_expm1_op<float>>::Cost},
-      {"Floor", Eigen::internal::functor_traits<
-                    Eigen::internal::scalar_floor_op<float>>::Cost},
-      {"Inv", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_inverse_op<float>>::Cost},
+      {"Exp", EIGEN_COST(scalar_exp_op<float>)},
+      {"Expm1", EIGEN_COST(scalar_expm1_op<float>)},
+      {"Floor", EIGEN_COST(scalar_floor_op<float>)},
+      {"Inv", EIGEN_COST(scalar_inverse_op<float>)},
       {"InvGrad", 1},
       {"Lgamma", 1},
-      {"Log", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_log_op<float>>::Cost},
-      {"Log1p", Eigen::internal::functor_traits<
-                    Eigen::internal::scalar_log1p_op<float>>::Cost},
-      {"Neg", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_opposite_op<float>>::Cost},
-      {"Reciprocal", Eigen::internal::functor_traits<
-                         Eigen::internal::scalar_inverse_op<float>>::Cost},
+      {"Log", EIGEN_COST(scalar_log_op<float>)},
+      {"Log1p", EIGEN_COST(scalar_log1p_op<float>)},
+      {"Neg", EIGEN_COST(scalar_opposite_op<float>)},
+      {"QuantizeV2", quantize_v2_cost},
+      {"Reciprocal", EIGEN_COST(scalar_inverse_op<float>)},
       {"Rint", 1},
-      {"Round", Eigen::internal::functor_traits<
-                    Eigen::internal::scalar_round_op<float>>::Cost},
-      {"Rsqrt", Eigen::internal::functor_traits<
-                    Eigen::internal::scalar_rsqrt_op<float>>::Cost},
-      {"Sqrt", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_sqrt_op<float>>::Cost},
-      {"Square", Eigen::internal::functor_traits<
-                     Eigen::internal::scalar_square_op<float>>::Cost},
-      {"Tanh", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_tanh_op<float>>::Cost},
-      {"Relu", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_max_op<float>>::Cost},
-      {"Sigmoid", Eigen::internal::functor_traits<
-                      Eigen::internal::scalar_sigmoid_op<float>>::Cost},
-      {"Sign", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_sign_op<float>>::Cost},
-      {"Sin", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_sin_op<float>>::Cost},
-      {"Tan", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_tan_op<float>>::Cost},
+      {"Round", EIGEN_COST(scalar_round_op<float>)},
+      {"Rsqrt", EIGEN_COST(scalar_rsqrt_op<float>)},
+      {"Sqrt", EIGEN_COST(scalar_sqrt_op<float>)},
+      {"Square", EIGEN_COST(scalar_square_op<float>)},
+      {"Tanh", EIGEN_COST(scalar_tanh_op<float>)},
+      {"Relu", EIGEN_COST(scalar_max_op<float>)},
+      {"Sigmoid", EIGEN_COST(scalar_logistic_op<float>)},
+      {"QuantizedSigmoid", EIGEN_COST(scalar_logistic_op<float>)},
+      {"Sign", EIGEN_COST(scalar_sign_op<float>)},
+      {"Sin", EIGEN_COST(scalar_sin_op<float>)},
+      {"Tan", EIGEN_COST(scalar_tan_op<float>)},
       // Binary ops alphabetically sorted
-      {"Add", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_sum_op<float>>::Cost},
+      {"Add", EIGEN_COST(scalar_sum_op<float>)},
       {"ApproximateEqual", 1},
-      {"BiasAdd", Eigen::internal::functor_traits<
-                      Eigen::internal::scalar_sum_op<float>>::Cost},
-      {"Div", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_quotient_op<float>>::Cost},
+      {"BiasAdd", EIGEN_COST(scalar_sum_op<float>)},
+      {"QuantizedBiasAdd", EIGEN_COST(scalar_sum_op<float>)},
+      {"Div", EIGEN_COST(scalar_quotient_op<float>)},
       {"Equal", 1},
-      {"FloorDiv", Eigen::internal::functor_traits<
-                       Eigen::internal::scalar_quotient_op<float>>::Cost},
-      {"FloorMod", Eigen::internal::functor_traits<
-                       Eigen::internal::scalar_mod_op<float>>::Cost},
+      {"FloorDiv", EIGEN_COST(scalar_quotient_op<float>)},
+      {"FloorMod", EIGEN_COST(scalar_mod_op<float>)},
       {"Greater", 1},
       {"GreaterEqual", 1},
       {"Less", 1},
       {"LessEqual", 1},
-      {"LogicalAnd", Eigen::internal::functor_traits<
-                         Eigen::internal::scalar_boolean_and_op>::Cost},
+      {"LogicalAnd", EIGEN_COST(scalar_boolean_and_op)},
       {"LogicalNot", 1},
-      {"LogicalOr", Eigen::internal::functor_traits<
-                        Eigen::internal::scalar_boolean_or_op>::Cost},
-      {"Maximum", Eigen::internal::functor_traits<
-                      Eigen::internal::scalar_max_op<float>>::Cost},
-      {"Minimum", Eigen::internal::functor_traits<
-                      Eigen::internal::scalar_min_op<float>>::Cost},
-      {"Mod", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_mod_op<float>>::Cost},
-      {"Mul", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_product_op<float>>::Cost},
+      {"LogicalOr", EIGEN_COST(scalar_boolean_or_op)},
+      {"Maximum", EIGEN_COST(scalar_max_op<float>)},
+      {"Minimum", EIGEN_COST(scalar_min_op<float>)},
+      {"Mod", EIGEN_COST(scalar_mod_op<float>)},
+      {"Mul", EIGEN_COST(scalar_product_op<float>)},
       {"NotEqual", 1},
-      {"QuantizedAdd", Eigen::internal::functor_traits<
-                           Eigen::internal::scalar_sum_op<float>>::Cost},
-      {"QuantizedMul", Eigen::internal::functor_traits<
-                           Eigen::internal::scalar_product_op<float>>::Cost},
-      {"RealDiv", Eigen::internal::functor_traits<
-                      Eigen::internal::scalar_quotient_op<float>>::Cost},
+      {"QuantizedAdd", EIGEN_COST(scalar_sum_op<float>)},
+      {"QuantizedMul", EIGEN_COST(scalar_product_op<float>)},
+      {"RealDiv", EIGEN_COST(scalar_quotient_op<float>)},
+      {"ReluGrad", EIGEN_COST(scalar_max_op<float>)},
       {"SquareDifference", 1},
-      {"Sub", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_difference_op<float>>::Cost},
-      {"TruncateDiv", Eigen::internal::functor_traits<
-                          Eigen::internal::scalar_quotient_op<float>>::Cost},
-      {"TruncateMod", Eigen::internal::functor_traits<
-                          Eigen::internal::scalar_mod_op<float>>::Cost}};
+      {"Sub", EIGEN_COST(scalar_difference_op<float>)},
+      {"TruncateDiv", EIGEN_COST(scalar_quotient_op<float>)},
+      {"TruncateMod", EIGEN_COST(scalar_mod_op<float>)}};
+
+#undef EIGEN_COST
 
   // By default, use sum of memory_time and compute_time for execution_time.
   compute_memory_overlap_ = false;
@@ -310,7 +372,7 @@ Costs OpLevelCostEstimator::PredictCosts(const OpContext& op_context) const {
   return costs;
 }
 
-OpLevelCostEstimator::DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
+DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
     const DeviceProperties& device) const {
   double gflops = -1;
   double gb_per_sec = -1;
@@ -358,7 +420,7 @@ OpLevelCostEstimator::DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
   DCHECK_LT(0, gflops) << device.DebugString();
   DCHECK_LT(0, gb_per_sec) << device.DebugString();
 
-  return {gflops, gb_per_sec};
+  return DeviceInfo(gflops, gb_per_sec);
 }
 
 Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
@@ -398,6 +460,7 @@ Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
   if (found_unknown_shapes || !is_known_elementwise_op) {
     costs.inaccurate = true;
   }
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -411,40 +474,64 @@ Costs OpLevelCostEstimator::PredictCostOfAnUnknownOp(
 }
 
 Costs OpLevelCostEstimator::PredictOpCountBasedCost(
-    double operations, const OpInfo& op_features) const {
-  DeviceInfo device_perf = GetDeviceInfo(op_features.device());
-  if (device_perf.gigaops <= 0 || device_perf.gb_per_sec <= 0) {
-    VLOG(1) << "BAD DEVICE. Op:" << op_features.op()
-            << " device type:" << op_features.device().type()
-            << " device model:" << op_features.device().model();
+    double operations, const OpInfo& op_info) const {
+  bool unknown_shapes = false;
+  const double input_size = CalculateInputSize(op_info, &unknown_shapes);
+  const double output_size = CalculateOutputSize(op_info, &unknown_shapes);
+  Costs costs =
+      PredictOpCountBasedCost(operations, input_size, output_size, op_info);
+  costs.inaccurate = unknown_shapes;
+  costs.num_ops_with_unknown_shapes = unknown_shapes;
+  costs.max_memory = output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictOpCountBasedCost(
+    double operations, double input_io_bytes, double output_io_bytes,
+    const OpInfo& op_info) const {
+  double total_io_bytes = input_io_bytes + output_io_bytes;
+  const DeviceInfo device_info = GetDeviceInfo(op_info.device());
+  if (device_info.gigaops <= 0 || device_info.gb_per_sec <= 0 ||
+      device_info.intermediate_read_gb_per_sec <= 0 ||
+      device_info.intermediate_write_gb_per_sec <= 0) {
+    VLOG(1) << "BAD DEVICE. Op:" << op_info.op()
+            << " device type:" << op_info.device().type()
+            << " device model:" << op_info.device().model();
   }
 
-  Costs::NanoSeconds compute_cost(std::ceil(operations / device_perf.gigaops));
-  VLOG(1) << "Op:" << op_features.op() << " GOps:" << operations / 1e9
-          << " Execution Time (ns):" << compute_cost.count();
-
-  bool found_unknown_shapes = false;
-  const double total_input_size =
-      CalculateInputSize(op_features, &found_unknown_shapes);
-  const double total_output_size =
-      CalculateOutputSize(op_features, &found_unknown_shapes);
-  const double total_io_size = total_input_size + total_output_size;
+  Costs::NanoSeconds compute_cost(std::ceil(operations / device_info.gigaops));
+  VLOG(1) << "Op:" << op_info.op() << " GOps:" << operations / 1e9
+          << " Compute Time (ns):" << compute_cost.count();
 
   Costs::NanoSeconds memory_cost(
-      std::ceil(total_io_size / device_perf.gb_per_sec));
-  VLOG(1) << "Op:" << op_features.op() << " Size (KB):" << (total_io_size) / 1e3
+      std::ceil(total_io_bytes / device_info.gb_per_sec));
+  VLOG(1) << "Op:" << op_info.op() << " Size (KB):" << (total_io_bytes) / 1e3
           << " Memory Time (ns):" << memory_cost.count();
+
+  // Check if bytes > 0.  If it's not and the bandwidth is set to infinity
+  // then the result would be undefined.
+  double intermediate_read_time =
+      (input_io_bytes > 0)
+          ? std::ceil(input_io_bytes / device_info.intermediate_read_gb_per_sec)
+          : 0;
+
+  double intermediate_write_time =
+      (output_io_bytes > 0)
+          ? std::ceil(output_io_bytes /
+                      device_info.intermediate_write_gb_per_sec)
+          : 0;
+
+  Costs::NanoSeconds intermediate_memory_cost(intermediate_read_time +
+                                              intermediate_write_time);
+  VLOG(1) << "Op:" << op_info.op() << " Size (KB):" << (total_io_bytes) / 1e3
+          << " Intermediate Memory Time (ns):"
+          << intermediate_memory_cost.count();
 
   Costs costs;
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
-  if (compute_memory_overlap_) {
-    costs.execution_time = std::max(compute_cost, memory_cost);
-  } else {
-    costs.execution_time = compute_cost + memory_cost;
-  }
-  costs.inaccurate = found_unknown_shapes;
-  costs.max_memory = total_output_size;
+  costs.intermediate_memory_time = intermediate_memory_cost;
+  CombineCostsAndUpdateExecutionTime(&costs);
   return costs;
 }
 
@@ -476,29 +563,44 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
     y_index = 3;
     channel_index = 1;
   } else {
+    // Use NHWC.
     x_index = 1;
     y_index = 2;
     channel_index = 3;
+  }
+  const string& filter_format = GetFilterFormat(op_features);
+  int filter_x_index, filter_y_index, in_channel_index, out_channel_index;
+  if (filter_format == "HWIO") {
+    filter_x_index = 0;
+    filter_y_index = 1;
+    in_channel_index = 2;
+    out_channel_index = 3;
+  } else {
+    // Use OIHW
+    filter_x_index = 2;
+    filter_y_index = 3;
+    in_channel_index = 1;
+    out_channel_index = 0;
   }
   int64 batch = image_shape.dim(0).size();
   int64 ix = image_shape.dim(x_index).size();
   int64 iy = image_shape.dim(y_index).size();
   int64 iz = image_shape.dim(channel_index).size();
-  int64 kx = filter_shape.dim(0).size();
-  int64 ky = filter_shape.dim(1).size();
+  int64 kx = filter_shape.dim(filter_x_index).size();
+  int64 ky = filter_shape.dim(filter_y_index).size();
   std::vector<int64> strides = GetStrides(op_features);
   const auto padding = GetPadding(op_features);
   int64 sx = strides[x_index];
   int64 sy = strides[y_index];
   int64 ox = GetOutputSize(ix, kx, sx, padding);
   int64 oy = GetOutputSize(iy, ky, sy, padding);
-  int64 oz = filter_shape.dim(3).size();
+  int64 oz = filter_shape.dim(out_channel_index).size();
   // Only check equality when both sizes are known (in other words, when
   // neither is set to a minimum dimension size of 1).
-  if (iz != 1 && filter_shape.dim(2).size() != 1) {
-    CHECK_EQ(iz, filter_shape.dim(2).size());
+  if (iz != 1 && filter_shape.dim(in_channel_index).size() != 1) {
+    CHECK_EQ(iz, filter_shape.dim(in_channel_index).size());
   } else {
-    iz = std::max<int64>(iz, filter_shape.dim(2).size());
+    iz = std::max<int64>(iz, filter_shape.dim(in_channel_index).size());
   }
   OpLevelCostEstimator::ConvolutionDimensions conv_dims = {
       batch, ix, iy, iz, kx, ky, oz, ox, oy, sx, sy, padding};
@@ -517,20 +619,31 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
 int64 OpLevelCostEstimator::CountConv2DOperations(
     const OpInfo& op_features, ConvolutionDimensions* conv_info,
     bool* found_unknown_shapes) const {
-  if (op_features.op() != kConv2d) {
-    LOG(ERROR) << "Invalid Operation";
-    return 0;
-  }
+  DCHECK(op_features.op() == kConv2d ||
+         op_features.op() == kDepthwiseConv2dNative)
+      << "Invalid Operation: not Conv2D nor DepthwiseConv2dNative";
+
   ConvolutionDimensions conv_dims = ConvolutionDimensionsFromInputs(
       op_features.inputs(0).shape(), op_features.inputs(1).shape(), op_features,
       found_unknown_shapes);
 
+  //  in DepthwiseConv2dNative conv_dims.oz is actually the channel depth
+  //  multiplier; The effective output channel depth oz_effective is
+  //  conv_dims.iz * conv_dims.oz. thus # ops = N x H x W x oz_effective x 2RS.
+  //  Compare to Conv2D where # ops =  N x H x W x iz x oz x 2RS,
+  //  oz = oz_effective,  then Conv2D_ops / Depthwise_conv2d_native_ops = iz.
   int64 ops = conv_dims.batch;
   ops *= conv_dims.ox * conv_dims.oy;
   ops *= conv_dims.kx * conv_dims.ky;
-  ops *= conv_dims.iz * conv_dims.oz;
+  if (op_features.op() == kConv2d) {
+    ops *= conv_dims.iz * conv_dims.oz;
+  } else {
+    // To ensure output tensor dims to be correct for DepthwiseConv2DNative,
+    // although ops are the same as Conv2D.
+    conv_dims.oz *= conv_dims.iz;
+    ops *= conv_dims.oz;
+  }
   ops *= kOpsPerMac;
-  VLOG(1) << "Operations for Conv2D " << ops;
 
   if (conv_info != nullptr) {
     *conv_info = conv_dims;
@@ -551,6 +664,7 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
 
   if (op_features.inputs_size() < 2) {
     LOG(ERROR) << "Need 2 inputs but got " << op_features.inputs_size();
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return 0;
   }
@@ -604,7 +718,7 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
   }
 
   ops = m_dim * n_dim * k_dim * 2;
-  VLOG(1) << "Operations for Matmul" << ops;
+  VLOG(1) << "Operations for Matmul: " << ops;
 
   if (mat_mul != nullptr) {
     mat_mul->m = m_dim;
@@ -618,11 +732,13 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
     const OpInfo& op_features, bool* found_unknown_shapes) const {
   if (op_features.op() != kBatchMatMul) {
     LOG(ERROR) << "Invalid Operation: " << op_features.op();
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return 0;
   }
   if (op_features.inputs_size() != 2) {
     LOG(ERROR) << "Expected 2 inputs but got " << op_features.inputs_size();
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return 0;
   }
@@ -776,9 +892,13 @@ int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
     bool* found_unknown_shapes) const {
   int64 ops = 0;
 
-  DCHECK_EQ(kConv2dBackpropInput, op_features.op());
+  DCHECK(op_features.op() == kConv2dBackpropInput ||
+         op_features.op() == kDepthwiseConv2dNativeBackpropInput)
+      << "Invalid Operation: not kConv2dBackpropInput nor"
+         "kDepthwiseConv2dNativeBackpropInput";
 
   if (op_features.inputs_size() < 2) {
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return ops;
   }
@@ -795,6 +915,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
   }
   if (!shape_found) {
     // Set the minimum filter size that's feasible.
+    input_shape.Clear();
     for (int i = 0; i < 4; ++i) {
       input_shape.add_dim()->set_size(1);
     }
@@ -808,10 +929,16 @@ int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
   ops = conv_dims.batch;
   ops *= conv_dims.ox * conv_dims.oy;
   ops *= conv_dims.kx * conv_dims.ky;
-  ops *= conv_dims.iz * conv_dims.oz;
+  if (op_features.op() == kConv2dBackpropInput) {
+    ops *= conv_dims.iz * conv_dims.oz;
+  } else {
+    // conv_dims always use forward path definition regardless
+    conv_dims.oz *= conv_dims.iz;
+    ops *= conv_dims.oz;
+  }
   ops *= kOpsPerMac;
 
-  VLOG(1) << "Operations for Conv2DBackpropInput " << ops;
+  VLOG(1) << "Operations for" << op_features.op() << "  " << ops;
 
   if (returned_conv_dims != nullptr) {
     *returned_conv_dims = conv_dims;
@@ -823,7 +950,11 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
     const OpInfo& op_features, ConvolutionDimensions* returned_conv_dims,
     bool* found_unknown_shapes) const {
   int64 ops = 0;
-  DCHECK_EQ(kConv2dBackpropFilter, op_features.op());
+
+  DCHECK(op_features.op() == kConv2dBackpropFilter ||
+         op_features.op() == kDepthwiseConv2dNativeBackpropFilter)
+      << "Invalid Operation: not kConv2dBackpropFilter nor"
+         "kDepthwiseConv2dNativeBackpropFilter";
 
   TensorShapeProto filter_shape;
   bool shape_found = false;
@@ -837,6 +968,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
   }
   if (!shape_found) {
     // Set the minimum filter size that's feasible.
+    filter_shape.Clear();
     for (int i = 0; i < 4; ++i) {
       filter_shape.add_dim()->set_size(1);
     }
@@ -844,6 +976,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
   }
 
   if (op_features.inputs_size() < 1) {
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return ops;
   }
@@ -854,10 +987,15 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
   ops = conv_dims.batch;
   ops *= conv_dims.ox * conv_dims.oy;
   ops *= conv_dims.kx * conv_dims.ky;
-  ops *= conv_dims.iz * conv_dims.oz;
+  if (op_features.op() == kConv2dBackpropFilter) {
+    ops *= conv_dims.iz * conv_dims.oz;
+  } else {
+    // conv_dims always use forward path definition regardless
+    conv_dims.oz *= conv_dims.iz;
+    ops *= conv_dims.oz;
+  }
   ops *= kOpsPerMac;
-
-  VLOG(1) << "Operations for Conv2DBackpropFilter" << ops;
+  VLOG(1) << "Operations for" << op_features.op() << "  " << ops;
 
   if (returned_conv_dims != nullptr) {
     *returned_conv_dims = conv_dims;
@@ -867,7 +1005,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
 
 int64 OpLevelCostEstimator::CalculateTensorElementCount(
     const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) const {
-  VLOG(2) << "   with " << tensor.dtype() << " tensor of shape "
+  VLOG(2) << "   with " << DataTypeString(tensor.dtype()) << " tensor of shape "
           << tensor.shape().DebugString();
   int64 tensor_size = 1;
   int num_dims = std::max(1, tensor.shape().dim_size());
@@ -881,8 +1019,10 @@ int64 OpLevelCostEstimator::CalculateTensorElementCount(
 
 int64 OpLevelCostEstimator::CalculateTensorSize(
     const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) const {
-  return CalculateTensorElementCount(tensor, found_unknown_shapes) *
-         DataTypeSize(BaseType(tensor.dtype()));
+  int64 count = CalculateTensorElementCount(tensor, found_unknown_shapes);
+  int size = DataTypeSize(BaseType(tensor.dtype()));
+  VLOG(2) << "Count: " << count << " DataTypeSize: " << size;
+  return count * size;
 }
 
 int64 OpLevelCostEstimator::CalculateInputSize(
@@ -939,6 +1079,7 @@ Costs OpLevelCostEstimator::PredictConv2D(const OpContext& op_context) const {
   auto costs = PredictOpCountBasedCost(
       CountConv2DOperations(op_features, &found_unknown_shapes), op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -951,6 +1092,7 @@ Costs OpLevelCostEstimator::PredictConv2DBackpropInput(
                                   op_features, nullptr, &found_unknown_shapes),
                               op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -963,6 +1105,95 @@ Costs OpLevelCostEstimator::PredictConv2DBackpropFilter(
                                   op_features, nullptr, &found_unknown_shapes),
                               op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
+    const OpContext& op_context) const {
+  // FusedConv2DBiasActivation computes a fused kernel which implements:
+  // 2D convolution, adds side input with separate scaling on convolution and
+  // side inputs, then adds bias, and finally applies the ReLU activation
+  // function to the result:
+  //
+  // Input -> Conv2D  ->  Add  -> BiasAdd  -> ReLU
+  //            ^          ^         ^
+  //          Filter   Side Input   Bias
+  //
+  // Note that when adding the side input, the operation multiplies the output
+  // of Conv2D by conv_input_scale, confusingly, and the side_input by
+  // side_input_scale.
+  //
+  // Note that in the special case that side_input_scale is 0, which we infer
+  // from side_input having dimensions [], we skip that addition operation.
+  //
+  // For more information, see
+  // contrib/fused_conv/kernels/fused_conv2d_bias_activation_op.cc
+
+  // TODO(yaozhang): Support other data formats (NCHW_VECT_C, NHWC_VECT_W) and
+  // filter formats (OIHW_VECT_I).
+  string data_format = GetDataFormat(op_context.op_info);
+  if (data_format != "NCHW" && data_format != "NHWC") {
+    LOG(WARNING) << "unsupported data format: " << data_format;
+    Costs cost = Costs::ZeroCosts();
+    cost.inaccurate = true;
+    return cost;
+  }
+  string filter_format = GetFilterFormat(op_context.op_info);
+  if (filter_format != "HWIO" && filter_format != "OIHW") {
+    LOG(WARNING) << "unsupported filter format: " << filter_format;
+    Costs cost = Costs::ZeroCosts();
+    cost.inaccurate = true;
+    return cost;
+  }
+
+  auto& conv_input = op_context.op_info.inputs(0);
+  auto& filter = op_context.op_info.inputs(1);
+  auto& bias = op_context.op_info.inputs(2);
+  auto& side_input = op_context.op_info.inputs(3);
+  auto& conv_input_scale = op_context.op_info.inputs(4);
+  auto& side_input_scale = op_context.op_info.inputs(5);
+
+  // Manually compute our convolution dimensions.
+  bool found_unknown_shapes = false;
+  auto dims = ConvolutionDimensionsFromInputs(
+      conv_input.shape(), filter.shape(), op_context.op_info,
+      &found_unknown_shapes);
+
+  // Construct the shape of our output tensor from our convolution dimensions
+  // and format, as it may not be available yet.
+  // TODO(varomodt): should we centralize the Conv2D input/output shapes?
+  OpInfo::TensorProperties output;
+  if (data_format == "NCHW") {
+    output = DescribeTensor(DT_FLOAT, {dims.batch, dims.oz, dims.ox, dims.oy});
+  } else if (data_format == "NHWC") {
+    output = DescribeTensor(DT_FLOAT, {dims.batch, dims.ox, dims.oy, dims.oz});
+  }
+
+  // Add the operations the fused op always computes.
+  std::vector<OpContext> component_ops = {
+      FusedChildContext(op_context, "Conv2D", output, {conv_input, filter}),
+      FusedChildContext(op_context, "Mul", output, {output, conv_input_scale}),
+      FusedChildContext(op_context, "BiasAdd", output, {output, bias}),
+      FusedChildContext(op_context, "Relu", output, {output})};
+
+  // Add our side_input iff it's non-empty.
+  if (side_input.shape().dim_size() > 0) {
+    component_ops.push_back(FusedChildContext(op_context, "Mul", side_input,
+                                              {side_input, side_input_scale}));
+    component_ops.push_back(
+        FusedChildContext(op_context, "Add", output, {side_input, output}));
+  }
+
+  // Construct an op_context which definitely has our output shape.
+  auto op_context_with_output = op_context;
+  op_context_with_output.op_info.mutable_outputs()->Clear();
+  *op_context_with_output.op_info.mutable_outputs()->Add() = output;
+
+  // Construct component operations and run the cost computation.
+  auto costs = PredictFusedOp(op_context_with_output, component_ops);
+  costs.inaccurate |= found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = costs.inaccurate;
   return costs;
 }
 
@@ -972,6 +1203,7 @@ Costs OpLevelCostEstimator::PredictMatMul(const OpContext& op_context) const {
   auto costs = PredictOpCountBasedCost(
       CountMatMulOperations(op_features, &found_unknown_shapes), op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -986,6 +1218,7 @@ Costs OpLevelCostEstimator::PredictIdentity(const OpContext& op_context) const {
   VLOG(1) << "Op:" << op_features.op() << " Execution Time 0 (ns)";
   Costs result = Costs::ZeroCosts();
   result.max_memory = CalculateOutputSize(op_features, &result.inaccurate);
+  result.num_ops_with_unknown_shapes = result.inaccurate;
   // Assign the minimum amount of time we can represent to the identity op since
   // it tends to be really cheap.
   result.compute_time = kMinComputeTime;
@@ -999,6 +1232,7 @@ Costs OpLevelCostEstimator::PredictVariable(const OpContext& op_context) const {
   Costs result = Costs::ZeroCosts();
   result.persistent_memory =
       CalculateOutputSize(op_features, &result.inaccurate);
+  result.num_ops_with_unknown_shapes = result.inaccurate;
 
   result.compute_time = kMinComputeTime;
   result.execution_time = result.execution_time;
@@ -1013,6 +1247,7 @@ Costs OpLevelCostEstimator::PredictBatchMatMul(
       CountBatchMatMulOperations(op_features, &found_unknown_shapes),
       op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1020,6 +1255,7 @@ Costs OpLevelCostEstimator::PredictMetadata(const OpContext& op_context) const {
   const auto& op_features = op_context.op_info;
   Costs costs = Costs::ZeroCosts();
   costs.max_memory = CalculateOutputSize(op_features, &costs.inaccurate);
+  costs.num_ops_with_unknown_shapes = costs.inaccurate;
   // Metadata operations are so cheap we assume they take the minimum amount of
   // time we can represent (1 ns).
   costs.compute_time = kMinComputeTime;
@@ -1028,5 +1264,413 @@ Costs OpLevelCostEstimator::PredictMetadata(const OpContext& op_context) const {
   return costs;
 }
 
+Costs OpLevelCostEstimator::PredictGatherOrSlice(
+    const OpContext& op_context) const {
+  // Gather & Slice ops can have a very large input, but only access a small
+  // part of it. For these op the size of the output determines the memory cost.
+  const auto& op_info = op_context.op_info;
+
+  const int inputs_needed = op_info.op() == "Slice" ? 3 : 2;
+  if (op_info.outputs_size() == 0 || op_info.inputs_size() < inputs_needed) {
+    Costs costs = Costs::ZeroCosts();
+    costs.inaccurate = true;
+    return costs;
+  }
+
+  bool unknown_shapes = false;
+
+  // Each output element is a copy of some element from input.
+  // For roofline estimate we assume each copy has a unit cost.
+  const int64 op_count =
+      CalculateTensorElementCount(op_info.outputs(0), &unknown_shapes);
+
+  const double output_size = CalculateOutputSize(op_info, &unknown_shapes);
+  double input_size = output_size;
+  if (op_info.op() == "Slice") {
+    // Add 'begin' & 'size' tensors sizes.
+    input_size +=
+        CalculateTensorElementCount(op_info.inputs(1), &unknown_shapes) +
+        CalculateTensorElementCount(op_info.inputs(2), &unknown_shapes);
+  } else {
+    // Assuming this is "Gather" or "GatherV2" op, add 'indices' size.
+    input_size +=
+        CalculateTensorElementCount(op_info.inputs(1), &unknown_shapes);
+  }
+
+  Costs costs =
+      PredictOpCountBasedCost(op_count, input_size, output_size, op_info);
+  costs.inaccurate = unknown_shapes;
+  costs.num_ops_with_unknown_shapes = unknown_shapes;
+  costs.max_memory = output_size;
+
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictFusedOp(
+    const OpContext& op_context,
+    const std::vector<OpContext>& fused_op_contexts) const {
+  // Note that PredictOpCountBasedCost will get the correct memory_time from
+  // the node's inputs and outputs; but we don't want to have to re-implement
+  // the logic for computing the operation count of each of our component
+  // operations here; so we simply add the compute times of each component
+  // operation, then update the execution time.
+  Costs fused_cost = PredictOpCountBasedCost(0, op_context.op_info);
+
+  fused_cost.compute_time = 0;
+  fused_cost.inaccurate = false;
+  for (auto& fused_op : fused_op_contexts) {
+    auto op_cost = PredictCosts(fused_op);
+
+    fused_cost.compute_time += op_cost.compute_time;
+    fused_cost.inaccurate |= op_cost.inaccurate;
+    fused_cost.intermediate_memory_time += op_cost.intermediate_memory_time;
+  }
+
+  CombineCostsAndUpdateExecutionTime(&fused_cost);
+  return fused_cost;
+}
+
+/* static */
+OpContext OpLevelCostEstimator::FusedChildContext(
+    const OpContext& parent, const string& op_name,
+    const OpInfo::TensorProperties& output,
+    const std::vector<OpInfo::TensorProperties>& inputs) {
+  // Setup the base parameters of our new context.
+  OpContext new_context;
+  new_context.name = op_name;
+  new_context.device_name = parent.device_name;
+  new_context.op_info = parent.op_info;
+  new_context.op_info.set_op(op_name);
+
+  // Setup the inputs of our new context.
+  new_context.op_info.mutable_inputs()->Clear();
+  for (const auto& input : inputs) {
+    *new_context.op_info.mutable_inputs()->Add() = input;
+  }
+
+  // Setup the output of our new context.
+  new_context.op_info.mutable_outputs()->Clear();
+  *new_context.op_info.mutable_outputs()->Add() = output;
+
+  return new_context;
+}
+
+/* static */
+OpInfo::TensorProperties OpLevelCostEstimator::DescribeTensor(
+    DataType type, const std::vector<int64>& dims) {
+  OpInfo::TensorProperties ret;
+  ret.set_dtype(type);
+
+  auto shape = ret.mutable_shape();
+  for (const int dim : dims) {
+    shape->add_dim()->set_size(dim);
+  }
+
+  return ret;
+}
+
+/* static */
+OpLevelCostEstimator::ConvolutionDimensions
+OpLevelCostEstimator::OpDimensionsFromInputs(
+    const TensorShapeProto& original_image_shape, const OpInfo& op_info,
+    bool* found_unknown_shapes) {
+  VLOG(2) << "op features: " << op_info.DebugString();
+  VLOG(2) << "Original image shape: " << original_image_shape.DebugString();
+  auto image_shape =
+      MaybeGetMinimumShape(original_image_shape, 4, found_unknown_shapes);
+  VLOG(2) << "Image shape: " << image_shape.DebugString();
+
+  int x_index, y_index, channel_index;
+  const string& data_format = GetDataFormat(op_info);
+  if (data_format == "NCHW") {
+    x_index = 2;
+    y_index = 3;
+    channel_index = 1;
+  } else {
+    x_index = 1;
+    y_index = 2;
+    channel_index = 3;
+  }
+  int64 batch = image_shape.dim(0).size();
+  int64 ix = image_shape.dim(x_index).size();
+  int64 iy = image_shape.dim(y_index).size();
+  int64 iz = image_shape.dim(channel_index).size();
+
+  // Note that FusedBatchNorm doesn't have ksize attr, but GetKernelSize returns
+  // {1, 1, 1, 1} in that case.
+  std::vector<int64> ksize = GetKernelSize(op_info);
+  int64 kx = ksize[x_index];
+  int64 ky = ksize[y_index];
+
+  std::vector<int64> strides = GetStrides(op_info);
+  int64 sx = strides[x_index];
+  int64 sy = strides[y_index];
+  const auto padding = GetPadding(op_info);
+
+  int64 ox = GetOutputSize(ix, kx, sx, padding);
+  int64 oy = GetOutputSize(iy, ky, sy, padding);
+  int64 oz = iz;
+
+  OpLevelCostEstimator::ConvolutionDimensions conv_dims = {
+      batch, ix, iy, iz, kx, ky, oz, ox, oy, sx, sy, padding};
+  return conv_dims;
+}
+
+Costs OpLevelCostEstimator::PredictMaxPool(const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  // x: op_info.inputs(0)
+  ConvolutionDimensions dims = OpDimensionsFromInputs(
+      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+  // kx * ky - 1 comparisons per output (kx * xy > 1)
+  // or 1 copy per output (kx * k1 = 1).
+  int per_output_ops = dims.kx * dims.ky == 1 ? 1 : dims.kx * dims.ky - 1;
+  int64 ops = dims.batch * dims.ox * dims.oy * dims.oz * per_output_ops;
+
+  double total_input_size = 0;
+  if (dims.ky >= dims.sy) {
+    total_input_size =
+        CalculateTensorSize(op_info.inputs(0), &found_unknown_shapes);
+  } else {  // dims.ky < dims.sy
+    // Vertical stride is larger than vertical kernel; assuming row-major
+    // format, skip unnecessary rows (or read every kx rows per sy rows, as the
+    // others are not used for output).
+    const auto data_size = DataTypeSize(BaseType(op_info.inputs(0).dtype()));
+    total_input_size =
+        data_size * dims.batch * dims.ix * dims.ky * dims.oy * dims.iz;
+  }
+  const double total_output_size =
+      CalculateOutputSize(op_info, &found_unknown_shapes);
+
+  Costs costs = PredictOpCountBasedCost(ops, total_input_size,
+                                        total_output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
+  costs.max_memory = total_output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictMaxPoolGrad(
+    const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  // x: op_info.inputs(0)
+  // y: op_info.inputs(1)
+  // y_grad: op_info.inputs(2)
+  ConvolutionDimensions dims = OpDimensionsFromInputs(
+      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+
+  int64 ops = 0;
+  if (dims.kx == 1 && dims.ky == 1) {
+    // 1x1 window. No need to know which input was max.
+    ops = dims.batch * dims.ix * dims.iy * dims.iz;
+  } else if (dims.kx <= dims.sx && dims.ky <= dims.sy) {
+    // Non-overlapping window: re-run maxpool, then assign zero or y_grad.
+    ops = dims.batch * dims.iz *
+          (dims.ox * dims.oy * (dims.kx * dims.ky - 1) + dims.ix * dims.iy);
+  } else {
+    // Overlapping window: initialize with zeros, re-run maxpool, then
+    // accumulate y_gad to proper x_grad locations.
+    ops = dims.batch * dims.iz *
+          (dims.ox * dims.oy * (dims.kx * dims.ky - 1) + dims.ix * dims.iy * 2);
+  }
+
+  // Just read x and y_grad; no need to read y as we assume MaxPoolGrad re-run
+  // MaxPool internally.
+  double total_input_size =
+      CalculateTensorSize(op_info.inputs(0), &found_unknown_shapes);
+  total_input_size +=
+      CalculateTensorSize(op_info.inputs(2), &found_unknown_shapes);
+  // Write x_grad; size equal to x.
+  const double total_output_size =
+      CalculateTensorSize(op_info.inputs(0), &found_unknown_shapes);
+
+  Costs costs = PredictOpCountBasedCost(ops, total_input_size,
+                                        total_output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
+  costs.max_memory = total_output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictAvgPool(const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  // x: op_info.inputs(0)
+  ConvolutionDimensions dims = OpDimensionsFromInputs(
+      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+
+  // kx * ky - 1 additions and 1 multiplication per output.
+  int64 ops = dims.batch * dims.ox * dims.oy * dims.oz * dims.kx * dims.ky;
+
+  double total_input_size = 0;
+  if (dims.ky >= dims.sy) {
+    total_input_size =
+        CalculateTensorSize(op_info.inputs(0), &found_unknown_shapes);
+  } else {  // dims.ky < dims.sy
+    // vertical stride is larger than vertical kernel; assuming row-major
+    // format, skip unnecessary rows (or read every kx rows per sy rows, as the
+    // others are not used for output).
+    const auto data_size = DataTypeSize(BaseType(op_info.inputs(0).dtype()));
+    total_input_size =
+        data_size * dims.batch * dims.ix * dims.ky * dims.oy * dims.iz;
+  }
+  const double total_output_size =
+      CalculateOutputSize(op_info, &found_unknown_shapes);
+
+  Costs costs = PredictOpCountBasedCost(ops, total_input_size,
+                                        total_output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
+  costs.max_memory = total_output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictAvgPoolGrad(
+    const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  // x's shape: op_info.inputs(0)
+  // y_grad: op_info.inputs(1)
+
+  // Extract x_shape from op_info.inputs(0).value() or op_info.outputs(0).
+  bool shape_found = false;
+  TensorShapeProto x_shape;
+  if (op_info.inputs_size() >= 1 && op_info.inputs(0).has_value()) {
+    const TensorProto& value = op_info.inputs(0).value();
+    shape_found = GetTensorShapeProtoFromTensorProto(value, &x_shape);
+  }
+  if (!shape_found && op_info.outputs_size() > 0) {
+    x_shape = op_info.outputs(0).shape();
+    shape_found = true;
+  }
+  if (!shape_found) {
+    // Set the minimum shape that's feasible.
+    x_shape.Clear();
+    for (int i = 0; i < 4; ++i) {
+      x_shape.add_dim()->set_size(1);
+    }
+    found_unknown_shapes = true;
+  }
+
+  ConvolutionDimensions dims =
+      OpDimensionsFromInputs(x_shape, op_info, &found_unknown_shapes);
+
+  int64 ops = 0;
+  if (dims.kx <= dims.sx && dims.ky <= dims.sy) {
+    // Non-overlapping window.
+    ops = dims.batch * dims.iz * (dims.ix * dims.iy + dims.ox * dims.oy);
+  } else {
+    // Overlapping window.
+    ops = dims.batch * dims.iz *
+          (dims.ix * dims.iy + dims.ox * dims.oy * (dims.kx * dims.ky + 1));
+  }
+
+  const double total_input_size =
+      CalculateInputSize(op_info, &found_unknown_shapes);
+  const double total_output_size =
+      CalculateOutputSize(op_info, &found_unknown_shapes);
+
+  Costs costs = PredictOpCountBasedCost(ops, total_input_size,
+                                        total_output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
+  costs.max_memory = total_output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictFusedBatchNorm(
+    const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  // x: op_info.inputs(0)
+  // scale: op_info.inputs(1)
+  // offset: op_info.inputs(2)
+  // mean: op_info.inputs(3)  --> only for inference
+  // variance: op_info.inputs(4) --> only for inference
+  ConvolutionDimensions dims = OpDimensionsFromInputs(
+      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+  const bool is_training = IsTraining(op_info);
+
+  int64 ops = 0;
+  const auto rsqrt_cost = Eigen::internal::functor_traits<
+      Eigen::internal::scalar_rsqrt_op<float>>::Cost;
+  if (is_training) {
+    ops = dims.iz * (dims.batch * dims.ix * dims.iy * 4 + 6 + rsqrt_cost);
+  } else {
+    ops = dims.batch * dims.ix * dims.iy * dims.iz * 2;
+  }
+
+  const double size_nhwc =
+      CalculateTensorSize(op_info.inputs(0), &found_unknown_shapes);
+  const double size_c =
+      CalculateTensorSize(op_info.inputs(1), &found_unknown_shapes);
+  double total_input_size = 0.0;
+  double total_internal_read_size = 0.0;
+  double total_output_size = 0.0;
+  if (is_training) {
+    total_input_size = size_nhwc + size_c * 2;
+    total_output_size = size_nhwc + size_c * 4;
+    total_internal_read_size = size_nhwc;
+  } else {
+    total_input_size = size_nhwc + size_c * 4;
+    total_output_size = size_nhwc;
+  }
+
+  Costs costs =
+      PredictOpCountBasedCost(ops, total_input_size + total_internal_read_size,
+                              total_output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
+  costs.max_memory = total_output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictFusedBatchNormGrad(
+    const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  // y_backprop: op_info.inputs(0)
+  // x: op_info.inputs(1)
+  // scale: op_info.inputs(2)
+  // mean: op_info.inputs(3)
+  // variance or inverse of variance: op_info.inputs(4)
+  ConvolutionDimensions dims = OpDimensionsFromInputs(
+      op_info.inputs(1).shape(), op_info, &found_unknown_shapes);
+
+  int64 ops = 0;
+  const auto rsqrt_cost = Eigen::internal::functor_traits<
+      Eigen::internal::scalar_rsqrt_op<float>>::Cost;
+  ops = dims.iz * (dims.batch * dims.ix * dims.iy * 11 + 5 + rsqrt_cost);
+
+  const double size_nhwc =
+      CalculateTensorSize(op_info.inputs(1), &found_unknown_shapes);
+  const double size_c =
+      CalculateTensorSize(op_info.inputs(2), &found_unknown_shapes);
+  double total_input_size = size_nhwc * 2 + size_c * 2;
+  double total_internal_read_size = size_nhwc;
+  double total_output_size = size_nhwc * 1 + size_c * 2;
+
+  Costs costs =
+      PredictOpCountBasedCost(ops, total_input_size + total_internal_read_size,
+                              total_output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
+  costs.max_memory = total_output_size;
+  return costs;
+}
+
+/* static */
+void OpLevelCostEstimator::CombineCostsAndUpdateExecutionTime(
+    Costs* costs) const {
+  if (compute_memory_overlap_) {
+    costs->execution_time =
+        std::max(costs->intermediate_memory_time,
+                 std::max(costs->compute_time, costs->memory_time));
+  } else {
+    costs->execution_time = costs->compute_time + costs->memory_time +
+                            costs->intermediate_memory_time;
+  }
+}
 }  // end namespace grappler
 }  // end namespace tensorflow

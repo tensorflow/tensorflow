@@ -28,7 +28,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -43,7 +45,7 @@ dtype `self.dtype` and be in the `(self.event_shape() - 1)`-simplex, i.e.,
 `self.batch_shape() + self.event_shape()`."""
 
 
-@tf_export("distributions.Dirichlet")
+@tf_export(v1=["distributions.Dirichlet"])
 class Dirichlet(distribution.Distribution):
   """Dirichlet distribution.
 
@@ -89,13 +91,27 @@ class Dirichlet(distribution.Distribution):
   Distribution parameters are automatically broadcast in all functions; see
   examples for details.
 
+  Warning: Some components of the samples can be zero due to finite precision.
+  This happens more often when some of the concentrations are very small.
+  Make sure to round the samples to `np.finfo(dtype).tiny` before computing the
+  density.
+
+  Samples of this distribution are reparameterized (pathwise differentiable).
+  The derivatives are computed using the approach described in the paper
+
+  [Michael Figurnov, Shakir Mohamed, Andriy Mnih.
+  Implicit Reparameterization Gradients, 2018](https://arxiv.org/abs/1805.08498)
+
   #### Examples
 
   ```python
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   # Create a single trivariate Dirichlet, with the 3rd class being three times
   # more frequent than the first. I.e., batch_shape=[], event_shape=[3].
   alpha = [1., 2, 3]
-  dist = Dirichlet(alpha)
+  dist = tfd.Dirichlet(alpha)
 
   dist.sample([4, 5])  # shape: [4, 5, 3]
 
@@ -117,7 +133,7 @@ class Dirichlet(distribution.Distribution):
   # Create batch_shape=[2], event_shape=[3]:
   alpha = [[1., 2, 3],
            [4, 5, 6]]   # shape: [2, 3]
-  dist = Dirichlet(alpha)
+  dist = tfd.Dirichlet(alpha)
 
   dist.sample([4, 5])  # shape: [4, 5, 2, 3]
 
@@ -128,8 +144,27 @@ class Dirichlet(distribution.Distribution):
   dist.prob(x)         # shape: [2]
   ```
 
+  Compute the gradients of samples w.r.t. the parameters:
+
+  ```python
+  alpha = tf.constant([1.0, 2.0, 3.0])
+  dist = tfd.Dirichlet(alpha)
+  samples = dist.sample(5)  # Shape [5, 3]
+  loss = tf.reduce_mean(tf.square(samples))  # Arbitrary loss function
+  # Unbiased stochastic gradients of the loss function
+  grads = tf.gradients(loss, alpha)
+  ```
+
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration,
                validate_args=False,
@@ -154,8 +189,8 @@ class Dirichlet(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[concentration]) as name:
       self._concentration = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration, name="concentration"),
           validate_args)
@@ -164,7 +199,7 @@ class Dirichlet(distribution.Distribution):
         dtype=self._concentration.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        reparameterization_type=distribution.NOT_REPARAMETERIZED,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._concentration,
                        self._total_concentration],
@@ -210,7 +245,7 @@ class Dirichlet(distribution.Distribution):
 
   def _log_unnormalized_prob(self, x):
     x = self._maybe_assert_valid_sample(x)
-    return math_ops.reduce_sum((self.concentration - 1.) * math_ops.log(x), -1)
+    return math_ops.reduce_sum(math_ops.xlogy(self.concentration - 1., x), -1)
 
   def _log_normalization(self):
     return special_math_ops.lbeta(self.concentration)
@@ -289,11 +324,86 @@ class Dirichlet(distribution.Distribution):
     if not self.validate_args:
       return x
     return control_flow_ops.with_dependencies([
-        check_ops.assert_positive(
-            x,
-            message="samples must be positive"),
-        distribution_util.assert_close(
+        check_ops.assert_positive(x, message="samples must be positive"),
+        check_ops.assert_near(
             array_ops.ones([], dtype=self.dtype),
             math_ops.reduce_sum(x, -1),
             message="sample last-dimension must sum to `1`"),
     ], x)
+
+
+@kullback_leibler.RegisterKL(Dirichlet, Dirichlet)
+def _kl_dirichlet_dirichlet(d1, d2, name=None):
+  """Batchwise KL divergence KL(d1 || d2) with d1 and d2 Dirichlet.
+
+  Args:
+    d1: instance of a Dirichlet distribution object.
+    d2: instance of a Dirichlet distribution object.
+    name: (optional) Name to use for created operations.
+      default is "kl_dirichlet_dirichlet".
+
+  Returns:
+    Batchwise KL(d1 || d2)
+  """
+  with ops.name_scope(name, "kl_dirichlet_dirichlet", values=[
+      d1.concentration, d2.concentration]):
+    # The KL between Dirichlet distributions can be derived as follows. We have
+    #
+    #   Dir(x; a) = 1 / B(a) * prod_i[x[i]^(a[i] - 1)]
+    #
+    # where B(a) is the multivariate Beta function:
+    #
+    #   B(a) = Gamma(a[1]) * ... * Gamma(a[n]) / Gamma(a[1] + ... + a[n])
+    #
+    # The KL is
+    #
+    #   KL(Dir(x; a), Dir(x; b)) = E_Dir(x; a){log(Dir(x; a) / Dir(x; b))}
+    #
+    # so we'll need to know the log density of the Dirichlet. This is
+    #
+    #   log(Dir(x; a)) = sum_i[(a[i] - 1) log(x[i])] - log B(a)
+    #
+    # The only term that matters for the expectations is the log(x[i]). To
+    # compute the expectation of this term over the Dirichlet density, we can
+    # use the following facts about the Dirichlet in exponential family form:
+    #   1. log(x[i]) is a sufficient statistic
+    #   2. expected sufficient statistics (of any exp family distribution) are
+    #      equal to derivatives of the log normalizer with respect to
+    #      corresponding natural parameters: E{T[i](x)} = dA/d(eta[i])
+    #
+    # To proceed, we can rewrite the Dirichlet density in exponential family
+    # form as follows:
+    #
+    #   Dir(x; a) = exp{eta(a) . T(x) - A(a)}
+    #
+    # where '.' is the dot product of vectors eta and T, and A is a scalar:
+    #
+    #   eta[i](a) = a[i] - 1
+    #     T[i](x) = log(x[i])
+    #        A(a) = log B(a)
+    #
+    # Now, we can use fact (2) above to write
+    #
+    #   E_Dir(x; a)[log(x[i])]
+    #       = dA(a) / da[i]
+    #       = d/da[i] log B(a)
+    #       = d/da[i] (sum_j lgamma(a[j])) - lgamma(sum_j a[j])
+    #       = digamma(a[i])) - digamma(sum_j a[j])
+    #
+    # Putting it all together, we have
+    #
+    # KL[Dir(x; a) || Dir(x; b)]
+    #     = E_Dir(x; a){log(Dir(x; a) / Dir(x; b)}
+    #     = E_Dir(x; a){sum_i[(a[i] - b[i]) log(x[i])} - (lbeta(a) - lbeta(b))
+    #     = sum_i[(a[i] - b[i]) * E_Dir(x; a){log(x[i])}] - lbeta(a) + lbeta(b)
+    #     = sum_i[(a[i] - b[i]) * (digamma(a[i]) - digamma(sum_j a[j]))]
+    #          - lbeta(a) + lbeta(b))
+
+    digamma_sum_d1 = math_ops.digamma(
+        math_ops.reduce_sum(d1.concentration, axis=-1, keepdims=True))
+    digamma_diff = math_ops.digamma(d1.concentration) - digamma_sum_d1
+    concentration_diff = d1.concentration - d2.concentration
+
+    return (math_ops.reduce_sum(concentration_diff * digamma_diff, axis=-1) -
+            special_math_ops.lbeta(d1.concentration) +
+            special_math_ops.lbeta(d2.concentration))

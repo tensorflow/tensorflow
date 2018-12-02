@@ -24,6 +24,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -37,7 +38,7 @@ class Square(bijector.Bijector):
   g is a bijection between the non-negative real numbers (R_+) and the
   non-negative real numbers.
 
-  Examples:
+  #### Examples
 
   ```python
   bijector.Square().forward(x=[[1., 0], [2, 1]])
@@ -49,6 +50,14 @@ class Square(bijector.Bijector):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self, validate_args=False, name="square"):
     """Instantiates the `Square` bijector.
 
@@ -59,7 +68,7 @@ class Square(bijector.Bijector):
     """
     self._name = name
     super(Square, self).__init__(
-        event_ndims=0,
+        forward_min_event_ndims=0,
         validate_args=validate_args,
         name=name)
 
@@ -81,4 +90,3 @@ class Square(bijector.Bijector):
     is_valid = check_ops.assert_non_negative(
         t, message="All elements must be non-negative.")
     return control_flow_ops.with_dependencies([is_valid], t)
-

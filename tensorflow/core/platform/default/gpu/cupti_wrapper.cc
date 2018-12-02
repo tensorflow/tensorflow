@@ -28,27 +28,27 @@ namespace profiler {
 
 namespace dynload {
 
-#define LIBCUPTI_WRAP(__name)                                               \
-  struct DynLoadShim__##__name {                                            \
-    static const char* kName;                                               \
-    using FuncPointerT = std::add_pointer<decltype(::__name)>::type;        \
-    static void* GetDsoHandle() {                                           \
-      static auto status = perftools::gputools::internal::CachedDsoLoader:: \
-          GetLibcuptiDsoHandle();                                           \
-      return status.ValueOrDie();                                           \
-    }                                                                       \
-    static FuncPointerT DynLoad() {                                         \
-      static void* f;                                                       \
-      TF_CHECK_OK(::tensorflow::Env::Default()->GetSymbolFromLibrary(       \
-          GetDsoHandle(), kName, &f))                                       \
-          << "could not find " << kName << "in libcupti DSO";               \
-      return reinterpret_cast<FuncPointerT>(f);                             \
-    }                                                                       \
-    template <typename... Args>                                             \
-    CUptiResult operator()(Args... args) {                                  \
-      return DynLoad()(args...);                                            \
-    }                                                                       \
-  } __name;                                                                 \
+#define LIBCUPTI_WRAP(__name)                                                 \
+  struct DynLoadShim__##__name {                                              \
+    static const char* kName;                                                 \
+    using FuncPointerT = std::add_pointer<decltype(::__name)>::type;          \
+    static void* GetDsoHandle() {                                             \
+      static auto status =                                                    \
+          stream_executor::internal::CachedDsoLoader::GetLibcuptiDsoHandle(); \
+      return status.ValueOrDie();                                             \
+    }                                                                         \
+    static FuncPointerT DynLoad() {                                           \
+      static void* f;                                                         \
+      TF_CHECK_OK(::tensorflow::Env::Default()->GetSymbolFromLibrary(         \
+          GetDsoHandle(), kName, &f))                                         \
+          << "could not find " << kName << "in libcupti DSO";                 \
+      return reinterpret_cast<FuncPointerT>(f);                               \
+    }                                                                         \
+    template <typename... Args>                                               \
+    CUptiResult operator()(Args... args) {                                    \
+      return DynLoad()(args...);                                              \
+    }                                                                         \
+  } __name;                                                                   \
   const char* DynLoadShim__##__name::kName = #__name;
 
 LIBCUPTI_WRAP(cuptiActivityDisable);

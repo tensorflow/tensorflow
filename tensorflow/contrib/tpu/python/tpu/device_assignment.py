@@ -25,20 +25,29 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib.tpu.python.tpu.topology import Topology
 
 
-def _tpu_device_name(job, task, device):
-  """Returns the device name for the TPU `device` on `task` of `job`."""
-  if job is None:
-    return "/task:%d/device:TPU:%d" % (task, device)
-  else:
-    return "/job:%s/task:%d/device:TPU:%d" % (job, task, device)
+def _compute_task_and_cores_to_replicas(core_assignment, topology):
+  """Computes a nested dict which maps task and logical core to replicas."""
+  task_and_cores_to_replicas = {}
+  for replica in xrange(core_assignment.shape[0]):
+    for logical_core in xrange(core_assignment.shape[1]):
+      coordinates = core_assignment[replica, logical_core, :]
+      task_id = topology.task_ordinal_at_coordinates(coordinates)
+      if task_id not in task_and_cores_to_replicas:
+        task_and_cores_to_replicas[task_id] = {}
+      if logical_core not in task_and_cores_to_replicas[task_id]:
+        task_and_cores_to_replicas[task_id][logical_core] = set()
 
+      task_and_cores_to_replicas[task_id][logical_core].add(replica)
 
-def _tpu_host_device_name(job, task):
-  """Returns the device name for the CPU device on `task` of `job`."""
-  if job is None:
-    return "/task:%d/device:CPU:0" % task
-  else:
-    return "/job:%s/task:%d/device:CPU:0" % (job, task)
+  task_to_sorted_replica_id = {}
+
+  for task, core_to_replicas in task_and_cores_to_replicas.items():
+    core_to_sorted_replicas = {}
+    for core, replicas in core_to_replicas.items():
+      core_to_sorted_replicas[core] = sorted(replicas)
+
+    task_to_sorted_replica_id[task] = core_to_sorted_replicas
+  return task_to_sorted_replica_id
 
 
 class DeviceAssignment(object):
@@ -68,67 +77,23 @@ class DeviceAssignment(object):
     core_assignment = np.asarray(core_assignment, dtype=np.int32)
 
     self._topology = topology
-    self._topology_tasks, self._topology_devices = (
-        self._invert_topology(topology))
 
-    topology_rank = self._topology_tasks.ndim
-    if core_assignment.ndim != topology_rank + 2:
-      raise ValueError("core_assignment must be a rank {} numpy array".format(
-          topology_rank + 2))
+    if core_assignment.ndim != 3:
+      raise ValueError("core_assignment must be a rank 3 numpy array, "
+                       "got shape {}".format(core_assignment.shape))
 
     self._num_replicas = core_assignment.shape[0]
-    self._computation_shape = np.array(
-        core_assignment.shape[1:-1], dtype=np.int32)
+    self._num_cores_per_replica = core_assignment.shape[1]
 
-    if core_assignment.shape[-1] != topology_rank:
+    if core_assignment.shape[-1] != topology.mesh_rank:
       raise ValueError(
           "minor dimension of core_assignment must have size equal to topology "
-          "rank ({}), got shape {}".format(topology_rank,
+          "rank ({}), got shape {}".format(topology.mesh_rank,
                                            core_assignment.shape))
 
     self._core_assignment = core_assignment
-    self._task_and_cores_to_replicas = self._compute_task_and_cores_to_replicas(
-        self._core_assignment, self._topology_tasks)
-
-  def _invert_topology(self, topology):
-    """Inverts a [task,device,axis] topology to [x,y,z] -> task/device maps."""
-    mesh_shape = topology.mesh_shape
-    tasks = np.full(list(mesh_shape), -1, dtype=np.int32)
-    devices = np.full(list(mesh_shape), -1, dtype=np.int32)
-    for task in xrange(topology.device_coordinates.shape[0]):
-      for device in xrange(topology.device_coordinates.shape[1]):
-        x, y, z = topology.device_coordinates[task, device, :]
-        tasks[x, y, z] = task
-        devices[x, y, z] = device
-    return tasks, devices
-
-  def _compute_task_and_cores_to_replicas(self, core_assignment,
-                                          topology_tasks):
-    """Computes a nested dict which maps task and logical core to replicas."""
-    task_and_cores_to_replicas = {}
-    for replica in xrange(core_assignment.shape[0]):
-      for dx in xrange(core_assignment.shape[1]):
-        for dy in xrange(core_assignment.shape[2]):
-          for dz in xrange(core_assignment.shape[3]):
-            x, y, z = core_assignment[replica, dx, dy, dz, :]
-            task_id = topology_tasks[x, y, z]
-            if task_id not in task_and_cores_to_replicas:
-              task_and_cores_to_replicas[task_id] = {}
-            logical_core = (dx, dy, dz)
-            if logical_core not in task_and_cores_to_replicas[task_id]:
-              task_and_cores_to_replicas[task_id][logical_core] = set()
-
-            task_and_cores_to_replicas[task_id][logical_core].add(replica)
-
-    task_to_sorted_replica_id = {}
-
-    for task, core_to_replicas in task_and_cores_to_replicas.items():
-      core_to_sorted_replicas = {}
-      for core, replicas in core_to_replicas.items():
-        core_to_sorted_replicas[core] = sorted(replicas)
-
-      task_to_sorted_replica_id[task] = core_to_sorted_replicas
-    return task_to_sorted_replica_id
+    self._task_and_cores_to_replicas = _compute_task_and_cores_to_replicas(
+        self._core_assignment, topology)
 
   @property
   def topology(self):
@@ -136,23 +101,9 @@ class DeviceAssignment(object):
     return self._topology
 
   @property
-  def computation_shape(self):
-    """The computation shape.
-
-    Returns:
-      A rank-1 int32 numpy array with size equal to the TPU topology rank.
-      Describes the logical shape in numbers of core of each replica of the
-      computation in the TPU topology.
-
-    Returns:
-      The computation shape.
-    """
-    return self._computation_shape
-
-  @property
   def num_cores_per_replica(self):
     """The number of cores per replica."""
-    return np.prod(self.computation_shape)
+    return self._num_cores_per_replica
 
   @property
   def num_replicas(self):
@@ -164,36 +115,27 @@ class DeviceAssignment(object):
     """The logical to physical core mapping.
 
     Returns:
-      A numpy array of rank `topology_rank + 2`, with shape
-      `[num_replicas] + computation_shape + [topology_rank]`. Maps
-      (replica, logical core coordinates) pairs to physical topology
-      coordinates.
+      An integer numpy array of rank 3, with shape
+      `[num_replicas, num_cores_per_replica, topology_rank]`. Maps
+      (replica, logical core) pairs to physical topology coordinates.
     """
     return self._core_assignment
 
   def _coordinates(self, replica, logical_core):
     """Returns the physical topology coordinates of a logical core."""
-    if logical_core is None:
-      logical_core = np.array([0, 0, 0], np.int32)
-
-    if any(logical_core < 0) or any(logical_core >= self.computation_shape):
-      raise ValueError("Invalid core {}; computation shape is {}".format(
-          logical_core, self.computation_shape))
-
-    logical_offset = tuple([replica] + logical_core.tolist() + [slice(3)])
-    return tuple(self.core_assignment[logical_offset])
+    return tuple(self.core_assignment[replica, logical_core, :])
 
   def lookup_replicas(self, task_id, logical_core):
     """Lookup replica ids by task number and logical core.
 
     Args:
       task_id: TensorFlow task number.
-      logical_core: A tuple of three integers which represents a logical core.
+      logical_core: An integer, identifying a logical core.
     Returns:
       A sorted list of the replicas that are attached to that task and
-      loical_core.
+      logical_core.
     Raises:
-      ValueError: If no replica exisis in the task which contains the logical
+      ValueError: If no replica exists in the task which contains the logical
       core.
     """
     try:
@@ -203,21 +145,20 @@ class DeviceAssignment(object):
           "Can not find any replica in task: {} contains logical_core: {} ".
           format(task_id, logical_core))
 
-  def tpu_ordinal(self, replica=0, logical_core=None):
+  def tpu_ordinal(self, replica=0, logical_core=0):
     """Returns the ordinal of the TPU device assigned to a logical core."""
     coordinates = self._coordinates(replica, logical_core)
-    return self._topology_devices[coordinates]
+    return self._topology.tpu_device_ordinal_at_coordinates(coordinates)
 
-  def host_device(self, replica=0, logical_core=None, job=None):
+  def host_device(self, replica=0, logical_core=0, job=None):
     """Returns the CPU device attached to a logical core."""
     coordinates = self._coordinates(replica, logical_core)
-    return _tpu_host_device_name(job, self._topology_tasks[coordinates])
+    return self._topology.cpu_device_name_at_coordinates(coordinates, job=job)
 
-  def tpu_device(self, replica=0, logical_core=None, job=None):
+  def tpu_device(self, replica=0, logical_core=0, job=None):
     """Returns the name of the TPU device assigned to a logical core."""
     coordinates = self._coordinates(replica, logical_core)
-    return _tpu_device_name(job, self._topology_tasks[coordinates],
-                            self._topology_devices[coordinates])
+    return self._topology.tpu_device_name_at_coordinates(coordinates, job=job)
 
 
 def device_assignment(topology,
@@ -225,6 +166,8 @@ def device_assignment(topology,
                       computation_stride=None,
                       num_replicas=1):
   """Computes a device_assignment of a computation across a TPU topology.
+
+  Attempts to choose a compact grid of cores for locality.
 
   Returns a `DeviceAssignment` that describes the cores in the topology assigned
   to each core of each replica.
@@ -238,12 +181,12 @@ def device_assignment(topology,
       `initialize_system` using `Session.run`. Either a serialized
       `TopologyProto` or a `Topology` object may be passed. Note: you must
       evaluate the `Tensor` first; you cannot pass an unevaluated `Tensor` here.
-    computation_shape: A rank 1 int32 numpy array of size 3, describing the
-      shape of the computation's block of cores. If None, the
-      `computation_shape` is `[1, 1, 1]`.
-    computation_stride: A rank 1 int32 numpy array of size 3, describing the
-      inter-core spacing of the `computation_shape` cores in the TPU topology.
-      If None, the `computation_stride` is `[1, 1, 1]`.
+    computation_shape: A rank 1 int32 numpy array with size equal to the
+      topology rank, describing the shape of the computation's block of cores.
+      If None, the `computation_shape` is `[1] * topology_rank`.
+    computation_stride: A rank 1 int32 numpy array of size `topology_rank`,
+      describing the inter-core spacing of the `computation_shape` cores in the
+      TPU topology. If None, the `computation_stride` is `[1] * topology_rank`.
     num_replicas: The number of computation replicas to run. The replicas will
       be packed into the free spaces of the topology.
 
@@ -269,21 +212,21 @@ def device_assignment(topology,
   topology_rank = len(topology.mesh_shape)
   mesh_shape = topology.mesh_shape
   if computation_shape is None:
-    computation_shape = np.array([1, 1, 1], dtype=np.int32)
+    computation_shape = np.array([1] * topology_rank, dtype=np.int32)
   else:
     computation_shape = np.asarray(computation_shape, dtype=np.int32)
 
   if computation_stride is None:
-    computation_stride = np.array([1, 1, 1], dtype=np.int32)
+    computation_stride = np.array([1] * topology_rank, dtype=np.int32)
   else:
     computation_stride = np.asarray(computation_stride, dtype=np.int32)
 
-  if computation_shape.shape != (3,):
-    raise ValueError("computation_shape must have shape [3]; got {}".format(
-        computation_shape.shape))
-  if computation_stride.shape != (3,):
-    raise ValueError("computation_stride must have shape [3]; got {}".format(
-        computation_stride.shape))
+  if computation_shape.shape != (topology_rank,):
+    raise ValueError("computation_shape must have shape [{}]; got {}".format(
+        topology_rank, computation_shape.shape))
+  if computation_stride.shape != (topology_rank,):
+    raise ValueError("computation_stride must have shape [{}]; got {}".format(
+        topology_rank, computation_stride.shape))
 
   if any(computation_shape < 1):
     raise ValueError(
@@ -313,28 +256,41 @@ def device_assignment(topology,
             num_replicas, max_replicas, computation_shape, computation_stride,
             mesh_shape))
 
-  # Choose a compact layout for the cores. Choose the smaller dimension in the
-  # topology to be close to the square root of the number of replicas.
-  num_chips = int(math.ceil(num_replicas / replica_counts[2]))
-  target_size = int(math.ceil(math.sqrt(num_chips)))
+  def ceil_of_ratio(n, m):
+    return (n + m - 1) // m
 
-  # Prefer an even size, if possible. Odd numbered rows head back towards the
-  # first column, so it's best if the last row has an odd index.
-  if target_size % 2 != 0:
-    target_size -= 1
-  y_size = min(replica_counts[1], target_size)
-  if y_size * replica_counts[0] < num_chips:
-    y_size = replica_counts[1]
+  replica_shape = [0] * topology_rank
+  if num_replicas > 0:
+    remaining_replicas = num_replicas
+    remaining_dims = topology_rank
+
+    # Choose dimensions as close to an equal cube as possible, in order of
+    # increasing dimension size. By visiting dimensions in increasing size, we
+    # assign the most constrained dimension first, so we won't make infeasible
+    # choices.
+    #
+    # As a secondary sort order, visit the dimensions in reverse order. This
+    # means we try to use both cores on the same chip in preference to two cores
+    # on different chips.
+    for x, ni in sorted(((x, -i) for (i, x) in enumerate(replica_counts))):
+      i = -ni
+      target_size = int(math.ceil(remaining_replicas**(1.0 / remaining_dims)))
+      replica_shape[i] = min(target_size, x)
+      remaining_replicas = ceil_of_ratio(remaining_replicas, replica_shape[i])
+      remaining_dims -= 1
+
+    assert remaining_replicas == 1 and remaining_dims == 0
 
   # Assigns an offset to each replica such that no two replicas overlap.
-  replica_offsets = np.full([num_replicas, 3], -1, dtype=np.int32)
+  replica_offsets = np.full([num_replicas, topology_rank], -1, dtype=np.int32)
   for replica in xrange(num_replicas):
-    # Chooses a replica number in X/Y/Z axes.
-    z = replica % replica_counts[2]
-    t = replica // replica_counts[2]
-    y = t % y_size
-    x = t // y_size
-    replica_pos = np.array([x, y, z], dtype=np.int32)
+    # Chooses a replica number in each axis.
+    t = replica
+    pos = []
+    for dim in replica_shape[::-1]:
+      pos.append(t % dim)
+      t //= dim
+    replica_pos = np.array(pos[::-1], dtype=np.int32)
 
     # Determines where that replica starts in each axis.
     outer = replica_pos // computation_stride
@@ -349,6 +305,6 @@ def device_assignment(topology,
   indices = np.concatenate(
       [i[..., np.newaxis] for i in np.meshgrid(*indices, indexing="ij")],
       axis=-1)
-  assignment = (
-      indices + replica_offsets[:, np.newaxis, np.newaxis, np.newaxis, :])
+  indices = indices.reshape((-1, topology_rank))
+  assignment = indices + replica_offsets[:, np.newaxis, :]
   return DeviceAssignment(topology, core_assignment=assignment)

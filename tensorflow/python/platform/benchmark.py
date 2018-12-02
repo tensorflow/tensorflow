@@ -27,8 +27,10 @@ import time
 import six
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import timeline
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -66,11 +68,11 @@ def _global_report_benchmark(
     if not isinstance(extras, dict):
       raise TypeError("extras must be a dict")
 
-    logging.info("Benchmark [%s] iters: %d, wall_time: %g, cpu_time: %g,"
-                 "throughput: %g %s", name, iters if iters is not None else -1,
-                 wall_time if wall_time is not None else -1, cpu_time if
-                 cpu_time is not None else -1, throughput if
-                 throughput is not None else -1, str(extras) if extras else "")
+  logging.info("Benchmark [%s] iters: %d, wall_time: %g, cpu_time: %g,"
+               "throughput: %g %s", name, iters if iters is not None else -1,
+               wall_time if wall_time is not None else -1, cpu_time if
+               cpu_time is not None else -1, throughput if
+               throughput is not None else -1, str(extras) if extras else "")
 
   entries = test_log_pb2.BenchmarkEntries()
   entry = entries.entry.add()
@@ -182,6 +184,19 @@ class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
         throughput=throughput, extras=extras)
 
 
+@tf_export("test.benchmark_config")
+def benchmark_config():
+  """Returns a tf.ConfigProto for disabling the dependency optimizer.
+
+    Returns:
+      A TensorFlow ConfigProto object.
+  """
+  config = config_pb2.ConfigProto()
+  config.graph_options.rewrite_options.dependency_optimization = (
+      rewriter_config_pb2.RewriterConfig.OFF)
+  return config
+
+
 @tf_export("test.Benchmark")
 class TensorFlowBenchmark(Benchmark):
   """Abstract class that provides helpers for TensorFlow benchmarks."""
@@ -213,9 +228,10 @@ class TensorFlowBenchmark(Benchmark):
       burn_iters: Number of burn-in iterations to run.
       min_iters: Minimum number of iterations to use for timing.
       store_trace: Boolean, whether to run an extra untimed iteration and
-        store the trace of iteration in the benchmark report.
+        store the trace of iteration in returned extras.
         The trace will be stored as a string in Google Chrome trace format
-        in the extras field "full_trace_chrome_format".
+        in the extras field "full_trace_chrome_format". Note that trace
+        will not be stored in test_log_pb2.TestResults proto.
       store_memory_usage: Boolean, whether to run an extra untimed iteration,
         calculate memory usage, and store that in extras fields.
       name: (optional) Override the BenchmarkEntry name with `name`.
@@ -227,7 +243,9 @@ class TensorFlowBenchmark(Benchmark):
 
     Returns:
       A `dict` containing the key-value pairs that were passed to
-      `report_benchmark`.
+      `report_benchmark`. If `store_trace` option is used, then
+      `full_chrome_trace_format` will be included in return dictionary even
+      though it is not passed to `report_benchmark` with `extras`.
     """
     for _ in range(burn_iters):
       sess.run(op_or_tensor, feed_dict=feed_dict)
@@ -242,6 +260,7 @@ class TensorFlowBenchmark(Benchmark):
       deltas[i] = delta
 
     extras = extras if extras is not None else {}
+    unreported_extras = {}
     if store_trace or store_memory_usage:
       run_options = config_pb2.RunOptions(
           trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -251,7 +270,8 @@ class TensorFlowBenchmark(Benchmark):
       tl = timeline.Timeline(run_metadata.step_stats)
 
       if store_trace:
-        extras["full_trace_chrome_format"] = tl.generate_chrome_trace_format()
+        unreported_extras["full_trace_chrome_format"] = (
+            tl.generate_chrome_trace_format())
 
       if store_memory_usage:
         step_stats_analysis = tl.analyze_step_stats(show_memory=True)
@@ -277,7 +297,20 @@ class TensorFlowBenchmark(Benchmark):
         "throughput": mbs / median_delta
     }
     self.report_benchmark(**benchmark_values)
+    benchmark_values["extras"].update(unreported_extras)
     return benchmark_values
+
+  def evaluate(self, tensors):
+    """Evaluates tensors and returns numpy values.
+
+    Args:
+      tensors: A Tensor or a nested list/tuple of Tensors.
+
+    Returns:
+      tensors numpy values.
+    """
+    sess = ops.get_default_session() or self.cached_session()
+    return sess.run(tensors)
 
 
 def _run_benchmarks(regex):

@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::InferenceContext;
 
 REGISTER_OP("Assert")
     .Input("condition: bool")
@@ -26,6 +29,8 @@ REGISTER_OP("Assert")
     .Attr("T: list(type)")
     .Attr("summarize: int = 3")
     .SetShapeFn(shape_inference::NoOutputs);
+
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("Assert");
 
 REGISTER_OP("Print")
     .Input("input: T")
@@ -38,6 +43,23 @@ REGISTER_OP("Print")
     .Attr("first_n: int = -1")
     .Attr("summarize: int = 3")
     .SetShapeFn(shape_inference::UnchangedShape);
+
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("Print");
+
+REGISTER_OP("PrintV2")
+    .Input("input: string")
+    .SetIsStateful()
+    .Attr("output_stream: string = 'stderr'")
+    .SetShapeFn([](InferenceContext* c) {
+      // Make sure that the input is a scalar.
+      if (c->Rank(c->input(0)) != 0) {
+        return errors::InvalidArgument("input must be a scalar, but has rank: ",
+                                       c->Rank(c->input(0)));
+      }
+      return Status::OK();
+    });
+
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("PrintV2");
 
 // ----------------------------------------------------------------------------
 // Operators that deal with SummaryProtos (encoded as DT_STRING tensors) as
@@ -115,5 +137,7 @@ REGISTER_OP("Timestamp")
     .Output("ts: float64")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
+
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("Timestamp");
 
 }  // end namespace tensorflow

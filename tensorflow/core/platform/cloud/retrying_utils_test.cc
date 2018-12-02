@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include <fstream>
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -29,12 +30,12 @@ TEST(RetryingUtilsTest, CallWithRetries_RetryDelays) {
   };
   std::function<Status()> f = []() { return errors::Unavailable("Failed."); };
 
-  const auto& status = RetryingUtils::CallWithRetries(f, 500000L, sleep);
+  const auto& status = RetryingUtils::CallWithRetries(
+      f, sleep, RetryConfig(500000 /* init_delay_time_us */));
   EXPECT_EQ(errors::Code::ABORTED, status.code());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("All 10 retry attempts "
-                            "failed. The last failure: "
-                            "Unavailable: Failed."))
+  EXPECT_TRUE(str_util::StrContains(
+      status.error_message(),
+      "All 10 retry attempts failed. The last failure: Unavailable: Failed."))
       << status;
 
   EXPECT_EQ(10, requested_delays.size());
@@ -60,8 +61,10 @@ TEST(RetryingUtilsTest, CallWithRetries_NotFoundIsNotRetried) {
     results.erase(results.begin());
     return result;
   };
-  EXPECT_EQ(errors::Code::NOT_FOUND,
-            RetryingUtils::CallWithRetries(f, 0).code());
+  EXPECT_EQ(
+      errors::Code::NOT_FOUND,
+      RetryingUtils::CallWithRetries(f, RetryConfig(0 /* init_delay_time_us */))
+          .code());
 }
 
 TEST(RetryingUtilsTest, CallWithRetries_ImmediateSuccess) {
@@ -74,7 +77,8 @@ TEST(RetryingUtilsTest, CallWithRetries_ImmediateSuccess) {
     results.erase(results.begin());
     return result;
   };
-  TF_EXPECT_OK(RetryingUtils::CallWithRetries(f, 1.0, sleep));
+  TF_EXPECT_OK(RetryingUtils::CallWithRetries(
+      f, sleep, RetryConfig(1L /* init_delay_time_us */)));
 }
 
 TEST(RetryingUtilsTest, CallWithRetries_EventualSuccess) {
@@ -86,7 +90,8 @@ TEST(RetryingUtilsTest, CallWithRetries_EventualSuccess) {
     results.erase(results.begin());
     return result;
   };
-  TF_EXPECT_OK(RetryingUtils::CallWithRetries(f, 0));
+  TF_EXPECT_OK(RetryingUtils::CallWithRetries(
+      f, RetryConfig(0 /* init_delay_time_us */)));
 }
 
 TEST(RetryingUtilsTest, DeleteWithRetries_ImmediateSuccess) {
@@ -96,7 +101,8 @@ TEST(RetryingUtilsTest, DeleteWithRetries_ImmediateSuccess) {
     delete_results.erase(delete_results.begin());
     return result;
   };
-  TF_EXPECT_OK(RetryingUtils::DeleteWithRetries(delete_func, 0));
+  TF_EXPECT_OK(RetryingUtils::DeleteWithRetries(
+      delete_func, RetryConfig(0 /* init_delay_time_us */)));
 }
 
 TEST(RetryingUtilsTest, DeleteWithRetries_EventualSuccess) {
@@ -106,7 +112,8 @@ TEST(RetryingUtilsTest, DeleteWithRetries_EventualSuccess) {
     delete_results.erase(delete_results.begin());
     return result;
   };
-  TF_EXPECT_OK(RetryingUtils::DeleteWithRetries(delete_func, 0));
+  TF_EXPECT_OK(RetryingUtils::DeleteWithRetries(
+      delete_func, RetryConfig(0 /* init_delay_time_us */)));
 }
 
 TEST(RetryingUtilsTest, DeleteWithRetries_PermissionDeniedNotRetried) {
@@ -118,7 +125,9 @@ TEST(RetryingUtilsTest, DeleteWithRetries_PermissionDeniedNotRetried) {
     return result;
   };
   EXPECT_EQ(errors::Code::PERMISSION_DENIED,
-            RetryingUtils::DeleteWithRetries(delete_func, 0).code());
+            RetryingUtils::DeleteWithRetries(
+                delete_func, RetryConfig(0 /* init_delay_time_us */))
+                .code());
 }
 
 TEST(RetryingUtilsTest, DeleteWithRetries_SuccessThroughFileNotFound) {
@@ -129,7 +138,8 @@ TEST(RetryingUtilsTest, DeleteWithRetries_SuccessThroughFileNotFound) {
     delete_results.erase(delete_results.begin());
     return result;
   };
-  TF_EXPECT_OK(RetryingUtils::DeleteWithRetries(delete_func, 0));
+  TF_EXPECT_OK(RetryingUtils::DeleteWithRetries(
+      delete_func, RetryConfig(0 /* init_delay_time_us */)));
 }
 
 TEST(RetryingUtilsTest, DeleteWithRetries_FirstNotFoundReturnedAsIs) {
@@ -140,7 +150,9 @@ TEST(RetryingUtilsTest, DeleteWithRetries_FirstNotFoundReturnedAsIs) {
     return result;
   };
   EXPECT_EQ(error::NOT_FOUND,
-            RetryingUtils::DeleteWithRetries(delete_func, 0).code());
+            RetryingUtils::DeleteWithRetries(
+                delete_func, RetryConfig(0 /* init_delay_time_us */))
+                .code());
 }
 
 }  // namespace

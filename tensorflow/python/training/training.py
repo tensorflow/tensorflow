@@ -15,101 +15,13 @@
 
 """Support for training models.
 
-See the @{$python/train} guide.
-
-@@Optimizer
-@@GradientDescentOptimizer
-@@AdadeltaOptimizer
-@@AdagradOptimizer
-@@AdagradDAOptimizer
-@@MomentumOptimizer
-@@AdamOptimizer
-@@FtrlOptimizer
-@@ProximalGradientDescentOptimizer
-@@ProximalAdagradOptimizer
-@@RMSPropOptimizer
-@@custom_gradient
-@@gradients
-@@AggregationMethod
-@@stop_gradient
-@@hessians
-@@clip_by_value
-@@clip_by_norm
-@@clip_by_average_norm
-@@clip_by_global_norm
-@@global_norm
-@@cosine_decay
-@@cosine_decay_restarts
-@@linear_cosine_decay
-@@noisy_linear_cosine_decay
-@@exponential_decay
-@@inverse_time_decay
-@@natural_exp_decay
-@@piecewise_constant
-@@polynomial_decay
-@@ExponentialMovingAverage
-@@Coordinator
-@@QueueRunner
-@@LooperThread
-@@add_queue_runner
-@@start_queue_runners
-@@Server
-@@Supervisor
-@@SessionManager
-@@ClusterSpec
-@@replica_device_setter
-@@MonitoredTrainingSession
-@@MonitoredSession
-@@SingularMonitoredSession
-@@Scaffold
-@@SessionCreator
-@@ChiefSessionCreator
-@@WorkerSessionCreator
-@@summary_iterator
-@@SessionRunHook
-@@SessionRunArgs
-@@SessionRunContext
-@@SessionRunValues
-@@LoggingTensorHook
-@@StopAtStepHook
-@@CheckpointSaverHook
-@@CheckpointSaverListener
-@@NewCheckpointReader
-@@StepCounterHook
-@@NanLossDuringTrainingError
-@@NanTensorHook
-@@SummarySaverHook
-@@GlobalStepWaiterHook
-@@FinalOpsHook
-@@FeedFnHook
-@@ProfilerHook
-@@SecondOrStepTimer
-@@global_step
-@@basic_train_loop
-@@get_global_step
-@@get_or_create_global_step
-@@create_global_step
-@@assert_global_step
-@@write_graph
-@@load_checkpoint
-@@load_variable
-@@list_variables
-@@init_from_checkpoint
-@@warm_start
-@@VocabInfo
+See the [Training](https://tensorflow.org/api_guides/python/train) guide.
 """
 
 # Optimizers.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-import sys as _sys
-
-from tensorflow.python.ops import io_ops as _io_ops
-from tensorflow.python.ops import sdca_ops as _sdca_ops
-from tensorflow.python.ops import state_ops as _state_ops
-from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=g-bad-import-order,unused-import
 from tensorflow.python.ops.sdca_ops import sdca_optimizer
@@ -141,6 +53,7 @@ from tensorflow.python.training import input as _input
 from tensorflow.python.training.input import *  # pylint: disable=redefined-builtin
 # pylint: enable=wildcard-import
 
+from tensorflow.python.training.basic_session_run_hooks import get_or_create_steps_per_run_variable
 from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
 from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
@@ -155,6 +68,7 @@ from tensorflow.python.training.basic_session_run_hooks import FinalOpsHook
 from tensorflow.python.training.basic_session_run_hooks import FeedFnHook
 from tensorflow.python.training.basic_session_run_hooks import ProfilerHook
 from tensorflow.python.training.basic_loops import basic_train_loop
+from tensorflow.python.training.checkpointable.util import Checkpoint
 from tensorflow.python.training.checkpoint_utils import init_from_checkpoint
 from tensorflow.python.training.checkpoint_utils import list_variables
 from tensorflow.python.training.checkpoint_utils import load_checkpoint
@@ -169,12 +83,12 @@ from tensorflow.python.training.monitored_session import WorkerSessionCreator
 from tensorflow.python.training.monitored_session import MonitoredSession
 from tensorflow.python.training.monitored_session import SingularMonitoredSession
 from tensorflow.python.training.saver import Saver
-from tensorflow.python.training.saver import checkpoint_exists
-from tensorflow.python.training.saver import generate_checkpoint_state_proto
-from tensorflow.python.training.saver import get_checkpoint_mtimes
-from tensorflow.python.training.saver import get_checkpoint_state
-from tensorflow.python.training.saver import latest_checkpoint
-from tensorflow.python.training.saver import update_checkpoint_state
+from tensorflow.python.training.checkpoint_management import checkpoint_exists
+from tensorflow.python.training.checkpoint_management import generate_checkpoint_state_proto
+from tensorflow.python.training.checkpoint_management import get_checkpoint_mtimes
+from tensorflow.python.training.checkpoint_management import get_checkpoint_state
+from tensorflow.python.training.checkpoint_management import latest_checkpoint
+from tensorflow.python.training.checkpoint_management import update_checkpoint_state
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.training.saver import import_meta_graph
 from tensorflow.python.training.session_run_hook import SessionRunHook
@@ -213,39 +127,6 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.server_lib import Server
 
-# Symbols whitelisted for export without documentation.
-_allowed_symbols = [
-    # TODO(cwhipkey): review these and move to contrib or expose through
-    # documentation.
-    "generate_checkpoint_state_proto",  # Used internally by saver.
-    "checkpoint_exists",  # Only used in test?
-    "get_checkpoint_mtimes",  # Only used in test?
-
-    # Legacy: remove.
-    "do_quantize_training_on_graphdef",  # At least use grah_def, not graphdef.
-    # No uses within tensorflow.
-    "queue_runner",  # Use tf.train.start_queue_runner etc directly.
-    # This is also imported internally.
-
-    # TODO(drpng): document these. The reference in howtos/distributed does
-    # not link.
-    "SyncReplicasOptimizer",
-    # Protobufs:
-    "BytesList",  # from example_pb2.
-    "ClusterDef",
-    "Example",  # from example_pb2
-    "Feature",  # from example_pb2
-    "Features",  # from example_pb2
-    "FeatureList",  # from example_pb2
-    "FeatureLists",  # from example_pb2
-    "FloatList",  # from example_pb2.
-    "Int64List",  # from example_pb2.
-    "JobDef",
-    "SaverDef",  # From saver_pb2.
-    "SequenceExample",  # from example_pb2.
-    "ServerDef",
-]
-
 # pylint: disable=undefined-variable
 tf_export("train.BytesList")(BytesList)
 tf_export("train.ClusterDef")(ClusterDef)
@@ -257,13 +138,7 @@ tf_export("train.FeatureLists")(FeatureLists)
 tf_export("train.FloatList")(FloatList)
 tf_export("train.Int64List")(Int64List)
 tf_export("train.JobDef")(JobDef)
-tf_export("train.SaverDef")(SaverDef)
+tf_export(v1=["train.SaverDef"])(SaverDef)
 tf_export("train.SequenceExample")(SequenceExample)
 tf_export("train.ServerDef")(ServerDef)
 # pylint: enable=undefined-variable
-
-# Include extra modules for docstrings because:
-# * Input methods in tf.train are documented in io_ops.
-# * Saver methods in tf.train are documented in state_ops.
-remove_undocumented(__name__, _allowed_symbols,
-                    [_sys.modules[__name__], _io_ops, _sdca_ops, _state_ops])

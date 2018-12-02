@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -36,46 +35,42 @@ namespace xla {
 // infeed.
 class GenericTransferManager : public TransferManager {
  public:
-  GenericTransferManager(perftools::gputools::Platform::Id platform_id,
-                         size_t pointer_size);
+  GenericTransferManager(se::Platform::Id platform_id, size_t pointer_size);
   ~GenericTransferManager() override {}
 
-  perftools::gputools::Platform::Id PlatformId() const override;
+  se::Platform::Id PlatformId() const override;
 
-  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
-      perftools::gputools::StreamExecutor* executor,
+  void TransferLiteralFromDevice(se::Stream* stream,
+                                 const ShapedBuffer& device_buffer,
+                                 MutableBorrowingLiteral literal,
+                                 std::function<void(Status)> done) override;
+
+  Status TransferLiteralToDeviceAsync(
+      se::Stream* stream, const LiteralSlice& literal,
       const ShapedBuffer& device_buffer) override;
 
-  Status TransferLiteralToDevice(perftools::gputools::StreamExecutor* executor,
-                                 const Literal& literal,
-                                 const ShapedBuffer& device_buffer) override;
+  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                 const LiteralSlice& literal) override;
+  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
+                                    const Shape& literal_shape,
+                                    MutableBorrowingLiteral literal) override;
 
-  Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
-                                 const Literal& literal) override;
-  Status TransferLiteralFromOutfeed(
-      perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
-      Literal* literal) override;
-
-  Status ResetDevices(
-      tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-          executors) override;
+  Status ResetDevices(absl::Span<se::StreamExecutor* const> executors) override;
 
   int64 GetByteSizeRequirement(const Shape& shape) const override;
 
  protected:
-  Status TransferBufferToInfeed(perftools::gputools::StreamExecutor* executor,
-                                int64 size, const void* source) override;
-
   Status WriteSingleTupleIndexTable(
-      perftools::gputools::StreamExecutor* executor,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          elements,
-      const Shape& shape,
-      perftools::gputools::DeviceMemoryBase* region) override;
+      se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
+      const Shape& shape, se::DeviceMemoryBase* region) override;
 
  private:
+  Status TransferLiteralFromDeviceInternal(se::StreamExecutor* executor,
+                                           const ShapedBuffer& device_buffer,
+                                           MutableBorrowingLiteral literal);
+
   // The platform this transfer manager targets.
-  const perftools::gputools::Platform::Id platform_id_;
+  const se::Platform::Id platform_id_;
 
   // The size in bytes of pointers on this platform.
   const size_t pointer_size_;

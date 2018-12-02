@@ -23,13 +23,16 @@ import os
 import weakref
 
 from tensorflow.python.eager import context
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.layers import base
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
+from tensorflow.python.util import deprecation
+from tensorflow.python.util import function_utils
 
 # pylint: disable=protected-access
 # Explanation for protected-access disable: Network has lots of same-class and
@@ -51,8 +54,39 @@ def _network_name_scope_naming(current_variable_scope):
   return current_variable_scope.name + "/"
 
 
+_NETWORK_DEPRECATION_MESSAGE = (
+    "Please inherit from `tf.keras.Model`, and see its documentation for "
+    "details. `tf.keras.Model` should be a drop-in replacement for "
+    "`tfe.Network` in most cases, but note that `track_layer` is no longer "
+    "necessary or supported. Instead, `Layer` instances are tracked on "
+    "attribute assignment (see the section of `tf.keras.Model`'s documentation "
+    "on subclassing). Since the output of `track_layer` is often assigned to "
+    "an attribute anyway, most code can be ported by simply removing the "
+    "`track_layer` calls.\n\n`tf.keras.Model` works with all TensorFlow "
+    "`Layer` instances, including those from `tf.layers`, but switching to "
+    "the `tf.keras.layers` versions along with the migration to "
+    "`tf.keras.Model` is recommended, since it will preserve variable names. "
+    "Feel free to import it with an alias to avoid excess typing :)."
+)
+
+
 class Network(base.Layer):
   """Represents the composition of a set of Layers.
+
+  *Deprecated*. Please inherit from `tf.keras.Model`, and see its documentation
+  for details. `tf.keras.Model` should be a drop-in replacement for
+  `tfe.Network` in most cases, but note that `track_layer` is no longer
+  necessary or supported. Instead, `Layer` instances are tracked on attribute
+  assignment (see the section of `tf.keras.Model`'s documentation on
+  subclassing). Since the output of `track_layer` is often assigned to an
+  attribute anyway, most code can be ported by simply removing the `track_layer`
+  calls.
+
+  `tf.keras.Model` works with all TensorFlow `Layer` instances, including those
+  from `tf.layers`, but switching to the `tf.keras.layers` versions along with
+  the migration to `tf.keras.Model` is recommended, since it will preserve
+  variable names.  Feel free to import it with an alias to avoid excess typing
+  :).
 
   `Network` implements the `Layer` interface and adds convenience methods for
   managing sub-`Layer`s, such as listing variables.
@@ -111,6 +145,7 @@ class Network(base.Layer):
   # - Detect layers used in __call__ that weren't registered with track_layer.
   # - Convert inputs to __call__ to tensors.
 
+  @deprecation.deprecated(date=None, instructions=_NETWORK_DEPRECATION_MESSAGE)
   def __init__(self, name=None):
     """Configure the `Network`.
 
@@ -129,6 +164,10 @@ class Network(base.Layer):
       ValueError: If `name` is not valid. Note that some naming errors will
         instead be raised when the `Network` is called.
     """
+    if context.executing_eagerly():
+      logging.warning(
+          ("** tfe.Network is deprecated and will be removed in a future "
+           "version.\n\n%s") % _NETWORK_DEPRECATION_MESSAGE)
     if isinstance(name, variable_scope.VariableScope):
       raise ValueError("VariableScopes are not valid Network names.")
     if name is not None and "/" in name:
@@ -149,7 +188,12 @@ class Network(base.Layer):
     # check we might have name collisions if the parent scope on init gets
     # closed before build is called.
     self._variable_scope_counts_on_init = (
-        variable_scope._get_default_variable_store().variable_scopes_count)
+        variable_scope.get_variable_scope_store().variable_scopes_count)
+
+  def _gather_saveables_for_checkpoint(self):
+    raise NotImplementedError(
+        "tfe.Network does not support object-based checkpointing.\n\n%s"
+        % _NETWORK_DEPRECATION_MESSAGE)
 
   def _name_scope_name(self, current_variable_scope):
     """Overrides Layer op naming to match variable naming."""
@@ -176,7 +220,7 @@ class Network(base.Layer):
         avoid_names = parent_network._owned_layers
         name_uid_map = parent_network._sub_layer_name_uids
       else:
-        name_uid_map = base._get_default_graph_uid_map()
+        name_uid_map = base_layer_utils.get_default_graph_uid_map()
         # Figure out which names we have to avoid based on which variable scope
         # we're nested in.
         strip_name = self._default_parent_variable_scope.name
@@ -326,6 +370,8 @@ class Network(base.Layer):
       raise TypeError(
           "Network.track_layer() passed type %s, not a tf.layers.Layer" %
           (type(layer),))
+    # Always use `ResourceVariable` with legacy layers.
+    layer._use_resource_variables = True
     if isinstance(layer, Network):
       layer._finalize_name(parent_network=self)
     else:
@@ -499,10 +545,10 @@ class Sequential(Network):
 
   def add(self, layer_func):
     if isinstance(layer_func, base.Layer):
-      args = estimator_util.fn_args(layer_func.call)
+      args = function_utils.fn_args(layer_func.call)
       self.track_layer(layer_func)
     elif callable(layer_func):
-      args = estimator_util.fn_args(layer_func)
+      args = function_utils.fn_args(layer_func)
     else:
       raise TypeError(
           "Sequential.add() takes only tf.layers.Layer objects or callables; "
@@ -703,6 +749,9 @@ def _make_prefix_stripping_map_fn(scope_name):
   return _strip_variable_prefix
 
 
+@deprecation.deprecated(date=None, instructions=(
+    "Please inherit from tf.keras.Model instead of tfe.Network, and use "
+    "tf.keras.Model.save_weights."))
 def save_network_checkpoint(
     network, save_path, global_step=None, map_func=None):
   """Save variables from the Network to a checkpoint.
@@ -902,6 +951,9 @@ def _set_restore_on_create(network, save_path, map_func, user_map_func,
     _add_deferred_restoration(network, deferred_restoration)
 
 
+@deprecation.deprecated(date=None, instructions=(
+    "Please inherit from tf.keras.Model instead of tfe.Network, and use "
+    "tf.keras.Model.load_weights."))
 def restore_network_checkpoint(network, save_path, map_func=None):
   """Restore the Network from a checkpoint.
 

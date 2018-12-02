@@ -28,6 +28,7 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
@@ -36,7 +37,7 @@ class InverseOpTest(test.TestCase):
   def _verifyInverse(self, x, np_type):
     for adjoint in False, True:
       y = x.astype(np_type)
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         # Verify that x^{-1} * x == Identity matrix.
         inv = linalg_ops.matrix_inverse(y, adjoint=adjoint)
         tf_ans = math_ops.matmul(inv, y, adjoint_b=adjoint)
@@ -45,7 +46,7 @@ class InverseOpTest(test.TestCase):
           tiling = list(y.shape)
           tiling[-2:] = [1, 1]
           np_ans = np.tile(np_ans, tiling)
-        out = tf_ans.eval()
+        out = self.evaluate(tf_ans)
         self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
         self.assertShapeEqual(y, tf_ans)
 
@@ -114,7 +115,7 @@ class InverseOpTest(test.TestCase):
 
   def testNotInvertible(self):
     # The input should be invertible.
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Input is not invertible."):
         # All rows of the matrix below add to zero.
         tensor3 = constant_op.constant([[1., 0., -1.], [-1., 1., 0.],
@@ -137,7 +138,7 @@ class InverseOpTest(test.TestCase):
           self._verifyInverseReal(matrix)
 
   def testConcurrentExecutesWithoutError(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       all_ops = []
       for adjoint_ in True, False:
         matrix1 = random_ops.random_normal([5, 5], seed=42)
@@ -145,7 +146,7 @@ class InverseOpTest(test.TestCase):
         inv1 = linalg_ops.matrix_inverse(matrix1, adjoint=adjoint_)
         inv2 = linalg_ops.matrix_inverse(matrix2, adjoint=adjoint_)
         all_ops += [inv1, inv2]
-      inv = sess.run(all_ops)
+      inv = self.evaluate(all_ops)
       self.assertAllEqual(inv[0], inv[1])
       self.assertAllEqual(inv[2], inv[3])
 
@@ -179,7 +180,7 @@ class MatrixInverseBenchmark(test.Benchmark):
     for adjoint in False, True:
       for shape in self.shapes:
         with ops.Graph().as_default(), \
-            session.Session() as sess, \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device("/cpu:0"):
           matrix = self._GenerateMatrix(shape)
           inv = linalg_ops.matrix_inverse(matrix, adjoint=adjoint)
@@ -193,7 +194,7 @@ class MatrixInverseBenchmark(test.Benchmark):
 
         if test.is_gpu_available(True):
           with ops.Graph().as_default(), \
-              session.Session() as sess, \
+              session.Session(config=benchmark.benchmark_config()) as sess, \
               ops.device("/gpu:0"):
             matrix = self._GenerateMatrix(shape)
             inv = linalg_ops.matrix_inverse(matrix, adjoint=adjoint)

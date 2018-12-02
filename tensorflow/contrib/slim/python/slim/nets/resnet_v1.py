@@ -207,7 +207,7 @@ def resnet_v1(inputs,
         net = resnet_utils.stack_blocks_dense(net, blocks, output_stride)
         if global_pool:
           # Global average pooling.
-          net = math_ops.reduce_mean(net, [1, 2], name='pool5', keep_dims=True)
+          net = math_ops.reduce_mean(net, [1, 2], name='pool5', keepdims=True)
         if num_classes is not None:
           net = layers.conv2d(
               net,

@@ -161,7 +161,7 @@ def _sliced_wasserstein(a, b, random_sampling_count, random_projection_dim):
     proj = random_ops.random_normal(
         [array_ops.shape(a)[1], random_projection_dim])
     proj *= math_ops.rsqrt(
-        math_ops.reduce_sum(math_ops.square(proj), 0, keep_dims=True))
+        math_ops.reduce_sum(math_ops.square(proj), 0, keepdims=True))
     # Project both distributions and sort them.
     proj_a = math_ops.matmul(a, proj)
     proj_b = math_ops.matmul(b, proj)
@@ -212,7 +212,7 @@ def sliced_wasserstein_distance(real_images,
   Args:
       real_images: (tensor) Real images (batch, height, width, channels).
       fake_images: (tensor) Fake images (batch, height, width, channels).
-      resolution_min: (int) Minimum resolution for the Laplacion pyramid.
+      resolution_min: (int) Minimum resolution for the Laplacian pyramid.
       patches_per_image: (int) Number of patches to extract per image per
         Laplacian level.
       patch_size: (int) Width of a square patch.
@@ -221,7 +221,7 @@ def sliced_wasserstein_distance(real_images,
       use_svd: experimental method to compute a more accurate distance.
   Returns:
       List of tuples (distance_real, distance_fake) for each level of the
-      Laplacian pyramid from the highest resoluion to the lowest.
+      Laplacian pyramid from the highest resolution to the lowest.
         distance_real is the Wasserstein distance between real images
         distance_fake is the Wasserstein distance between real and fake images.
   Raises:

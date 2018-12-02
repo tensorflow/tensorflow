@@ -15,21 +15,26 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 #define TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 
+#include <deque>
 #include <memory>
+#include <unordered_map>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/tracing.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
@@ -38,6 +43,18 @@ limitations under the License.
 #define TF_CALL_DATASET_TYPES(m) TF_CALL_ALL_TYPES(m) TF_CALL_QUANTIZED_TYPES(m)
 
 namespace tensorflow {
+
+// Forward declarations to avoid introducing a dependency on headers in
+// "tensorflow/core/graph/...".
+class GraphDefBuilder;
+class Node;
+
+namespace data {
+// A constant that can be used to enable auto-tuning.
+constexpr int kAutoTune = -1;
+
+class DatasetBase;
+class SerializationContext;
 
 // Interface for reading values from a key-value store.
 // Used for restoring iterator state.
@@ -61,12 +78,6 @@ class IteratorStateWriter {
 
   virtual ~IteratorStateWriter() {}
 };
-
-// Forward declarations to avoid introducing a dependency on headers in
-// "tensorflow/core/graph/...".
-class GraphDefBuilder;
-class GraphDatasetBase;
-class Node;
 
 // Wrapper around GraphDefBuilder. Used to serialize Dataset graph.
 class GraphDefBuilderWrapper {
@@ -107,10 +118,11 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
-  // Adds a Const node with Tensor value to the Graph.
+  // Adds a `Const` node for the given tensor value to the graph.
+  //
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
-  // non-null if the method returns with an OK status.
-  // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
+  // non-null if the method returns with an OK status. The returned `Node`
+  // pointer is owned by the backing graph of `GraphDefBuilder`.
   Status AddTensor(const Tensor& val, Node** output) {
     AddTensorInternal(val, output);
     if (*output == nullptr) {
@@ -119,7 +131,21 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
-  Status AddDataset(const GraphDatasetBase* dataset,
+  // Adds a `Placeholder` node for the given tensor value to the graph.
+  //
+  // `*output` contains a pointer to the output `Node`. It is guaranteed to be
+  // non-null if the method returns with an OK status. The returned `Node`
+  // pointer is owned by the backing graph of `GraphDefBuilder`.
+  Status AddPlaceholder(const Tensor& val, Node** output) {
+    AddPlaceholderInternal(val, output);
+    if (*output == nullptr) {
+      return errors::Internal(
+          "AddPlaceholder: Failed to build Placeholder op.");
+    }
+    return Status::OK();
+  }
+
+  Status AddDataset(const DatasetBase* dataset,
                     const std::vector<Node*>& inputs, Node** output) {
     return AddDataset(dataset, inputs, {}, output);
   }
@@ -132,7 +158,7 @@ class GraphDefBuilderWrapper {
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
   // non-null if the method returns with an OK status.
   // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
-  Status AddDataset(const GraphDatasetBase* dataset,
+  Status AddDataset(const DatasetBase* dataset,
                     const std::vector<Node*>& inputs,
                     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
                     Node** output) {
@@ -144,7 +170,7 @@ class GraphDefBuilderWrapper {
   }
 
   Status AddDataset(
-      const GraphDatasetBase* dataset,
+      const DatasetBase* dataset,
       const std::vector<std::pair<size_t, Node*>>& inputs,
       const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
       const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
@@ -153,10 +179,11 @@ class GraphDefBuilderWrapper {
   // Adds a user-defined function with name `function_name` to the graph and
   // recursively adds all functions it references. If a function with a matching
   // name has already been added, returns with OK status. If a user-defined with
-  // name `function_name` is not found in the FunctionLibraryDefinition, returns
-  // an InvalidArgumentError. If the function with name `function_name` or any
-  // of its dependent functions are stateful, returns an InvalidArgument error.
-  Status AddFunction(OpKernelContext* ctx, const string& function_name);
+  // name `function_name` is not found in the context's function library,
+  // returns an InvalidArgumentError. If the function with name `function_name`
+  // or any of its dependent functions are stateful, and the context does not
+  // explicitly permit stateful functions, returns an InvalidArgument error.
+  Status AddFunction(SerializationContext* ctx, const string& function_name);
 
   template <typename T>
   void BuildAttrValue(const T& value, AttrValue* attr) {
@@ -164,20 +191,19 @@ class GraphDefBuilderWrapper {
   }
 
  private:
+  void AddPlaceholderInternal(const Tensor& val, Node** output);
   void AddTensorInternal(const Tensor& val, Node** output);
 
-  Status EnsureFunctionIsStateless(OpKernelContext* ctx,
+  Status EnsureFunctionIsStateless(const FunctionLibraryDefinition& flib_def,
                                    const string& function_name) const {
-    const FunctionLibraryDefinition* lib_def =
-        ctx->function_library()->GetFunctionLibraryDefinition();
-    const FunctionDef* function_def = lib_def->Find(function_name);
+    const FunctionDef* function_def = flib_def.Find(function_name);
     if (!function_def) {
       return errors::InvalidArgument("Unable to find FunctionDef for ",
                                      function_name, " in registry.");
     }
     for (const NodeDef& node_def : function_def->node_def()) {
       const OpDef* op_def;
-      TF_RETURN_IF_ERROR(lib_def->LookUpOpDef(node_def.op(), &op_def));
+      TF_RETURN_IF_ERROR(flib_def.LookUpOpDef(node_def.op(), &op_def));
       // TODO(b/65524810): Hack to allow functions to capture Dataset op
       // nodes needed for FlatMap. Currently, source datasets nodes have been
       // marked stateful to avoid constant folding since we do not have a
@@ -201,11 +227,10 @@ class GraphDefBuilderWrapper {
   // Also looks up the `op_def->name` in the global
   // `WhitelistedStatefulOpRegistry`.
   bool IsOpWhitelisted(const OpDef* op_def) const {
-    return (StringPiece(op_def->name()).ends_with("Dataset") &&
+    return (str_util::EndsWith(op_def->name(), "Dataset") &&
             op_def->output_arg_size() == 1 &&
             op_def->output_arg(0).type() == DT_VARIANT) ||
-           dataset::WhitelistedStatefulOpRegistry::Global()->Contains(
-               op_def->name());
+           WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
   }
 
   bool HasAttr(const string& op_type_name, const string& attr_name) const;
@@ -219,7 +244,8 @@ class GraphDefBuilderWrapper {
     return false;
   }
 
-  Status AddAttrFunctions(const AttrValue& attr_value, OpKernelContext* ctx) {
+  Status AddAttrFunctions(SerializationContext* ctx,
+                          const AttrValue& attr_value) {
     if (attr_value.has_func()) {
       TF_RETURN_IF_ERROR(AddFunction(ctx, attr_value.func().name()));
     } else if (attr_value.has_list()) {
@@ -234,72 +260,85 @@ class GraphDefBuilderWrapper {
 };
 
 class StatsAggregator;
+class FunctionHandleCache;
 
-// A cut-down version of OpKernelContext for running computations in
-// iterators. Note that we cannot simply use OpKernelContext here
-// because we might run computation in an iterator whose lifetime is
-// not nested within the lifetime of a single OpKernelContext
-// (e.g. asynchronous prefetching).
+// A cut-down version of `OpKernelContext` for running computations in
+// iterators. Note that we cannot simply use `OpKernelContext` here because we
+// might run computation in an iterator whose lifetime is not nested within the
+// lifetime of a single `OpKernelContext` (e.g. asynchronous prefetching).
 //
-// TODO(mrry): We will probably need to support more of
-// OpKernelContext here. For example, should allocation be handled by
-// the IteratorContext?
-// TODO(mrry): We're making some daring assumptions about the lifetime
-// of the runner passed in here. A runner will be deleted when the original
-// step ends, but all existing runners only close over session-lifetime (or
-// longer-lived) state, so we can make a copy of the function. There's nothing
-// in the definition of the API from which we took the runner to guarantee that
-// what we are doing is safe. We should formalize the properties here.
+// TODO(mrry): We're making some daring assumptions about the lifetime of the
+// runner passed in here. A runner will be deleted when the original step ends,
+// but all existing runners only close over session-lifetime (or longer-lived)
+// state, so we can make a copy of the function. There's nothing in the
+// definition of the API from which we took the runner to guarantee that what we
+// are doing is safe. We should formalize the properties here.
 class IteratorContext {
  public:
   struct Params {
+    explicit Params(IteratorContext* ctx)
+        : allocator_getter(ctx->allocator_getter()),
+          env(ctx->env()),
+          function_library(ctx->function_library()),
+          lib(ctx->lib()),
+          function_handle_cache(ctx->function_handle_cache()),
+          model(ctx->model()),
+          runner(*(ctx->runner())),
+          runner_threadpool_size(ctx->runner_threadpool_size()),
+          stats_aggregator(ctx->stats_aggregator()) {}
+
+    explicit Params(OpKernelContext* ctx)
+        : env(ctx->env()),
+          lib(ctx->function_library()),
+          runner(*(ctx->runner())) {
+      // NOTE: need reinterpret_cast because function.h forward-declares Device.
+      DeviceBase* device =
+          reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
+      allocator_getter = [device](AllocatorAttributes attrs) {
+        return device->GetAllocator(attrs);
+      };
+      thread::ThreadPool* thread_pool =
+          ctx->device()->tensorflow_device_thread_pool();
+      if (thread_pool) {
+        runner_threadpool_size = thread_pool->NumThreads();
+      } else {
+        runner_threadpool_size = port::NumSchedulableCPUs();
+      }
+    }
+
+    // The Allocator to be used to allocate the output of an iterator.
+    std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
+
     // Interface to operating system functionality.
-    Env* env;
+    Env* env = nullptr;
+
+    // The FunctionLibraryDefinition used to look up user-defined functions.
+    std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
+
+    // The FunctionLibraryRuntime object to be used to make function calls.
+    FunctionLibraryRuntime* lib = nullptr;
+
+    // A FunctionHandleCache that owns all the function handles. Not owned.
+    FunctionHandleCache* function_handle_cache = nullptr;
+
+    // If non-null, identifies the object used for performance modeling.
+    std::shared_ptr<model::Model> model = nullptr;
 
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
 
-    // A function that returns the current `StatsAggregator` instance to be
-    // used when recording statistics about the iterator.
-    //
-    // NOTE(mrry): This is somewhat awkward, because (i) the `StatsAggregator`
-    // is a property of the `IteratorResource` (which this class does not know
-    // about), and (ii) it can change after the `IteratorContext` has been
-    // created. Better suggestions are welcome!
-    std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter =
-        nullptr;
+    // Number of threads used for executing user-defined functions.
+    int32 runner_threadpool_size = 0;
 
-    // The FunctionLibraryRuntime object to be used to make function calls.
-    FunctionLibraryRuntime* lib = nullptr;
-    std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
-
-    // The Allocator to be used to allocate the output of an iterator.
-    std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
+    // The `StatsAggregator` object to record statistics about the iterator.
+    std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
   };
 
+  explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
+
+  explicit IteratorContext(OpKernelContext* ctx) : params_(Params{ctx}) {}
+
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
-
-  Env* env() const { return params_.env; }
-
-  std::function<void(std::function<void()>)>* runner() {
-    return &params_.runner;
-  }
-
-  std::shared_ptr<StatsAggregator> stats_aggregator() {
-    if (params_.stats_aggregator_getter) {
-      return params_.stats_aggregator_getter();
-    } else {
-      return nullptr;
-    }
-  }
-
-  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
-    return params_.function_library;
-  }
-
-  FunctionLibraryRuntime* lib() { return params_.lib; }
-
-  void set_lib(FunctionLibraryRuntime* lib) { params_.lib = lib; }
 
   Allocator* allocator(AllocatorAttributes attrs) {
     return params_.allocator_getter(attrs);
@@ -309,12 +348,59 @@ class IteratorContext {
     return params_.allocator_getter;
   }
 
-  std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter() {
-    return params_.stats_aggregator_getter;
+  Env* env() const { return params_.env; }
+
+  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
+    return params_.function_library;
   }
+
+  FunctionLibraryRuntime* lib() { return params_.lib; }
+
+  FunctionHandleCache* function_handle_cache() {
+    return params_.function_handle_cache;
+  }
+
+  const std::shared_ptr<model::Model>& model() { return params_.model; }
+
+  std::function<void(std::function<void()>)>* runner() {
+    return &params_.runner;
+  }
+
+  int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
+
+  std::shared_ptr<StatsAggregator> stats_aggregator() {
+    return params_.stats_aggregator;
+  }
+
+  Params params() { return params_; }
 
  private:
   Params params_;
+};
+
+// Aggregates runtime support needed for dataset and iterator serialization.
+class SerializationContext {
+ public:
+  struct Params {
+    const FunctionLibraryDefinition* flib_def = nullptr;           // Not owned.
+    std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
+    bool optimization_only = false;
+  };
+
+  explicit SerializationContext(Params params) : params_(std::move(params)) {}
+
+  const FunctionLibraryDefinition& flib_def() { return *params_.flib_def; }
+
+  std::vector<std::pair<string, Tensor>>* input_list() {
+    return params_.input_list;
+  }
+
+  bool optimization_only() { return params_.optimization_only; }
+
+ private:
+  Params params_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(SerializationContext);
 };
 
 // Represents the current position in a range of outputs, where the
@@ -322,7 +408,11 @@ class IteratorContext {
 // defined below.
 class IteratorBase {
  public:
-  virtual ~IteratorBase() {}
+  virtual ~IteratorBase() {
+    for (auto rit = cleanup_fns_.rbegin(); rit != cleanup_fns_.rend(); ++rit) {
+      (*rit)();
+    }
+  }
 
   // Gets the next output from the range that this iterator is traversing.
   //
@@ -341,6 +431,11 @@ class IteratorBase {
   virtual Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) = 0;
 
+  Status GetNext(IteratorContext&& ctx, std::vector<Tensor>* out_tensors,
+                 bool* end_of_sequence) {
+    return GetNext(&ctx, out_tensors, end_of_sequence);
+  }
+
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
   // iterator.
@@ -351,8 +446,16 @@ class IteratorBase {
   // in the outputs of this iterator.
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
+  // Returns a string that identifies the sequence of iterators leading up to
+  // this iterator.
+  virtual const string& prefix() const = 0;
+
+  // Performs initialization that needs to happen outside of a constructor to
+  // properly propagate errors.
+  virtual Status Initialize(IteratorContext* ctx) { return Status::OK(); }
+
   // Saves the state of this iterator.
-  virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) {
+  virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
     return SaveInternal(writer);
   }
 
@@ -362,20 +465,22 @@ class IteratorBase {
   }
 
  protected:
+  // Returns a node that models this iterator.
+  virtual std::shared_ptr<model::Node> CreateNode(
+      IteratorContext* ctx, model::Node::Args args) const = 0;
+
   // This is needed so that sub-classes of IteratorBase can call
-  // `SaveInternal` on their parent iterators, e.g., in
-  // `RepeatDataasetOp::Dataset`.
-  Status SaveParent(IteratorStateWriter* writer,
-                    const std::unique_ptr<IteratorBase>& parent) {
-    return parent->SaveInternal(writer);
+  // `SaveInternal` on their input iterators.
+  Status SaveInput(IteratorStateWriter* writer,
+                   const std::unique_ptr<IteratorBase>& input) {
+    return input->SaveInternal(writer);
   }
 
   // This is needed so that sub-classes of IteratorBase can call
-  // `RestoreInternal` on their parent iterators, e.g., in
-  // `RepeatDataasetOp::Dataset`.
-  Status RestoreParent(IteratorContext* ctx, IteratorStateReader* reader,
-                       const std::unique_ptr<IteratorBase>& parent) {
-    return parent->RestoreInternal(ctx, reader);
+  // `RestoreInternal` on their input iterators.
+  Status RestoreInput(IteratorContext* ctx, IteratorStateReader* reader,
+                      const std::unique_ptr<IteratorBase>& input) {
+    return input->RestoreInternal(ctx, reader);
   }
 
   // Saves the state of this iterator recursively.
@@ -388,12 +493,59 @@ class IteratorBase {
                                  IteratorStateReader* reader) {
     return errors::Unimplemented("RestoreInternal");
   }
+
+ private:
+  friend class DatasetBase;  // for access to `AddCleanupFunction`
+  friend class DatasetBaseIterator;  // for access to `node_`
+
+  // Registers a cleanup function to be called upon object destruction.
+  //
+  // Registered functions are invoked in the reserve order of registration.
+  void AddCleanupFunction(std::function<void()>&& cleanup_fn) {
+    cleanup_fns_.push_back(std::move(cleanup_fn));
+  }
+
+  // Associates the given performance modeling `Node` with this iterator.
+  void SetNode(std::shared_ptr<model::Node> node) { node_ = node.get(); }
+
+  std::vector<std::function<void()>> cleanup_fns_;
+  model::Node* node_ = nullptr;  // Not owned.
+};
+
+// Represents runtime information needed to construct a dataset.
+class DatasetContext {
+ public:
+  struct Params {
+    string name;
+  };
+
+  explicit DatasetContext(Params params) : params_(std::move(params)) {}
+
+  explicit DatasetContext(OpKernelContext* ctx) {
+    params_.name = ctx->op_kernel().type_string();
+  }
+
+  const string& name() const { return params_.name; }
+
+ private:
+  Params params_;
 };
 
 // Represents a (potentially infinite) range of outputs, where each
 // output is a tuple of tensors.
 class DatasetBase : public core::RefCounted {
  public:
+  // Key for storing the Dataset graph in the serialized format.
+  TF_EXPORT static const char kDatasetGraphKey[];
+
+  // Key for storing the output node of the Dataset graph in the serialized
+  // format.
+  TF_EXPORT static const char kDatasetGraphOutputNodeKey[];
+
+  explicit DatasetBase(DatasetContext&& ctx) : name_(ctx.name()) {}
+
+  const string& name() const { return name_; }
+
   // Returns a new iterator for iterating over the range of elements in
   // this dataset.
   //
@@ -402,12 +554,25 @@ class DatasetBase : public core::RefCounted {
   // iterator will traverse all elements in this dataset from the
   // start.
   //
-  // Ownership of the created iterator will be transferred to the caller.
-  //
   // The prefix identifies the sequence of iterators leading up to the newly
   // created iterator.
-  virtual std::unique_ptr<IteratorBase> MakeIterator(
-      const string& prefix) const = 0;
+  Status MakeIterator(IteratorContext* ctx, const string& output_prefix,
+                      std::unique_ptr<IteratorBase>* iterator) const {
+    *iterator = MakeIteratorInternal(output_prefix);
+    if (const auto& model = ctx->model()) {
+      const string& prefix = (*iterator)->prefix();
+      (*iterator)->SetNode(model->AddNode(MakeNodeFactory(ctx, iterator->get()),
+                                          prefix, output_prefix));
+      (*iterator)->AddCleanupFunction(
+          [model, prefix]() { model->RemoveNode(prefix); });
+    }
+    return (*iterator)->Initialize(ctx);
+  }
+
+  Status MakeIterator(IteratorContext&& ctx, const string& output_prefix,
+                      std::unique_ptr<IteratorBase>* iterator) const {
+    return MakeIterator(&ctx, output_prefix, iterator);
+  }
 
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
@@ -420,96 +585,61 @@ class DatasetBase : public core::RefCounted {
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
   // A human-readable debug string for this dataset.
-  virtual string DebugString() = 0;
+  virtual string DebugString() const = 0;
 
   // Serializes the dataset and writes it to the `writer`.
-  virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) const {
-    return errors::Unimplemented("DatasetBase::Save");
-  }
+  virtual Status Save(SerializationContext* ctx,
+                      IteratorStateWriter* writer) const;
 
  protected:
-  // TODO(srbs): Ideally all graph related logic should reside in
-  // GraphDatasetBase. However, that would require Datasets defined in all ops
-  // to derive from GraphDatasetBase. Once that is done we can move
-  // DatasetGraphDefBuilder and AsGraphDefInternal to GraphDatasetBase.
+  friend class DatasetToGraphOp;  // For access to graph related members.
+
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
    public:
     DatasetGraphDefBuilder(GraphDefBuilder* b) : GraphDefBuilderWrapper(b) {}
-    Status AddParentDataset(OpKernelContext* ctx, const DatasetBase* dataset,
-                            Node** output) {
-      return dataset->AsGraphDefInternal(ctx, this, output);
-    }
+    Status AddInputDataset(SerializationContext* ctx,
+                           const DatasetBase* dataset, Node** output);
   };
 
-  virtual Status AsGraphDefInternal(OpKernelContext* ctx,
+  // TODO(jsimsa): Consolidate overloading into a single method.
+  virtual Status AsGraphDefInternal(SerializationContext* ctx,
                                     DatasetGraphDefBuilder* b,
-                                    Node** node) const {
-    return AsGraphDefInternal(b, node);
-  }
+                                    Node** node) const = 0;
 
-  virtual Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
-                                    Node** node) const {
-    return errors::Unimplemented("AsGraphDefInternal");
-  }
-};
-
-// Base-class for datasets that are built by ops.
-class GraphDatasetBase : public DatasetBase {
- public:
-  GraphDatasetBase(OpKernelContext* ctx)
-      : op_name_(ctx->op_kernel().type_string()) {}
-
-  const string op_name() const { return op_name_; }
-
-  Status Save(OpKernelContext* ctx,
-              IteratorStateWriter* writer) const override {
-    string serialized_graph_def;
-    string output_node;
-    TF_RETURN_IF_ERROR(Serialize(ctx, &serialized_graph_def, &output_node));
-    TF_RETURN_IF_ERROR(
-        writer->WriteScalar(kDatasetGraphKey, serialized_graph_def));
-    TF_RETURN_IF_ERROR(
-        writer->WriteScalar(kDatasetGraphOutputNodeKey, output_node));
-    return Status::OK();
-  }
-
-  // Key for storing the Dataset graph in the serialized format.
-  TF_EXPORT static const char kDatasetGraphKey[];
-
-  // Key for storing the output node of the Dataset graph in the serialized
-  // format.
-  TF_EXPORT static const char kDatasetGraphOutputNodeKey[];
+  virtual std::unique_ptr<IteratorBase> MakeIteratorInternal(
+      const string& prefix) const = 0;
 
  private:
-  Status Serialize(OpKernelContext* ctx, string* serialized_graph_def,
-                   string* output_node) const;
+  // Returns a factory for nodes that represent the given iterator.
+  static model::Node::Factory MakeNodeFactory(IteratorContext* ctx,
+                                              IteratorBase* iterator) {
+    return [ctx, iterator](model::Node::Args args) {
+      return iterator->CreateNode(ctx, std::move(args));
+    };
+  }
 
-  const string op_name_;
+  const string name_;
 };
 
-// Represents an iterator that is associated with a particular parent dataset.
-template <class DatasetType>
-class DatasetIterator : public IteratorBase {
+// Represents an iterator that is associated with a particular dataset.
+class DatasetBaseIterator : public IteratorBase {
  public:
-  struct Params {
-    // Owns one reference on the shared dataset resource.
-    const DatasetType* dataset;
+  struct BaseParams {
+    // Owns one reference on the shared dataset object.
+    const DatasetBase* dataset;
 
     // Identifies the sequence of iterators leading up to this iterator.
     const string prefix;
   };
 
-  explicit DatasetIterator(const Params& params) : params_(params) {
+  explicit DatasetBaseIterator(const BaseParams& params) : params_(params) {
     params_.dataset->Ref();
   }
 
-  ~DatasetIterator() override { params_.dataset->Unref(); }
-
-  // The dataset from which this iterator was created.
-  const DatasetType* dataset() const { return params_.dataset; }
+  ~DatasetBaseIterator() override { params_.dataset->Unref(); }
 
   // The sequence of iterators leading up to this iterator.
-  const string prefix() const { return params_.prefix; }
+  const string& prefix() const override { return params_.prefix; }
 
   const DataTypeVector& output_dtypes() const override {
     return params_.dataset->output_dtypes();
@@ -521,8 +651,11 @@ class DatasetIterator : public IteratorBase {
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final {
-    port::Tracing::TraceMe activity(params_.prefix);
+    tracing::ScopedActivity activity(params_.prefix);
+    RecordStart(ctx, true /* stop_output */);
     Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+    if (s.ok() && !*end_of_sequence) RecordElement(ctx);
+    RecordStop(ctx, true /* start_output */);
     if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
       s = errors::Internal(
           "Iterator \"", params_.prefix,
@@ -534,8 +667,8 @@ class DatasetIterator : public IteratorBase {
     return s;
   }
 
-  Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) final {
-    TF_RETURN_IF_ERROR(dataset()->Save(ctx, writer));
+  Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
+    TF_RETURN_IF_ERROR(params_.dataset->Save(ctx, writer));
     return IteratorBase::Save(ctx, writer);
   }
 
@@ -546,11 +679,79 @@ class DatasetIterator : public IteratorBase {
                                  bool* end_of_sequence) = 0;
 
   string full_name(const string& name) const {
-    return strings::StrCat(prefix(), ":", name);
+    return strings::StrCat(params_.prefix, ":", name);
+  }
+
+  // By default we model iterators using an unknown node, which acts as
+  // pass-through with respect to performance modeling.
+  std::shared_ptr<model::Node> CreateNode(
+      IteratorContext* ctx, model::Node::Args args) const override {
+    return model::MakeUnknownNode(std::move(args));
+  }
+
+  // When performance modeling is enabled, this method records the fact that
+  // this iterator has produced an element.
+  void RecordElement(IteratorContext* ctx) {
+    if (node_) {
+      node_->record_element();
+    }
+  }
+
+  // When performance modeling is enabled, this method records the fact that
+  // a thread of this iterator has started work.
+  void RecordStart(IteratorContext* ctx, bool stop_output = false) {
+    if (node_) {
+      int64 now_nanos = Env::Default()->NowNanos();
+      if (stop_output && node_->output()) {
+        node_->output()->record_stop(now_nanos);
+      }
+      node_->record_start(now_nanos);
+    }
+  }
+
+  // When performance modeling is enabled, this method records the fact that
+  // a thread of this iterator has stopped work.
+  void RecordStop(IteratorContext* ctx, bool start_output = false) {
+    if (node_) {
+      int64 now_nanos = Env::Default()->NowNanos();
+      node_->record_stop(now_nanos);
+      if (start_output && node_->output()) {
+        node_->output()->record_start(now_nanos);
+      }
+    }
   }
 
  private:
-  Params params_;
+  BaseParams params_;
+};
+
+// Represents an iterator that is associated with a particular dataset
+// with a particular type.
+template <class DatasetType>
+class DatasetIterator : public DatasetBaseIterator {
+ public:
+  struct Params {
+    // Borrowed pointer to the dataset.
+    const DatasetType* dataset;
+
+    // Identifies the sequence of iterators leading up to this iterator.
+    const string prefix;
+  };
+
+  explicit DatasetIterator(const Params& params)
+      : DatasetBaseIterator({params.dataset, params.prefix}),
+        typed_dataset_(params.dataset) {}
+
+  // The dataset from which this iterator was created.
+  const DatasetType* dataset() const { return typed_dataset_; }
+
+ protected:
+  virtual Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) = 0;
+
+ private:
+  const DatasetType* const typed_dataset_;  // Not owned.
 };
 
 // Encapsulates the work required to plug a DatasetBase into the core TensorFlow
@@ -574,6 +775,23 @@ class DatasetOpKernel : public OpKernel {
       return errors::InvalidArgument(argument_name, " must be a scalar");
     }
     *output = argument_t->scalar<T>()();
+    return Status::OK();
+  }
+
+  template <typename T>
+  Status ParseVectorArgument(OpKernelContext* ctx,
+                             const StringPiece& argument_name,
+                             std::vector<T>* output) {
+    const Tensor* argument_t;
+    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+    if (!TensorShapeUtils::IsVector(argument_t->shape())) {
+      return errors::InvalidArgument(argument_name, " must be a vector");
+    }
+    int size = argument_t->vec<T>().size();
+    output->reserve(size);
+    for (int i = 0; i < size; ++i) {
+      output->push_back(argument_t->vec<T>()(i));
+    }
     return Status::OK();
   }
 };
@@ -618,6 +836,52 @@ Status GetDatasetFromVariantTensor(const Tensor& tensor,
 //
 // The ownership of `dataset` is transferred to `tensor`.
 Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
+
+// A simple background worker that executes closures asynchronously and without
+// blocking.
+//
+// A `BackgroundWorker` is used to offload blocking work from an `AsyncOpKernel`
+// to avoid blocking an executor thread that may be required by the blocking
+// work.
+//
+// NOTE(mrry): We do not use a regular `tensorflow::thread::ThreadPool` for this
+// purpose because its current implementation (in Eigen) uses a finite-length
+// queue and will block the caller when full. This can lead to deadlock under
+// heavy load. Since the number of concurrent work items in each user of a
+// `BackgroundWorker` is at most one per op invocation, the dynamic allocation
+// overhead is tolerable.
+class BackgroundWorker {
+ public:
+  BackgroundWorker(Env* env, const string& name);
+
+  ~BackgroundWorker();
+
+  void Schedule(std::function<void()> work_item);
+
+ private:
+  void WorkerLoop();
+
+  std::unique_ptr<Thread> thread_;
+  mutex mu_;
+  condition_variable cond_var_;
+  bool cancelled_ GUARDED_BY(mu_) = false;
+  std::deque<std::function<void()>> work_queue_ GUARDED_BY(mu_);
+};
+
+}  // namespace data
+
+// TODO(b/114112161): Remove these aliases when all users have moved over to the
+// `tensorflow::data` namespace.
+using data::DatasetBase;
+using data::DatasetContext;
+using data::DatasetIterator;
+using data::DatasetOpKernel;
+using data::IteratorBase;
+using data::IteratorContext;
+using data::IteratorStateReader;
+using data::IteratorStateWriter;
+using data::SerializationContext;
+using data::UnaryDatasetOpKernel;
 
 }  // namespace tensorflow
 

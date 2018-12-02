@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 #define DISABLED_ON_CPU(X) X
-#define DISABLED_ON_CPU_PARALLEL(X) X
 #define DISABLED_ON_GPU(X) X
 #define DISABLED_ON_INTERPRETER(X) X
 
@@ -50,13 +49,6 @@ limitations under the License.
 # undef DISABLED_ON_CPU
 # define DISABLED_ON_CPU(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // XLA_TEST_BACKEND_CPU
-
-#ifdef XLA_TEST_BACKEND_CPU_PARALLEL
-# undef DISABLED_ON_CPU
-# define DISABLED_ON_CPU(X) XLA_TEST_PASTE(DISABLED_, X)
-# undef DISABLED_ON_CPU_PARALLEL
-# define DISABLED_ON_CPU_PARALLEL(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_BACKEND_CPU_PARALLEL
 
 #ifdef XLA_TEST_BACKEND_GPU
 # undef DISABLED_ON_GPU

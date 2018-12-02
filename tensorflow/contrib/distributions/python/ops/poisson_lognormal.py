@@ -33,6 +33,7 @@ from tensorflow.python.ops.distributions import categorical as categorical_lib
 from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions import normal as normal_lib
 from tensorflow.python.ops.distributions import transformed_distribution as transformed_lib
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -42,6 +43,14 @@ __all__ = [
 ]
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def quadrature_scheme_lognormal_gauss_hermite(
     loc, scale, quadrature_size,
     validate_args=False, name=None):  # pylint: disable=unused-argument
@@ -85,6 +94,14 @@ def quadrature_scheme_lognormal_gauss_hermite(
     return grid, probs
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def quadrature_scheme_lognormal_quantiles(
     loc, scale, quadrature_size,
     validate_args=False, name=None):
@@ -114,7 +131,7 @@ def quadrature_scheme_lognormal_quantiles(
     # Create a LogNormal distribution.
     dist = transformed_lib.TransformedDistribution(
         distribution=normal_lib.Normal(loc=loc, scale=scale),
-        bijector=Exp(event_ndims=0),
+        bijector=Exp(),
         validate_args=validate_args)
     batch_ndims = dist.batch_shape.ndims
     if batch_ndims is None:
@@ -203,7 +220,8 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Create two batches of PoissonLogNormalQuadratureCompounds, one with
   # prior `loc = 0.` and another with `loc = 1.` In both cases `scale = 1.`
@@ -214,6 +232,14 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
       validate_args=True)
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                scale,
@@ -255,8 +281,8 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
       TypeError: if `quadrature_grid` and `quadrature_probs` have different base
         `dtype`.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[loc, scale]) as name:
       if loc is not None:
         loc = ops.convert_to_tensor(loc, name="loc")
       if scale is not None:
@@ -417,6 +443,14 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
         axis=[-2, -1])
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def concat_vectors(*args):
   """Concatenates input vectors, statically if possible."""
   args_ = [distribution_util.static_value(x) for x in args]

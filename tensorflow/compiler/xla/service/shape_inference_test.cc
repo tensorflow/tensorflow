@@ -17,17 +17,17 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace {
 
-using ::tensorflow::gtl::ArraySlice;
 using ::testing::ContainsRegex;
 using ::testing::HasSubstr;
 
@@ -57,12 +57,12 @@ class ReduceShapeInferenceTest : public ShapeInferenceTest {
   // Helper that runs reduce shape inference with the input 'arg' and given
   // dimensions to reduce, and checks the inferred shape is as expected. The
   // element type here is hard-coded to F32.
-  void ExpectInferredReduceShape(
-      const Shape& expected_inferred_shape, const Shape& arg,
-      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
+  void ExpectInferredReduceShape(const Shape& expected_inferred_shape,
+                                 const Shape& arg,
+                                 absl::Span<const int64> dimensions_to_reduce) {
     ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_, f32_}, f32_);
     auto inferred_status = ShapeInference::InferReduceShape(
-        arg, f32_, dimensions_to_reduce, to_apply);
+        {&arg, &f32_}, dimensions_to_reduce, to_apply);
     EXPECT_IS_OK(inferred_status.status());
     EXPECT_TRUE(ShapeUtil::Equal(expected_inferred_shape,
                                  inferred_status.ValueOrDie()));
@@ -101,8 +101,8 @@ class SelectAndScatterShapeInferenceTest : public ShapeInferenceTest {
 
 TEST_F(ShapeInferenceTest, UnaryNegateMatrix) {
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64});
-  auto inferred_status = ShapeInference::InferUnaryOpShape(
-      UnaryOperation::UNOP_NEGATE, matrix_shape);
+  auto inferred_status =
+      ShapeInference::InferUnaryOpShape(HloOpcode::kNegate, matrix_shape);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(matrix_shape, inferred_status.ValueOrDie()));
 }
@@ -110,14 +110,14 @@ TEST_F(ShapeInferenceTest, UnaryNegateMatrix) {
 TEST_F(ShapeInferenceTest, SelectScalarPredBetweenTuples) {
   Shape tuple = ShapeUtil::MakeTupleShape({s32_, f32_});
   auto inferred_status = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_SELECT, pred_, tuple, tuple);
+      HloOpcode::kSelect, pred_, tuple, tuple);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(tuple, inferred_status.ValueOrDie()));
 }
 
 TEST_F(ShapeInferenceTest, SelectScalarPredBetweenArrays) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_SELECT, pred_, matrix_64_48_, matrix_64_48_);
+      HloOpcode::kSelect, pred_, matrix_64_48_, matrix_64_48_);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
 }
@@ -125,34 +125,34 @@ TEST_F(ShapeInferenceTest, SelectScalarPredBetweenArrays) {
 TEST_F(ShapeInferenceTest, SelectArrayPredBetweenArrays) {
   auto predarray = ShapeUtil::MakeShape(PRED, {64, 48});
   auto inferred_status = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_SELECT, predarray, matrix_64_48_, matrix_64_48_);
+      HloOpcode::kSelect, predarray, matrix_64_48_, matrix_64_48_);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
 }
 
 TEST_F(ShapeInferenceTest, SelectBadShapes) {
   auto inferred_status_error1 = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_SELECT, pred_, matrix_64_48_, matrix_32_64_);
+      HloOpcode::kSelect, pred_, matrix_64_48_, matrix_32_64_);
   ASSERT_FALSE(inferred_status_error1.ok());
   ASSERT_THAT(inferred_status_error1.status().error_message(),
               HasSubstr("Operands to select must be the same shape"));
 
   auto inferred_status_error2 = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_SELECT, s32_, matrix_64_48_, matrix_64_48_);
+      HloOpcode::kSelect, s32_, matrix_64_48_, matrix_64_48_);
   ASSERT_FALSE(inferred_status_error2.ok());
   ASSERT_THAT(inferred_status_error2.status().error_message(),
               HasSubstr("pred operand must have PRED"));
 
   auto inferred_status_error3 = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_SELECT, ShapeUtil::MakeShape(PRED, {64}),
-      matrix_64_48_, matrix_64_48_);
+      HloOpcode::kSelect, ShapeUtil::MakeShape(PRED, {64}), matrix_64_48_,
+      matrix_64_48_);
   ASSERT_FALSE(inferred_status_error3.ok());
   ASSERT_THAT(inferred_status_error3.status().error_message(),
               HasSubstr("with non-scalar predicate with dimensionality"));
 
   // Tuples have a TUPLE element type and cannot be the pred of a select.
   auto inferred_status_error4 = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_SELECT, ShapeUtil::MakeTupleShape({pred_, pred_}),
+      HloOpcode::kSelect, ShapeUtil::MakeTupleShape({pred_, pred_}),
       ShapeUtil::MakeTupleShape({f32_, f32_}),
       ShapeUtil::MakeTupleShape({f32_, f32_}));
   ASSERT_FALSE(inferred_status_error4.ok());
@@ -162,102 +162,98 @@ TEST_F(ShapeInferenceTest, SelectBadShapes) {
 
 TEST_F(ShapeInferenceTest, ClampAllMatrix) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_CLAMP, matrix_64_48_, matrix_64_48_,
-      matrix_64_48_);
+      HloOpcode::kClamp, matrix_64_48_, matrix_64_48_, matrix_64_48_);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
 }
 
 TEST_F(ShapeInferenceTest, ClampAllScalar) {
-  auto inferred_status = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_CLAMP, f32_, f32_, f32_);
+  auto inferred_status =
+      ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, f32_, f32_, f32_);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(f32_, inferred_status.ValueOrDie()));
 }
 
 TEST_F(ShapeInferenceTest, ClampMinScalar) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_CLAMP, f32_, matrix_64_48_, matrix_64_48_);
+      HloOpcode::kClamp, f32_, matrix_64_48_, matrix_64_48_);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
 }
 
 TEST_F(ShapeInferenceTest, ClampMaxScalar) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_CLAMP, matrix_64_48_, matrix_64_48_, f32_);
+      HloOpcode::kClamp, matrix_64_48_, matrix_64_48_, f32_);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
 }
 
 TEST_F(ShapeInferenceTest, ClampOperandScalar) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_CLAMP, matrix_64_48_, f32_, matrix_64_48_);
+      HloOpcode::kClamp, matrix_64_48_, f32_, matrix_64_48_);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
 }
 
 TEST_F(ShapeInferenceTest, ClampMinMatrix) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_CLAMP, matrix_64_48_, f32_, f32_);
+      HloOpcode::kClamp, matrix_64_48_, f32_, f32_);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
 }
 
 TEST_F(ShapeInferenceTest, ClampMaxMatrix) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_CLAMP, f32_, f32_, matrix_64_48_);
+      HloOpcode::kClamp, f32_, f32_, matrix_64_48_);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
 }
 
 TEST_F(ShapeInferenceTest, ClampOperandMatrix) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
-      TernaryOperation::TRIOP_CLAMP, f32_, matrix_64_48_, f32_);
+      HloOpcode::kClamp, f32_, matrix_64_48_, f32_);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
 }
 
 TEST_F(ShapeInferenceTest, ClampBadShapes) {
   // Type mismatch
-  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
-                   TernaryOperation::TRIOP_CLAMP, s32_, f32_, f32_)
-                   .ok());
-  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
-                   TernaryOperation::TRIOP_CLAMP, f32_, s32_, f32_)
-                   .ok());
-  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
-                   TernaryOperation::TRIOP_CLAMP, f32_, f32_, s32_)
-                   .ok());
+  ASSERT_FALSE(
+      ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, s32_, f32_, f32_)
+          .ok());
+  ASSERT_FALSE(
+      ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, f32_, s32_, f32_)
+          .ok());
+  ASSERT_FALSE(
+      ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, f32_, f32_, s32_)
+          .ok());
   // Dimension mismatch
-  ASSERT_FALSE(
-      ShapeInference::InferTernaryOpShape(TernaryOperation::TRIOP_CLAMP,
-                                          vector_64_, vector_32_, vector_32_)
-          .ok());
-  ASSERT_FALSE(
-      ShapeInference::InferTernaryOpShape(TernaryOperation::TRIOP_CLAMP,
-                                          vector_32_, vector_64_, vector_32_)
-          .ok());
-  ASSERT_FALSE(
-      ShapeInference::InferTernaryOpShape(TernaryOperation::TRIOP_CLAMP,
-                                          vector_32_, vector_32_, vector_64_)
-          .ok());
+  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
+                   HloOpcode::kClamp, vector_64_, vector_32_, vector_32_)
+                   .ok());
+  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
+                   HloOpcode::kClamp, vector_32_, vector_64_, vector_32_)
+                   .ok());
+  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
+                   HloOpcode::kClamp, vector_32_, vector_32_, vector_64_)
+                   .ok());
   // Dimension mismatch, where one operand is a scalar
-  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
-                   TernaryOperation::TRIOP_CLAMP, vector_64_, vector_32_, f32_)
+  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(HloOpcode::kClamp,
+                                                   vector_64_, vector_32_, f32_)
                    .ok());
-  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
-                   TernaryOperation::TRIOP_CLAMP, vector_64_, f32_, vector_32_)
+  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(HloOpcode::kClamp,
+                                                   vector_64_, f32_, vector_32_)
                    .ok());
-  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
-                   TernaryOperation::TRIOP_CLAMP, f32_, vector_64_, vector_32_)
+  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, f32_,
+                                                   vector_64_, vector_32_)
                    .ok());
 }
 
 TEST_F(ShapeInferenceTest, Complex) {
   auto complex_shape = [&](const Shape& lhs, const Shape& rhs,
-                           const tensorflow::gtl::ArraySlice<int64>& bcast) {
-    return ShapeInference::InferBinaryOpShape(BinaryOperation::BINOP_COMPLEX,
-                                              lhs, rhs, bcast);
+                           const absl::Span<const int64>& bcast) {
+    return ShapeInference::InferBinaryOpShape(HloOpcode::kComplex, lhs, rhs,
+                                              bcast);
   };
   // Inputs must be FP.
   ASSERT_FALSE(complex_shape(s32_, s32_, {}).ok());
@@ -292,8 +288,8 @@ TEST_F(ShapeInferenceTest, Complex) {
 }
 
 TEST_F(ShapeInferenceTest, VariadicOpTuplify) {
-  StatusOr<Shape> result = ShapeInference::InferVariadicOpShape(
-      VariadicOperation::VAROP_TUPLE, {&s32_, &f32_});
+  StatusOr<Shape> result =
+      ShapeInference::InferVariadicOpShape(HloOpcode::kTuple, {&s32_, &f32_});
   ASSERT_IS_OK(result.status());
   ASSERT_TRUE(ShapeUtil::Equal(result.ValueOrDie(),
                                ShapeUtil::MakeTupleShape({s32_, f32_})));
@@ -423,8 +419,8 @@ TEST_F(ShapeInferenceTest, Convolve) {
   dim1->set_padding_high(0);
   dim1->set_window_dilation(1);
   dim1->set_base_dilation(1);
-  auto inferred_status =
-      ShapeInference::InferConvolveShape(lhs_shape, rhs_shape, window, dnums);
+  auto inferred_status = ShapeInference::InferConvolveShape(
+      lhs_shape, rhs_shape, /*feature_group_count=*/1, window, dnums);
   ASSERT_IS_OK(inferred_status.status());
   Shape inferred_shape = inferred_status.ValueOrDie();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 2, 3}),
@@ -468,8 +464,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithWindowDilation) {
   dim1->set_padding_high(1);
   dim1->set_window_dilation(2);
   dim1->set_base_dilation(1);
-  auto inferred_status =
-      ShapeInference::InferConvolveShape(lhs_shape, rhs_shape, window, dnums);
+  auto inferred_status = ShapeInference::InferConvolveShape(
+      lhs_shape, rhs_shape, /*feature_group_count=*/1, window, dnums);
   ASSERT_IS_OK(inferred_status.status());
   Shape inferred_shape = inferred_status.ValueOrDie();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 31, 5}),
@@ -513,8 +509,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithBaseDilation) {
   dim1->set_padding_high(1);
   dim1->set_window_dilation(1);
   dim1->set_base_dilation(2);
-  auto inferred_status =
-      ShapeInference::InferConvolveShape(lhs_shape, rhs_shape, window, dnums);
+  auto inferred_status = ShapeInference::InferConvolveShape(
+      lhs_shape, rhs_shape, /*feature_group_count=*/1, window, dnums);
   ASSERT_IS_OK(inferred_status.status());
   Shape inferred_shape = inferred_status.ValueOrDie();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 4, 9}),
@@ -551,8 +547,8 @@ TEST_F(ShapeInferenceTest, ConvolveDimensionNumbersOverlapError) {
   dim1->set_stride(2);
   dim1->set_padding_low(1);
   dim1->set_padding_high(1);
-  auto inferred_status =
-      ShapeInference::InferConvolveShape(lhs_shape, rhs_shape, window, dnums);
+  auto inferred_status = ShapeInference::InferConvolveShape(
+      lhs_shape, rhs_shape, /*feature_group_count=*/1, window, dnums);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("each dimension exactly once"));
@@ -706,11 +702,99 @@ TEST_F(ReduceShapeInferenceTest, ReduceCubeAmongAllDimensions) {
                             /*dimensions_to_reduce=*/{0, 1, 2});
 }
 
+TEST_F(ReduceShapeInferenceTest, ReduceMultiOutput) {
+  Shape f32_arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
+  Shape s32_arg_shape = ShapeUtil::MakeShape(S32, {5, 3});
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape(
+      {f32_, s32_, f32_, s32_}, ShapeUtil::MakeTupleShape({f32_, s32_}));
+  auto inferred_status = ShapeInference::InferReduceShape(
+      {&f32_arg_shape, &s32_arg_shape, &f32_, &s32_}, {0, 1}, to_apply);
+  EXPECT_IS_OK(inferred_status.status());
+  EXPECT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeTupleShape({f32_, s32_}),
+                               inferred_status.ValueOrDie()));
+}
+
+TEST_F(ReduceShapeInferenceTest, ErrorMultiOutputBadReducerInput1) {
+  Shape f32_arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
+  Shape s32_arg_shape = ShapeUtil::MakeShape(S32, {5, 3});
+  ProgramShape to_apply =
+      ShapeUtil::MakeProgramShape({f32_, s32_, f32_, s32_, f32_, s32_},
+                                  ShapeUtil::MakeTupleShape({f32_, s32_}));
+  auto inferred_status = ShapeInference::InferReduceShape(
+      {&f32_arg_shape, &s32_arg_shape, &f32_, &s32_}, {0, 1}, to_apply);
+  EXPECT_FALSE(inferred_status.ok());
+  EXPECT_THAT(inferred_status.status().error_message(),
+              HasSubstr("must take 4 parameters, but takes 6 parameter(s)"));
+}
+
+TEST_F(ReduceShapeInferenceTest, ErrorMultiOutputBadReducerInput2) {
+  Shape f32_arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
+  Shape s32_arg_shape = ShapeUtil::MakeShape(S32, {5, 3});
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape(
+      {s32_, s32_, f32_, s32_}, ShapeUtil::MakeTupleShape({f32_, s32_}));
+  auto inferred_status = ShapeInference::InferReduceShape(
+      {&f32_arg_shape, &s32_arg_shape, &f32_, &s32_}, {0, 1}, to_apply);
+  EXPECT_FALSE(inferred_status.ok());
+  EXPECT_THAT(
+      inferred_status.status().error_message(),
+      HasSubstr(
+          "parameter shape differs from the result shape: s32[] vs f32[]"));
+}
+
+TEST_F(ReduceShapeInferenceTest, ErrorMultiOutputBadReducerInput3) {
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape(
+      {s32_, s32_, f32_, s32_}, ShapeUtil::MakeTupleShape({f32_, s32_}));
+  auto inferred_status = ShapeInference::InferReduceShape({}, {0, 1}, to_apply);
+  EXPECT_FALSE(inferred_status.ok());
+  EXPECT_THAT(inferred_status.status().error_message(),
+              HasSubstr("must have at least 2 arguments, has 0"));
+}
+
+TEST_F(ReduceShapeInferenceTest, ErrorMultiOutputBadReducerOutput1) {
+  Shape f32_arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
+  Shape s32_arg_shape = ShapeUtil::MakeShape(S32, {5, 3});
+  ProgramShape to_apply =
+      ShapeUtil::MakeProgramShape({f32_, s32_, f32_, s32_}, f32_);
+  auto inferred_status = ShapeInference::InferReduceShape(
+      {&f32_arg_shape, &s32_arg_shape, &f32_, &s32_}, {0, 1}, to_apply);
+  EXPECT_FALSE(inferred_status.ok());
+  EXPECT_THAT(
+      inferred_status.status().error_message(),
+      HasSubstr("must produce a tuple with 2 elements, but produces a scalar"));
+}
+
+TEST_F(ReduceShapeInferenceTest, ErrorMultiOutputBadReducerOutput2) {
+  Shape f32_arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
+  Shape s32_arg_shape = ShapeUtil::MakeShape(S32, {5, 3});
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape(
+      {f32_, s32_, f32_, s32_}, ShapeUtil::MakeTupleShape({f32_, s32_, s32_}));
+  auto inferred_status = ShapeInference::InferReduceShape(
+      {&f32_arg_shape, &s32_arg_shape, &f32_, &s32_}, {0, 1}, to_apply);
+  EXPECT_FALSE(inferred_status.ok());
+  EXPECT_THAT(
+      inferred_status.status().error_message(),
+      HasSubstr("must produce a tuple with 2 elements, but has 3 elements"));
+}
+
+TEST_F(ReduceShapeInferenceTest, ErrorMultiOutputBadReducerBoth) {
+  Shape f32_arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
+  Shape s32_arg_shape = ShapeUtil::MakeShape(S32, {5, 3});
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape(
+      {s32_, s32_, s32_, s32_}, ShapeUtil::MakeTupleShape({s32_, s32_}));
+  auto inferred_status = ShapeInference::InferReduceShape(
+      {&f32_arg_shape, &s32_arg_shape, &f32_, &s32_}, {0, 1}, to_apply);
+  EXPECT_FALSE(inferred_status.ok());
+  EXPECT_THAT(inferred_status.status().error_message(),
+              HasSubstr("accumulator shape at index 0 differs from the "
+                        "init_value shape: s32[] vs f32[]"));
+}
+
 TEST_F(ReduceShapeInferenceTest, ErrorOutOfBoundsDimension) {
   ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_, f32_}, f32_);
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
   auto inferred_status = ShapeInference::InferReduceShape(
-      ShapeUtil::MakeShape(F32, {5, 3}), f32_, /*dimensions_to_reduce=*/{3, 4},
-      to_apply);
+      {&arg_shape, &f32_},
+      /*dimensions_to_reduce=*/{3, 4}, to_apply);
   EXPECT_FALSE(inferred_status.ok());
   EXPECT_THAT(inferred_status.status().error_message(),
               HasSubstr("out-of-bounds dimension"));
@@ -718,8 +802,9 @@ TEST_F(ReduceShapeInferenceTest, ErrorOutOfBoundsDimension) {
 
 TEST_F(ReduceShapeInferenceTest, ErrorToApplyArity) {
   ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_, f32_, f32_}, f32_);
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
   auto inferred_status =
-      ShapeInference::InferReduceShape(ShapeUtil::MakeShape(F32, {5, 3}), f32_,
+      ShapeInference::InferReduceShape({&arg_shape, &f32_},
                                        /*dimensions_to_reduce=*/{0}, to_apply);
   EXPECT_FALSE(inferred_status.ok());
   EXPECT_THAT(inferred_status.status().error_message(),
@@ -728,12 +813,13 @@ TEST_F(ReduceShapeInferenceTest, ErrorToApplyArity) {
 
 TEST_F(ReduceShapeInferenceTest, ErrorElementTypeVsApplyType) {
   ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_, f32_}, s32_);
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
   auto inferred_status =
-      ShapeInference::InferReduceShape(ShapeUtil::MakeShape(F32, {5, 3}), f32_,
+      ShapeInference::InferReduceShape({&arg_shape, &f32_},
                                        /*dimensions_to_reduce=*/{0}, to_apply);
   EXPECT_FALSE(inferred_status.ok());
   EXPECT_THAT(inferred_status.status().error_message(),
-              HasSubstr("first parameter shape differs"));
+              HasSubstr("0-th parameter shape differs"));
 }
 
 TEST_F(ShapeInferenceTest, InferSliceShapeRank2) {
@@ -804,8 +890,8 @@ TEST_F(ShapeInferenceTest, InferConstIndexShape) {
 
 TEST_F(ShapeInferenceTest, InferPowShape) {
   auto ten_floats = ShapeUtil::MakeShape(F32, {10});
-  auto inferred_status =
-      ShapeInference::InferBinaryOpShape(BINOP_POW, ten_floats, f32_, {});
+  auto inferred_status = ShapeInference::InferBinaryOpShape(
+      HloOpcode::kPower, ten_floats, f32_, {});
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(ten_floats, inferred_status.ValueOrDie()));
 }
@@ -813,7 +899,7 @@ TEST_F(ShapeInferenceTest, InferPowShape) {
 TEST_F(ShapeInferenceTest, InferCompareShapeEq) {
   auto ten_floats = ShapeUtil::MakeShape(F32, {10});
   auto inferred_status =
-      ShapeInference::InferBinaryOpShape(BINOP_EQ, ten_floats, f32_, {});
+      ShapeInference::InferBinaryOpShape(HloOpcode::kEq, ten_floats, f32_, {});
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
                                inferred_status.ValueOrDie()));
@@ -822,7 +908,7 @@ TEST_F(ShapeInferenceTest, InferCompareShapeEq) {
 TEST_F(ShapeInferenceTest, InferCompareShapeGe) {
   auto ten_floats = ShapeUtil::MakeShape(F32, {10});
   auto inferred_status =
-      ShapeInference::InferBinaryOpShape(BINOP_GE, ten_floats, f32_, {});
+      ShapeInference::InferBinaryOpShape(HloOpcode::kGe, ten_floats, f32_, {});
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
                                inferred_status.ValueOrDie()));
@@ -831,7 +917,7 @@ TEST_F(ShapeInferenceTest, InferCompareShapeGe) {
 TEST_F(ShapeInferenceTest, InferCompareShapeGt) {
   auto ten_floats = ShapeUtil::MakeShape(F32, {10});
   auto inferred_status =
-      ShapeInference::InferBinaryOpShape(BINOP_GT, ten_floats, f32_, {});
+      ShapeInference::InferBinaryOpShape(HloOpcode::kGt, ten_floats, f32_, {});
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
                                inferred_status.ValueOrDie()));
@@ -840,7 +926,7 @@ TEST_F(ShapeInferenceTest, InferCompareShapeGt) {
 TEST_F(ShapeInferenceTest, InferCompareShapeLe) {
   auto ten_floats = ShapeUtil::MakeShape(F32, {10});
   auto inferred_status =
-      ShapeInference::InferBinaryOpShape(BINOP_LE, ten_floats, f32_, {});
+      ShapeInference::InferBinaryOpShape(HloOpcode::kLe, ten_floats, f32_, {});
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
                                inferred_status.ValueOrDie()));
@@ -849,7 +935,7 @@ TEST_F(ShapeInferenceTest, InferCompareShapeLe) {
 TEST_F(ShapeInferenceTest, InferCompareShapeLt) {
   auto ten_floats = ShapeUtil::MakeShape(F32, {10});
   auto inferred_status =
-      ShapeInference::InferBinaryOpShape(BINOP_LT, ten_floats, f32_, {});
+      ShapeInference::InferBinaryOpShape(HloOpcode::kLt, ten_floats, f32_, {});
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
                                inferred_status.ValueOrDie()));
@@ -858,7 +944,7 @@ TEST_F(ShapeInferenceTest, InferCompareShapeLt) {
 TEST_F(ShapeInferenceTest, InferCompareShapeNe) {
   auto ten_floats = ShapeUtil::MakeShape(F32, {10});
   auto inferred_status =
-      ShapeInference::InferBinaryOpShape(BINOP_NE, ten_floats, f32_, {});
+      ShapeInference::InferBinaryOpShape(HloOpcode::kNe, ten_floats, f32_, {});
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
                                inferred_status.ValueOrDie()));
@@ -1111,22 +1197,22 @@ TEST_F(ShapeInferenceTest, BinOpBroadcastMatrixVector) {
   const Shape vec8 = ShapeUtil::MakeShape(F32, {8});
   const Shape vec16 = ShapeUtil::MakeShape(F32, {16});
 
-  auto inferred_status_match = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, mat, vec8, {1});
+  auto inferred_status_match =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, mat, vec8, {1});
   ASSERT_IS_OK(inferred_status_match.status());
   ASSERT_TRUE(ShapeUtil::Equal(inferred_status_match.ValueOrDie(), mat));
 
-  auto inferred_status_mismatch = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, mat, vec8, {0});
+  auto inferred_status_mismatch =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, mat, vec8, {0});
   ASSERT_FALSE(inferred_status_mismatch.ok());
 
-  inferred_status_match = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, mat, vec16, {0});
+  inferred_status_match =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, mat, vec16, {0});
   ASSERT_IS_OK(inferred_status_match.status());
   ASSERT_TRUE(ShapeUtil::Equal(inferred_status_match.ValueOrDie(), mat));
 
-  inferred_status_mismatch = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, mat, vec16, {1});
+  inferred_status_mismatch =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, mat, vec16, {1});
   ASSERT_FALSE(inferred_status_mismatch.ok());
 }
 
@@ -1138,17 +1224,17 @@ TEST_F(ShapeInferenceTest, BinOpBroadcastCubeMatrix) {
   const Shape matrix16_8 = ShapeUtil::MakeShape(F32, {16, 8});
 
   auto inferred_status_match = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, cube, matrix8_4, {1, 2});
+      HloOpcode::kAdd, cube, matrix8_4, {1, 2});
   ASSERT_IS_OK(inferred_status_match.status());
   ASSERT_TRUE(ShapeUtil::Equal(inferred_status_match.ValueOrDie(), cube));
 
   inferred_status_match = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, cube, matrix16_4, {0, 2});
+      HloOpcode::kAdd, cube, matrix16_4, {0, 2});
   ASSERT_IS_OK(inferred_status_match.status());
   ASSERT_TRUE(ShapeUtil::Equal(inferred_status_match.ValueOrDie(), cube));
 
   inferred_status_match = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, cube, matrix16_8, {0, 1});
+      HloOpcode::kAdd, cube, matrix16_8, {0, 1});
   ASSERT_IS_OK(inferred_status_match.status());
   ASSERT_TRUE(ShapeUtil::Equal(inferred_status_match.ValueOrDie(), cube));
 }
@@ -1162,43 +1248,43 @@ TEST_F(ShapeInferenceTest, BinOpBroadcastBadDimension) {
   const Shape matrix8_8 = ShapeUtil::MakeShape(F32, {8, 8});
 
   // "magical" broadcast rejected
-  auto inferred_status_error1 = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, tensor, vec8, {});
+  auto inferred_status_error1 =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, tensor, vec8, {});
   ASSERT_FALSE(inferred_status_error1.ok());
   ASSERT_THAT(inferred_status_error1.status().error_message(),
               HasSubstr("Automatic"));
 
   // broadcast_dimension out of bounds for tensor's rank
-  auto inferred_status_error2 = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, tensor, vec8, {3});
+  auto inferred_status_error2 =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, tensor, vec8, {3});
   ASSERT_FALSE(inferred_status_error2.ok());
   ASSERT_THAT(inferred_status_error2.status().error_message(),
               ContainsRegex("Broadcast dimension number .* too large"));
 
   // broadcast_dimension doesn't match corresponding dimension
-  auto inferred_status_error3 = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, tensor, vec8, {0});
+  auto inferred_status_error3 =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, tensor, vec8, {0});
   ASSERT_FALSE(inferred_status_error3.ok());
   ASSERT_THAT(inferred_status_error3.status().error_message(),
               HasSubstr("Broadcast dimension 0 mismatch"));
 
   // broadcast_dimensions list too long
   auto inferred_status_error4 = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, tensor, matrix8_4, {0, 1, 2});
+      HloOpcode::kAdd, tensor, matrix8_4, {0, 1, 2});
   ASSERT_FALSE(inferred_status_error4.ok());
   ASSERT_THAT(inferred_status_error4.status().error_message(),
               HasSubstr("broadcast_dimensions has to match"));
 
   // there's a dimension above the rank of the tensor
   auto inferred_status_error5 = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, tensor, matrix8_4, {3, 0});
+      HloOpcode::kAdd, tensor, matrix8_4, {3, 0});
   ASSERT_FALSE(inferred_status_error5.ok());
   ASSERT_THAT(inferred_status_error5.status().error_message(),
               ContainsRegex("dimension number .* too large"));
 
   // broadcasting dimensions don't match in this order
   auto inferred_status_error6 = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, tensor, matrix8_4, {2, 1});
+      HloOpcode::kAdd, tensor, matrix8_4, {2, 1});
   ASSERT_FALSE(inferred_status_error6.ok());
   ASSERT_THAT(inferred_status_error6.status().error_message(),
               HasSubstr("dimension 0 mismatch"));
@@ -1207,13 +1293,13 @@ TEST_F(ShapeInferenceTest, BinOpBroadcastBadDimension) {
   // in a proper (strictly increasing) order, even if the lower-rank array
   // matches the higher-rank array in many different ways.
   auto inferred_status_error7 = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, tensor8_8_8, matrix8_8, {0, 0});
+      HloOpcode::kAdd, tensor8_8_8, matrix8_8, {0, 0});
   ASSERT_FALSE(inferred_status_error7.ok());
   ASSERT_THAT(inferred_status_error7.status().error_message(),
               HasSubstr("dimensions order is wrong"));
 
   auto inferred_status_error8 = ShapeInference::InferBinaryOpShape(
-      BinaryOperation::BINOP_ADD, tensor8_8_8, matrix8_8, {1, 0});
+      HloOpcode::kAdd, tensor8_8_8, matrix8_8, {1, 0});
   ASSERT_FALSE(inferred_status_error8.ok());
   ASSERT_THAT(inferred_status_error8.status().error_message(),
               HasSubstr("dimensions order is wrong"));
@@ -1315,7 +1401,7 @@ TEST_F(ShapeInferenceTest, ConcatenateWithBadShapes) {
   ASSERT_FALSE(inferred_status_error4.ok());
   ASSERT_THAT(
       inferred_status_error4.status().error_message(),
-      HasSubstr("Expected non-tuple argument for operand of concatenation"));
+      HasSubstr("Expected array argument for operand of concatenation"));
 
   const Shape vector_s32 = ShapeUtil::MakeShape(S32, {32});
   auto inferred_status_error5 = ShapeInference::InferConcatOpShape(
@@ -1391,7 +1477,7 @@ TEST_F(ShapeInferenceTest, ReverseInvalidDimension) {
       ShapeInference::InferReverseShape(tuple_shape, {0});
   ASSERT_FALSE(inferred_status_error3.ok());
   ASSERT_THAT(inferred_status_error3.status().error_message(),
-              HasSubstr("Expected non-tuple argument"));
+              HasSubstr("Expected array argument"));
 }
 
 TEST_F(ShapeInferenceTest, Call) {
@@ -1527,7 +1613,43 @@ TEST_F(ShapeInferenceTest, BadSlice) {
       << statusor.status();
 }
 
-class GatherShapeInferenceTest : public ShapeInferenceTest {
+TEST_F(ShapeInferenceTest, BadSort) {
+  auto keys = ShapeUtil::MakeShape(F32, {4});
+  auto values = ShapeUtil::MakeShape(F32, {5});
+  StatusOr<Shape> statusor =
+      ShapeInference::InferVariadicOpShape(HloOpcode::kSort, {&keys, &values});
+  EXPECT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("dimensions must match"))
+      << statusor.status();
+}
+
+TEST_F(ShapeInferenceTest, BadSortValuesMismatch) {
+  auto keys = ShapeUtil::MakeShape(F32, {4});
+  auto values_good = ShapeUtil::MakeShape(F32, {4});
+  auto values_bad = ShapeUtil::MakeShape(F32, {5});
+  StatusOr<Shape> statusor = ShapeInference::InferVariadicOpShape(
+      HloOpcode::kSort, {&keys, &values_good, &values_bad});
+  EXPECT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("dimensions must match"))
+      << statusor.status();
+}
+
+TEST_F(ShapeInferenceTest, SortManyValues) {
+  auto keys = ShapeUtil::MakeShape(F32, {4});
+  auto values_s32 = ShapeUtil::MakeShape(S32, {4});
+  auto values_u32 = ShapeUtil::MakeShape(U32, {4});
+  StatusOr<Shape> statusor = ShapeInference::InferVariadicOpShape(
+      HloOpcode::kSort, {&keys, &values_s32, &values_u32});
+  EXPECT_IS_OK(statusor);
+  Shape inferred_shape = statusor.ValueOrDie();
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      inferred_shape,
+      ShapeUtil::MakeTupleShape({keys, values_s32, values_u32})));
+}
+
+class ScatterGatherShapeInferenceTest : public ShapeInferenceTest {
  protected:
   const Shape s64_scalar_ = ShapeUtil::MakeShape(S64, {});
   const Shape s64_vector_5_ = ShapeUtil::MakeShape(S64, {5});
@@ -1544,81 +1666,85 @@ class GatherShapeInferenceTest : public ShapeInferenceTest {
       ShapeUtil::MakeShape(F32, {50, 49, 48, 47, 46});
   const Shape tuple_shape_ = ShapeUtil::MakeTupleShape(
       {s64_4d_tensor_10_9_8_7_1_, s64_4d_tensor_10_9_8_7_1_});
+  const ProgramShape to_apply_ =
+      ShapeUtil::MakeProgramShape({f32_, f32_}, f32_);
 };
 
-TEST_F(GatherShapeInferenceTest, TensorFlowGather) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      Shape gather_shape,
-      ShapeInference::InferGatherShape(matrix_64_48_, s64_vector_32_,
-                                       HloInstruction::MakeGatherDimNumbers(
-                                           /*output_window_dims=*/{0},
-                                           /*elided_window_dims=*/{1},
-                                           /*gather_dims_to_operand_dims=*/{1},
-                                           /*index_vector_dim=*/1),
-                                       /*window_bounds=*/{64, 1}));
+// Shape inference tests for Gather.
+
+TEST_F(ScatterGatherShapeInferenceTest, TensorFlowGather) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape gather_shape,
+                          ShapeInference::InferGatherShape(
+                              matrix_64_48_, s64_vector_32_,
+                              HloGatherInstruction::MakeGatherDimNumbers(
+                                  /*offset_dims=*/{0},
+                                  /*collapsed_slice_dims=*/{1},
+                                  /*start_index_map=*/{1},
+                                  /*index_vector_dim=*/1),
+                              /*slice_sizes=*/{64, 1}));
   EXPECT_TRUE(
       ShapeUtil::Equal(gather_shape, ShapeUtil::MakeShape(F32, {64, 32})))
       << ShapeUtil::HumanString(gather_shape);
 }
 
-TEST_F(GatherShapeInferenceTest, TensorFlowGatherV2) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      Shape gather_shape,
-      ShapeInference::InferGatherShape(matrix_64_48_, s64_vector_32_,
-                                       HloInstruction::MakeGatherDimNumbers(
-                                           /*output_window_dims=*/{1},
-                                           /*elided_window_dims=*/{0},
-                                           /*gather_dims_to_operand_dims=*/{0},
-                                           /*index_vector_dim=*/1),
-                                       /*window_bounds=*/{1, 48}));
+TEST_F(ScatterGatherShapeInferenceTest, TensorFlowGatherV2) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape gather_shape,
+                          ShapeInference::InferGatherShape(
+                              matrix_64_48_, s64_vector_32_,
+                              HloGatherInstruction::MakeGatherDimNumbers(
+                                  /*offset_dims=*/{1},
+                                  /*collapsed_slice_dims=*/{0},
+                                  /*start_index_map=*/{0},
+                                  /*index_vector_dim=*/1),
+                              /*slice_sizes=*/{1, 48}));
   EXPECT_TRUE(
       ShapeUtil::Equal(gather_shape, ShapeUtil::MakeShape(F32, {32, 48})))
       << ShapeUtil::HumanString(gather_shape);
 }
 
-TEST_F(GatherShapeInferenceTest, TensorFlowGatherNd) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      Shape gather_shape,
-      ShapeInference::InferGatherShape(matrix_64_48_, s64_4d_tensor_10_9_8_7_1_,
-                                       HloInstruction::MakeGatherDimNumbers(
-                                           /*output_window_dims=*/{4},
-                                           /*elided_window_dims=*/{0},
-                                           /*gather_dims_to_operand_dims=*/{0},
-                                           /*index_vector_dim=*/4),
-                                       /*window_bounds=*/{1, 48}));
+TEST_F(ScatterGatherShapeInferenceTest, TensorFlowGatherNd) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape gather_shape,
+                          ShapeInference::InferGatherShape(
+                              matrix_64_48_, s64_4d_tensor_10_9_8_7_1_,
+                              HloGatherInstruction::MakeGatherDimNumbers(
+                                  /*offset_dims=*/{4},
+                                  /*collapsed_slice_dims=*/{0},
+                                  /*start_index_map=*/{0},
+                                  /*index_vector_dim=*/4),
+                              /*slice_sizes=*/{1, 48}));
   EXPECT_TRUE(ShapeUtil::Equal(gather_shape,
                                ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 48})))
       << ShapeUtil::HumanString(gather_shape);
 }
 
-TEST_F(GatherShapeInferenceTest, TensorFlowBatchDynamicSlice) {
+TEST_F(ScatterGatherShapeInferenceTest, TensorFlowBatchDynamicSlice) {
   TF_ASSERT_OK_AND_ASSIGN(
       Shape gather_shape,
       ShapeInference::InferGatherShape(
           f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-          HloInstruction::MakeGatherDimNumbers(
-              /*output_window_dims=*/{4, 5, 6, 7, 8},
-              /*elided_window_dims=*/{},
-              /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*offset_dims=*/{4, 5, 6, 7, 8},
+              /*collapsed_slice_dims=*/{},
+              /*start_index_map=*/{0, 1, 2, 3, 4},
               /*index_vector_dim=*/4),
-          /*window_bounds=*/{30, 29, 28, 27, 26}));
+          /*slice_sizes=*/{30, 29, 28, 27, 26}));
   EXPECT_TRUE(ShapeUtil::Equal(
       gather_shape,
       ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28, 27, 26})))
       << ShapeUtil::HumanString(gather_shape);
 }
 
-TEST_F(GatherShapeInferenceTest, NonDefaultGatherIndicesLeafDim_A) {
+TEST_F(ScatterGatherShapeInferenceTest, NonDefaultGatherIndicesLeafDim_A) {
   TF_ASSERT_OK_AND_ASSIGN(
       Shape gather_shape,
       ShapeInference::InferGatherShape(
           f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_5_7_6_,
-          HloInstruction::MakeGatherDimNumbers(
-              /*output_window_dims=*/{4, 5, 6, 7, 8},
-              /*elided_window_dims=*/{},
-              /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*offset_dims=*/{4, 5, 6, 7, 8},
+              /*collapsed_slice_dims=*/{},
+              /*start_index_map=*/{0, 1, 2, 3, 4},
               /*index_vector_dim=*/2),
-          /*window_bounds=*/{30, 29, 28, 27, 26}));
+          /*slice_sizes=*/{30, 29, 28, 27, 26}));
 
   EXPECT_TRUE(ShapeUtil::Equal(
       gather_shape,
@@ -1626,17 +1752,17 @@ TEST_F(GatherShapeInferenceTest, NonDefaultGatherIndicesLeafDim_A) {
       << ShapeUtil::HumanString(gather_shape);
 }
 
-TEST_F(GatherShapeInferenceTest, NonDefaultGatherIndicesLeafDim_B) {
+TEST_F(ScatterGatherShapeInferenceTest, NonDefaultGatherIndicesLeafDim_B) {
   TF_ASSERT_OK_AND_ASSIGN(
       Shape gather_shape,
       ShapeInference::InferGatherShape(
           f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_5_10_9_7_6_,
-          HloInstruction::MakeGatherDimNumbers(
-              /*output_window_dims=*/{4, 5, 6, 7, 8},
-              /*elided_window_dims=*/{},
-              /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*offset_dims=*/{4, 5, 6, 7, 8},
+              /*collapsed_slice_dims=*/{},
+              /*start_index_map=*/{0, 1, 2, 3, 4},
               /*index_vector_dim=*/0),
-          /*window_bounds=*/{30, 29, 28, 27, 26}));
+          /*slice_sizes=*/{30, 29, 28, 27, 26}));
 
   EXPECT_TRUE(ShapeUtil::Equal(
       gather_shape,
@@ -1644,94 +1770,96 @@ TEST_F(GatherShapeInferenceTest, NonDefaultGatherIndicesLeafDim_B) {
       << ShapeUtil::HumanString(gather_shape);
 }
 
-TEST_F(GatherShapeInferenceTest, NoOutputGatherDims) {
+TEST_F(ScatterGatherShapeInferenceTest, NoOutputGatherDims) {
   // This is equivalent to a dynamic slice.
-  TF_ASSERT_OK_AND_ASSIGN(
-      Shape gather_shape,
-      ShapeInference::InferGatherShape(
-          f32_5d_tensor_50_49_48_47_46_, s64_vector_5_,
-          HloInstruction::MakeGatherDimNumbers(
-              /*output_window_dims=*/{0, 1, 2, 3, 4},
-              /*elided_window_dims=*/{},
-              /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
-              /*index_vector_dim=*/0),
-          /*window_bounds=*/{30, 29, 28, 27, 26}));
+  TF_ASSERT_OK_AND_ASSIGN(Shape gather_shape,
+                          ShapeInference::InferGatherShape(
+                              f32_5d_tensor_50_49_48_47_46_, s64_vector_5_,
+                              HloGatherInstruction::MakeGatherDimNumbers(
+                                  /*offset_dims=*/{0, 1, 2, 3, 4},
+                                  /*collapsed_slice_dims=*/{},
+                                  /*start_index_map=*/{0, 1, 2, 3, 4},
+                                  /*index_vector_dim=*/0),
+                              /*slice_sizes=*/{30, 29, 28, 27, 26}));
 
   EXPECT_TRUE(ShapeUtil::Equal(gather_shape,
                                ShapeUtil::MakeShape(F32, {30, 29, 28, 27, 26})))
       << ShapeUtil::HumanString(gather_shape);
 }
 
-TEST_F(GatherShapeInferenceTest, ScalarGatherIndices) {
+TEST_F(ScatterGatherShapeInferenceTest, ScalarGatherIndices) {
   // The gather indices "tensor" is a scalar S here that's used to slice out
   // [S,0,0,0,0]..[S,30,29,28,27] into a [30,29,28,27] shaped result.
   TF_ASSERT_OK_AND_ASSIGN(Shape gather_shape,
                           ShapeInference::InferGatherShape(
                               f32_5d_tensor_50_49_48_47_46_, s64_scalar_,
-                              HloInstruction::MakeGatherDimNumbers(
-                                  /*output_window_dims=*/{0, 1, 2, 3},
-                                  /*elided_window_dims=*/{0},
-                                  /*gather_dims_to_operand_dims=*/{0},
+                              HloGatherInstruction::MakeGatherDimNumbers(
+                                  /*offset_dims=*/{0, 1, 2, 3},
+                                  /*collapsed_slice_dims=*/{0},
+                                  /*start_index_map=*/{0},
                                   /*index_vector_dim=*/0),
-                              /*window_bounds=*/{1, 30, 29, 28, 27}));
+                              /*slice_sizes=*/{1, 30, 29, 28, 27}));
 
   EXPECT_TRUE(ShapeUtil::Equal(gather_shape,
                                ShapeUtil::MakeShape(F32, {30, 29, 28, 27})))
       << ShapeUtil::HumanString(gather_shape);
 }
 
-TEST_F(GatherShapeInferenceTest, TupleShapedTensorInput) {
+TEST_F(ScatterGatherShapeInferenceTest, TupleShapedTensorInput) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       tuple_shape_, s64_vector_32_,
-      HloInstruction::MakeGatherDimNumbers(/*output_window_dims=*/{0},
-                                           /*elided_window_dims=*/{1},
-                                           /*gather_dims_to_operand_dims=*/{1},
-                                           /*index_vector_dim=*/1),
-      /*window_bounds=*/{64, 1});
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{0},
+          /*collapsed_slice_dims=*/{1},
+          /*start_index_map=*/{1},
+          /*index_vector_dim=*/1),
+      /*slice_sizes=*/{64, 1});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("Expected non-tuple argument for input"))
+              HasSubstr("Expected array argument for input"))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest, TupleShapedGatherIndicesInput) {
+TEST_F(ScatterGatherShapeInferenceTest, TupleShapedGatherIndicesInput) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       s64_vector_32_, tuple_shape_,
-      HloInstruction::MakeGatherDimNumbers(/*output_window_dims=*/{0},
-                                           /*elided_window_dims=*/{1},
-                                           /*gather_dims_to_operand_dims=*/{1},
-                                           /*index_vector_dim=*/0),
-      /*window_bounds=*/{64, 1});
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{0},
+          /*collapsed_slice_dims=*/{1},
+          /*start_index_map=*/{1},
+          /*index_vector_dim=*/0),
+      /*slice_sizes=*/{64, 1});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("Expected non-tuple argument for gather indices"))
+              HasSubstr("Expected array argument for gather indices"))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest, FloatingPointGatherIndicesInput) {
+TEST_F(ScatterGatherShapeInferenceTest, FloatingPointGatherIndicesInput) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       s64_vector_32_, vector_32_,
-      HloInstruction::MakeGatherDimNumbers(/*output_window_dims=*/{0},
-                                           /*elided_window_dims=*/{1},
-                                           /*gather_dims_to_operand_dims=*/{1},
-                                           /*index_vector_dim=*/0),
-      /*window_bounds=*/{64, 1});
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{0},
+          /*collapsed_slice_dims=*/{1},
+          /*start_index_map=*/{1},
+          /*index_vector_dim=*/0),
+      /*slice_sizes=*/{64, 1});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
               HasSubstr("Gather indices parameter must be an integral tensor"))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_NonAscendingWindowIndices) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 8, 7},
-          /*elided_window_dims=*/{},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 8, 7},
+          /*collapsed_slice_dims=*/{},
+          /*start_index_map=*/{0, 1, 2, 3, 4},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 28, 27, 26});
+      /*slice_sizes=*/{30, 29, 28, 27, 26});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(
       statusor.status().error_message(),
@@ -1739,16 +1867,16 @@ TEST_F(GatherShapeInferenceTest,
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_RepeatedWindowIndices) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7, 7},
-          /*elided_window_dims=*/{},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7, 7},
+          /*collapsed_slice_dims=*/{},
+          /*start_index_map=*/{0, 1, 2, 3, 4},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 28, 27, 26});
+      /*slice_sizes=*/{30, 29, 28, 27, 26});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(
       statusor.status().error_message(),
@@ -1756,227 +1884,810 @@ TEST_F(GatherShapeInferenceTest,
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_WindowIndexOutOfBounds) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 99, 100, 101},
-          /*elided_window_dims=*/{},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 99, 100, 101},
+          /*collapsed_slice_dims=*/{},
+          /*start_index_map=*/{0, 1, 2, 3, 4},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 28, 27, 26});
+      /*slice_sizes=*/{30, 29, 28, 27, 26});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("Window index 2 in gather op is out of bounds"))
+              HasSubstr("Offset dimension 2 in gather op is out of bounds"))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_WindowIndexBarelyOutOfBounds) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7, 9},
-          /*elided_window_dims=*/{},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7, 9},
+          /*collapsed_slice_dims=*/{},
+          /*start_index_map=*/{0, 1, 2, 3, 4},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 28, 27, 26});
+      /*slice_sizes=*/{30, 29, 28, 27, 26});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("Window index 4 in gather op is out of bounds"))
+              HasSubstr("Offset dimension 4 in gather op is out of bounds"))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_MismatchingElidedWindowDims) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7, 8},
-          /*elided_window_dims=*/{4},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7, 8},
+          /*collapsed_slice_dims=*/{4},
+          /*start_index_map=*/{0, 1, 2, 3, 4},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 28, 27, 26});
+      /*slice_sizes=*/{30, 29, 28, 27, 26});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(
       statusor.status().error_message(),
-      HasSubstr("All components of the window index in a gather op must either "
-                "be a output window index or explicitly elided"))
+      HasSubstr("All components of the offset index in a gather op must either "
+                "be a offset dimension or explicitly collapsed"))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_OutOfBoundsWindowToInputMapping) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7, 8},
-          /*elided_window_dims=*/{0, 1, 2, 3, 19},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7, 8},
+          /*collapsed_slice_dims=*/{0, 1, 2, 3, 19},
+          /*start_index_map=*/{0, 1, 2, 3, 4},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 28, 27, 26});
+      /*slice_sizes=*/{30, 29, 28, 27, 26});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("Invalid elided_window_dims set in gather op; valid "
+              HasSubstr("Invalid collapsed_slice_dims set in gather op; valid "
                         "range is [0, 5), got: 19"))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_RepeatedWindowToInputMapping) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7, 8},
-          /*elided_window_dims=*/{0, 1, 2, 3, 3},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7, 8},
+          /*collapsed_slice_dims=*/{0, 1, 2, 3, 3},
+          /*start_index_map=*/{0, 1, 2, 3, 4},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 28, 27, 26});
+      /*slice_sizes=*/{30, 29, 28, 27, 26});
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(
-      statusor.status().error_message(),
-      HasSubstr(
-          "Repeated dimensions not allowed in elided_window_dims in gather op"))
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Repeated dimensions not allowed in "
+                        "collapsed_slice_dims in gather op"))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_MismatchingGatherToInputMapping) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7, 8},
-          /*elided_window_dims=*/{},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7, 8},
+          /*collapsed_slice_dims=*/{},
+          /*start_index_map=*/{0, 1, 2, 3},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 28, 27, 26});
+      /*slice_sizes=*/{30, 29, 28, 27, 26});
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(
-      statusor.status().error_message(),
-      HasSubstr("Gather op has 4 elements in gather_dims_to_operand_dims and "
-                "the bound of dimension index_vector_dim=4 of "
-                "gather_indices is 5. These two numbers must be equal."))
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Gather op has 4 elements in start_index_map and "
+                        "the bound of dimension index_vector_dim=4 of "
+                        "start_indices is 5. These two numbers must be equal."))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_OutOfBoundsGatherToInputMapping) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7, 8},
-          /*elided_window_dims=*/{},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 7},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7, 8},
+          /*collapsed_slice_dims=*/{},
+          /*start_index_map=*/{0, 1, 2, 3, 7},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 28, 27, 26});
+      /*slice_sizes=*/{30, 29, 28, 27, 26});
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(
-      statusor.status().error_message(),
-      HasSubstr("Invalid gather_dims_to_operand_dims mapping; domain is "
-                "[0, 5), got: 4->7"))
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Invalid start_index_map; domain is [0, 5), got: 4->7"))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_RepeatedGatherToInputMapping) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7, 8},
-          /*elided_window_dims=*/{},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 3},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7, 8},
+          /*collapsed_slice_dims=*/{},
+          /*start_index_map=*/{0, 1, 2, 3, 3},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 28, 27, 26});
+      /*slice_sizes=*/{30, 29, 28, 27, 26});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(
       statusor.status().error_message(),
-      HasSubstr(
-          "Repeated dimensions are not allowed in gather_dims_to_operand_dims"))
+      HasSubstr("Repeated dimensions are not allowed in start_index_map"))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_NonAscendingElidedWindowDims) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7, 8},
-          /*elided_window_dims=*/{2, 1},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7, 8},
+          /*collapsed_slice_dims=*/{2, 1},
+          /*start_index_map=*/{0, 1, 2, 3, 4},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{1, 1, 28, 27, 26});
+      /*slice_sizes=*/{1, 1, 28, 27, 26});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("elided_window_dims in gather op must be sorted"))
+              HasSubstr("collapsed_slice_dims in gather op must be sorted"))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest, InvalidGatherDimNumbers_WindowBoundsTooLarge) {
+TEST_F(ScatterGatherShapeInferenceTest,
+       InvalidGatherDimNumbers_WindowBoundsTooLarge) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7},
-          /*elided_window_dims=*/{2},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7},
+          /*collapsed_slice_dims=*/{2},
+          /*start_index_map=*/{0, 1, 2, 3, 4},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 1, 300, 26});
+      /*slice_sizes=*/{30, 29, 1, 300, 26});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("Window bound at index 3 in gather op is out of range, "
-                        "must be within [0, 48), got 300"))
+              HasSubstr("Slice size at index 3 in gather op is out of range, "
+                        "must be within [0, 48), got 300."))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_MismatchingNumberOfWindowBounds) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7, 8},
-          /*elided_window_dims=*/{},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7, 8},
+          /*collapsed_slice_dims=*/{},
+          /*start_index_map=*/{0, 1, 2, 3, 4},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 28, 26});
+      /*slice_sizes=*/{30, 29, 28, 26});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(
       statusor.status().error_message(),
-      HasSubstr(
-          "Gather op must have one window bound for every input dimension"))
+      HasSubstr("Gather op must have one slice size for every input dimension"))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest,
+TEST_F(ScatterGatherShapeInferenceTest,
        InvalidGatherDimNumbers_WindowBoundsNot1ForElidedDim) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7},
-          /*elided_window_dims=*/{1},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7},
+          /*collapsed_slice_dims=*/{1},
+          /*start_index_map=*/{0, 1, 2, 3, 4},
           /*index_vector_dim=*/4),
-      /*window_bounds=*/{30, 29, 28, 26, 20});
+      /*slice_sizes=*/{30, 29, 28, 26, 20});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("Gather op can only elide window indices with bound 1, "
-                        "but bound is 29 for index 1 at position 0"))
+              HasSubstr("Gather op can only collapse slice dims with bound 1, "
+                        "but bound is 29 for index 1 at position 0."))
       << statusor.status();
 }
 
-TEST_F(GatherShapeInferenceTest, OutOfBoundsGatherIndicesLeafDim) {
+TEST_F(ScatterGatherShapeInferenceTest, OutOfBoundsGatherIndicesLeafDim) {
   StatusOr<Shape> statusor = ShapeInference::InferGatherShape(
       f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_5_7_6_,
-      HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/{4, 5, 6, 7, 8},
-          /*elided_window_dims=*/{},
-          /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/{4, 5, 6, 7, 8},
+          /*collapsed_slice_dims=*/{},
+          /*start_index_map=*/{0, 1, 2, 3, 4},
           /*index_vector_dim=*/32),
-      /*window_bounds=*/{30, 29, 28, 27, 26});
+      /*slice_sizes=*/{30, 29, 28, 27, 26});
 
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
               HasSubstr("Gather index leaf dimension must be within [0, "
-                        "rank(gather_indices) + 1)"))
+                        "rank(start_indices) + 1)"))
+      << statusor.status();
+}
+
+// Shape inference tests for Scatter.
+
+TEST_F(ScatterGatherShapeInferenceTest, TfScatterWithFullUpdates) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape scatter_shape,
+                          ShapeInference::InferScatterShape(
+                              matrix_64_48_, s64_vector_32_,
+                              ShapeUtil::MakeShape(F32, {64, 32}), to_apply_,
+                              HloScatterInstruction::MakeScatterDimNumbers(
+                                  /*update_window_dims=*/{0},
+                                  /*inserted_window_dims=*/{1},
+                                  /*scatter_dims_to_operand_dims=*/{1},
+                                  /*index_vector_dim=*/1)));
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, matrix_64_48_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, TfScatterWithFullUpdatesV2) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape scatter_shape,
+                          ShapeInference::InferScatterShape(
+                              matrix_64_48_, s64_vector_32_,
+                              ShapeUtil::MakeShape(F32, {32, 48}), to_apply_,
+                              HloScatterInstruction::MakeScatterDimNumbers(
+                                  /*update_window_dims=*/{1},
+                                  /*inserted_window_dims=*/{0},
+                                  /*scatter_dims_to_operand_dims=*/{0},
+                                  /*index_vector_dim=*/1)));
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, matrix_64_48_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, TfScatterWithPartialUpdates) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape scatter_shape,
+                          ShapeInference::InferScatterShape(
+                              matrix_64_48_, s64_vector_32_,
+                              ShapeUtil::MakeShape(F32, {10, 32}), to_apply_,
+                              HloScatterInstruction::MakeScatterDimNumbers(
+                                  /*update_window_dims=*/{0},
+                                  /*inserted_window_dims=*/{1},
+                                  /*scatter_dims_to_operand_dims=*/{1},
+                                  /*index_vector_dim=*/1)));
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, matrix_64_48_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, TfScatterWithPartialUpdatesV2) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape scatter_shape,
+                          ShapeInference::InferScatterShape(
+                              matrix_64_48_, s64_vector_32_,
+                              ShapeUtil::MakeShape(F32, {32, 8}), to_apply_,
+                              HloScatterInstruction::MakeScatterDimNumbers(
+                                  /*update_window_dims=*/{1},
+                                  /*inserted_window_dims=*/{0},
+                                  /*scatter_dims_to_operand_dims=*/{0},
+                                  /*index_vector_dim=*/1)));
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, matrix_64_48_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, TfScatterWithUpdatesBiggerThanInput) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      matrix_64_48_, s64_vector_32_, ShapeUtil::MakeShape(F32, {65, 32}),
+      to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{0},
+          /*inserted_window_dims=*/{1},
+          /*scatter_dims_to_operand_dims=*/{1},
+          /*index_vector_dim=*/1));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr("Bounds of the window dimensions of updates must not exceed "
+                "the bounds of the corresponding dimensions of operand."))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, TfScatterWithUpdatesBiggerThanInputV2) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      matrix_64_48_, s64_vector_32_, ShapeUtil::MakeShape(F32, {32, 49}),
+      to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{1},
+          /*inserted_window_dims=*/{0},
+          /*scatter_dims_to_operand_dims=*/{1},
+          /*index_vector_dim=*/1));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr("Bounds of the window dimensions of updates must not exceed "
+                "the bounds of the corresponding dimensions of operand."))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       TfScatterWithUpdatesNotMatchingIndices) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      matrix_64_48_, s64_vector_32_, ShapeUtil::MakeShape(F32, {64, 31}),
+      to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{0},
+          /*inserted_window_dims=*/{1},
+          /*scatter_dims_to_operand_dims=*/{1},
+          /*index_vector_dim=*/1));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr(
+          "Bounds of the scatter dimensions of updates must be same as the "
+          "bounds of the corresponding dimensions of scatter indices."))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       TfScatterWithUpdatesNotMatchingIndicesV2) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      matrix_64_48_, s64_vector_32_, ShapeUtil::MakeShape(F32, {31, 48}),
+      to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{1},
+          /*inserted_window_dims=*/{0},
+          /*scatter_dims_to_operand_dims=*/{1},
+          /*index_vector_dim=*/1));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr(
+          "Bounds of the scatter dimensions of updates must be same as the "
+          "bounds of the corresponding dimensions of scatter indices."))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, TfScatterNdWithFullUpdates) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape scatter_shape,
+      ShapeInference::InferScatterShape(
+          matrix_64_48_, s64_4d_tensor_10_9_8_7_1_,
+          ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 48}), to_apply_,
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/{4},
+              /*inserted_window_dims=*/{0},
+              /*scatter_dims_to_operand_dims=*/{0},
+              /*index_vector_dim=*/4)));
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, matrix_64_48_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, TfScatterNdWithFullUpdatesV2) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape scatter_shape,
+      ShapeInference::InferScatterShape(
+          matrix_64_48_, s64_4d_tensor_10_9_8_7_1_,
+          ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 64}), to_apply_,
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/{4},
+              /*inserted_window_dims=*/{1},
+              /*scatter_dims_to_operand_dims=*/{0},
+              /*index_vector_dim=*/4)));
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, matrix_64_48_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, TfScatterNdWithPartialUpdates) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape scatter_shape,
+      ShapeInference::InferScatterShape(
+          matrix_64_48_, s64_4d_tensor_10_9_8_7_1_,
+          ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 10}), to_apply_,
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/{4},
+              /*inserted_window_dims=*/{0},
+              /*scatter_dims_to_operand_dims=*/{0},
+              /*index_vector_dim=*/4)));
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, matrix_64_48_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, TfScatterNdWithPartialUpdatesV2) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape scatter_shape,
+      ShapeInference::InferScatterShape(
+          matrix_64_48_, s64_4d_tensor_10_9_8_7_1_,
+          ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 12}), to_apply_,
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/{4},
+              /*inserted_window_dims=*/{1},
+              /*scatter_dims_to_operand_dims=*/{0},
+              /*index_vector_dim=*/4)));
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, matrix_64_48_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, TfScatterNdWithUpdatesBiggerThanInput) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      matrix_64_48_, s64_4d_tensor_10_9_8_7_1_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 65}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4},
+          /*inserted_window_dims=*/{1},
+          /*scatter_dims_to_operand_dims=*/{0},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr("Bounds of the window dimensions of updates must not exceed "
+                "the bounds of the corresponding dimensions of operand."))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       TfScatterNdWithUpdatesNotMatchingIndices) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      matrix_64_48_, s64_4d_tensor_10_9_8_7_1_,
+      ShapeUtil::MakeShape(F32, {9, 9, 8, 7, 64}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4},
+          /*inserted_window_dims=*/{1},
+          /*scatter_dims_to_operand_dims=*/{0},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr(
+          "Bounds of the scatter dimensions of updates must be same as the "
+          "bounds of the corresponding dimensions of scatter indices."))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, TfBatchDynamicUpdateSlice) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape scatter_shape,
+      ShapeInference::InferScatterShape(
+          f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+          ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28, 27, 26}),
+          to_apply_,
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/{4, 5, 6, 7, 8},
+              /*inserted_window_dims=*/{},
+              /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+              /*index_vector_dim=*/4)));
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, f32_5d_tensor_50_49_48_47_46_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, NonDefaultScatterIndicesLeafDim) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape scatter_shape,
+      ShapeInference::InferScatterShape(
+          f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_5_7_6_,
+          ShapeUtil::MakeShape(F32, {10, 9, 7, 6, 30, 29, 28, 27, 26}),
+          to_apply_,
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/{4, 5, 6, 7, 8},
+              /*inserted_window_dims=*/{},
+              /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+              /*index_vector_dim=*/2)));
+
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, f32_5d_tensor_50_49_48_47_46_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, NonDefaultScatterIndicesLeafDimV2) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape scatter_shape,
+      ShapeInference::InferScatterShape(
+          f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_5_10_9_7_6_,
+          ShapeUtil::MakeShape(F32, {10, 9, 7, 6, 30, 29, 28, 27, 26}),
+          to_apply_,
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/{4, 5, 6, 7, 8},
+              /*inserted_window_dims=*/{},
+              /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+              /*index_vector_dim=*/0)));
+
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, f32_5d_tensor_50_49_48_47_46_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, NoUpdateScatterDims) {
+  // This is equivalent to a dynamic update slice.
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape scatter_shape,
+      ShapeInference::InferScatterShape(
+          f32_5d_tensor_50_49_48_47_46_, s64_vector_5_,
+          ShapeUtil::MakeShape(F32, {30, 29, 28, 27, 26}), to_apply_,
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/{0, 1, 2, 3, 4},
+              /*inserted_window_dims=*/{},
+              /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+              /*index_vector_dim=*/0)));
+
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, f32_5d_tensor_50_49_48_47_46_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, ScalarScatterIndices) {
+  // The scalar indices "tensor" is a scalar S here that's used to update a
+  // [30,29,28,27] shaped tensor within the operand at position S.
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape scatter_shape,
+      ShapeInference::InferScatterShape(
+          f32_5d_tensor_50_49_48_47_46_, s64_scalar_,
+          ShapeUtil::MakeShape(F32, {30, 29, 28, 27}), to_apply_,
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/{0, 1, 2, 3},
+              /*inserted_window_dims=*/{0},
+              /*scatter_dims_to_operand_dims=*/{0},
+              /*index_vector_dim=*/0)));
+
+  EXPECT_TRUE(ShapeUtil::Equal(scatter_shape, f32_5d_tensor_50_49_48_47_46_))
+      << ShapeUtil::HumanString(scatter_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, ScatterWithTupleShapedTensorInput) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      tuple_shape_, s64_vector_32_, s64_vector_32_, to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{0},
+          /*inserted_window_dims=*/{1},
+          /*scatter_dims_to_operand_dims=*/{1},
+          /*index_vector_dim=*/1));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Expected array argument for operand"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       ScatterWithTupleShapedScatterIndicesInput) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      s64_vector_32_, tuple_shape_, s64_vector_32_, to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{0},
+          /*inserted_window_dims=*/{1},
+          /*scatter_dims_to_operand_dims=*/{1},
+          /*index_vector_dim=*/0));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Expected array argument for scatter indices"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, ScatterWithTupleShapedUpdatesInput) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      s64_vector_32_, s64_vector_32_, tuple_shape_, to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{0},
+          /*inserted_window_dims=*/{1},
+          /*scatter_dims_to_operand_dims=*/{1},
+          /*index_vector_dim=*/0));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Expected array argument for updates"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, FloatingPointScatterIndicesInput) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      s64_vector_32_, vector_32_, s64_vector_32_, to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{0},
+          /*inserted_window_dims=*/{1},
+          /*scatter_dims_to_operand_dims=*/{1},
+          /*index_vector_dim=*/0));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Scatter indices parameter must be an integral tensor"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, OutOfBoundsScatterIndicesLeafDim) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4, 5, 6},
+          /*inserted_window_dims=*/{1, 2},
+          /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+          /*index_vector_dim=*/10));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Scatter index leaf dimension must be within [0, "
+                        "rank(scatter_indices) + 1)"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, InvalidUpdates) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28, 50}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4, 5, 6},
+          /*inserted_window_dims=*/{1, 2},
+          /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Updates tensor must be of rank 7; got 8."))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, InvalidUpdateComputation) {
+  const ProgramShape invalid_update_computation =
+      ShapeUtil::MakeProgramShape({f32_}, f32_);
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28}),
+      invalid_update_computation,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4, 5, 6},
+          /*inserted_window_dims=*/{1, 2},
+          /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr("Reduction function must take 2 parameters, but takes 1"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       InvalidScatterDimNumbers_NonAscendingUpdateWindowDims) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28, 27, 26}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4, 5, 6, 8, 7},
+          /*inserted_window_dims=*/{},
+          /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("update_window_dims in scatter op must be sorted"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       InvalidScatterDimNumbers_RepeatedUpdateWindowDims) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28, 27, 26}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4, 5, 6, 7, 7},
+          /*inserted_window_dims=*/{},
+          /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("update_window_dims in scatter op must not repeat"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       InvalidScatterDimNumbers_OutOfBoundsUpdateWindowDims) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28, 27, 26}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4, 5, 6, 7, 9},
+          /*inserted_window_dims=*/{},
+          /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Invalid update_window_dims set in scatter op; valid "
+                        "range is [0, 9)"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       InvalidScatterDimNumbers_NonAscendingInsertedWindowDims) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4, 5, 6},
+          /*inserted_window_dims=*/{2, 1},
+          /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("inserted_window_dims in scatter op must be sorted"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       InvalidScatterDimNumbers_RepeatedInsertedWindowDims) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4, 5, 6},
+          /*inserted_window_dims=*/{1, 1},
+          /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("inserted_window_dims in scatter op must not repeat"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       InvalidScatterDimNumbers_OutOfBoundsInsertedWindowDims) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4, 5, 6},
+          /*inserted_window_dims=*/{1, 5},
+          /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Invalid inserted_window_dims set in scatter op; valid "
+                        "range is [0, 5)"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       InvalidScatterDimNumbers_MismatchingScatterDimsToOperandDims) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4, 5, 6},
+          /*inserted_window_dims=*/{1, 2},
+          /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr("Scatter op has 4 elements in scatter_dims_to_operand_dims and "
+                "the bound of dimension index_vector_dim=4 of scatter_indices "
+                "is 5. These two numbers must be equal"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       InvalidScatterDimNumbers_OutOfBoundsScatterDimsToOperandDims) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4, 5, 6},
+          /*inserted_window_dims=*/{1, 2},
+          /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 10},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Invalid scatter_dims_to_operand_dims mapping; domain "
+                        "is [0, 5), got: 4->10"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       InvalidScatterDimNumbers_RepeatedValuesInScatterDimsToOperandDims) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_4d_tensor_10_9_8_7_5_,
+      ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{4, 5, 6},
+          /*inserted_window_dims=*/{1, 2},
+          /*scatter_dims_to_operand_dims=*/{0, 1, 2, 2, 3},
+          /*index_vector_dim=*/4));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr(
+          "Repeated dimensions not allowed in scatter_dims_to_operand_dims"))
+      << statusor.status();
+}
+
+TEST_F(ScatterGatherShapeInferenceTest,
+       InvalidScatterDimNumbers_InsufficientWindowDims) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_scalar_,
+      ShapeUtil::MakeShape(F32, {30, 29, 28, 27}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{0, 1, 2, 3},
+          /*inserted_window_dims=*/{},
+          /*scatter_dims_to_operand_dims=*/{0},
+          /*index_vector_dim=*/0));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr(
+          "Scatter op has window of size 4; doesn't match operand of rank 5."))
       << statusor.status();
 }
 

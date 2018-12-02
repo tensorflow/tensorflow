@@ -21,11 +21,13 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg_impl
 from tensorflow.python.platform import test as test_lib
 
 
@@ -38,8 +40,9 @@ def _AddTest(test, op_name, testcase_name, fn):
 
 class ShapeTest(test_lib.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBatchGradientUnknownSize(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = constant_op.constant(3)
       matrix_size = constant_op.constant(4)
       batch_identity = array_ops.tile(
@@ -49,7 +52,7 @@ class ShapeTest(test_lib.TestCase):
       determinants = linalg_ops.matrix_determinant(batch_identity)
       reduced = math_ops.reduce_sum(determinants)
       sum_grad = gradients_impl.gradients(reduced, batch_identity)[0]
-      self.assertAllClose(batch_identity.eval(), sum_grad.eval())
+      self.assertAllClose(batch_identity.eval(), self.evaluate(sum_grad))
 
 
 class MatrixUnaryFunctorGradientTest(test_lib.TestCase):
@@ -59,12 +62,16 @@ class MatrixUnaryFunctorGradientTest(test_lib.TestCase):
 def _GetMatrixUnaryFunctorGradientTest(functor_, dtype_, shape_, **kwargs_):
 
   def Test(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       np.random.seed(1)
       a_np = np.random.uniform(
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
       a = constant_op.constant(a_np)
+      if functor_.__name__ == 'matrix_square_root':
+        # Square the input matrix to ensure that its matrix square root exists
+        a = math_ops.matmul(a, a)
+        a_np = self.evaluate(a)
       b = functor_(a, **kwargs_)
 
       # Optimal stepsize for central difference is O(epsilon^{1/3}).
@@ -101,7 +108,7 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
     # GPU test for matrix_solve.
     use_gpu = False if functor_ == linalg_ops.matrix_solve else True
 
-    with self.test_session(use_gpu=use_gpu):
+    with self.session(use_gpu=use_gpu):
       np.random.seed(1)
       a_np = np.random.uniform(
           low=-1.0, high=1.0,
@@ -119,7 +126,7 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
       delta = epsilon**(1.0 / 3.0)
       # tolerance obtained by looking at actual differences using
       # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
-      tol = 1e-6 if dtype_ == np.float64 else float32_tol_fudge * 0.04
+      tol = 1e-6 if dtype_ == np.float64 else float32_tol_fudge * 0.05
       # The gradients for a and b may be of very different magnitudes,
       # so to not get spurious failures we test them separately.
       for factor, factor_init in [a, a_np], [b, b_np]:
@@ -173,9 +180,30 @@ if __name__ == '__main__':
         _AddTest(MatrixUnaryFunctorGradientTest, 'MatrixInverseGradient', name,
                  _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_inverse,
                                                     dtype, shape))
+        _AddTest(MatrixUnaryFunctorGradientTest, 'MatrixExponentialGradient',
+                 name,
+                 _GetMatrixUnaryFunctorGradientTest(
+                     linalg_impl.matrix_exponential, dtype, shape))
         _AddTest(
             MatrixUnaryFunctorGradientTest, 'MatrixDeterminantGradient', name,
             _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_determinant,
+                                               dtype, shape))
+        _AddTest(
+            MatrixUnaryFunctorGradientTest, 'LogMatrixDeterminantGradient',
+            name,
+            _GetMatrixUnaryFunctorGradientTest(
+                lambda x: linalg_ops.log_matrix_determinant(x)[1],
+                dtype, shape))
+
+        # The numerical Jacobian is consistently invalid for these four shapes
+        # because the matrix square root of the perturbed input doesn't exist
+        if shape in {(2, 5, 5), (3, 5, 5), (3, 10, 10), (3, 2, 5, 5)}:
+          # Alternative shape that consistently produces a valid numerical Jacobian
+          shape = extra + (size + 1, size + 1)
+          name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
+        _AddTest(
+            MatrixUnaryFunctorGradientTest, 'MatrixSquareRootGradient', name,
+            _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_square_root,
                                                dtype, shape))
 
   # Tests for gradients of matrix_solve_ls

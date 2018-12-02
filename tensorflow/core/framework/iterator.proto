@@ -5,6 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "IteratorProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.util";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 
 // Protocol buffer representing the metadata for an iterator's state stored
 // as a Variant tensor.

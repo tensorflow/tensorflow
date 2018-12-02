@@ -17,11 +17,14 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_kernel_library",
+    "tf_custom_op_library",
+    "tf_gen_op_libs",
+    "tf_gen_op_wrapper_py",
+)
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 tf_custom_op_py_library(
@@ -75,6 +78,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:gpu_util_hdrs",
         "//tensorflow/core/kernels:ops_util_hdrs",
         "//third_party/eigen3",
+        "@local_config_cuda//cuda:cudnn_header",
     ],
     alwayslink = 1,
 )
@@ -94,6 +98,7 @@ tf_custom_op_library(
         "//tensorflow/core/kernels:conv_ops_gpu_hdrs",
         "//tensorflow/core/kernels:gpu_util_hdrs",
         "//tensorflow/core/kernels:ops_util_hdrs",
+        "@local_config_cuda//cuda:cudnn_header",
     ],
 )
 
@@ -107,13 +112,13 @@ tf_gen_op_wrapper_py(
     deps = [":fused_conv2d_bias_activation_op_op_lib"],
 )
 
-cuda_py_test(
-    name = "fused_conv2d_bias_activation_op_test",
-    size = "large",
-    srcs = ["python/ops/fused_conv2d_bias_activation_op_test.py"],
-    additional_deps = [
+py_library(
+    name = "fused_conv2d_bias_activation_op_test_base",
+    testonly = 1,
+    srcs = ["python/ops/fused_conv2d_bias_activation_op_test_base.py"],
+    visibility = ["//tensorflow/compiler/tf2xla:internal"],
+    deps = [
         ":fused_conv_py",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -126,16 +131,28 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "fused_conv2d_bias_activation_op_test",
+    size = "large",
+    srcs = ["python/ops/fused_conv2d_bias_activation_op_test.py"],
+    additional_deps = [
+        ":fused_conv2d_bias_activation_op_test_base",
+        "//tensorflow/python:client_testlib",
     ],
     tags = [
-        "manual",
-        "requires_cudnn6",
+        "manual",  # TODO(b/117128481): re-enable after fixing OSS build
+        "no_pip",
+        "requires-gpu-sm70",
     ],
 )
 
 cuda_py_test(
     name = "fused_conv2d_bias_activation_benchmark",
-    size = "large",
     srcs = ["python/ops/fused_conv2d_bias_activation_benchmark.py"],
     additional_deps = [
         ":fused_conv_py",
@@ -153,19 +170,7 @@ cuda_py_test(
     ],
     main = "python/ops/fused_conv2d_bias_activation_benchmark.py",
     tags = [
-        "manual",
-        "requires_cudnn6",
+        "manual",  # TODO(b/117128481): re-enable after fixing OSS build
+        "requires-gpu-sm70",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

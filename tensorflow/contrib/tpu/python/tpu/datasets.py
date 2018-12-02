@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import batching
-from tensorflow.contrib.data.python.ops import interleave_ops
+from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
@@ -133,7 +133,7 @@ def StreamingFilesDataset(files,
   with ops.device('/job:%s' % file_reader_job):
     if isinstance(files, str):
       source_dataset = dataset_ops.Dataset.list_files(files)
-    elif isinstance(files, dataset_ops.Dataset):
+    elif isinstance(files, dataset_ops.DatasetV2):
       source_dataset = files
     else:
       raise ValueError('files was not a string or a dataset: %s' % files)
@@ -166,11 +166,21 @@ def StreamingFilesDataset(files,
     return remote_iterator.get_next()
 
   def MapFn(unused_input):
-    return functional_ops.remote_call(
+    if isinstance(source_dataset.output_types, dtypes.DType):
+      output_types = [source_dataset.output_types]
+    elif isinstance(source_dataset.output_types, (list, tuple)):
+      output_types = source_dataset.output_types
+    else:
+      raise ValueError('source dataset has invalid output types')
+    remote_calls = functional_ops.remote_call(
         args=[source_handle],
-        Tout=[dtypes.string],
+        Tout=output_types,
         f=LoadingFunc,
         target='/job:%s/replica:0/task:0/cpu:0' % file_reader_job)
+    if len(remote_calls) == 1:
+      return remote_calls[0]
+    else:
+      return remote_calls
 
   with ops.device('/job:%s' % worker_job):
     output_dataset = dataset_ops.Dataset.range(2).repeat().map(

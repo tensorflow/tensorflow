@@ -9,19 +9,15 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
-tf_gen_op_wrapper_py(
-    name = "stateless_random_ops",
-    out = "gen_stateless_random_ops.py",  # cmake chokes without this
-    deps = ["//tensorflow/core:stateless_random_ops_op_lib"],
-)
-
 py_library(
     name = "stateless",
-    srcs = ["__init__.py"],
+    srcs = [
+        "__init__.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
-        ":stateless_random_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:util",
     ],
 )
@@ -31,22 +27,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/stateless_random_ops_test.py"],
     additional_deps = [
         ":stateless",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:random_ops",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

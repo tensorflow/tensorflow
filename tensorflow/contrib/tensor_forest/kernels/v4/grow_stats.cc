@@ -19,6 +19,7 @@
 #include "tensorflow/contrib/tensor_forest/kernels/tree_utils.h"
 #include "tensorflow/contrib/tensor_forest/kernels/v4/stat_utils.h"
 #include "tensorflow/core/lib/random/distribution_sampler.h"
+#include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
 namespace tensorforest {
@@ -122,9 +123,8 @@ ClassificationStats::ClassificationStats(const TensorForestParams& params,
     right_gini_.reset(new RunningGiniScores());
   }
 
-  uint64 time_seed = static_cast<uint64>(std::clock());
   single_rand_ = std::unique_ptr<random::PhiloxRandom>(
-      new random::PhiloxRandom(time_seed));
+      new random::PhiloxRandom(random::New64()));
   rng_ = std::unique_ptr<random::SimplePhilox>(
       new random::SimplePhilox(single_rand_.get()));
 }

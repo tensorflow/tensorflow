@@ -14,8 +14,8 @@
 # ==============================================================================
 """Model evaluation tools for TFGAN.
 
-These methods come from https://arxiv.org/abs/1606.03498 and
-https://arxiv.org/abs/1706.08500.
+These methods come from https://arxiv.org/abs/1606.03498,
+https://arxiv.org/abs/1706.08500, and https://arxiv.org/abs/1801.01401.
 
 NOTE: This implementation uses the same weights as in
 https://github.com/openai/improved-gan/blob/master/inception_score/model.py,
@@ -40,14 +40,15 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import resource_loader
-
 
 __all__ = [
     'get_graph_def_from_disk',
@@ -62,9 +63,16 @@ __all__ = [
     'frechet_inception_distance',
     'frechet_classifier_distance',
     'frechet_classifier_distance_from_activations',
+    'mean_only_frechet_classifier_distance_from_activations',
+    'diagonal_only_frechet_classifier_distance_from_activations',
+    'kernel_inception_distance',
+    'kernel_inception_distance_and_std',
+    'kernel_classifier_distance',
+    'kernel_classifier_distance_and_std',
+    'kernel_classifier_distance_from_activations',
+    'kernel_classifier_distance_and_std_from_activations',
     'INCEPTION_DEFAULT_IMAGE_SIZE',
 ]
-
 
 INCEPTION_URL = 'http://download.tensorflow.org/models/frozen_inception_v1_2015_12_05.tar.gz'
 INCEPTION_FROZEN_GRAPH = 'inceptionv1_for_inception_score.pb'
@@ -77,8 +85,7 @@ INCEPTION_DEFAULT_IMAGE_SIZE = 299
 def _validate_images(images, image_size):
   images = ops.convert_to_tensor(images)
   images.shape.with_rank(4)
-  images.shape.assert_is_compatible_with(
-      [None, image_size, image_size, None])
+  images.shape.assert_is_compatible_with([None, image_size, image_size, None])
   return images
 
 
@@ -109,9 +116,10 @@ def _symmetric_matrix_square_root(mat, eps=1e-10):
       math_ops.matmul(u, array_ops.diag(si)), v, transpose_b=True)
 
 
-def preprocess_image(
-    images, height=INCEPTION_DEFAULT_IMAGE_SIZE,
-    width=INCEPTION_DEFAULT_IMAGE_SIZE, scope=None):
+def preprocess_image(images,
+                     height=INCEPTION_DEFAULT_IMAGE_SIZE,
+                     width=INCEPTION_DEFAULT_IMAGE_SIZE,
+                     scope=None):
   """Prepare a batch of images for evaluation.
 
   This is the preprocessing portion of the graph from
@@ -272,8 +280,11 @@ def run_inception(images,
   return activations
 
 
-def run_image_classifier(tensor, graph_def, input_tensor,
-                         output_tensor, scope='RunClassifier'):
+def run_image_classifier(tensor,
+                         graph_def,
+                         input_tensor,
+                         output_tensor,
+                         scope='RunClassifier'):
   """Runs a network from a frozen graph.
 
   Args:
@@ -317,7 +328,7 @@ def classifier_score(images, classifier_fn, num_batches=1):
 
   NOTE: This function consumes images, computes their logits, and then
   computes the classifier score. If you would like to precompute many logits for
-  large batches, use clasifier_score_from_logits(), which this method also
+  large batches, use classifier_score_from_logits(), which this method also
   uses.
 
   Args:
@@ -433,8 +444,8 @@ def trace_sqrt_product(sigma, sigma_v):
   sqrt_sigma = _symmetric_matrix_square_root(sigma)
 
   # This is sqrt(A sigma_v A) above
-  sqrt_a_sigmav_a = math_ops.matmul(
-      sqrt_sigma, math_ops.matmul(sigma_v, sqrt_sigma))
+  sqrt_a_sigmav_a = math_ops.matmul(sqrt_sigma,
+                                    math_ops.matmul(sigma_v, sqrt_sigma))
 
   return math_ops.trace(_symmetric_matrix_square_root(sqrt_a_sigmav_a))
 
@@ -450,9 +461,9 @@ def frechet_classifier_distance(real_images,
 
   This technique is described in detail in https://arxiv.org/abs/1706.08500.
   Given two Gaussian distribution with means m and m_w and covariance matrices
-  C and C_w, this function calcuates
+  C and C_w, this function calculates
 
-  |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
+              |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
 
   which captures how different the distributions of real images and generated
   images (or more accurately, their visual features) are. Note that unlike the
@@ -463,7 +474,7 @@ def frechet_classifier_distance(real_images,
   Frechet distance is biased. It is more biased for small sample sizes. (e.g.
   even if the two distributions are the same, for a small sample size, the
   expected Frechet distance is large). It is important to use the same
-  sample size to compute frechet classifier distance when comparing two
+  sample size to compute Frechet classifier distance when comparing two
   generative models.
 
   NOTE: This function consumes images, computes their activations, and then
@@ -484,25 +495,25 @@ def frechet_classifier_distance(real_images,
     The Frechet Inception distance. A floating-point scalar of the same type
     as the output of `classifier_fn`.
   """
-
   real_images_list = array_ops.split(
       real_images, num_or_size_splits=num_batches)
   generated_images_list = array_ops.split(
       generated_images, num_or_size_splits=num_batches)
 
-  imgs = array_ops.stack(real_images_list + generated_images_list)
+  real_imgs = array_ops.stack(real_images_list)
+  generated_imgs = array_ops.stack(generated_images_list)
 
   # Compute the activations using the memory-efficient `map_fn`.
-  activations = functional_ops.map_fn(
-      fn=classifier_fn,
-      elems=imgs,
-      parallel_iterations=1,
-      back_prop=False,
-      swap_memory=True,
-      name='RunClassifier')
+  def compute_activations(elems):
+    return functional_ops.map_fn(fn=classifier_fn,
+                                 elems=elems,
+                                 parallel_iterations=1,
+                                 back_prop=False,
+                                 swap_memory=True,
+                                 name='RunClassifier')
 
-  # Split the activations by the real and generated images.
-  real_a, gen_a = array_ops.split(activations, [num_batches, num_batches], 0)
+  real_a = compute_activations(real_imgs)
+  gen_a = compute_activations(generated_imgs)
 
   # Ensure the activations have the right shapes.
   real_a = array_ops.concat(array_ops.unstack(real_a), 0)
@@ -511,9 +522,141 @@ def frechet_classifier_distance(real_images,
   return frechet_classifier_distance_from_activations(real_a, gen_a)
 
 
-def frechet_classifier_distance_from_activations(
+def mean_only_frechet_classifier_distance_from_activations(
     real_activations, generated_activations):
   """Classifier distance for evaluating a generative model from activations.
+
+  Given two Gaussian distribution with means m and m_w and covariance matrices
+  C and C_w, this function calcuates
+
+                                |m - m_w|^2
+
+  which captures how different the distributions of real images and generated
+  images (or more accurately, their visual features) are. Note that unlike the
+  Inception score, this is a true distance and utilizes information about real
+  world images.
+
+  Note that when computed using sample means and sample covariance matrices,
+  Frechet distance is biased. It is more biased for small sample sizes. (e.g.
+  even if the two distributions are the same, for a small sample size, the
+  expected Frechet distance is large). It is important to use the same
+  sample size to compute frechet classifier distance when comparing two
+  generative models.
+
+  In this variant, we only compute the difference between the means of the
+  fitted Gaussians. The computation leads to O(n) vs. O(n^2) memory usage, yet
+  still retains much of the same information as FID.
+
+  Args:
+    real_activations: 2D array of activations of real images of size
+      [num_images, num_dims] to use to compute Frechet Inception distance.
+    generated_activations: 2D array of activations of generated images of size
+      [num_images, num_dims] to use to compute Frechet Inception distance.
+
+  Returns:
+    The mean-only Frechet Inception distance. A floating-point scalar of the
+    same type as the output of the activations.
+  """
+  real_activations.shape.assert_has_rank(2)
+  generated_activations.shape.assert_has_rank(2)
+
+  activations_dtype = real_activations.dtype
+  if activations_dtype != dtypes.float64:
+    real_activations = math_ops.to_double(real_activations)
+    generated_activations = math_ops.to_double(generated_activations)
+
+  # Compute means of activations.
+  m = math_ops.reduce_mean(real_activations, 0)
+  m_w = math_ops.reduce_mean(generated_activations, 0)
+
+  # Next the distance between means.
+  mean = math_ops.reduce_sum(
+      math_ops.squared_difference(m, m_w))  # Equivalent to L2 but more stable.
+  mofid = mean
+  if activations_dtype != dtypes.float64:
+    mofid = math_ops.cast(mofid, activations_dtype)
+
+  return mofid
+
+
+def diagonal_only_frechet_classifier_distance_from_activations(
+    real_activations, generated_activations):
+  """Classifier distance for evaluating a generative model.
+
+  This is based on the Frechet Inception distance, but for an arbitrary
+  classifier.
+
+  This technique is described in detail in https://arxiv.org/abs/1706.08500.
+  Given two Gaussian distribution with means m and m_w and covariance matrices
+  C and C_w, this function calcuates
+
+          |m - m_w|^2 + (sigma + sigma_w - 2(sigma x sigma_w)^(1/2))
+
+  which captures how different the distributions of real images and generated
+  images (or more accurately, their visual features) are. Note that unlike the
+  Inception score, this is a true distance and utilizes information about real
+  world images. In this variant, we compute diagonal-only covariance matrices.
+  As a result, instead of computing an expensive matrix square root, we can do
+  something much simpler, and has O(n) vs O(n^2) space complexity.
+
+  Note that when computed using sample means and sample covariance matrices,
+  Frechet distance is biased. It is more biased for small sample sizes. (e.g.
+  even if the two distributions are the same, for a small sample size, the
+  expected Frechet distance is large). It is important to use the same
+  sample size to compute frechet classifier distance when comparing two
+  generative models.
+
+  Args:
+    real_activations: Real images to use to compute Frechet Inception distance.
+    generated_activations: Generated images to use to compute Frechet Inception
+      distance.
+
+  Returns:
+    The diagonal-only Frechet Inception distance. A floating-point scalar of
+    the same type as the output of the activations.
+
+  Raises:
+    ValueError: If the shape of the variance and mean vectors are not equal.
+  """
+  real_activations.shape.assert_has_rank(2)
+  generated_activations.shape.assert_has_rank(2)
+
+  activations_dtype = real_activations.dtype
+  if activations_dtype != dtypes.float64:
+    real_activations = math_ops.to_double(real_activations)
+    generated_activations = math_ops.to_double(generated_activations)
+
+  # Compute mean and covariance matrices of activations.
+  m, var = nn_impl.moments(real_activations, axes=[0])
+  m_w, var_w = nn_impl.moments(generated_activations, axes=[0])
+
+  actual_shape = var.get_shape()
+  expected_shape = m.get_shape()
+
+  if actual_shape != expected_shape:
+    raise ValueError('shape: {} must match expected shape: {}'.format(
+        actual_shape, expected_shape))
+
+  # Compute the two components of FID.
+
+  # First the covariance component.
+  # Here, note that trace(A + B) = trace(A) + trace(B)
+  trace = math_ops.reduce_sum(
+      (var + var_w) - 2.0 * math_ops.sqrt(math_ops.multiply(var, var_w)))
+
+  # Next the distance between means.
+  mean = math_ops.reduce_sum(
+      math_ops.squared_difference(m, m_w))  # Equivalent to L2 but more stable.
+  dofid = trace + mean
+  if activations_dtype != dtypes.float64:
+    dofid = math_ops.cast(dofid, activations_dtype)
+
+  return dofid
+
+
+def frechet_classifier_distance_from_activations(real_activations,
+                                                 generated_activations):
+  """Classifier distance for evaluating a generative model.
 
   This methods computes the Frechet classifier distance from activations of
   real images and generated images. This can be used independently of the
@@ -523,14 +666,21 @@ def frechet_classifier_distance_from_activations(
 
   This technique is described in detail in https://arxiv.org/abs/1706.08500.
   Given two Gaussian distribution with means m and m_w and covariance matrices
-  C and C_w, this function calcuates
+  C and C_w, this function calculates
 
-  |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
+                |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
 
   which captures how different the distributions of real images and generated
   images (or more accurately, their visual features) are. Note that unlike the
   Inception score, this is a true distance and utilizes information about real
   world images.
+
+  Note that when computed using sample means and sample covariance matrices,
+  Frechet distance is biased. It is more biased for small sample sizes. (e.g.
+  even if the two distributions are the same, for a small sample size, the
+  expected Frechet distance is large). It is important to use the same
+  sample size to compute frechet classifier distance when comparing two
+  generative models.
 
   Args:
     real_activations: 2D Tensor containing activations of real data. Shape is
@@ -553,37 +703,411 @@ def frechet_classifier_distance_from_activations(
 
   # Compute mean and covariance matrices of activations.
   m = math_ops.reduce_mean(real_activations, 0)
-  m_v = math_ops.reduce_mean(generated_activations, 0)
-  num_examples = math_ops.to_double(array_ops.shape(real_activations)[0])
+  m_w = math_ops.reduce_mean(generated_activations, 0)
+  num_examples_real = math_ops.to_double(array_ops.shape(real_activations)[0])
+  num_examples_generated = math_ops.to_double(
+      array_ops.shape(generated_activations)[0])
 
   # sigma = (1 / (n - 1)) * (X - mu) (X - mu)^T
   real_centered = real_activations - m
   sigma = math_ops.matmul(
-      real_centered, real_centered, transpose_a=True) / (num_examples - 1)
+      real_centered, real_centered, transpose_a=True) / (
+          num_examples_real - 1)
 
-  gen_centered = generated_activations - m_v
-  sigma_v = math_ops.matmul(
-      gen_centered, gen_centered, transpose_a=True) / (num_examples - 1)
+  gen_centered = generated_activations - m_w
+  sigma_w = math_ops.matmul(
+      gen_centered, gen_centered, transpose_a=True) / (
+          num_examples_generated - 1)
 
-  # Find the Tr(sqrt(sigma sigma_v)) component of FID
-  sqrt_trace_component = trace_sqrt_product(sigma, sigma_v)
+  # Find the Tr(sqrt(sigma sigma_w)) component of FID
+  sqrt_trace_component = trace_sqrt_product(sigma, sigma_w)
 
   # Compute the two components of FID.
 
   # First the covariance component.
   # Here, note that trace(A + B) = trace(A) + trace(B)
-  trace = math_ops.trace(sigma + sigma_v) - 2.0 * sqrt_trace_component
+  trace = math_ops.trace(sigma + sigma_w) - 2.0 * sqrt_trace_component
 
   # Next the distance between means.
-  mean = math_ops.square(linalg_ops.norm(m - m_v))  # This uses the L2 norm.
+  mean = math_ops.reduce_sum(
+      math_ops.squared_difference(m, m_w))  # Equivalent to L2 but more stable.
   fid = trace + mean
   if activations_dtype != dtypes.float64:
     fid = math_ops.cast(fid, activations_dtype)
 
   return fid
 
-
 frechet_inception_distance = functools.partial(
     frechet_classifier_distance,
     classifier_fn=functools.partial(
         run_inception, output_tensor=INCEPTION_FINAL_POOL))
+
+
+def kernel_classifier_distance(real_images,
+                               generated_images,
+                               classifier_fn,
+                               num_classifier_batches=1,
+                               max_block_size=1024,
+                               dtype=None):
+  """Kernel "classifier" distance for evaluating a generative model.
+
+  This is based on the Kernel Inception distance, but for an arbitrary
+  embedding.
+
+  This technique is described in detail in https://arxiv.org/abs/1801.01401.
+  Given two distributions P and Q of activations, this function calculates
+
+      E_{X, X' ~ P}[k(X, X')] + E_{Y, Y' ~ Q}[k(Y, Y')]
+        - 2 E_{X ~ P, Y ~ Q}[k(X, Y)]
+
+  where k is the polynomial kernel
+
+      k(x, y) = ( x^T y / dimension + 1 )^3.
+
+  This captures how different the distributions of real and generated images'
+  visual features are. Like the Frechet distance (and unlike the Inception
+  score), this is a true distance and incorporates information about the
+  target images. Unlike the Frechet score, this function computes an
+  *unbiased* and asymptotically normal estimator, which makes comparing
+  estimates across models much more intuitive.
+
+  The estimator used takes time quadratic in max_block_size. Larger values of
+  max_block_size will decrease the variance of the estimator but increase the
+  computational cost. This differs slightly from the estimator used by the
+  original paper; it is the block estimator of https://arxiv.org/abs/1307.1954.
+
+  NOTE: the blocking code assumes that real_activations and
+  generated_activations are both in random order. If either is sorted in a
+  meaningful order, the estimator will behave poorly.
+
+  NOTE: This function consumes images, computes their activations, and then
+  computes the classifier score. If you would like to precompute many
+  activations for real and generated images for large batches, or to compute
+  multiple scores based on the same images, please use
+  kernel_clasifier_distance_from_activations(), which this method also uses.
+
+  Args:
+    real_images: Real images to use to compute Kernel Inception distance.
+    generated_images: Generated images to use to compute Kernel Inception
+      distance.
+    classifier_fn: A function that takes images and produces activations based
+      on a classifier.
+    num_classifier_batches: Number of batches to split images in to in order to
+      efficiently run them through the classifier network.
+    max_estimator_block_size: integer, default 1024. The distance estimator
+      splits samples into blocks for computational efficiency. Larger values are
+      more computationally expensive but decrease the variance of the distance
+      estimate.
+    dtype: if not None, coerce activations to this dtype before computations.
+
+  Returns:
+   The Kernel Inception Distance. A floating-point scalar of the same type
+   as the output of the activations.
+  """
+  return kernel_classifier_distance_and_std(
+      real_images,
+      generated_images,
+      classifier_fn,
+      num_classifier_batches=num_classifier_batches,
+      max_block_size=max_block_size,
+      dtype=dtype)[0]
+
+
+kernel_inception_distance = functools.partial(
+    kernel_classifier_distance,
+    classifier_fn=functools.partial(
+        run_inception, output_tensor=INCEPTION_FINAL_POOL))
+
+
+def kernel_classifier_distance_and_std(real_images,
+                                       generated_images,
+                                       classifier_fn,
+                                       num_classifier_batches=1,
+                                       max_block_size=1024,
+                                       dtype=None):
+  """Kernel "classifier" distance for evaluating a generative model.
+
+  This is based on the Kernel Inception distance, but for an arbitrary
+  embedding. Also returns an estimate of the standard error of the distance
+  estimator.
+
+  This technique is described in detail in https://arxiv.org/abs/1801.01401.
+  Given two distributions P and Q of activations, this function calculates
+
+      E_{X, X' ~ P}[k(X, X')] + E_{Y, Y' ~ Q}[k(Y, Y')]
+        - 2 E_{X ~ P, Y ~ Q}[k(X, Y)]
+
+  where k is the polynomial kernel
+
+      k(x, y) = ( x^T y / dimension + 1 )^3.
+
+  This captures how different the distributions of real and generated images'
+  visual features are. Like the Frechet distance (and unlike the Inception
+  score), this is a true distance and incorporates information about the
+  target images. Unlike the Frechet score, this function computes an
+  *unbiased* and asymptotically normal estimator, which makes comparing
+  estimates across models much more intuitive.
+
+  The estimator used takes time quadratic in max_block_size. Larger values of
+  max_block_size will decrease the variance of the estimator but increase the
+  computational cost. This differs slightly from the estimator used by the
+  original paper; it is the block estimator of https://arxiv.org/abs/1307.1954.
+
+  NOTE: the blocking code assumes that real_activations and
+  generated_activations are both in random order. If either is sorted in a
+  meaningful order, the estimator will behave poorly.
+
+  NOTE: This function consumes images, computes their activations, and then
+  computes the classifier score. If you would like to precompute many
+  activations for real and generated images for large batches, or to compute
+  multiple scores based on the same images, please use
+  kernel_clasifier_distance_from_activations(), which this method also uses.
+
+  Args:
+    real_images: Real images to use to compute Kernel Inception distance.
+    generated_images: Generated images to use to compute Kernel Inception
+      distance.
+    classifier_fn: A function that takes images and produces activations based
+      on a classifier.
+    num_classifier_batches: Number of batches to split images in to in order to
+      efficiently run them through the classifier network.
+    max_estimator_block_size: integer, default 1024. The distance estimator
+      splits samples into blocks for computational efficiency. Larger values are
+      more computationally expensive but decrease the variance of the distance
+      estimate. Having a smaller block size also gives a better estimate of the
+      standard error.
+    dtype: if not None, coerce activations to this dtype before computations.
+
+  Returns:
+   The Kernel Inception Distance. A floating-point scalar of the same type
+     as the output of the activations.
+   An estimate of the standard error of the distance estimator (a scalar of
+     the same type).
+  """
+  real_images_list = array_ops.split(
+      real_images, num_or_size_splits=num_classifier_batches)
+  generated_images_list = array_ops.split(
+      generated_images, num_or_size_splits=num_classifier_batches)
+
+  real_imgs = array_ops.stack(real_images_list)
+  generated_imgs = array_ops.stack(generated_images_list)
+
+  # Compute the activations using the memory-efficient `map_fn`.
+  def compute_activations(elems):
+    return functional_ops.map_fn(
+        fn=classifier_fn,
+        elems=elems,
+        parallel_iterations=1,
+        back_prop=False,
+        swap_memory=True,
+        name='RunClassifier')
+
+  real_a = compute_activations(real_imgs)
+  gen_a = compute_activations(generated_imgs)
+
+  # Ensure the activations have the right shapes.
+  real_a = array_ops.concat(array_ops.unstack(real_a), 0)
+  gen_a = array_ops.concat(array_ops.unstack(gen_a), 0)
+
+  return kernel_classifier_distance_and_std_from_activations(
+      real_a, gen_a, max_block_size=max_block_size)
+
+
+kernel_inception_distance_and_std = functools.partial(
+    kernel_classifier_distance_and_std,
+    classifier_fn=functools.partial(
+        run_inception, output_tensor=INCEPTION_FINAL_POOL))
+
+
+def kernel_classifier_distance_from_activations(real_activations,
+                                                generated_activations,
+                                                max_block_size=1024,
+                                                dtype=None):
+  """Kernel "classifier" distance for evaluating a generative model.
+
+  This methods computes the kernel classifier distance from activations of
+  real images and generated images. This can be used independently of the
+  kernel_classifier_distance() method, especially in the case of using large
+  batches during evaluation where we would like to precompute all of the
+  activations before computing the classifier distance, or if we want to
+  compute multiple metrics based on the same images.
+
+  This technique is described in detail in https://arxiv.org/abs/1801.01401.
+  Given two distributions P and Q of activations, this function calculates
+
+      E_{X, X' ~ P}[k(X, X')] + E_{Y, Y' ~ Q}[k(Y, Y')]
+        - 2 E_{X ~ P, Y ~ Q}[k(X, Y)]
+
+  where k is the polynomial kernel
+
+      k(x, y) = ( x^T y / dimension + 1 )^3.
+
+  This captures how different the distributions of real and generated images'
+  visual features are. Like the Frechet distance (and unlike the Inception
+  score), this is a true distance and incorporates information about the
+  target images. Unlike the Frechet score, this function computes an
+  *unbiased* and asymptotically normal estimator, which makes comparing
+  estimates across models much more intuitive.
+
+  The estimator used takes time quadratic in max_block_size. Larger values of
+  max_block_size will decrease the variance of the estimator but increase the
+  computational cost. This differs slightly from the estimator used by the
+  original paper; it is the block estimator of https://arxiv.org/abs/1307.1954.
+
+  NOTE: the blocking code assumes that real_activations and
+  generated_activations are both in random order. If either is sorted in a
+  meaningful order, the estimator will behave poorly.
+
+  Args:
+    real_activations: 2D Tensor containing activations of real data. Shape is
+      [batch_size, activation_size].
+    generated_activations: 2D Tensor containing activations of generated data.
+      Shape is [batch_size, activation_size].
+    max_block_size: integer, default 1024. The distance estimator splits samples
+      into blocks for computational efficiency. Larger values are more
+      computationally expensive but decrease the variance of the distance
+      estimate.
+    dtype: if not None, coerce activations to this dtype before computations.
+
+  Returns:
+   The Kernel Inception Distance. A floating-point scalar of the same type
+   as the output of the activations.
+  """
+  return kernel_classifier_distance_and_std_from_activations(
+      real_activations, generated_activations, max_block_size=max_block_size)[0]
+
+
+def kernel_classifier_distance_and_std_from_activations(real_activations,
+                                                        generated_activations,
+                                                        max_block_size=1024,
+                                                        dtype=None):
+  """Kernel "classifier" distance for evaluating a generative model.
+
+  This methods computes the kernel classifier distance from activations of
+  real images and generated images. This can be used independently of the
+  kernel_classifier_distance() method, especially in the case of using large
+  batches during evaluation where we would like to precompute all of the
+  activations before computing the classifier distance, or if we want to
+  compute multiple metrics based on the same images. It also returns a rough
+  estimate of the standard error of the estimator.
+
+  This technique is described in detail in https://arxiv.org/abs/1801.01401.
+  Given two distributions P and Q of activations, this function calculates
+
+      E_{X, X' ~ P}[k(X, X')] + E_{Y, Y' ~ Q}[k(Y, Y')]
+        - 2 E_{X ~ P, Y ~ Q}[k(X, Y)]
+
+  where k is the polynomial kernel
+
+      k(x, y) = ( x^T y / dimension + 1 )^3.
+
+  This captures how different the distributions of real and generated images'
+  visual features are. Like the Frechet distance (and unlike the Inception
+  score), this is a true distance and incorporates information about the
+  target images. Unlike the Frechet score, this function computes an
+  *unbiased* and asymptotically normal estimator, which makes comparing
+  estimates across models much more intuitive.
+
+  The estimator used takes time quadratic in max_block_size. Larger values of
+  max_block_size will decrease the variance of the estimator but increase the
+  computational cost. This differs slightly from the estimator used by the
+  original paper; it is the block estimator of https://arxiv.org/abs/1307.1954.
+  The estimate of the standard error will also be more reliable when there are
+  more blocks, i.e. when max_block_size is smaller.
+
+  NOTE: the blocking code assumes that real_activations and
+  generated_activations are both in random order. If either is sorted in a
+  meaningful order, the estimator will behave poorly.
+
+  Args:
+    real_activations: 2D Tensor containing activations of real data. Shape is
+      [batch_size, activation_size].
+    generated_activations: 2D Tensor containing activations of generated data.
+      Shape is [batch_size, activation_size].
+    max_block_size: integer, default 1024. The distance estimator splits samples
+      into blocks for computational efficiency. Larger values are more
+      computationally expensive but decrease the variance of the distance
+      estimate. Having a smaller block size also gives a better estimate of the
+      standard error.
+    dtype: if not None, coerce activations to this dtype before computations.
+
+  Returns:
+   The Kernel Inception Distance. A floating-point scalar of the same type
+     as the output of the activations.
+   An estimate of the standard error of the distance estimator (a scalar of
+     the same type).
+  """
+
+  real_activations.shape.assert_has_rank(2)
+  generated_activations.shape.assert_has_rank(2)
+  real_activations.shape[1].assert_is_compatible_with(
+      generated_activations.shape[1])
+
+  if dtype is None:
+    dtype = real_activations.dtype
+    assert generated_activations.dtype == dtype
+  else:
+    real_activations = math_ops.cast(real_activations, dtype)
+    generated_activations = math_ops.cast(generated_activations, dtype)
+
+  # Figure out how to split the activations into blocks of approximately
+  # equal size, with none larger than max_block_size.
+  n_r = array_ops.shape(real_activations)[0]
+  n_g = array_ops.shape(generated_activations)[0]
+
+  n_bigger = math_ops.maximum(n_r, n_g)
+  n_blocks = math_ops.to_int32(math_ops.ceil(n_bigger / max_block_size))
+
+  v_r = n_r // n_blocks
+  v_g = n_g // n_blocks
+
+  n_plusone_r = n_r - v_r * n_blocks
+  n_plusone_g = n_g - v_g * n_blocks
+
+  sizes_r = array_ops.concat([
+      array_ops.fill([n_blocks - n_plusone_r], v_r),
+      array_ops.fill([n_plusone_r], v_r + 1),
+  ], 0)
+  sizes_g = array_ops.concat([
+      array_ops.fill([n_blocks - n_plusone_g], v_g),
+      array_ops.fill([n_plusone_g], v_g + 1),
+  ], 0)
+
+  zero = array_ops.zeros([1], dtype=dtypes.int32)
+  inds_r = array_ops.concat([zero, math_ops.cumsum(sizes_r)], 0)
+  inds_g = array_ops.concat([zero, math_ops.cumsum(sizes_g)], 0)
+
+  dim = math_ops.cast(real_activations.shape[1], dtype)
+
+  def compute_kid_block(i):
+    'Compute the ith block of the KID estimate.'
+    r_s = inds_r[i]
+    r_e = inds_r[i + 1]
+    r = real_activations[r_s:r_e]
+    m = math_ops.cast(r_e - r_s, dtype)
+
+    g_s = inds_g[i]
+    g_e = inds_g[i + 1]
+    g = generated_activations[g_s:g_e]
+    n = math_ops.cast(g_e - g_s, dtype)
+
+    k_rr = (math_ops.matmul(r, r, transpose_b=True) / dim + 1)**3
+    k_rg = (math_ops.matmul(r, g, transpose_b=True) / dim + 1)**3
+    k_gg = (math_ops.matmul(g, g, transpose_b=True) / dim + 1)**3
+    return (-2 * math_ops.reduce_mean(k_rg) +
+            (math_ops.reduce_sum(k_rr) - math_ops.trace(k_rr)) / (m * (m - 1)) +
+            (math_ops.reduce_sum(k_gg) - math_ops.trace(k_gg)) / (n * (n - 1)))
+
+  ests = functional_ops.map_fn(
+      compute_kid_block, math_ops.range(n_blocks), dtype=dtype, back_prop=False)
+
+  mn = math_ops.reduce_mean(ests)
+
+  # nn_impl.moments doesn't use the Bessel correction, which we want here
+  n_blocks_ = math_ops.cast(n_blocks, dtype)
+  var = control_flow_ops.cond(
+      math_ops.less_equal(n_blocks, 1),
+      lambda: array_ops.constant(float('nan'), dtype=dtype),
+      lambda: math_ops.reduce_sum(math_ops.square(ests - mn)) / (n_blocks_ - 1))
+
+  return mn, math_ops.sqrt(var / n_blocks_)

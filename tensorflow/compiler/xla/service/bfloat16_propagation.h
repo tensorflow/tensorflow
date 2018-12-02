@@ -21,11 +21,14 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/bfloat16_support.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 
@@ -57,15 +60,13 @@ namespace xla {
 // BFloat16ConversionFolding. If other passes are needed after this pass, run
 // BFloat16MixedPrecisionRemoval first to undo some of the changes made by this
 // pass.
-class BFloat16Propagation : public HloPassInterface {
+class BFloat16Propagation : public HloModulePass {
  public:
   explicit BFloat16Propagation(const BFloat16Support* bfloat16_support);
 
   ~BFloat16Propagation() override = default;
 
-  tensorflow::StringPiece name() const override {
-    return "bfloat16-propagation";
-  }
+  absl::string_view name() const override { return "bfloat16-propagation"; }
 
   // Runs the pass on the given module. Returns whether the module was changed
   // (precision reductions were added).
@@ -82,33 +83,42 @@ class BFloat16Propagation : public HloPassInterface {
 
   // The set of instructions to consider using bfloat16, computed in the forward
   // pass.
-  tensorflow::gtl::FlatSet<const HloInstruction*> consider_using_bfloat16_;
+  absl::flat_hash_set<const HloInstruction*> consider_using_bfloat16_;
 
   // ***************************
-  // Functions called and state produced by the backward mutation pass (from
-  // root to parameters).
+  // Functions called and state produced by the backward pass (from root to
+  // parameters) that finds opportunities to use BF16.
 
-  // Determines the precision for the given instruction in the mutation pass.
-  void DetermineAndMutateInstructionPrecision(HloInstruction* hlo,
-                                              bool skip_parameters);
+  // Determines the precision for the given instruction in the
+  // opportunity-finding pass.
+  void DetermineInstructionPrecision(HloInstruction* hlo, bool skip_parameters);
 
-  // Special handling in the mutation pass for fusion computations.
+  // Special handling in the opportunity-finding pass for fusion computations.
   //
   // Precondition: hlo->opcode() == kFusion
-  void DetermineAndMutateFusionComputationPrecision(HloInstruction* fusion);
+  void DetermineFusionComputationPrecision(HloInstruction* fusion);
 
-  // Special handling in the mutation pass for while computations.
+  // Reverts changes to BF16 that will not propagate outside a fusion
+  // computation. This avoids BF16 casts overhead inside a fusion which won't
+  // save memory bandwidth.
+  //
+  // Precondition: hlo->opcode() == kFusion
+  void RevertIfFusionInternalBF16Changes(HloInstruction* fusion);
+
+  // Special handling in the opportunity-finding pass for while computations.
   //
   // Precondition: hlo->opcode() == kWhile
-  void DetermineAndMutateWhileComputationsPrecision(HloInstruction* while_hlo);
+  void DetermineWhileComputationsPrecision(HloInstruction* while_hlo);
 
-  // The set of HloInstructions that have been visited in the mutation pass.
-  tensorflow::gtl::FlatSet<const HloInstruction*>
-      instructions_visited_in_mutation_pass_;
+  // The set of HloInstructions that have been visited in the
+  // opportunity-finding pass.
+  absl::flat_hash_set<const HloInstruction*>
+      instructions_visited_in_backward_pass_;
 
-  // The set of HloComputations that have been visited in the mutation pass.
-  tensorflow::gtl::FlatSet<const HloComputation*>
-      computations_visited_in_mutation_pass_;
+  // The set of HloComputations that have been visited in the
+  // opportunity-finding pass.
+  absl::flat_hash_set<const HloComputation*>
+      computations_visited_in_backward_pass_;
 
   // ***************************
   // Functions called by the final inconsistency resolving pass.
@@ -116,14 +126,14 @@ class BFloat16Propagation : public HloPassInterface {
   // Adjusts the output shapes of HloInstructions such that if two
   // HloInstructions have aliasing buffers in their outputs, they must have the
   // same precision.
-  Status ResolveInconsistencyOfAliasingBuffers(HloModule* module);
+  void ResolveInconsistencyOfAliasingBuffers(HloModule* module);
 
   // Resolves inconsistency of aliasing buffers for the given computation, and
   // recursively runs on a while instruction's condition and body until a fixed
   // point is reached.
   bool ResolveInconsistencyOfAliasingBuffersHelper(
       HloComputation* computation,
-      tensorflow::gtl::FlatSet<const HloComputation*>* visited_computations);
+      absl::flat_hash_set<const HloComputation*>* visited_computations);
 
   // Makes the parameters of called computations match how they are called by
   // the given HLO.
@@ -134,6 +144,21 @@ class BFloat16Propagation : public HloPassInterface {
   void AdjustCalledComputationRoot(HloInstruction* hlo);
 
   // ***************************
+  // Functions called after changes in changes_to_bf16_ are applied.
+
+  // Resolves inconsistencies introduced by this pass for fusions with
+  // tuple-type output.
+  Status ResolveInconsistentFusions(HloModule* module);
+
+  // Converts the literals in kConstant HLOs which have their types changed to
+  // BF16 by this pass.
+  Status ResolveConvertedConstants(HloModule* module);
+
+  // Skips no-op conversions (same source and target shapes) that can be
+  // produced this pass, i.e., replaces them in their uses with their operands.
+  Status SkipNoopConversions(HloModule* module);
+
+  // ***************************
   // Functions called and state used by two or more passes.
 
   // Returns whether all uses of the given HloInstruction can consume BF16
@@ -141,17 +166,45 @@ class BFloat16Propagation : public HloPassInterface {
   bool AllUsersConsumeBF16(const HloInstruction& hlo,
                            const ShapeIndex& index) const;
 
+  // The output element type of the HLO at the given shape index after changes
+  // in changes_to_bf16_ are applied.
+  PrimitiveType OutputTypeAfterChange(HloInstruction* hlo,
+                                      const ShapeIndex& index) const;
+
+  // The element type of the HLO value after changes in changes_to_bf16_ are
+  // applied.
+  PrimitiveType ValueTypeAfterChange(const HloValue* value) const;
+
+  // If target_type == BF16, adds the HLO at the given index to
+  // changes_to_bf16_; otherwise, target_type must be F32 and this function
+  // removes the HLO at the given index from changes_to_bf16_ if it was earlier
+  // added.
+  void AddToOrRemoveFromBF16ChangeSet(HloInstruction* hlo,
+                                      const ShapeIndex& index,
+                                      PrimitiveType target_type);
+
   // The set of F32 HLO values that must be kept in F32.
-  tensorflow::gtl::FlatSet<const HloValue*> values_that_must_be_kept_as_f32_;
+  absl::flat_hash_set<const HloValue*> values_that_must_be_kept_as_f32_;
 
   // Mapping from each HloComputation to the number of callers to it in the
   // module. Populated at the beginning of this pass.
-  tensorflow::gtl::FlatMap<const HloComputation*, int64> caller_counts_;
+  absl::flat_hash_map<const HloComputation*, int64> caller_counts_;
+
+  // We first store the potential F32-to-BF16 changes to changes_to_bf16_, which
+  // are subject to further adjustment, then finally applied to the HLOs. This
+  // avoids setting changed_ to true but all changes are reverted during
+  // adjustment.
+  //
+  // For each HloInstruction, changes_to_bf16_ stores the affected buffers in
+  // the output as a map from in-place pointers to subshapes to shape indices.
+  absl::flat_hash_map<HloInstruction*, absl::flat_hash_map<Shape*, ShapeIndex>>
+      changes_to_bf16_;
+
+  // Whether the last processed HLO module has been changed by this pass.
+  bool changed_ = false;
 
   const BFloat16Support* bfloat16_support_;
   std::unique_ptr<HloDataflowAnalysis> dataflow_;
-
-  bool changed_ = false;
 };
 
 }  // namespace xla

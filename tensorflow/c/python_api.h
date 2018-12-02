@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_PYTHON_API_H_
 #define TENSORFLOW_C_PYTHON_API_H_
 
+#include <string>
+
 #include "tensorflow/c/c_api.h"
 
 // These functions can be removed without notice. They exist to facilitate some
@@ -51,6 +53,18 @@ void SetRequireShapeInferenceFns(TF_Graph* graph, bool require);
 // the graph after the session has been made aware of them.
 void ExtendSession(TF_Session* session, TF_Status* status);
 
+// Returns the serialized CppShapeInferenceResult::HandleData proto for
+// `output` if its a resource or variant tensor, or otherwise returns the empty
+// string.
+std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output);
+
+// Sets `output` based on `proto`, which should be a serialized
+// CppShapeInferenceResult::HandleData proto. `output` should be a resource
+// or variant tensor.
+// NOTE(skyewm): `proto` is passed a void*/size_t pair instead of a std::string
+// because I couldn't get SWIG to work otherwise.
+void SetHandleShapeAndType(TF_Graph* graph, TF_Output output, const void* proto,
+                           size_t proto_len, TF_Status* status);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_PYTHON_API_H_

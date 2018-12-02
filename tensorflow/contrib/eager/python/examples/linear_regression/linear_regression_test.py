@@ -117,5 +117,5 @@ class EagerLinearRegressionBenchmark(tf.test.Benchmark):
 
 
 if __name__ == "__main__":
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
   tf.test.main()

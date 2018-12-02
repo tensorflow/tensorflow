@@ -63,6 +63,9 @@ then
   else
     export DYLD_LIBRARY_PATH="${PWD}/tensorflow:${DYLD_LIBRARY_PATH}"
   fi
+else 
+  echo "Only support Linux/Darwin, System $OS is not supported"
+  exit 1
 fi
 
 # Document the Go version and run tests

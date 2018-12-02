@@ -41,9 +41,49 @@ _MODULE_PATH = path.dirname(__file__)
 _DATA_FILE = path.join(_MODULE_PATH, "data/changepoints.csv")
 
 
-def train_and_evaluate_exogenous(csv_file_name=_DATA_FILE, train_steps=300):
-  """Training, evaluating, and predicting on a series with changepoints."""
+def state_space_estimator(exogenous_feature_columns):
+  """Constructs a StructuralEnsembleRegressor."""
 
+  def _exogenous_update_condition(times, features):
+    del times  # unused
+    # Make exogenous updates sparse by setting an update condition. This in
+    # effect allows missing exogenous features: if the condition evaluates to
+    # False, no update is performed. Otherwise we sometimes end up with "leaky"
+    # updates which add unnecessary uncertainty to the model even when there is
+    # no changepoint.
+    return tf.equal(tf.squeeze(features["is_changepoint"], axis=-1), "yes")
+
+  return (
+      tf.contrib.timeseries.StructuralEnsembleRegressor(
+          periodicities=12,
+          # Extract a smooth period by constraining the number of latent values
+          # being cycled between.
+          cycle_num_latent_values=3,
+          num_features=1,
+          exogenous_feature_columns=exogenous_feature_columns,
+          exogenous_update_condition=_exogenous_update_condition),
+      # Use truncated backpropagation with a window size of 64, batching
+      # together 4 of these windows (random offsets) per training step. Training
+      # with exogenous features often requires somewhat larger windows.
+      4, 64)
+
+
+def autoregressive_estimator(exogenous_feature_columns):
+  input_window_size = 8
+  output_window_size = 2
+  return (
+      tf.contrib.timeseries.ARRegressor(
+          periodicities=12,
+          num_features=1,
+          input_window_size=input_window_size,
+          output_window_size=output_window_size,
+          exogenous_feature_columns=exogenous_feature_columns),
+      64, input_window_size + output_window_size)
+
+
+def train_and_evaluate_exogenous(
+    estimator_fn, csv_file_name=_DATA_FILE, train_steps=300):
+  """Training, evaluating, and predicting on a series with changepoints."""
   # Indicate the format of our exogenous feature, in this case a string
   # representing a boolean value.
   string_feature = tf.feature_column.categorical_column_with_vocabulary_list(
@@ -53,20 +93,8 @@ def train_and_evaluate_exogenous(csv_file_name=_DATA_FILE, train_steps=300):
   one_hot_feature = tf.feature_column.indicator_column(
       categorical_column=string_feature)
 
-  estimator = tf.contrib.timeseries.StructuralEnsembleRegressor(
-      periodicities=12,
-      # Extract a smooth period by constraining the number of latent values
-      # being cycled between.
-      cycle_num_latent_values=3,
-      num_features=1,
-      exogenous_feature_columns=[one_hot_feature],
-      # Make exogenous updates sparse by setting an update condition. This in
-      # effect allows missing exogenous features: if the condition evaluates to
-      # False, no update is performed. Otherwise we sometimes end up with
-      # "leaky" updates which add unnecessary uncertainty to the model even when
-      # there is no changepoint.
-      exogenous_update_condition=
-      lambda times, features: tf.equal(features["is_changepoint"], "yes"))
+  estimator, batch_size, window_size = estimator_fn(
+      exogenous_feature_columns=[one_hot_feature])
   reader = tf.contrib.timeseries.CSVReader(
       csv_file_name,
       # Indicate the format of our CSV file. First we have two standard columns,
@@ -82,10 +110,7 @@ def train_and_evaluate_exogenous(csv_file_name=_DATA_FILE, train_steps=300):
       # This CSV has a header line; here we just ignore it.
       skip_header_lines=1)
   train_input_fn = tf.contrib.timeseries.RandomWindowInputFn(
-      # Use truncated backpropagation with a window size of 64, batching
-      # together 4 of these windows (random offsets) per training step. Training
-      # with exogenous features often requires somewhat larger windows.
-      reader, batch_size=4, window_size=64)
+      reader, batch_size=batch_size, window_size=window_size)
   estimator.train(input_fn=train_input_fn, steps=train_steps)
   evaluation_input_fn = tf.contrib.timeseries.WholeDatasetInputFn(reader)
   evaluation = estimator.evaluate(input_fn=evaluation_input_fn, steps=1)
@@ -142,7 +167,12 @@ def main(unused_argv):
   if not HAS_MATPLOTLIB:
     raise ImportError(
         "Please install matplotlib to generate a plot from this example.")
-  make_plot("Ignoring a known anomaly", *train_and_evaluate_exogenous())
+  make_plot("Ignoring a known anomaly (state space)",
+            *train_and_evaluate_exogenous(
+                estimator_fn=state_space_estimator))
+  make_plot("Ignoring a known anomaly (autoregressive)",
+            *train_and_evaluate_exogenous(
+                estimator_fn=autoregressive_estimator, train_steps=3000))
   pyplot.show()
 
 

@@ -18,11 +18,14 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 import numpy as np
 from tensorflow.contrib import graph_editor as ge
 from tensorflow.contrib.graph_editor.tests import match
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -41,6 +44,7 @@ class TransformTest(test.TestCase):
     self.graph = ops.Graph()
     with self.graph.as_default():
       c0 = constant_op.constant(1.0, shape=[10], name="Const")
+      c0.op._set_attr("_foo", attr_value_pb2.AttrValue(s=b"foo"))
       c1 = constant_op.constant(1.0, shape=[10], name="Const")
       c2 = constant_op.constant(1.0, shape=[10], name="Const")
       i = constant_op.constant(1.0, shape=[10], name="Input")
@@ -84,9 +88,9 @@ class TransformTest(test.TestCase):
   def test_transform(self):
     transformer = ge.Transformer()
 
-    def my_transform_op_handler(info, op):
+    def my_transform_op_handler(info, op, new_inputs):
       add_noise = op.name.startswith("Add")
-      op_, op_outputs_ = ge.transform.copy_op_handler(info, op)
+      op_, op_outputs_ = ge.transform.copy_op_handler(info, op, new_inputs)
       if not add_noise:
         return op_, op_outputs_
       # add some noise to op
@@ -110,6 +114,32 @@ class TransformTest(test.TestCase):
         "Noise_2", match.OpMatcher("Add_2").input_ops("Const_2", matcher1))
     top = ge.select_ops("^AddNoise_2$", graph=graph)[0]
     self.assertTrue(matcher2(top))
+
+  def test_transform_nodedef_fn(self):
+    transformer = ge.Transformer()
+
+    def nodedef_fn(node_def):
+      if "_foo" in node_def.attr:
+        del node_def.attr["_foo"]
+      node_def.attr["_bar"].s = b"bar"
+      return node_def
+
+    my_copy_op_handler = functools.partial(
+        ge.transform.copy_op_handler, nodedef_fn=nodedef_fn)
+    transformer.transform_op_handler = my_copy_op_handler
+
+    graph = ops.Graph()
+    transformer(self.graph, graph, "", "")
+
+    c0_before = self.graph.get_operation_by_name("Const")
+    c0_after = graph.get_operation_by_name("Const")
+    self.assertEquals(c0_before.get_attr("_foo"), b"foo")
+    with self.assertRaises(ValueError):
+      c0_after.get_attr("_foo")
+
+    all_ops = graph.get_operations()
+    for op in all_ops:
+      self.assertEquals(op.get_attr("_bar"), b"bar")
 
   def test_copy_with_input_replacements(self):
     with self.graph.as_default():
@@ -184,7 +214,7 @@ class TransformTest(test.TestCase):
 
   def test_graph_replace_gradients(self):
     ops.reset_default_graph()
-    w = variables.Variable(0.0, name="w")
+    w = variables.VariableV1(0.0, name="w")
     y = math_ops.multiply(math_ops.multiply(w, w, name="mul1"), w, name="mul2")
     g = gradients_impl.gradients(y, w, name="grad")[0]
 
@@ -201,14 +231,55 @@ class TransformTest(test.TestCase):
                         get_operation_by_name("res/grad/mul1_grad/Mul_1"))
 
     # Make sure _original_ops are as expected.
-    self.assertEquals(original_mul1_grad._original_op.name, u"mul1")
-    self.assertEquals(result_mul1_grad._original_op.name, u"res/mul1")
-    self.assertNotEquals(res.name, g.name)
+    self.assertEqual(original_mul1_grad._original_op.name, u"mul1")
+    self.assertEqual(result_mul1_grad._original_op.name, u"res/mul1")
+    self.assertNotEqual(res.name, g.name)
     with session.Session() as sess:
       sess.run(variables.global_variables_initializer())
       g_val, res_val = sess.run([g, res])
     self.assertNear(g_val, 0.0, ERROR_TOLERANCE)
     self.assertNear(res_val, 0.0, ERROR_TOLERANCE)
+
+  def test_graph_while_loop(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      max_index = array_ops.placeholder(dtype=dtypes.int32, shape=tuple())
+      index_start = constant_op.constant(1)
+      sum_start = constant_op.constant(0)
+      _, result = control_flow_ops.while_loop(
+          cond=lambda i, unused_s: i <= max_index,
+          body=lambda i, s: (i + 1, s + i),
+          loop_vars=[index_start, sum_start])
+    copied_graph = ops.Graph()
+    _, copy_info = ge.copy(
+        graph, dst_graph=copied_graph, dst_scope="imported")
+    copied_result = copy_info.transformed(result)
+    copied_max_index = copy_info.transformed(max_index)
+    with copied_graph.as_default():
+      with session.Session() as sess:
+        n = 10
+        sum_val = sess.run(copied_result, feed_dict={copied_max_index: n})
+        self.assertEqual(sum_val, 55)
+
+  def test_graph_cond(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      choice = array_ops.placeholder(shape=(), dtype=dtypes.bool)
+      result = control_flow_ops.cond(
+          choice,
+          lambda: constant_op.constant(1),
+          lambda: constant_op.constant(2))
+    copied_graph = ops.Graph()
+    _, copy_info = ge.copy(
+        graph, dst_graph=copied_graph, dst_scope="imported")
+    copied_result = copy_info.transformed(result)
+    copied_choice = copy_info.transformed(choice)
+    with copied_graph.as_default():
+      with session.Session() as sess:
+        res = sess.run(copied_result, feed_dict={copied_choice: True})
+        self.assertEqual(res, 1)
+        res = sess.run(copied_result, feed_dict={copied_choice: False})
+        self.assertEqual(res, 2)
 
 
 if __name__ == "__main__":

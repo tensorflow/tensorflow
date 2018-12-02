@@ -13,18 +13,52 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_TRAINING_OP_HELPERS_H_
-#define TENSORFLOW_KERNELS_TRAINING_OP_HELPERS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_TRAINING_OP_HELPERS_H_
+#define TENSORFLOW_CORE_KERNELS_TRAINING_OP_HELPERS_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 
 namespace tensorflow {
 
-mutex* GetTrainingVariableMutex(OpKernelContext* ctx, int input);
+// Returns a borrowed pointer to the mutex for the variable `input` in `ctx`.
+//
+// If `input` corresponds to a `DT_RESOURCE`-type variable input,
+// `*maybe_resource` will be updated to contain the underlying resource, and the
+// caller will be responsible for calling `Unref()` on that resource.
+mutex* GetTrainingVariableMutex(OpKernelContext* ctx, int input,
+                                Var** maybe_resource);
 
-std::vector<mutex_lock> MaybeLockVariableInputMutexesInOrder(
+// Utility structure that releases a sequence of borrowed mutexes when it is
+// deleted.
+struct VariableInputLockHolder {
+ public:
+  VariableInputLockHolder(std::vector<Var*> vars,
+                          std::unique_ptr<std::vector<mutex_lock>> locks)
+      : vars_(std::move(vars)), locks_(std::move(locks)) {}
+
+  VariableInputLockHolder(VariableInputLockHolder&& other)
+      : vars_(std::move(other.vars_)), locks_(std::move(other.locks_)) {}
+
+  ~VariableInputLockHolder() {
+    // Release the locks before unreffing the Vars, because each lock
+    // is potentially borrowed from a Var in vars_.
+    locks_.reset();
+    for (Var* var : vars_) {
+      var->Unref();
+    }
+  }
+
+ private:
+  std::vector<Var*> vars_;
+  // NOTE: Use a `std::unique_ptr` instead of moving in a vector directly,
+  // because a `std::vector<mutex_lock>` is not movable on all platforms.
+  std::unique_ptr<std::vector<mutex_lock>> locks_;
+};
+
+VariableInputLockHolder MaybeLockVariableInputMutexesInOrder(
     OpKernelContext* ctx, bool do_lock, const std::vector<int>& input_ids);
 
 void MaybeForwardRefInputToRefOutput(OpKernelContext* ctx, int input,
@@ -40,14 +74,27 @@ Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor) {
     // updating.
     PersistentTensor unused;
     Tensor* tmp;
-    AllocatorAttributes attr;
-    attr.set_gpu_compatible(true);
-    attr.set_nic_compatible(true);
-    TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-        tensor->dtype(), tensor->shape(), &unused, &tmp, attr));
-    functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
-    copy_functor(ctx->eigen_device<Device>(), tmp->flat<T>(),
-                 const_cast<const Tensor*>(tensor)->flat<T>());
+    if (std::is_same<T, Variant>::value) {
+      AllocatorAttributes attr;
+      attr.set_on_host(true);
+      TF_RETURN_IF_ERROR(ctx->allocate_persistent(
+          tensor->dtype(), tensor->shape(), &unused, &tmp, attr));
+
+      const auto elements_in = tensor->flat<Variant>();
+      auto elements_out = tmp->flat<Variant>();
+      for (int64 i = 0; i < elements_in.size(); ++i) {
+        elements_out(i) = elements_in(i);
+      }
+    } else {
+      AllocatorAttributes attr;
+      attr.set_gpu_compatible(true);
+      attr.set_nic_compatible(true);
+      TF_RETURN_IF_ERROR(ctx->allocate_persistent(
+          tensor->dtype(), tensor->shape(), &unused, &tmp, attr));
+      functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
+      copy_functor(ctx->eigen_device<Device>(), tmp->flat<T>(),
+                   const_cast<const Tensor*>(tensor)->flat<T>());
+    }
     *tensor = *tmp;
   }
   return Status::OK();
@@ -64,24 +111,11 @@ Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
                                   bool lock_held, bool sparse, Tensor* out) {
   if (ctx->input_dtype(input) == DT_RESOURCE) {
     Var* var;
-    if (LookupResource(ctx, HandleFromInput(ctx, input), &var).ok()) {
-      core::ScopedUnref unref_var(var);
-      if (lock_held) {
-        TF_RETURN_IF_ERROR(
-            PrepareToUpdateVariable<Device, T>(ctx, var->tensor()));
-        *out = *var->tensor();
-      } else {
-        mutex_lock ml(*var->mu());
-        if (!sparse) {
-          TF_RETURN_IF_ERROR(
-              PrepareToUpdateVariable<Device, T>(ctx, var->tensor()));
-        }
-        *out = *var->tensor();
-      }
-      return Status::OK();
-    } else {
-      return errors::Internal("Invalid variable reference.");
-    }
+    TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, input), &var));
+    core::ScopedUnref unref_var(var);
+    TF_RETURN_IF_ERROR(PrepareToUpdateVariable<Device, T>(ctx, var->tensor()));
+    *out = *var->tensor();
+    return Status::OK();
   }
   *out = ctx->mutable_input(input, lock_held);
   return Status::OK();
@@ -89,4 +123,4 @@ Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_TRAINING_OP_HELPERS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TRAINING_OP_HELPERS_H_

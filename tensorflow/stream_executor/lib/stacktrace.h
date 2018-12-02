@@ -19,14 +19,12 @@ limitations under the License.
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 using tensorflow::CurrentStackTrace;
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_STACKTRACE_H_

@@ -16,8 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -25,7 +26,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class WhileLoopInvariantCodeMotionTest : public HloVerifiedTestBase {
+class WhileLoopInvariantCodeMotionTest : public HloTestBase {
  public:
   // Makes a computation which has one parameter, of the given shape, and always
   // returns PRED[]{true}.  This is useful as a dummy loop condition.
@@ -52,11 +53,12 @@ HloComputation* WhileLoopInvariantCodeMotionTest::MakeAlwaysTrueComputation(
   builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
   builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   return module->AddEmbeddedComputation(builder.Build());
 }
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistOneInvariantOperation) {
+  auto m = CreateNewVerifiedModule();
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   Shape while_shape =
       ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, scalar_s32});
@@ -75,19 +77,18 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistOneInvariantOperation) {
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte_0, gte_1, add_result}));
 
-    return module().AddEmbeddedComputation(builder.Build());
+    return m->AddEmbeddedComputation(builder.Build());
   }();
 
   HloComputation::Builder builder(TestName());
   auto* init_value = builder.AddInstruction(
       HloInstruction::CreateParameter(0, while_shape, "init_value"));
   builder.AddInstruction(HloInstruction::CreateWhile(
-      while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
-      while_body, init_value));
-  HloComputation* entry_computation =
-      module().AddEntryComputation(builder.Build());
+      while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
+      init_value));
+  HloComputation* entry_computation = m->AddEntryComputation(builder.Build());
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(&module()));
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
   HloInstruction* transformed_while;
@@ -99,6 +100,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistOneInvariantOperation) {
 }
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistInvariantOperationTree) {
+  auto m = CreateNewVerifiedModule();
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   Shape while_shape =
       ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, scalar_s32});
@@ -124,7 +126,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistInvariantOperationTree) {
         builder.AddInstruction(HloInstruction::CreateUnary(
             scalar_s32, HloOpcode::kNegate, mul_result));
     HloInstruction* constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<int32>(4)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(4)));
     HloInstruction* sub_result =
         builder.AddInstruction(HloInstruction::CreateBinary(
             scalar_s32, HloOpcode::kSubtract, negate_result, constant));
@@ -134,19 +136,18 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistInvariantOperationTree) {
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte_0, gte_1, divide_result}));
 
-    return module().AddEmbeddedComputation(builder.Build());
+    return m->AddEmbeddedComputation(builder.Build());
   }();
 
   HloComputation::Builder builder(TestName());
   auto* init_value = builder.AddInstruction(
       HloInstruction::CreateParameter(0, while_shape, "init_value"));
   builder.AddInstruction(HloInstruction::CreateWhile(
-      while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
-      while_body, init_value));
-  HloComputation* entry_computation =
-      module().AddEntryComputation(builder.Build());
+      while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
+      init_value));
+  HloComputation* entry_computation = m->AddEntryComputation(builder.Build());
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(&module()));
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
   HloInstruction* transformed_while;
@@ -172,6 +173,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistInvariantOperationTree) {
 TEST_F(WhileLoopInvariantCodeMotionTest,
        DontHoistTriviallyLoopVaryingComputation) {
   // Basic negative test: the add expression is not loop invariant.
+  auto m = CreateNewVerifiedModule();
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   Shape while_shape = ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32});
 
@@ -188,20 +190,20 @@ TEST_F(WhileLoopInvariantCodeMotionTest,
             scalar_s32, HloOpcode::kAdd, gte_0, gte_1));
     builder.AddInstruction(HloInstruction::CreateTuple({gte_0, add_result}));
 
-    return module().AddEmbeddedComputation(builder.Build());
+    return m->AddEmbeddedComputation(builder.Build());
   }();
 
   HloComputation::Builder builder(TestName());
   auto* init_value = builder.AddInstruction(
       HloInstruction::CreateParameter(0, while_shape, "init_value"));
   auto* while_inst = builder.AddInstruction(HloInstruction::CreateWhile(
-      while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
-      while_body, init_value));
+      while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
+      init_value));
 
-  module().AddEntryComputation(builder.Build());
+  m->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(&module()));
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(), Contains(op::Add()));
@@ -209,6 +211,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest,
 
 TEST_F(WhileLoopInvariantCodeMotionTest,
        DontHoistLoopVaryingComputationWithAlternatingTuples) {
+  auto m = CreateNewVerifiedModule();
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   Shape while_shape =
       ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, scalar_s32});
@@ -227,27 +230,30 @@ TEST_F(WhileLoopInvariantCodeMotionTest,
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte_1, gte_0, add_result}));
 
-    return module().AddEmbeddedComputation(builder.Build());
+    return m->AddEmbeddedComputation(builder.Build());
   }();
 
   HloComputation::Builder builder(TestName());
   auto* init_value = builder.AddInstruction(
       HloInstruction::CreateParameter(0, while_shape, "init_value"));
   auto* while_inst = builder.AddInstruction(HloInstruction::CreateWhile(
-      while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
-      while_body, init_value));
+      while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
+      init_value));
 
-  module().AddEntryComputation(builder.Build());
+  m->AddEntryComputation(builder.Build());
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(&module()));
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(), Contains(op::Add()));
 }
 
 TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistInstructionWithSideEffects) {
+  auto m = CreateNewVerifiedModule();
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-  Shape while_shape = ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32});
+  auto token_shape = ShapeUtil::MakeTokenShape();
+  Shape while_shape =
+      ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, token_shape});
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
@@ -257,25 +263,32 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistInstructionWithSideEffects) {
         HloInstruction::CreateGetTupleElement(scalar_s32, param, 0));
     HloInstruction* gte_1 = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(scalar_s32, param, 1));
+    HloInstruction* in_token = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(token_shape, param, 2));
+    HloInstruction* out_token = builder.AddInstruction(
+        HloInstruction::CreateOutfeed(scalar_s32, gte_0, in_token, ""));
     builder.AddInstruction(
-        HloInstruction::CreateOutfeed(scalar_s32, gte_0, ""));
-    builder.AddInstruction(HloInstruction::CreateTuple({gte_0, gte_1}));
+        HloInstruction::CreateTuple({gte_0, gte_1, out_token}));
 
-    return module().AddEmbeddedComputation(builder.Build());
+    return m->AddEmbeddedComputation(builder.Build());
   }();
 
   HloComputation::Builder builder(TestName());
+  auto* scalar_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_s32, "param"));
+  auto* token = builder.AddInstruction(HloInstruction::CreateToken());
   auto* init_value = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, while_shape, "init_value"));
+      HloInstruction::CreateTuple({scalar_param, scalar_param, token}));
   auto* while_inst = builder.AddInstruction(HloInstruction::CreateWhile(
-      while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
-      while_body, init_value));
-
-  module().AddEntryComputation(builder.Build());
+      while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
+      init_value));
+  builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_s32, while_inst, 0));
+  m->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(&module()));
-  EXPECT_FALSE(simplified_loop);
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(),
               Contains(op::Outfeed()));
@@ -284,9 +297,12 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistInstructionWithSideEffects) {
 TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
   // The bitcast's user, an outfeed, can't be hoisted, so don't hoist the
   // bitcast either.
+  auto m = CreateNewVerifiedModule();
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   auto scalar_f32 = ShapeUtil::MakeShape(F32, {});
-  Shape while_shape = ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32});
+  auto token_shape = ShapeUtil::MakeTokenShape();
+  Shape while_shape =
+      ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, token_shape});
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
@@ -296,26 +312,34 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
         HloInstruction::CreateGetTupleElement(scalar_s32, param, 0));
     HloInstruction* gte_1 = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(scalar_s32, param, 1));
+    HloInstruction* in_token = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(token_shape, param, 2));
     HloInstruction* bitcast_inst = builder.AddInstruction(
         HloInstruction::CreateUnary(scalar_f32, HloOpcode::kBitcast, gte_0));
+    HloInstruction* out_token = builder.AddInstruction(
+        HloInstruction::CreateOutfeed(scalar_f32, bitcast_inst, in_token, ""));
     builder.AddInstruction(
-        HloInstruction::CreateOutfeed(scalar_f32, bitcast_inst, ""));
-    builder.AddInstruction(HloInstruction::CreateTuple({gte_0, gte_1}));
+        HloInstruction::CreateTuple({gte_0, gte_1, out_token}));
 
-    return module().AddEmbeddedComputation(builder.Build());
+    return m->AddEmbeddedComputation(builder.Build());
   }();
 
   HloComputation::Builder builder(TestName());
+  auto* scalar_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_s32, "param"));
+  auto* token = builder.AddInstruction(HloInstruction::CreateToken());
   auto* init_value = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, while_shape, "init_value"));
+      HloInstruction::CreateTuple({scalar_param, scalar_param, token}));
   auto* while_inst = builder.AddInstruction(HloInstruction::CreateWhile(
-      while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
-      while_body, init_value));
+      while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
+      init_value));
+  builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_s32, while_inst, 0));
 
-  module().AddEntryComputation(builder.Build());
+  m->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(&module()));
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(),
@@ -326,6 +350,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistBitcastIfNeeded) {
   // The bitcast's user can be hoisted, so hoist the bitcast too.
+  auto m = CreateNewVerifiedModule();
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   auto scalar_f32 = ShapeUtil::MakeShape(F32, {});
   Shape while_shape =
@@ -347,21 +372,20 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistBitcastIfNeeded) {
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte_0, gte_1, add_inst}));
 
-    return module().AddEmbeddedComputation(builder.Build());
+    return m->AddEmbeddedComputation(builder.Build());
   }();
 
   HloComputation::Builder builder(TestName());
   auto* init_value = builder.AddInstruction(
       HloInstruction::CreateParameter(0, while_shape, "init_value"));
   builder.AddInstruction(HloInstruction::CreateWhile(
-      while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
-      while_body, init_value));
+      while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
+      init_value));
 
-  HloComputation* entry_computation =
-      module().AddEntryComputation(builder.Build());
+  HloComputation* entry_computation = m->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(&module()));
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
   HloInstruction* transformed_while;
@@ -376,6 +400,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistBitcastIfNeeded) {
 }
 
 TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistControlDependencies) {
+  auto m = CreateNewVerifiedModule();
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   Shape while_shape =
       ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, scalar_s32});
@@ -396,22 +421,23 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistControlDependencies) {
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte_0, gte_1, add_result}));
 
-    while_body = module().AddEmbeddedComputation(builder.Build());
+    while_body = m->AddEmbeddedComputation(builder.Build());
   }
 
   HloComputation::Builder builder(TestName());
   auto* init_value = builder.AddInstruction(
       HloInstruction::CreateParameter(0, while_shape, "init_value"));
   builder.AddInstruction(HloInstruction::CreateWhile(
-      while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
-      while_body, init_value));
-  module().AddEntryComputation(builder.Build());
+      while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
+      init_value));
+  m->AddEntryComputation(builder.Build());
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(&module()));
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
 TEST_F(WhileLoopInvariantCodeMotionTest, BodyHasNonTupleRoot) {
+  auto m = CreateNewVerifiedModule();
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   Shape while_shape = ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32});
 
@@ -419,7 +445,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, BodyHasNonTupleRoot) {
     HloComputation::Builder builder(TestName() + ".passthrough");
     HloInstruction* param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, while_shape, "param"));
-    HloComputation* result = module().AddEmbeddedComputation(builder.Build());
+    HloComputation* result = m->AddEmbeddedComputation(builder.Build());
 
     result->AddInstruction(
         HloInstruction::CreateGetTupleElement(scalar_s32, param, 1));
@@ -430,11 +456,171 @@ TEST_F(WhileLoopInvariantCodeMotionTest, BodyHasNonTupleRoot) {
   auto* init_value = builder.AddInstruction(
       HloInstruction::CreateParameter(0, while_shape, "init_value"));
   builder.AddInstruction(HloInstruction::CreateWhile(
-      while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
-      while_body, init_value));
-  module().AddEntryComputation(builder.Build());
+      while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
+      init_value));
+  m->AddEntryComputation(builder.Build());
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(&module()));
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  EXPECT_FALSE(simplified_loop);
+}
+
+const char* const kConstantHoistingTestCase = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[2]{0}) parameter(0)
+  p_body.1 = f32[2]{0} get-tuple-element(p_body), index=0
+  const = f32[2]{0} constant({3, 4})
+  add.0 = f32[2]{0} add(p_body.1, const)
+  ROOT root = (f32[2]{0}) tuple(add.0)
+}
+
+condition {
+  p_cond = (f32[2]{0}) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  const_0 = f32[2]{0} constant({1, 2})
+  while_init = (f32[2]{0}) tuple(const_0)
+  ROOT while = (f32[2]{0}) while(while_init), condition=condition, body=body
+}
+)";
+
+TEST_F(WhileLoopInvariantCodeMotionTest, HoistsConstantWhenAsked) {
+  auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopInvariantCodeMotion{/*hoist_constants=*/true}.Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  HloComputation* while_body = m->GetComputationWithName("wide.body");
+  ASSERT_NE(while_body, nullptr);
+
+  // We expect the while body to be the equivalent of:
+  //
+  //  wide.body {
+  //    wide_param.1 = (f32[2]{0}, f32[2]{0}) parameter(0)
+  //    get-tuple-element.1 = f32[2]{0} get-tuple-element(wide_param.1), index=0
+  //    tuple.1 = (f32[2]{0}) tuple(get-tuple-element.1)
+  //    get-tuple-element.4 = f32[2]{0} get-tuple-element(tuple.1), index=0
+  //    get-tuple-element.7 = f32[2]{0} get-tuple-element(wide_param.1), index=1
+  //    add.1 = f32[2]{0} add(get-tuple-element.4, get-tuple-element.7)
+  //    tuple.3 = (f32[2]{0}) tuple(add.1)
+  //    get-tuple-element.8 = f32[2]{0} get-tuple-element(tuple.3), index=0
+  //    get-tuple-element.9 = f32[2]{0} get-tuple-element(wide_param.1), index=1
+  //    ROOT tuple.4 = (f32[2]{0}, f32[2]{0}) tuple(get-tuple-element.8,
+  //                                                get-tuple-element.9)
+  //  }
+
+  auto wide_param_1 = op::Parameter(0);
+  auto get_tuple_element_1 = op::GetTupleElement(wide_param_1, 0);
+  auto tuple_1 = op::Tuple(get_tuple_element_1);
+  auto get_tuple_element_4 = op::GetTupleElement(tuple_1, 0);
+  auto get_tuple_element_7 = op::GetTupleElement(wide_param_1, 1);
+  auto add_1 = op::Add(get_tuple_element_4, get_tuple_element_7);
+  auto tuple_3 = op::Tuple(add_1);
+  auto get_tuple_element_8 = op::GetTupleElement(tuple_3, 0);
+  auto get_tuple_element_9 = op::GetTupleElement(wide_param_1, 1);
+  auto tuple_4 = op::Tuple(get_tuple_element_8, get_tuple_element_9);
+
+  EXPECT_THAT(while_body->root_instruction(), tuple_4);
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistConstantByDefault) {
+  auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  EXPECT_FALSE(simplified_loop);
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest, DoNotHoistOutOfSingleIteration) {
+  const char* const kHloModule = R"(
+    HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], f32[2], f32[2], s32[]) parameter(0)
+      val.0 = f32[2] get-tuple-element(p_body), index=0
+      val.1 = f32[2] get-tuple-element(p_body), index=1
+      add = f32[2] add(val.0, val.1)
+      const = s32[] constant(-1)
+      ROOT root = (f32[2], f32[2], f32[2], s32[]) tuple(val.0, val.1, add, const)
+    }
+
+    condition {
+      p_cond = (f32[2], f32[2], f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=3
+      const = s32[] constant(42)
+      ROOT result = pred[] equal-to(gte, const)
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = s32[] parameter(1)
+      while_init = (f32[2], f32[2], f32[2], s32[]) tuple(param.0, param.0, param.0, param.1)
+      ROOT while = (f32[2], f32[2], f32[2], s32[]) while(while_init), condition=condition, body=body
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopInvariantCodeMotion{}.Run(module.get()));
+  EXPECT_FALSE(simplified_loop);
+}
+
+const char* const kInflatingTestCase = R"(
+HloModule ModuleWithWhile
+
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+
+body {
+  p_body = (f32[]) parameter(0)
+  iota = f32[1024, 1024] iota(), iota_dimension=0
+  add = f32[1024, 1024] add(iota, iota)
+  constant = f32[] constant(1.0)
+  reduce = f32[] reduce(f32[1024, 1024] add, f32[] constant), dimensions={0,1}, to_apply=mul
+  ROOT root = (f32[]) tuple(reduce)
+}
+
+condition {
+  p_cond = (f32[]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  param = f32[] parameter(0)
+  while_init = (f32[]) tuple(param)
+  ROOT while = (f32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+TEST_F(WhileLoopInvariantCodeMotionTest, HoistsInflatingByDefault) {
+  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopInvariantCodeMotion(/*hoist_constants=*/true).Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  HloComputation* while_body = m->GetComputationWithName("wide.body");
+  ASSERT_NE(while_body, nullptr);
+  EXPECT_THAT(while_body->instructions(), Not(Contains(op::Iota())));
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistInflating) {
+  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopInvariantCodeMotion(/*hoist_constants=*/true,
+                                   /*hoist_size_inflating_ops=*/false)
+          .Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 

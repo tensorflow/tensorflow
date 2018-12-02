@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_util.h"
@@ -50,6 +51,14 @@ bool IsPyInt(PyObject* obj) {
 #endif
 }
 
+bool IsPyDouble(PyObject* obj) {
+  return PyIsInstance(obj, &PyDoubleArrType_Type);  // NumPy double type.
+}
+
+bool IsNumpyHalf(PyObject* obj) {
+  return PyIsInstance(obj, &PyHalfArrType_Type);
+}
+
 bool IsPyFloat(PyObject* obj) {
   return PyFloat_Check(obj) ||
          PyIsInstance(obj, &PyFloatingArrType_Type);  // NumPy float types
@@ -77,10 +86,45 @@ string PyRepr(PyObject* obj) {
 bool IsPyDimension(PyObject* obj) {
   const char* tp_name = obj->ob_type->tp_name;
   if (strcmp(tp_name, "Dimension") != 0) return false;
-  bool ret =
-      StringPiece(PyRepr(PyType(obj)))
-          .ends_with("tensorflow.python.framework.tensor_shape.Dimension'>");
+  bool ret = str_util::EndsWith(
+      PyRepr(PyType(obj)),
+      "tensorflow.python.framework.tensor_shape.Dimension'>");
   return ret;
+}
+
+// Sets *elem to a NEW reference to an element in seq on success.
+// REQUIRES: PySequence_Check(seq) && PySequence_Length(seq) > 0.
+Status SampleElementFromSequence(PyObject* seq, PyObject** elem) {
+  *elem = PySequence_GetItem(seq, 0);
+  if (*elem != nullptr) return Status::OK();
+  // seq may implement the sequence protocol (i.e., implement __getitem__)
+  // but may legitimately not have a 0-th element (__getitem__(self, 0)
+  // raises a KeyError). For example:
+  // seq = pandas.Series([0, 1, 2], index=[2, 4, 6])
+  //
+  // We don't actually care for the element at key 0, any element will do
+  // for inferring the element types. All elements are expected to
+  // have the same type, and this will be validated when converting
+  // to an EagerTensor.
+  PyErr_Clear();
+  Safe_PyObjectPtr iter(PyObject_GetIter(seq));
+  if (PyErr_Occurred()) {
+    return errors::InvalidArgument("Cannot infer dtype of a ",
+                                   Py_TYPE(seq)->tp_name,
+                                   " object: ", PyExceptionFetch());
+  }
+  *elem = PyIter_Next(iter.get());
+  if (PyErr_Occurred()) {
+    return errors::InvalidArgument(
+        "Cannot infer dtype of a ", Py_TYPE(seq)->tp_name,
+        " object, as iter(<object>).next() failed: ", PyExceptionFetch());
+  }
+  if (*elem == nullptr) {
+    return errors::InvalidArgument("Cannot infer dtype of a ",
+                                   Py_TYPE(seq)->tp_name,
+                                   " object since it is an empty sequence");
+  }
+  return Status::OK();
 }
 
 Status InferShapeAndType(PyObject* obj, TensorShape* shape, DataType* dtype) {
@@ -93,7 +137,9 @@ Status InferShapeAndType(PyObject* obj, TensorShape* shape, DataType* dtype) {
       auto length = PySequence_Length(obj);
       if (length > 0) {
         shape->AddDim(length);
-        obj = PySequence_GetItem(obj, 0);
+        PyObject* elem = nullptr;
+        TF_RETURN_IF_ERROR(SampleElementFromSequence(obj, &elem));
+        obj = elem;
         refs_to_clean.push_back(make_safe(obj));
         continue;
       } else if (length == 0) {
@@ -112,8 +158,12 @@ Status InferShapeAndType(PyObject* obj, TensorShape* shape, DataType* dtype) {
               "Attempted to convert an invalid sequence to a Tensor.");
         }
       }
-    } else if (IsPyFloat(obj)) {
+    } else if (IsPyDouble(obj)) {
       *dtype = DT_DOUBLE;
+    } else if (IsNumpyHalf(obj)) {
+      *dtype = DT_HALF;
+    } else if (IsPyFloat(obj)) {
+      *dtype = DT_FLOAT;
     } else if (PyBool_Check(obj) || PyIsInstance(obj, &PyBoolArrType_Type)) {
       // Have to test for bool before int, since IsInt(True/False) == true.
       *dtype = DT_BOOL;
@@ -170,6 +220,7 @@ const char ErrorFoundFloat[] =
       /* Iterate over outer dim, and recursively convert each element. */ \
       const int64 s = shape.dim_size(0);                                  \
       Safe_PyObjectPtr seq = make_safe(PySequence_Fast(obj, ""));         \
+      if (TF_PREDICT_FALSE(seq == nullptr)) return ErrorRectangular;      \
       if (TF_PREDICT_FALSE(s != PySequence_Fast_GET_SIZE(seq.get()))) {   \
         return ErrorRectangular;                                          \
       }                                                                   \
@@ -313,6 +364,17 @@ const char* ConvertOneFloat(PyObject* v, T* out) {
 DEFINE_HELPER(ConvertDouble, double, DT_DOUBLE, ConvertOneFloat<double>);
 DEFINE_HELPER(ConvertFloat, float, DT_FLOAT, ConvertOneFloat<float>);
 
+const char* ConvertOneNumpyHalf(PyObject* v, Eigen::half* out) {
+  // NOTE(nareshmodi): Is there a way to convert to C double without the
+  // intermediate Python double? This will help with ConvertOneFloat as well.
+  Safe_PyObjectPtr as_float = make_safe(PyNumber_Float(v));
+  double v_double = PyFloat_AS_DOUBLE(as_float.get());
+  *out = Eigen::half(v_double);
+
+  return nullptr;
+}
+DEFINE_HELPER(ConvertNumpyHalf, Eigen::half, DT_HALF, ConvertOneNumpyHalf);
+
 // String support
 
 const char* ConvertOneString(PyObject* v, string* out) {
@@ -408,6 +470,9 @@ Status PySeqToTensor(PyObject* obj, PyObject* dtype, Tensor* ret) {
       if (ConvertDouble(obj, shape, ret) == nullptr) return Status::OK();
       break;
 
+    case DT_HALF:
+      RETURN_STRING_AS_STATUS(ConvertNumpyHalf(obj, shape, ret));
+
     case DT_INT64:
       if (ConvertInt64(obj, shape, ret) == nullptr) return Status::OK();
       break;
@@ -432,7 +497,7 @@ Status PySeqToTensor(PyObject* obj, PyObject* dtype, Tensor* ret) {
       break;
   }
   switch (infer_dtype) {
-    case DT_DOUBLE:
+    case DT_FLOAT:
       // TODO(josh11b): Handle mixed floats and complex numbers?
       if (requested_dtype == DT_INVALID) {
         // TensorFlow uses float32s to represent floating point numbers
@@ -445,6 +510,12 @@ Status PySeqToTensor(PyObject* obj, PyObject* dtype, Tensor* ret) {
         // final type.
         RETURN_STRING_AS_STATUS(ConvertDouble(obj, shape, ret));
       }
+
+    case DT_DOUBLE:
+      RETURN_STRING_AS_STATUS(ConvertDouble(obj, shape, ret));
+
+    case DT_HALF:
+      RETURN_STRING_AS_STATUS(ConvertNumpyHalf(obj, shape, ret));
 
     case DT_INT64:
       if (requested_dtype == DT_INVALID) {

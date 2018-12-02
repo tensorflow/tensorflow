@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -45,29 +47,7 @@ class RetvalOp : public XlaOpKernel {
       // compilation.
       OP_REQUIRES_OK(ctx, frame->SetRetval(index_, input));
     } else {
-      xla::ComputationDataHandle input = ctx->Input(0);
-      const TensorShape input_shape = ctx->InputShape(0);
-
-      auto is_constant = ctx->builder()->IsConstant(input);
-      if (!is_constant.ok()) {
-        ctx->SetStatus(is_constant.status());
-        return;
-      }
-
-      XlaContext& tc = XlaContext::Get(ctx);
-      if (input_shape.num_elements() == 0 || is_constant.ValueOrDie()) {
-        xla::Literal literal;
-        OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &literal));
-        OP_REQUIRES_OK(ctx, tc.AddConstRetval(index_, dtype_, literal));
-      } else {
-        // The core from which a return value is returned depends on the core
-        // assignment of the input to the retval .Since we can't change the core
-        // assignment of <input> as this point, create a tuple/get-tuple-element
-        // combination so that the core will be set on them.
-        auto tuple_elem =
-            ctx->builder()->GetTupleElement(ctx->builder()->Tuple({input}), 0);
-        tc.AddRetval(index_, dtype_, tuple_elem);
-      }
+      ctx->xla_context()->SetRetval(index_, ctx->InputExpression(0));
     }
   }
 
@@ -79,7 +59,8 @@ class RetvalOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
 };
 
-REGISTER_XLA_OP(Name("_Retval"), RetvalOp);
+REGISTER_XLA_OP(Name("_Retval").AllowResourceTypes().CompilationOnly(),
+                RetvalOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

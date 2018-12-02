@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef&& graphDef) {
+GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef* graph_def) {
   id = other.id;
   feed = other.feed;
   fetch = other.fetch;
@@ -38,7 +38,8 @@ GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef&& graphDef) {
   restore_op = other.restore_op;
   save_restore_loc_tensor = other.save_restore_loc_tensor;
   queue_runners = other.queue_runners;
-  graph.Swap(&graphDef);
+  allowed_optimizations = other.allowed_optimizations;
+  graph.Swap(graph_def);
 }
 
 std::vector<const NodeDef*> GrapplerItem::MainOpsFanin() const {

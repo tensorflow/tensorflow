@@ -71,6 +71,16 @@ class LocalMaster : public MasterInterface {
   Status Reset(CallOptions* call_options, const ResetRequest* request,
                ResetResponse* response) override;
 
+  Status MakeCallable(CallOptions* call_options,
+                      const MakeCallableRequest* request,
+                      MakeCallableResponse* response) override;
+  Status RunCallable(CallOptions* call_options,
+                     const RunCallableRequest* request,
+                     RunCallableResponse* response) override;
+  Status ReleaseCallable(CallOptions* call_options,
+                         const ReleaseCallableRequest* request,
+                         ReleaseCallableResponse* response) override;
+
   // Registers the mapping from the given `target` to the given `master`.
   //
   // WARNING: The `master` pointer remains owned by the caller. It is

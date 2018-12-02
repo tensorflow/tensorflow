@@ -28,9 +28,10 @@ namespace tensorflow {
 // session.
 class RenamedDevice : public Device {
  public:
-  static Device* NewRenamedDevice(const string& new_base, Device* underlying,
-                                  bool owns_underlying,
-                                  bool isolate_session_state);
+  static std::unique_ptr<Device> NewRenamedDevice(const string& new_base,
+                                                  Device* underlying,
+                                                  bool owns_underlying,
+                                                  bool isolate_session_state);
 
   ~RenamedDevice() override;
 
@@ -58,9 +59,13 @@ class RenamedDevice : public Device {
     return underlying_->GetAllocator(attr);
   }
 
-  Allocator* GetStepAllocator(AllocatorAttributes attr,
-                              ResourceMgr* step_resource_manager) override {
-    return underlying_->GetStepAllocator(attr, step_resource_manager);
+  Allocator* GetScopedAllocator(AllocatorAttributes attr,
+                                int64 step_id) override {
+    return underlying_->GetScopedAllocator(attr, step_id);
+  }
+
+  ScopedAllocatorMgr* GetScopedAllocatorMgr() const override {
+    return underlying_->GetScopedAllocatorMgr();
   }
 
   const Eigen::ThreadPoolDevice* eigen_cpu_device() override {
@@ -77,9 +82,10 @@ class RenamedDevice : public Device {
     return underlying_->MakeGpuDevice();
   }
 
-  void ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
-                             DeviceContext* dc, Allocator* allocator) override {
-    underlying_->ReinitializeGpuDevice(context, device, dc, allocator);
+  Status ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
+                               DeviceContext* dc,
+                               Allocator* allocator) override {
+    return underlying_->ReinitializeGpuDevice(context, device, dc, allocator);
   }
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,

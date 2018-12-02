@@ -31,14 +31,13 @@ class InvertBijectorTest(test.TestCase):
   """Tests the correctness of the Y = Invert(bij) transformation."""
 
   def testBijector(self):
-    with self.test_session():
+    with self.cached_session():
       for fwd in [
           bijectors.Identity(),
-          bijectors.Exp(event_ndims=1),
+          bijectors.Exp(),
           bijectors.Affine(shift=[0., 1.], scale_diag=[2., 3.]),
-          bijectors.Softplus(event_ndims=1),
-          bijectors.SoftmaxCentered(event_ndims=1),
-          bijectors.SigmoidCentered(),
+          bijectors.Softplus(),
+          bijectors.SoftmaxCentered(),
       ]:
         rev = bijectors.Invert(fwd)
         self.assertEqual("_".join(["invert", fwd.name]), rev.name)
@@ -47,23 +46,23 @@ class InvertBijectorTest(test.TestCase):
         self.assertAllClose(fwd.inverse(x).eval(), rev.forward(x).eval())
         self.assertAllClose(fwd.forward(x).eval(), rev.inverse(x).eval())
         self.assertAllClose(
-            fwd.forward_log_det_jacobian(x).eval(),
-            rev.inverse_log_det_jacobian(x).eval())
+            fwd.forward_log_det_jacobian(x, event_ndims=1).eval(),
+            rev.inverse_log_det_jacobian(x, event_ndims=1).eval())
         self.assertAllClose(
-            fwd.inverse_log_det_jacobian(x).eval(),
-            rev.forward_log_det_jacobian(x).eval())
+            fwd.inverse_log_det_jacobian(x, event_ndims=1).eval(),
+            rev.forward_log_det_jacobian(x, event_ndims=1).eval())
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = bijectors.Invert(bijectors.Exp())
       assert_scalar_congruency(
           bijector, lower_x=1e-3, upper_x=1.5, rtol=0.05)
 
   def testShapeGetters(self):
-    with self.test_session():
-      bijector = bijectors.Invert(bijectors.SigmoidCentered(validate_args=True))
+    with self.cached_session():
+      bijector = bijectors.Invert(bijectors.SoftmaxCentered(validate_args=True))
       x = tensor_shape.TensorShape([2])
-      y = tensor_shape.TensorShape([])
+      y = tensor_shape.TensorShape([1])
       self.assertAllEqual(y, bijector.forward_event_shape(x))
       self.assertAllEqual(
           y.as_list(),
@@ -74,7 +73,7 @@ class InvertBijectorTest(test.TestCase):
           bijector.inverse_event_shape_tensor(y.as_list()).eval())
 
   def testDocstringExample(self):
-    with self.test_session():
+    with self.cached_session():
       exp_gamma_distribution = (
           transformed_distribution_lib.TransformedDistribution(
               distribution=gamma_lib.Gamma(concentration=1., rate=2.),

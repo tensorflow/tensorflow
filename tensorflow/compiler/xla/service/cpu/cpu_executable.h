@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
@@ -49,20 +49,20 @@ class CpuExecutable : public Executable {
  public:
   CpuExecutable(std::unique_ptr<SimpleOrcJIT> jit,
                 std::unique_ptr<const BufferAssignment> assignment,
-                std::unique_ptr<const HloModule> hlo_module,
+                std::unique_ptr<HloModule> hlo_module,
                 const string& entry_function_name,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
+      absl::Span<const ShapedBuffer* const> arguments) override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -71,17 +71,13 @@ class CpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
-  const Status EqualOrFail(const Executable& executable) {
-    // TODO(b/62952745) Implement equality test on CPU executable.
-    return Unimplemented("Equality test on CPU executable is not implemented.");
-  }
-
   static int64 ShapeSizeBytes(const Shape& shape);
 
   // Type of the computation function we expect in the JIT.
-  using ComputeFunctionType = void (*)(
-      void* /*result*/, const ExecutableRunOptions* /*run_options*/,
-      const void** /*args*/, void** /*temps*/, int64* /*profile_counters*/);
+  using ComputeFunctionType =
+      void (*)(void* /*result*/, const ExecutableRunOptions* /*run_options*/,
+               const void** /*args*/, void** /*buffer_table*/,
+               int64* /*profile_counters*/);
 
   const ComputeFunctionType& compute_function() const {
     return compute_function_;
@@ -90,35 +86,47 @@ class CpuExecutable : public Executable {
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
  private:
-  // Allocate buffers required for execution and assign them to the elements of
-  // "buffers". "buffers" should be sized to the number of buffers in buffer
-  // assignment. Each vector element corresponds to a particular Index. If
-  // a vector element already contains a non-null DeviceMemoryBase, then no
-  // buffer is assigned for this element.
-  Status AllocateBuffers(
-      DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-      std::vector<perftools::gputools::DeviceMemoryBase>* buffers);
+  // This is for sharing the code between ExecuteOnStream and
+  // ExecuteAsyncOnStream.
+  //
+  // Notice that it's tricky to use correctly, as the profile object (when it
+  // exists) must out-live the task.
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamImpl(
+      const ServiceExecutableRunOptions* run_options,
+      absl::Span<const ShapedBuffer* const> arguments,
+      HloExecutionProfile* hlo_execution_profile);
+
+  // Creates an array suitable for passing as the "buffer_table" argument to the
+  // JIT compiled function pointer.
+  //
+  // Returns (unowning_buffers, owning_buffers) where:
+  //
+  //  - unowning_buffers.data() can be passed as the buffer_table argument as-is
+  //    and includes pointers to the scratch storage required by the
+  //    computation, the live-out buffer into which the result will be written
+  //    and entry computation parameters.
+  //
+  //  - owning_buffers contains owning pointers to the buffers that were
+  //    allocated by this routine.  This routine allocates buffers for temporary
+  //    storage and the live-out buffer into which the computation writes it
+  //    result.
+  StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
+                     std::vector<OwningDeviceMemory>>>
+  CreateBufferTable(DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+                    absl::Span<const ShapedBuffer* const> arguments);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.
-  Status ExecuteComputeFunction(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          buffers,
-      HloExecutionProfile* hlo_execution_profile);
+  Status ExecuteComputeFunction(const ExecutableRunOptions* run_options,
+                                absl::Span<const se::DeviceMemoryBase> buffers,
+                                HloExecutionProfile* hlo_execution_profile);
 
-  // Create a ShapedBuffer for holding the result of the computation. The
-  // addresses (DeviceMemoryBases) are set according to buffer assignment.
-  // 'buffers_in_result' should point to a vector of the same size as
-  // 'allocated_buffers'. An element in buffers_in_result is set to true if the
-  // corresponding buffer is live out of the computation (and thus contained in
-  // the returned ShapedBuffer).
-  StatusOr<std::unique_ptr<ShapedBuffer>> CreateResultShapedBuffer(
+  // Creates a ScopedShapedBuffer for holding the result of the computation,
+  // moving buffers out of allocated_buffers and into the result as appropriate.
+  // The addresses are set according to buffer assignment.
+  StatusOr<ScopedShapedBuffer> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          allocated_buffers,
-      std::vector<bool>* buffers_in_result);
+      absl::Span<OwningDeviceMemory> buffers);
 
   // Returns the points-to set of the root instruction of the entry
   // computation. Uses points-to analysis from buffer assignment.

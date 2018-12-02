@@ -20,22 +20,24 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
 class RandomCropTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testNoOp(self):
     # No random cropping is performed since the size is value.shape.
     for shape in (2, 1, 1), (2, 1, 3), (4, 5, 3):
       value = np.arange(0, np.prod(shape), dtype=np.int32).reshape(shape)
-      with self.test_session():
+      with self.cached_session():
         crop = random_ops.random_crop(value, shape).eval()
         self.assertAllEqual(crop, value)
 
   def testContains(self):
-    with self.test_session():
+    with self.cached_session():
       shape = (3, 5, 7)
       target = (2, 3, 4)
       value = np.random.randint(1000000, size=shape)
@@ -44,10 +46,11 @@ class RandomCropTest(test.TestCase):
           for i in range(2) for j in range(3) for k in range(4))
       crop = random_ops.random_crop(value, size=target)
       for _ in range(20):
-        y = crop.eval()
+        y = self.evaluate(crop)
         self.assertAllEqual(y.shape, target)
         self.assertTrue(tuple(y.ravel()) in value_set)
 
+  @test_util.run_deprecated_v1
   def testRandomization(self):
     # Run 1x1 crop num_samples times in an image and ensure that one finds each
     # pixel 1/size of the time.
@@ -57,11 +60,11 @@ class RandomCropTest(test.TestCase):
     single = [1, 1, 1]
     value = np.arange(size).reshape(shape)
 
-    with self.test_session():
+    with self.cached_session():
       crop = random_ops.random_crop(value, single, seed=7)
       counts = np.zeros(size, dtype=np.int32)
       for _ in range(num_samples):
-        y = crop.eval()
+        y = self.evaluate(crop)
         self.assertAllEqual(y.shape, single)
         counts[y] += 1
 

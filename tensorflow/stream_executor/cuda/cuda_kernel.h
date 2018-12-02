@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "cuda/include/cuda.h"
@@ -40,8 +39,7 @@ limitations under the License.
     "CUDA runtime being included into CUDA GPU executor; should be driver only."
 #endif
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 // Wraps a CUfunction to implement the platform-independent KernelInterface.
@@ -124,7 +122,6 @@ inline CUDAKernel *AsCUDAKernel(KernelBase *kernel) {
 }
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_KERNEL_H_

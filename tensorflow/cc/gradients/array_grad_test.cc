@@ -108,6 +108,14 @@ TEST_F(ArrayGradTest, SplitGrad) {
   RunTest({x}, {x_shape}, y.output, {y_shape, y_shape});
 }
 
+TEST_F(ArrayGradTest, FillGrad) {
+  TensorShape x_shape({});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  TensorShape y_shape({2, 5, 3});
+  auto y = Fill(scope_, {2, 5, 3}, x);
+  RunTest(x, x_shape, y, y_shape);
+}
+
 TEST_F(ArrayGradTest, DiagGrad) {
   TensorShape x_shape({5, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
@@ -352,6 +360,37 @@ TEST_F(ArrayGradTest, MirrorPadGradGrad_Symmetric) {
   TensorShape y_shape({2, 3});
   auto y = MirrorPadGrad(scope_, x, paddings, "SYMMETRIC");
   RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, StridedSliceGrad) {
+  TensorShape x_shape({6, 4, 4});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+
+  // y = x[2:6:2, 1:3, 1:3]
+  auto y = StridedSlice(scope_, x, {2, 1, 1}, {6, 3, 3}, {2, 1, 1});
+  // y.shape = [2, 2, 2];
+  RunTest(x, x_shape, y, {2, 2, 2});
+
+  // y = x[2:6:2, 1:3, 1:3]
+  // begin_mask = 1<<1 (ignore begin_index = 1)
+  // end_mask = 1<<2 (ignore end_index = 2)
+  y = StridedSlice(scope_, x, {2, 1, 1}, {6, 3, 3}, {2, 1, 1},
+                   StridedSlice::BeginMask(1 << 1).EndMask(1 << 2));
+  // y.shape = [2, 3, 3];
+  RunTest(x, x_shape, y, {2, 3, 3});
+
+  // y = [tf.newaxis, 2:6:2, 1:3, 1:3]
+  y = StridedSlice(scope_, x, {0, 2, 1, 1}, {0, 6, 3, 3}, {1, 2, 1, 1},
+                   StridedSlice::NewAxisMask(1 << 0));
+  // y.shape = [1, 2, 2, 2];
+  RunTest(x, x_shape, y, {1, 2, 2, 2});
+}
+
+TEST_F(ArrayGradTest, SliceGrad) {
+  TensorShape x_shape({3, 5, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Slice(scope_, x, {1, 2, 1}, {1, 3, 2});
+  RunTest(x, x_shape, y, {1, 3, 2});
 }
 
 }  // namespace

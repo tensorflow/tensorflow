@@ -25,9 +25,9 @@ END
 (K-1)-dimensional tensor of indices into `params`, where each element defines a
 slice of `params`:
 
-    output[i_0, ..., i_{K-2}] = params[indices[i0, ..., i_{K-2}]]
+    output[\\(i_0, ..., i_{K-2}\\)] = params[indices[\\(i_0, ..., i_{K-2}\\)]]
 
-Whereas in @{tf.gather} `indices` defines slices into the first
+Whereas in `tf.gather` `indices` defines slices into the first
 dimension of `params`, in `tf.gather_nd`, `indices` defines slices into the
 first `N` dimensions of `params`, where `N = indices.shape[-1]`.
 
@@ -123,5 +123,7 @@ Batched indexing into a 3-tensor:
               [['a1', 'b1'], ['c1', 'd1']]]
     output = [['b0', 'b1'], ['d0', 'c1']]
 ```
+
+See also `tf.gather` and `tf.batch_gather`.
 END
 }

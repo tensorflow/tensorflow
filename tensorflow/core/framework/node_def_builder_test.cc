@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -82,7 +83,7 @@ class NodeDefBuilderTest : public ::testing::Test {
     EXPECT_FALSE(status.ok()) << SummarizeNodeDef(node_def);
     if (status.ok()) return;
     for (const string& message : messages) {
-      EXPECT_TRUE(StringPiece(status.error_message()).contains(message))
+      EXPECT_TRUE(str_util::StrContains(status.error_message(), message))
           << status << ", " << message;
     }
   }
@@ -103,7 +104,7 @@ class NodeDefBuilderTest : public ::testing::Test {
     }
     EXPECT_FALSE(status.ok()) << SummarizeNodeDef(node_def);
     if (status.ok()) return;
-    EXPECT_TRUE(StringPiece(status.error_message()).contains(message))
+    EXPECT_TRUE(str_util::StrContains(status.error_message(), message))
         << "Actual error: " << status.error_message()
         << "\nDoes not contain: " << message;
   }

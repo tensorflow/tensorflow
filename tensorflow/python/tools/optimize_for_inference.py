@@ -87,7 +87,9 @@ def main(unused_args):
   output_graph_def = optimize_for_inference_lib.optimize_for_inference(
       input_graph_def,
       FLAGS.input_names.split(","),
-      FLAGS.output_names.split(","), FLAGS.placeholder_type_enum)
+      FLAGS.output_names.split(","),
+      _parse_placeholder_types(FLAGS.placeholder_type_enum),
+      FLAGS.toco_compatible)
 
   if FLAGS.frozen_graph:
     f = gfile.FastGFile(FLAGS.output, "w")
@@ -97,6 +99,12 @@ def main(unused_args):
                          os.path.dirname(FLAGS.output),
                          os.path.basename(FLAGS.output))
   return 0
+
+
+def _parse_placeholder_types(values):
+  """Extracts placeholder types from a comma separate list."""
+  values = [int(value) for value in values.split(",")]
+  return values if len(values) > 1 else values[0]
 
 
 def parse_args():
@@ -135,9 +143,20 @@ def parse_args():
       """)
   parser.add_argument(
       "--placeholder_type_enum",
-      type=int,
-      default=dtypes.float32.as_datatype_enum,
-      help="The AttrValue enum to use for placeholders.")
+      type=str,
+      default=str(dtypes.float32.as_datatype_enum),
+      help="""\
+      The AttrValue enum to use for placeholders.
+      Or a comma separated list, one value for each placeholder.\
+      """)
+  parser.add_argument(
+      "--toco_compatible",
+      type=bool,
+      default=False,
+      help="""\
+      If true, only use ops compatible with Tensorflow
+      Lite Optimizing Converter.\
+      """)
   return parser.parse_known_args()
 
 

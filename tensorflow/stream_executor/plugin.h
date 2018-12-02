@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_PLUGIN_H_
 #define TENSORFLOW_STREAM_EXECUTOR_PLUGIN_H_
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // A plugin ID is a unique identifier for each registered plugin type.
 typedef void* PluginId;
@@ -83,7 +82,6 @@ class PluginConfig {
   PluginId blas_, dnn_, fft_, rng_;
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_PLUGIN_H_

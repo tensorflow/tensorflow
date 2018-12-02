@@ -30,7 +30,7 @@ class CholeskyOuterProductBijectorTest(test.TestCase):
   """Tests the correctness of the Y = X @ X.T transformation."""
 
   def testBijectorMatrix(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = bijectors.CholeskyOuterProduct(validate_args=True)
       self.assertEqual("cholesky_outer_product", bijector.name)
       x = [[[1., 0], [2, 1]], [[np.sqrt(2.), 0], [np.sqrt(8.), 1]]]
@@ -51,17 +51,42 @@ class CholeskyOuterProductBijectorTest(test.TestCase):
       self.assertAllClose(y, bijector.forward(x).eval())
       self.assertAllClose(x, bijector.inverse(y).eval())
       self.assertAllClose(
-          ildj, bijector.inverse_log_det_jacobian(y).eval(), atol=0., rtol=1e-7)
+          ildj, bijector.inverse_log_det_jacobian(
+              y, event_ndims=2).eval(), atol=0., rtol=1e-7)
       self.assertAllClose(
-          -bijector.inverse_log_det_jacobian(y).eval(),
-          bijector.forward_log_det_jacobian(x).eval(),
+          -bijector.inverse_log_det_jacobian(
+              y, event_ndims=2).eval(),
+          bijector.forward_log_det_jacobian(
+              x, event_ndims=2).eval(),
           atol=0.,
           rtol=1e-7)
+
+  def testNoBatchStaticJacobian(self):
+    x = np.eye(2)
+    bijector = bijectors.CholeskyOuterProduct()
+
+    # The Jacobian matrix is 2 * tf.eye(2), which has jacobian determinant 4.
+    self.assertAllClose(
+        np.log(4),
+        self.evaluate(bijector.forward_log_det_jacobian(x, event_ndims=2)))
+
+  def testNoBatchDynamicJacobian(self):
+    x = np.eye(2)
+    bijector = bijectors.CholeskyOuterProduct()
+    x_pl = array_ops.placeholder(dtypes.float32)
+
+    with self.cached_session():
+      log_det_jacobian = bijector.forward_log_det_jacobian(x_pl, event_ndims=2)
+
+      # The Jacobian matrix is 2 * tf.eye(2), which has jacobian determinant 4.
+      self.assertAllClose(
+          np.log(4),
+          log_det_jacobian.eval({x_pl: x}))
 
   def testNoBatchStatic(self):
     x = np.array([[1., 0], [2, 1]])  # np.linalg.cholesky(y)
     y = np.array([[1., 2], [2, 5]])  # np.matmul(x, x.T)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y_actual = bijectors.CholeskyOuterProduct().forward(x=x)
       x_actual = bijectors.CholeskyOuterProduct().inverse(y=y)
     [y_actual_, x_actual_] = sess.run([y_actual, x_actual])
@@ -73,7 +98,7 @@ class CholeskyOuterProductBijectorTest(test.TestCase):
   def testNoBatchDeferred(self):
     x = np.array([[1., 0], [2, 1]])  # np.linalg.cholesky(y)
     y = np.array([[1., 2], [2, 5]])  # np.matmul(x, x.T)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x_pl = array_ops.placeholder(dtypes.float32)
       y_pl = array_ops.placeholder(dtypes.float32)
       y_actual = bijectors.CholeskyOuterProduct().forward(x=x_pl)
@@ -94,7 +119,7 @@ class CholeskyOuterProductBijectorTest(test.TestCase):
                    [2, 5]],
                   [[9., 3],
                    [3, 5]]])  # np.matmul(x, x.T)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y_actual = bijectors.CholeskyOuterProduct().forward(x=x)
       x_actual = bijectors.CholeskyOuterProduct().inverse(y=y)
     [y_actual_, x_actual_] = sess.run([y_actual, x_actual])
@@ -112,7 +137,7 @@ class CholeskyOuterProductBijectorTest(test.TestCase):
                    [2, 5]],
                   [[9., 3],
                    [3, 5]]])  # np.matmul(x, x.T)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x_pl = array_ops.placeholder(dtypes.float32)
       y_pl = array_ops.placeholder(dtypes.float32)
       y_actual = bijectors.CholeskyOuterProduct().forward(x=x_pl)

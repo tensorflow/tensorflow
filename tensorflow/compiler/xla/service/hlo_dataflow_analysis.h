@@ -25,6 +25,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
@@ -42,6 +42,20 @@ namespace xla {
 // Analysis which identifies all HLO values and their uses in an HLO module.
 class HloDataflowAnalysis {
  public:
+  // Different backends can have very different ways to do fusion, so we give
+  // backends the flexibility to decide whether an fusion instruction can share
+  // buffer with it's operands. If this is not specified, a default strategy
+  // will be used; if this is specified, it will be applied *in addition* to the
+  // default strategy.
+  //
+  // The first parameter of the function should be the fusion instruction, the
+  // second parameter should be an operand of the fusion instruction.
+  //
+  // TODO(b/80315712): Find a better way to tell whether a fusion can share
+  // buffer.
+  using FusionCanShareBufferFunction = std::function<bool(
+      const HloInstruction* fusion, const HloInstruction* operand)>;
+
   // Run dataflow analysis on the given module. Parameters:
   //
   //   ssa_form : If true then new values are defined at the merge points of
@@ -61,7 +75,10 @@ class HloDataflowAnalysis {
   //     value of its operand.
   static StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
-      bool bitcast_defines_value = false);
+      bool bitcast_defines_value = false,
+      const FusionCanShareBufferFunction& fusion_can_share_buffer = nullptr);
+
+  static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -118,9 +135,29 @@ class HloDataflowAnalysis {
 
   string ToString() const;
 
+  // Returns true if 'user' cannot possibly use the buffer at 'index' in
+  // 'operand'. Returns false otherwise.
+  //
+  // 'operand' does not have to be an operand of 'user'. This can be the case
+  // with indirect uses.
+  bool DoesNotUseOperandBuffer(const HloInstruction* operand,
+                               const ShapeIndex& index,
+                               const HloInstruction* user) const;
+
+  // Returns true if 'user' (at 'user_index') can share a buffer with its
+  // operand 'operand' (at 'operand_index'). Returns false otherwise.
+  //
+  // REQUIRES: 'operand' is an operand of 'user'.
+  bool CanShareOperandBufferWithUser(HloInstruction* operand,
+                                     const ShapeIndex& operand_index,
+                                     HloInstruction* user,
+                                     const ShapeIndex& user_index) const;
+
  protected:
-  HloDataflowAnalysis(const HloModule& module, bool ssa_form,
-                      bool bitcast_defines_value = false);
+  HloDataflowAnalysis(
+      const HloModule& module, bool ssa_form,
+      bool bitcast_defines_value = false,
+      const FusionCanShareBufferFunction& fusion_can_share_buffer = nullptr);
 
   // Returns a new HloValue defined at the given instruction and shape index.
   HloValue* NewHloValue(HloInstruction* instruction, const ShapeIndex& index,
@@ -145,17 +182,18 @@ class HloDataflowAnalysis {
   // Updates the value set for a particular instruction type. Returns whether
   // the instruction value set changed.
   bool UpdateBitcastValueSet(HloInstruction* bitcast);
-  bool UpdateSliceValueSet(HloInstruction* slice);
   bool UpdateCallValueSet(HloInstruction* call);
   bool UpdateConditionalValueSet(HloInstruction* conditional);
   bool UpdateCopyValueSet(HloInstruction* copy);
+  bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
   bool UpdateRecvDoneValueSet(HloInstruction* recv_done);
-  bool UpdateSelectValueSet(HloInstruction* select);
+  bool UpdateTupleSelectValueSet(HloInstruction* select);
   bool UpdateSendValueSet(HloInstruction* send);
   bool UpdateTupleValueSet(HloInstruction* tuple);
   bool UpdateWhileValueSet(HloInstruction* xla_while);
+  bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);
 
   // Propagate the dataflow through the module.
   void Propagate();
@@ -164,7 +202,7 @@ class HloDataflowAnalysis {
   // the given instruction. If skip_top_level is true, then the top level of the
   // value set of 'instruction' is not modified.
   bool Phi(HloInstruction* instruction,
-           tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs);
+           absl::Span<const InstructionValueSet* const> inputs);
 
   // Updates the positions of the HloValues in the output of the given
   // instruction. This should be called after the instruction value set of
@@ -204,6 +242,10 @@ class HloDataflowAnalysis {
 
   // The Id to use for the next HloValue.
   HloValue::Id next_value_id_ = 0;
+
+  // Backend specific function that decides whether a fusion can share buffer
+  // with its operand.
+  FusionCanShareBufferFunction fusion_can_share_buffer_ = nullptr;
 };
 
 }  // namespace xla

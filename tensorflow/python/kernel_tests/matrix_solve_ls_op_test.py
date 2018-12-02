@@ -24,11 +24,13 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test as test_lib
 
 
@@ -106,7 +108,7 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
         b = np.tile(b, batch_shape + (1, 1))
         np_ans = np.tile(np_ans, batch_shape + (1, 1))
         np_r_norm = np.tile(np_r_norm, batch_shape)
-      with self.test_session(use_gpu=fast) as sess:
+      with self.cached_session(use_gpu=fast) as sess:
         if use_placeholder:
           a_ph = array_ops.placeholder(dtypes.as_dtype(dtype))
           b_ph = array_ops.placeholder(dtypes.as_dtype(dtype))
@@ -132,20 +134,22 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
       self.assertEqual(np_ans.shape, tf_ans_val.shape)
       self.assertAllClose(np_ans, tf_ans_val, atol=2 * tol, rtol=2 * tol)
 
+  @test_util.run_deprecated_v1
   def testWrongDimensions(self):
     # The matrix and right-hand sides should have the same number of rows.
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       matrix = constant_op.constant([[1., 0.], [0., 1.]])
       rhs = constant_op.constant([[1., 0.]])
       with self.assertRaises(ValueError):
         linalg_ops.matrix_solve_ls(matrix, rhs)
 
+  @test_util.run_deprecated_v1
   def testEmpty(self):
     full = np.array([[1., 2.], [3., 4.], [5., 6.]])
     empty0 = np.empty([3, 0])
     empty1 = np.empty([0, 2])
     for fast in [True, False]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         tf_ans = linalg_ops.matrix_solve_ls(empty0, empty0, fast=fast).eval()
         self.assertEqual(tf_ans.shape, (0, 0))
         tf_ans = linalg_ops.matrix_solve_ls(empty0, full, fast=fast).eval()
@@ -155,6 +159,7 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
         tf_ans = linalg_ops.matrix_solve_ls(empty1, empty1, fast=fast).eval()
         self.assertEqual(tf_ans.shape, (2, 2))
 
+  @test_util.run_deprecated_v1
   def testBatchResultSize(self):
     # 3x3x3 matrices, 3x3x1 right-hand sides.
     matrix = np.array([1., 2., 3., 4., 5., 6., 7., 8., 9.] * 3).reshape(3, 3, 3)
@@ -313,7 +318,7 @@ class MatrixSolveLsBenchmark(test_lib.Benchmark):
       for num_rhs in 1, 2, matrix_shape[-1]:
 
         with ops.Graph().as_default(), \
-            session.Session() as sess, \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device("/cpu:0"):
           matrix, rhs = _GenerateTestData(matrix_shape, num_rhs)
           x = linalg_ops.matrix_solve_ls(matrix, rhs, regularizer)
@@ -328,7 +333,7 @@ class MatrixSolveLsBenchmark(test_lib.Benchmark):
 
         if run_gpu_test and (len(matrix_shape) < 3 or matrix_shape[0] < 513):
           with ops.Graph().as_default(), \
-                session.Session() as sess, \
+                session.Session(config=benchmark.benchmark_config()) as sess, \
                 ops.device("/gpu:0"):
             matrix, rhs = _GenerateTestData(matrix_shape, num_rhs)
             x = linalg_ops.matrix_solve_ls(matrix, rhs, regularizer)

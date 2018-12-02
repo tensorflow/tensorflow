@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 
 namespace tensorflow {
 
@@ -54,21 +55,18 @@ class MatrixSetDiagOp : public XlaOpKernel {
                     input_shape.DebugString(),
                     " and diagonal shape: ", diag_shape.DebugString()));
 
-    xla::ComputationBuilder* builder = context->builder();
-    xla::ComputationDataHandle input = context->Input(0);
-    xla::ComputationDataHandle diag = context->Input(1);
+    xla::XlaBuilder* builder = context->builder();
+    xla::XlaOp input = context->Input(0);
+    xla::XlaOp diag = context->Input(1);
 
     auto zero = XlaHelpers::Zero(builder, context->input_type(0));
 
     // Create an indicator tensor that is true only on the diagonal.
-    xla::ComputationDataHandle iota_m;
-    OP_REQUIRES_OK(context, XlaHelpers::Iota(builder, DT_INT32, m, &iota_m));
-    xla::ComputationDataHandle iota_n;
-    OP_REQUIRES_OK(context, XlaHelpers::Iota(builder, DT_INT32, n, &iota_n));
-    auto indicator = builder->Eq(iota_m,
-                                 builder->Broadcast(iota_n, {m}),
-                                 /*broadcast_dimensions=*/{0});
-    indicator = builder->Broadcast(indicator, batch_shape.dim_sizes());
+    xla::XlaOp iota_m = xla::Iota(builder, xla::S32, m);
+    xla::XlaOp iota_n = xla::Iota(builder, xla::S32, n);
+    auto indicator = xla::Eq(iota_m, xla::Broadcast(iota_n, {m}),
+                             /*broadcast_dimensions=*/{0});
+    indicator = xla::Broadcast(indicator, batch_shape.dim_sizes());
 
     // Broadcast diag up to the input shape. Use an implicit broadcast (Add)
     // because we need to broadcast on the right.
@@ -77,10 +75,10 @@ class MatrixSetDiagOp : public XlaOpKernel {
     if (min_dim != m) {
       diag_broadcast_dims.back() = rank - 1;
     }
-    diag = builder->Add(diag, builder->Broadcast(zero, input_shape.dim_sizes()),
-                        /*broadcast_dimensions=*/diag_broadcast_dims);
+    diag = xla::Add(diag, xla::Broadcast(zero, input_shape.dim_sizes()),
+                    /*broadcast_dimensions=*/diag_broadcast_dims);
 
-    auto output = builder->Select(indicator, diag, input);
+    auto output = xla::Select(indicator, diag, input);
     context->SetOutput(0, output);
   }
 

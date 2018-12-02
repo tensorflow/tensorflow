@@ -17,15 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
-random_seed.set_random_seed(23)
 
 
 class LinearOperatorLowerTriangularTest(
@@ -33,36 +31,31 @@ class LinearOperatorLowerTriangularTest(
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
   @property
-  def _dtypes_to_test(self):
-    # TODO(langmore) Test complex types once supported by
-    # matrix_triangular_solve.
-    return [dtypes.float32, dtypes.float64]
+  def _tests_to_skip(self):
+    # Cholesky does not make sense for triangular matrices.
+    return ["cholesky"]
 
-  def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+    shape = list(build_info.shape)
     # Upper triangle will be nonzero, but ignored.
     # Use a diagonal that ensures this matrix is well conditioned.
     tril = linear_operator_test_util.random_tril_matrix(
         shape, dtype=dtype, force_well_conditioned=True, remove_upper=False)
 
+    lin_op_tril = tril
+
     if use_placeholder:
-      tril_ph = array_ops.placeholder(dtype=dtype)
-      # Evaluate the tril here because (i) you cannot feed a tensor, and (ii)
-      # tril is random and we want the same value used for both mat and
-      # feed_dict.
-      tril = tril.eval()
-      operator = linalg.LinearOperatorLowerTriangular(tril_ph)
-      feed_dict = {tril_ph: tril}
-    else:
-      operator = linalg.LinearOperatorLowerTriangular(tril)
-      feed_dict = None
+      lin_op_tril = array_ops.placeholder_with_default(lin_op_tril, shape=None)
 
-    mat = array_ops.matrix_band_part(tril, -1, 0)
+    operator = linalg.LinearOperatorLowerTriangular(lin_op_tril)
 
-    return operator, mat, feed_dict
+    matrix = array_ops.matrix_band_part(tril, -1, 0)
+
+    return operator, matrix
 
   def test_assert_non_singular(self):
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
-    with self.test_session():
+    with self.cached_session():
       tril = [[1., 0.], [1., 0.]]
       operator = linalg.LinearOperatorLowerTriangular(tril)
       with self.assertRaisesOpError("Singular operator"):
@@ -83,6 +76,30 @@ class LinearOperatorLowerTriangularTest(
   def test_tril_must_have_at_least_two_dims_or_raises(self):
     with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):
       linalg.LinearOperatorLowerTriangular([1.])
+
+  def test_triangular_diag_matmul(self):
+    operator1 = linalg_lib.LinearOperatorLowerTriangular(
+        [[1., 0., 0.], [2., 1., 0.], [2., 3., 3.]])
+    operator2 = linalg_lib.LinearOperatorDiag([2., 2., 3.])
+    operator_matmul = operator1.matmul(operator2)
+    self.assertTrue(isinstance(
+        operator_matmul,
+        linalg_lib.LinearOperatorLowerTriangular))
+    self.assertAllClose(
+        math_ops.matmul(
+            operator1.to_dense(),
+            operator2.to_dense()),
+        self.evaluate(operator_matmul.to_dense()))
+
+    operator_matmul = operator2.matmul(operator1)
+    self.assertTrue(isinstance(
+        operator_matmul,
+        linalg_lib.LinearOperatorLowerTriangular))
+    self.assertAllClose(
+        math_ops.matmul(
+            operator2.to_dense(),
+            operator1.to_dense()),
+        self.evaluate(operator_matmul.to_dense()))
 
 
 if __name__ == "__main__":

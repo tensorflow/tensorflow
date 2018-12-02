@@ -419,7 +419,7 @@ class SparseCrossOp : public OpKernel {
           context, TensorShapeUtils::IsMatrix(dense_list_in[i].shape()),
           errors::InvalidArgument(
               "Dense inputs should be a matrix but received shape ",
-              indices_list_in[i].shape().DebugString(), " at position ", i));
+              dense_list_in[i].shape().DebugString(), " at position ", i));
       OP_REQUIRES(context, dense_list_in[i].dim_size(0) == batch_size,
                   errors::InvalidArgument("Expected batch size ", batch_size,
                                           " got ", dense_list_in[i].dim_size(0),

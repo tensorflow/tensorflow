@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 
@@ -42,6 +46,12 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_result_layout(const Shape& shape_with_layout);
   const Shape* result_layout() const;
 
+  // Expose access to the XLA debug options which will be passed to the
+  // compilation process.
+  bool has_debug_options() const { return debug_options_.has_value(); }
+  const DebugOptions& debug_options() const { return *debug_options_; }
+  DebugOptions* mutable_debug_options();
+
   // If set, this specifies an allocator that can be used to allocate temporary
   // space on the device during compilation.  For example, the compiler might
   // want to run various algorithms on the device and pick the fastest one -- it
@@ -53,10 +63,6 @@ class ExecutableBuildOptions {
       DeviceMemoryAllocator* allocator);
   DeviceMemoryAllocator* device_allocator() const;
 
-  // If set, specifies a regexp of HLO graphs to dump (as in DebugOptions).
-  ExecutableBuildOptions& set_generate_hlo_graph(string regex);
-  const tensorflow::gtl::optional<string>& generate_hlo_graph() const;
-
   // Returns a string representation of the build options, suitable for
   // debugging.
   string ToString() const;
@@ -65,7 +71,7 @@ class ExecutableBuildOptions {
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
-  tensorflow::gtl::optional<string> generate_hlo_graph_;
+  absl::optional<DebugOptions> debug_options_;
   DeviceMemoryAllocator* device_allocator_ = nullptr;
 };
 

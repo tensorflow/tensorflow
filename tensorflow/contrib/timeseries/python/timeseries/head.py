@@ -19,47 +19,37 @@ from __future__ import print_function
 
 import re
 
-from tensorflow.python.training import training_util
-from tensorflow.contrib.layers.python.layers import optimizers
-
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
-
 from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.export import export_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import metrics_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.util import nest
 from tensorflow.python.summary import summary
+from tensorflow.python.training import training_util
+from tensorflow.python.util import nest
 
 
-def time_series_regression_head(model,
-                                state_manager,
-                                optimizer,
-                                input_statistics_generator=None):
-  """Creates a `_Head` for time series regression.
+class _NoStatePredictOutput(export_lib.PredictOutput):
 
-  Args:
-    model: A model for time series regression.
-    state_manager: A state manager.
-    optimizer: An optimizer.
-    input_statistics_generator: A input statistics generator.
-
-  Returns:
-    An instance of `_Head` for time series regression.
-  """
-  return _TimeSeriesRegressionHead(model, state_manager, optimizer,
-                                   input_statistics_generator)
+  def as_signature_def(self, receiver_tensors):
+    no_state_receiver_tensors = {
+        key: value for key, value in receiver_tensors.items()
+        if not key.startswith(feature_keys.State.STATE_PREFIX)}
+    return super(_NoStatePredictOutput, self).as_signature_def(
+        receiver_tensors=no_state_receiver_tensors)
 
 
-class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-access
-  """See `time_series_regression_head`."""
+class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-access
+  """Determines input and output signatures for a time series model."""
 
   def __init__(self,
                model,
@@ -67,6 +57,15 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
                optimizer,
                input_statistics_generator=None,
                name=None):
+    """Creates a `_Head` for time series regression.
+
+    Args:
+      model: A model for time series regression.
+      state_manager: A state manager.
+      optimizer: An optimizer.
+      input_statistics_generator: A input statistics generator.
+      name: An optional name for the model.
+    """
     self.model = model
     self.state_manager = state_manager
     self.optimizer = optimizer
@@ -102,12 +101,9 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
         use_resource=True):
       model_outputs = self.create_loss(features, mode)
 
-    train_op = optimizers.optimize_loss(
+    train_op = self.optimizer.minimize(
         model_outputs.loss,
-        global_step=training_util.get_global_step(),
-        optimizer=self.optimizer,
-        # Learning rate is set in the Optimizer object
-        learning_rate=None)
+        global_step=training_util.get_global_step())
     return estimator_lib.EstimatorSpec(
         loss=model_outputs.loss,
         mode=mode,
@@ -128,11 +124,14 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
     metrics[feature_keys.FilteringResults.STATE_TUPLE] = (
         _identity_metric_nested(feature_keys.FilteringResults.STATE_TUPLE,
                                 model_outputs.end_state))
+    metrics[metric_keys.MetricKeys.LOSS_MEAN] = metrics_impl.mean(
+        model_outputs.loss, name="average_loss")
     return estimator_lib.EstimatorSpec(
         loss=model_outputs.loss,
         mode=mode,
         eval_metric_ops=metrics,
-        predictions={})
+        # needed for custom metrics.
+        predictions=model_outputs.predictions)
 
   def _predict_ops(self, features):
     """Add ops for prediction to the graph."""
@@ -150,6 +149,14 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
     with variable_scope.variable_scope("model", reuse=True):
       filtering_outputs = self.create_loss(
           features, estimator_lib.ModeKeys.EVAL)
+    with variable_scope.variable_scope("model", reuse=True):
+      no_state_features = {
+          k: v for k, v in features.items()
+          if not k.startswith(feature_keys.State.STATE_PREFIX)}
+      # Ignore any state management when cold-starting. The model's default
+      # start state is replicated across the batch.
+      cold_filtering_outputs = self.model.define_loss(
+          features=no_state_features, mode=estimator_lib.ModeKeys.EVAL)
     return estimator_lib.EstimatorSpec(
         mode=estimator_lib.ModeKeys.PREDICT,
         export_outputs={
@@ -157,7 +164,10 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
                 export_lib.PredictOutput(prediction_outputs),
             feature_keys.SavedModelLabels.FILTER:
                 export_lib.PredictOutput(
-                    state_to_dictionary(filtering_outputs.end_state))
+                    state_to_dictionary(filtering_outputs.end_state)),
+            feature_keys.SavedModelLabels.COLD_START_FILTER:
+                _NoStatePredictOutput(
+                    state_to_dictionary(cold_filtering_outputs.end_state))
         },
         # Likely unused, but it is necessary to return `predictions` to satisfy
         # the Estimator's error checking.
@@ -174,7 +184,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
       return math_ops.cast(value, self.model.dtype)
     if name == feature_keys.PredictionFeatures.STATE_TUPLE:
       return value  # Correct dtypes are model-dependent
-    return ops.convert_to_tensor(value)
+    return sparse_tensor.convert_to_tensor_or_sparse_tensor(value)
 
   def _gather_state(self, features):
     """Returns `features` with state packed, indicates if packing was done."""
@@ -196,15 +206,38 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
         flat_sequence=[tensor for _, _, tensor in numbered_state])
     return features, True
 
+  def _check_predict_features(self, features):
+    """Raises errors if features are not suitable for prediction."""
+    if feature_keys.PredictionFeatures.TIMES not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.PredictionFeatures.TIMES))
+    if feature_keys.PredictionFeatures.STATE_TUPLE not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.PredictionFeatures.STATE_TUPLE))
+    times_feature = features[feature_keys.PredictionFeatures.TIMES]
+    if not times_feature.get_shape().is_compatible_with([None, None]):
+      raise ValueError(
+          ("Expected shape (batch dimension, window size) for feature '{}' "
+           "(got shape {})").format(feature_keys.PredictionFeatures.TIMES,
+                                    times_feature.get_shape()))
+    _check_feature_shapes_compatible_with(
+        features=features,
+        compatible_with_name=feature_keys.PredictionFeatures.TIMES,
+        compatible_with_value=times_feature,
+        ignore=set([
+            # Model-dependent shapes
+            feature_keys.PredictionFeatures.STATE_TUPLE
+        ]))
+
   def create_estimator_spec(self, features, mode, labels=None):
     """Performs basic error checking and returns an EstimatorSpec."""
     with ops.name_scope(self._name, "head"):
-      if labels:
+      if labels is not None and labels != {}:  # for better error messages.
         raise ValueError(
-            "The model received a `labels` dictionary, which is "
-            "not supported. Pass '{}' and '{}' as "
-            "features.".format(feature_keys.TrainEvalFeatures.TIMES,
-                               feature_keys.TrainEvalFeatures.VALUES))
+            "The model received a `labels`, which is not supported. "
+            "Pass '{}' and '{}' as features.".format(
+                feature_keys.TrainEvalFeatures.TIMES,
+                feature_keys.TrainEvalFeatures.VALUES))
       del labels
       features = {
           name: self._convert_feature_to_tensor(name=name, value=value)
@@ -224,7 +257,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
           mode == estimator_lib.ModeKeys.EVAL):
         _check_train_eval_features(features, self.model)
       elif mode == estimator_lib.ModeKeys.PREDICT:
-        _check_predict_features(features)
+        self._check_predict_features(features)
       else:
         raise ValueError("Unknown mode '{}' passed to model_fn.".format(mode))
 
@@ -242,6 +275,96 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
         # serving. We want to return two graphs: one for filtering (state + data
         # -> state) and one for predicting (state -> prediction).
         return self._serving_ops(features)
+
+
+class OneShotPredictionHead(TimeSeriesRegressionHead):
+  """A time series head which exports a single stateless serving signature.
+
+  The serving default signature exported by this head expects `times`, `values`,
+  and any exogenous features, but no state. `values` has shape `[batch_size,
+  filter_length, num_features]` and `times` has shape `[batch_size,
+  total_length]`, where `total_length > filter_length`. Any exogenous features
+  must have their shapes prefixed by the shape of the `times` feature.
+
+  When serving, first performs filtering on the series up to `filter_length`
+  starting from the default start state for the model, then computes predictions
+  on the remainder of the series, returning them.
+
+  Model state is neither accepted nor returned, so filtering must be performed
+  each time predictions are requested when using this head.
+  """
+
+  def _check_predict_features(self, features):
+    """Raises errors if features are not suitable for one-shot prediction."""
+    if feature_keys.PredictionFeatures.TIMES not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.PredictionFeatures.TIMES))
+    if feature_keys.TrainEvalFeatures.VALUES not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.TrainEvalFeatures.VALUES))
+    if feature_keys.PredictionFeatures.STATE_TUPLE not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.PredictionFeatures.STATE_TUPLE))
+    times_feature = features[feature_keys.PredictionFeatures.TIMES]
+    if not times_feature.get_shape().is_compatible_with([None, None]):
+      raise ValueError(
+          ("Expected shape (batch dimension, window size) for feature '{}' "
+           "(got shape {})").format(feature_keys.PredictionFeatures.TIMES,
+                                    times_feature.get_shape()))
+    _check_feature_shapes_compatible_with(
+        features=features,
+        compatible_with_name=feature_keys.PredictionFeatures.TIMES,
+        compatible_with_value=times_feature,
+        ignore=set([
+            # Model-dependent shapes
+            feature_keys.PredictionFeatures.STATE_TUPLE,
+            # One shot prediction head relies on values being shorter than
+            # times. Even though we're predicting eventually, we need values for
+            # the filtering phase.
+            feature_keys.TrainEvalFeatures.VALUES,
+        ]))
+
+  def _evaluate_ops(self, features):
+    """Add ops for evaluation (aka filtering) to the graph."""
+    spec = super(OneShotPredictionHead, self)._evaluate_ops(features)
+    # No state is fed to OneShotPredictionHead, so we don't return it; it being
+    # a tuple can cause issues for downstream infrastructure.
+    del spec.eval_metric_ops[feature_keys.State.STATE_TUPLE]
+    return spec
+
+  def _serving_ops(self, features):
+    """Add ops for serving to the graph."""
+    with variable_scope.variable_scope("model", use_resource=True):
+      filtering_features = {}
+      prediction_features = {}
+      values_length = array_ops.shape(
+          features[feature_keys.FilteringFeatures.VALUES])[1]
+      for key, value in features.items():
+        if key == feature_keys.State.STATE_TUPLE:
+          # Ignore state input. The model's default start state is replicated
+          # across the batch.
+          continue
+        if key == feature_keys.FilteringFeatures.VALUES:
+          filtering_features[key] = value
+        else:
+          filtering_features[key] = value[:, :values_length]
+          prediction_features[key] = value[:, values_length:]
+      cold_filtering_outputs = self.model.define_loss(
+          features=filtering_features, mode=estimator_lib.ModeKeys.EVAL)
+      prediction_features[feature_keys.State.STATE_TUPLE] = (
+          cold_filtering_outputs.end_state)
+    with variable_scope.variable_scope("model", reuse=True):
+      prediction_outputs = self.model.predict(
+          features=prediction_features)
+    return estimator_lib.EstimatorSpec(
+        mode=estimator_lib.ModeKeys.PREDICT,
+        export_outputs={
+            feature_keys.SavedModelLabels.PREDICT:
+                _NoStatePredictOutput(prediction_outputs),
+        },
+        # Likely unused, but it is necessary to return `predictions` to satisfy
+        # the Estimator's error checking.
+        predictions={})
 
 
 def _check_feature_shapes_compatible_with(features,
@@ -273,29 +396,6 @@ def _check_feature_shapes_compatible_with(features,
                feature_shape=feature_shape,
                feature_name=name,
                times_shape=compatible_with_value.get_shape()))
-
-
-def _check_predict_features(features):
-  """Raises errors if features are not suitable for prediction."""
-  if feature_keys.PredictionFeatures.TIMES not in features:
-    raise ValueError("Expected a '{}' feature for prediction.".format(
-        feature_keys.PredictionFeatures.TIMES))
-  if feature_keys.PredictionFeatures.STATE_TUPLE not in features:
-    raise ValueError("Expected a '{}' feature for prediction.".format(
-        feature_keys.PredictionFeatures.STATE_TUPLE))
-  times_feature = features[feature_keys.PredictionFeatures.TIMES]
-  if not times_feature.get_shape().is_compatible_with([None, None]):
-    raise ValueError(
-        ("Expected shape (batch dimension, window size) for feature '{}' "
-         "(got shape {})").format(feature_keys.PredictionFeatures.TIMES,
-                                  times_feature.get_shape()))
-  _check_feature_shapes_compatible_with(
-      features=features,
-      compatible_with_name=feature_keys.PredictionFeatures.TIMES,
-      compatible_with_value=times_feature,
-      ignore=set([
-          feature_keys.PredictionFeatures.STATE_TUPLE  # Model-dependent shapes
-      ]))
 
 
 def _check_train_eval_features(features, model):

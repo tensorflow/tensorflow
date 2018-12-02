@@ -50,7 +50,7 @@ class BatchNormalizationTest(test.TestCase):
     y = self._batch_norm(x, mean, var, offset, scale, epsilon)
     if data_format == 'NCHW':
       y = array_ops.transpose(y, [0, 3, 1, 2])
-    return y.eval()
+    return self.evaluate(y)
 
   def _test_inference(self,
                       x_shape,
@@ -66,7 +66,7 @@ class BatchNormalizationTest(test.TestCase):
     mean_val = np.random.random_sample(scale_shape).astype(scale_dtype)
     var_val = np.random.random_sample(scale_shape).astype(scale_dtype)
 
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       x = constant_op.constant(x_val, name='x')
       scale = constant_op.constant(scale_val, name='scale')
       offset = constant_op.constant(offset_val, name='offset')
@@ -82,7 +82,7 @@ class BatchNormalizationTest(test.TestCase):
           epsilon=epsilon,
           data_format=data_format,
           is_training=False)
-      y_val = sess.run(y)
+      y_val = self.evaluate(y)
       y_ref = self._inference_ref(x, scale, offset, mean, var, epsilon,
                                   data_format)
     # An atol value of 1e-3 is too small for float16's, because some adjacent
@@ -102,7 +102,7 @@ class BatchNormalizationTest(test.TestCase):
     y = self._batch_norm(x, mean, var, offset, scale, epsilon)
     if data_format == 'NCHW':
       y = array_ops.transpose(y, [0, 3, 1, 2])
-    return y.eval(), mean.eval(), var.eval()
+    return self.evaluate(y), self.evaluate(mean), self.evaluate(var)
 
   def _test_training(self,
                      x_shape,
@@ -115,7 +115,7 @@ class BatchNormalizationTest(test.TestCase):
     x_val = np.random.random_sample(x_shape).astype(x_dtype)
     scale_val = np.random.random_sample(scale_shape).astype(scale_dtype)
     offset_val = np.random.random_sample(scale_shape).astype(scale_dtype)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       x = constant_op.constant(x_val, name='x')
       scale = constant_op.constant(scale_val, name='scale')
       offset = constant_op.constant(offset_val, name='offset')
@@ -127,7 +127,7 @@ class BatchNormalizationTest(test.TestCase):
           epsilon=epsilon,
           data_format=data_format,
           is_training=True)
-      y_val, mean_val, var_val = sess.run([y, mean, var])
+      y_val, mean_val, var_val = self.evaluate([y, mean, var])
       y_ref, mean_ref, var_ref = self._training_ref(x, scale, offset, epsilon,
                                                     data_format)
     y_atol = 2e-3 if x_dtype == np.float16 else 1e-3
@@ -190,7 +190,7 @@ class BatchNormalizationTest(test.TestCase):
     scale_val = np.random.random_sample(scale_shape).astype(scale_dtype)
     offset_val = np.random.random_sample(scale_shape).astype(scale_dtype)
 
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       x = constant_op.constant(x_val, name='x')
       scale = constant_op.constant(scale_val, name='scale')
       offset = constant_op.constant(offset_val, name='offset')
@@ -252,7 +252,7 @@ class BatchNormalizationTest(test.TestCase):
     scale_val = np.random.random_sample(scale_shape).astype(scale_dtype)
     offset_val = np.random.random_sample(scale_shape).astype(scale_dtype)
 
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       x = constant_op.constant(x_val, name='x')
       grad_y = constant_op.constant(grad_y_val, name='grad_y')
       scale = constant_op.constant(scale_val, name='scale')
@@ -277,10 +277,10 @@ class BatchNormalizationTest(test.TestCase):
       if is_training:
         epsilon = y.op.get_attr('epsilon')
         data_format = y.op.get_attr('data_format')
-        grad_vals = sess.run([grad_x, grad_scale, grad_offset])
+        grad_vals = self.evaluate([grad_x, grad_scale, grad_offset])
         grad_internal = nn_grad._BatchNormGrad(grad_y, x, scale, pop_mean,
                                                pop_var, epsilon, data_format)
-        grad_internal_vals = sess.run(list(grad_internal))
+        grad_internal_vals = self.evaluate(list(grad_internal))
         for grad_val, grad_internal_val in zip(grad_vals, grad_internal_vals):
           self.assertAllClose(grad_val, grad_internal_val, atol=err_tolerance)
 

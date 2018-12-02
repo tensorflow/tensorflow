@@ -13,12 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tensor Handle Operations. See the @{$python/session_ops} guide.
-
-@@get_session_handle
-@@get_session_tensor
-@@delete_session_tensor
-"""
+"""Tensor Handle Operations."""
 
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -141,7 +136,7 @@ class TensorHandle(object):
     return feeder.op.name + ";" + TensorHandle._get_reader_key(handle)
 
 
-@tf_export("get_session_handle")
+@tf_export(v1=["get_session_handle"])
 def get_session_handle(data, name=None):
   """Return the handle of `data`.
 
@@ -184,7 +179,7 @@ def get_session_handle(data, name=None):
     return gen_data_flow_ops.get_session_handle(data, name=name)
 
 
-@tf_export("get_session_tensor")
+@tf_export(v1=["get_session_tensor"])
 def get_session_tensor(handle, dtype, name=None):
   """Get the tensor of type `dtype` by feeding a tensor handle.
 
@@ -225,7 +220,7 @@ def get_session_tensor(handle, dtype, name=None):
   return (holder, tensor)
 
 
-@tf_export("delete_session_tensor")
+@tf_export(v1=["delete_session_tensor"])
 def delete_session_tensor(handle, name=None):
   """Delete the tensor for the given tensor handle.
 

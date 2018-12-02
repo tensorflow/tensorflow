@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape_util.h"
 
+#include <numeric>
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -27,6 +30,15 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+
+TEST(ShapeUtilTest, ShapeIndexViewTest) {
+  ShapeIndex index = {1, 2, 3, 4};
+  ShapeIndexView index_view(index, 1);
+  EXPECT_EQ(3, index_view.size());
+  EXPECT_EQ(ShapeIndexView({2, 3, 4}), index_view);
+  EXPECT_EQ(ShapeIndexView({3, 4}), index_view.ConsumeFront());
+  EXPECT_EQ(ShapeIndexView({2, 3}), index_view.ConsumeBack());
+}
 
 TEST(ShapeUtilTest, GetDimensionHelperCanNegativeIndex) {
   Shape matrix = ShapeUtil::MakeShape(F32, {2, 3});
@@ -93,12 +105,14 @@ TEST(ShapeUtilTest, ParseShapeStringTupleOfArrays) {
 }
 
 TEST(ShapeUtilTest, ParseShapeStringNestedTuple) {
-  string shape_string = "(f32[1],(f32[2]), f32[3])";
+  string shape_string = "(f32[1],(f32[2], token[]), opaque[], f32[3])";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual,
                           ShapeUtil::ParseShapeString(shape_string));
   Shape expected = ShapeUtil::MakeTupleShape({
       ShapeUtil::MakeShape(F32, {1}),
-      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {2})}),
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {2}), ShapeUtil::MakeTokenShape()}),
+      ShapeUtil::MakeOpaqueShape(),
       ShapeUtil::MakeShape(F32, {3}),
   });
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
@@ -136,6 +150,23 @@ TEST(ShapeUtilTest, ParseShapeStringWithSparseLayout) {
       << "actual: " << ShapeUtil::HumanString(actual);
 }
 
+TEST(ShapeUtilTest, ParseOpaqueType) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
+                          ShapeUtil::ParseShapeString("opaque[]"));
+  Shape expected = ShapeUtil::MakeOpaqueShape();
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST(ShapeUtilTest, ParseTokenType) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ShapeUtil::ParseShapeString("token[]"));
+  Shape expected = ShapeUtil::MakeTokenShape();
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
 TEST(ShapeUtilTest, ParseInvalidShapeString) {
   string shape_strings[] = {
       "f32[123,456]foobar{0,1}", "f32[123,456]sparse{0,1}", "f32[123,456]{foo}",
@@ -151,6 +182,41 @@ TEST(ShapeUtilTest, CompatibleIdenticalShapes) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {3, 2});
   Shape shape2 = ShapeUtil::MakeShape(F32, {3, 2});
   ASSERT_TRUE(ShapeUtil::Compatible(shape1, shape2));
+}
+
+TEST(ShapeUtilTest, TokenCompatibility) {
+  EXPECT_TRUE(ShapeUtil::Compatible(ShapeUtil::MakeTokenShape(),
+                                    ShapeUtil::MakeTokenShape()));
+  EXPECT_FALSE(ShapeUtil::Compatible(ShapeUtil::MakeTokenShape(),
+                                     ShapeUtil::MakeShape(F32, {})));
+  EXPECT_FALSE(ShapeUtil::Compatible(ShapeUtil::MakeShape(F32, {}),
+                                     ShapeUtil::MakeTokenShape()));
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeTokenShape()}),
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeTokenShape()})));
+}
+
+TEST(ShapeUtilTest, TokensEqualShapes) {
+  EXPECT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeTokenShape(),
+                               ShapeUtil::MakeTokenShape()));
+  EXPECT_FALSE(ShapeUtil::Equal(ShapeUtil::MakeTokenShape(),
+                                ShapeUtil::MakeShape(F32, {})));
+  EXPECT_FALSE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {}),
+                                ShapeUtil::MakeTokenShape()));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeTokenShape(),
+           ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1})}),
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeTokenShape(),
+           ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1})})));
+  EXPECT_FALSE(ShapeUtil::Equal(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeTokenShape(),
+           ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1})}),
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeTokenShape(),
+           ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {1, 0})})));
 }
 
 TEST(ShapeUtilTest, CompatibleNotIdenticalShapes) {
@@ -186,6 +252,24 @@ TEST(ShapeUtilTest, IncompatibleDifferentElementShapes) {
   Shape shape_1 = ShapeUtil::MakeShape(F32, {3, 2});
   Shape shape_2 = ShapeUtil::MakeShape(PRED, {3, 2});
   EXPECT_FALSE(ShapeUtil::Compatible(shape_1, shape_2));
+}
+
+TEST(ShapeUtilTest, EqualIgnoringFpPrecision) {
+  EXPECT_TRUE(ShapeUtil::EqualIgnoringFpPrecision(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {4, 3}, {0, 1})));
+}
+
+TEST(ShapeUtilTest, UnequalIgnoringFpPrecision) {
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringFpPrecision(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {3, 4}, {0, 1})));
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringFpPrecision(
+      ShapeUtil::MakeShapeWithLayout(F32, {3, 4}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {3, 4}, {1, 0})));
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringFpPrecision(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(PRED, {4, 3}, {0, 1})));
 }
 
 TEST(ShapeUtilTest, CompatibleTuples) {
@@ -250,24 +334,15 @@ TEST(ShapeUtilTest, IncompatibleScalarVsTuple) {
   EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape2, shape1));
 }
 
-TEST(ShapeUtilTest, CompareShapesWithPaddedDimensionsMismatch) {
-  Shape shape1 = ShapeUtil::MakeShape(F32, {20, 30});
-  shape1.mutable_layout()->add_padded_dimensions(10);
-
-  Shape shape2 = ShapeUtil::MakeShape(F32, {20, 30});
-  shape2.mutable_layout()->add_padded_dimensions(11);
-
-  EXPECT_FALSE(ShapeUtil::Equal(shape1, shape2));
-}
-
-TEST(ShapeUtilTest, CompareShapesWithPaddingValueMismatch) {
-  Shape shape1 = ShapeUtil::MakeShape(F32, {20, 30});
-  shape1.mutable_layout()->set_padding_value(ZERO_PAD);
-
-  Shape shape2 = ShapeUtil::MakeShape(F32, {20, 30});
-  shape2.mutable_layout()->set_padding_value(LOWEST_PAD);
-
-  EXPECT_FALSE(ShapeUtil::Equal(shape1, shape2));
+TEST(ShapeUtilTest, OpaqueVsArray) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {5, 7});
+  Shape shape2 = ShapeUtil::MakeOpaqueShape();
+  EXPECT_FALSE(ShapeUtil::Compatible(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::Compatible(shape2, shape1));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape2, shape1));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape2, shape1));
 }
 
 TEST(ShapeUtilTest, ScalarDefaultLayoutEqualsScalarEmptyMin2Maj) {
@@ -295,16 +370,19 @@ TEST(ShapeUtilTest, ByteSizeOfWithoutPadding) {
   EXPECT_EQ(8, ShapeUtil::ByteSizeOfPrimitiveType(C64));
   EXPECT_EQ(8, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {})));
   EXPECT_EQ(1600, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {10, 20})));
+
+  EXPECT_EQ(0, ShapeUtil::ByteSizeOfPrimitiveType(TOKEN));
+  EXPECT_EQ(0, ShapeUtil::ByteSizeOf(ShapeUtil::MakeTokenShape()));
 }
 
-TEST(ShapeUtilTest, ByteSizeOfWithPadding) {
-  EXPECT_EQ(4, ShapeUtil::ByteSizeOfPrimitiveType(F32));
-  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
-  EXPECT_EQ(800, ShapeUtil::ByteSizeOf(shape));
-
-  shape.mutable_layout()->add_padded_dimensions(15);
-  shape.mutable_layout()->add_padded_dimensions(21);
-  EXPECT_EQ(15 * 21 * 4, ShapeUtil::ByteSizeOf(shape));
+TEST(ShapeUtilTest, NilShape) {
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeNil()));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeShape(F32, {1, 2, 3})));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeShape(F32, {0, 1})));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {})})));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {0})})));
 }
 
 TEST(ShapeUtilTest, NestedTuple) {
@@ -337,25 +415,46 @@ TEST(ShapeUtilTest, ElementsIn) {
   EXPECT_EQ(221, ShapeUtil::ElementsIn(ShapeUtil::MakeShape(S32, {13, 17})));
 }
 
-TEST(ShapeUtilTest, HasZeroElements) {
-  EXPECT_EQ(false, ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {})));
-  EXPECT_EQ(true, ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {0})));
-  EXPECT_EQ(false, ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {1})));
-  EXPECT_EQ(false,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {1, 1})));
-  EXPECT_EQ(false, ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {2})));
-  EXPECT_EQ(false,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {2, 1})));
-  EXPECT_EQ(false,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {3, 5})));
-  EXPECT_EQ(true,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {3, 0, 5})));
-  EXPECT_EQ(true,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {0, 3, 0})));
-  EXPECT_EQ(false,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {1, 3, 5})));
-  EXPECT_EQ(false,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {13, 17})));
+TEST(ShapeUtilTest, HasPrimitiveType) {
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeShape(S32, {}), S32));
+  EXPECT_FALSE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeShape(S32, {}), S16));
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeShape(S32, {0}), S32));
+  EXPECT_FALSE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeTupleShape({}), S32));
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})}),
+      S32));
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(S32, {}),
+           ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S16, {})})}),
+      S16));
+}
+
+TEST(ShapeUtilTest, IsZeroElementArray) {
+  EXPECT_FALSE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {})));
+  EXPECT_TRUE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {0})));
+  EXPECT_FALSE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {1})));
+  EXPECT_FALSE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {1, 1})));
+  EXPECT_FALSE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {2})));
+  EXPECT_FALSE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {2, 1})));
+  EXPECT_FALSE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {3, 5})));
+  EXPECT_TRUE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {3, 0, 5})));
+  EXPECT_TRUE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {0, 3, 0})));
+  EXPECT_FALSE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {1, 3, 5})));
+  EXPECT_FALSE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {13, 17})));
+
+  EXPECT_FALSE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeNil()));
+  EXPECT_FALSE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeTupleShape({})));
+  EXPECT_FALSE(ShapeUtil::IsZeroElementArray(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {0, 3, 0})})));
 }
 
 TEST(ShapeUtilTest, SameDimensions) {
@@ -447,61 +546,6 @@ TEST(ShapeUtilTest, IsLeafIndex) {
   EXPECT_TRUE(ShapeUtil::IsLeafIndex(nested_tuple_shape, {1, 1}));
 }
 
-TEST(ShapeUtilTest, HumanString) {
-  Shape opaque = ShapeUtil::MakeOpaqueShape();
-  Shape scalar = ShapeUtil::MakeShape(F32, {});
-  Shape matrix = ShapeUtil::MakeShape(U32, {1, 2});
-  Shape matrix2 = ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1});
-  Shape tuple = ShapeUtil::MakeTupleShape({opaque, scalar, matrix, matrix2});
-  Shape nested_tuple = ShapeUtil::MakeTupleShape({tuple, matrix});
-
-  EXPECT_EQ("opaque[]", ShapeUtil::HumanString(opaque));
-  EXPECT_EQ("f32[]", ShapeUtil::HumanString(scalar));
-  EXPECT_EQ("u32[1,2]", ShapeUtil::HumanString(matrix));
-  EXPECT_EQ("s32[3,4]", ShapeUtil::HumanString(matrix2));
-  EXPECT_EQ("(opaque[], f32[], u32[1,2], s32[3,4])",
-            ShapeUtil::HumanString(tuple));
-  EXPECT_EQ("((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2])",
-            ShapeUtil::HumanString(nested_tuple));
-
-  EXPECT_EQ("opaque[]", ShapeUtil::HumanStringWithLayout(opaque));
-  EXPECT_EQ("f32[]", ShapeUtil::HumanStringWithLayout(scalar));
-  EXPECT_EQ("u32[1,2]{1,0}", ShapeUtil::HumanStringWithLayout(matrix));
-  EXPECT_EQ("s32[3,4]{0,1}", ShapeUtil::HumanStringWithLayout(matrix2));
-  EXPECT_EQ("(opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1})",
-            ShapeUtil::HumanStringWithLayout(tuple));
-  EXPECT_EQ("((opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1}), u32[1,2]{1,0})",
-            ShapeUtil::HumanStringWithLayout(nested_tuple));
-
-  ProgramShape prog = ShapeUtil::MakeProgramShape(
-      {opaque, scalar, matrix, matrix2, tuple, nested_tuple}, nested_tuple);
-  EXPECT_EQ(
-      "((unknown): opaque[], "
-      "(unknown): f32[], "
-      "(unknown): u32[1,2], "
-      "(unknown): s32[3,4], "
-      "(unknown): (opaque[], f32[], u32[1,2], s32[3,4]), "
-      "(unknown): ((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2])) -> "
-      "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2])",
-      ShapeUtil::HumanString(prog));
-
-  prog.add_parameter_names("arg0");
-  prog.add_parameter_names("scalar");
-  prog.add_parameter_names("matrix");
-  prog.add_parameter_names("matrix2");
-  prog.add_parameter_names("tuple");
-  prog.add_parameter_names("nested_tuple");
-  EXPECT_EQ(
-      "(arg0: opaque[], "
-      "scalar: f32[], "
-      "matrix: u32[1,2], "
-      "matrix2: s32[3,4], "
-      "tuple: (opaque[], f32[], u32[1,2], s32[3,4]), "
-      "nested_tuple: ((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2])) -> "
-      "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2])",
-      ShapeUtil::HumanString(prog));
-}
-
 TEST(ShapeUtilTest, ForEachSubshapeArray) {
   const Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   int calls = 0;
@@ -585,11 +629,10 @@ TEST(ShapeUtilTest, ForEachIndex) {
     Shape shape = ShapeUtil::MakeShape(F32, data.dimensions);
     // Increments at every invocation.
     int invocations = 0;
-    auto increment_func =
-        [&invocations](tensorflow::gtl::ArraySlice<int64> indexes) {
-          invocations++;
-          return true;
-        };
+    auto increment_func = [&invocations](absl::Span<const int64> indexes) {
+      invocations++;
+      return true;
+    };
 
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);
@@ -606,8 +649,7 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
   // Increments at every invocation.
   int invocations = 0;
   auto increment_func =
-      [&invocations](
-          tensorflow::gtl::ArraySlice<int64> indexes) -> StatusOr<bool> {
+      [&invocations](absl::Span<const int64> indexes) -> StatusOr<bool> {
     if (++invocations == 5) {
       return Unimplemented("Cannot increment beyond 5.");
     }
@@ -622,6 +664,24 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
   EXPECT_THAT(error_status.error_message(),
               ::testing::HasSubstr("Cannot increment beyond 5."));
   EXPECT_EQ(invocations, 5);
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  int64 output[10][10];
+  int init = 5;
+  auto set_func = [&](absl::Span<const int64> indexes) {
+    output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},
+                                  /*incr=*/{1, 1}, set_func);
+
+  for (int i = 0; i < 10; ++i) {
+    for (int j = 0; j < 10; ++j) {
+      EXPECT_EQ(output[i][j], init + i + j);
+    }
+  }
 }
 
 TEST(ShapeUtilTest, DimensionsUnmodifiedByReshape_1x1x1x1_to_1x1x1) {
@@ -693,6 +753,39 @@ TEST(ShapeUtilTest, ReshapeIsBitcast_3x2x2_6x2_Dim1IsMostMinor) {
   EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(
       ShapeUtil::MakeShapeWithLayout(F32, {3, 2, 2}, {1, 0, 2}),
       ShapeUtil::MakeShapeWithLayout(F32, {6, 2}, {0, 1})));
+}
+
+TEST(ShapeUtilTest, HasDegenerateDimensions) {
+  EXPECT_TRUE(
+      ShapeUtil::HasDegenerateDimensions(ShapeUtil::MakeShape(F32, {3, 1, 2})));
+  EXPECT_TRUE(
+      ShapeUtil::HasDegenerateDimensions(ShapeUtil::MakeShape(F32, {3, 1, 1})));
+  EXPECT_FALSE(
+      ShapeUtil::HasDegenerateDimensions(ShapeUtil::MakeShape(F32, {3, 3, 5})));
+  EXPECT_FALSE(
+      ShapeUtil::HasDegenerateDimensions(ShapeUtil::MakeShape(F32, {3, 0, 5})));
+}
+
+TEST(ShapeUtilTest, PermuteDimensionsLayout) {
+  std::vector<int64> layout(3);
+  std::iota(layout.begin(), layout.end(), 0);
+  do {
+    Shape s = ShapeUtil::MakeShapeWithLayout(F32, {10, 100, 1000}, layout);
+    SCOPED_TRACE(absl::StrCat("s=", ShapeUtil::HumanString(s)));
+
+    std::vector<int64> permutation(3);
+    std::iota(permutation.begin(), permutation.end(), 0);
+    do {
+      SCOPED_TRACE(
+          absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
+
+      // TransposeIsBitcast takes the inverse of the permutation that
+      // PermuteDimensions takes.
+      EXPECT_TRUE(ShapeUtil::TransposeIsBitcast(
+          s, ShapeUtil::PermuteDimensions(permutation, s),
+          InversePermutation(permutation)));
+    } while (std::next_permutation(permutation.begin(), permutation.end()));
+  } while (std::next_permutation(layout.begin(), layout.end()));
 }
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {

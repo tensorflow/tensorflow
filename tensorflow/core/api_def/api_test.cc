@@ -59,8 +59,8 @@ void GetGoldenApiDefs(Env* env, const string& api_files_dir,
     file_contents = PBTxtFromMultiline(file_contents);
 
     ApiDefs api_defs;
-    CHECK(tensorflow::protobuf::TextFormat::ParseFromString(file_contents,
-                                                            &api_defs))
+    QCHECK(tensorflow::protobuf::TextFormat::ParseFromString(file_contents,
+                                                             &api_defs))
         << "Failed to load " << file_path;
     CHECK_EQ(api_defs.op_size(), 1);
     (*name_to_api_def)[api_defs.op(0).graph_op_name()] = api_defs.op(0);
@@ -149,6 +149,49 @@ void TestAllApiDefAttributeNamesAreValid(
     }
   }
 }
+
+void TestDeprecatedAttributesSetCorrectly(
+    const std::unordered_map<string, ApiDef>& api_defs_map) {
+  for (const auto& name_and_api_def : api_defs_map) {
+    int num_deprecated_endpoints = 0;
+    const auto& api_def = name_and_api_def.second;
+    for (const auto& endpoint : api_def.endpoint()) {
+      if (endpoint.deprecated()) {
+        ++num_deprecated_endpoints;
+      }
+    }
+
+    const auto& name = name_and_api_def.first;
+    ASSERT_TRUE(api_def.deprecation_message().empty() ||
+                num_deprecated_endpoints == 0)
+        << "Endpoints are set to 'deprecated' for deprecated op " << name
+        << ". If an op is deprecated (i.e. deprecation_message is set), "
+        << "all the endpoints are deprecated implicitly and 'deprecated' "
+        << "field should not be set.";
+    if (num_deprecated_endpoints > 0) {
+      ASSERT_NE(num_deprecated_endpoints, api_def.endpoint_size())
+          << "All " << name << " endpoints are deprecated. Please, set "
+          << "deprecation_message in api_def_" << name << ".pbtxt instead. "
+          << "to indicate that the op is deprecated.";
+    }
+  }
+}
+
+void TestDeprecationVersionSetCorrectly(
+    const std::unordered_map<string, ApiDef>& api_defs_map) {
+  for (const auto& name_and_api_def : api_defs_map) {
+    const auto& name = name_and_api_def.first;
+    const auto& api_def = name_and_api_def.second;
+    if (api_def.deprecation_version() != 0) {
+      ASSERT_TRUE(api_def.deprecation_version() > 0)
+          << "Found ApiDef with negative deprecation_version";
+      ASSERT_FALSE(api_def.deprecation_message().empty())
+          << "ApiDef that includes deprecation_version > 0 must also specify "
+          << "a deprecation_message. Op " << name
+          << " has deprecation_version > 0 but deprecation_message is not set.";
+    }
+  }
+}
 }  // namespace
 
 class BaseApiTest : public ::testing::Test {
@@ -171,7 +214,7 @@ TEST_F(BaseApiTest, AllOpsAreInApiDef) {
     if (excluded_ops->find(op.name()) != excluded_ops->end()) {
       continue;
     }
-    ASSERT_TRUE(api_defs_map_.find(op.name()) != api_defs_map_.end())
+    EXPECT_TRUE(api_defs_map_.find(op.name()) != api_defs_map_.end())
         << op.name() << " op does not have api_def_*.pbtxt file. "
         << "Please add api_def_" << op.name() << ".pbtxt file "
         << "under tensorflow/core/api_def/base_api/ directory.";
@@ -236,6 +279,17 @@ TEST_F(BaseApiTest, AllApiDefAttributeNamesAreValid) {
   TestAllApiDefAttributeNamesAreValid(ops_, api_defs_map_);
 }
 
+// Checks that deprecation is set correctly.
+TEST_F(BaseApiTest, DeprecationSetCorrectly) {
+  TestDeprecatedAttributesSetCorrectly(api_defs_map_);
+}
+
+// Checks that deprecation_version is set for entire op only if
+// deprecation_message is set.
+TEST_F(BaseApiTest, DeprecationVersionSetCorrectly) {
+  TestDeprecationVersionSetCorrectly(api_defs_map_);
+}
+
 class PythonApiTest : public ::testing::Test {
  protected:
   PythonApiTest() {
@@ -270,6 +324,17 @@ TEST_F(PythonApiTest, AllApiDefOutputArgsAreValid) {
 // names in corresponding OpDef.
 TEST_F(PythonApiTest, AllApiDefAttributeNamesAreValid) {
   TestAllApiDefAttributeNamesAreValid(ops_, api_defs_map_);
+}
+
+// Checks that deprecation is set correctly.
+TEST_F(PythonApiTest, DeprecationSetCorrectly) {
+  TestDeprecatedAttributesSetCorrectly(api_defs_map_);
+}
+
+// Checks that deprecation_version is set for entire op only if
+// deprecation_message is set.
+TEST_F(PythonApiTest, DeprecationVersionSetCorrectly) {
+  TestDeprecationVersionSetCorrectly(api_defs_map_);
 }
 
 }  // namespace tensorflow

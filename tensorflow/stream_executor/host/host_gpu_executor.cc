@@ -26,10 +26,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 
-bool FLAGS_stream_executor_cpu_real_clock_rate = false;
-
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace host {
 
 HostStream *AsHostStream(Stream *stream) {
@@ -96,7 +93,7 @@ bool HostExecutor::MemcpyDeviceToDevice(Stream *stream,
   // the nature of the HostExecutor) memcpy  on the stream (HostStream)
   // associated with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
-      [src_mem, dst_mem, size]() { memcpy(src_mem, dst_mem, size); });
+      [src_mem, dst_mem, size]() { memcpy(dst_mem, src_mem, size); });
   return true;
 }
 
@@ -151,8 +148,13 @@ port::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
 }
 
 bool HostExecutor::HostCallback(Stream *stream,
-                                std::function<void()> callback) {
-  AsHostStream(stream)->EnqueueTask(callback);
+                                std::function<port::Status()> callback) {
+  AsHostStream(stream)->EnqueueTask([callback]() {
+    port::Status s = callback();
+    if (!s.ok()) {
+      LOG(WARNING) << "Host callback failed: " << s;
+    }
+  });
   return true;
 }
 
@@ -191,11 +193,8 @@ DeviceDescription *HostExecutor::PopulateDeviceDescription() const {
   // doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
   builder.set_device_memory_size(static_cast<uint64>(4) * 1024 * 1024 * 1024);
 
-  float cycle_counter_frequency = 1e9;
-  if (FLAGS_stream_executor_cpu_real_clock_rate) {
-    cycle_counter_frequency = static_cast<float>(
-        tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());
-  }
+  float cycle_counter_frequency = static_cast<float>(
+      tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());
   builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
 
   auto built = builder.Build();
@@ -266,5 +265,4 @@ rng::RngSupport *HostExecutor::CreateRng() {
 }
 
 }  // namespace host
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

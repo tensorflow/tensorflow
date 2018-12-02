@@ -30,7 +30,7 @@ FLAGS = None
 
 
 def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors,
-                                     all_tensor_names):
+                                     all_tensor_names=False):
   """Prints tensors in a checkpoint file.
 
   If no `tensor_name` is provided, prints the tensor names and shapes
@@ -63,7 +63,7 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors,
       print("It's likely that your checkpoint file has been compressed "
             "with SNAPPY.")
     if ("Data loss" in str(e) and
-        (any([e in file_name for e in [".index", ".meta", ".data"]]))):
+        any(e in file_name for e in [".index", ".meta", ".data"])):
       proposed_file = ".".join(file_name.split(".")[0:-1])
       v2_file_error_template = """
 It's likely that this is a V2 checkpoint and you need to provide the filename
@@ -139,7 +139,7 @@ if __name__ == "__main__":
       const=True,
       type="bool",
       default=False,
-      help="If True, print the values of all the tensors.")
+      help="If True, print the names and values of all the tensors.")
   parser.add_argument(
       "--all_tensor_names",
       nargs="?",

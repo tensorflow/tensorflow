@@ -125,6 +125,7 @@ endfunction()
 
 file(GLOB_RECURSE tf_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
+    "${tensorflow_source_dir}/tensorflow/compiler/xla/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tpu/proto/*.proto"
 )
@@ -213,10 +214,6 @@ else()
   list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_srcs_exclude})
 endif()
 
-file(GLOB tf_core_platform_exclude_srcs
-  "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.cc")
-list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_exclude_srcs})
-
 list(APPEND tf_core_lib_srcs ${tf_core_platform_srcs})
 
 if(UNIX)
@@ -236,15 +233,6 @@ if(WIN32)
   )
   list(APPEND tf_core_lib_srcs ${tf_core_platform_windows_srcs})
 endif(WIN32)
-
-if(tensorflow_ENABLE_SSL_SUPPORT)
-  # Cloud libraries require boringssl.
-  file(GLOB tf_core_platform_cloud_srcs
-      "${tensorflow_source_dir}/tensorflow/core/platform/cloud/*.h"
-      "${tensorflow_source_dir}/tensorflow/core/platform/cloud/*.cc"
-  )
-  list(APPEND tf_core_lib_srcs ${tf_core_platform_cloud_srcs})
-endif()
 
 if (tensorflow_ENABLE_HDFS_SUPPORT)
   list(APPEND tf_core_platform_hdfs_srcs
@@ -270,14 +258,21 @@ add_dependencies(tf_core_lib ${tensorflow_EXTERNAL_DEPENDENCIES} tf_protos_cc)
 # force_rebuild always runs forcing ${VERSION_INFO_CC} target to run
 # ${VERSION_INFO_CC} would cache, but it depends on a phony never produced
 # target.
-set(VERSION_INFO_CC ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
-add_custom_target(force_rebuild_target ALL DEPENDS ${VERSION_INFO_CC})
-add_custom_command(OUTPUT __force_rebuild COMMAND ${CMAKE_COMMAND} -E echo)
-add_custom_command(OUTPUT
-    ${VERSION_INFO_CC}
-    COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
-    --raw_generate ${VERSION_INFO_CC}
-    DEPENDS __force_rebuild)
+# This code forces rebuild every time, not needed as version from git is fetched only once
+# move to make.bat which mimicks make.sh
+
+if (NOT WIN32)
+
+  set(VERSION_INFO_CC ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
+  add_custom_target(force_rebuild_target ALL DEPENDS ${VERSION_INFO_CC})
+  add_custom_command(OUTPUT __force_rebuild COMMAND ${CMAKE_COMMAND} -E echo)
+  add_custom_command(OUTPUT
+      ${VERSION_INFO_CC}
+      COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
+      ARGS --raw_generate ${VERSION_INFO_CC} --source_dir ${tensorflow_source_dir} --git_tag_override=${GIT_TAG_OVERRIDE}
+      DEPENDS __force_rebuild)
+endif()
+
 set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 
 ########################################################
@@ -286,8 +281,6 @@ set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.c
 file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*.cc"
-    "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.h"
-    "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.h"
     "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/graph.h"
@@ -341,9 +334,3 @@ add_dependencies(tf_core_framework
     tf_core_lib
     proto_text
 )
-
-if(WIN32)
-  # Cmake > 3.6 will quote this as -D"__VERSION__=\"MSVC\"" which nvcc fails on.
-  # Instead of defining this global, limit it to tf_core_framework where its used.
-  target_compile_definitions(tf_core_framework PRIVATE __VERSION__="MSVC")
-endif()

@@ -38,7 +38,7 @@ class StatSummarizerTest(test.TestCase):
       graph_def = graph.as_graph_def()
       ss = pywrap_tensorflow.NewStatSummarizer(graph_def.SerializeToString())
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run(variables.global_variables_initializer())
 
         for _ in range(20):

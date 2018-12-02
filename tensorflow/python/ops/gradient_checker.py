@@ -157,7 +157,8 @@ def _compute_numeric_jacobian(x, x_shape, x_data, y, y_shape, delta,
   # as delta. Convert to float32 here. Since numeric_jacobian is expected to
   # be the groundtruth to compare against, it shouldn't lose any information.
   if x.dtype == dtypes.bfloat16:
-    x = math_ops.cast(x, dtypes.float32)
+    x = math_ops.cast(x, dtypes.float32)  # TODO(wangpeng): Now that the new x
+            # is an output of the old x, isn't feeding to the new x a mistake?
   if y.dtype == dtypes.bfloat16:
     y = math_ops.cast(y, dtypes.float32)
   if x_data.dtype == dtypes.bfloat16.as_numpy_dtype:
@@ -265,7 +266,7 @@ def _compute_gradient_list(x,
   return ret
 
 
-@tf_export("test.compute_gradient")
+@tf_export(v1=["test.compute_gradient"])
 def compute_gradient(x,
                      x_shape,
                      y,
@@ -283,10 +284,10 @@ def compute_gradient(x,
   numbers.  For example, if `x` is complex with shape `[m]` and `y` is complex
   with shape `[n]`, each Jacobian `J` will have shape `[m * 2, n * 2]` with
 
-      J[:m, :n] = d(Re y)/d(Re x)
-      J[:m, n:] = d(Im y)/d(Re x)
-      J[m:, :n] = d(Re y)/d(Im x)
-      J[m:, n:] = d(Im y)/d(Im x)
+      J[::2, ::2] = d(Re y)/d(Re x)
+      J[::2, 1::2] = d(Im y)/d(Re x)
+      J[1::2, ::2] = d(Re y)/d(Im x)
+      J[1::2, 1::2] = d(Im y)/d(Im x)
 
   Args:
     x: a tensor or list of tensors
@@ -300,7 +301,6 @@ def compute_gradient(x,
       as the initial value.
     delta: (optional) the amount of perturbation.
     init_targets: list of targets to run to initialize model params.
-      TODO(mrry): remove this argument.
     extra_feed_dict: dict that allows fixing specified tensor values
       during the Jacobian calculation.
 
@@ -310,6 +310,7 @@ def compute_gradient(x,
     where "x_size" is the number of elements in x and "y_size" is the
     number of elements in y. If x is a list, returns a list of two numpy arrays.
   """
+  # TODO(mrry): remove argument `init_targets`
   if extra_feed_dict is None:
     extra_feed_dict = {}
 
@@ -327,7 +328,17 @@ def compute_gradient(x,
     return ret
 
 
-@tf_export("test.compute_gradient_error")
+def _compute_error(grad):
+  if isinstance(grad, tuple):
+    grad = [grad]
+  error = 0
+  for j_t, j_n in grad:
+    if j_t.size or j_n.size:  # Handle zero size tensors correctly
+      error = np.maximum(error, np.fabs(j_t - j_n).max())
+  return error
+
+
+@tf_export(v1=["test.compute_gradient_error"])
 def compute_gradient_error(x,
                            x_shape,
                            y,
@@ -369,10 +380,4 @@ def compute_gradient_error(x,
   """
   grad = compute_gradient(x, x_shape, y, y_shape, x_init_value, delta,
                           init_targets, extra_feed_dict=extra_feed_dict)
-  if isinstance(grad, tuple):
-    grad = [grad]
-  error = 0
-  for j_t, j_n in grad:
-    if j_t.size or j_n.size:  # Handle zero size tensors correctly
-      error = np.maximum(error, np.fabs(j_t - j_n).max())
-  return error
+  return _compute_error(grad)

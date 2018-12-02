@@ -52,14 +52,19 @@ def nadam_update_numpy(param,
 class NadamOptimizerTest(test.TestCase):
 
   def doTestSparse(self, use_resource=False):
+    # need to use a larger value of epsilon here so that
+    # np.sqrt(v_t) + epsilon doesn't get rounded to 0 when
+    # the dtype is half and np.sqrt(v_t) = 0, as is the case
+    # when the gradient is 0
+    sparse_epsilon = 1e-7
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
-        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
-        grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
-        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
-        grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
+        var0_np = np.array([1.0, 1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1, 0, 0.1], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        grads1_np = np.array([0.01, 0, 0.01], dtype=dtype.as_numpy_dtype)
 
         if use_resource:
           var0 = resource_variable_ops.ResourceVariable(var0_np)
@@ -67,21 +72,21 @@ class NadamOptimizerTest(test.TestCase):
         else:
           var0 = variables.Variable(var0_np)
           var1 = variables.Variable(var1_np)
-        grads0_np_indices = np.array([0, 1], dtype=np.int32)
+        grads0_np_indices = np.array([0, 2], dtype=np.int32)
         grads0 = ops.IndexedSlices(
-            constant_op.constant(grads0_np),
-            constant_op.constant(grads0_np_indices), constant_op.constant([2]))
-        grads1_np_indices = np.array([0, 1], dtype=np.int32)
+            constant_op.constant(grads0_np[grads0_np_indices]),
+            constant_op.constant(grads0_np_indices), constant_op.constant([3]))
+        grads1_np_indices = np.array([0, 2], dtype=np.int32)
         grads1 = ops.IndexedSlices(
-            constant_op.constant(grads1_np),
-            constant_op.constant(grads1_np_indices), constant_op.constant([2]))
-        opt = nadam_optimizer.NadamOptimizer()
+            constant_op.constant(grads1_np[grads1_np_indices]),
+            constant_op.constant(grads1_np_indices), constant_op.constant([3]))
+        opt = nadam_optimizer.NadamOptimizer(epsilon=sparse_epsilon)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 1.0, 2.0], var0.eval())
+        self.assertAllClose([3.0, 3.0, 4.0], var1.eval())
 
         beta1_power, beta2_power = opt._get_beta_accumulators()
 
@@ -91,8 +96,10 @@ class NadamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
           update.run()
 
-          var0_np, m0, v0 = nadam_update_numpy(var0_np, grads0_np, t, m0, v0)
-          var1_np, m1, v1 = nadam_update_numpy(var1_np, grads1_np, t, m1, v1)
+          var0_np, m0, v0 = nadam_update_numpy(var0_np, grads0_np, t, m0, v0,
+                                               epsilon=sparse_epsilon)
+          var1_np, m1, v1 = nadam_update_numpy(var1_np, grads1_np, t, m1, v1,
+                                               epsilon=sparse_epsilon)
 
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
@@ -106,7 +113,7 @@ class NadamOptimizerTest(test.TestCase):
 
   def doTestBasic(self, use_resource=False):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)

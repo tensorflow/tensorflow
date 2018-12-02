@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/null_file_system.h"
 
 namespace tensorflow {
 

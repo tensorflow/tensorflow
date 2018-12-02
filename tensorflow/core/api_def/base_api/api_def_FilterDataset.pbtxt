@@ -1,5 +1,6 @@
 op {
   graph_op_name: "FilterDataset"
+  visibility: HIDDEN
   in_arg {
     name: "other_arguments"
     description: <<END

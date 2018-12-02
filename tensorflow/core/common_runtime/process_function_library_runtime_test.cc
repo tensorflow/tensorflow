@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -38,7 +39,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
   Status Instantiate(const string& function_name,
                      const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
                      const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::LocalHandle* handle) {
+                     FunctionLibraryRuntime::LocalHandle* handle) override {
     mutex_lock l(mu_);
     *handle = next_handle_;
     next_handle_++;
@@ -48,7 +49,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
-           FunctionLibraryRuntime::DoneCallback done) {}
+           FunctionLibraryRuntime::DoneCallback done) override {}
 
  private:
   mutex mu_;
@@ -61,9 +62,12 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 2});
+    std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, "/job:a/replica:0/task:0",
-                                          &devices_));
-    device_mgr_.reset(new DeviceMgr(devices_));
+                                          &devices));
+    device0_ = devices[0].get();
+    device1_ = devices[1].get();
+    device_mgr_.reset(new DeviceMgr(std::move(devices)));
     FunctionDefLibrary proto;
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
@@ -132,13 +136,14 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                    });
     done2.WaitForNotification();
     EXPECT_TRUE(errors::IsNotFound(status));
-    EXPECT_TRUE(StringPiece(status.error_message()).contains("not found."));
+    EXPECT_TRUE(str_util::StrContains(status.error_message(), "not found."));
 
     return Status::OK();
   }
 
-  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
+  Device* device0_ = nullptr;  // Not owned. (Owned by device_mgr_.)
+  Device* device1_ = nullptr;  // Not owned. (Owned by device_mgr_.)
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<TestClusterFLR> cluster_flr_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr_;
@@ -164,16 +169,16 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, Basic) {
   FunctionLibraryRuntime* flr =
       proc_flr_->GetFLR("/job:a/replica:0/task:0/cpu:0");
   EXPECT_NE(flr, nullptr);
-  EXPECT_EQ(flr->device(), devices_[0]);
+  EXPECT_EQ(flr->device(), device0_);
   flr = proc_flr_->GetFLR("/job:a/replica:0/task:0/device:CPU:0");
   EXPECT_NE(flr, nullptr);
-  EXPECT_EQ(flr->device(), devices_[0]);
+  EXPECT_EQ(flr->device(), device0_);
   flr = proc_flr_->GetFLR("/device:CPU:0");
   EXPECT_NE(flr, nullptr);
-  EXPECT_EQ(flr->device(), devices_[0]);
+  EXPECT_EQ(flr->device(), device0_);
   flr = proc_flr_->GetFLR("/job:a/replica:0/task:0/cpu:1");
   EXPECT_NE(flr, nullptr);
-  EXPECT_EQ(flr->device(), devices_[1]);
+  EXPECT_EQ(flr->device(), device1_);
   flr = proc_flr_->GetFLR("abc");
   EXPECT_EQ(flr, nullptr);
   rendezvous_->Unref();

@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "AsString"
+  endpoint {
+    name: "dtypes.as_string"
+  }
+  endpoint {
+    name: "as_string"
+  }
+}

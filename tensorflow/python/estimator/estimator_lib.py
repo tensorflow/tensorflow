@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,76 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Estimator: High level tools for working with models."""
+"""estimator_lib python module.
+
+Importing from tensorflow.python.estimator is unsupported
+and will soon break!
+"""
+# pylint: disable=unused-import,g-bad-import-order,g-import-not-at-top,wildcard-import
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,line-too-long,wildcard-import
-from tensorflow.python.estimator.canned.baseline import BaselineClassifier
-from tensorflow.python.estimator.canned.baseline import BaselineRegressor
-from tensorflow.python.estimator.canned.dnn import DNNClassifier
-from tensorflow.python.estimator.canned.dnn import DNNRegressor
-from tensorflow.python.estimator.canned.dnn_linear_combined import DNNLinearCombinedClassifier
-from tensorflow.python.estimator.canned.dnn_linear_combined import DNNLinearCombinedRegressor
-from tensorflow.python.estimator.canned.linear import LinearClassifier
-from tensorflow.python.estimator.canned.linear import LinearRegressor
-from tensorflow.python.estimator.canned.parsing_utils import classifier_parse_example_spec
-from tensorflow.python.estimator.canned.parsing_utils import regressor_parse_example_spec
-from tensorflow.python.estimator.estimator import Estimator
-from tensorflow.python.estimator.estimator import VocabInfo
-from tensorflow.python.estimator.estimator import WarmStartSettings
-from tensorflow.python.estimator.export import export_lib as export
-from tensorflow.python.estimator.exporter import Exporter
-from tensorflow.python.estimator.exporter import FinalExporter
-from tensorflow.python.estimator.exporter import LatestExporter
-from tensorflow.python.estimator.inputs import inputs
-from tensorflow.python.estimator.model_fn import EstimatorSpec
-from tensorflow.python.estimator.model_fn import ModeKeys
-from tensorflow.python.estimator.run_config import RunConfig
-from tensorflow.python.estimator.training import EvalSpec
-from tensorflow.python.estimator.training import train_and_evaluate
-from tensorflow.python.estimator.training import TrainSpec
+from tensorflow_estimator.python.estimator import estimator_lib
 
-
-from tensorflow.python.util.all_util import remove_undocumented
-# pylint: enable=unused-import,line-too-long,wildcard-import
-
-_allowed_symbols = [
-    # Canned Estimators
-    'BaselineClassifier',
-    'BaselineRegressor',
-    'DNNClassifier',
-    'DNNRegressor',
-    'DNNLinearCombinedClassifier',
-    'DNNLinearCombinedRegressor',
-    'LinearClassifier',
-    'LinearRegressor',
-
-    # I/O
-    'classifier_parse_example_spec',
-    'regressor_parse_example_spec',
-    'inputs',
-    'export',
-
-    # Estimator
-    'Estimator',
-    'EstimatorSpec',
-    'ModeKeys',
-    'RunConfig',
-
-    # Training utilities
-    'train_and_evaluate',
-    'EvalSpec',
-    'TrainSpec',
-    'Exporter',
-    'LatestExporter',
-    'FinalExporter',
-
-    # Warm-starting
-    'WarmStartSettings',
-    'VocabInfo',
+# Include attrs that start with single underscore.
+_HAS_DYNAMIC_ATTRIBUTES = True
+estimator_lib.__all__ = [
+    s for s in dir(estimator_lib) if not s.startswith('__')
 ]
 
-remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
+from tensorflow_estimator.python.estimator.estimator_lib import *

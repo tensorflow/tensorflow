@@ -492,8 +492,7 @@ class CSVReader(ReaderBaseTimeSeriesParser):
       features_lists.setdefault(column_name, []).append(value)
     features = {}
     for column_name, values in features_lists.items():
-      if (len(values) == 1 and
-          column_name != feature_keys.TrainEvalFeatures.VALUES):
+      if column_name == feature_keys.TrainEvalFeatures.TIMES:
         features[column_name] = values[0]
       else:
         features[column_name] = array_ops.stack(values, axis=1)

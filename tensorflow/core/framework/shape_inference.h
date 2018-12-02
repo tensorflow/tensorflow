@@ -285,6 +285,8 @@ class InferenceContext {
     return true;
   }
 
+  void SetInput(int idx, ShapeHandle shape) { inputs_[idx] = shape; }
+
   ShapeHandle input(int64 idx) const { return inputs_[idx]; }
   Status input(StringPiece input_name, std::vector<ShapeHandle>* output) const;
   int num_inputs() const { return inputs_.size(); }
@@ -317,12 +319,17 @@ class InferenceContext {
     input_tensors_as_shapes_ = input_tensors_as_shapes;
   }
 
-  void set_output(int idx, ShapeHandle shape) { outputs_[idx] = shape; }
+  const std::vector<ShapeHandle>& input_tensors_as_shapes() const {
+    return input_tensors_as_shapes_;
+  }
+
+  ShapeHandle output(int64 idx) const { return outputs_.at(idx); }
+  void set_output(int idx, ShapeHandle shape) { outputs_.at(idx) = shape; }
   Status set_output(StringPiece output_name,
                     const std::vector<ShapeHandle>& shapes);
 
   int num_outputs() const { return outputs_.size(); }
-  ShapeHandle output(int idx) const { return outputs_[idx]; }
+  ShapeHandle output(int idx) const { return outputs_.at(idx); }
   Status output(StringPiece output_name,
                 std::vector<ShapeHandle>* output) const;
 
@@ -374,6 +381,8 @@ class InferenceContext {
 
   string DebugString(ShapeHandle s);
   string DebugString(DimensionHandle d);
+  string DebugString(const ShapeAndType& shape_and_type);
+  string DebugString(gtl::ArraySlice<ShapeAndType> shape_and_types);
 
   // Describes the whole context, for debugging purposes.
   string DebugString() const;
@@ -427,6 +436,13 @@ class InferenceContext {
   Status Subshape(ShapeHandle s, int64 start, int64 end,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
 
+  // Returns in <*out> a sub-shape of <s>, with dimensions [start:end:stride].
+  // <start> and <end> can be negative, to index from the end of the shape.
+  // <start> and <end> are set to the rank of <s> if > rank of <s>.
+  // <stride> can be negative, to reverse the <s>.
+  Status Subshape(ShapeHandle s, int64 start, int64 end, int64 stride,
+                  ShapeHandle* out) TF_MUST_USE_RESULT;
+
   // Returns in <*out> the result of appending the dimensions of <s2> to those
   // of <s1>.
   Status Concatenate(ShapeHandle s1, ShapeHandle s2,
@@ -461,6 +477,12 @@ class InferenceContext {
   // <input_idx>. The tensor must be a 1-dimensional int32 or int64 tensor.  If
   // the input tensor is NULL, then an unknown shape is returned.
   Status MakeShapeFromShapeTensor(int input_idx, ShapeHandle* out);
+
+  // Like the function above, but treats scalar values as unknown
+  // shapes.  **NOTE** If the scalar is statically known, its value
+  // must be -1 or an error is returned.
+  Status MakeShapeFromShapeTensorTreatScalarAsUnknownShape(int input_idx,
+                                                           ShapeHandle* out);
 
   // Returns in <out> a new shape corresponding to <proto>.
   Status MakeShapeFromShapeProto(const TensorShapeProto& proto,
@@ -580,6 +602,12 @@ class InferenceContext {
       int idx,
       const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
 
+  void set_input_handle_shapes_and_types(
+      int idx, const std::vector<ShapeAndType>& shapes_and_types) {
+    input_handle_shapes_and_types_[idx].reset(
+        new std::vector<ShapeAndType>(shapes_and_types));
+  }
+
   // Returns the output handle shapes and types, for the resource tensor output
   // at index <idx>. Returns NULL if the shape and types were never set.
   const std::vector<ShapeAndType>* output_handle_shapes_and_types(int idx) {
@@ -616,6 +644,9 @@ class InferenceContext {
       const {
     return merged_dims_;
   }
+
+  // Adds new outputs; useful when mutating the graph.
+  Status ExpandOutputs(int new_output_size);
 
  private:
   // Creates and stores shapes for use in InferenceContext.
@@ -706,6 +737,11 @@ class InferenceContext {
     merged_shapes_.clear();
     merged_dims_.clear();
   }
+
+  // Helper method for MakeShapeFromTensor and MakeShapeFromShapeTensor.
+  Status InternalMakeShapeFromTensor(
+      bool treat_unknown_scalar_tensor_as_unknown_shape, const Tensor* t,
+      ShapeHandle tensor_shape, ShapeHandle* out);
 
   ShapeManager shape_manager_;
 

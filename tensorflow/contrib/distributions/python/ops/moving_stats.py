@@ -47,9 +47,7 @@ def assign_moving_mean_variance(
   Note: `mean_var` is updated *after* `variance_var`, i.e., `variance_var` uses
   the lag-1 mean.
 
-  For derivation justification, see equation 143 of:
-    T. Finch, Feb 2009. "Incremental calculation of weighted mean and variance".
-    http://people.ds.cam.ac.uk/fanf2/hermes/doc/antiforgery/stats.pdf
+  For derivation justification, see [Finch (2009; Eq. 143)][1].
 
   Args:
     mean_var: `float`-like `Variable` representing the exponentially weighted
@@ -72,6 +70,12 @@ def assign_moving_mean_variance(
     TypeError: if `mean_var` does not have float type `dtype`.
     TypeError: if `mean_var`, `variance_var`, `value`, `decay` have different
       `base_dtype`.
+
+  #### References
+
+  [1]: Tony Finch. Incremental calculation of weighted mean and variance.
+       _Technical Report_, 2009.
+       http://people.ds.cam.ac.uk/fanf2/hermes/doc/antiforgery/stats.pdf
   """
   with ops.name_scope(name, "assign_moving_mean_variance",
                       [variance_var, mean_var, value, decay]):
@@ -183,9 +187,7 @@ def moving_mean_variance(value, decay, collections=None, name=None):
   Note: `mean_var` is updated *after* `variance_var`, i.e., `variance_var` uses
   the lag-`1` mean.
 
-  For derivation justification, see equation 143 of:
-    T. Finch, Feb 2009. "Incremental calculation of weighted mean and variance".
-    http://people.ds.cam.ac.uk/fanf2/hermes/doc/antiforgery/stats.pdf
+  For derivation justification, see [Finch (2009; Eq. 143)][1].
 
   Unlike `assign_moving_mean_variance`, this function handles
   variable creation.
@@ -208,6 +210,12 @@ def moving_mean_variance(value, decay, collections=None, name=None):
   Raises:
     TypeError: if `value_var` does not have float type `dtype`.
     TypeError: if `value`, `decay` have different `base_dtype`.
+
+  #### References
+
+  [1]: Tony Finch. Incremental calculation of weighted mean and variance.
+       _Technical Report_, 2009.
+       http://people.ds.cam.ac.uk/fanf2/hermes/doc/antiforgery/stats.pdf
   """
   if collections is None:
     collections = [ops.GraphKeys.GLOBAL_VARIABLES]

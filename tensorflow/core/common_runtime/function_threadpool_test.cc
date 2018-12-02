@@ -33,12 +33,12 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -54,21 +54,19 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 3});
+    std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(
-        options, "/job:localhost/replica:0/task:0", &devices_));
+        options, "/job:localhost/replica:0/task:0", &devices));
 
     FunctionDefLibrary proto;
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    device_mgr_.reset(new DeviceMgr(devices_));
+    device_mgr_.reset(new DeviceMgr(std::move(devices)));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
         opts, default_thread_pool, nullptr /* cluster_flr */));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
-    flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
-    flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
-    fdef_lib_ = lib_def_->ToProto();
   }
 
   Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
@@ -153,7 +151,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsInvalidArgument(status2));
     EXPECT_TRUE(
-        StringPiece(status2.error_message()).contains("remote execution."));
+        str_util::StrContains(status2.error_message(), "remote execution."));
 
     return status;
   }
@@ -192,13 +190,9 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   FunctionLibraryRuntime* flr0_;
-  FunctionLibraryRuntime* flr1_;
-  FunctionLibraryRuntime* flr2_;
-  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
-  FunctionDefLibrary fdef_lib_;
 };
 
 TEST_F(FunctionLibraryRuntimeTest, DefaultThreadpool) {

@@ -113,6 +113,13 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
   return Status::OK();
 }
 
+// Returns true if 'node' has a registered CPU kernel.
+bool HasCpuKernel(const Node& node) {
+  return FindKernelDef(DeviceType(DEVICE_CPU), node.def(), /*def=*/nullptr,
+                       /*kernel_class_name=*/nullptr)
+      .ok();
+}
+
 // Extracts the subgraph ending at 'target_node' that is statically computable
 // and inserts into 'out_graph'. If statically computable, 'is_constant_graph'
 // will be set to true.
@@ -133,6 +140,12 @@ Status ExtractConstantSubgraph(
   }
 
   if (target_node.type_string() == "PlaceholderWithDefault") {
+    return Status::OK();
+  }
+
+  // Since constant-folding runs on the CPU, do not attempt to constant-fold
+  // operators that have no CPU kernel.
+  if (!HasCpuKernel(target_node)) {
     return Status::OK();
   }
 
@@ -197,6 +210,11 @@ Status ExtractConstantSubgraph(
     // fed by the user. Note that "Placeholder" nodes have no inputs so are
     // handled below.
     if (current_node->type_string() == "PlaceholderWithDefault") {
+      *is_constant_graph = false;
+      return Status::OK();
+    }
+
+    if (!HasCpuKernel(*current_node)) {
       *is_constant_graph = false;
       return Status::OK();
     }

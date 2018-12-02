@@ -27,6 +27,41 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
+Status GenerateKey(Tensor seed, random::PhiloxRandom::Key* out_key,
+                   random::PhiloxRandom::ResultType* out_counter) {
+  // Grab the two seeds
+  uint64 seed0;
+  uint64 seed1;
+  if (seed.dtype() == DT_INT32) {
+    const auto seed_vals = seed.flat<int32>();
+    seed0 = internal::SubtleMustCopy(seed_vals(0));
+    seed1 = internal::SubtleMustCopy(seed_vals(1));
+  } else if (seed.dtype() == DT_INT64) {
+    const auto seed_vals = seed.flat<int64>();
+    seed0 = internal::SubtleMustCopy(seed_vals(0));
+    seed1 = internal::SubtleMustCopy(seed_vals(1));
+  } else {
+    return errors::InvalidArgument("Invalid seed type: ",
+                                   DataTypeString(seed.dtype()));
+  }
+
+  // Scramble the seeds so that the user doesn't need to worry about which
+  // part of the seed needs to be strong.
+  (*out_key)[0] = 0x3ec8f720;
+  (*out_key)[1] = 0x02461e29;
+  (*out_counter)[0] = static_cast<uint32>(seed0);
+  (*out_counter)[1] = static_cast<uint32>(seed0 >> 32);
+  (*out_counter)[2] = static_cast<uint32>(seed1);
+  (*out_counter)[3] = static_cast<uint32>(seed1 >> 32);
+  const auto mix = random::PhiloxRandom(*out_counter, *out_key)();
+  (*out_key)[0] = mix[0];
+  (*out_key)[1] = mix[1];
+  (*out_counter)[0] = (*out_counter)[1] = 0;
+  (*out_counter)[2] = mix[2];
+  (*out_counter)[3] = mix[3];
+  return Status::OK();
+}
+
 namespace {
 
 class StatelessRandomOpBase : public OpKernel {
@@ -49,36 +84,9 @@ class StatelessRandomOpBase : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output));
     if (shape.num_elements() == 0) return;
 
-    // Grab the two seeds
-    uint64 seed0;
-    uint64 seed1;
-    if (context->input_dtype(1) == DT_INT32) {
-      const auto seed = seed_t.flat<int32>();
-      seed0 = internal::SubtleMustCopy(seed(0));
-      seed1 = internal::SubtleMustCopy(seed(1));
-    } else {
-      CHECK_EQ(DT_INT64, context->input_dtype(1));
-      const auto seed = seed_t.flat<int64>();
-      seed0 = internal::SubtleMustCopy(seed(0));
-      seed1 = internal::SubtleMustCopy(seed(1));
-    }
-
-    // Scramble the seeds so that the user doesn't need to worry about which
-    // part of the seed needs to be strong.
     random::PhiloxRandom::Key key;
     random::PhiloxRandom::ResultType counter;
-    key[0] = 0x3ec8f720;
-    key[1] = 0x02461e29;
-    counter[0] = static_cast<uint32>(seed0);
-    counter[1] = static_cast<uint32>(seed0 >> 32);
-    counter[2] = static_cast<uint32>(seed1);
-    counter[3] = static_cast<uint32>(seed1 >> 32);
-    const auto mix = random::PhiloxRandom(counter, key)();
-    key[0] = mix[0];
-    key[1] = mix[1];
-    counter[0] = counter[1] = 0;
-    counter[2] = mix[2];
-    counter[3] = mix[3];
+    OP_REQUIRES_OK(context, GenerateKey(seed_t, &key, &counter));
 
     // Fill in the random numbers
     Fill(context, random::PhiloxRandom(counter, key), output);
@@ -105,75 +113,110 @@ class StatelessRandomOp : public StatelessRandomOpBase {
   }
 };
 
-}  // namespace
+template <typename Device, typename IntType>
+class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
+ public:
+  using StatelessRandomOpBase::StatelessRandomOpBase;
 
-#define REGISTER(TYPE)                                                 \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("StatelessRandomUniform")                                   \
-          .Device(DEVICE_CPU)                                          \
-          .HostMemory("shape")                                         \
-          .TypeConstraint<TYPE>("dtype"),                              \
-      StatelessRandomOp<CPUDevice, random::UniformDistribution<        \
-                                       random::PhiloxRandom, TYPE> >); \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("StatelessRandomNormal")                                    \
-          .Device(DEVICE_CPU)                                          \
-          .HostMemory("shape")                                         \
-          .TypeConstraint<TYPE>("dtype"),                              \
-      StatelessRandomOp<CPUDevice, random::NormalDistribution<         \
-                                       random::PhiloxRandom, TYPE> >); \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("StatelessTruncatedNormal")                                 \
-          .Device(DEVICE_CPU)                                          \
-          .HostMemory("shape")                                         \
-          .TypeConstraint<TYPE>("dtype"),                              \
-      StatelessRandomOp<                                               \
-          CPUDevice,                                                   \
-          random::TruncatedNormalDistribution<                         \
+  void Fill(OpKernelContext* context, random::PhiloxRandom random,
+            Tensor* output) override {
+    const Tensor& minval = context->input(2);
+    const Tensor& maxval = context->input(3);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(minval.shape()),
+                errors::InvalidArgument("minval must be 0-D, got shape ",
+                                        minval.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(maxval.shape()),
+                errors::InvalidArgument("maxval must be 0-D, got shape ",
+                                        maxval.shape().DebugString()));
+
+    // Verify that minval < maxval.  Note that we'll never reach this point for
+    // empty output.  Zero impossible things are fine.
+    const auto lo = minval.scalar<IntType>()();
+    const auto hi = maxval.scalar<IntType>()();
+    OP_REQUIRES(
+        context, lo < hi,
+        errors::InvalidArgument("Need minval < maxval, got ", lo, " >= ", hi));
+
+    // Build distribution
+    typedef random::UniformDistribution<random::PhiloxRandom, IntType>
+        Distribution;
+    Distribution dist(lo, hi);
+
+    auto flat = output->flat<IntType>();
+    // Reuse the compute kernels from the stateful random ops
+    functor::FillPhiloxRandom<Device, Distribution>()(
+        context, context->eigen_device<Device>(), random, flat.data(),
+        flat.size(), dist);
+  }
+};
+
+#define REGISTER(DEVICE, TYPE)                                              \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("StatelessRandomUniform")                                        \
+          .Device(DEVICE_##DEVICE)                                          \
+          .HostMemory("shape")                                              \
+          .HostMemory("seed")                                               \
+          .TypeConstraint<TYPE>("dtype"),                                   \
+      StatelessRandomOp<DEVICE##Device, random::UniformDistribution<        \
+                                            random::PhiloxRandom, TYPE> >); \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("StatelessRandomNormal")                                         \
+          .Device(DEVICE_##DEVICE)                                          \
+          .HostMemory("shape")                                              \
+          .HostMemory("seed")                                               \
+          .TypeConstraint<TYPE>("dtype"),                                   \
+      StatelessRandomOp<DEVICE##Device, random::NormalDistribution<         \
+                                            random::PhiloxRandom, TYPE> >); \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("StatelessTruncatedNormal")                                      \
+          .Device(DEVICE_##DEVICE)                                          \
+          .HostMemory("shape")                                              \
+          .HostMemory("seed")                                               \
+          .TypeConstraint<TYPE>("dtype"),                                   \
+      StatelessRandomOp<                                                    \
+          DEVICE##Device,                                                   \
+          random::TruncatedNormalDistribution<                              \
               random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >);
 
-TF_CALL_half(REGISTER);
-TF_CALL_float(REGISTER);
-TF_CALL_double(REGISTER);
+#define REGISTER_INT(DEVICE, TYPE)                            \
+  REGISTER_KERNEL_BUILDER(Name("StatelessRandomUniformInt")   \
+                              .Device(DEVICE_##DEVICE)        \
+                              .HostMemory("shape")            \
+                              .HostMemory("seed")             \
+                              .HostMemory("minval")           \
+                              .HostMemory("maxval")           \
+                              .TypeConstraint<TYPE>("dtype"), \
+                          StatelessRandomUniformIntOp<DEVICE##Device, TYPE>);
 
-#undef REGISTER
+#define REGISTER_CPU(TYPE) REGISTER(CPU, TYPE)
+#define REGISTER_GPU(TYPE) REGISTER(GPU, TYPE)
+#define REGISTER_INT_CPU(TYPE) REGISTER_INT(CPU, TYPE)
+#define REGISTER_INT_GPU(TYPE) REGISTER_INT(GPU, TYPE)
+
+TF_CALL_half(REGISTER_CPU);
+TF_CALL_bfloat16(REGISTER_CPU);
+TF_CALL_float(REGISTER_CPU);
+TF_CALL_double(REGISTER_CPU);
+TF_CALL_int32(REGISTER_INT_CPU);
+TF_CALL_int64(REGISTER_INT_CPU);
 
 #if GOOGLE_CUDA
 
-#define REGISTER(TYPE)                                                 \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("StatelessRandomUniform")                                   \
-          .Device(DEVICE_GPU)                                          \
-          .HostMemory("shape")                                         \
-          .HostMemory("seed")                                          \
-          .TypeConstraint<TYPE>("dtype"),                              \
-      StatelessRandomOp<GPUDevice, random::UniformDistribution<        \
-                                       random::PhiloxRandom, TYPE> >); \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("StatelessRandomNormal")                                    \
-          .Device(DEVICE_GPU)                                          \
-          .HostMemory("shape")                                         \
-          .HostMemory("seed")                                          \
-          .TypeConstraint<TYPE>("dtype"),                              \
-      StatelessRandomOp<GPUDevice, random::NormalDistribution<         \
-                                       random::PhiloxRandom, TYPE> >); \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("StatelessTruncatedNormal")                                 \
-          .Device(DEVICE_GPU)                                          \
-          .HostMemory("shape")                                         \
-          .HostMemory("seed")                                          \
-          .TypeConstraint<TYPE>("dtype"),                              \
-      StatelessRandomOp<                                               \
-          GPUDevice,                                                   \
-          random::TruncatedNormalDistribution<                         \
-              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >);
-
-TF_CALL_half(REGISTER);
-TF_CALL_float(REGISTER);
-TF_CALL_double(REGISTER);
-
-#undef REGISTER
+TF_CALL_half(REGISTER_GPU);
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+TF_CALL_int32(REGISTER_INT_GPU);
+TF_CALL_int64(REGISTER_INT_GPU);
 
 #endif  // GOOGLE_CUDA
+
+#undef REGISTER
+#undef REGISTER_INT
+#undef REGISTER_CPU
+#undef REGISTER_GPU
+#undef REGISTER_INT_CPU
+#undef REGISTER_INT_GPU
+
+}  // namespace
 
 }  // namespace tensorflow

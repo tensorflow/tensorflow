@@ -24,6 +24,11 @@ import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/framework/attr_value.proto";
 import "tensorflow/core/protobuf/device_properties.proto";
 
+// Description of the session when an op is run.
+message SessionInfo {
+  int64 intra_op_parallelism = 1;
+}
+
 // Description of an operation as well as the parameters expected to impact its
 // performance.
 message OpInfo {
@@ -46,6 +51,9 @@ message OpInfo {
 
   // Device on which the operation is run.
   DeviceProperties device = 4;
+
+  // Information about the session configs.
+  SessionInfo session_info = 6;
 }
 
 message NormalDistribution {
@@ -58,17 +66,13 @@ message LogNormalDistribution {
   double sigma = 2;
 }
 
-message SessionInfo {
-  int64 intra_op_parallelism = 1;
-}
-
 // Performance data for tensorflow operations
 message OpPerformance {
   // The op
   OpInfo op = 1;
 
   // Information about the session configs.
-  SessionInfo session_info = 12;
+  SessionInfo session_info = 12 [deprecated = true];
 
   // The node name (optional). Makes it easier to associate the performance data
   // with a specific graph node.

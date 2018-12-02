@@ -7,56 +7,6 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-
-cc_library(
-    name = "batch_scheduler_hdrs",
-    hdrs = ["batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:batch_scheduler_hdrs",
-    ],
-)
-
-cc_library(
-    name = "batch_scheduler",
-    hdrs = ["batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:batch_scheduler",
-    ],
-)
-
-cc_library(
-    name = "shared_batch_scheduler_hdrs",
-    hdrs = ["shared_batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:shared_batch_scheduler_hdrs",
-    ],
-)
-
-cc_library(
-    name = "shared_batch_scheduler",
-    hdrs = ["shared_batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:shared_batch_scheduler",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "adaptive_shared_batch_scheduler",
-    hdrs = ["adaptive_shared_batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
-    ],
-)
-
-cc_library(
-    name = "basic_batch_scheduler",
-    hdrs = ["basic_batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:basic_batch_scheduler",
-    ],
-)
-
 load(
     "//tensorflow:tensorflow.bzl",
     "py_test",
@@ -96,6 +46,7 @@ py_test(
     name = "batch_ops_test",
     size = "small",
     srcs = ["python/ops/batch_ops_test.py"],
+    shard_count = 5,
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -111,15 +62,4 @@ py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:script_ops",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

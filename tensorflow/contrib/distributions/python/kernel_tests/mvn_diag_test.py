@@ -45,14 +45,14 @@ class MultivariateNormalDiagTest(test.TestCase):
   def testScalarParams(self):
     mu = -1.
     diag = -5.
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(ValueError, "at least 1 dimension"):
         ds.MultivariateNormalDiag(mu, diag)
 
   def testVectorParams(self):
     mu = [-1.]
     diag = [-5.]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
       self.assertAllEqual([3, 1], dist.sample(3).get_shape())
 
@@ -63,26 +63,26 @@ class MultivariateNormalDiagTest(test.TestCase):
     # Batch shape = [1], event shape = [3]
     mu = array_ops.zeros((1, 3))
     diag = array_ops.ones((1, 3))
-    with self.test_session():
+    with self.cached_session():
       base_dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
       dist = ds.TransformedDistribution(
           base_dist,
           validate_args=True,
-          bijector=bijectors.Softplus(event_ndims=1))
+          bijector=bijectors.Softplus())
       samps = dist.sample(5)  # Shape [5, 1, 3].
       self.assertAllEqual([5, 1], dist.log_prob(samps).get_shape())
 
   def testMean(self):
     mu = [-1., 1]
     diag = [1., -5]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
       self.assertAllEqual(mu, dist.mean().eval())
 
   def testMeanWithBroadcastLoc(self):
     mu = [-1.]
     diag = [1., -5]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
       self.assertAllEqual([-1., -1.], dist.mean().eval())
 
@@ -91,14 +91,14 @@ class MultivariateNormalDiagTest(test.TestCase):
     diag = [-1., 5]
     diag_mat = np.diag(diag)
     scipy_mvn = stats.multivariate_normal(mean=mu, cov=diag_mat**2)
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
       self.assertAllClose(scipy_mvn.entropy(), dist.entropy().eval(), atol=1e-4)
 
   def testSample(self):
     mu = [-1., 1]
     diag = [1., -2]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
       samps = dist.sample(int(1e3), seed=0).eval()
       cov_mat = array_ops.matrix_diag(diag).eval()**2
@@ -111,7 +111,7 @@ class MultivariateNormalDiagTest(test.TestCase):
   def testSingularScaleRaises(self):
     mu = [-1., 1]
     diag = [1., 0]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
       with self.assertRaisesOpError("Singular"):
         dist.sample().eval()
@@ -123,7 +123,7 @@ class MultivariateNormalDiagTest(test.TestCase):
     # diag corresponds to no batches of 3-variate normals
     diag = np.ones([3])
 
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
 
       mean = dist.mean()
@@ -142,7 +142,7 @@ class MultivariateNormalDiagTest(test.TestCase):
                           atol=0.10, rtol=0.05)
 
   def testCovariance(self):
-    with self.test_session():
+    with self.cached_session():
       mvn = ds.MultivariateNormalDiag(
           loc=array_ops.zeros([2, 3], dtype=dtypes.float32))
       self.assertAllClose(
@@ -178,7 +178,7 @@ class MultivariateNormalDiagTest(test.TestCase):
           mvn.covariance().eval())
 
   def testVariance(self):
-    with self.test_session():
+    with self.cached_session():
       mvn = ds.MultivariateNormalDiag(
           loc=array_ops.zeros([2, 3], dtype=dtypes.float32))
       self.assertAllClose(
@@ -203,7 +203,7 @@ class MultivariateNormalDiagTest(test.TestCase):
           mvn.variance().eval())
 
   def testStddev(self):
-    with self.test_session():
+    with self.cached_session():
       mvn = ds.MultivariateNormalDiag(
           loc=array_ops.zeros([2, 3], dtype=dtypes.float32))
       self.assertAllClose(
@@ -229,7 +229,7 @@ class MultivariateNormalDiagTest(test.TestCase):
   def testMultivariateNormalDiagWithSoftplusScale(self):
     mu = [-1.0, 1.0]
     diag = [-1.0, -2.0]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiagWithSoftplusScale(
           mu, diag, validate_args=True)
       samps = dist.sample(1000, seed=0).eval()
@@ -241,7 +241,7 @@ class MultivariateNormalDiagTest(test.TestCase):
   def testMultivariateNormalDiagNegLogLikelihood(self):
     num_draws = 50
     dims = 3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x_pl = array_ops.placeholder(dtype=dtypes.float32,
                                    shape=[None, dims],
                                    name="x")
@@ -291,7 +291,7 @@ class MultivariateNormalDiagTest(test.TestCase):
 
   def testKLDivIdenticalGradientDefined(self):
     dims = 3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       loc = array_ops.zeros([dims], dtype=dtypes.float32)
       mvn = ds.MultivariateNormalDiag(
           loc=loc,

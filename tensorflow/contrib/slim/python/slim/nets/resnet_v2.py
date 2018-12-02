@@ -221,7 +221,7 @@ def resnet_v2(inputs,
             net, activation_fn=nn_ops.relu, scope='postnorm')
         if global_pool:
           # Global average pooling.
-          net = math_ops.reduce_mean(net, [1, 2], name='pool5', keep_dims=True)
+          net = math_ops.reduce_mean(net, [1, 2], name='pool5', keepdims=True)
         if num_classes is not None:
           net = layers_lib.conv2d(
               net,

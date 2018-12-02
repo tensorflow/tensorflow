@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "PartitionedCall"
+  in_arg {
+    name: "args"
+    description: "A list of input tensors."
+  }
+  out_arg {
+    name: "output"
+    description: "A list of return values."
+  }
+  attr { name: "Tin"  description: "A list of input types." }
+  attr { name: "Tout"  description: "A list of output types." }
+  attr {
+    name: "f"
+    description: <<END
+      A function that takes 'args', a list of tensors, and returns 'output',
+      another list of tensors. Input and output types are specified by 'Tin'
+      and 'Tout'. The function body of f will be placed and partitioned across
+      devices, setting this op apart from the regular Call op.
+END
+  }
+  summary: "returns `f(inputs)`, where `f`'s body is placed and partitioned."
+}

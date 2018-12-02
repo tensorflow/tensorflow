@@ -27,12 +27,11 @@ SYCLDevice::~SYCLDevice() {}
 
 void SYCLDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   assert(context);
-  if (port::Tracing::IsActive()) {
-    // TODO(pbar) We really need a useful identifier of the graph node.
-    const uint64 id = Hash64(op_kernel->name());
-    port::Tracing::ScopedActivity region(port::Tracing::EventCategory::kCompute,
-                                         id);
-  }
+  // When ThreadScape profiling is off (which is the default), constructing the
+  // following code is simple enough that its overhead is negligible.
+  tracing::ScopedRegion region(tracing::EventCategory::kCompute,
+                               op_kernel->name());
+
   op_kernel->Compute(context);
 }
 

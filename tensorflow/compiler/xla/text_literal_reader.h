@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -41,8 +41,7 @@ class TextLiteralReader {
  public:
   // See class comment -- reads a file in its entirety (there must be only one
   // literal in the text file path provided).
-  static StatusOr<std::unique_ptr<Literal>> ReadPath(
-      tensorflow::StringPiece path);
+  static StatusOr<Literal> ReadPath(absl::string_view path);
 
  private:
   // Ownership of file is transferred.
@@ -50,7 +49,7 @@ class TextLiteralReader {
 
   // Parses a shape string on the first line, followed by lines of values to the
   // end of the file.
-  StatusOr<std::unique_ptr<Literal>> ReadAllLines();
+  StatusOr<Literal> ReadAllLines();
 
   // Owns the file being read
   std::unique_ptr<tensorflow::RandomAccessFile> file_;
