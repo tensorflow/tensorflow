@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Benchmarks for `tf.data.Dataset.batch()`."""
+"""Benchmarks for `tf.data.Dataset.list_files()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -86,7 +86,7 @@ class ListFilesBenchmark(test.Benchmark):
             (len(median_deltas) - 2):
                 np.average(median_deltas[2:])
         },
-        name='benchmark_list_files_dataset_nesteddirectory(%d*%d)' %
+        name='nested_directory(%d*%d)' %
         (width, depth))
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
