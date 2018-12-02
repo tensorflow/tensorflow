@@ -152,8 +152,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
-    # TODO(b/120222989) remove autograph=False.
-    @def_function.function(autograph=False)
+    @def_function.function()
     def pairs_mul(pair_a, pair_b):
       return pair(matmul(pair_a.a, pair_b.a), matmul(pair_a.b, pair_b.b))
 

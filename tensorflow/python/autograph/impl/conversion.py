@@ -73,6 +73,7 @@ def is_whitelisted_for_graph(o):
   Returns:
     Boolean
   """
+  # TODO(b/120224672): Fix this.
   if isinstance(o, functools.partial):
     # tf_inspect.getmodule(functools.partial(...)) otherwise returns None since
     # functools.partial objects do not have a __module__ attribute.
@@ -82,8 +83,21 @@ def is_whitelisted_for_graph(o):
   for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
     if m.__name__.startswith(prefix):
       return True
+
   if hasattr(o, 'autograph_info__'):
     return True
+
+  if inspect_utils.isnamedtuple(o):
+    # Due to the way they're constructed, namedtuple types cannot be converted
+    # because they don't expose source code. But we assume they are safe for
+    # graph mode since they are just containers.
+    if tf_inspect.isclass(o) and len(o.__bases__) > 1:
+      logging.log_first_n(
+          logging.level_warning(),
+          'Entity {} looks like a namedtuple subclass. If it has any custom'
+          ' methods, they will not be converted by AutoGraph.'.format(o), 1)
+    return True
+
   return False
 
 
