@@ -498,7 +498,8 @@ inline TensorShape ShapeFromFormat(TensorFormat format, int64 N,
   dim_sizes[GetTensorBatchDimIndex(dims, format)] = N;
   for (int dim = 0; static_cast<size_t>(dim) < spatial.size(); dim++) {
     auto dim_size = spatial[dim];
-    if (format == FORMAT_NHWC_VECT_W && static_cast<size_t>(dim) == spatial.size() - 1) {
+    if (format == FORMAT_NHWC_VECT_W &&
+        static_cast<size_t>(dim) == spatial.size() - 1) {
       CHECK_EQ(0, dim_size % 4)
           << "FORMAT_NHWC_VECT_W requires W to be a multiple of 4, but W="
           << dim_size;
