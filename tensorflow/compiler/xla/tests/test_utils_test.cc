@@ -175,5 +175,28 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
   }
 }
 
+XLA_TEST_F(TestUtilsTest, NoDuplicatesBfloat16) {
+  // Inputs which are sort keys in key/value sorts should have no duplicates.
+  auto module = ParseHloString(R"(
+HloModule sort, is_scheduled=true
+
+ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,1452], s32[2,1452]) {
+  %parameter.0 = bf16[2,1452]{1,0} parameter(0)
+  %parameter.1 = s32[2,1452]{1,0} parameter(1)
+  ROOT %sort = (bf16[2,1452]{1,0}, s32[2,1452]{1,0}) sort(bf16[2,1452]{1,0} %parameter.0, s32[2,1452]{1,0} %parameter.1), dimensions={1}
+}
+)")
+                    .ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+  const Literal& key_arg = args[0];
+
+  absl::flat_hash_set<uint16> key_set;
+  for (const bfloat16& value : key_arg.data<bfloat16>()) {
+    EXPECT_TRUE(key_set.insert(absl::bit_cast<uint16>(value)).second);
+  }
+}
+
 }  // namespace
 }  // namespace xla

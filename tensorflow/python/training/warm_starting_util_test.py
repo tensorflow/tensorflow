@@ -70,7 +70,7 @@ class WarmStartingUtilTest(test.TestCase):
         if partitioner:
           self.assertTrue(isinstance(var, variables.PartitionedVariable))
           var = var._get_variable_list()
-        return var, sess.run(var)
+        return var, self.evaluate(var)
 
   def _create_prev_run_vars(self,
                             var_names,
@@ -86,7 +86,7 @@ class WarmStartingUtilTest(test.TestCase):
               shape=shape,
               initializer=initializer))
         self._write_checkpoint(sess)
-        return [sess.run(var) for var in all_vars]
+        return [self.evaluate(var) for var in all_vars]
 
   def _create_dummy_inputs(self):
     return {

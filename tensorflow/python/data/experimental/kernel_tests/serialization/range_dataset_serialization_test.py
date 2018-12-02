@@ -85,7 +85,7 @@ class RangeDatasetSerializationTest(
         for i in range(break_point, stop):
           self.assertEqual(i, self.evaluate(get_next))
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+          self.evaluate(get_next)
 
     # Saving and restoring in same session.
     with ops.Graph().as_default() as g:
@@ -100,7 +100,7 @@ class RangeDatasetSerializationTest(
         for i in range(break_point, stop):
           self.assertEqual(i, self.evaluate(get_next))
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+          self.evaluate(get_next)
 
   def _build_range_dataset(self, start, stop):
     return dataset_ops.Dataset.range(start, stop)

@@ -72,6 +72,7 @@ from tensorflow.python.ops.partitioned_variables import *
 from tensorflow.python.ops.random_ops import *
 from tensorflow.python.ops.script_ops import py_func
 from tensorflow.python.ops.session_ops import *
+from tensorflow.python.ops.sort_ops import *
 from tensorflow.python.ops.sparse_ops import *
 from tensorflow.python.ops.state_ops import assign
 from tensorflow.python.ops.state_ops import assign_add

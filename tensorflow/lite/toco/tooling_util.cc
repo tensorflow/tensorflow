@@ -308,6 +308,7 @@ const char* OperatorTypeName(OperatorType type) {
 #define HANDLE_OPERATORTYPENAME_CASE(c) \
   case OperatorType::k##c:              \
     return #c;
+    HANDLE_OPERATORTYPENAME_CASE(Abs)
     HANDLE_OPERATORTYPENAME_CASE(Add)
     HANDLE_OPERATORTYPENAME_CASE(AddN)
     HANDLE_OPERATORTYPENAME_CASE(AveragePool)
@@ -371,6 +372,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Shape)
     HANDLE_OPERATORTYPENAME_CASE(Slice)
     HANDLE_OPERATORTYPENAME_CASE(Split)
+    HANDLE_OPERATORTYPENAME_CASE(SplitV)
     HANDLE_OPERATORTYPENAME_CASE(Sqrt)
     HANDLE_OPERATORTYPENAME_CASE(Square)
     HANDLE_OPERATORTYPENAME_CASE(Switch)
@@ -534,12 +536,12 @@ void DumpGraphvizVideoFrame(const Model& model) {
   if (!dump_hashes.count(hash)) {
     LOG(INFO) << "DUMPING GRAPHVIZ VIDEO FRAME: " << dump_id;
     dump_hashes.insert(hash);
-    CHECK(port::file::SetContents(
-              port::file::JoinPath(
-                  dump_options.dump_graphviz,
-                  toco::port::StringF("toco_video_%05d.dot", dump_id)),
-              graphviz_dump, port::file::Defaults())
-              .ok());
+    const auto result = port::file::SetContents(
+        port::file::JoinPath(
+            dump_options.dump_graphviz,
+            toco::port::StringF("toco_video_%05d.dot", dump_id)),
+        graphviz_dump, port::file::Defaults());
+    QCHECK(result.ok()) << result.error_message();
     dump_id++;
   }
 }
@@ -553,14 +555,13 @@ void LogDump(int log_level, const string& message, const Model& model) {
     string graphviz_dump;
 
     DumpGraphviz(model, &graphviz_dump);
-    CHECK(port::file::SetContents(
-              port::file::JoinPath(
-                  dump_options.dump_graphviz,
-                  absl::StrCat("toco_",
-                               absl::StrReplaceAll(message, {{" ", "_"}}),
-                               ".dot")),
-              graphviz_dump, port::file::Defaults())
-              .ok());
+    const auto result = port::file::SetContents(
+        port::file::JoinPath(
+            dump_options.dump_graphviz,
+            absl::StrCat("toco_", absl::StrReplaceAll(message, {{" ", "_"}}),
+                         ".dot")),
+        graphviz_dump, port::file::Defaults());
+    QCHECK(result.ok()) << result.error_message();
   }
 
   if (!VLOG_IS_ON(log_level)) {
@@ -1035,10 +1036,10 @@ void CheckEachArray(const Model& model) {
     if (colon_pos != string::npos) {
       CHECK_EQ(name.substr(colon_pos + 1).find_first_not_of("0123456789"),
                string::npos)
-          << "Array name must only have digits after colon";
+          << "Array '" << name << "' has non-digit characters after colon.";
     }
-    CHECK_GT(colon_pos, 0)
-        << "First character of array name must not be a colon.";
+    CHECK_GT(colon_pos, 0) << "Array '" << name
+                           << "' must not start with a colon.";
   }
 }
 
@@ -1770,6 +1771,14 @@ bool IsAllocatableTransientArray(const Model& model, const string& array_name) {
   if (!array->has_shape()) {
     return false;
   }
+
+  // The size of string tensors is rarely known ahead of time, so all transient
+  // tensors of this type will need to be dynamically allocated.
+  if (array->final_data_type == ArrayDataType::kString ||
+      array->data_type == ArrayDataType::kString) {
+    return false;
+  }
+
   return true;
 }
 

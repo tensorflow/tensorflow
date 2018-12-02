@@ -3,10 +3,9 @@
 This page provides examples on how to use the TensorFlow Lite Converter and the
 TensorFlow Lite interpreter using the Python API.
 
-Note: TFLite recently moved from `tf.contrib.lite` to `tf.lite`. If you are
-using tensorflow `r1.12` or earlier you will need to add `.contrib` to the
-commands below. `tf.lite` works with newer builds, like the nightly build,
-which can be installed with: `pip install tf-nightly`
+Note: These docs describe the converter in the TensorFlow nightly release,
+installed using `pip install tf-nightly`. For docs describing older versions
+reference ["Converting models from TensorFlow 1.12"](#pre_tensorflow_1.12).
 
 [TOC]
 
@@ -23,11 +22,6 @@ be targeted to devices with mobile.
 The API for converting TensorFlow models to TensorFlow Lite as of TensorFlow 1.9
 is `tf.lite.TFLiteConverter`. The API for calling the Python intepreter
 is `tf.lite.Interpreter`.
-
-Note: Reference "Additional Instructions" sections for converting TensorFlow
-models to TensorFlow Lite
-[in TensorFlow 1.9 to TensorFlow 1.11](#pre_tensorflow_1.11) and
-[prior to TensorFlow 1.9](#pre_tensorflow_1.9)
 
 `TFLiteConverter` provides class methods based on the original format of the
 model. `TFLiteConverter.from_session()` is available for GraphDefs.
@@ -250,14 +244,13 @@ either install the nightly build with
 [Docker](https://www.tensorflow.org/install/docker), or
 [build the pip package from source](https://www.tensorflow.org/install/source).
 
-### Converting models in TensorFlow 1.9 to TensorFlow 1.11 <a name="pre_tensorflow_1.11"></a>
+### Converting models from TensorFlow 1.12 <a name="pre_tensorflow_1.12"></a>
 
-To convert TensorFlow models to TensorFlow Lite in TensorFlow 1.9 through
-TensorFlow 1.11, use `TocoConverter`. `TocoConverter` is semantically
-identically to `TFLiteConverter`.
+Reference the following table to convert TensorFlow models to TensorFlow Lite in
+and before TensorFlow 1.12. Run `help()` to get details of each API.
 
-### Converting models prior to TensorFlow 1.9 <a name="pre_tensorflow_1.9"></a>
-
-To convert TensorFlow models to TensorFlow Lite in TensorFlow 1.7 and TensorFlow
-1.8, use the `toco_convert` function. Run `help(tf.lite.toco_convert)`
-to get details about accepted parameters.
+TensorFlow Version | Python API
+------------------ | ---------------------------------
+1.12               | `tf.contrib.lite.TFLiteConverter`
+1.9-1.11           | `tf.contrib.lite.TocoConverter`
+1.7-1.8            | `tf.contrib.lite.toco_convert`

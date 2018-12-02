@@ -175,9 +175,13 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.float64, t.dtype)
 
   def testBool(self):
-    t = _create_tensor(False)
-    if t:
-      self.assertFalse(True)
+    self.assertFalse(bool(_create_tensor(False)))
+    self.assertFalse(bool(_create_tensor([False])))
+    self.assertFalse(bool(_create_tensor([[False]])))
+    self.assertFalse(bool(_create_tensor([0])))
+    self.assertFalse(bool(_create_tensor([0.])))
+    self.assertTrue(bool(_create_tensor([1])))
+    self.assertTrue(bool(_create_tensor([1.])))
 
   def testIntDowncast(self):
     t = _create_tensor(3)
@@ -322,6 +326,14 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorAllowsOverflow(self):
     _ = ops.convert_to_tensor(123456789, dtype=dtypes.uint8)
+
+  def testEagerTensorError(self):
+    with self.assertRaisesRegexp(
+        TypeError,
+        "Cannot convert provided value to EagerTensor. "
+        "Provided value.*Requested dtype.*"):
+      _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
+
 
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):

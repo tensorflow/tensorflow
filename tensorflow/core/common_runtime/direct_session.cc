@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
@@ -155,12 +156,12 @@ class DirectSessionFactory : public SessionFactory {
     if (options.config.graph_options().build_cost_model() > 0) {
       EnableCPUAllocatorFullStats(true);
     }
-    std::vector<Device*> devices;
+    std::vector<std::unique_ptr<Device>> devices;
     TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
         options, "/job:localhost/replica:0/task:0", &devices));
 
     DirectSession* session =
-        new DirectSession(options, new DeviceMgr(devices), this);
+        new DirectSession(options, new DeviceMgr(std::move(devices)), this);
     {
       mutex_lock l(sessions_lock_);
       sessions_.push_back(session);
@@ -462,6 +463,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
                                   CallFrameInterface* call_frame,
                                   ExecutorsAndKeys* executors_and_keys,
                                   RunMetadata* run_metadata) {
+  const uint64 start_time_usecs = Env::Default()->NowMicros();
   string session_id_meta = strings::StrCat("SessionRun #id=", step_id, "#");
   tracing::ScopedActivity activity(session_id_meta);
 
@@ -716,6 +718,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       exec_and_lib.graph->ToGraphDef(partition_graph_def);
     }
   }
+  UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
 
   return Status::OK();
 }

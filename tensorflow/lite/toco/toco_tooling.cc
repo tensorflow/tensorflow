@@ -210,7 +210,8 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
       CheckInvariants(*model);
       break;
     default:
-      LOG(FATAL) << "Unhandled input_format";
+      LOG(FATAL) << "Unhandled input_format='"
+                 << FileFormat_Name(toco_flags.input_format()) << "'";
   }
 
   LogDump(kLogLevelModelChanged, "AT IMPORT", *model);
@@ -424,7 +425,8 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
       DumpGraphviz(model, output_file_contents);
       break;
     default:
-      LOG(FATAL) << "Unhandled output_format";
+      LOG(FATAL) << "Unhandled output_format='"
+                 << FileFormat_Name(toco_flags.output_format()) << "'";
   }
   return tensorflow::Status();
 }

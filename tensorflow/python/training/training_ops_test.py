@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
@@ -59,6 +60,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       self.assertShapeEqual(out, apply_sgd)
       self.assertAllCloseAccordingToType(x - alpha * delta, out)
 
+  @test_util.run_deprecated_v1
   def testApplyGradientDescent(self):
     for (dtype, use_gpu) in itertools.product(
         [np.float16, np.float32, np.float64], [False, True]):
@@ -127,6 +129,7 @@ class TrainingOpsTest(TensorFlowTestCase):
         self.assertAllClose(linear_update, self.evaluate(linear))
         self.assertAllClose(expected_out, out)
 
+  @test_util.run_deprecated_v1
   def testApplyAdagrad(self):
     for (dtype, use_gpu) in itertools.product(
         [np.float16, np.float32, np.float64], [False, True]):
@@ -136,6 +139,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       grad = np.arange(100).astype(dtype)
       self._testTypesForAdagrad(x, y, lr, grad, use_gpu)
 
+  @test_util.run_deprecated_v1
   def testApplyFtrl(self):
     for dtype in [np.float16, np.float32, np.float64]:
       x = np.arange(100).astype(dtype)
@@ -207,6 +211,7 @@ class TrainingOpsTest(TensorFlowTestCase):
         self.assertAllCloseAccordingToType(y[index] + grad[i] * grad[i],
                                            self.evaluate(accum)[index])
 
+  @test_util.run_deprecated_v1
   def testSparseApplyAdagrad(self):
     for (dtype, index_type) in itertools.product(
         [np.float16, np.float32, np.float64], [np.int32, np.int64]):
@@ -220,6 +225,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       indices = np.array([0, 2]).astype(index_type)
       self._testTypesForSparseAdagrad(x, y, lr, grad, indices)
 
+  @test_util.run_deprecated_v1
   def testSparseApplyAdagradDim1(self):
     for (dtype, index_type) in itertools.product(
         [np.float16, np.float32, np.float64], [np.int32, np.int64]):
@@ -233,6 +239,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       indices = np.array([0, 2]).astype(index_type)
       self._testTypesForSparseAdagrad(x, y, lr, grad, indices)
 
+  @test_util.run_deprecated_v1
   def testSparseApplyFtrlDim1(self):
     for (dtype, index_type) in itertools.product(
         [np.float16, np.float32, np.float64], [np.int32, np.int64]):
@@ -248,6 +255,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       indices = np.array([0, 2]).astype(index_type)
       self._testTypesForSparseFtrl(x, y, z, lr, grad, indices)
 
+  @test_util.run_deprecated_v1
   def testApplyAdam(self):
     for dtype, use_gpu in itertools.product(
         [np.float16, np.float32, np.float64], [False, True]):

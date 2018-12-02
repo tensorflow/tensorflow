@@ -1507,7 +1507,75 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
       value=value, size_splits=size_splits, axis=axis, num_split=num, name=name)
 
 
-@tf_export("transpose")
+@tf_export("transpose", v1=[])
+def transpose_v2(a, perm=None, conjugate=False, name="transpose"):
+  """Transposes `a`. Permutes the dimensions according to `perm`.
+
+  The returned tensor's dimension i will correspond to the input dimension
+  `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is
+  the rank of the input tensor. Hence by default, this operation performs a
+  regular matrix transpose on 2-D input Tensors. If conjugate is True and
+  `a.dtype` is either `complex64` or `complex128` then the values of `a`
+  are conjugated and transposed.
+
+  @compatibility(numpy)
+  In `numpy` transposes are memory-efficient constant time operations as they
+  simply return a new view of the same data with adjusted `strides`.
+
+  TensorFlow does not support strides, so `transpose` returns a new tensor with
+  the items permuted.
+  @end_compatibility
+
+  For example:
+
+  ```python
+  x = tf.constant([[1, 2, 3], [4, 5, 6]])
+  tf.transpose(x)  # [[1, 4]
+                   #  [2, 5]
+                   #  [3, 6]]
+
+  # Equivalently
+  tf.transpose(x, perm=[1, 0])  # [[1, 4]
+                                #  [2, 5]
+                                #  [3, 6]]
+
+  # If x is complex, setting conjugate=True gives the conjugate transpose
+  x = tf.constant([[1 + 1j, 2 + 2j, 3 + 3j],
+                   [4 + 4j, 5 + 5j, 6 + 6j]])
+  tf.transpose(x, conjugate=True)  # [[1 - 1j, 4 - 4j],
+                                   #  [2 - 2j, 5 - 5j],
+                                   #  [3 - 3j, 6 - 6j]]
+
+  # 'perm' is more useful for n-dimensional tensors, for n > 2
+  x = tf.constant([[[ 1,  2,  3],
+                    [ 4,  5,  6]],
+                   [[ 7,  8,  9],
+                    [10, 11, 12]]])
+
+  # Take the transpose of the matrices in dimension-0
+  # (this common operation has a shorthand `linalg.transpose`)
+  tf.transpose(x, perm=[0, 2, 1])  # [[[1,  4],
+                                   #   [2,  5],
+                                   #   [3,  6]],
+                                   #  [[7, 10],
+                                   #   [8, 11],
+                                   #   [9, 12]]]
+  ```
+
+  Args:
+    a: A `Tensor`.
+    perm: A permutation of the dimensions of `a`.
+    conjugate: Optional bool. Setting it to `True` is mathematically equivalent
+      to tf.conj(tf.transpose(input)).
+    name: A name for the operation (optional).
+
+  Returns:
+    A transposed `Tensor`.
+  """
+  return transpose(a=a, perm=perm, name=name, conjugate=conjugate)
+
+
+@tf_export(v1=["transpose"])
 def transpose(a, perm=None, name="transpose", conjugate=False):
   """Transposes `a`. Permutes the dimensions according to `perm`.
 
@@ -2607,7 +2675,7 @@ def depth_to_space(input, block_size, name=None, data_format="NHWC"):  # pylint:
 depth_to_space.__doc__ = gen_array_ops.depth_to_space.__doc__
 
 
-@tf_export("batch_to_space")
+@tf_export(v1=["batch_to_space"])
 def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=redefined-builtin
   result = batch_to_space_nd(
       input,
@@ -2619,6 +2687,151 @@ def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=rede
 
 
 batch_to_space.__doc__ = gen_array_ops.batch_to_space.__doc__
+
+
+@tf_export("batch_to_space", v1=[])
+def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=redefined-builtin
+  """BatchToSpace for N-D tensors of type T.
+
+  This operation reshapes the "batch" dimension 0 into `M + 1` dimensions of
+  shape `block_shape + [batch]`, interleaves these blocks back into the grid
+  defined by the spatial dimensions `[1, ..., M]`, to obtain a result with the
+  same rank as the input.  The spatial dimensions of this intermediate result
+  are then optionally cropped according to `crops` to produce the output.  This
+  is the reverse of SpaceToBatch.  See below for a precise description.
+
+  Args:
+    input: A `Tensor`.
+      N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
+      where spatial_shape has M dimensions.
+    block_shape: A `Tensor`. Must be one of the following types:
+      `int32`, `int64`. 1-D with shape `[M]`, all values must be >= 1.
+      For backwards compatibility with TF 1.0, this parameter may be an int, in
+      which case it is converted to
+      `numpy.array([block_shape, block_shape], dtype=numpy.int64)`.
+    crops: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      2-D with shape `[M, 2]`, all values must be >= 0.
+        `crops[i] = [crop_start, crop_end]` specifies the amount to crop from
+        input dimension `i + 1`, which corresponds to spatial dimension `i`.  It
+        is required that
+        `crop_start[i] + crop_end[i] <= block_shape[i] * input_shape[i + 1]`.
+
+      This operation is equivalent to the following steps:
+
+      1. Reshape `input` to `reshaped` of shape:
+           [block_shape[0], ..., block_shape[M-1],
+            batch / prod(block_shape),
+            input_shape[1], ..., input_shape[N-1]]
+
+      2. Permute dimensions of `reshaped` to produce `permuted` of shape
+           [batch / prod(block_shape),
+
+            input_shape[1], block_shape[0],
+            ...,
+            input_shape[M], block_shape[M-1],
+
+            input_shape[M+1], ..., input_shape[N-1]]
+
+      3. Reshape `permuted` to produce `reshaped_permuted` of shape
+           [batch / prod(block_shape),
+
+            input_shape[1] * block_shape[0],
+            ...,
+            input_shape[M] * block_shape[M-1],
+
+            input_shape[M+1],
+            ...,
+            input_shape[N-1]]
+
+      4. Crop the start and end of dimensions `[1, ..., M]` of
+         `reshaped_permuted` according to `crops` to produce the
+         output of shape:
+           [batch / prod(block_shape),
+
+            input_shape[1] * block_shape[0] - crops[0,0] - crops[0,1],
+            ...,
+            input_shape[M] * block_shape[M-1] - crops[M-1,0] - crops[M-1,1],
+
+            input_shape[M+1], ..., input_shape[N-1]]
+
+      Some examples:
+
+      (1) For the following input of shape `[4, 1, 1, 1]`,
+          `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
+
+      ```
+      [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
+      ```
+
+      The output tensor has shape `[1, 2, 2, 1]` and value:
+
+      ```
+      x = [[[[1], [2]], [[3], [4]]]]
+      ```
+
+      (2) For the following input of shape `[4, 1, 1, 3]`,
+          `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
+
+      ```
+      [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+      ```
+
+      The output tensor has shape `[1, 2, 2, 3]` and value:
+
+      ```
+      x = [[[[1, 2, 3], [4, 5, 6]],
+            [[7, 8, 9], [10, 11, 12]]]]
+      ```
+
+      (3) For the following input of shape `[4, 2, 2, 1]`,
+          `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
+
+      ```
+      x = [[[[1], [3]], [[9], [11]]],
+           [[[2], [4]], [[10], [12]]],
+           [[[5], [7]], [[13], [15]]],
+           [[[6], [8]], [[14], [16]]]]
+      ```
+
+      The output tensor has shape `[1, 4, 4, 1]` and value:
+
+      ```
+      x = [[[1],   [2],  [3],  [4]],
+           [[5],   [6],  [7],  [8]],
+           [[9],  [10], [11],  [12]],
+           [[13], [14], [15],  [16]]]
+      ```
+
+      (4) For the following input of shape `[8, 1, 3, 1]`,
+          `block_shape = [2, 2]`, and `crops = [[0, 0], [2, 0]]`:
+
+      ```
+      x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
+           [[[0], [2], [4]]], [[[0], [10], [12]]],
+           [[[0], [5], [7]]], [[[0], [13], [15]]],
+           [[[0], [6], [8]]], [[[0], [14], [16]]]]
+      ```
+
+      The output tensor has shape `[2, 2, 4, 1]` and value:
+
+      ```
+      x = [[[[1],   [2],  [3],  [4]],
+            [[5],   [6],  [7],  [8]]],
+           [[[9],  [10], [11],  [12]],
+            [[13], [14], [15],  [16]]]]
+      ```
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `input`.
+  """
+  if isinstance(block_shape, int):
+    block_shape = np.array([block_shape, block_shape], dtype=np.int64)
+
+  return batch_to_space_nd(input=input,
+                           block_shape=block_shape,
+                           crops=crops,
+                           name=name)
 
 
 @tf_export("one_hot")
@@ -2844,7 +3057,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
       return gen_math_ops.cast(result, dtype)
 
 
-@tf_export("squeeze")
+@tf_export(v1=["squeeze"])
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "squeeze_dims")
 def squeeze(input, axis=None, name=None, squeeze_dims=None):
@@ -2892,6 +3105,12 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
   if np.isscalar(axis):
     axis = [axis]
   return gen_array_ops.squeeze(input, axis, name)
+
+
+@tf_export("squeeze", v1=[])
+def squeeze_v2(input, axis=None, name=None):
+  # pylint: disable=redefined-builtin
+  return squeeze(input, axis, name)
 
 
 @tf_export("where")
@@ -2997,7 +3216,7 @@ reverse_sequence_v2.__doc__ = deprecation.rewrite_argument_docstring(
 # pylint: enable=redefined-builtin
 
 
-@tf_export("gather")
+@tf_export(v1=["gather"])
 def gather(params, indices, validate_indices=None, name=None, axis=0):
   del validate_indices
   if axis != 0:
@@ -3013,7 +3232,14 @@ def gather(params, indices, validate_indices=None, name=None, axis=0):
     return gen_array_ops.gather_v2(params, indices, axis, name=name)
 
 
-gather.__doc__ = gen_array_ops.gather_v2.__doc__
+@tf_export("gather", v1=[])
+def gather_v2(params, indices, validate_indices=None, axis=0, name=None):
+  return gather(params, indices, validate_indices=validate_indices, name=name,
+                axis=axis)
+
+
+gather.__doc__ = gather_v2.__doc__ = gen_array_ops.gather_v2.__doc__
+
 
 
 @tf_export("batch_gather")
@@ -3201,3 +3427,48 @@ def searchsorted(sorted_sequence,
 
 
 quantize.__doc__ = gen_array_ops.quantize_v2.__doc__
+
+
+@tf_export("image.extract_image_patches", v1=[])
+def extract_image_patches_v2(
+    images,
+    sizes,
+    strides,
+    rates,
+    padding,
+    name=None):
+  # pylint: disable=line-too-long
+  r"""Extract `patches` from `images` and put them in the \"depth\" output dimension.
+
+  Args:
+    images: A 4-D Tensor with shape `[batch, in_rows, in_cols, depth]
+    sizes: The size of the sliding window for each dimension of `images`.
+    strides: A 1-D Tensor of length 4. How far the centers of two consecutive
+      patches are in the images. Must be: `[1, stride_rows, stride_cols, 1]`.
+    rates: A 1-D Tensor of length 4. Must be: `[1, rate_rows, rate_cols, 1]`.
+      This is the input stride, specifying how far two consecutive patch samples
+      are in the input. Equivalent to extracting patches with `patch_sizes_eff =
+      patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by subsampling
+      them spatially by a factor of `rates`. This is equivalent to `rate` in
+      dilated (a.k.a. Atrous) convolutions.
+    padding: The type of padding algorithm to use.
+      We specify the size-related attributes as: ```python ksizes = [1,
+        ksize_rows, ksize_cols, 1] strides = [1, strides_rows, strides_cols, 1]
+        rates = [1, rates_rows, rates_cols, 1]
+    name: A name for the operation (optional).
+
+  Returns:
+    A 4-D Tensor. Has the same type as `images`, and with shape `[batch,
+    out_rows, out_cols, ksize_rows * ksize_cols * depth]` containing image
+    patches with size `ksize_rows x ksize_cols x depth` vectorized in the
+    \"depth\" dimension. Note `out_rows` and `out_cols` are the dimensions of
+    the output patches.
+  """
+  # pylint: enable=line-too-long
+  return gen_array_ops.extract_image_patches(
+      images, sizes, strides, rates, padding, name)
+
+extract_image_patches_deprecation = deprecation.deprecated_args(
+    None, "ksizes is deprecated, use sizes instead", "ksizes")
+tf_export(v1=["image.extract_image_patches", "extract_image_patches"])(
+    extract_image_patches_deprecation(gen_array_ops.extract_image_patches))

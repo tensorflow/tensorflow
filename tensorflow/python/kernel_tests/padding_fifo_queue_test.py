@@ -158,7 +158,7 @@ class PaddingFIFOQueueTest(test.TestCase):
       results = []
 
       def dequeue():
-        results.append(sess.run(dequeued_t))
+        results.append(self.evaluate(dequeued_t))
 
       threads = [self.checkedThread(target=dequeue) for _ in enqueue_ops]
       for thread in threads:
@@ -199,7 +199,7 @@ class PaddingFIFOQueueTest(test.TestCase):
 
       def dequeue():
         for _ in xrange(len(elems)):
-          results.append(sess.run(dequeued_t))
+          results.append(self.evaluate(dequeued_t))
 
       enqueue_thread = self.checkedThread(target=enqueue)
       dequeue_thread = self.checkedThread(target=dequeue)
@@ -656,7 +656,7 @@ class PaddingFIFOQueueTest(test.TestCase):
       dequeued_elems = []
 
       def dequeue():
-        dequeued_elems.extend(sess.run(dequeued_t))
+        dequeued_elems.extend(self.evaluate(dequeued_t))
 
       threads = [self.checkedThread(target=dequeue) for _ in range(10)]
       for thread in threads:
@@ -680,7 +680,7 @@ class PaddingFIFOQueueTest(test.TestCase):
       dequeued_elems = []
 
       def dequeue():
-        dequeued_elems.extend(sess.run(dequeued_t))
+        dequeued_elems.extend(self.evaluate(dequeued_t))
 
       threads = [self.checkedThread(target=dequeue) for _ in range(10)]
       for thread in threads:
@@ -808,7 +808,7 @@ class PaddingFIFOQueueTest(test.TestCase):
         self.evaluate(enqueue_op)
 
       def dequeue():
-        dequeued_elems.extend(sess.run(dequeued_t).tolist())
+        dequeued_elems.extend(self.evaluate(dequeued_t).tolist())
 
       enqueue_thread = self.checkedThread(target=enqueue)
       dequeue_thread = self.checkedThread(target=dequeue)
@@ -835,7 +835,7 @@ class PaddingFIFOQueueTest(test.TestCase):
         self.evaluate(enqueue_op)
 
       def dequeue():
-        dequeued_elems.extend(sess.run(dequeued_t).tolist())
+        dequeued_elems.extend(self.evaluate(dequeued_t).tolist())
 
       enqueue_thread = self.checkedThread(target=enqueue)
       dequeue_thread = self.checkedThread(target=dequeue)
@@ -905,7 +905,7 @@ class PaddingFIFOQueueTest(test.TestCase):
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -947,7 +947,7 @@ class PaddingFIFOQueueTest(test.TestCase):
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -972,7 +972,7 @@ class PaddingFIFOQueueTest(test.TestCase):
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -997,7 +997,7 @@ class PaddingFIFOQueueTest(test.TestCase):
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -1022,7 +1022,7 @@ class PaddingFIFOQueueTest(test.TestCase):
       def dequeue():
         self.assertAllEqual(elems[0:3], self.evaluate(dequeued_t))
         with self.assertRaises(errors_impl.OutOfRangeError):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
         self.assertEqual(elems[3], self.evaluate(cleanup_dequeue_t))
 
       def close():
@@ -1059,7 +1059,7 @@ class PaddingFIFOQueueTest(test.TestCase):
 
       def dequeue():
         with self.assertRaises(errors_impl.OutOfRangeError):
-          sess.run([dequeued_a_t, dequeued_b_t])
+          self.evaluate([dequeued_a_t, dequeued_b_t])
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -1072,7 +1072,7 @@ class PaddingFIFOQueueTest(test.TestCase):
       # Test that the elements in the partially-dequeued batch are
       # restored in the correct order.
       for elem_a, elem_b in zip(elems_a, elems_b):
-        val_a, val_b = sess.run([cleanup_dequeue_a_t, cleanup_dequeue_b_t])
+        val_a, val_b = self.evaluate([cleanup_dequeue_a_t, cleanup_dequeue_b_t])
         self.assertEqual(elem_a, val_a)
         self.assertEqual(elem_b, val_b)
       self.assertEqual(0, q.size().eval())
@@ -1087,7 +1087,7 @@ class PaddingFIFOQueueTest(test.TestCase):
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -1107,7 +1107,7 @@ class PaddingFIFOQueueTest(test.TestCase):
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
-          sess.run(dequeued_t)
+          self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -1434,7 +1434,7 @@ class PaddingFIFOQueueTest(test.TestCase):
       def blocking_enqueue():
         enq_done.append(False)
         # This will fill the queue and then block until enough dequeues happen.
-        sess.run(enq)
+        self.evaluate(enq)
         enq_done.append(True)
 
       thread = self.checkedThread(target=blocking_enqueue)
@@ -1477,7 +1477,7 @@ class PaddingFIFOQueueTest(test.TestCase):
 
       def blocking_dequeue():
         # Will only complete after 4 enqueues complete.
-        results.extend(sess.run(deq))
+        results.extend(self.evaluate(deq))
 
       thread = self.checkedThread(target=blocking_dequeue)
       thread.start()
@@ -1486,7 +1486,7 @@ class PaddingFIFOQueueTest(test.TestCase):
         # TODO(mrry): Figure out how to do this without sleeping.
         time.sleep(0.1)
         self.assertEqual(len(results), 0)
-        sess.run(enq)
+        self.evaluate(enq)
 
       # Enough enqueued to unblock the dequeue
       thread.join()

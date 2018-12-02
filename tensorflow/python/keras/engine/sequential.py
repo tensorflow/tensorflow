@@ -212,20 +212,16 @@ class Sequential(Model):
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
 
+  @base_layer.default
   def build(self, input_shape=None):
     if self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
     else:
       if input_shape is None:
         raise ValueError('You must provide an `input_shape` argument.')
+      input_shape = tuple(input_shape)
       self._build_input_shape = input_shape
-      shape = input_shape
-      for layer in self.layers:
-        if not layer.built:
-          with ops.name_scope(layer._name_scope()):
-            layer.build(shape)
-          layer.built = True
-        shape = layer.compute_output_shape(shape)
+      super(Sequential, self).build(input_shape)
     self.built = True
 
   def call(self, inputs, training=None, mask=None):
@@ -237,8 +233,8 @@ class Sequential(Model):
     return outputs
 
   def _call_and_compute_mask(self, inputs, training=None, mask=None):
-    if not self.built:
-      self.build(inputs.shape)
+    if not self.built and self._is_graph_network:
+      self._init_graph_network(self.inputs, self.outputs, name=self.name)
 
     x = inputs
     for layer in self.layers:
@@ -251,6 +247,11 @@ class Sequential(Model):
       if isinstance(layer, Network) and layer._compute_output_and_mask_jointly:
         x, mask = layer._call_and_compute_mask(x, **kwargs)
       else:
+        if not layer.built:
+          # Build layer if applicable.
+          with ops.name_scope(layer._name_scope()):
+            layer._maybe_build(x)
+          layer.built = True
         x = layer.call(x, **kwargs)
         if layer.supports_masking:
           mask = layer.compute_mask(x, mask)

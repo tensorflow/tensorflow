@@ -114,6 +114,7 @@ class LSTMLayerTest(test.TestCase):
     self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
     self.assertEqual(layer.cell.bias.constraint, b_constraint)
 
+  @tf_test_util.run_deprecated_v1
   def test_with_masking_layer_LSTM(self):
     layer_class = keras.layers.LSTM
     inputs = np.random.random((2, 3, 4))
@@ -126,6 +127,7 @@ class LSTMLayerTest(test.TestCase):
                   optimizer=RMSPropOptimizer(0.01))
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
+  @tf_test_util.run_deprecated_v1
   def test_masking_with_stacking_LSTM(self):
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
@@ -311,6 +313,7 @@ class LSTMLayerTest(test.TestCase):
 
 class LSTMLayerGraphOnlyTest(test.TestCase):
 
+  @tf_test_util.run_deprecated_v1
   def test_statefulness_LSTM(self):
     num_samples = 2
     timesteps = 3
@@ -374,6 +377,7 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
 
       self.assertAllClose(out7, out6, atol=1e-5)
 
+  @tf_test_util.run_deprecated_v1
   def test_regularizers_LSTM(self):
     embedding_dim = 4
     layer_class = keras.layers.LSTM

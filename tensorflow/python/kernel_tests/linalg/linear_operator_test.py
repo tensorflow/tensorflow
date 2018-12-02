@@ -22,6 +22,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -107,6 +108,7 @@ class LinearOperatorTest(test.TestCase):
     self.assertAllEqual(4, operator.domain_dimension)
     self.assertAllEqual(3, operator.range_dimension)
 
+  @test_util.run_deprecated_v1
   def test_all_shape_methods_defined_by_the_one_method_shape(self):
     with self.cached_session():
       shape = (1, 2, 3, 4)
@@ -136,6 +138,7 @@ class LinearOperatorTest(test.TestCase):
       self.assertAllEqual((2, 3, 4), operator_dense.get_shape())
       self.assertAllClose(matrix, self.evaluate(operator_dense))
 
+  @test_util.run_deprecated_v1
   def test_generic_to_dense_method_non_square_matrix_tensor(self):
     matrix = rng.randn(2, 3, 4)
     matrix_ph = array_ops.placeholder(dtypes.float64)
@@ -175,6 +178,7 @@ class LinearOperatorTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "but.*was square"):
       _ = LinearOperatorShape(shape=(2, 4, 4), is_square=False).is_square
 
+  @test_util.run_deprecated_v1
   def test_is_square_set_inconsistent_with_other_hints_raises(self):
     with self.assertRaisesRegexp(ValueError, "is always square"):
       matrix = array_ops.placeholder(dtypes.float32)
@@ -185,6 +189,7 @@ class LinearOperatorTest(test.TestCase):
       LinearOperatorMatmulSolve(
           matrix, is_positive_definite=True, is_square=False)
 
+  @test_util.run_deprecated_v1
   def test_non_square_operators_raise_on_determinant_and_solve(self):
     operator = LinearOperatorShape((2, 3))
     with self.assertRaisesRegexp(NotImplementedError, "not be square"):
@@ -199,6 +204,7 @@ class LinearOperatorTest(test.TestCase):
       LinearOperatorMatmulSolve(
           matrix, is_positive_definite=True, is_square=False)
 
+  @test_util.run_deprecated_v1
   def test_is_square_manual_set_works(self):
     matrix = array_ops.placeholder(dtypes.float32)
     # Default is None.
@@ -208,6 +214,7 @@ class LinearOperatorTest(test.TestCase):
     operator = LinearOperatorMatmulSolve(matrix, is_square=True)
     self.assertTrue(operator.is_square)
 
+  @test_util.run_deprecated_v1
   def test_linear_operator_matmul_hints_closed(self):
     matrix = array_ops.placeholder(dtypes.float32)
     operator1 = LinearOperatorMatmulSolve(matrix)
@@ -234,6 +241,7 @@ class LinearOperatorTest(test.TestCase):
     self.assertTrue(operator_matmul.is_self_adjoint)
     self.assertEqual(None, operator_matmul.is_positive_definite)
 
+  @test_util.run_deprecated_v1
   def test_linear_operator_matmul_hints_false(self):
     matrix = array_ops.placeholder(dtypes.float32)
     operator1 = LinearOperatorMatmulSolve(
@@ -266,6 +274,7 @@ class LinearOperatorTest(test.TestCase):
     self.assertEqual(None, operator_matmul.is_self_adjoint)
     self.assertEqual(None, operator_matmul.is_positive_definite)
 
+  @test_util.run_deprecated_v1
   def test_linear_operator_matmul_hint_infer_square(self):
     matrix1 = array_ops.placeholder(shape=[2, 3], dtype=dtypes.float32)
     matrix2 = array_ops.placeholder(shape=[3, 2], dtype=dtypes.float32)

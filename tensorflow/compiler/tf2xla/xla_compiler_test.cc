@@ -650,7 +650,7 @@ TEST_F(XlaCompilerTest, CanPassTensorArraysToAndFromComputation) {
   args[0].initialized = true;
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({});
-  args[0].tensor_array_size = 2;
+  args[0].max_array_size = 2;
   args[0].tensor_array_gradients = {"grad2"};
 
   // Compiles the graph.
@@ -709,7 +709,7 @@ TEST_F(XlaCompilerTest, UnwrittenTensorArrayGradientsAreNotComputationOutputs) {
   args[0].initialized = true;
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({});
-  args[0].tensor_array_size = 2;
+  args[0].max_array_size = 2;
   args[0].tensor_array_gradients = {"grad1"};
 
   // Compiles the graph.
@@ -741,7 +741,7 @@ TEST_F(XlaCompilerTest, NewTensorArrayGradientsAreComputationOutputs) {
   args[0].initialized = true;
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({});
-  args[0].tensor_array_size = 2;
+  args[0].max_array_size = 2;
   args[0].tensor_array_gradients = {"grad1"};
 
   // Compiles the graph.

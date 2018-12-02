@@ -30,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -102,7 +103,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         self.assertAllEqual(expected_features[k], actual_features[k])
 
     with self.assertRaises(errors.OutOfRangeError):
-      sess.run(nxt)
+      self.evaluate(nxt)
 
   def _test_dataset(self,
                     inputs,
@@ -127,6 +128,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         self._verify_output(sess, dataset, batch_size, num_epochs, label_name,
                             expected_output, expected_keys)
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset(self):
     """Tests making a CSV dataset with keys and defaults provided."""
     record_defaults = [
@@ -158,6 +160,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         column_defaults=record_defaults,
     )
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withBatchSizeAndEpochs(self):
     """Tests making a CSV dataset with keys and defaults provided."""
     record_defaults = [
@@ -189,6 +192,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         column_defaults=record_defaults,
     )
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withCompressionType(self):
     """Tests `compression_type` argument."""
     record_defaults = [
@@ -257,6 +261,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           label_name="not_a_real_label",
           column_names=column_names)
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withNoLabel(self):
     """Tests making a CSV dataset with no label provided."""
     record_defaults = [
@@ -286,6 +291,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         column_defaults=record_defaults,
     )
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withNoHeader(self):
     """Tests that datasets can be created from CSV files with no header line.
     """
@@ -347,6 +353,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         column_defaults=record_defaults,
     )
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withNoColNames(self):
     """Tests that datasets can be created when column names are not specified.
 
@@ -451,6 +458,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         header=True,
     )
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withSelectCols(self):
     record_defaults = [
         constant_op.constant([], dtypes.int32),
@@ -557,6 +565,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           label_name=None,
           select_columns=["invalid_col_name"])
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withShuffle(self):
     record_defaults = [
         constant_op.constant([], dtypes.int32),
@@ -607,8 +616,8 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           outputs1 = dataset1.make_one_shot_iterator().get_next()
           outputs2 = dataset2.make_one_shot_iterator().get_next()
           for _ in range(total_records // batch_size):
-            batch1 = nest.flatten(sess.run(outputs1))
-            batch2 = nest.flatten(sess.run(outputs2))
+            batch1 = nest.flatten(self.evaluate(outputs1))
+            batch2 = nest.flatten(self.evaluate(outputs2))
             for i in range(len(batch1)):
               self.assertAllEqual(batch1[i], batch2[i])
 
@@ -639,8 +648,8 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           outputs2 = dataset2.make_one_shot_iterator().get_next()
           all_equal = False
           for _ in range(total_records // batch_size):
-            batch1 = nest.flatten(sess.run(outputs1))
-            batch2 = nest.flatten(sess.run(outputs2))
+            batch1 = nest.flatten(self.evaluate(outputs1))
+            batch2 = nest.flatten(self.evaluate(outputs2))
             for i in range(len(batch1)):
               all_equal = all_equal and np.array_equal(batch1[i], batch2[i])
           self.assertFalse(all_equal)

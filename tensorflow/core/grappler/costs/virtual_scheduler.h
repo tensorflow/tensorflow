@@ -317,7 +317,8 @@ class VirtualScheduler {
   void MaybeUpdateInputOutput(const NodeDef* node);
   NodeState& GetNodeStateOrCreateIt(const NodeDef* node);
   std::pair<const NodeDef*, const NodeDef*> CreateSendRecv(
-      const NodeDef* from, const NodeDef* to, const string& input_name);
+      const NodeDef* from, const NodeDef* to, const NodeDef* input_node,
+      const string& input_name);
   string DeviceName(const NodeDef* node) const;
   string SanitizedDeviceName(const NodeDef* node) const;
   string ChannelDeviceName(const NodeDef* from, const NodeDef* to) const;

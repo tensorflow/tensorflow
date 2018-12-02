@@ -26,6 +26,7 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
@@ -98,6 +99,7 @@ class MakeBatchedFeaturesDatasetTest(
             with self.assertRaises(errors.OutOfRangeError):
               self._next_actual_batch(sess)
 
+  @test_util.run_deprecated_v1
   def testReadWithEquivalentDataset(self):
     features = {
         "file": parsing_ops.FixedLenFeature([], dtypes.int64),
@@ -119,7 +121,7 @@ class MakeBatchedFeaturesDatasetTest(
         self.assertAllEqual(file_batch, actual_batch["file"])
         self.assertAllEqual(record_batch, actual_batch["record"])
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testReadWithFusedShuffleRepeatDataset(self):
     num_epochs = 5

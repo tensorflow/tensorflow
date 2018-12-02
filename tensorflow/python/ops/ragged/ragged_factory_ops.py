@@ -676,3 +676,33 @@ def from_nested_row_splits(inner_values, nested_row_splits, name=None):
     for splits in reversed(nested_row_splits):
       result = from_row_splits(result, splits)
     return result
+
+
+def from_nested_row_lengths(inner_values, nested_row_lengths, name=None):
+  """Creates a `RaggedTensor` from a nested list of `row_lengths` tensors.
+
+  Equivalent to:
+
+  ```python
+  result = inner_values
+  for row_lengths in reversed(nested_row_lengths):
+    result = from_row_lengths(result, row_lengths)
+  ```
+
+  Args:
+    inner_values: A potentially ragged tensor.
+    nested_row_lengths: A list of 1-D int64 tensors.  The `i`th tensor is used
+      as the `row_lengths` for the `i`th ragged dimension.
+    name: A name prefix for the RaggedTensor (optional).
+
+  Returns:
+    A `RaggedTensor` (or `inner_values` if `nested_row_lengths` is empty).
+  """
+  if isinstance(nested_row_lengths, ops.Tensor):
+    raise TypeError('nested_row_lengths must be a list of Tensors')
+  with ops.name_scope(name, 'RaggedFromNestedRowlengths',
+                      [inner_values] + list(nested_row_lengths)):
+    result = inner_values
+    for lengths in reversed(nested_row_lengths):
+      result = from_row_lengths(result, lengths)
+    return result

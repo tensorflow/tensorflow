@@ -55,7 +55,7 @@ TEST(StringUtil, TestStringUtil) {
   new_shape->data[0] = 2;
   new_shape->data[1] = 1;
   buf0.WriteToTensor(t0, new_shape);
-  buf1.WriteToTensor(t1);
+  buf1.WriteToTensorAsVector(t1);
 
   // Check tensor shapes.
   EXPECT_EQ(t0->dims->size, 2);
@@ -99,7 +99,7 @@ TEST(StringUtil, TestAddJoinedString) {
 
   DynamicBuffer buf;
   buf.AddJoinedString({{s0, 3}, {s1, 4}, {s2, 0}, {s3, 3}}, ' ');
-  buf.WriteToTensor(t0);
+  buf.WriteToTensorAsVector(t0);
 
   ASSERT_EQ(GetStringCount(t0), 1);
   StringRef str_ref;
@@ -115,10 +115,41 @@ TEST(StringUtil, TestEmptyList) {
   t0->type = kTfLiteString;
   t0->allocation_type = kTfLiteDynamic;
   DynamicBuffer buf;
-  buf.WriteToTensor(t0);
+  buf.WriteToTensorAsVector(t0);
 
   ASSERT_EQ(GetStringCount(t0), 0);
   ASSERT_EQ(t0->bytes, 8);
+}
+
+TEST(StringUtil, TestShapes) {
+  Interpreter interpreter;
+  interpreter.AddTensors(1);
+  TfLiteTensor* t0 = interpreter.tensor(0);
+  t0->type = kTfLiteString;
+  t0->allocation_type = kTfLiteDynamic;
+  t0->dims = TfLiteIntArrayCreate(2);
+  t0->dims->data[0] = 2;
+  t0->dims->data[1] = 1;
+
+  // Not setting a new shape: number of strings must match
+  DynamicBuffer buf;
+  buf.AddString("ABC", 3);
+  buf.AddString("X", 1);
+  buf.WriteToTensor(t0, nullptr);
+
+  ASSERT_EQ(t0->dims->size, 2);
+  EXPECT_EQ(t0->dims->data[0], 2);
+  EXPECT_EQ(t0->dims->data[1], 1);
+
+  auto new_shape = TfLiteIntArrayCreate(2);
+  new_shape->data[0] = 1;
+  new_shape->data[1] = 2;
+
+  buf.WriteToTensor(t0, new_shape);
+
+  ASSERT_EQ(t0->dims->size, 2);
+  EXPECT_EQ(t0->dims->data[0], 1);
+  EXPECT_EQ(t0->dims->data[1], 2);
 }
 
 }  // namespace tflite

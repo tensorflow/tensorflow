@@ -18,8 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
+from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
@@ -30,8 +34,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
-from tensorflow.python.training import device_util
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
 
 _LOCAL_CPU = "/device:CPU:0"
@@ -197,7 +199,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
 
   def _initialize_local(self, num_gpus_per_worker):
     """Initialize internal devices for local training."""
-    self._worker_device = "/job:localhost"
+    self._worker_device = device_util.canonicalize("/device:CPU:0")
     # Define compute devices which is a list of device strings and one for each
     # replica. When there are GPUs, replicate operations on these GPUs.
     # Otherwise, place operations on CPU.
@@ -234,6 +236,11 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     """Distributes the dataset to each local GPU."""
     return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._compute_devices, True)
+
+  def _make_dataset_iterator(self, dataset):
+    worker_device_pairs = [(self._worker_device, self._compute_devices)]
+    return values.DatasetIterator(dataset, worker_device_pairs,
+                                  self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -462,21 +469,27 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
       self._initialize_multi_worker(self._num_gpus_per_worker,
                                     self._cluster_spec, task_type, task_id)
 
-    if not session_config or not self._cluster_spec:
-      return
+    if session_config:
+      session_config.CopyFrom(self._update_config_proto(session_config))
 
-    session_config.isolate_session_state = False
+  def _update_config_proto(self, config_proto):
+    updated_config = copy.deepcopy(config_proto)
+    if not self._cluster_spec:
+      updated_config.isolate_session_state = True
+      return updated_config
 
-    assert self._cluster_spec
+    updated_config.isolate_session_state = False
+
     assert self._task_type
     assert self._task_id is not None
 
     # The device filters prevent communication between workers.
     if self._task_type not in ["chief", "worker"]:
-      return
-    del session_config.device_filters[:]
-    session_config.device_filters.extend(
+      return updated_config
+    del updated_config.device_filters[:]
+    updated_config.device_filters.extend(
         ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
+    return updated_config
 
   @property
   def _num_replicas_in_sync(self):
@@ -510,3 +523,8 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
   @property
   def should_save_summary(self):
     return self._is_chief
+
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return False

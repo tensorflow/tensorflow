@@ -79,7 +79,6 @@ from tensorflow.python.ops.summary_ops_v2 import image
 from tensorflow.python.ops.summary_ops_v2 import import_event
 from tensorflow.python.ops.summary_ops_v2 import initialize
 from tensorflow.python.ops.summary_ops_v2 import never_record_summaries
-from tensorflow.python.ops.summary_ops_v2 import record_summaries
 from tensorflow.python.ops.summary_ops_v2 import record_summaries_every_n_global_steps
 from tensorflow.python.ops.summary_ops_v2 import scalar
 from tensorflow.python.ops.summary_ops_v2 import should_record_summaries

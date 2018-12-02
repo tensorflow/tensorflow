@@ -24,6 +24,7 @@ import abc
 
 import six
 
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -37,7 +38,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import distribution_strategy_context as distribute_ctx
 from tensorflow.python.training import slot_creator
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -201,8 +201,7 @@ def _get_processor(v):
       return _TensorProcessor(v)
     else:
       return _DenseResourceVariableProcessor(v)
-  if isinstance(
-      v, resource_variable_ops.ResourceVariable) and not v._in_graph_mode:  # pylint: disable=protected-access
+  if resource_variable_ops.is_resource_variable(v) and not v._in_graph_mode:  # pylint: disable=protected-access
     # True if and only if `v` was initialized eagerly.
     return _DenseResourceVariableProcessor(v)
   if v.op.type == "VarHandleOp":
@@ -214,7 +213,7 @@ def _get_processor(v):
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
-@tf_export("train.Optimizer")
+@tf_export(v1=["train.Optimizer"])
 class Optimizer(
     # Optimizers inherit from CheckpointableBase rather than Checkpointable
     # since they do most of their dependency management themselves (slot
@@ -660,7 +659,7 @@ class Optimizer(
       replicas. If `global_step` was not None, that operation also
       increments `global_step`
     """
-    reduced_grads = distribution.batch_reduce(
+    reduced_grads = distribution.extended.batch_reduce_to(
         ds_reduce_util.ReduceOp.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
@@ -682,7 +681,13 @@ class Optimizer(
             "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       p = _get_processor(v)
 
-      scope_name = "" if context.executing_eagerly() else v.op.name
+      if context.executing_eagerly() or (
+          resource_variable_ops.is_resource_variable(v) and
+          not v._in_graph_mode):  # pylint: disable=protected-access
+        scope_name = v.name.split(":")[0]
+      else:
+        scope_name = v.op.name
+
       # device_policy is set because non-mirrored tensors will be read in
       # `update_op`. `_resource_apply_dense`, `lr_t`, `beta1_t` and `beta2_t`
       # is an example.
@@ -695,21 +700,23 @@ class Optimizer(
       update_ops = [
           op
           for grad, var in grads_and_vars
-          for op in distribution.update(var, update, grad, grouped=False)
+          for op in distribution.extended.update(
+              var, update, args=(grad,), group=False)
       ]
 
       def finish(self, update_ops):
         return self._finish(update_ops, "update")
 
-      non_slot_devices = distribution.non_slot_devices(var_list)
-      finish_updates = distribution.update_non_slot(
-          non_slot_devices, finish, self, update_ops, grouped=False)
+      non_slot_devices = distribution.extended.non_slot_devices(var_list)
+      finish_updates = distribution.extended.update_non_slot(
+          non_slot_devices, finish, args=(self, update_ops), group=False)
       if global_step is None:
         apply_updates = distribution.group(finish_updates, name=name)
       else:
         with ops.control_dependencies(finish_updates):
-          apply_updates = distribution.update(
-              global_step, state_ops.assign_add, 1, name=name)
+          apply_updates = distribution.extended.update(
+              global_step, state_ops.assign_add, args=(1,),
+              kwargs={"name": name})
 
       if not context.executing_eagerly():
         if isinstance(apply_updates, ops.Tensor):

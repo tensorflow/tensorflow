@@ -147,6 +147,24 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     out = a_times_b(pair({'a': t}, {'b': t}))
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
+  def testNestedOutputsGraphMode(self):
+    matmul = def_function.function(math_ops.matmul)
+
+    pair = collections.namedtuple('pair', ['a', 'b'])
+
+    # TODO(b/120222989) remove autograph=False.
+    @def_function.function(autograph=False)
+    def pairs_mul(pair_a, pair_b):
+      return pair(matmul(pair_a.a, pair_b.a), matmul(pair_a.b, pair_b.b))
+
+    a = constant_op.constant([[1.0, 2.0], [1.0, 2.0]])
+    b = constant_op.constant([[3.0, 4.0], [3.0, 4.0]])
+
+    out = pairs_mul(pair(a, b), pair(b, a))
+    expected = pair(math_ops.matmul(a, b).numpy(),
+                    math_ops.matmul(b, a).numpy())
+    self.assertAllClose(out, expected)
+
   def testGraphEagerIsolation(self):
 
     @function.defun
@@ -1271,8 +1289,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
-    with self.assertRaisesRegexp(ValueError,
-                                 'Structure of Python function inputs.*'):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Arguments and signature arguments do not match.*'):
       defined(array_ops.ones([2]), array_ops.ones([2]))
     with self.assertRaisesRegexp(ValueError,
                                  'Structure of Python function inputs.*'):
@@ -1283,6 +1302,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
 
+  @test_util.run_deprecated_v1
   def testInputSignatureForFunctionWithNonTensorInputsNotAllowed(self):
 
     def foo(a, training=True):

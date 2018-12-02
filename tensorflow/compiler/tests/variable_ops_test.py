@@ -77,7 +77,7 @@ class VariableOpsTest(xla_test.XLATestCase):
         sess.run(variables.variables_initializer([v]))
         x = v.sparse_read(2)
         self.assertAllClose(
-            np.array([8j, 9, 10, 11]).astype(dtype), sess.run(x))
+            np.array([8j, 9, 10, 11]).astype(dtype), self.evaluate(x))
 
   def testSparseRead1DIndices(self):
     for dtype in self.numeric_types:
@@ -89,7 +89,7 @@ class VariableOpsTest(xla_test.XLATestCase):
         x = v.sparse_read([2, 1])
         self.assertAllClose(
             np.array([[8, 9, 10, 11], [4, 5, 6j, 7]]).astype(dtype),
-            sess.run(x))
+            self.evaluate(x))
 
   def testSparseRead2DIndices(self):
     for dtype in self.numeric_types:
@@ -102,7 +102,7 @@ class VariableOpsTest(xla_test.XLATestCase):
         self.assertAllClose(
             np.array([[[8, 9, 10, 11], [4, 5, 6, 7]],
                       [[0, 1, 2j, 3], [8, 9, 10, 11]]]).astype(dtype),
-            sess.run(x))
+            self.evaluate(x))
 
   def testSparseRead2DIndices3DTensor(self):
     for dtype in self.numeric_types:
@@ -115,9 +115,9 @@ class VariableOpsTest(xla_test.XLATestCase):
         x = v.sparse_read([[2, 1], [3, 0]])
         self.assertAllClose(
             np.array(
-                [[[[20, 21, 22], [23, 24j, 25]], [[10, 11, 12], [13, 14, 15]]
-                 ], [[[30, 31, 32], [33, 34, 35]], [[0, 1, 2], [3, 4, 5]]]
-                ],).astype(dtype), sess.run(x))
+                [[[[20, 21, 22], [23, 24j, 25]], [[10, 11, 12], [13, 14, 15]]],
+                 [[[30, 31, 32], [33, 34, 35]], [[0, 1, 2], [3, 4, 5]]]
+                ],).astype(dtype), self.evaluate(x))
 
   def testShape(self):
     for dtype in self.numeric_types:

@@ -40,7 +40,7 @@ class FunctionTest(xla_test.XLATestCase):
     bval = np.array([5, 6, 7, 8]).reshape([2, 2]).astype(np.float32)
     expected = APlus2B(aval, bval)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
 
       @function.Defun(dtypes.float32, dtypes.float32)
       def Foo(a, b):
@@ -66,7 +66,7 @@ class FunctionTest(xla_test.XLATestCase):
     bval = np.array([4, 3, 2, 1]).reshape([2, 2]).astype(np.float32)
     expected = APlus2B(aval, bval)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
 
       @function.Defun(dtypes.float32, dtypes.float32)
       def Foo(a, b):
@@ -90,7 +90,7 @@ class FunctionTest(xla_test.XLATestCase):
     bval = np.array([5, 6, 7, 8]).reshape([2, 2]).astype(np.float32)
     expected = Func(aval, bval)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
 
       @function.Defun(dtypes.float32, dtypes.float32)
       def Foo(a, b):

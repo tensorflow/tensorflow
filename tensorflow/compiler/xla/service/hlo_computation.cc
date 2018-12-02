@@ -499,7 +499,7 @@ HloComputationProto HloComputation::ToProto() const {
     proto.add_instructions()->Swap(&instruction_proto);
   }
   proto.set_root_id(root_instruction()->unique_id());
-  *proto.mutable_program_shape() = ComputeProgramShape();
+  *proto.mutable_program_shape() = ComputeProgramShape().ToProto();
   return proto;
 }
 
@@ -710,6 +710,8 @@ bool HloComputation::operator==(const HloComputation& other) const {
       };
   return eq(root_instruction(), other.root_instruction());
 }
+
+uint64 HloComputation::Hash() const { return root_instruction()->Hash(); }
 
 Status HloComputation::ReplaceWithNewInstruction(
     HloInstruction* old_instruction,

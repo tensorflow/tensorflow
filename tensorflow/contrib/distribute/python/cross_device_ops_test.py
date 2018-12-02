@@ -29,6 +29,7 @@ from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
@@ -37,7 +38,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import device_util
 
 
 def _make_per_replica(values, devices, regroup=False):
@@ -119,7 +119,7 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
               sess.run(list(left._index.values())), list(right._index.values()))
 
   def _testReductionAndBroadcast(self, cross_device_ops, distribution):
-    devices = distribution.worker_devices
+    devices = distribution.extended.worker_devices
 
     values = [constant_op.constant(float(d)) for d in range(len(devices))]
     per_replica = _make_per_replica(values, devices)
@@ -132,11 +132,9 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
     destination_mirrored = _fake_mirrored(1., devices)
     destination_different = _fake_mirrored(1., _cpu_device)
     destination_str = _cpu_device
-    destination_list = devices
 
     all_destinations = [
         destination_mirrored, destination_different, destination_str,
-        destination_list
     ]
 
     # test reduce()
@@ -320,10 +318,10 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
 
     if batch_reduce:
       result = cross_device_ops_instance.batch_reduce(
-          reduce_op, [(per_replica, devices)])
+          reduce_op, [(per_replica, per_replica)])
     else:
       result = cross_device_ops_instance.reduce(
-          reduce_op, per_replica, devices)
+          reduce_op, per_replica, per_replica)
 
     total_indices_with_dups = [1, 1, 3]
     total_indices_without_dups = [1, 3]
@@ -381,27 +379,29 @@ class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
       distribution=[
           combinations.NamedDistribution(
               "MirroredCPU",
-              lambda: mirrored_strategy.MirroredStrategy(num_gpus=0),
+              lambda: mirrored_strategy.MirroredStrategy(num_gpus_per_worker=0),
               required_gpus=0),
           combinations.NamedDistribution(
               "Mirrored1GPU",
-              lambda: mirrored_strategy.MirroredStrategy(num_gpus=1),
+              lambda: mirrored_strategy.MirroredStrategy(num_gpus_per_worker=1),
               required_gpus=1),
           combinations.NamedDistribution(
               "Mirrored2GPUs",
-              lambda: mirrored_strategy.MirroredStrategy(num_gpus=2),
+              lambda: mirrored_strategy.MirroredStrategy(num_gpus_per_worker=2),
               required_gpus=2),
+          # pylint: disable=g-long-lambda
           combinations.NamedDistribution(
               "CoreMirroredCPU",
-              lambda: mirrored_strategy.CoreMirroredStrategy(num_gpus=0),
+              lambda: mirrored_strategy.CoreMirroredStrategy(["/device:CPU:0"]),
               required_gpus=0),
           combinations.NamedDistribution(
               "CoreMirrored1GPU",
-              lambda: mirrored_strategy.CoreMirroredStrategy(num_gpus=1),
+              lambda: mirrored_strategy.CoreMirroredStrategy(["/device:GPU:0"]),
               required_gpus=1),
           combinations.NamedDistribution(
               "CoreMirrored2GPUs",
-              lambda: mirrored_strategy.CoreMirroredStrategy(num_gpus=2),
+              lambda: mirrored_strategy.CoreMirroredStrategy(
+                  ["/device:GPU:0", "/device:GPU:1"]),
               required_gpus=2),
       ],
       mode=["graph"])
@@ -506,11 +506,9 @@ class MultiWorkerCollectiveAllReduceTest(
       destination_mirrored = _fake_mirrored(1., devices)
       destination_different = _fake_mirrored(1., _cpu_device)
       destination_str = _cpu_device
-      destination_list = devices
 
       all_destinations = [
-          destination_different, destination_mirrored, destination_str,
-          destination_list
+          destination_different, destination_mirrored, destination_str
       ]
 
       # test reduce()

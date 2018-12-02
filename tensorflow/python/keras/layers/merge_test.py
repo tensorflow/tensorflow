@@ -207,6 +207,7 @@ class MergeLayersGraphOnlyTest(test.TestCase):
       mask = layer.output_mask
       self.assertListEqual(mask.get_shape().as_list(), [None, 4])
 
+  @tf_test_util.run_deprecated_v1
   def test_merge_add_dynamic_shape(self):
     with self.cached_session():
       i1 = array_ops.placeholder(shape=(4, None), dtype='float32')

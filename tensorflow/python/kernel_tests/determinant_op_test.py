@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
@@ -62,7 +63,7 @@ class DeterminantOpTest(test.TestCase):
         atol=5e-5)
 
   def _compareDeterminant(self, matrix_x):
-    with self.cached_session(use_gpu=True):
+    with test_util.use_gpu():
       self._compareDeterminantBase(matrix_x,
                                    linalg_ops.matrix_determinant(matrix_x))
       self._compareLogDeterminantBase(
@@ -155,7 +156,7 @@ class DeterminantOpTest(test.TestCase):
       matrix2 = random_ops.random_normal([5, 5], seed=42)
       det1 = linalg_ops.matrix_determinant(matrix1)
       det2 = linalg_ops.matrix_determinant(matrix2)
-      det1_val, det2_val = sess.run([det1, det2])
+      det1_val, det2_val = self.evaluate([det1, det2])
       self.assertEqual(det1_val, det2_val)
 
 

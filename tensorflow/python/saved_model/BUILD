@@ -83,6 +83,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
+        ":signature_def_utils",
         ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -114,6 +115,7 @@ py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

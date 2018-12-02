@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Register a factory that provides CPU devices.
-#include "tensorflow/core/common_runtime/threadpool_device.h"
-
 #include <vector>
+
+// Register a factory that provides CPU devices.
+#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/process_state.h"
+#include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/public/session_options.h"
@@ -29,7 +30,7 @@ namespace tensorflow {
 class ThreadPoolDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override {
+                       std::vector<std::unique_ptr<Device>>* devices) override {
     int num_numa_nodes = port::NUMANumNodes();
     int n = 1;
     auto iter = options.config.device_count().find("CPU");
@@ -38,7 +39,7 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
     }
     for (int i = 0; i < n; i++) {
       string name = strings::StrCat(name_prefix, "/device:CPU:", i);
-      ThreadPoolDevice* tpd = nullptr;
+      std::unique_ptr<ThreadPoolDevice> tpd;
       if (options.config.experimental().use_numa_affinity()) {
         int numa_node = i % num_numa_nodes;
         if (numa_node != i) {
@@ -49,15 +50,15 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
         }
         DeviceLocality dev_locality;
         dev_locality.set_numa_node(numa_node);
-        tpd = new ThreadPoolDevice(
+        tpd = absl::make_unique<ThreadPoolDevice>(
             options, name, Bytes(256 << 20), dev_locality,
             ProcessState::singleton()->GetCPUAllocator(numa_node));
       } else {
-        tpd = new ThreadPoolDevice(
+        tpd = absl::make_unique<ThreadPoolDevice>(
             options, name, Bytes(256 << 20), DeviceLocality(),
             ProcessState::singleton()->GetCPUAllocator(port::kNUMANoAffinity));
       }
-      devices->push_back(tpd);
+      devices->push_back(std::move(tpd));
     }
 
     return Status::OK();

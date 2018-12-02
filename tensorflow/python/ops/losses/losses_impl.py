@@ -33,7 +33,7 @@ from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("losses.Reduction", v1=[])
+@tf_export("losses.Reduction", "keras.losses.Reduction", v1=[])
 class ReductionV2(object):
   """Types of loss reduction.
 
@@ -44,8 +44,8 @@ class ReductionV2(object):
   """
 
   NONE = "none"
-  SUM = "weighted_sum"
-  SUM_OVER_BATCH_SIZE = "weighted_sum_over_batch_size"
+  SUM = "sum"
+  SUM_OVER_BATCH_SIZE = "sum_over_batch_size"
 
   @classmethod
   def all(cls):
@@ -58,7 +58,7 @@ class ReductionV2(object):
 
 
 @tf_export(v1=["losses.Reduction"])
-class Reduction(ReductionV2):
+class Reduction(object):
   """Types of loss reduction.
 
   Contains the following values:
@@ -71,6 +71,9 @@ class Reduction(ReductionV2):
   `SUM_BY_NONZERO_WEIGHTS`: Same as `SUM_OVER_NONZERO_WEIGHTS`.
   """
 
+  NONE = "none"
+  SUM = "weighted_sum"
+  SUM_OVER_BATCH_SIZE = "weighted_sum_over_batch_size"
   MEAN = "weighted_mean"
   SUM_BY_NONZERO_WEIGHTS = "weighted_sum_by_nonzero_weights"
   SUM_OVER_NONZERO_WEIGHTS = SUM_BY_NONZERO_WEIGHTS
@@ -154,7 +157,7 @@ def _num_elements(losses):
     return math_ops.cast(array_ops.size(losses, name=scope), dtype=losses.dtype)
 
 
-@tf_export("losses.compute_weighted_loss")
+@tf_export(v1=["losses.compute_weighted_loss"])
 def compute_weighted_loss(
     losses, weights=1.0, scope=None, loss_collection=ops.GraphKeys.LOSSES,
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -224,7 +227,7 @@ def compute_weighted_loss(
       return loss
 
 
-@tf_export("losses.absolute_difference")
+@tf_export(v1=["losses.absolute_difference"])
 def absolute_difference(
     labels, predictions, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -277,7 +280,7 @@ def absolute_difference(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
-@tf_export("losses.cosine_distance")
+@tf_export(v1=["losses.cosine_distance"])
 @deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def cosine_distance(
     labels, predictions, axis=None, weights=1.0, scope=None,
@@ -333,7 +336,7 @@ def cosine_distance(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
-@tf_export("losses.hinge_loss")
+@tf_export(v1=["losses.hinge_loss"])
 def hinge_loss(labels, logits, weights=1.0, scope=None,
                loss_collection=ops.GraphKeys.LOSSES,
                reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -383,7 +386,7 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
-@tf_export("losses.huber_loss")
+@tf_export(v1=["losses.huber_loss"])
 def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
                loss_collection=ops.GraphKeys.LOSSES,
                reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -461,7 +464,7 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
-@tf_export("losses.log_loss")
+@tf_export(v1=["losses.log_loss"])
 def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
              loss_collection=ops.GraphKeys.LOSSES,
              reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -518,7 +521,7 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
 
 
 # TODO(b/37208492): Add reduction arg.
-@tf_export("losses.mean_pairwise_squared_error")
+@tf_export(v1=["losses.mean_pairwise_squared_error"])
 def mean_pairwise_squared_error(
     labels, predictions, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES):
@@ -583,12 +586,10 @@ def mean_pairwise_squared_error(
 
       diffs = math_ops.subtract(predictions, labels)
 
-      reduction_indices = math_ops.range(1, array_ops.rank(diffs))
+      axis = math_ops.range(1, array_ops.rank(diffs))
 
       sum_squares_diff_per_batch = math_ops.reduce_sum(
-          math_ops.square(diffs),
-          reduction_indices=reduction_indices,
-          keepdims=True)
+          math_ops.square(diffs), axis=axis, keepdims=True)
       num_present_per_batch = _num_present(diffs, weights, per_batch=True)
 
       term1 = 2.0 * math_ops.div_no_nan(
@@ -596,8 +597,7 @@ def mean_pairwise_squared_error(
           math_ops.maximum(num_present_per_batch - 1, 0),
           name="value")
 
-      sum_diff = math_ops.reduce_sum(
-          diffs, reduction_indices=reduction_indices, keepdims=True)
+      sum_diff = math_ops.reduce_sum(diffs, axis=axis, keepdims=True)
       term2 = 2.0 * math_ops.div_no_nan(
           math_ops.square(sum_diff),
           math_ops.maximum(
@@ -617,7 +617,7 @@ def mean_pairwise_squared_error(
       return mean_loss
 
 
-@tf_export("losses.mean_squared_error")
+@tf_export(v1=["losses.mean_squared_error"])
 def mean_squared_error(
     labels, predictions, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -670,7 +670,7 @@ def mean_squared_error(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
-@tf_export("losses.sigmoid_cross_entropy")
+@tf_export(v1=["losses.sigmoid_cross_entropy"])
 def sigmoid_cross_entropy(
     multi_class_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -734,7 +734,7 @@ def sigmoid_cross_entropy(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
-@tf_export("losses.softmax_cross_entropy")
+@tf_export(v1=["losses.softmax_cross_entropy"])
 def softmax_cross_entropy(
     onehot_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -856,7 +856,7 @@ def _remove_squeezable_dimensions(
   return labels, predictions, weights
 
 
-@tf_export("losses.sparse_softmax_cross_entropy")
+@tf_export(v1=["losses.sparse_softmax_cross_entropy"])
 def sparse_softmax_cross_entropy(
     labels, logits, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,

@@ -70,8 +70,7 @@ def lbeta(x, name=None):
     x = ops.convert_to_tensor(x, name='x')
 
     # Note reduce_sum([]) = 0.
-    log_prod_gamma_x = math_ops.reduce_sum(
-        math_ops.lgamma(x), reduction_indices=[-1])
+    log_prod_gamma_x = math_ops.reduce_sum(math_ops.lgamma(x), axis=[-1])
 
     # Note lgamma(0) = infinity, so if x = []
     # log_gamma_sum_x = lgamma(0) = infinity, and
@@ -264,11 +263,11 @@ def einsum(equation, *inputs, **kwargs):
 
     missing_indices = set(temp_axis_labels) - set(output_axis_labels)
     if missing_indices:
-      reduction_indices = [
+      axis = [
           i for i, a in enumerate(temp_axis_labels)
           if a not in output_axis_labels
       ]
-      temp = math_ops.reduce_sum(temp, reduction_indices=reduction_indices)
+      temp = math_ops.reduce_sum(temp, axis=axis)
       temp_axis_labels = ''.join(
           a for a in temp_axis_labels if a in output_axis_labels)
 

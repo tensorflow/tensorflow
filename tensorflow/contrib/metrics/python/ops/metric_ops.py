@@ -3416,7 +3416,7 @@ def streaming_mean_cosine_distance(predictions,
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(
-      radial_diffs, reduction_indices=[
+      radial_diffs, axis=[
           dim,
       ], keepdims=True)
   mean_distance, update_op = streaming_mean(radial_diffs, weights, None, None,

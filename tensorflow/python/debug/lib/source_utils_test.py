@@ -65,6 +65,7 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         source_utils.guess_is_tensorflow_py_library(source_utils.__file__))
 
+  @test_util.run_deprecated_v1
   def testFileInPythonKernelsPathReturnsTrue(self):
     x = constant_op.constant(42.0, name="x")
     self.assertTrue(

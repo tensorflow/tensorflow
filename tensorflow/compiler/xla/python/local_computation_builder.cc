@@ -323,42 +323,41 @@ StatusOr<LocalShapedBuffer*> CompiledLocalComputation::Execute(
                                         GetReplicaCount());
 
     for (int replica = 0; replica < GetReplicaCount(); ++replica) {
-      pool.Schedule(
-          [this, client, replica, &argument_handles, &results] {
-            StatusOr<int> device_ordinal_status =
-                client->ReplicaNumberToDeviceOrdinal(replica);
-            if (!device_ordinal_status.ok()) {
-              results[replica] = device_ordinal_status.status();
-              return;
-            }
-            const int device_ordinal = device_ordinal_status.ValueOrDie();
-            VLOG(3) << "Replica " << replica
-                    << " mapped to device ordinal for execution: "
-                    << device_ordinal;
+      pool.Schedule([this, client, replica, &argument_handles, &results] {
+        StatusOr<int> device_ordinal_status =
+            client->ReplicaNumberToDeviceOrdinal(replica);
+        if (!device_ordinal_status.ok()) {
+          results[replica] = device_ordinal_status.status();
+          return;
+        }
+        const int device_ordinal = device_ordinal_status.ValueOrDie();
+        VLOG(3) << "Replica " << replica
+                << " mapped to device ordinal for execution: "
+                << device_ordinal;
 
-            std::vector<const ShapedBuffer*> argument_buffers;
-            argument_buffers.reserve(argument_handles.size());
-            for (auto& handle : argument_handles) {
-              argument_buffers.push_back(handle->shaped_buffer());
-            }
+        std::vector<const ShapedBuffer*> argument_buffers;
+        argument_buffers.reserve(argument_handles.size());
+        for (auto& handle : argument_handles) {
+          argument_buffers.push_back(handle->shaped_buffer());
+        }
 
-            DeviceAssignment device_assignment =
-                client->backend()
-                    .computation_placer()
-                    ->AssignDevices(GetReplicaCount(), /*computation_count=*/1)
-                    .ConsumeValueOrDie();
+        DeviceAssignment device_assignment =
+            client->backend()
+                .computation_placer()
+                ->AssignDevices(GetReplicaCount(), /*computation_count=*/1)
+                .ConsumeValueOrDie();
 
-            ExecutableRunOptions options;
-            options.set_device_ordinal(device_ordinal);
-            options.set_allocator(client->backend().memory_allocator());
-            options.set_intra_op_thread_pool(
-                client->backend().eigen_intra_op_thread_pool_device());
-            options.set_device_assignment(&device_assignment);
-            StatusOr<ScopedShapedBuffer> result_buffer_status =
-                executable_->Run(argument_buffers, options);
+        ExecutableRunOptions options;
+        options.set_device_ordinal(device_ordinal);
+        options.set_allocator(client->backend().memory_allocator());
+        options.set_intra_op_thread_pool(
+            client->backend().eigen_intra_op_thread_pool_device());
+        options.set_device_assignment(&device_assignment);
+        StatusOr<ScopedShapedBuffer> result_buffer_status =
+            executable_->Run(argument_buffers, options);
 
-            results[replica] = std::move(result_buffer_status);
-          });
+        results[replica] = std::move(result_buffer_status);
+      });
     }
   }
 
@@ -487,12 +486,13 @@ StatusOr<CompiledXrtComputation*> LocalComputation::CompileForXrt(
 
   xrt::XLAComputation c;
   auto config = c.mutable_config();
-  auto shapes = config->mutable_program_shape();
+  ProgramShape shapes;
   for (auto& shape : argument_shapes) {
-    *shapes->add_parameters() = shape;
+    *shapes.add_parameters() = shape;
   }
-  TF_ASSIGN_OR_RETURN(*shapes->mutable_result(), GetReturnValueShape());
-  LayoutUtil::SetToDefaultLayout(shapes);
+  TF_ASSIGN_OR_RETURN(*shapes.mutable_result(), GetReturnValueShape());
+  LayoutUtil::SetToDefaultLayout(&shapes);
+  *config->mutable_program_shape() = shapes.ToProto();
   auto snapshot = computation().Snapshot().ValueOrDie();
   *c.mutable_hlo_snapshot() = *snapshot;
 
@@ -584,9 +584,9 @@ LocalOp LocalComputationBuilder::Broadcast(
 }
 
 LocalOp LocalComputationBuilder::BroadcastInDim(
-    const LocalOp& operand, const Shape& shape,
+    const LocalOp& operand, absl::Span<const int64> out_dim_sizes,
     absl::Span<const int64> broadcast_dimensions) {
-  return xla::BroadcastInDim(operand.op(), shape, broadcast_dimensions);
+  return xla::BroadcastInDim(operand.op(), out_dim_sizes, broadcast_dimensions);
 }
 
 LocalOp LocalComputationBuilder::Pad(const LocalOp& operand,
