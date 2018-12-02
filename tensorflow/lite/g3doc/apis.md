@@ -347,7 +347,7 @@ interpreter.runForMultipleInputsOutputs(inputs, map_of_indices_to_outputs);
 where each entry in `inputs` corresponds to an input tensor and
 `map_of_indices_to_outputs` maps indices of output tensors to the
 corresponding output data. In both cases the tensor indices should correspond to
-the values given to the [TensorFlow Lite Optimized Converter](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/toco/g3doc/cmdline_examples.md)
+the values given to the [TensorFlow Lite Optimized Converter](convert/cmdline_examples.md)
 when the model was created. Be aware that the order of tensors in `input` must
 match the order given to the `TensorFlow Lite Optimized Converter`.
 
