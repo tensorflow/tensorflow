@@ -32,6 +32,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
@@ -400,6 +401,22 @@ def _make_graph_def(root, signature_functions, object_saver):
   return graph_def, signatures, saver_def
 
 
+def _write_object_graph(obj, export_dir):
+  """Save a SavedObjectGraph proto for `obj`."""
+  # SavedObjectGraph is similar to the CheckpointableObjectGraph proto in the
+  # checkpoint. It will eventually go into the SavedModel.
+  object_proto = util.make_object_graph_without_attributes(
+      obj, proto=saved_object_graph_pb2.SavedObjectGraph())
+  extra_asset_dir = os.path.join(
+      compat.as_bytes(export_dir),
+      compat.as_bytes(constants.EXTRA_ASSETS_DIRECTORY))
+  file_io.recursive_create_dir(extra_asset_dir)
+  object_graph_filename = os.path.join(
+      extra_asset_dir, compat.as_bytes("object_graph.pb"))
+  file_io.write_string_to_file(object_graph_filename,
+                               object_proto.SerializeToString())
+
+
 @tf_export("saved_model.save", v1=["saved_model.experimental.save"])
 def save(obj, export_dir, signatures=None):
   # pylint: disable=line-too-long
@@ -580,3 +597,4 @@ def save(obj, export_dir, signatures=None):
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
   file_io.write_string_to_file(path, saved_model.SerializeToString())
+  _write_object_graph(obj, export_dir)
