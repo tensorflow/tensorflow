@@ -82,3 +82,13 @@ mlfunc @test_no_out_of_bounds() {
   }
   return
 }
+
+// CHECK-LABEL: mlfunc @test_semi_affine_bailout
+mlfunc @test_semi_affine_bailout(%N : index) {
+  %B = alloc() : memref<10 x i32>
+  for %i = 0 to 10 {
+    %idx = affine_apply (d0)[s0] -> (d0 * s0)(%i)[%N]
+    %y = load %B[%idx] : memref<10 x i32>
+  }
+  return
+}

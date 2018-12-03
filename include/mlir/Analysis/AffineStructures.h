@@ -434,8 +434,9 @@ public:
 
   /// Composes the affine value map with this FlatAffineConstrains, adding the
   /// results of the map as dimensions at the specified position and with the
-  /// dimensions set to the equalities specified by the value map.
-  void composeMap(AffineValueMap *vMap, unsigned pos = 0);
+  /// dimensions set to the equalities specified by the value map. Returns false
+  /// if the composition fails (when vMap is a semi-affine map).
+  bool composeMap(AffineValueMap *vMap, unsigned pos = 0);
 
   /// Eliminates identifier at the specified position using Fourier-Motzkin
   /// variable elimination. If the result of the elimination is integer exact,

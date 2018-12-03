@@ -665,7 +665,7 @@ void FlatAffineConstraints::addId(IdKind kind, unsigned pos, MLValue *id) {
 // This routine may add additional local variables if the flattened
 // expression corresponding to the map has such variables due to the presence of
 // mod's, ceildiv's, and floordiv's.
-void FlatAffineConstraints::composeMap(AffineValueMap *vMap, unsigned pos) {
+bool FlatAffineConstraints::composeMap(AffineValueMap *vMap, unsigned pos) {
   assert(pos <= getNumIds() && "invalid position");
   assert(vMap->getNumSymbols() == getNumSymbolIds());
 
@@ -685,8 +685,11 @@ void FlatAffineConstraints::composeMap(AffineValueMap *vMap, unsigned pos) {
     FlatAffineConstraints cst;
     bool ret = getFlattenedAffineExpr(map.getResult(r), map.getNumDims(),
                                       map.getNumSymbols(), &eq, &cst);
-    (void)ret;
-    assert(ret && "unimplemented for semi-affine maps");
+    if (!ret) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "composition unimplemented for semi-affine maps");
+      return false;
+    }
     // Make the value map and the flat affine cst dimensions compatible.
     // A lot of this code will be refactored/cleaned up.
     for (unsigned l = 0, e = cst.getNumLocalIds(); l < e; l++) {
@@ -740,6 +743,7 @@ void FlatAffineConstraints::composeMap(AffineValueMap *vMap, unsigned pos) {
     // Add the equality connecting the result of the map to this constraint set.
     addEquality(eqToAdd);
   }
+  return true;
 }
 
 // Searches for a constraint with a non-zero coefficient at 'colIdx' in

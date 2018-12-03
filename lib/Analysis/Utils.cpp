@@ -188,7 +188,10 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
   }
 
   // Add access function equalities to connect loop IVs to data dimensions.
-  regionCst->composeMap(&accessValueMap);
+  if (!regionCst->composeMap(&accessValueMap)) {
+    LLVM_DEBUG(llvm::dbgs() << "getMemRefRegion: compose affine map failed\n");
+    return false;
+  }
 
   // Eliminate the loop IVs and any local variables to yield the memory
   // region involving just the memref dimensions and outer loop IVs up to
