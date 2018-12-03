@@ -271,7 +271,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
   NameAttrList func_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("ScanDataset").Device(DEVICE_CPU), ScanDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("ExperimentalScanDataset").Device(DEVICE_CPU),
+                        ScanDatasetOp);
 
 }  // namespace
 }  // namespace data

@@ -64,8 +64,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:tensor_shape",
@@ -297,7 +297,7 @@ py_library(
     srcs = ["scan_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
         "//tensorflow/python/data/ops:dataset_ops",
