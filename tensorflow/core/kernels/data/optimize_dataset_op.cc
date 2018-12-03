@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
+#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -217,6 +218,39 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       std::unique_ptr<IteratorBase> input_impl_;
     };
 
+    void AddFakeSinks(FunctionDef* function_def) {
+      int counter = 0;
+      for (const auto& output : function_def->signature().output_arg()) {
+        NodeDef* node = function_def->add_node_def();
+        tensorflow::grappler::function_utils::SetUniqueFunctionNodeName(
+            strings::StrCat("FakeSink", counter++), function_def, node);
+        node->set_op("Identity");
+        node->add_input(function_def->ret().at(output.name()));
+        (*node->mutable_attr())["T"].set_type(output.type());
+
+        (*function_def->mutable_ret())[output.name()] =
+            strings::StrCat(node->name(), ":output:0");
+      }
+    }
+
+    void RemoveFakeSinks(FunctionDef* function_def) {
+      // Map from identity node names to their input tensor strings
+      std::map<string, string> identity_map;
+      for (const auto& node : function_def->node_def()) {
+        if (node.op() == "Identity" && node.input_size() == 1) {
+          identity_map[node.name()] = node.input(0);
+        }
+      }
+      for (const auto& output_arg : function_def->signature().output_arg()) {
+        const string& tensor = function_def->ret().at(output_arg.name());
+        const string& output_node = tensor.substr(0, tensor.find(':'));
+        if (identity_map.find(output_node) != identity_map.end()) {
+          (*function_def->mutable_ret())[output_arg.name()] =
+              identity_map.at(output_node);
+        }
+      }
+    }
+
     Status ApplyOptimizations(OpKernelContext* ctx, GraphDef* graph_def,
                               string* output_node) {
       // Add an identity node as the fetch node, otherwise we might get
@@ -229,6 +263,15 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       node->add_input(*output_node);
       (*node->mutable_attr())["T"].set_type(DT_VARIANT);
       *output_node = node->name();
+
+      // Add fake sink node to graph and functions to allow rewriting the actual
+      // sink nodes.
+      // TODO(b/118820916): When MetaOptimizer adds provisions for function
+      // retvals to be optimizable, we will no longer need this.
+      for (auto& function_def :
+           *graph_def->mutable_library()->mutable_function()) {
+        AddFakeSinks(&function_def);
+      }
 
       // Create metagraph.
       MetaGraphDef meta_graph_def;
@@ -282,6 +325,14 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       }
       TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
           *grappler_item, config, ctx->device(), &cluster, graph_def));
+
+      // Remove fake sinks after optimizations are done.
+      // TODO(b/118820916): When MetaOptimizer adds provisions for function
+      // retvals to be optimizable, we will no longer need this.
+      for (auto& function_def :
+           *graph_def->mutable_library()->mutable_function()) {
+        RemoveFakeSinks(&function_def);
+      }
 
       return Status::OK();
     }
