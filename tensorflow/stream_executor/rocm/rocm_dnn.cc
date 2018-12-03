@@ -2561,6 +2561,107 @@ void MIOpenDeallocatorCallback(void * ctx, void *mem)
   // Don't need dealloactor since the TensorFlow heap will automatically reclaim the memory
 }
 
+template <typename T>
+bool MIOpenSupport::PrepareForConvolutionImpl(
+    Stream* stream, int miopen_type,  // Actually miopenDataType_t.
+    const dnn::BatchDescriptor& batch_descriptor,
+    const DeviceMemory<T>& input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<T>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor, DeviceMemory<T>* output_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::AlgorithmDesc* algorithm_desc, DeviceMemory<uint8>* scratch_memory) {
+  ScopedTensorDescriptor input_nd{parent_, batch_descriptor,
+                                  static_cast<miopenDataType_t>(miopen_type)};
+  ScopedTensorDescriptor output_nd{parent_, output_descriptor,
+                                   static_cast<miopenDataType_t>(miopen_type)};
+  ScopedFilterDescriptor filter{parent_, filter_descriptor, batch_descriptor,
+                                static_cast<miopenDataType_t>(miopen_type)};
+  ScopedConvolutionDescriptor conv{parent_, convolution_descriptor,
+                                   static_cast<miopenDataType_t>(miopen_type)};
+
+  mutex_lock lock{dnn_handle_mutex_};
+  auto status = wrap::miopenSetStream(parent_, ToHandle(dnn_handle_),
+                                      AsROCMStreamValue(stream));
+  if (status != miopenStatusSuccess) {
+    LOG(FATAL) << "failed to set stream for miopen handle: "
+               << ToString(status);
+    return false;
+  }
+
+  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+  size_t scratch_memory_size;
+
+  if (!algo_desc.has_value()) {
+    // With the default algorithm, use MIOpen's heuristics.
+    assert(scratch_allocator);
+
+    DeviceMemory<uint8> scratch_memory_temp;
+    MIOpenAllocatorContext mac(scratch_allocator, stream);
+    wrap::miopenSetAllocator(parent_, ToHandle(dnn_handle_),
+                             MIOpenAllocatorCallback, MIOpenDeallocatorCallback,
+                             &mac);
+    size_t size_in_bytes;
+    status = wrap::miopenConvolutionForwardGetWorkSpaceSize(
+        parent_, ToHandle(dnn_handle_), /*filterDesc=*/filter.handle(),
+        /*srcDesc=*/input_nd.handle(), /*convDesc=*/conv.handle(),
+        /*destDesc=*/output_nd.handle(), /*sizeInBytes=*/&size_in_bytes);
+    if (status == miopenStatusSuccess && size_in_bytes != 0) {
+      auto allocated = scratch_allocator->AllocateBytes(stream, size_in_bytes);
+      if (allocated.ok()) {
+        scratch_memory_temp = allocated.ValueOrDie();
+      }
+    }
+
+    miopenConvAlgoPerf_t preference;
+    int returnedAlgoCount;
+
+    status = wrap::miopenFindConvolutionForwardAlgorithm(
+        parent_, ToHandle(dnn_handle_), input_nd.handle(), input_data.opaque(),
+        filter.handle(), filter_data.opaque(), conv.handle(),
+        output_nd.handle(), output_data->opaque(),
+        /*requestAlgoCount=*/1, &returnedAlgoCount,
+        /*preference=*/&preference, /*workspace*/ scratch_memory_temp.opaque(),
+        /*WorkSpaceSize*/ scratch_memory_temp.size(),
+        /*exhaustiveSearch*/ false);
+
+    // Restore default allocator, note mac is stack temp
+    wrap::miopenSetAllocator(parent_, ToHandle(dnn_handle_), nullptr, nullptr,
+                             nullptr);
+    CHECK_EQ(status, miopenStatusSuccess) << "Unable to find a suitable "
+                                             "algorithm for doing forward "
+                                             "convolution";
+
+    *algorithm_desc = dnn::AlgorithmDesc(preference.fwd_algo, false);
+    scratch_memory_size = preference.memory;
+  } else {
+    // An algorithm has been specified.
+    *algorithm_desc = *algo_desc;
+    scratch_memory_size = *(algorithm_config.scratch_size());
+  }
+
+  // allocate scratch memory
+  if (scratch_memory_size != 0) {
+    if (scratch_allocator == nullptr) {
+      LOG(FATAL) << "An allocator must be specified when scratch memory is "
+                    "needed";
+    }
+    auto allocated =
+        scratch_allocator->AllocateBytes(stream, scratch_memory_size);
+    if (!allocated.ok()) {
+      // Silently return when we are profiling.
+      return false;
+    }
+    if (allocated.ok()) {
+      *scratch_memory = allocated.ValueOrDie();
+    }
+  }
+
+  return true;
+}
+
 template <class T>
 bool MIOpenSupport::DoConvolveImpl(
     Stream* stream, int miopen_type,  // Actually miopenDataType_t.
@@ -2569,8 +2670,8 @@ bool MIOpenSupport::DoConvolveImpl(
     const DeviceMemory<T>& filter_data,
     const ConvolutionDescriptor& convolution_descriptor,
     const BatchDescriptor& output_descriptor, DeviceMemory<T>* output_data,
-    ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
+    const dnn::AlgorithmDesc& algorithm_desc,
+    DeviceMemory<uint8>* scratch_memory,
     dnn::ProfileResult* output_profile_result) {
   ScopedTensorDescriptor input_nd{parent_, batch_descriptor,
       static_cast<miopenDataType_t>(miopen_type)};
@@ -2579,7 +2680,7 @@ bool MIOpenSupport::DoConvolveImpl(
   ScopedFilterDescriptor filter{parent_, filter_descriptor, batch_descriptor,
       static_cast<miopenDataType_t>(miopen_type)};
   ScopedConvolutionDescriptor conv{parent_, convolution_descriptor,
-      miopenFloat};
+                                   static_cast<miopenDataType_t>(miopen_type)};
 
   mutex_lock lock{dnn_handle_mutex_};
   auto status = wrap::miopenSetStream(parent_, ToHandle(dnn_handle_),
@@ -2593,87 +2694,6 @@ bool MIOpenSupport::DoConvolveImpl(
   float beta = 0.0;
 
   const bool is_profiling = output_profile_result != nullptr;
-  std::pair<miopenConvFwdAlgorithm_t, size_t> algo_sz;
-  DeviceMemory<uint8> scratch;
-  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
-
-  if (!algo_desc.has_value()) {
-    // With the default algorithm, use MIOpen's heuristics.
-    auto get_algorithm = [&]()
-        SHARED_LOCKS_REQUIRED(dnn_handle_mutex_) ->
-            std::pair<miopenConvFwdAlgorithm_t, size_t> {
-
-          assert (scratch_allocator);
-
-          MIOpenAllocatorContext mac(scratch_allocator, stream);
-          wrap::miopenSetAllocator(parent_, ToHandle(dnn_handle_),MIOpenAllocatorCallback,MIOpenDeallocatorCallback,&mac);
-          size_t size_in_bytes;
-          status = wrap::miopenConvolutionForwardGetWorkSpaceSize(
-              parent_, ToHandle(dnn_handle_), /*filterDesc=*/filter.handle(),
-              /*srcDesc=*/input_nd.handle(), /*convDesc=*/conv.handle(),
-              /*destDesc=*/output_nd.handle(), /*sizeInBytes=*/&size_in_bytes);
-          if (status == miopenStatusSuccess && size_in_bytes != 0) {
-            auto allocated =
-                scratch_allocator->AllocateBytes(stream, size_in_bytes);
-            if (allocated.ok()) {
-              scratch = allocated.ValueOrDie();
-            }
-          }
-
-          miopenConvAlgoPerf_t preference;
-          int returnedAlgoCount;
-
-          status = wrap::miopenFindConvolutionForwardAlgorithm(
-              parent_, ToHandle(dnn_handle_), input_nd.handle(),
-              input_data.opaque(), filter.handle(), filter_data.opaque(),
-              conv.handle(), output_nd.handle(), output_data->opaque(),
-              /*requestAlgoCount=*/1, &returnedAlgoCount,
-              /*preference=*/&preference, /*workspace*/scratch.opaque(),
-              /*WorkSpaceSize*/scratch.size(), /*exhaustiveSearch*/false);
-
-
-          // Restore default allocator, note mac is stack temp
-          wrap::miopenSetAllocator(parent_, ToHandle(dnn_handle_),nullptr,nullptr,nullptr);
-          CHECK_EQ(status, miopenStatusSuccess)
-              << "Unable to find a suitable "
-                 "algorithm for doing forward "
-                 "convolution";
-          return std::pair<miopenConvFwdAlgorithm_t, size_t> (preference.fwd_algo, preference.memory);
-        };
-
-    algo_sz = get_algorithm();
-
-    // MIOpen requires workspace:
-    assert (scratch != nullptr) ;
-
-  } else {
-    // An algorithm has been specified.
-    algo_sz.first = ToConvForwardAlgo(*algo_desc);
-    algo_sz.second = *(algorithm_config.scratch_size());
-
-    size_t size_in_bytes = algo_sz.second;
-    if (size_in_bytes != 0) {
-      if (scratch_allocator == nullptr) {
-        LOG(FATAL) << "An allocator must be specified when scratch memory is "
-                      "needed";
-      }
-      auto allocated = scratch_allocator->AllocateBytes(stream, size_in_bytes);
-      if (is_profiling && !allocated.ok()) {
-        // Silently return when we are profiling.
-        return false;
-      }
-      if (allocated.ok()) {
-        scratch = allocated.ValueOrDie();
-      }
-      if (scratch == nullptr) {
-        CHECK(!algo_desc.has_value())
-            << "The primary convolution algorithm failed memory allocation, "
-               "while a secondary algorithm is not provided.";
-        algo_sz.first = ToConvForwardAlgo(*(algorithm_config.algorithm_no_scratch()));
-        algo_sz.second = 0;
-      }
-    }
-  }
 
   std::unique_ptr<ROCMTimer> timer;
   if (is_profiling) {
@@ -2694,20 +2714,22 @@ bool MIOpenSupport::DoConvolveImpl(
       /*alpha=*/&alpha, /*srcDesc=*/input_nd.handle(),
       /*srcData=*/input_data.opaque(), /*filterDesc=*/filter.handle(),
       /*filterData=*/filter_data.opaque(), /*convDesc=*/conv.handle(),
-      /*algo=*/algo_sz.first, /*beta=*/&beta, /*destDesc=*/output_nd.handle(),
-      /*destData=*/output_data->opaque(), /*workSpace=*/scratch.opaque(),
-      /*workSpaceSizeInBytes=*/scratch.size());
+      /*algo=*/static_cast<miopenConvFwdAlgorithm_t>(algorithm_desc.algo_id()),
+      /*beta=*/&beta, /*destDesc=*/output_nd.handle(),
+      /*destData=*/output_data->opaque(),
+      /*workSpace=*/scratch_memory->opaque(),
+      /*workSpaceSizeInBytes=*/scratch_memory->size());
   if (is_profiling) {
     if (!timer->Stop(AsROCMStream(stream))) {
       timer->Destroy();
       return false;
     }
     if (status == miopenStatusSuccess) {
-      dnn::AlgorithmDesc algotype(algo_sz.first, false);
+      dnn::AlgorithmDesc algotype(algorithm_desc.algo_id(), false);
       output_profile_result->set_algorithm(algotype);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
-      output_profile_result->set_scratch_size(algo_sz.second);
+      output_profile_result->set_scratch_size(scratch_memory->size());
     }
     timer->Destroy();
   }
@@ -2938,22 +2960,66 @@ bool MIOpenSupport::DoBatchNormalizationBackwardImpl(
   return true;
 }
 
-bool MIOpenSupport::DoConvolve(
-    Stream* stream, const BatchDescriptor& batch_descriptor,
+bool MIOpenSupport::PrepareForConvolution(
+    Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
     const DeviceMemory<float>& input_data,
-    const FilterDescriptor& filter_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
     const DeviceMemory<float>& filter_data,
-    const ConvolutionDescriptor& convolution_descriptor,
-    const BatchDescriptor& output_descriptor,
-    DeviceMemory<float>* output_data,
-    ScratchAllocator* scratch_allocator,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
+    dnn::AlgorithmDesc* algorithm_desc, DeviceMemory<uint8>* scratch_memory) {
+  return PrepareForConvolutionImpl<float>(
+      stream, miopenFloat, batch_descriptor, input_data, filter_descriptor,
+      filter_data, convolution_descriptor, output_descriptor, output_data,
+      scratch_allocator, algorithm_config, algorithm_desc, scratch_memory);
+}
+
+bool MIOpenSupport::PrepareForConvolution(
+    Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+    const DeviceMemory<double>& input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<double>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::AlgorithmDesc* algorithm_desc, DeviceMemory<uint8>* scratch_memory) {
+  LOG(ERROR) << "double-based DNN not yet implemented";
+  return false;
+}
+
+bool MIOpenSupport::PrepareForConvolution(
+    Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+    const DeviceMemory<Eigen::half>& input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<Eigen::half>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<Eigen::half>* output_data, ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::AlgorithmDesc* algorithm_desc, DeviceMemory<uint8>* scratch_memory) {
+  return PrepareForConvolutionImpl<Eigen::half>(
+      stream, miopenHalf, batch_descriptor, input_data, filter_descriptor,
+      filter_data, convolution_descriptor, output_descriptor, output_data,
+      scratch_allocator, algorithm_config, algorithm_desc, scratch_memory);
+}
+
+bool MIOpenSupport::DoConvolve(
+    Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+    const DeviceMemory<float>& input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<float>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<float>* output_data, const dnn::AlgorithmDesc& algorithm_desc,
+    DeviceMemory<uint8>* scratch_memory,
     dnn::ProfileResult* output_profile_result) {
   return DoConvolveImpl<float>(
       stream, miopenFloat, batch_descriptor, input_data, filter_descriptor,
-      filter_data, convolution_descriptor,
-      output_descriptor, output_data,
-      scratch_allocator, algorithm_config, output_profile_result);
+      filter_data, convolution_descriptor, output_descriptor, output_data,
+      algorithm_desc, scratch_memory, output_profile_result);
 }
 
 bool MIOpenSupport::DoConvolve(
@@ -2963,9 +3029,8 @@ bool MIOpenSupport::DoConvolve(
     const DeviceMemory<double>& filter_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<double>* output_data,
-    ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
+    DeviceMemory<double>* output_data, const dnn::AlgorithmDesc& algorithm_desc,
+    DeviceMemory<uint8>* scratch_memory,
     dnn::ProfileResult* output_profile_result) {
   LOG(ERROR) << "double-based DNN not yet implemented";
   return false;
@@ -2978,14 +3043,14 @@ bool MIOpenSupport::DoConvolve(
     const DeviceMemory<Eigen::half>& filter_data,
     const ConvolutionDescriptor& convolution_descriptor,
     const BatchDescriptor& output_descriptor,
-    DeviceMemory<Eigen::half>* output_data, ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
+    DeviceMemory<Eigen::half>* output_data,
+    const dnn::AlgorithmDesc& algorithm_desc,
+    DeviceMemory<uint8>* scratch_memory,
     dnn::ProfileResult* output_profile_result) {
   return DoConvolveImpl<Eigen::half>(
       stream, miopenHalf, batch_descriptor, input_data, filter_descriptor,
-      filter_data, convolution_descriptor,
-      output_descriptor, output_data,
-      scratch_allocator, algorithm_config, output_profile_result);
+      filter_data, convolution_descriptor, output_descriptor, output_data,
+      algorithm_desc, scratch_memory, output_profile_result);
 }
 
 bool MIOpenSupport::DoFusedConvolve(
@@ -3113,6 +3178,119 @@ bool MIOpenSupport::DoTransformTensor(Stream* stream,
 }
 
 template <class T>
+bool MIOpenSupport::PrepareForConvolutionBackwardDataImpl(
+    Stream* stream, int miopen_type,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<T>& filter_data,
+    const dnn::BatchDescriptor& output_descriptor_in,
+    DeviceMemory<T> backward_output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& input_descriptor,
+    DeviceMemory<T>* backward_input_data, ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::AlgorithmDesc* algorithm_desc, DeviceMemory<uint8>* scratch_memory) {
+  mutex_lock lock{dnn_handle_mutex_};
+  auto status = wrap::miopenSetStream(parent_, ToHandle(dnn_handle_),
+                                      AsROCMStreamValue(stream));
+  if (status != miopenStatusSuccess) {
+    LOG(FATAL) << "failed to set stream for miopen handle: "
+               << ToString(status);
+  }
+
+  // TBD(keveman): remove once MIOpen supports kBatchYXDepth for backward pass.
+  BatchDescriptor output_descriptor;
+  output_descriptor.CloneFrom(output_descriptor_in);
+  std::unique_ptr<TemporaryDeviceMemory<T>> transform_scratch;
+  backward_output_data =
+      MaybeTransformLayout(stream, miopen_type, &output_descriptor,
+                           backward_output_data, &transform_scratch);
+
+  ScopedTensorDescriptor out_back_nd{
+      parent_, output_descriptor, static_cast<miopenDataType_t>(miopen_type)};
+  ScopedTensorDescriptor in_back_nd{parent_, input_descriptor,
+                                    static_cast<miopenDataType_t>(miopen_type)};
+  ScopedFilterDescriptor filter{parent_, filter_descriptor, input_descriptor,
+                                static_cast<miopenDataType_t>(miopen_type)};
+  ScopedConvolutionDescriptor conv{parent_, convolution_descriptor,
+                                   miopenFloat};
+
+  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+  size_t scratch_memory_size;
+
+  if (!algo_desc.has_value()) {
+    // With the default algorithm, use MIOpen's heuristics.
+    assert(scratch_allocator);
+
+    DeviceMemory<uint8> scratch_memory_temp;
+    MIOpenAllocatorContext mac(scratch_allocator, stream);
+    wrap::miopenSetAllocator(parent_, ToHandle(dnn_handle_),
+                             MIOpenAllocatorCallback, MIOpenDeallocatorCallback,
+                             &mac);
+    size_t size_in_bytes;
+    status = wrap::miopenConvolutionBackwardDataGetWorkSpaceSize(
+        parent_, ToHandle(dnn_handle_),
+        /*diffDesc=*/out_back_nd.handle(),
+        /*filterDesc=*/filter.handle(),
+        /*convDesc=*/conv.handle(),
+        /*gradDesc=*/in_back_nd.handle(),
+        /*sizeInBytes=*/&size_in_bytes);
+    if (status == miopenStatusSuccess && size_in_bytes != 0) {
+      auto allocated = scratch_allocator->AllocateBytes(stream, size_in_bytes);
+      if (allocated.ok()) {
+        scratch_memory_temp = allocated.ValueOrDie();
+      }
+    }
+
+    miopenConvAlgoPerf_t preference;
+    int returnedAlgoCount;
+
+    miopenStatus_t status = wrap::miopenFindConvolutionBackwardDataAlgorithm(
+        parent_, ToHandle(dnn_handle_),
+        /*diffDesc=*/out_back_nd.handle(), backward_output_data.opaque(),
+        /*filterDesc=*/filter.handle(), filter_data.opaque(),
+        /*convDesc=*/conv.handle(),
+        /*gradDesc=*/in_back_nd.handle(), backward_input_data->opaque(),
+        /*requestCount=*/1, /*returnedAlgoCount=*/&returnedAlgoCount,
+        /*preference=*/&preference, /*WorkSpace=*/scratch_memory_temp.opaque(),
+        /*WorkSpaceSize=*/scratch_memory_temp.size(),
+        /*exhaustiveSearch=*/false);
+
+    // Restore default allocator, note mac is stack temp
+    wrap::miopenSetAllocator(parent_, ToHandle(dnn_handle_), nullptr, nullptr,
+                             nullptr);
+    CHECK_EQ(status, miopenStatusSuccess) << "Unable to find a suitable "
+                                             "algorithm for doing backward "
+                                             "filter convolution";
+
+    *algorithm_desc = dnn::AlgorithmDesc(preference.bwd_data_algo, false);
+    scratch_memory_size = preference.memory;
+  } else {
+    // An algorithm has been specified.
+    *algorithm_desc = *algo_desc;
+    scratch_memory_size = *(algorithm_config.scratch_size());
+  }
+
+  // allocate scratch memory
+  if (scratch_memory_size != 0) {
+    if (scratch_allocator == nullptr) {
+      LOG(FATAL) << "An allocator must be specified when scratch memory is "
+                    "needed";
+    }
+    auto allocated =
+        scratch_allocator->AllocateBytes(stream, scratch_memory_size);
+    if (!allocated.ok()) {
+      // Silently return when we are profiling.
+      return false;
+    }
+    if (allocated.ok()) {
+      *scratch_memory = allocated.ValueOrDie();
+    }
+  }
+
+  return true;
+}
+
+template <class T>
 bool MIOpenSupport::DoConvolveBackwardDataImpl(
     Stream* stream,
     int miopen_type,  // Actually miopenDataType_t.
@@ -3122,8 +3300,9 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
     DeviceMemory<T> backward_output_data,
     const ConvolutionDescriptor& convolution_descriptor,
     const BatchDescriptor& input_descriptor,
-    DeviceMemory<T>* backward_input_data, ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
+    DeviceMemory<T>* backward_input_data,
+    const dnn::AlgorithmDesc& algorithm_desc,
+    DeviceMemory<uint8>* scratch_memory,
     dnn::ProfileResult* output_profile_result) {
   mutex_lock lock{dnn_handle_mutex_};
   auto status = wrap::miopenSetStream(parent_, ToHandle(dnn_handle_),
@@ -3155,90 +3334,6 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
                                    miopenFloat};
 
   const bool is_profiling = output_profile_result != nullptr;
-  std::pair<miopenConvBwdDataAlgorithm_t, size_t> algo_sz;
-  DeviceMemory<uint8> scratch;
-  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
-
-  if (!algo_desc.has_value()) {
-    // With the default algorithm, use MIOpen's heuristics.
-    auto get_algorithm = [&]() SHARED_LOCKS_REQUIRED(
-        dnn_handle_mutex_) -> std::pair<miopenConvBwdDataAlgorithm_t, size_t> {
-
-      assert (scratch_allocator);
-
-      MIOpenAllocatorContext mac(scratch_allocator, stream);
-      wrap::miopenSetAllocator(parent_, ToHandle(dnn_handle_),MIOpenAllocatorCallback,MIOpenDeallocatorCallback,&mac);
-      size_t size_in_bytes;
-      status = wrap::miopenConvolutionBackwardDataGetWorkSpaceSize(
-          parent_, ToHandle(dnn_handle_),
-          /*diffDesc=*/out_back_nd.handle(),
-          /*filterDesc=*/filter.handle(),
-          /*convDesc=*/conv.handle(),
-          /*gradDesc=*/in_back_nd.handle(),
-          /*sizeInBytes=*/&size_in_bytes);
-      if (status == miopenStatusSuccess && size_in_bytes != 0) {
-        auto allocated =
-            scratch_allocator->AllocateBytes(stream, size_in_bytes);
-        if (allocated.ok()) {
-          scratch = allocated.ValueOrDie();
-        }
-      }
-
-      miopenConvAlgoPerf_t preference;
-      int returnedAlgoCount;
-
-      miopenStatus_t status = wrap::miopenFindConvolutionBackwardDataAlgorithm(
-          parent_, ToHandle(dnn_handle_),
-          /*diffDesc=*/out_back_nd.handle(), backward_output_data.opaque(),
-          /*filterDesc=*/filter.handle(), filter_data.opaque(),
-          /*convDesc=*/conv.handle(),
-          /*gradDesc=*/in_back_nd.handle(), backward_input_data->opaque(),
-          /*requestCount=*/1, /*returnedAlgoCount=*/&returnedAlgoCount,
-          /*preference=*/&preference, /*WorkSpace=*/scratch.opaque(),
-          /*WorkSpaceSize=*/scratch.size(), /*exhaustiveSearch=*/false);
-
-      // Restore default allocator, note mac is stack temp
-      wrap::miopenSetAllocator(parent_, ToHandle(dnn_handle_),nullptr,nullptr,nullptr);
-      CHECK_EQ(status, miopenStatusSuccess) << "Unable to find a suitable "
-                                                "algorithm for doing backward "
-                                                "filter convolution";
-      return std::pair<miopenConvBwdDataAlgorithm_t , size_t> (
-          preference.bwd_data_algo, preference.memory);
-    };
-
-    algo_sz = get_algorithm();
-
-    // MIOpen requires workspace:
-    assert (scratch != nullptr) ;
-
-  } else {
-    // An algorithm has been specified.
-    algo_sz.first = ToConvBackwardDataAlgo(*algo_desc);
-    algo_sz.second = *(algorithm_config.scratch_size());
-
-    size_t size_in_bytes = algo_sz.second;
-    if (size_in_bytes != 0) {
-      if (scratch_allocator == nullptr) {
-        LOG(FATAL) << "An allocator must be specified when scratch memory is "
-                      "needed";
-      }
-      auto allocated = scratch_allocator->AllocateBytes(stream, size_in_bytes);
-      if (is_profiling && !allocated.ok()) {
-        // Silently return when we are profiling.
-        return false;
-      }
-      if (allocated.ok()) {
-        scratch = allocated.ValueOrDie();
-      }
-      if (scratch == nullptr) {
-        CHECK(!algo_desc.has_value())
-            << "The primary convolution algorithm failed memory allocation, "
-               "while a secondary algorithm is not provided.";
-        algo_sz.first = ToConvBackwardDataAlgo(*(algorithm_config.algorithm_no_scratch()));
-        algo_sz.second = 0;
-      }
-    }
-  }
 
   std::unique_ptr<ROCMTimer> timer;
   if (is_profiling) {
@@ -3258,21 +3353,22 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
       /*filterDesc=*/filter.handle(),
       /*filterData=*/filter_data.opaque(),
       /*convDesc=*/conv.handle(),
-      /*algo=*/algo_sz.first,
+      /*algo=*/
+      static_cast<miopenConvBwdDataAlgorithm_t>(algorithm_desc.algo_id()),
       /*beta=*/&beta,
       /*gradDesc=*/in_back_nd.handle(),
       /*gradData=*/backward_input_data->opaque(),
-      /*workSpace=*/scratch.opaque(),
-      /*workSpaceSizeInBytes=*/scratch.size());
+      /*workSpace=*/scratch_memory->opaque(),
+      /*workSpaceSizeInBytes=*/scratch_memory->size());
 
   if (is_profiling) {
     timer->Stop(AsROCMStream(stream));
     if (status == miopenStatusSuccess) {
-      dnn::AlgorithmDesc algotype(algo_sz.first, false);
+      dnn::AlgorithmDesc algotype(algorithm_desc.algo_id(), false);
       output_profile_result->set_algorithm(algotype);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
-      output_profile_result->set_scratch_size(algo_sz.second);
+      output_profile_result->set_scratch_size(scratch_memory->size());
     }
     timer->Destroy();
   }
@@ -3287,6 +3383,57 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
   return true;
 }
 
+bool MIOpenSupport::PrepareForConvolutionBackwardData(
+    Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<float>& filter_data,
+    const dnn::BatchDescriptor& output_descriptor_in,
+    DeviceMemory<float> backward_output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& input_descriptor,
+    DeviceMemory<float>* backward_input_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::AlgorithmDesc* algorithm_desc, DeviceMemory<uint8>* scratch_memory) {
+  return PrepareForConvolutionBackwardDataImpl<float>(
+      stream, miopenFloat, filter_descriptor, filter_data, output_descriptor_in,
+      backward_output_data, convolution_descriptor, input_descriptor,
+      backward_input_data, scratch_allocator, algorithm_config, algorithm_desc,
+      scratch_memory);
+}
+
+bool MIOpenSupport::PrepareForConvolutionBackwardData(
+    Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<double>& filter_data,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<double> backward_output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& input_descriptor,
+    DeviceMemory<double>* backward_input_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::AlgorithmDesc* algorithm_desc, DeviceMemory<uint8>* scratch_memory) {
+  LOG(ERROR) << "bwd data for double type not implemented yet";
+  return false;
+}
+
+bool MIOpenSupport::PrepareForConvolutionBackwardData(
+    Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<Eigen::half>& filter_data,
+    const dnn::BatchDescriptor& output_descriptor_in,
+    DeviceMemory<Eigen::half> backward_output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& input_descriptor,
+    DeviceMemory<Eigen::half>* backward_input_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::AlgorithmDesc* algorithm_desc, DeviceMemory<uint8>* scratch_memory) {
+  return PrepareForConvolutionBackwardDataImpl<Eigen::half>(
+      stream, miopenHalf, filter_descriptor, filter_data, output_descriptor_in,
+      backward_output_data, convolution_descriptor, input_descriptor,
+      backward_input_data, scratch_allocator, algorithm_config, algorithm_desc,
+      scratch_memory);
+}
+
 bool MIOpenSupport::DoConvolveBackwardData(
     Stream* stream, const FilterDescriptor& filter_descriptor,
     const DeviceMemory<double>& filter_data,
@@ -3295,8 +3442,8 @@ bool MIOpenSupport::DoConvolveBackwardData(
     const ConvolutionDescriptor& convolution_descriptor,
     const BatchDescriptor& input_descriptor,
     DeviceMemory<double>* backward_input_data,
-    ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
+    const dnn::AlgorithmDesc& algorithm_desc,
+    DeviceMemory<uint8>* scractch_memory,
     dnn::ProfileResult* output_profile_result) {
   LOG(ERROR) << "bwd data for double type not implemented yet";
   return false;
@@ -3310,14 +3457,14 @@ bool MIOpenSupport::DoConvolveBackwardData(
     const ConvolutionDescriptor& convolution_descriptor,
     const BatchDescriptor& input_descriptor,
     DeviceMemory<float>* backward_input_data,
-    ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
+    const dnn::AlgorithmDesc& algorithm_desc,
+    DeviceMemory<uint8>* scratch_memory,
     dnn::ProfileResult* output_profile_result) {
   return DoConvolveBackwardDataImpl(
-      stream, miopenFloat, filter_descriptor, filter_data,
-      output_descriptor_in, backward_output_data, convolution_descriptor,
-      input_descriptor, backward_input_data, scratch_allocator,
-      algorithm_config, output_profile_result);
+      stream, miopenFloat, filter_descriptor, filter_data, output_descriptor_in,
+      backward_output_data, convolution_descriptor, input_descriptor,
+      backward_input_data, algorithm_desc, scratch_memory,
+      output_profile_result);
 }
 
 bool MIOpenSupport::DoConvolveBackwardData(
@@ -3328,14 +3475,122 @@ bool MIOpenSupport::DoConvolveBackwardData(
     const ConvolutionDescriptor& convolution_descriptor,
     const BatchDescriptor& input_descriptor,
     DeviceMemory<Eigen::half>* backward_input_data,
-    ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
+    const dnn::AlgorithmDesc& algorithm_desc,
+    DeviceMemory<uint8>* scratch_memory,
     dnn::ProfileResult* output_profile_result) {
   return DoConvolveBackwardDataImpl(
-      stream, miopenHalf, filter_descriptor, filter_data,
-      output_descriptor_in, backward_output_data, convolution_descriptor,
-      input_descriptor, backward_input_data, scratch_allocator,
-      algorithm_config, output_profile_result);
+      stream, miopenHalf, filter_descriptor, filter_data, output_descriptor_in,
+      backward_output_data, convolution_descriptor, input_descriptor,
+      backward_input_data, algorithm_desc, scratch_memory,
+      output_profile_result);
+}
+
+template <class T>
+bool MIOpenSupport::PrepareForConvolutionBackwardFilterImpl(
+    Stream* stream, int miopen_type,  // Actually miopenDataType_t.
+    const dnn::BatchDescriptor& input_descriptor,
+    const DeviceMemory<T>& input_data,
+    const dnn::BatchDescriptor& output_descriptor_in,
+    DeviceMemory<T> backward_output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemory<T>* backward_filter_data, ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::AlgorithmDesc* algorithm_desc, DeviceMemory<uint8>* scratch_memory) {
+  mutex_lock lock{dnn_handle_mutex_};
+  auto status = wrap::miopenSetStream(parent_, ToHandle(dnn_handle_),
+                                     AsROCMStreamValue(stream));
+  if (status != miopenStatusSuccess) {
+    LOG(FATAL) << "failed to set stream for miopen handle: " << ToString(status);
+  }
+
+  // TBD(keveman): remove once MIOpen supports kBatchYXDepth for backward pass.
+  BatchDescriptor output_descriptor;
+  output_descriptor.CloneFrom(output_descriptor_in);
+  std::unique_ptr<TemporaryDeviceMemory<T>> transform_scratch;
+  backward_output_data = MaybeTransformLayout(
+      stream, static_cast<miopenDataType_t>(miopen_type),
+      &output_descriptor, backward_output_data,
+      &transform_scratch);
+
+  ScopedTensorDescriptor out_back_nd{parent_, output_descriptor,
+        static_cast<miopenDataType_t>(miopen_type)};
+  ScopedTensorDescriptor input_nd{parent_, input_descriptor,
+          static_cast<miopenDataType_t>(miopen_type)};
+  ScopedFilterDescriptor filter{parent_, filter_descriptor, input_descriptor,
+        static_cast<miopenDataType_t>(miopen_type)};
+  ScopedConvolutionDescriptor conv{parent_, convolution_descriptor,
+      miopenFloat};
+
+  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+  size_t scratch_memory_size;
+
+  if (!algo_desc.has_value()) {
+    // With the default algorithm, use MIOpen's heuristics.
+    assert (scratch_allocator);
+
+    DeviceMemory<uint8> scratch_memory_temp;
+    MIOpenAllocatorContext mac(scratch_allocator, stream);
+    wrap::miopenSetAllocator(parent_, ToHandle(dnn_handle_),MIOpenAllocatorCallback,MIOpenDeallocatorCallback,&mac);
+    size_t size_in_bytes;
+    status = wrap::miopenConvolutionBackwardWeightsGetWorkSpaceSize(
+        parent_, ToHandle(dnn_handle_), /*diffDesc=*/out_back_nd.handle(),
+        /*srcDesc=*/input_nd.handle() ,/*convDesc=*/conv.handle(),
+        /*gradDesc=*/filter.handle(), /*sizeInBytes=*/&size_in_bytes);
+    if (status == miopenStatusSuccess && size_in_bytes != 0) {
+      auto allocated =
+          scratch_allocator->AllocateBytes(stream, size_in_bytes);
+      if (allocated.ok()) {
+        scratch_memory_temp = allocated.ValueOrDie();
+      }
+    }
+
+    miopenConvAlgoPerf_t preference;
+    int returnedAlgoCount;
+
+    miopenStatus_t status =
+        wrap::miopenFindConvolutionBackwardWeightsAlgorithm(
+            parent_, ToHandle(dnn_handle_),
+            /*diffDesc=*/out_back_nd.handle(), backward_output_data.opaque(),
+            /*srcDesc=*/input_nd.handle(), input_data.opaque(),
+            /*convDesc=*/conv.handle(),
+            /*gradDesc=*/filter.handle(), backward_filter_data->opaque(),
+            /*requestAlgoCount=*/1, /*returnedAlgoCount=*/&returnedAlgoCount,
+            /*preference=*/&preference, /*WorkSpace=*/scratch_memory_temp.opaque(),
+            /*WorkSpaceSize=*/scratch_memory_temp.size(), /*exhaustiveSearch=*/false);
+    CHECK_EQ(status, miopenStatusSuccess) << "Unable to find a suitable "
+                                              "algorithm for doing backward "
+                                              "filter convolution";
+
+    // Restore default allocator, note mac is stack temp
+    wrap::miopenSetAllocator(parent_, ToHandle(dnn_handle_),nullptr,nullptr,nullptr);
+
+    *algorithm_desc = dnn::AlgorithmDesc(preference.bwd_weights_algo, false);
+    scratch_memory_size = preference.memory;
+  } else {
+    // An algorithm has been specified.
+    *algorithm_desc = *algo_desc;
+    scratch_memory_size = *(algorithm_config.scratch_size());
+  }
+
+  // allocate scratch memory
+  if (scratch_memory_size != 0) {
+    if (scratch_allocator == nullptr) {
+      LOG(FATAL) << "An allocator must be specified when scratch memory is "
+                    "needed";
+    }
+    auto allocated =
+        scratch_allocator->AllocateBytes(stream, scratch_memory_size);
+    if (!allocated.ok()) {
+      // Silently return when we are profiling.
+      return false;
+    }
+    if (allocated.ok()) {
+      *scratch_memory = allocated.ValueOrDie();
+    }
+  }
+
+  return true;
 }
 
 template <class T>
@@ -3347,8 +3602,9 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
     DeviceMemory<T> backward_output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemory<T>* backward_filter_data, ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
+    DeviceMemory<T>* backward_filter_data,
+    const dnn::AlgorithmDesc& algorithm_desc,
+    DeviceMemory<uint8>* scratch_memory,
     dnn::ProfileResult* output_profile_result) {
   mutex_lock lock{dnn_handle_mutex_};
   auto status = wrap::miopenSetStream(parent_, ToHandle(dnn_handle_),
@@ -3381,91 +3637,6 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
       miopenFloat};
 
   const bool is_profiling = output_profile_result != nullptr;
-  std::pair<miopenConvBwdWeightsAlgorithm_t, size_t> algo_sz;
-  DeviceMemory<uint8> scratch;
-  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
-
-  if (!algo_desc.has_value()) {
-    // With the default algorithm, use MIOpen's heuristics.
-    auto get_algorithm = [&]() SHARED_LOCKS_REQUIRED(
-        dnn_handle_mutex_) -> std::pair<miopenConvBwdWeightsAlgorithm_t, size_t> {
-
-      assert (scratch_allocator);
-
-      MIOpenAllocatorContext mac(scratch_allocator, stream);
-      wrap::miopenSetAllocator(parent_, ToHandle(dnn_handle_),MIOpenAllocatorCallback,MIOpenDeallocatorCallback,&mac);
-      size_t size_in_bytes;
-      status = wrap::miopenConvolutionBackwardWeightsGetWorkSpaceSize(
-          parent_, ToHandle(dnn_handle_), /*diffDesc=*/out_back_nd.handle(),
-          /*srcDesc=*/input_nd.handle() ,/*convDesc=*/conv.handle(),
-          /*gradDesc=*/filter.handle(), /*sizeInBytes=*/&size_in_bytes);
-      if (status == miopenStatusSuccess && size_in_bytes != 0) {
-        auto allocated =
-            scratch_allocator->AllocateBytes(stream, size_in_bytes);
-        if (allocated.ok()) {
-          scratch = allocated.ValueOrDie();
-        }
-      }
-
-      miopenConvAlgoPerf_t preference;
-      int returnedAlgoCount;
-
-      miopenStatus_t status =
-          wrap::miopenFindConvolutionBackwardWeightsAlgorithm(
-              parent_, ToHandle(dnn_handle_),
-              /*diffDesc=*/out_back_nd.handle(), backward_output_data.opaque(),
-              /*srcDesc=*/input_nd.handle(), input_data.opaque(),
-              /*convDesc=*/conv.handle(),
-              /*gradDesc=*/filter.handle(), backward_filter_data->opaque(),
-              /*requestAlgoCount=*/1, /*returnedAlgoCount=*/&returnedAlgoCount,
-              /*preference=*/&preference, /*WorkSpace=*/scratch.opaque(),
-              /*WorkSpaceSize=*/scratch.size(), /*exhaustiveSearch=*/false);
-      CHECK_EQ(status, miopenStatusSuccess) << "Unable to find a suitable "
-                                                "algorithm for doing backward "
-                                                "filter convolution";
-
-      // Restore default allocator, note mac is stack temp
-      wrap::miopenSetAllocator(parent_, ToHandle(dnn_handle_),nullptr,nullptr,nullptr);
-      return std::pair<miopenConvBwdWeightsAlgorithm_t , size_t> (
-          preference.bwd_weights_algo, preference.memory);
-    };
-
-    algo_sz = get_algorithm();
-
-    // MIOpen requires workspace:
-    assert (scratch != nullptr) ;
-
-  } else {
-    // An algorithm has been specified.
-    absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
-    algo_sz.first = ToConvBackwardFilterAlgo(*algo_desc);
-    algo_sz.second = *(algorithm_config.scratch_size());
-
-    size_t size_in_bytes = algo_sz.second;
-
-    if (size_in_bytes != 0) {
-      if (scratch_allocator == nullptr) {
-        LOG(FATAL) << "An allocator must be specified when scratch memory is "
-                      "needed";
-      }
-      auto allocated = scratch_allocator->AllocateBytes(stream, size_in_bytes);
-      if (is_profiling && !allocated.ok()) {
-        // Silently return when we are profiling.
-        return false;
-      }
-      if (allocated.ok()) {
-        scratch = allocated.ValueOrDie();
-      }
-      if (scratch == nullptr) {
-        CHECK(!algo_desc.has_value())
-            << "The primary convolution algorithm failed memory allocation, "
-               "while a secondary algorithm is not provided.";
-        algo_sz.first =
-            ToConvBackwardFilterAlgo(*(algorithm_config.algorithm_no_scratch()));
-        algo_sz.second = 0;
-      }
-    }
-  }
 
   std::unique_ptr<ROCMTimer> timer;
   if (is_profiling) {
@@ -3484,20 +3655,20 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
       /*srcDesc=*/input_nd.handle(),
       /*srcData=*/input_data.opaque(),
       /*convDesc=*/conv.handle(),
-      /*algo=*/algo_sz.first,
+      /*algo=*/static_cast<miopenConvBwdWeightsAlgorithm_t>(algorithm_desc.algo_id()),
       /*beta=*/&beta,
       /*gradDesc=*/filter.handle(),
       /*gradData=*/backward_filter_data->opaque(),
-      /*workSpace=*/scratch.opaque(),
-      /*workSpaceSizeInBytes=*/scratch.size());
+      /*workSpace=*/scratch_memory->opaque(),
+      /*workSpaceSizeInBytes=*/scratch_memory->size());
   if (is_profiling) {
     timer->Stop(AsROCMStream(stream));
     if (status == miopenStatusSuccess) {
-      dnn::AlgorithmDesc algotype(algo_sz.first, false);
+      dnn::AlgorithmDesc algotype(algorithm_desc.algo_id(), false);
       output_profile_result->set_algorithm(algotype);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
-      output_profile_result->set_scratch_size(algo_sz.second);
+      output_profile_result->set_scratch_size(scratch_memory->size());
     }
     timer->Destroy();
   }
@@ -3512,7 +3683,7 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
   return true;
 }
 
-bool MIOpenSupport::DoConvolveBackwardFilter(
+bool MIOpenSupport::PrepareForConvolutionBackwardFilter(
     Stream* stream, const dnn::BatchDescriptor& input_descriptor,
     const DeviceMemory<double>& input_data,
     const dnn::BatchDescriptor& output_descriptor_in,
@@ -3522,6 +3693,57 @@ bool MIOpenSupport::DoConvolveBackwardFilter(
     DeviceMemory<double>* backward_filter_data,
     ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
+    dnn::AlgorithmDesc* algorithm_desc, DeviceMemory<uint8>* scratch_memory) {
+  LOG(ERROR) << "bwd filter for double type not implemented yet";
+  return false;
+}
+
+bool MIOpenSupport::PrepareForConvolutionBackwardFilter(
+    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+    const DeviceMemory<float>& input_data,
+    const dnn::BatchDescriptor& output_descriptor_in,
+    DeviceMemory<float> backward_output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemory<float>* backward_filter_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::AlgorithmDesc* algorithm_desc, DeviceMemory<uint8>* scratch_memory) {
+  return PrepareForConvolutionBackwardFilterImpl<float>(
+      stream, miopenFloat, input_descriptor, input_data,
+      output_descriptor_in, backward_output_data, convolution_descriptor,
+      filter_descriptor, backward_filter_data, scratch_allocator,
+      algorithm_config, algorithm_desc, scratch_memory);
+}
+
+bool MIOpenSupport::PrepareForConvolutionBackwardFilter(
+    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+    const DeviceMemory<Eigen::half>& input_data,
+    const dnn::BatchDescriptor& output_descriptor_in,
+    DeviceMemory<Eigen::half> backward_output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemory<Eigen::half>* backward_filter_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::AlgorithmDesc* algorithm_desc, DeviceMemory<uint8>* scratch_memory) {
+  return PrepareForConvolutionBackwardFilterImpl<Eigen::half>(
+      stream, miopenHalf, input_descriptor, input_data,
+      output_descriptor_in, backward_output_data, convolution_descriptor,
+      filter_descriptor, backward_filter_data, scratch_allocator,
+      algorithm_config, algorithm_desc, scratch_memory);
+}
+
+bool MIOpenSupport::DoConvolveBackwardFilter(
+    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+    const DeviceMemory<double>& input_data,
+    const dnn::BatchDescriptor& output_descriptor_in,
+    DeviceMemory<double> backward_output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemory<double>* backward_filter_data,
+    const dnn::AlgorithmDesc& algorithm_desc,
+    DeviceMemory<uint8>* scratch_memory,
     dnn::ProfileResult* output_profile_result) {
   LOG(ERROR) << "bwd filter for double type not implemented yet";
   return false;
@@ -3535,14 +3757,14 @@ bool MIOpenSupport::DoConvolveBackwardFilter(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     DeviceMemory<float>* backward_filter_data,
-    ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
+    const dnn::AlgorithmDesc& algorithm_desc,
+    DeviceMemory<uint8>* scratch_memory,
     dnn::ProfileResult* output_profile_result) {
   return DoConvolveBackwardFilterImpl(
       stream, miopenFloat, input_descriptor, input_data,
       output_descriptor_in, backward_output_data, convolution_descriptor,
-      filter_descriptor, backward_filter_data, scratch_allocator,
-      algorithm_config, output_profile_result);
+      filter_descriptor, backward_filter_data, algorithm_desc,
+      scratch_memory, output_profile_result);
 }
 
 bool MIOpenSupport::DoConvolveBackwardFilter(
@@ -3553,14 +3775,14 @@ bool MIOpenSupport::DoConvolveBackwardFilter(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     DeviceMemory<Eigen::half>* backward_filter_data,
-    ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
+    const dnn::AlgorithmDesc& algorithm_desc,
+    DeviceMemory<uint8>* scratch_memory,
     dnn::ProfileResult* output_profile_result) {
   return DoConvolveBackwardFilterImpl(
       stream, miopenHalf, input_descriptor, input_data,
       output_descriptor_in, backward_output_data, convolution_descriptor,
-      filter_descriptor, backward_filter_data, scratch_allocator,
-      algorithm_config, output_profile_result);
+      filter_descriptor, backward_filter_data, algorithm_desc,
+      scratch_memory, output_profile_result);
 }
 
 template <class T>
