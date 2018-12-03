@@ -456,8 +456,8 @@ class ModelSubclassingTest(test.TestCase):
       model = SimpleTestModel(num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
 
-      x = np.ones((num_samples, input_dim))
-      y = np.zeros((num_samples, num_classes))
+      x = np.ones((num_samples, input_dim), dtype=np.float32)
+      y = np.zeros((num_samples, num_classes), dtype=np.float32)
       dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)

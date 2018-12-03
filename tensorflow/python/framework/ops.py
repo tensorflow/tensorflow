@@ -1113,10 +1113,9 @@ def internal_convert_to_tensor(value,
   if ctx is None: ctx = context.context()
   if isinstance(value, EagerTensor):
     if ctx.executing_eagerly():
-      # Fast path for EagerTensors that don't need any conversion.
-      # Note that we don't check that value's dtype matches the dtype
-      # argument.  We expect that the C runtime will do that checking
-      # when we execute the kernel.
+      if dtype is not None:
+        dtype = dtypes.as_dtype(dtype)
+        value = _TensorTensorConversionFunction(value, dtype=dtype)
       return value
     else:
       graph = get_default_graph()
