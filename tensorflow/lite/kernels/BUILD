@@ -183,6 +183,7 @@ cc_library(
         "exp.cc",
         "expand_dims.cc",
         "fake_quant.cc",
+        "fill.cc",
         "floor.cc",
         "floor_div.cc",
         "floor_mod.cc",
@@ -1401,6 +1402,19 @@ tf_cc_test(
     name = "squared_difference_test",
     size = "small",
     srcs = ["squared_difference_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "fill_test",
+    size = "small",
+    srcs = ["fill_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",

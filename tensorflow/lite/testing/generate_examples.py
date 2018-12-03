@@ -3528,6 +3528,36 @@ def make_range_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_fill_tests(zip_path):
+  """Make a set of tests to do fill."""
+
+  test_parameters = [{
+      "dims_dtype": [tf.int32, tf.int64],
+      "dims_shape": [[], [1], [3], [3, 3]],
+      "value_dtype": [tf.int32, tf.int64, tf.float32],
+  }]
+
+  def build_graph(parameters):
+    """Build the fill op testing graph."""
+    input1 = tf.placeholder(
+        dtype=parameters["dims_dtype"],
+        name="dims",
+        shape=parameters["dims_shape"])
+    input2 = tf.placeholder(
+        dtype=parameters["value_dtype"], name="value", shape=[])
+    out = tf.fill(input1, input2)
+    return [input1, input2], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input1 = create_tensor_data(parameters["dims_dtype"],
+                                parameters["dims_shape"], 1)
+    input2 = create_scalar_data(parameters["value_dtype"])
+    return [input1, input2], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input1, input2])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def _make_logical_tests(op):
   """Make a set of tests to do logical operations."""
 
