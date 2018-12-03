@@ -18,8 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
+
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -29,18 +34,23 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
+from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
 
@@ -474,6 +484,77 @@ class OptimizerTest(test.TestCase):
         verbose=2)
     self.assertAllClose(
         float(backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
+
+
+class OptimizersCompatibilityTest(test.TestCase, parameterized.TestCase):
+
+  # TODO(tanzheny): remove test_numeric after algorithm for Momentum, Adam and
+  # NAdam has been unified: currently these three algorithms behave differently.
+  @parameterized.named_parameters(
+      ('adadelta', 'adadelta', True, True), ('adagrad', 'adagrad', True, True),
+      ('adam', 'adam', True, False), ('adamax', 'adamax', True, True),
+      ('nadam', 'nadam', True, False), ('momentum', 'momentum', False, False),
+      ('sgd', 'sgd', False, True))
+  def testOptimizersCompatibility(self, opt_str, test_weights, test_numeric):
+    np.random.seed(1331)
+    with self.cached_session():
+      train_samples = 20
+      input_dim = 3
+      num_classes = 2
+      (x, y), _ = testing_utils.get_test_data(
+          train_samples=train_samples,
+          test_samples=10,
+          input_shape=(input_dim,),
+          num_classes=num_classes)
+      y = keras.utils.to_categorical(y)
+
+      num_hidden = 5
+      model = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+
+      old_mode = os.environ.get('TF2_BEHAVIOR', None)
+      # Disable tf2 to create V1 optimizer.
+      disable_tf2()
+      if opt_str == 'momentum':
+        opt_v1 = optimizers.SGD(momentum=0.9)
+      else:
+        opt_v1 = optimizers.get(opt_str)
+
+      # Test compile and fit with v1 optimizer.
+      model.compile(opt_v1, loss='categorical_crossentropy', metrics=[])
+      model.fit(x, y, batch_size=5, epochs=1)
+      model_dir = tempfile.mkdtemp()
+      gfile.MakeDirs(model_dir)
+      file_name = os.path.join(model_dir, 'model.h5')
+      model.save(file_name)
+
+      enable_tf2()
+      # Test load and fit with v2 optimizer.
+      model_2 = saving.load_model(file_name)
+      opt_v2 = model_2.optimizer
+      self.assertIsInstance(opt_v2, optimizer_v2.OptimizerV2)
+      # set_weights is called inside load_model but exception is swallowed,
+      # this call checks the weights can be set correctly.
+      if test_weights:
+        opt_v2.set_weights(opt_v1.get_weights())
+      if test_numeric:
+        hist_1 = model.fit(x, y, batch_size=5, epochs=1, shuffle=False)
+        hist_2 = model_2.fit(x, y, batch_size=5, epochs=1, shuffle=False)
+        self.assertAllClose(model.get_weights(), model_2.get_weights())
+        self.assertAllClose(model.get_weights(), model_2.get_weights())
+        self.assertAllClose(hist_1.history['loss'], hist_2.history['loss'])
+
+      if old_mode is not None:
+        os.environ['TF2_BEHAVIOR'] = old_mode
+
+
+def disable_tf2():
+  if 'TF2_BEHAVIOR' in os.environ:
+    del os.environ['TF2_BEHAVIOR']
+
+
+def enable_tf2():
+  os.environ['TF2_BEHAVIOR'] = 'enabled'
 
 
 # Note: These tests are kept in a separate class to avoid bugs in some

@@ -52,8 +52,9 @@ Status GrpcSession::Create(const SessionOptions& options,
   }
   if (!master) {
     SharedGrpcChannelPtr master_channel;
-    TF_RETURN_IF_ERROR(NewHostPortGrpcChannel(
-        options.target.substr(kSchemePrefixLength), &master_channel));
+    TF_RETURN_IF_ERROR(
+        NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength),
+                               &options.config.rpc_options(), &master_channel));
     master.reset(NewGrpcMaster(master_channel));
   }
   session->SetRemoteMaster(std::move(master));
@@ -384,8 +385,9 @@ void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {
 Status GrpcSession::Reset(const SessionOptions& options,
                           const std::vector<string>& containers) {
   SharedGrpcChannelPtr master_channel;
-  TF_RETURN_IF_ERROR(NewHostPortGrpcChannel(
-      options.target.substr(kSchemePrefixLength), &master_channel));
+  TF_RETURN_IF_ERROR(
+      NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength),
+                             /*rpc_options=*/nullptr, &master_channel));
   auto master = NewGrpcMaster(master_channel);
   ResetRequest req;
   for (const auto& c : containers) req.add_container(c);

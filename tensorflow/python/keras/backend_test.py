@@ -136,7 +136,7 @@ class BackendUtilsTest(test.TestCase):
       x = keras.Input((3,))
       y = keras.layers.BatchNormalization()(x)
       if not context.executing_eagerly():
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
   def test_learning_phase_scope(self):
@@ -1428,6 +1428,7 @@ class TestCTC(test.TestCase):
                 decode_truth[i] == keras.backend.eval(decode_pred_tf[i])))
       self.assertAllClose(log_prob_truth, log_prob_pred)
 
+  @test_util.run_deprecated_v1
   def test_ctc_batch_cost(self):
     with self.cached_session():
       label_lens = np.expand_dims(np.asarray([5, 4]), 1)
@@ -1513,6 +1514,7 @@ class TestRandomOps(test.TestCase):
 
 class BackendGraphTests(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_is_placeholder(self):
     x = keras.backend.placeholder(shape=(1,))
     self.assertEqual(keras.backend.is_placeholder(x), True)
@@ -1552,6 +1554,7 @@ class BackendGraphTests(test.TestCase):
     output_values = f([None, None])
     self.assertEqual(output_values, [5., 6.])
 
+  @test_util.run_deprecated_v1
   def test_function_tf_feed_symbols(self):
     # Test Keras backend functions with TF tensor inputs.
     with self.cached_session():
@@ -1585,6 +1588,7 @@ class BackendGraphTests(test.TestCase):
       outs = f([y5, y2, None])
       self.assertEqual(outs, [11., 2.])
 
+  @test_util.run_deprecated_v1
   def test_function_tf_fetches(self):
     # Additional operations can be passed to tf.Session().run() via its
     # `fetches` arguments. In contrast to `updates` argument of
@@ -1607,6 +1611,7 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(keras.backend.get_session().run(fetches=[x, y]),
                        [11., 5.])
 
+  @test_util.run_deprecated_v1
   def test_function_tf_feed_dict(self):
     # Additional substitutions can be passed to `tf.Session().run()` via its
     # `feed_dict` arguments. Note that the feed_dict is passed once in the
@@ -1639,6 +1644,7 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(keras.backend.get_session().run(fetches=[x, y]),
                        [30., 40.])
 
+  @test_util.run_deprecated_v1
   def test_function_tf_run_options_with_run_metadata(self):
     with self.cached_session():
       x_placeholder = keras.backend.placeholder(shape=())
@@ -1664,6 +1670,7 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(output1, [30.])
       self.assertEqual(len(run_metadata.partition_graphs), 0)
 
+  @test_util.run_deprecated_v1
   def test_function_fetch_callbacks(self):
 
     class CallbackStub(object):
@@ -1700,6 +1707,7 @@ class BackendGraphTests(test.TestCase):
     x = keras.backend.placeholder(shape=(3, 4), sparse=True)
     self.assertEqual(x.get_shape().as_list(), [3, 4])
 
+  @test_util.run_deprecated_v1
   def test_batch_normalization(self):
     # No eager CPU kernel.
     g_val = np.random.random((3,))

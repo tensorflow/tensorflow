@@ -500,9 +500,6 @@ class Model(Network):
         raise NotImplementedError(
             'optimizer must be an instance of '
             'tf.train.Optimizer, not a %s' % type(optimizer))
-      if self.run_eagerly:
-        raise NotImplementedError('DistributionStrategy is not supported '
-                                  'when running a model eagerly.')
       if sample_weight_mode:
         raise NotImplementedError('sample_weight_mode is not supported with '
                                   'DistributionStrategy.')
@@ -1064,7 +1061,9 @@ class Model(Network):
 
     with self._distribution_strategy.scope():
       iterator = self._distribution_strategy.make_dataset_iterator(x)
-      K.get_session().run(iterator.initialize())
+      init_op = iterator.initialize()
+      if not context.executing_eagerly():
+        K.get_session().run(init_op)
 
     training_utils.validate_iterator_input(x, y, sample_weight,
                                            validation_split)
@@ -1455,8 +1454,7 @@ class Model(Network):
 
     if self.__class__.__name__ == 'Sequential' and not self.built:
       if tensor_util.is_tensor(inputs):
-        input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
-        self.build(input_shape=input_shape)
+        input_shape = (None,) + tuple(inputs.shape.as_list()[1:])
       elif isinstance(inputs, dict):
         # We assert that the first layer is a FeatureLayer.
         if not training_utils.is_feature_layer(self.layers[0]):
@@ -1464,10 +1462,9 @@ class Model(Network):
                            'which doesn\'t have FeatureLayer as the first layer'
                            ' is an error.')
         input_shape = (None,)
-        self.build(input_shape=input_shape)
       else:
-        input_shape = (None,) + inputs.shape[1:]
-        self.build(input_shape=input_shape)
+        input_shape = (None,) + tuple(inputs.shape[1:])
+      self._build_input_shape = input_shape
 
     # On-the-fly setting of symbolic model inputs (either by using the tensor
     # provided, or by creating a placeholder if Numpy data was provided).
@@ -1485,6 +1482,8 @@ class Model(Network):
         self._feed_inputs.append(v)
         self._feed_input_names.append(k)
         self._feed_input_shapes.append(K.int_shape(v))
+
+    # TODO(fchollet): consider calling `_maybe_build` before calling the model.
 
     if outputs is None:
       # Obtain symbolic outputs by calling the model.
@@ -1676,7 +1675,8 @@ class Model(Network):
 
     # Validate and standardize user data.
     if self._distribution_strategy:
-      distributed_training_utils.validate_callbacks(callbacks)
+      distributed_training_utils.validate_callbacks(callbacks, self.optimizer,
+                                                    self._distribution_strategy)
 
       distributed_training_utils.validate_inputs(
           x, y, self._distribution_strategy)
@@ -1794,7 +1794,8 @@ class Model(Network):
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps)
-    elif isinstance(x, iterator_ops.EagerIterator):
+    elif (isinstance(x, iterator_ops.EagerIterator) and
+          not self._distribution_strategy):
       return training_generator.fit_generator(
           self,
           x,
@@ -2488,9 +2489,7 @@ class DistributedCallbackModel(Model):
 
   def __init__(self, model):
     super(DistributedCallbackModel, self).__init__()
-    # TODO(anjalisridhar): Right now the only attributes set are the layer and
-    # weights. We may need to set additional attributes as needed since we have
-    # not called compile on this model.
+    self.optimizer = model.optimizer
 
   def set_original_model(self, orig_model):
     self._original_model = orig_model

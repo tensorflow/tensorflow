@@ -1,5 +1,6 @@
 op {
   graph_op_name: "ParallelMapDataset"
+  visibility: HIDDEN
   in_arg {
     name: "num_parallel_calls"
     description: <<END

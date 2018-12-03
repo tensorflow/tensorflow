@@ -102,10 +102,11 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
   }
 
   // Instantiate all variables for function library runtime creation.
-  std::vector<Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
-  std::unique_ptr<DeviceMgr> dvc_mgr(new DeviceMgr(devices));
+  Device* cpu_device = devices[0].get();
+  std::unique_ptr<DeviceMgr> dvc_mgr(new DeviceMgr(std::move(devices)));
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              graph_def.library());
   Env* env = Env::Default();
@@ -124,7 +125,7 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
       new ProcessFunctionLibraryRuntime(dvc_mgr.get(), env,
                                         graph_def.versions().producer(),
                                         &function_library, *optimizer_opts));
-  FunctionLibraryRuntime* flr = pflr->GetFLR(devices[0]->name());
+  FunctionLibraryRuntime* flr = pflr->GetFLR(cpu_device->name());
 
   // Create the GraphOptimizer to optimize the graph def.
   GraphConstructorOptions graph_ctor_opts;
@@ -137,7 +138,7 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
 
   // Optimize the graph.
   ::tensorflow::GraphOptimizer optimizer(*optimizer_opts);
-  optimizer.Optimize(flr, env, devices[0], &graphptr, /*shape_map=*/nullptr);
+  optimizer.Optimize(flr, env, cpu_device, &graphptr, /*shape_map=*/nullptr);
   graphptr->ToGraphDef(output_graph_def);
 
   // The default values of attributes might have been stripped by the optimizer.
@@ -519,7 +520,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
         }
         if (!iter->second.has_tensor() ||
             iter->second.tensor().string_val_size() != 1) {
-          LOG(INFO) << "Unexected AttrValue proto: "
+          LOG(INFO) << "Unexpected AttrValue proto: "
                     << iter->second.DebugString();
           return nullptr;
         }

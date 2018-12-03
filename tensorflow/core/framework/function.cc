@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
@@ -507,6 +509,16 @@ string Print(const NodeDef& n) {
       entries.push_back(strings::StrCat(a.first, "=", Print(a.second)));
     }
     std::sort(entries.begin(), entries.end());
+    // Add a short device string at the end of all attributes.
+    if (!n.device().empty()) {
+      DeviceNameUtils::ParsedName parsed;
+      if (DeviceNameUtils::ParseFullName(n.device(), &parsed)) {
+        entries.push_back(
+            strings::StrCat("device=", parsed.type, ":", parsed.id));
+      } else {
+        entries.push_back("device=<FAILED_TO_PARSE>");
+      }
+    }
     strings::StrAppend(&out, "[", str_util::Join(entries, ", "), "]");
   }
   strings::StrAppend(&out, "(");
@@ -590,10 +602,20 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   std::sort(ret.begin(), ret.end(), comp);
   string out;
   strings::StrAppend(&out, "\n(");
-  auto get_type = [](const NodeDef& n) {
+  auto get_type_and_device = [](const NodeDef& n) {
     DataType dt;
     if (!GetNodeAttr(n, "T", &dt).ok()) {
       dt = DT_INVALID;
+    }
+    if (!n.device().empty()) {
+      DeviceNameUtils::ParsedName parsed;
+      if (DeviceNameUtils::ParseFullName(n.device(), &parsed)) {
+        return strings::StrCat(DataTypeString(dt), "@", parsed.type, ":",
+                               parsed.id);
+      } else {
+        return strings::StrCat(DataTypeString(dt), "@",
+                               "<FAILED_TO_PARSE_DEVICE>");
+      }
     }
     return DataTypeString(dt);
   };
@@ -601,15 +623,29 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
     const NodeDef* n = arg[i];
     if (i > 0) strings::StrAppend(&out, ", ");
     CHECK_GE(n->attr_size(), 2);
-    strings::StrAppend(&out, n->name(), ":", get_type(*n));
+    strings::StrAppend(&out, n->name(), ":", get_type_and_device(*n));
   }
   strings::StrAppend(&out, ") -> (");
   for (size_t i = 0; i < ret.size(); ++i) {
     const NodeDef* n = ret[i];
     if (i > 0) strings::StrAppend(&out, ", ");
     CHECK_LE(2, n->attr_size());
-    CHECK_EQ(1, n->input_size());
-    strings::StrAppend(&out, n->input(0), ":", get_type(*n));
+
+    // The _RetVal op should have a unique non-control input. We assert that
+    // here and add it to the output.
+    bool found_non_control_input = false;
+    for (const string& input : n->input()) {
+      if (!input.empty() && input[0] != '^') {
+        DCHECK_EQ(found_non_control_input, false)
+            << "RetVal node has more than one non-control input: "
+            << absl::StrJoin(n->input(), ", ");
+        strings::StrAppend(&out, n->input(0), ":", get_type_and_device(*n));
+        found_non_control_input = true;
+      }
+    }
+    DCHECK_EQ(found_non_control_input, true)
+        << "RetVal did not have any non-control inputs: "
+        << absl::StrJoin(n->input(), ", ");
   }
   strings::StrAppend(&out, ") {\n");
   for (size_t i = 0; i < body.size(); ++i) {

@@ -100,6 +100,15 @@ class DistributedValues(object):
   # DistributionStrategy implementations.
 
 
+# NOTE(josh11b,apassos): It would be great if we could inspect the values this was
+# initialized with and use that to generate the overloaded operators here.
+# Unfortunately, Python's rules for special methods don't allow this, see
+# https://docs.python.org/3/reference/datamodel.html#special-method-names
+# "if a class defines a method named __getitem__(), and x is an instance of
+# this class, then x[i] is roughly equivalent to type(x).__getitem__(x, i)."
+# In particular, these special methods don't go through __getattr__, and
+# it will only use those methods if they are defined in the class, not the
+# object.
 class DistributedDelegate(DistributedValues):
   """A map from device to values; acts as the same type as the values."""
 
@@ -324,7 +333,7 @@ def _apply_aggregation(strategy, value, aggregation, destinations):
     return strategy.broadcast(strategy.unwrap(value)[0],
                               destinations=destinations)
   reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
-  return strategy.reduce(reduce_op, value=value, destinations=destinations)
+  return strategy.extended.reduce_to(reduce_op, value, destinations)
 
 
 class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
@@ -1672,13 +1681,11 @@ class MultiStepContext(object):
         self._last_step_outputs[name] = output
       else:
         distribution = distribution_strategy_context.get_distribution_strategy()
-        self._last_step_outputs[name] = distribution.reduce(
-            reduce_op, output, destinations="/device:CPU:0")
+        self._last_step_outputs[name] = distribution.reduce(reduce_op, output)
     else:
       assert reduce_op is not None
       def merge_fn(distribution, value):
-        self._last_step_outputs[name] = distribution.reduce(
-            reduce_op, value, destinations="/device:CPU:0")
+        self._last_step_outputs[name] = distribution.reduce(reduce_op, value)
         # Setting this inside the `merge_fn` because all replicas share the same
         # context object, so it's more robust to set it only once (even if all
         # the replicas are trying to set the same value).

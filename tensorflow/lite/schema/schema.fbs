@@ -203,6 +203,8 @@ enum BuiltinOperator : byte {
   LEAKY_RELU = 98,
   SQUARED_DIFFERENCE = 99,
   MIRROR_PAD = 100,
+  ABS = 101,
+  SPLIT_V = 102,
 }
 
 // Options for the builtin operators.
@@ -284,6 +286,8 @@ union BuiltinOptions {
   LeakyReluOptions,
   SquaredDifferenceOptions,
   MirrorPadOptions,
+  AbsOptions,
+  SplitVOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -532,6 +536,10 @@ table SplitOptions {
   num_splits: int;
 }
 
+table SplitVOptions {
+  num_splits: int;
+}
+
 table StridedSliceOptions {
   begin_mask: int;
   end_mask: int;
@@ -634,6 +642,10 @@ table LogicalOrOptions {
 table OneHotOptions {
   axis:int;
 }
+
+table AbsOptions {
+}
+
 
 table LogicalAndOptions {
 }

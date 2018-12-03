@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
@@ -206,6 +207,7 @@ class SoftmaxTest(test.TestCase):
                          [[5., 4., 3., 2.], [1., 2., 3., 4.]]])
     self.assertEqual([3, 2, 4], op.get_shape())
 
+  @test_util.run_deprecated_v1
   def testEmptyInput(self):
     with self.cached_session():
       x = array_ops.placeholder(dtypes.float32, shape=[0, 3])
@@ -229,6 +231,7 @@ class SoftmaxTest(test.TestCase):
       with self.assertRaises(errors_impl.InvalidArgumentError):
         nn_ops.softmax(ones, axis=2).eval()
 
+  @test_util.run_deprecated_v1
   def testLargeDims(self):
     # Make sure that we properly handle large inputs. See
     # https://github.com/tensorflow/tensorflow/issues/4425 for details

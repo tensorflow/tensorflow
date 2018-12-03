@@ -1013,8 +1013,8 @@ class RNNTest(test.TestCase):
         inputs, _ = cell(inputs, initial_state)
         output = inputs
         if not context.executing_eagerly():
-          sess.run(variables_lib.global_variables_initializer())
-          output = sess.run(output)
+          self.evaluate(variables_lib.global_variables_initializer())
+          output = self.evaluate(output)
         return output
 
     random_seed.set_random_seed(12345)

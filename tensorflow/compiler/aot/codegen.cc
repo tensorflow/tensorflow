@@ -175,7 +175,8 @@ Status GenArgMethods(const tf2xla::Config& config,
   }
   for (int i = 0; i < num_args; ++i) {
     std::vector<std::pair<string, string>> rewrites;
-    TF_RETURN_IF_ERROR(AddRewritesForShape(i, ps.parameters(i), &rewrites));
+    TF_RETURN_IF_ERROR(
+        AddRewritesForShape(i, xla::Shape(ps.parameters(i)), &rewrites));
     const string code = R"(
   void set_arg{{NAME}}_data(void* data) {
     set_arg_data({{I}}, data);
@@ -218,8 +219,8 @@ Status GenResultMethods(const tf2xla::Config& config,
   }
   for (int i = 0; i < ps.result().tuple_shapes_size(); ++i) {
     std::vector<std::pair<string, string>> rewrites;
-    TF_RETURN_IF_ERROR(
-        AddRewritesForShape(i, ps.result().tuple_shapes(i), &rewrites));
+    TF_RETURN_IF_ERROR(AddRewritesForShape(
+        i, xla::Shape(ps.result().tuple_shapes(i)), &rewrites));
     string code = R"(
   {{TYPE}}* result{{NAME}}_data() {
     return static_cast<{{TYPE}}*>(result_data({{I}}));
@@ -588,7 +589,7 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
       {"{{METHODS_RESULT}}\n", methods_result},
       {"{{NS_END}}\n", ns_end},
       {"{{NS_START}}\n", ns_start},
-      {"{{PROGRAM_SHAPE}}", xla::ShapeUtil::HumanString(ps)},
+      {"{{PROGRAM_SHAPE}}", xla::ShapeUtil::HumanString(xla::ProgramShape(ps))},
       {"{{PROGRAM_SHAPE_SHIM_EXPRESSION}}",
        metadata_result.program_shape_access_shim},
       {"{{RESULT_INDEX}}", absl::StrCat(result_index)},

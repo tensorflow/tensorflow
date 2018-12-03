@@ -27,6 +27,7 @@ from tensorflow.python.platform import test
 
 class ZeroDivisionTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testZeros(self):
     with test_util.use_gpu():
       for dtype in dtypes.uint8, dtypes.int16, dtypes.int32, dtypes.int64:

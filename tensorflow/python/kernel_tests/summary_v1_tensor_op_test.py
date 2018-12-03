@@ -50,7 +50,7 @@ class SummaryV1TensorOpTest(test.TestCase):
         with ops.name_scope("zod"):
           s3 = summary_lib.tensor_summary("s3", c)
           s4 = summary_lib.tensor_summary("TensorSummary", c)
-      summ1, summ2, summ3, summ4 = sess.run([s1, s2, s3, s4])
+      summ1, summ2, summ3, summ4 = self.evaluate([s1, s2, s3, s4])
 
     v1 = self._SummarySingleValue(summ1)
     self.assertEqual(v1.tag, "s1")
@@ -68,7 +68,7 @@ class SummaryV1TensorOpTest(test.TestCase):
     with self.cached_session() as sess:
       const = constant_op.constant(10.0)
       summ = summary_lib.tensor_summary("foo", const)
-      result = sess.run(summ)
+      result = self.evaluate(summ)
 
     value = self._SummarySingleValue(result)
     n = tensor_util.MakeNdarray(value.tensor)
@@ -79,7 +79,7 @@ class SummaryV1TensorOpTest(test.TestCase):
     with self.cached_session() as sess:
       const = constant_op.constant(s)
       summ = summary_lib.tensor_summary("foo", const)
-      result = sess.run(summ)
+      result = self.evaluate(summ)
 
     value = self._SummarySingleValue(result)
     n = tensor_util.MakeNdarray(value.tensor)
@@ -89,7 +89,7 @@ class SummaryV1TensorOpTest(test.TestCase):
     with self.cached_session() as sess:
       const = array_ops.ones([5, 5, 5])
       summ = summary_lib.tensor_summary("foo", const)
-      result = sess.run(summ)
+      result = self.evaluate(summ)
     value = self._SummarySingleValue(result)
     n = tensor_util.MakeNdarray(value.tensor)
     self._AssertNumpyEq(n, np.ones([5, 5, 5]))
@@ -99,7 +99,7 @@ class SummaryV1TensorOpTest(test.TestCase):
     with self.cached_session() as sess:
       const = constant_op.constant(strings)
       summ = summary_lib.tensor_summary("foo", const)
-      result = sess.run(summ)
+      result = self.evaluate(summ)
     value = self._SummarySingleValue(result)
     n = tensor_util.MakeNdarray(value.tensor)
     self._AssertNumpyEq(n, strings)
@@ -109,7 +109,7 @@ class SummaryV1TensorOpTest(test.TestCase):
     with self.cached_session() as sess:
       const = constant_op.constant(bools)
       summ = summary_lib.tensor_summary("foo", const)
-      result = sess.run(summ)
+      result = self.evaluate(summ)
 
     value = self._SummarySingleValue(result)
     n = tensor_util.MakeNdarray(value.tensor)
@@ -119,7 +119,7 @@ class SummaryV1TensorOpTest(test.TestCase):
     with self.cached_session() as sess:
 
       def get_description(summary_op):
-        summ_str = sess.run(summary_op)
+        summ_str = self.evaluate(summary_op)
         summ = summary_pb2.Summary()
         summ.ParseFromString(summ_str)
         return summ.value[0].metadata

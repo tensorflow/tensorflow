@@ -82,7 +82,8 @@ class CollectiveAllReduceStrategyTestBase(
         instance_key_with_id_start=num_gpus * 10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
     distribution.extended._collective_keys = collective_keys
-    distribution.extended._cross_device_ops._collective_keys = collective_keys
+    distribution.extended._inferred_cross_device_ops._collective_keys = (
+        collective_keys)
     if task_type and task_id is not None:
       return distribution, 'grpc://' + self._cluster_spec[task_type][
           task_id], session_config
@@ -131,7 +132,7 @@ class CollectiveAllReduceStrategyTestBase(
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
             # TODO(yuefengz): support non-Mirrored variable as destinations.
-            g = d.reduce(
+            g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
                 d.update(v, update, g, grouped=False)):
@@ -225,10 +226,7 @@ class CollectiveAllReduceStrategyTestBase(
         return array_ops.identity(x)
 
       x = distribution.call_for_each_replica(model_fn)
-      reduced_x = distribution.unwrap(
-          distribution.reduce(
-              reduce_util.ReduceOp.MEAN, x,
-              destinations='/cpu:0'))[0]
+      reduced_x = distribution.reduce(reduce_util.ReduceOp.MEAN, x)
       x = distribution.unwrap(x)[0]
 
       sess.run(variables.global_variables_initializer())

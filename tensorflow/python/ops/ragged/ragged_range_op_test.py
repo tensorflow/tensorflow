@@ -26,6 +26,7 @@ from tensorflow.python.platform import googletest
 
 class RaggedRangeOpTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testDocStringExamples(self):
     """Examples from ragged_range.__doc__."""
     with self.test_session():
@@ -38,6 +39,7 @@ class RaggedRangeOpTest(test_util.TensorFlowTestCase):
       rt3 = ragged.range([0, 5, 8], [3, 3, 12], 2).eval().tolist()
       self.assertEqual(rt3, [[0, 2], [], [8, 10]])
 
+  @test_util.run_deprecated_v1
   def testBasicRanges(self):
     with self.test_session():
       # Specify limits only.
@@ -56,6 +58,7 @@ class RaggedRangeOpTest(test_util.TensorFlowTestCase):
           [list(range(0, 4, 2)), list(range(3, 4, 3)),
            list(range(5, 15, 4))])
 
+  @test_util.run_deprecated_v1
   def testFloatRanges(self):
     with self.test_session():
       expected = [[0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.2, 3.6], [3.0],
@@ -64,6 +67,7 @@ class RaggedRangeOpTest(test_util.TensorFlowTestCase):
                             [0.4, 1.5, 2.2]).eval().tolist()
       self.assertEqual(expected, [[round(v, 5) for v in row] for row in actual])
 
+  @test_util.run_deprecated_v1
   def testNegativeDeltas(self):
     with self.test_session():
       self.assertEqual(
@@ -77,6 +81,7 @@ class RaggedRangeOpTest(test_util.TensorFlowTestCase):
           [list(range(0, 0, -1)), list(range(-3, 0, 1)),
            list(range(5, 0, -2))])
 
+  @test_util.run_deprecated_v1
   def testBroadcast(self):
     with self.test_session():
       # Specify starts and limits, broadcast deltas.
@@ -89,6 +94,7 @@ class RaggedRangeOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(
           ragged.range(0, 5, 1).eval().tolist(), [list(range(0, 5, 1))])
 
+  @test_util.run_deprecated_v1
   def testEmptyRanges(self):
     rt1 = ragged.range([0, 5, 3], [0, 3, 5])
     rt2 = ragged.range([0, 5, 5], [0, 3, 5], -1)
@@ -96,6 +102,7 @@ class RaggedRangeOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(rt1.eval().tolist(), [[], [], [3, 4]])
       self.assertEqual(rt2.eval().tolist(), [[], [5, 4], []])
 
+  @test_util.run_deprecated_v1
   def testShapeFnErrors(self):
     with self.test_session():
       self.assertRaisesRegexp(ValueError, r'Shape must be at most rank 1.*',
@@ -107,12 +114,14 @@ class RaggedRangeOpTest(test_util.TensorFlowTestCase):
       self.assertRaisesRegexp(ValueError, r'Dimensions must be equal.*',
                               ragged.range, [0], [1, 2])
 
+  @test_util.run_deprecated_v1
   def testKernelErrors(self):
     with self.test_session():
       self.assertRaisesRegexp(errors.InvalidArgumentError,
                               r'Requires delta != 0',
                               ragged.range(0, 0, 0).eval)
 
+  @test_util.run_deprecated_v1
   def testShape(self):
     self.assertEqual(ragged.range(0, 0, 0).shape.as_list(), [1, None])
     self.assertEqual(ragged.range([1, 2, 3]).shape.as_list(), [3, None])

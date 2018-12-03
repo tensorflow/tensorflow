@@ -68,7 +68,7 @@ __all__ = [
 ]
 
 
-@tf_export("variable_axis_size_partitioner")
+@tf_export(v1=["variable_axis_size_partitioner"])
 def variable_axis_size_partitioner(
     max_shard_bytes, axis=0, bytes_per_string_element=16, max_shards=None):
   """Get a partitioner for VariableScope to keep shards below `max_shard_bytes`.
@@ -237,7 +237,7 @@ def fixed_size_partitioner(num_shards, axis=0):
   return _partitioner
 
 
-@tf_export("create_partitioned_variables")
+@tf_export(v1=["create_partitioned_variables"])
 @deprecation.deprecated(
     date=None,
     instructions="Use tf.get_variable with a partitioner set.")

@@ -25,31 +25,7 @@ from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.util.tf_export import tf_export
-
-
-@tf_export('losses.Reduction', 'keras.losses.Reduction', v1=[])
-class ReductionV2(object):
-  """Types of loss reduction.
-
-  Contains the following values:
-  `NONE`: Un-reduced weighted losses with the same shape as input.
-  `SUM`: Scalar sum of weighted losses.
-  `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
-  """
-
-  NONE = None
-  SUM = 'sum'
-  SUM_OVER_BATCH_SIZE = 'sum_over_batch_size'
-
-  @classmethod
-  def all(cls):
-    return (cls.NONE, cls.SUM, cls.SUM_OVER_BATCH_SIZE)
-
-  @classmethod
-  def validate(cls, key):
-    if key not in cls.all():
-      raise ValueError('Invalid Reduction Key %s.' % key)
+from tensorflow.python.ops.losses import losses_impl
 
 
 def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
@@ -144,21 +120,21 @@ def _num_elements(losses):
     return math_ops.cast(array_ops.size(losses, name=scope), dtype=losses.dtype)
 
 
-def _reduce_weighted_loss(weighted_losses,
-                          reduction=ReductionV2.SUM_OVER_BATCH_SIZE):
+def _reduce_weighted_loss(
+    weighted_losses, reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE):
   """Reduces the individual weighted loss measurements."""
-  if reduction == ReductionV2.NONE:
+  if reduction == losses_impl.ReductionV2.NONE:
     loss = weighted_losses
   else:
     loss = math_ops.reduce_sum(weighted_losses)
-    if reduction == ReductionV2.SUM_OVER_BATCH_SIZE:
+    if reduction == losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE:
       loss = _safe_mean(loss, _num_elements(weighted_losses))
   return loss
 
 
 def compute_weighted_loss(losses,
                           sample_weight=None,
-                          reduction=ReductionV2.SUM_OVER_BATCH_SIZE,
+                          reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
                           name=None):
   """Computes the weighted loss.
 
@@ -177,7 +153,7 @@ def compute_weighted_loss(losses,
     Weighted loss `Tensor` of the same type as `losses`. If `reduction` is
     `NONE`, this has the same shape as `losses`; otherwise, it is scalar.
   """
-  ReductionV2.validate(reduction)
+  losses_impl.ReductionV2.validate(reduction)
   if sample_weight is None:
     sample_weight = 1.0
   with ops.name_scope(name, 'weighted_loss', (losses, sample_weight)):

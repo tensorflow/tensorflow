@@ -116,7 +116,8 @@ class DistributionTestBase(test.TestCase):
           before_list.append(fetched)
           # control_dependencies irrelevant but harmless in eager execution
           with ops.control_dependencies([fetched]):
-            g = d.reduce(reduce_util.ReduceOp.SUM, g, destinations=v)
+            g = d.extended.reduce_to(
+                reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(d.update(
                 v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
@@ -170,7 +171,8 @@ class DistributionTestBase(test.TestCase):
           fetched = d.read_var(v)
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
-            g = d.reduce(reduce_util.ReduceOp.SUM, g, destinations=v)
+            g = d.extended.reduce_to(
+                reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(d.update(
                 v, update, g, grouped=False)):
               after_list.append(d.read_var(v))

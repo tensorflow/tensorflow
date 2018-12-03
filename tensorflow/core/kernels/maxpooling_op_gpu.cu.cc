@@ -390,6 +390,7 @@ bool MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
     int32* top_data, const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
   const int output_size = batch * channels * pooled_height * pooled_width;
+  if (output_size == 0) return true;
   GPU_LAUNCH_KERNEL(MaxPoolForwardNoMaskKernel_NCHW_VECT_C,
       dim3((output_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
       dim3(kThreadsPerBlock), 0, d.stream(),
@@ -409,6 +410,7 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
     int64* mask, const Eigen::GpuDevice& d, bool propagate_nans) {
   const int kThreadsPerBlock = 1024;
   const int output_size = batch * channels * pooled_height * pooled_width;
+  if (output_size == 0) return true;
   if (propagate_nans) {
     GPU_LAUNCH_KERNEL(MaxPoolForwardNHWC<true>,
         dim3((output_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
@@ -437,6 +439,7 @@ bool MaxPoolBackwardNoMask<T>::operator()(
   const int kThreadsPerBlock = 1024;
 
   const int bottom_size = batch * channels * height * width;
+  if (bottom_size == 0) return true;
   GPU_LAUNCH_KERNEL(SetZero,
       dim3((bottom_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
       dim3(kThreadsPerBlock), 0, d.stream(),
@@ -458,6 +461,7 @@ bool MaxPoolBackwardWithArgmax<T>::operator()(
     const int64* mask, const int top_offset, const int bottom_offset,
     T* bottom_diff, const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
+  if (input_size == 0) return true;
   GPU_LAUNCH_KERNEL(SetZero,
       dim3((input_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
       dim3(kThreadsPerBlock), 0, d.stream(),
@@ -478,6 +482,7 @@ bool MaxPoolGradBackwardNoMask<T>::operator()(
     const int pad_l, const T* top_diff, T* bottom_diff,
     const Eigen::GpuDevice& d) {
   const int num_kernels = batch * channels * pooled_height * pooled_width;
+  if (num_kernels == 0) return true;
   GpuLaunchConfig config = GetGpuLaunchConfig(num_kernels, d);
 
   if (data_format == FORMAT_NHWC) {
@@ -501,6 +506,7 @@ bool MaxPoolGradBackwardWithArgmax<T>::operator()(
     const int output_size, const int input_size, const T* top_diff,
     const int64* mask, const int top_offset, const int bottom_offset,
     T* bottom_diff, const Eigen::GpuDevice& d) {
+  if (input_size == 0) return true;
   GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
   GPU_LAUNCH_KERNEL(MaxPoolGradBackward,
       dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),

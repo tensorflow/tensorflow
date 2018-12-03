@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -462,6 +463,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   // optimize TPU functions with Grappler, this check preserves that.
   if (IsTPUGraphDef(*optimized_graph)) {
     VLOG(2) << "Skipping optimizing funcs for TPU graphs";
+    if (VLOG_IS_ON(1)) {
+      DumpGraphDefToFile("after_MetaOptimizer", *optimized_graph);
+    }
     return Status::OK();
   }
 
@@ -555,6 +559,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   VLOG(1) << "Optimized " << optimized_funcs.size()
           << " functions: " << str_util::Join(optimized_funcs, ", ");
 
+  if (VLOG_IS_ON(1)) {
+    DumpGraphDefToFile("after_MetaOptimizer", *optimized_graph);
+  }
   return Status::OK();
 }
 

@@ -248,7 +248,7 @@ struct FusedBatchNorm<GPUDevice, T, U> {
                   Tensor* saved_inv_var, TensorFormat tensor_format,
                   bool is_training) {
     auto* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream avalible"));
+    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available"));
 
     const int64 batch_size = GetTensorDim(x, tensor_format, 'N');
     const int64 channels = GetTensorDim(x, tensor_format, 'C');
@@ -389,7 +389,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
                   Tensor* scale_backprop, Tensor* offset_backprop,
                   TensorFormat tensor_format) {
     auto* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream avalible"));
+    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available"));
 
     const int64 batch_size = GetTensorDim(x, tensor_format, 'N');
     const int64 channels = GetTensorDim(x, tensor_format, 'C');

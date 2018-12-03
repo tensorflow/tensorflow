@@ -270,78 +270,151 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
         convolution, std::move(new_convolution)));
   } else {
-    // The filter expansion mechanism adds zeroes in the kernel.
-    // For an OF = 12, IF = 6, and kernel IF = 2, the expanded filter mask
-    // would look like (IF on the Y-axis, OF on the X-axis)
-    // 1 1 1 1 0 0 0 0 0 0 0 0
-    // 1 1 1 1 0 0 0 0 0 0 0 0
-    // 0 0 0 0 1 1 1 1 0 0 0 0
-    // 0 0 0 0 1 1 1 1 0 0 0 0
-    // 0 0 0 0 0 0 0 0 1 1 1 1
-    // 0 0 0 0 0 0 0 0 1 1 1 1
-    //
-    // Instead of convolving the above with the input, we instead slice the
-    // kernel into three kernels, each containing islands of 1s from the filter
-    // above. We also slice the activations in the IF dimension with each slice
-    // of size = group_size. For each slice, we perform convolutions, and
-    // concatenate the generated outputs in the output OF dimension.
-
-    std::vector<HloInstruction*> sliced_convolutions;
-    auto activation = convolution->mutable_operand(0);
-    std::vector<int64> slice_strides(filter->shape().dimensions_size(), 1);
-    std::vector<int64> filter_slice_starts(filter->shape().dimensions_size(),
-                                           0);
-    std::vector<int64> filter_slice_limits(filter->shape().dimensions().begin(),
-                                           filter->shape().dimensions().end());
-    std::vector<int64> activation_slice_starts(
-        activation->shape().dimensions_size(), 0);
-    std::vector<int64> activation_slice_limits(
-        activation->shape().dimensions().begin(),
-        activation->shape().dimensions().end());
+    int64 activation_input_feature_dim = dim_numbers.input_feature_dimension();
 
     int64 output_feature =
         filter->shape().dimensions(kernel_output_feature_dim);
-    auto output_feature_dim = dim_numbers.output_feature_dimension();
-    int64 filter_slice_width = output_feature / group_count;
 
-    int64 activation_input_feature_dim = dim_numbers.input_feature_dimension();
+    // If group_count == output_feature, then we map those grouped convolutions
+    // onto depthwise convolution. This is done by adding an additional spatial
+    // dimension to the activations, kernel, and the output.
+    // E.g., we would turn
+    // [2, 12]{B, IF} conv [3, 4]{IF, OF} into
+    // [3, 2, 4]{S, B, IF} depth conv [3, 1, 4]{S, IF, OF}, where S is the
+    // additional spatial dimension. The generated convolution output will be
+    // [1, 2, 4]{S, B, OF} and then reshape the output back to [2, 4] {B, OF}.
 
-    for (int64 i = 0; i < group_count; i++) {
-      filter_slice_starts[kernel_output_feature_dim] = i * filter_slice_width;
-      filter_slice_limits[kernel_output_feature_dim] =
-          (i + 1) * filter_slice_width;
-      auto filter_sliced_shape = filter->shape();
-      filter_sliced_shape.set_dimensions(kernel_output_feature_dim,
-                                         filter_slice_width);
-      auto filter_slice = add(HloInstruction::CreateSlice(
-          filter_sliced_shape, filter, filter_slice_starts, filter_slice_limits,
-          slice_strides));
+    if (group_count == output_feature && !filter_expansion_) {
+      auto filter = convolution->mutable_operand(1);
+      auto activation = convolution->mutable_operand(0);
 
-      activation_slice_starts[activation_input_feature_dim] = i * group_size;
-      activation_slice_limits[activation_input_feature_dim] =
-          (i + 1) * group_size;
-      auto activation_sliced_shape = activation->shape();
-      activation_sliced_shape.set_dimensions(activation_input_feature_dim,
-                                             group_size);
-      auto activation_slice = add(HloInstruction::CreateSlice(
-          activation_sliced_shape, activation, activation_slice_starts,
-          activation_slice_limits, slice_strides));
+      // Add spatial dimension to the activation, and reshape.
+      Shape reshaped_activation_shape = activation->shape();
+      ShapeUtil::AppendMajorDimension(group_size, &reshaped_activation_shape);
 
-      auto conv_slice_shape = convolution->shape();
-      conv_slice_shape.set_dimensions(output_feature_dim, filter_slice_width);
+      int64 new_spatial_dim = reshaped_activation_shape.dimensions().size() - 1;
+
+      reshaped_activation_shape.set_dimensions(activation_input_feature_dim,
+                                               group_count);
+      activation = add(
+          HloInstruction::CreateReshape(reshaped_activation_shape, activation));
+
+      // Add spatial dimension to the filter, and reshape.
+      Shape reshaped_filter_shape = filter->shape();
+      ShapeUtil::AppendMajorDimension(1, &reshaped_filter_shape);
+
+      filter =
+          add(HloInstruction::CreateReshape(reshaped_filter_shape, filter));
+
+      Shape new_output_shape = convolution->shape();
+      ShapeUtil::AppendMajorDimension(1, &new_output_shape);
+
+      // Edit convolution dimension numbers. Note that kernel_input_feature_dim
+      // now becomes a spatial dimension, and the newly added dimension of size
+      // 1 is the new kernel_input_feature_dim.
+      dim_numbers.add_input_spatial_dimensions(new_spatial_dim);
+      dim_numbers.add_kernel_spatial_dimensions(kernel_input_feature_dim);
+      dim_numbers.set_kernel_input_feature_dimension(new_spatial_dim);
+      dim_numbers.add_output_spatial_dimensions(new_spatial_dim);
+
+      // Add window for the new spatial dimension.
+      Window new_window = convolution->window();
+      auto* dim = new_window.add_dimensions();
+      dim->set_window_dilation(1);
+      dim->set_base_dilation(1);
+      dim->set_stride(1);
+      dim->set_size(group_size);
 
       auto new_convolution = add(HloInstruction::CreateConvolve(
-          conv_slice_shape, activation_slice, filter_slice,
-          /*feature_group_count=*/1, convolution->window(), dim_numbers,
-          convolution->precision_config()));
+          new_output_shape, activation, filter, group_count, new_window,
+          dim_numbers, convolution->precision_config()));
 
-      sliced_convolutions.push_back(new_convolution);
+      // Delete the extra spatial dimension, and reshape.
+      Shape reshaped_convolution_shape =
+          ShapeUtil::DeleteDimension(new_spatial_dim, new_convolution->shape());
+      auto reshaped_convolution = HloInstruction::CreateReshape(
+          reshaped_convolution_shape, new_convolution);
+
+      TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
+          convolution, std::move(reshaped_convolution)));
+
+    } else {
+      // The filter expansion mechanism adds zeroes in the kernel.
+      // For an OF = 12, IF = 6, and kernel IF = 2, the expanded filter mask
+      // would look like (IF on the Y-axis, OF on the X-axis)
+      // 1 1 1 1 0 0 0 0 0 0 0 0
+      // 1 1 1 1 0 0 0 0 0 0 0 0
+      // 0 0 0 0 1 1 1 1 0 0 0 0
+      // 0 0 0 0 1 1 1 1 0 0 0 0
+      // 0 0 0 0 0 0 0 0 1 1 1 1
+      // 0 0 0 0 0 0 0 0 1 1 1 1
+      //
+      // Instead of convolving the above with the input, we instead slice the
+      // kernel into three kernels, each containing islands of 1s from the
+      // filter above. We also slice the activations in the IF dimension with
+      // each slice of size = group_size. For each slice, we perform
+      // convolutions, and concatenate the generated outputs in the output OF
+      // dimension.
+
+      std::vector<HloInstruction*> sliced_convolutions;
+      auto activation = convolution->mutable_operand(0);
+      std::vector<int64> slice_strides(filter->shape().dimensions_size(), 1);
+      std::vector<int64> filter_slice_starts(filter->shape().dimensions_size(),
+                                             0);
+      std::vector<int64> filter_slice_limits(
+          filter->shape().dimensions().begin(),
+          filter->shape().dimensions().end());
+      std::vector<int64> activation_slice_starts(
+          activation->shape().dimensions_size(), 0);
+      std::vector<int64> activation_slice_limits(
+          activation->shape().dimensions().begin(),
+          activation->shape().dimensions().end());
+
+      int64 output_feature =
+          filter->shape().dimensions(kernel_output_feature_dim);
+      auto output_feature_dim = dim_numbers.output_feature_dimension();
+      int64 filter_slice_width = output_feature / group_count;
+
+      int64 activation_input_feature_dim =
+          dim_numbers.input_feature_dimension();
+
+      for (int64 i = 0; i < group_count; i++) {
+        filter_slice_starts[kernel_output_feature_dim] = i * filter_slice_width;
+        filter_slice_limits[kernel_output_feature_dim] =
+            (i + 1) * filter_slice_width;
+        auto filter_sliced_shape = filter->shape();
+        filter_sliced_shape.set_dimensions(kernel_output_feature_dim,
+                                           filter_slice_width);
+        auto filter_slice = add(HloInstruction::CreateSlice(
+            filter_sliced_shape, filter, filter_slice_starts,
+            filter_slice_limits, slice_strides));
+
+        activation_slice_starts[activation_input_feature_dim] = i * group_size;
+        activation_slice_limits[activation_input_feature_dim] =
+            (i + 1) * group_size;
+        auto activation_sliced_shape = activation->shape();
+        activation_sliced_shape.set_dimensions(activation_input_feature_dim,
+                                               group_size);
+        auto activation_slice = add(HloInstruction::CreateSlice(
+            activation_sliced_shape, activation, activation_slice_starts,
+            activation_slice_limits, slice_strides));
+
+        auto conv_slice_shape = convolution->shape();
+        conv_slice_shape.set_dimensions(output_feature_dim, filter_slice_width);
+
+        auto new_convolution = add(HloInstruction::CreateConvolve(
+            conv_slice_shape, activation_slice, filter_slice,
+            /*feature_group_count=*/1, convolution->window(), dim_numbers,
+            convolution->precision_config()));
+
+        sliced_convolutions.push_back(new_convolution);
+      }
+
+      auto new_conv = HloInstruction::CreateConcatenate(
+          convolution->shape(), sliced_convolutions, output_feature_dim);
+      TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
+          convolution, std::move(new_conv)));
     }
-
-    auto new_conv = HloInstruction::CreateConcatenate(
-        convolution->shape(), sliced_convolutions, output_feature_dim);
-    TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
-        convolution, std::move(new_conv)));
   }
 
   return Status::OK();

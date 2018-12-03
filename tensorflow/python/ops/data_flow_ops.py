@@ -171,7 +171,10 @@ class QueueBase(object):
       self._names = None
     self._queue_ref = queue_ref
     if context.executing_eagerly():
-      self._name = context.context().scope_name
+      if context.context().scope_name:
+        self._name = context.context().scope_name
+      else:
+        self._name = "Empty"
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           queue_ref, None)
     else:

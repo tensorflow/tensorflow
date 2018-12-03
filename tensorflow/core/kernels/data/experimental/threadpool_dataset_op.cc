@@ -248,7 +248,7 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            int max_intra_op_parallelism)
+            int64 max_intra_op_parallelism)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           max_intra_op_parallelism_(max_intra_op_parallelism) {
@@ -332,7 +332,7 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const int max_intra_op_parallelism_;
+    const int64 max_intra_op_parallelism_;
   };
 };
 
@@ -359,8 +359,7 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
           input_(input),
           num_threads_(num_threads) {
       thread_pool_ = MakeUnique<thread::ThreadPool>(
-          ctx->env(), ThreadOptions{}, "tf_data_private_threadpool",
-          num_threads,
+          ctx->env(), ThreadOptions{}, "data_private_threadpool", num_threads,
           /*low_latency_hint=*/false);
       input_->Ref();
     }
@@ -392,7 +391,8 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* num_threads_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(num_threads_, &num_threads_node));
-      TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {input_graph_node, num_threads_node}, output));
       return Status::OK();
     }
 

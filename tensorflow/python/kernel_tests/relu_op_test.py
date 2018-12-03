@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -109,6 +110,7 @@ class ReluTest(test.TestCase):
 
   # The gradient test for ReLU is a bit tricky as the derivative is not well
   # defined at around zero and we want to avoid that in terms of input values.
+  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
     with self.cached_session():
       x = constant_op.constant(
@@ -128,6 +130,7 @@ class ReluTest(test.TestCase):
   # The gradient for fp16 is inaccurate due to the low-precision.
   # Instead of relying on compute_gradient_error, we compare the fp16 analytical
   # gradient against their fp32 counterpart.
+  @test_util.run_deprecated_v1
   def testGradientFloat16(self):
     with self.session(use_gpu=True) as sess:
       # Randomly construct a 1D shape from [1, 40)
@@ -151,9 +154,10 @@ class ReluTest(test.TestCase):
       # Repeat the experiment for 100 times. All tensor shapes and its tensor
       # values are randomly generated for each run.
       for _ in xrange(100):
-        dx_f32_v, dx_f16_v = sess.run([dx_f32, dx_f16])
+        dx_f32_v, dx_f16_v = self.evaluate([dx_f32, dx_f16])
         self.assertAllClose(dx_f32_v, dx_f16_v, atol=3e-4)
 
+  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
     with self.cached_session():
       x = constant_op.constant(
@@ -171,6 +175,7 @@ class ReluTest(test.TestCase):
     print("relu (float64) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat32(self):
     with self.cached_session():
       x = constant_op.constant(
@@ -188,6 +193,7 @@ class ReluTest(test.TestCase):
     print("relu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat64(self):
     with self.cached_session():
       x = constant_op.constant(
@@ -256,6 +262,7 @@ class Relu6Test(test.TestCase):
   # The gradient test for ReLU6 is a bit tricky as the derivative is
   # not well defined at around zero and six and we want to avoid that
   # in terms of input values.
+  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
     with self.cached_session():
       x = constant_op.constant(
@@ -272,6 +279,7 @@ class Relu6Test(test.TestCase):
     print("relu6 (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
     with self.cached_session():
       x = constant_op.constant(
@@ -329,6 +337,7 @@ class LeakyReluTest(test.TestCase):
   # The gradient test for Leaky ReLU is a bit tricky as the derivative is not
   # well defined at around zero and we want to avoid that in terms of input
   # values.
+  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
     with self.test_session():
       x = constant_op.constant(
@@ -345,6 +354,7 @@ class LeakyReluTest(test.TestCase):
     print("leaky_relu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
     with self.test_session():
       x = constant_op.constant(
@@ -362,6 +372,7 @@ class LeakyReluTest(test.TestCase):
     print("leaky_relu (float64) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat32(self):
     with compat.forward_compatibility_horizon(2018, 11, 2):
       with self.test_session():
@@ -380,6 +391,7 @@ class LeakyReluTest(test.TestCase):
       print("leaky_relu (float32) gradient of gradient err = ", err)
       self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat64(self):
     with compat.forward_compatibility_horizon(2018, 11, 2):
       with self.test_session():
@@ -443,6 +455,7 @@ class EluTest(test.TestCase):
     for t in [np.float16, np.float32, np.float64]:
       self._testElu(np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 
+  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
     with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
@@ -454,6 +467,7 @@ class EluTest(test.TestCase):
     print("elu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
     with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
@@ -465,6 +479,7 @@ class EluTest(test.TestCase):
     print("elu (float64) gradient err = ", err)
     self.assertLess(err, 1e-6)
 
+  @test_util.run_deprecated_v1
   def testGradGrad(self):
     with self.cached_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
@@ -476,6 +491,7 @@ class EluTest(test.TestCase):
         err = np.abs(gg.eval(feed_dict={x: x_val}) - _elu_grad_grad(x_val))
         self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat32(self):
     with self.cached_session():
       x = constant_op.constant(
@@ -493,6 +509,7 @@ class EluTest(test.TestCase):
     print("elu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat64(self):
     with self.cached_session():
       x = constant_op.constant(
@@ -543,6 +560,7 @@ class SeluTest(test.TestCase):
         self._testSelu(
             np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 
+  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
     with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
@@ -554,6 +572,7 @@ class SeluTest(test.TestCase):
     print("selu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
     with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
@@ -565,6 +584,7 @@ class SeluTest(test.TestCase):
     print("selu (float64) gradient err = ", err)
     self.assertLess(err, 1e-6)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat32(self):
     with self.cached_session():
       x = constant_op.constant(
@@ -582,6 +602,7 @@ class SeluTest(test.TestCase):
     print("selu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradGradFloat64(self):
     with self.cached_session():
       x = constant_op.constant(

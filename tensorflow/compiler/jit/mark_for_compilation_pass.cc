@@ -86,7 +86,7 @@ bool IsDummyImplOp(absl::string_view op_name) {
 bool IsStatefulRandomOp(absl::string_view op_name) {
   return op_name == "RandomUniform" || op_name == "RandomShuffle" ||
          op_name == "RandomUniformInt" || op_name == "RandomStandardNormal" ||
-         op_name == "TruncatedNormal";
+         op_name == "TruncatedNormal" || op_name == "Multinomial";
 }
 
 bool OpProducesOrConsumesVariant(const Node& node) {

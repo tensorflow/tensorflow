@@ -37,7 +37,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import gfile
@@ -971,10 +970,9 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
     self._output_types = output_types
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.sql_dataset(self._driver_name,
-                                       self._data_source_name, self._query,
-                                       nest.flatten(self.output_types),
-                                       nest.flatten(self.output_shapes))
+    return gen_experimental_dataset_ops.experimental_sql_dataset(
+        self._driver_name, self._data_source_name, self._query,
+        nest.flatten(self.output_types), nest.flatten(self.output_shapes))
 
   @property
   def output_classes(self):

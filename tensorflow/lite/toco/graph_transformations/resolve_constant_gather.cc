@@ -47,6 +47,10 @@ inline void Gather(const Array& input_array, int input_rank,
     stride *= input_shape.dims(i);
   }
 
+  // Let's make sure we have enough space for all element in the memcpy()
+  // below, which writes 'stride' elements startng at 'i * stride'.
+  CHECK_EQ(stride * coords_shape.dims(0), output_data.size());
+
   for (int i = 0; i < coords_shape.dims(0); ++i) {
     DCHECK_GE(coords_data[i], 0);
     DCHECK_LT(coords_data[i], input_shape.dims(rev_input_rank));

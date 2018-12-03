@@ -18,7 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import enum  # pylint: disable=g-bad-import-order
-
+import functools
+import os
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -860,18 +861,18 @@ class Variable(six.with_metaclass(VariableMetaclass,
     else:
       return v.value()
 
-  @staticmethod
-  def _OverloadAllOperators():  # pylint: disable=invalid-name
+  @classmethod
+  def _OverloadAllOperators(cls):  # pylint: disable=invalid-name
     """Register overloads for all operators."""
     for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
-      Variable._OverloadOperator(operator)
+      cls._OverloadOperator(operator)
     # For slicing, bind getitem differently than a tensor (use SliceHelperVar
     # instead)
     # pylint: disable=protected-access
-    setattr(Variable, "__getitem__", array_ops._SliceHelperVar)
+    setattr(cls, "__getitem__", array_ops._SliceHelperVar)
 
-  @staticmethod
-  def _OverloadOperator(operator):  # pylint: disable=invalid-name
+  @classmethod
+  def _OverloadOperator(cls, operator):  # pylint: disable=invalid-name
     """Defer an operator overload to `ops.Tensor`.
 
     We pull the operator out of ops.Tensor dynamically to avoid ordering issues.
@@ -879,17 +880,26 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Args:
       operator: string. The operator name.
     """
+    tensor_oper = getattr(ops.Tensor, operator)
 
-    def _run_op(a, *args):
+    def _run_op(a, *args, **kwargs):
       # pylint: disable=protected-access
-      return getattr(ops.Tensor, operator)(a._AsTensor(), *args)
-    # Propagate __doc__ to wrapper
-    try:
-      _run_op.__doc__ = getattr(ops.Tensor, operator).__doc__
-    except AttributeError:
-      pass
+      return tensor_oper(a._AsTensor(), *args, **kwargs)
 
-    setattr(Variable, operator, _run_op)
+    functools.update_wrapper(_run_op, tensor_oper)
+    setattr(cls, operator, _run_op)
+
+  def __iter__(self):
+    """Dummy method to prevent iteration. Do not call.
+
+    NOTE(mrry): If we register __getitem__ as an overloaded operator,
+    Python will valiantly attempt to iterate over the variable's Tensor from 0
+    to infinity.  Declaring this method prevents this unintended behavior.
+
+    Raises:
+      TypeError: when invoked.
+    """
+    raise TypeError("'Variable' object is not iterable.")
 
   # NOTE(mrry): This enables the Variable's overloaded "right" binary
   # operators to run when the left operand is an ndarray, because it
@@ -1044,27 +1054,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
         return save_slice_info_def
       else:
         return None
-
-  def __iadd__(self, other):
-    raise NotImplementedError
-
-  def __isub__(self, other):
-    raise NotImplementedError
-
-  def __imul__(self, other):
-    raise NotImplementedError
-
-  def __idiv__(self, other):
-    raise NotImplementedError
-
-  def __itruediv__(self, other):
-    raise NotImplementedError
-
-  def __irealdiv__(self, other):
-    raise NotImplementedError
-
-  def __ipow__(self, other):
-    raise NotImplementedError
 
 
 @tf_export(v1=["Variable"])
@@ -1575,18 +1564,6 @@ class RefVariable(VariableV1):
       A `Tensor` containing the value of the variable.
     """
     return self._snapshot
-
-  def __iter__(self):
-    """Dummy method to prevent iteration. Do not call.
-
-    NOTE(mrry): If we register __getitem__ as an overloaded operator,
-    Python will valiantly attempt to iterate over the variable's Tensor from 0
-    to infinity.  Declaring this method prevents this unintended behavior.
-
-    Raises:
-      TypeError: when invoked.
-    """
-    raise TypeError("'Variable' object is not iterable.")
 
   def value(self):
     """Returns the last snapshot of this variable.
@@ -2122,37 +2099,6 @@ class RefVariable(VariableV1):
       return v._ref()  # pylint: disable=protected-access
     else:
       return v.value()
-
-  @staticmethod
-  def _OverloadAllOperators():  # pylint: disable=invalid-name
-    """Register overloads for all operators."""
-    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
-      Variable._OverloadOperator(operator)  # pylint: disable=protected-access
-    # For slicing, bind getitem differently than a tensor (use SliceHelperVar
-    # instead)
-    # pylint: disable=protected-access
-    setattr(Variable, "__getitem__", array_ops._SliceHelperVar)
-
-  @staticmethod
-  def _OverloadOperator(operator):  # pylint: disable=invalid-name
-    """Defer an operator overload to `ops.Tensor`.
-
-    We pull the operator out of ops.Tensor dynamically to avoid ordering issues.
-
-    Args:
-      operator: string. The operator name.
-    """
-
-    def _run_op(a, *args):
-      # pylint: disable=protected-access
-      return getattr(ops.Tensor, operator)(a._AsTensor(), *args)
-    # Propagate __doc__ to wrapper
-    try:
-      _run_op.__doc__ = getattr(ops.Tensor, operator).__doc__
-    except AttributeError:
-      pass
-
-    setattr(Variable, operator, _run_op)
 
   def _gather_saveables_for_checkpoint(self):
     """For implementing `Checkpointable`. This object is saveable on its own."""
@@ -2963,7 +2909,9 @@ def report_uninitialized_variables(var_list=None,
     # Run all operations on CPU
     if var_list:
       init_vars = [state_ops.is_variable_initialized(v) for v in var_list]
-    with ops.device("/cpu:0"):
+    local_device = os.environ.get(
+        "TF_DEVICE_FOR_UNINITIALIZED_VARIABLE_REPORTING", "/cpu:0")
+    with ops.device(local_device):
       if not var_list:
         # Return an empty tensor so we only need to check for returned tensor
         # size being 0 as an indication of model ready.

@@ -78,7 +78,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       c = constant_op.constant([[2.]])
       f_c = f(c)
       g, = gradients_impl.gradients(f_c, c)
-      self.assertAllEqual(sess.run(g).values, [[1.0]])
+      self.assertAllEqual(self.evaluate(g).values, [[1.0]])
 
   def testNoSymGradNestedDefun(self):
 
@@ -187,6 +187,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(2, g(constant_op.constant(2.)))
 
+  @test_util.run_deprecated_v1
   def testGraphModeEagerGradError(self):
     with context.graph_mode():
       def f():

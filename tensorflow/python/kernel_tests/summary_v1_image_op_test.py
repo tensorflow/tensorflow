@@ -24,6 +24,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import image_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -49,6 +50,7 @@ class SummaryV1ImageOpTest(test.TestCase):
         }""" % ((i,) + shape[1:]) for i in xrange(3))
     self.assertProtoEquals(expected, image_summ)
 
+  @test_util.run_deprecated_v1
   def testImageSummary(self):
     for depth in (1, 3, 4):
       for positive in False, True:
@@ -70,7 +72,7 @@ class SummaryV1ImageOpTest(test.TestCase):
 
           # Summarize
           summ = summary.image("img", const)
-          value = sess.run(summ)
+          value = self.evaluate(summ)
           self.assertEqual([], summ.get_shape())
           image_summ = self._AsSummary(value)
 
@@ -84,6 +86,7 @@ class SummaryV1ImageOpTest(test.TestCase):
           # Check the rest of the proto
           self._CheckProto(image_summ, shape)
 
+  @test_util.run_deprecated_v1
   def testImageSummaryUint8(self):
     np.random.seed(7)
     for depth in (1, 3, 4):
@@ -97,7 +100,7 @@ class SummaryV1ImageOpTest(test.TestCase):
 
         # Summarize
         summ = summary.image("img", tf_images)
-        value = sess.run(summ)
+        value = self.evaluate(summ)
         self.assertEqual([], summ.get_shape())
         image_summ = self._AsSummary(value)
 

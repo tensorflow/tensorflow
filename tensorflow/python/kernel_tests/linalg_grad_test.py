@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -39,6 +40,7 @@ def _AddTest(test, op_name, testcase_name, fn):
 
 class ShapeTest(test_lib.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBatchGradientUnknownSize(self):
     with self.cached_session():
       batch_size = constant_op.constant(3)

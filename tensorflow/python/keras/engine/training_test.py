@@ -449,6 +449,7 @@ class TrainingTest(test.TestCase):
           optimizer=keras.optimizers.Adam(lr=0.0001),
           metrics=['accuracy'])
 
+  @tf_test_util.run_deprecated_v1
   def test_that_trainable_disables_updates(self):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
@@ -1146,6 +1147,7 @@ class LossMaskingTest(test.TestCase):
 
 class TestDynamicTrainability(test.TestCase):
 
+  @tf_test_util.run_deprecated_v1
   def test_trainable_warning(self):
     with self.cached_session():
       x = np.random.random((5, 3))
@@ -1159,6 +1161,7 @@ class TestDynamicTrainability(test.TestCase):
       model.train_on_batch(x, y)
       self.assertRaises(Warning)
 
+  @tf_test_util.run_deprecated_v1
   def test_trainable_argument(self):
     with self.cached_session():
       x = np.random.random((5, 3))
@@ -1289,6 +1292,7 @@ class TestDynamicTrainability(test.TestCase):
 
 class TestTrainingWithDataTensors(test.TestCase):
 
+  @tf_test_util.run_deprecated_v1
   def test_training_and_eval_methods_on_symbolic_tensors_single_io(self):
     with self.cached_session():
       x = keras.layers.Input(shape=(3,), name='input')
@@ -1329,6 +1333,7 @@ class TestTrainingWithDataTensors(test.TestCase):
                 epochs=1, steps_per_epoch=2, verbose=0,
                 validation_data=(inputs, targets), validation_steps=2)
 
+  @tf_test_util.run_deprecated_v1
   def test_training_and_eval_methods_on_symbolic_tensors_multi_io(self):
     with self.cached_session():
       a = keras.layers.Input(shape=(3,), name='input_a')
@@ -1424,6 +1429,7 @@ class TestTrainingWithDataTensors(test.TestCase):
       model.predict([input_a_tf, input_b_tf], steps=2)
       model.test_on_batch([input_a_tf, input_b_tf], [output_d_tf, output_e_tf])
 
+  @tf_test_util.run_deprecated_v1
   def test_model_with_input_feed_tensor(self):
     """We test building a model with a TF variable as input.
 
@@ -1602,6 +1608,7 @@ class TestTrainingWithDataTensors(test.TestCase):
       # evaluate
       _ = model.evaluate(input_a_np, [output_a_np])
 
+  @tf_test_util.run_deprecated_v1
   def test_model_with_external_loss(self):
     with self.cached_session():
       # None loss, only regularization loss.
@@ -1797,6 +1804,7 @@ class TestTrainingWithDataTensors(test.TestCase):
       model.train_on_batch(input_val, None,
                            sample_weight={'dense_a': np.random.random((10,))})
 
+  @tf_test_util.run_deprecated_v1
   def test_model_custom_target_tensors(self):
     with self.cached_session():
       a = keras.Input(shape=(3,), name='input_a')
@@ -2018,6 +2026,7 @@ class TestTrainingWithMetrics(test.TestCase):
       scores = model.train_on_batch(x, y, sample_weight=w)
       self.assertArrayNear(scores, [0.3328, 0.8], 0.001)
 
+  @tf_test_util.run_deprecated_v1
   def test_add_metric_with_tensor_on_model_in_graph_mode(self):
     with self.cached_session():
       x = keras.layers.Input(shape=(1,))
@@ -2180,6 +2189,7 @@ class TestTrainingWithMetrics(test.TestCase):
       self.assertEqual(history.history['metric_1'][-1], 5)
       self.assertAlmostEqual(history.history['val_metric_1'][-1], 5, 0)
 
+  @tf_test_util.run_deprecated_v1
   def test_model_metrics_list(self):
     with self.cached_session():
       x = keras.layers.Input(shape=(1,))

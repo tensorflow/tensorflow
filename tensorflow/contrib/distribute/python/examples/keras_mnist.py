@@ -102,18 +102,23 @@ def main(_):
   # Build the train and eval datasets from the MNIST data. Also return the
   # input shape which is constructed based on the `image_data_format`
   # i.e channels_first or channels_last.
+  tf.enable_eager_execution()
+
   train_ds, eval_ds, input_shape = get_input_datasets()
   model = get_model(input_shape)
 
   # Instantiate the MirroredStrategy object. If we don't specify `num_gpus` or
   # the `devices` argument then all the GPUs available on the machine are used.
-  strategy = tf.contrib.distribute.MirroredStrategy()
+  strategy = tf.contrib.distribute.MirroredStrategy(['/gpu:0', '/cpu:0'])
+
+  # TODO(priyag): Use RMSPropOptimizer when it works with eager mode.
+  optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
 
   # Compile the model by passing the distribution strategy object to the
   # `distribute` argument. `fit`, `evaluate` and `predict` will be distributed
   # based on the strategy instantiated.
   model.compile(loss=tf.keras.losses.categorical_crossentropy,
-                optimizer=tf.train.RMSPropOptimizer(learning_rate=0.001),
+                optimizer=optimizer,
                 metrics=['accuracy'],
                 distribute=strategy)
 

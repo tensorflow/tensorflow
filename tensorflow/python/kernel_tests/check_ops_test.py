@@ -173,6 +173,7 @@ class AssertEqualTest(test.TestCase):
       assert x is None
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_greater(self):
     # Static check
     static_small = constant_op.constant([1, 2], name="small")
@@ -180,6 +181,7 @@ class AssertEqualTest(test.TestCase):
     with self.assertRaisesRegexp(errors.InvalidArgumentError, "fail"):
       check_ops.assert_equal(static_big, static_small, message="fail")
 
+  @test_util.run_deprecated_v1
   def test_raises_when_greater_dynamic(self):
     with self.cached_session():
       small = array_ops.placeholder(dtypes.int32, name="small")
@@ -251,6 +253,7 @@ First 2 elements of y:
                                summarize=2)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_less(self):
     # Static check
     static_small = constant_op.constant([3, 1], name="small")
@@ -258,6 +261,7 @@ First 2 elements of y:
     with self.assertRaisesRegexp(errors.InvalidArgumentError, "fail"):
       check_ops.assert_equal(static_big, static_small, message="fail")
 
+  @test_util.run_deprecated_v1
   def test_raises_when_less_dynamic(self):
     with self.cached_session():
       small = array_ops.placeholder(dtypes.int32, name="small")
@@ -317,6 +321,7 @@ class AssertNoneEqualTest(test.TestCase):
     self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_equal(self):
     small = constant_op.constant([3, 1], name="small")
     with self.assertRaisesOpError("x != y did not hold"):
@@ -506,6 +511,7 @@ class AssertAllCloseTest(test.TestCase):
 class AssertLessTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_equal(self):
     small = constant_op.constant([1, 2], name="small")
     with self.assertRaisesOpError("failure message.*\n*.* x < y did not hold"):
@@ -516,6 +522,7 @@ class AssertLessTest(test.TestCase):
       self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_greater(self):
     small = constant_op.constant([1, 2], name="small")
     big = constant_op.constant([3, 4], name="big")
@@ -582,6 +589,7 @@ class AssertLessEqualTest(test.TestCase):
     self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_greater(self):
     small = constant_op.constant([1, 2], name="small")
     big = constant_op.constant([3, 4], name="big")
@@ -637,6 +645,7 @@ class AssertLessEqualTest(test.TestCase):
 class AssertGreaterTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_equal(self):
     small = constant_op.constant([1, 2], name="small")
     with self.assertRaisesOpError("fail"):
@@ -647,6 +656,7 @@ class AssertGreaterTest(test.TestCase):
       self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_less(self):
     small = constant_op.constant([1, 2], name="small")
     big = constant_op.constant([3, 4], name="big")
@@ -706,6 +716,7 @@ class AssertGreaterEqualTest(test.TestCase):
     self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_less(self):
     small = constant_op.constant([1, 2], name="small")
     big = constant_op.constant([3, 4], name="big")
@@ -770,6 +781,7 @@ class AssertNegativeTest(test.TestCase):
     self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_positive(self):
     doug = constant_op.constant([1, 2], name="doug")
     with self.assertRaisesOpError("fail"):
@@ -780,6 +792,7 @@ class AssertNegativeTest(test.TestCase):
       self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_zero(self):
     claire = constant_op.constant([0], name="claire")
     with self.assertRaisesOpError("x < 0 did not hold"):
@@ -802,6 +815,7 @@ class AssertNegativeTest(test.TestCase):
 class AssertPositiveTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_negative(self):
     freddie = constant_op.constant([-1, -2], name="freddie")
     with self.assertRaisesOpError("fail"):
@@ -819,6 +833,7 @@ class AssertPositiveTest(test.TestCase):
     self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_zero(self):
     meechum = constant_op.constant([0], name="meechum")
     with self.assertRaisesOpError("x > 0 did not hold"):
@@ -841,26 +856,31 @@ class AssertPositiveTest(test.TestCase):
 class EnsureShapeTest(test.TestCase):
 
   # Static shape inference
+  @test_util.run_deprecated_v1
   def testStaticShape(self):
     placeholder = array_ops.placeholder(dtypes.int32)
     ensure_shape_op = check_ops.ensure_shape(placeholder, (3, 3, 3))
     self.assertEqual(ensure_shape_op.get_shape(), (3, 3, 3))
 
+  @test_util.run_deprecated_v1
   def testStaticShape_MergesShapes(self):
     placeholder = array_ops.placeholder(dtypes.int32, shape=(None, None, 3))
     ensure_shape_op = check_ops.ensure_shape(placeholder, (5, 4, None))
     self.assertEqual(ensure_shape_op.get_shape(), (5, 4, 3))
 
+  @test_util.run_deprecated_v1
   def testStaticShape_RaisesErrorWhenRankIncompatible(self):
     placeholder = array_ops.placeholder(dtypes.int32, shape=(None, None, 3))
     with self.assertRaises(ValueError):
       check_ops.ensure_shape(placeholder, (2, 3))
 
+  @test_util.run_deprecated_v1
   def testStaticShape_RaisesErrorWhenDimIncompatible(self):
     placeholder = array_ops.placeholder(dtypes.int32, shape=(None, None, 3))
     with self.assertRaises(ValueError):
       check_ops.ensure_shape(placeholder, (2, 2, 4))
 
+  @test_util.run_deprecated_v1
   def testStaticShape_CanSetUnknownShape(self):
     placeholder = array_ops.placeholder(dtypes.int32)
     derived = placeholder / 3
@@ -868,6 +888,7 @@ class EnsureShapeTest(test.TestCase):
     self.assertEqual(ensure_shape_op.get_shape(), None)
 
   # Dynamic shape check
+  @test_util.run_deprecated_v1
   def testEnsuresDynamicShape_RaisesError(self):
     placeholder = array_ops.placeholder(dtypes.int32)
     derived = math_ops.divide(placeholder, 3, name="MyDivide")
@@ -880,6 +901,7 @@ class EnsureShapeTest(test.TestCase):
           r"expected shape \[3,3,3\]."):
         sess.run(derived, feed_dict={placeholder: feed_val})
 
+  @test_util.run_deprecated_v1
   def testEnsuresDynamicShape_RaisesErrorDimUnknown(self):
     placeholder = array_ops.placeholder(dtypes.int32)
     derived = placeholder / 3
@@ -892,6 +914,7 @@ class EnsureShapeTest(test.TestCase):
           r"expected shape \[\?,\?,3\]."):
         sess.run(derived, feed_dict={placeholder: feed_val})
 
+  @test_util.run_deprecated_v1
   def testEnsuresDynamicShape(self):
     placeholder = array_ops.placeholder(dtypes.int32)
     derived = placeholder / 3
@@ -900,6 +923,7 @@ class EnsureShapeTest(test.TestCase):
     with self.cached_session() as sess:
       sess.run(derived, feed_dict={placeholder: feed_val})
 
+  @test_util.run_deprecated_v1
   def testEnsuresDynamicShape_WithUnknownDims(self):
     placeholder = array_ops.placeholder(dtypes.int32)
     derived = placeholder / 3
@@ -908,6 +932,7 @@ class EnsureShapeTest(test.TestCase):
     with self.cached_session() as sess:
       sess.run(derived, feed_dict={placeholder: feed_val})
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     placeholder = array_ops.placeholder(dtypes.float32)
     derived = check_ops.ensure_shape(placeholder, (None, None))
@@ -1003,6 +1028,7 @@ class AssertRankTest(test.TestCase):
               tensor, desired_rank, message="fail")]):
         self.evaluate(array_ops.identity(tensor))
 
+  @test_util.run_deprecated_v1
   def test_rank_zero_tensor_raises_if_rank_too_small_dynamic_rank(self):
     with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1021,6 +1047,7 @@ class AssertRankTest(test.TestCase):
         [check_ops.assert_rank(tensor, desired_rank)]):
       self.evaluate(array_ops.identity(tensor))
 
+  @test_util.run_deprecated_v1
   def test_rank_zero_tensor_doesnt_raise_if_rank_just_right_dynamic_rank(self):
     with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1038,6 +1065,7 @@ class AssertRankTest(test.TestCase):
           [check_ops.assert_rank(tensor, desired_rank)]):
         self.evaluate(array_ops.identity(tensor))
 
+  @test_util.run_deprecated_v1
   def test_rank_one_tensor_raises_if_rank_too_large_dynamic_rank(self):
     with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1055,6 +1083,7 @@ class AssertRankTest(test.TestCase):
         [check_ops.assert_rank(tensor, desired_rank)]):
       self.evaluate(array_ops.identity(tensor))
 
+  @test_util.run_deprecated_v1
   def test_rank_one_tensor_doesnt_raise_if_rank_just_right_dynamic_rank(self):
     with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1072,6 +1101,7 @@ class AssertRankTest(test.TestCase):
           [check_ops.assert_rank(tensor, desired_rank)]):
         self.evaluate(array_ops.identity(tensor))
 
+  @test_util.run_deprecated_v1
   def test_rank_one_tensor_raises_if_rank_too_small_dynamic_rank(self):
     with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1087,6 +1117,7 @@ class AssertRankTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "Rank must be a scalar"):
       check_ops.assert_rank(tensor, np.array([], dtype=np.int32))
 
+  @test_util.run_deprecated_v1
   def test_raises_if_rank_is_not_scalar_dynamic(self):
     with self.cached_session():
       tensor = constant_op.constant(
@@ -1104,6 +1135,7 @@ class AssertRankTest(test.TestCase):
                                  "must be of type <dtype: 'int32'>"):
       check_ops.assert_rank(tensor, .5)
 
+  @test_util.run_deprecated_v1
   def test_raises_if_rank_is_not_integer_dynamic(self):
     with self.cached_session():
       tensor = constant_op.constant(
@@ -1127,6 +1159,7 @@ class AssertRankInTest(test.TestCase):
           check_ops.assert_rank_in(tensor_rank0, (1, 2), message="fail")]):
         self.evaluate(array_ops.identity(tensor_rank0))
 
+  @test_util.run_deprecated_v1
   def test_rank_zero_tensor_raises_if_rank_mismatch_dynamic_rank(self):
     with self.cached_session():
       tensor_rank0 = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1143,6 +1176,7 @@ class AssertRankInTest(test.TestCase):
           check_ops.assert_rank_in(tensor_rank0, desired_ranks)]):
         self.evaluate(array_ops.identity(tensor_rank0))
 
+  @test_util.run_deprecated_v1
   def test_rank_zero_tensor_doesnt_raise_if_rank_matches_dynamic_rank(self):
     with self.cached_session():
       tensor_rank0 = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1159,6 +1193,7 @@ class AssertRankInTest(test.TestCase):
           check_ops.assert_rank_in(tensor_rank1, desired_ranks)]):
         self.evaluate(array_ops.identity(tensor_rank1))
 
+  @test_util.run_deprecated_v1
   def test_rank_one_tensor_doesnt_raise_if_rank_matches_dynamic_rank(self):
     with self.cached_session():
       tensor_rank1 = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1177,6 +1212,7 @@ class AssertRankInTest(test.TestCase):
           check_ops.assert_rank_in(tensor_rank1, (0, 2))]):
         self.evaluate(array_ops.identity(tensor_rank1))
 
+  @test_util.run_deprecated_v1
   def test_rank_one_tensor_raises_if_rank_mismatches_dynamic_rank(self):
     with self.cached_session():
       tensor_rank1 = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1196,6 +1232,7 @@ class AssertRankInTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "Rank must be a scalar"):
       check_ops.assert_rank_in(tensor, desired_ranks)
 
+  @test_util.run_deprecated_v1
   def test_raises_if_rank_is_not_scalar_dynamic(self):
     with self.cached_session():
       tensor = constant_op.constant(
@@ -1218,6 +1255,7 @@ class AssertRankInTest(test.TestCase):
                                  "must be of type <dtype: 'int32'>"):
       check_ops.assert_rank_in(tensor, (1, .5,))
 
+  @test_util.run_deprecated_v1
   def test_raises_if_rank_is_not_integer_dynamic(self):
     with self.cached_session():
       tensor = constant_op.constant(
@@ -1241,6 +1279,7 @@ class AssertRankAtLeastTest(test.TestCase):
           [check_ops.assert_rank_at_least(tensor, desired_rank)]):
         self.evaluate(array_ops.identity(tensor))
 
+  @test_util.run_deprecated_v1
   def test_rank_zero_tensor_raises_if_rank_too_small_dynamic_rank(self):
     with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1258,6 +1297,7 @@ class AssertRankAtLeastTest(test.TestCase):
         [check_ops.assert_rank_at_least(tensor, desired_rank)]):
       self.evaluate(array_ops.identity(tensor))
 
+  @test_util.run_deprecated_v1
   def test_rank_zero_tensor_doesnt_raise_if_rank_just_right_dynamic_rank(self):
     with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1274,6 +1314,7 @@ class AssertRankAtLeastTest(test.TestCase):
         [check_ops.assert_rank_at_least(tensor, desired_rank)]):
       self.evaluate(array_ops.identity(tensor))
 
+  @test_util.run_deprecated_v1
   def test_rank_one_ten_doesnt_raise_if_rank_too_large_dynamic_rank(self):
     with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1290,6 +1331,7 @@ class AssertRankAtLeastTest(test.TestCase):
         [check_ops.assert_rank_at_least(tensor, desired_rank)]):
       self.evaluate(array_ops.identity(tensor))
 
+  @test_util.run_deprecated_v1
   def test_rank_one_tensor_doesnt_raise_if_rank_just_right_dynamic_rank(self):
     with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1307,6 +1349,7 @@ class AssertRankAtLeastTest(test.TestCase):
           [check_ops.assert_rank_at_least(tensor, desired_rank)]):
         self.evaluate(array_ops.identity(tensor))
 
+  @test_util.run_deprecated_v1
   def test_rank_one_tensor_raises_if_rank_too_small_dynamic_rank(self):
     with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
@@ -1320,6 +1363,7 @@ class AssertRankAtLeastTest(test.TestCase):
 class AssertNonNegativeTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_negative(self):
     zoe = constant_op.constant([-1, -2], name="zoe")
     with self.assertRaisesOpError("x >= 0 did not hold"):
@@ -1356,6 +1400,7 @@ class AssertNonPositiveTest(test.TestCase):
     self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_raises_when_positive(self):
     rachel = constant_op.constant([0, 2], name="rachel")
     with self.assertRaisesOpError("x <= 0 did not hold"):

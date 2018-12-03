@@ -149,7 +149,8 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       void AdvanceToNextInCycle() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -195,7 +196,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
             if (!end_of_input_) {
               TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
                   ctx, args_list_[cycle_index_], cycle_index_,
-                  dataset()->captured_func_.get(), prefix(),
+                  *instantiated_captured_func_, prefix(),
                   &current_elements_[cycle_index_]));
               ++num_open_;
             }
@@ -286,7 +287,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
                   &args_list_[idx][i]));
             }
             TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-                ctx, args_list_[idx], idx, dataset()->captured_func_.get(),
+                ctx, args_list_[idx], idx, *instantiated_captured_func_,
                 prefix(), &current_elements_[idx]));
             TF_RETURN_IF_ERROR(
                 RestoreInput(ctx, reader, current_elements_[idx]));
@@ -306,6 +307,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
       int64 block_index_ GUARDED_BY(mu_) = 0;
       bool end_of_input_ GUARDED_BY(mu_) = false;
       size_t num_open_ GUARDED_BY(mu_) = 0;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;

@@ -257,7 +257,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   // the entry parameters and root.
   TF_RET_CHECK(proto.has_host_program_shape())
       << "No program shape found in the proto";
-  const auto& expected_program_shape = proto.host_program_shape();
+  ProgramShape expected_program_shape(proto.host_program_shape());
   TF_RET_CHECK(expected_program_shape.parameters_size() ==
                module_config.entry_computation_layout().parameter_count());
   for (int i = 0; i < expected_program_shape.parameters_size(); ++i) {
@@ -369,7 +369,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options) {
   TF_RET_CHECK(module.has_host_program_shape())
       << "No program shape found in the proto";
-  const auto& program_shape = module.host_program_shape();
+  ProgramShape program_shape(module.host_program_shape());
 
   HloModuleConfig module_config(ProgramShape{program_shape});
   module_config.set_debug_options(debug_options);

@@ -24,6 +24,7 @@ import tempfile
 from tensorflow.python.data.experimental.ops import matching_files
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -40,6 +41,7 @@ class MatchingFilesTest(test_base.DatasetTestBase):
     for filename in filenames:
       open(os.path.join(self.tmp_dir, filename), 'a').close()
 
+  @test_util.run_deprecated_v1
   def testNonExistingDirectory(self):
     """Test the MatchingFiles dataset with a non-existing directory."""
 
@@ -51,6 +53,7 @@ class MatchingFilesTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.NotFoundError):
         sess.run(next_element)
 
+  @test_util.run_deprecated_v1
   def testEmptyDirectory(self):
     """Test the MatchingFiles dataset with an empty directory."""
 
@@ -61,6 +64,7 @@ class MatchingFilesTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.NotFoundError):
         sess.run(next_element)
 
+  @test_util.run_deprecated_v1
   def testSimpleDirectory(self):
     """Test the MatchingFiles dataset with a simple directory."""
 
@@ -83,6 +87,7 @@ class MatchingFilesTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
+  @test_util.run_deprecated_v1
   def testFileSuffixes(self):
     """Test the MatchingFiles dataset using the suffixes of filename."""
 
@@ -104,6 +109,7 @@ class MatchingFilesTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
+  @test_util.run_deprecated_v1
   def testFileMiddles(self):
     """Test the MatchingFiles dataset using the middles of filename."""
 
@@ -125,6 +131,7 @@ class MatchingFilesTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
+  @test_util.run_deprecated_v1
   def testNestedDirectories(self):
     """Test the MatchingFiles dataset with nested directories."""
 

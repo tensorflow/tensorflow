@@ -47,8 +47,7 @@ class RetvalOp : public XlaOpKernel {
       // compilation.
       OP_REQUIRES_OK(ctx, frame->SetRetval(index_, input));
     } else {
-      XlaContext& xla_context = XlaContext::Get(ctx);
-      xla_context.SetRetval(index_, ctx->InputExpression(0));
+      ctx->xla_context()->SetRetval(index_, ctx->InputExpression(0));
     }
   }
 

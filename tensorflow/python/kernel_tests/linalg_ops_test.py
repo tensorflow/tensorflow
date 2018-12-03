@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -52,6 +53,7 @@ class CholeskySolveTest(test.TestCase):
   def setUp(self):
     self.rng = np.random.RandomState(0)
 
+  @test_util.run_deprecated_v1
   def test_works_with_five_different_random_pos_def_matrices(self):
     for n in range(1, 6):
       for np_type, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:
@@ -73,6 +75,7 @@ class LogdetTest(test.TestCase):
   def setUp(self):
     self.rng = np.random.RandomState(42)
 
+  @test_util.run_deprecated_v1
   def test_works_with_five_different_random_pos_def_matrices(self):
     for n in range(1, 6):
       for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
@@ -102,6 +105,7 @@ class SlogdetTest(test.TestCase):
   def setUp(self):
     self.rng = np.random.RandomState(42)
 
+  @test_util.run_deprecated_v1
   def test_works_with_five_different_random_pos_def_matrices(self):
     for n in range(1, 6):
       for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
@@ -232,6 +236,7 @@ class EyeTest(parameterized.TestCase, test.TestCase):
               dtypes.complex128
           ])
       )
+  @test_util.run_deprecated_v1
   def test_eye_with_placeholder(
       self, num_rows, num_columns, batch_shape, dtype):
     eye_np = np.eye(num_rows, M=num_columns, dtype=dtype.as_numpy_dtype)

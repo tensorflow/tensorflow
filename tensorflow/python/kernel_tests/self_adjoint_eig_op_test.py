@@ -63,7 +63,7 @@ class SelfAdjointEigTest(test.TestCase):
           e1 = linalg_ops.self_adjoint_eigvals(matrix1)
           e2 = linalg_ops.self_adjoint_eigvals(matrix2)
           all_ops += [e1, e2]
-      val = sess.run(all_ops)
+      val = self.evaluate(all_ops)
       self.assertAllEqual(val[0], val[2])
       # The algorithm is slightly different for compute_v being True and False,
       # so require approximate equality only here.
@@ -81,7 +81,7 @@ class SelfAdjointEigTest(test.TestCase):
     self.assertEqual(matrix.shape, (32, 32))
     matrix_tensor = constant_op.constant(matrix)
     with self.session(use_gpu=True) as sess:
-      (e, v) = sess.run(linalg_ops.self_adjoint_eig(matrix_tensor))
+      (e, v) = self.evaluate(linalg_ops.self_adjoint_eig(matrix_tensor))
       self.assertEqual(e.size, 32)
       self.assertAllClose(
           np.matmul(v, v.transpose()), np.eye(32, dtype=np.float32), atol=2e-3)

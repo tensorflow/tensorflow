@@ -26,6 +26,7 @@ from tensorflow.python.platform import googletest
 
 class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testDocStringExample(self):
     splits = [0, 3, 3, 5, 6, 9]
     expected = [0, 0, 0, 2, 2, 3, 4, 4, 4]
@@ -33,12 +34,14 @@ class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
     with self.test_session():
       self.assertEqual(segment_ids.eval().tolist(), expected)
 
+  @test_util.run_deprecated_v1
   def testEmptySplits(self):
     # Note: the splits for an empty ragged tensor contains a single zero.
     segment_ids = ragged.row_splits_to_segment_ids([0])
     with self.test_session():
       self.assertEqual(segment_ids.eval().tolist(), [])
 
+  @test_util.run_deprecated_v1
   def testErrors(self):
     self.assertRaisesRegexp(ValueError, r'Invalid row_splits: \[\]',
                             ragged.row_splits_to_segment_ids, [])

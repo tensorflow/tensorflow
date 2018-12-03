@@ -397,11 +397,11 @@ class ImportGraphDefTest(test.TestCase):
       # Run the imported graph.
       # TODO(b/76173421): make this work (currently DCHECKS)
       # with self.cached_session() as sess:
-      #   sess.run(imported_init)
-      #   self.assertEqual(sess.run(imported_var), 1.0)
-      #   self.assertEqual(sess.run(imported_assign), 2.0)
-      #   self.assertEqual(list(sess.run(imported_shape)), [])
-      #   self.assertEqual(list(sess.run(new_var_shape)), [])
+      #   self.evaluate(imported_init)
+      #   self.assertEqual(self.evaluate(imported_var), 1.0)
+      #   self.assertEqual(self.evaluate(imported_assign), 2.0)
+      #   self.assertEqual(list(self.evaluate(imported_shape)), [])
+      #   self.assertEqual(list(self.evaluate(new_var_shape)), [])
 
   def testWhileLoop(self):
     # Produce GraphDef containing while loop.
@@ -418,7 +418,7 @@ class ImportGraphDefTest(test.TestCase):
                                               return_elements=[r.name])
       self.assertEqual(imported_r.name, "import/" + r.name)
       with self.cached_session() as sess:
-        self.assertEqual(sess.run(imported_r), 10)
+        self.assertEqual(self.evaluate(imported_r), 10)
 
   def testImportWhileLoopInCond(self):
     # Produce GraphDef containing while loop.
@@ -458,7 +458,7 @@ class ImportGraphDefTest(test.TestCase):
           lambda i: i < 2, ImportFn, [0],
           shape_invariants=[tensor_shape.TensorShape(None)])
       with self.cached_session() as sess:
-        self.assertEqual(sess.run(out), 10)
+        self.assertEqual(self.evaluate(out), 10)
 
   def testTypeMismatchInGraphDef(self):
     # TODO(skyewm): improve error message
