@@ -12,7 +12,7 @@ else
 	ifeq ($(UNAME_S),Linux)
 		HOST_OS := linux
 	endif
-	ifeq ($(UNAME_S),Darwin)/usr/lib
+	ifeq ($(UNAME_S),Darwin)
 		HOST_OS := osx
 	endif
 endif
@@ -30,6 +30,7 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/../../../../../../ \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
+-I$(MAKEFILE_DIR)/downloads/absl \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/neon_2_sse \
 -I$(MAKEFILE_DIR)/downloads/farmhash/src \
@@ -83,7 +84,6 @@ tensorflow/contrib/lite/examples/minimal/minimal.cc
 LABEL_IMAGE_SRCS := \
 tensorflow/contrib/lite/examples/label_image/label_image.cc \
 tensorflow/contrib/lite/examples/label_image/bitmap_helpers.cc
-#tensorflow/contrib/lite/examples/label_image/label_image_test.cc
 
 CAMERA_SRCS := \
 tensorflow/contrib/lite/examples/camera/camera.cc
@@ -124,10 +124,7 @@ $(wildcard tensorflow/contrib/lite/*/*test.cc) \
 $(wildcard tensorflow/contrib/lite/*/*/*test.cc) \
 $(wildcard tensorflow/contrib/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/contrib/lite/kernels/test_util.cc) \
-$(MINIMAL_SRCS) \
-$(LABEL_IMAGE_SRCS) \
-$(CAMERA_SRCS)
-
+$(MINIMAL_SRCS)
 ifeq ($(BUILD_TYPE),micro)
 CORE_CC_EXCLUDE_SRCS += \
 tensorflow/contrib/lite/mmap_allocation.cc \
@@ -185,8 +182,6 @@ $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(LABEL_IMAGE_SRCS))))
 
 CAMERA_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(CAMERA_SRCS))))
-
-BITMAP_HELPERS_OBJ := tensorflow/contrib/lite/examples/label_image/bitmap_helpers.o
 
 LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(TF_LITE_CC_SRCS))))
