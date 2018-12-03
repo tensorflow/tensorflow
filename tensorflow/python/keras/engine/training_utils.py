@@ -30,6 +30,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
@@ -1120,3 +1121,54 @@ class ModelInputs(object):
   def as_list(self):
     """Returning the inputs as a list."""
     return self._flattened_inputs
+
+
+# Allow use of methods not exposed to the user.
+# pylint: disable=protected-access
+def get_input_shape_and_dtype(layer):
+  """Retrieves input shape and input dtype of layer if applicable.
+
+  Args:
+    layer: Layer (or model) instance.
+
+  Returns:
+    Tuple (input_shape, input_dtype). Both could be None if the layer
+      does not have a defined input shape.
+
+  Raises:
+    ValueError: in case an empty Sequential or Graph Network is passed.
+  """
+
+  def _is_graph_model(layer):
+    return ((hasattr(layer, '_is_graph_network') and layer._is_graph_network) or
+            layer.__class__.__name__ == 'Sequential')
+
+  # In case of nested models: recover the first layer
+  # of the deepest model to infer input shape and dtype.
+  # Subclassed Models may not have been built so can't be checked.
+  while _is_graph_model(layer):
+    if not layer.layers:
+      raise ValueError('An empty Model cannot be used as a Layer.')
+    layer = layer.layers[0]
+
+  if hasattr(layer, '_batch_input_shape'):
+    return layer._batch_input_shape, layer.dtype
+  return None, None
+
+
+# pylint: enable=protected-access
+
+
+def get_static_batch_size(layer):
+  """Gets the static batch size of a Layer.
+
+  Arguments:
+    layer: a `Layer` instance.
+
+  Returns:
+    The static batch size of a Layer.
+  """
+  batch_input_shape, _ = get_input_shape_and_dtype(layer)
+  if batch_input_shape is not None:
+    return tensor_shape.as_dimension(batch_input_shape[0]).value
+  return None
