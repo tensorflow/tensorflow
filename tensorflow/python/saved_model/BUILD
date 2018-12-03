@@ -285,7 +285,9 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":builder",
         ":constants",
+        ":loader",
         ":saved_object_graph_py",
         ":signature_constants",
         ":signature_def_utils",
