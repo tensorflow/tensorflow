@@ -472,7 +472,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_ConvBpropInput_FilterFwd) {
 // After layout pass
 // _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
 TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Positive) {
-  CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
   InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Int32Input'}"
