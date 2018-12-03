@@ -3134,6 +3134,7 @@ cc_library(
         ":hlo_casting_utils",
         ":hlo_execution_profile",
         ":hlo_tfgraph_builder",
+        ":pattern_matcher",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
