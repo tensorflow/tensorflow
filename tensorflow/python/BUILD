@@ -526,6 +526,17 @@ py_test(
 )
 
 py_test(
+    name = "dispatch_test",
+    srcs = ["util/dispatch_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":platform",
+        ":util",
+    ],
+)
+
+py_test(
     name = "keyword_args_test",
     srcs = ["util/keyword_args_test.py"],
     srcs_version = "PY2AND3",
@@ -2858,6 +2869,7 @@ py_test(
         ":framework_test_lib",
         ":sparse_ops",
         ":sparse_tensor",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
