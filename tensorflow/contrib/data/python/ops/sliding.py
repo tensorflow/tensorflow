@@ -18,10 +18,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util import deprecation
 
@@ -40,29 +39,31 @@ class _SlideDataset(dataset_ops.UnaryDataset):
     self._window_shift = ops.convert_to_tensor(
         window_shift, dtype=dtypes.int64, name="window_shift")
 
+    # pylint: disable=protected-access
+    input_structure = structure.Structure._from_legacy_structure(
+        input_dataset.output_types, input_dataset.output_shapes,
+        input_dataset.output_classes)
+    self._output_structure = input_structure._batch(None)
+
   def _as_variant_tensor(self):
     return ged_ops.experimental_sliding_window_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         window_size=self._window_size,
         window_shift=self._window_shift,
         window_stride=self._window_stride,
-        **dataset_ops.flat_structure(self))
+        **dataset_ops.flat_structure(structure=self._output_structure))
 
   @property
   def output_classes(self):
-    return self._input_dataset.output_classes
+    return self._output_structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
   def output_shapes(self):
-    input_shapes = self._input_dataset.output_shapes
-    return nest.pack_sequence_as(input_shapes, [
-        tensor_shape.vector(None).concatenate(s)
-        for s in nest.flatten(self._input_dataset.output_shapes)
-    ])
+    return self._output_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
   def output_types(self):
-    return self._input_dataset.output_types
+    return self._output_structure._to_legacy_output_types()  # pylint: disable=protected-access
 
 
 @deprecation.deprecated_args(

@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -569,13 +570,16 @@ class _RestructuredDataset(dataset_ops.UnaryDataset):
     return self._output_shapes
 
 
-class _MapAndBatchDataset(dataset_ops.MapDataset):
+class _MapAndBatchDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that maps a function over a batch of elements."""
 
   def __init__(self, input_dataset, map_func, batch_size, num_parallel_calls,
                drop_remainder):
     """See `Dataset.map()` for details."""
-    super(_MapAndBatchDataset, self).__init__(input_dataset, map_func)
+    super(_MapAndBatchDataset, self).__init__(input_dataset)
+    self._input_dataset = input_dataset
+    self._map_func = dataset_ops.StructuredFunctionWrapper(
+        map_func, "tf.data.experimental.map_and_batch()", dataset=input_dataset)
     self._batch_size_t = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
     self._num_parallel_calls_t = ops.convert_to_tensor(
@@ -583,36 +587,37 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
     self._drop_remainder_t = ops.convert_to_tensor(
         drop_remainder, dtype=dtypes.bool, name="drop_remainder")
 
-    self._batch_size = batch_size
-    self._drop_remainder = drop_remainder
+    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder_t)
+    if constant_drop_remainder:
+      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
+      # or `False` (explicitly retaining the remainder).
+      self._output_structure = self._map_func.output_structure._batch(  # pylint: disable=protected-access
+          tensor_util.constant_value(self._batch_size_t))
+    else:
+      self._output_structure = self._map_func.output_structure._batch(None)  # pylint: disable=protected-access
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
-    input_resource = self._input_dataset._as_variant_tensor()
     return ged_ops.experimental_map_and_batch_dataset(
-        input_resource,
-        self._map_func.captured_inputs,
-        f=self._map_func,
+        self._input_dataset._as_variant_tensor(),
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
         batch_size=self._batch_size_t,
         num_parallel_calls=self._num_parallel_calls_t,
         drop_remainder=self._drop_remainder_t,
-        **dataset_ops.flat_structure(self))
-    # pylint: enable=protected-access
+        **dataset_ops.flat_structure(structure=self._output_structure))
+
+  @property
+  def output_classes(self):
+    return self._output_structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
   def output_shapes(self):
-    dim = self._batch_size if self._drop_remainder else None
-    return nest.pack_sequence_as(self._output_shapes, [
-        tensor_shape.vector(dim).concatenate(s)
-        for s in nest.flatten(self._output_shapes)
-    ])
+    return self._output_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
   def output_types(self):
-    return self._output_types
-
-  def _transformation_name(self):
-    return "tf.data.experimental.map_and_batch()"
+    return self._output_structure._to_legacy_output_types()  # pylint: disable=protected-access
 
 
 @tf_export("data.experimental.map_and_batch")
