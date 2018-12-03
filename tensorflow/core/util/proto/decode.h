@@ -318,7 +318,7 @@ inline int ReadPackedPrimitives(const void* bufp, const size_t len,
   return count;
 }
 
-// Reads a primitive value field from a serialized proto.
+// Reads a primitive field value from a serialized proto.
 // The value is parsed from the serialized format, then static_cast
 // to the desired type for TensorFlow and stored.
 template <class ValueType, class TensorType,
