@@ -135,6 +135,7 @@ py_library(
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
         "//third_party/py/numpy",
     ],
 )
