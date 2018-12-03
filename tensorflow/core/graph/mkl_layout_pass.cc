@@ -1097,10 +1097,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // These two algorithm are not consistent when alpha > 1
   // so only LeakyRelu is written to MKL OP when alpha < 1
   static bool LeakyReluRewrite(const Node* n) {
-    CHECK_NOTNULL(n);
+    DCHECK(n);
 
     float alpha;
-    CHECK_EQ(GetNodeAttr(n->def(), "alpha", &alpha).ok(), true);
+    DCHECK(GetNodeAttr(n->def(), "alpha", &alpha).ok());
 
     // If the alpha of LeakyRelu is less than 1, rewrite the node.
     // Otherwise eigen node is used instead.
