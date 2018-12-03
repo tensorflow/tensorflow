@@ -51,8 +51,8 @@ def prefetch_to_device(device, buffer_size=None):
     `tf.data.Dataset.apply`.
   """
   def _apply_fn(dataset):
-    return _CopyToDeviceDataset(
-        dataset, target_device=device).prefetch(buffer_size)
+    return dataset.apply(
+        copy_to_device(target_device=device)).prefetch(buffer_size)
 
   return _apply_fn
 
@@ -71,8 +71,11 @@ def copy_to_device(target_device, source_device="/cpu:0"):
   """
 
   def _apply_fn(dataset):
+    options = dataset_ops.Options()
+    options.experimental_autotune = False
     return _CopyToDeviceDataset(
-        dataset, target_device=target_device, source_device=source_device)
+        dataset, target_device=target_device,
+        source_device=source_device).with_options(options)
 
   return _apply_fn
 

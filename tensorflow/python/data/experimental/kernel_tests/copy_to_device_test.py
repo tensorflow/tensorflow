@@ -56,7 +56,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual([], next_element.shape)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -83,7 +83,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual((4,), next_element.shape)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       self.assertAllEqual([0, 1, 2, 3], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
@@ -109,7 +109,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual([], next_element.shape)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -136,7 +136,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual([], next_element.shape)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -163,7 +163,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual([], next_element["a"].shape)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       for i in range(10):
         self.assertEqual({"a": i}, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -190,7 +190,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual([], next_element["a"].shape)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       for i in range(10):
         self.assertEqual({"a": i}, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -222,7 +222,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual(dtypes.int64, next_element.dtype)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       for i in range(10):
         actual = self.evaluate(next_element)
         self.assertAllEqual([i], actual.values)
@@ -257,7 +257,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual(dtypes.int64, next_element.dtype)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       for i in range(10):
         actual = self.evaluate(next_element)
         self.assertAllEqual([i], actual.values)
@@ -278,7 +278,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
       self.evaluate(iterator.initializer)
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
@@ -297,7 +298,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
       self.evaluate(iterator.initializer)
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
@@ -330,7 +332,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
       self.evaluate(iterator.initializer)
       for i in range(10):
         x, y, z = self.evaluate(next_element)
@@ -352,7 +355,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
       self.evaluate(iterator.initializer)
       self.assertAllEqual([0, 1, 2, 3], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -370,7 +374,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
       self.evaluate(iterator.initializer)
       self.assertAllEqual([0, 1, 2, 3], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -388,7 +393,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
       self.evaluate(iterator.initializer)
       self.assertAllEqual([b"a", b"b", b"c"], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -406,7 +412,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
       self.evaluate(iterator.initializer)
       self.assertAllEqual([b"a", b"b", b"c"], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -427,7 +434,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         iterator = back_to_cpu_dataset.make_initializable_iterator()
         next_element = iterator.get_next()
 
-      with self.cached_session() as sess:
+      with self.cached_session(
+          config=config_pb2.ConfigProto(allow_soft_placement=False)):
         self.evaluate(iterator.initializer)
         for i in range(10):
           self.assertEqual(i, self.evaluate(next_element))
@@ -455,7 +463,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual([], next_element.shape)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       self.evaluate(iterator.initializer)
       for i in range(5):
         self.assertEqual(i, self.evaluate(next_element))
@@ -486,7 +494,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual([], next_element.shape)
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config) as sess:
+    with self.test_session(config=worker_config):
       self.evaluate(iterator.initializer)
       for i in range(5):
         self.assertEqual(i, self.evaluate(next_element))
@@ -508,7 +516,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
       self.evaluate(iterator.initializer)
       for i in range(5):
         self.assertEqual(i, self.evaluate(next_element))
@@ -530,7 +539,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
       self.evaluate(iterator.initializer)
       for i in range(5):
         self.assertEqual(i, self.evaluate(next_element))
@@ -553,7 +563,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       elem_has_value_t = next_elem.has_value()
       elem_value_t = next_elem.get_value()
 
-    with self.cached_session() as sess:
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
       # Before initializing the iterator, evaluating the optional fails with
       # a FailedPreconditionError.
       with self.assertRaises(errors.FailedPreconditionError):
