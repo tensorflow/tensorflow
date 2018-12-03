@@ -40,6 +40,7 @@ class ScanTest(test_base.DatasetTestBase):
     return dataset_ops.Dataset.from_tensors(0).repeat().apply(
         scan_ops.scan(start, scan_fn))
 
+  @test_util.run_deprecated_v1
   def testCount(self):
     def make_scan_fn(step):
       return lambda state, _: (state + step, state)
@@ -62,7 +63,7 @@ class ScanTest(test_base.DatasetTestBase):
             itertools.count(start_val, step_val), range(take_val)):
           self.assertEqual(expected, self.evaluate(next_element))
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(next_element)
+          self.evaluate(next_element)
 
   @test_util.run_in_graph_and_eager_modes
   def testFibonacci(self):
@@ -83,6 +84,7 @@ class ScanTest(test_base.DatasetTestBase):
     self.assertEqual(5, self.evaluate(next_element()))
     self.assertEqual(8, self.evaluate(next_element()))
 
+  @test_util.run_deprecated_v1
   def testSparseCount(self):
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
@@ -112,8 +114,9 @@ class ScanTest(test_base.DatasetTestBase):
             itertools.count(start_val, step_val), range(take_val)):
           self.assertEqual(expected, self.evaluate(next_element).values[0])
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(next_element)
+          self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testChangingStateShape(self):
     # Test the fixed-point shape invariant calculations: start with
     # initial values with known shapes, and use a scan function that
@@ -140,7 +143,7 @@ class ScanTest(test_base.DatasetTestBase):
         self.assertAllEqual([0] * (2**i), longer_vector_val)
         self.assertAllEqual(np.array(1, ndmin=i), larger_rank_val)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testIncorrectStateType(self):
 

@@ -215,7 +215,7 @@ class PriorityQueueTest(test.TestCase):
 
       # We can't guarantee full sorting because we can't guarantee
       # that the dequeued.extend() call runs immediately after the
-      # sess.run() call.  Here we're just happy everything came out.
+      # self.evaluate() call.  Here we're just happy everything came out.
       self.assertAllEqual(set(dequeued), set(all_enqueued_values))
 
   def testRoundTripInsertManyMultiThreadedReadOnceSorts(self):

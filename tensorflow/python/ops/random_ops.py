@@ -138,7 +138,9 @@ def parameterized_truncated_normal(shape,
     return rnd
 
 
-@tf_export("random.truncated_normal", "truncated_normal")
+@tf_export("random.truncated_normal",
+           v1=["random.truncated_normal", "truncated_normal"])
+@deprecation.deprecated_endpoints("truncated_normal")
 def truncated_normal(shape,
                      mean=0.0,
                      stddev=1.0,

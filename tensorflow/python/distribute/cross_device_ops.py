@@ -23,6 +23,7 @@ import six
 
 from tensorflow.python.client import device_lib
 from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
@@ -31,7 +32,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import device_util
 
 
 def check_destinations(destinations):
@@ -103,10 +103,10 @@ def _validate_value_destination_pairs(value_destination_pairs):
   # pylint: disable=g-missing-docstring
   if not value_destination_pairs: return False
   if not isinstance(value_destination_pairs, (list, tuple)): return False
-  if not all([isinstance(pair, tuple) for pair in value_destination_pairs]):
+  if not all(isinstance(pair, tuple) for pair in value_destination_pairs):
     return False
-  if not all([isinstance(v[0], value_lib.PerReplica)
-              for v in value_destination_pairs]):
+  if not all(isinstance(v[0], value_lib.PerReplica)
+             for v in value_destination_pairs):
     return False
   return True
 
@@ -132,10 +132,10 @@ def _devices_match(left, right):
 
 
 def _all_devices_match(value_destination_pairs):
-  if not all([_devices_match(v, d) for v, d in value_destination_pairs]):
+  if not all(_devices_match(v, d) for v, d in value_destination_pairs):
     return False
-  if not all([_devices_match(v, value_destination_pairs[0][0])
-              for v, _ in value_destination_pairs[1:]]):
+  if not all(_devices_match(v, value_destination_pairs[0][0])
+             for v, _ in value_destination_pairs[1:]):
     return False
   return True
 
@@ -401,7 +401,7 @@ class ConcatAndSplitPacker(object):
         # all gradient shapes are defined, we use another method to get the
         # total size.
         # TODO(yuefengz): move this logic to array_ops.size.
-        if all([g.shape.is_fully_defined() for g, _ in device_grads_and_vars]):
+        if all(g.shape.is_fully_defined() for g, _ in device_grads_and_vars):
           total_grad_size = sum(
               [g.shape.num_elements() for g, _ in device_grads_and_vars])
         else:
@@ -916,15 +916,15 @@ def _choose_all_reduce_algorithm(device_links):
 
 
 def choose_the_best(devices, session_config=None):
-  """Find the best subclass of CrossDeviceOps given a tensorflow session.
+  """Find the best subclass of CrossDeviceOps given a session config.
 
   Args:
-    devices: a list of devices passed for distribute strategy.
-    session_config: a tensorflow session config or None. If None, it will make
-      deciesion based on all local devices.
+    devices: a list of devices passed to `tf.distribute.Strategy`.
+    session_config: a `tf.ConfigProto` or `None`. If `None`, it will make
+      decision based on all local devices.
 
   Returns:
-    a subclass of CrossDeviceOps.
+    A subclass of `CrossDeviceOps`.
   """
   requested_devices = set([device_util.canonicalize(d) for d in devices])
   machine_devices = device_lib.list_local_devices(session_config=session_config)
@@ -937,13 +937,13 @@ def choose_the_best(devices, session_config=None):
           "Device is available but not used by distribute strategy: %s", d.name)
 
   if len(using_devices) != len(requested_devices):
-    logging.warning("Not all devices in distribute strategy are visible by "
-                    "TensorFlow sessions.")
+    logging.warning("Not all devices in `tf.distribute.Strategy` are visible "
+                    "to TensorFlow.")
     return ReductionToOneDeviceCrossDeviceOps()
 
-  if any([d.device_type.lower() != "gpu" for d in using_devices]):
-    logging.warning("Not all devices in DistributionStrategy are visible to "
-                    "TensorFlow session.")
+  if any(d.device_type.lower() != "gpu" for d in using_devices):
+    logging.warning("Not all devices in `tf.distribute.Strategy` are visible "
+                    "to TensorFlow.")
     return ReductionToOneDeviceCrossDeviceOps()
 
   device_links = [[] for _ in range(len(using_devices))]

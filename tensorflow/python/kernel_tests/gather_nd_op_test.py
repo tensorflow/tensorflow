@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import variables
@@ -54,6 +55,7 @@ class GatherNdTest(test.TestCase):
     self._testSimpleDtype(np.complex128)
     self._testSimpleDtype("|S")  # byte strings in python2 + 3
 
+  @test_util.run_deprecated_v1
   def testEmptyIndicesAndParamsOKButJustEmptyParamsFails(self):
     with self.session(use_gpu=True):
       params = np.ones((3, 3), dtype=np.float32)
@@ -190,6 +192,7 @@ class GatherNdTest(test.TestCase):
   def assertIndexedSlices(self, t):
     self.assertIsInstance(t, ops.IndexedSlices)
 
+  @test_util.run_deprecated_v1
   def testUnknownIndices(self):
     params = constant_op.constant([[0, 1, 2]])
     indices = array_ops.placeholder(dtypes.int32)
@@ -198,6 +201,7 @@ class GatherNdTest(test.TestCase):
     self.assertEqual(None, shape.ndims)
     self.assertEqual(None, tensor_shape.dimension_value(shape[0]))
 
+  @test_util.run_deprecated_v1
   def testBadIndicesCPU(self):
     with self.session(use_gpu=False):
       params = [0, 1, 2]
@@ -220,6 +224,7 @@ class GatherNdTest(test.TestCase):
           r"indices\[0,1\] = \[7\] does not index into param shape \[3\]"):
         self.evaluate(gather_nd)
 
+  @test_util.run_deprecated_v1
   def testBadIndicesWithSlicesCPU(self):
     with self.session(use_gpu=False):
       params = [[0, 1, 2]]
@@ -242,6 +247,7 @@ class GatherNdTest(test.TestCase):
           r"indices\[0,2\] = \[1\] does not index into param shape \[1,3\]"):
         self.evaluate(gather_nd)
 
+  @test_util.run_deprecated_v1
   def testGradientsRank2Elements(self):
     indices = constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32)
     inputs = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float64)
@@ -253,6 +259,7 @@ class GatherNdTest(test.TestCase):
     with self.session(use_gpu=True):
       assert np.array_equal(expected_grads, self.evaluate(grads))
 
+  @test_util.run_deprecated_v1
   def testGradientsRank2Slices(self):
     indices = constant_op.constant([[1], [0]], dtype=dtypes.int32)
     inputs = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float64)
@@ -265,6 +272,7 @@ class GatherNdTest(test.TestCase):
       self.assertIndexedSlices(grads)
       self.assertAllEqual(expected_grads, ops.convert_to_tensor(grads).eval())
 
+  @test_util.run_deprecated_v1
   def testGradientsRank3Elements(self):
     indices = constant_op.constant(
         [[[0, 1], [1, 0]], [[0, 0], [1, 1]]], dtype=dtypes.int32)
@@ -280,6 +288,7 @@ class GatherNdTest(test.TestCase):
     with self.session(use_gpu=True):
       self.assertAllEqual(expected_grads, self.evaluate(grads))
 
+  @test_util.run_deprecated_v1
   def testGradientsRank7Elements(self):
     # Shape [1,1,2,1,1,2,2]
     indices = constant_op.constant(
@@ -309,6 +318,7 @@ class GatherNdTest(test.TestCase):
     with self.session(use_gpu=True):
       self.assertAllEqual(expected_grads, self.evaluate(grads))
 
+  @test_util.run_deprecated_v1
   def testGradientsInt64Indices(self):
     indices = constant_op.constant(
         [[[0, 1], [1, 0]], [[0, 0], [1, 1]]], dtype=dtypes.int64)
@@ -324,6 +334,7 @@ class GatherNdTest(test.TestCase):
     with self.session(use_gpu=True):
       self.assertAllEqual(expected_grads, self.evaluate(grads))
 
+  @test_util.run_deprecated_v1
   def testGradientsRank2SlicesWithEmptySpace(self):
     indices = constant_op.constant([[2], [0], [5]], dtype=dtypes.int32)
     inputs = constant_op.constant(

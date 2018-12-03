@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -206,6 +207,18 @@ class DefFunctionTest(test.TestCase):
 
     m1 = MyModel()
     self.assertAllEqual(m1.apply(3.0), 6.0)
+
+  def test_functools_partial(self):
+    self.assertAllClose(
+        3.,
+        def_function.function(functools.partial(lambda x, y: x + y, 1.))(
+            constant_op.constant(2.)))
+
+  def test_unspecified_default_argument(self):
+    wrapped = def_function.function(
+        lambda x, y=2: x + y,
+        input_signature=[tensor_spec.TensorSpec((), dtypes.int32)])
+    self.assertEqual(3, wrapped(constant_op.constant(1)).numpy())
 
   def test_optimizer(self):
     x = constant_op.constant([[3., 4.]])

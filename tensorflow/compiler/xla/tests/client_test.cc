@@ -50,7 +50,8 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
       ExecutionOptions execution_options = execution_options_;
       *execution_options.mutable_shape_with_output_layout() =
           ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                         execute_layout);
+                                         execute_layout)
+              .ToProto();
       TF_ASSERT_OK_AND_ASSIGN(
           std::unique_ptr<GlobalData> data,
           client_->Execute(computation, {}, &execution_options));
@@ -84,7 +85,8 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
           {ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
                                           /*minor_to_major=*/{0, 1}),
            ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                          /*minor_to_major=*/{1, 0})});
+                                          /*minor_to_major=*/{1, 0})})
+          .ToProto();
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result,

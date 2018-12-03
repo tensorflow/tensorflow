@@ -33,10 +33,6 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
-    name: "MAIN_OP_KEY"
-    mtype: "<type \'str\'>"
-  }
-  member {
     name: "PREDICT_INPUTS"
     mtype: "<type \'str\'>"
   }

@@ -160,7 +160,7 @@ def Quantize(graph,
       # shouldn't quantize it, since the activation will be Fused into the
       # Add at inference time.
       consumers = input_to_ops_map.ConsumerOperations(layer_match.bypass_op)
-      if any([consumer.type in _ACTIVATION_TYPES for consumer in consumers]):
+      if any(consumer.type in _ACTIVATION_TYPES for consumer in consumers):
         logging.info('Skipping %s, because its followed by an activation.',
                      layer_match.bypass_op.name)
       else:
@@ -195,7 +195,7 @@ def Quantize(graph,
       # Add at inference time.
       consumers = input_to_ops_map.ConsumerOperations(
           layer_match.post_activation_bypass_op)
-      if any([consumer.type in _RELU_TYPES for consumer in consumers]):
+      if any(consumer.type in _RELU_TYPES for consumer in consumers):
         logging.info('Skipping %s, because its followed by an activation.',
                      layer_match.post_activation_bypass_op.name)
       else:

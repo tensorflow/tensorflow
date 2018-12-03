@@ -206,7 +206,8 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_));
         return Status::OK();
       }
 
@@ -1052,8 +1053,8 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           {
             tracing::ScopedActivity trace(
                 "NumaMapAndBatch::Iterator::Worker::FunctionExecution");
-            s = dataset()->captured_func_->Run(ctx.get(), std::move(input),
-                                               &return_values);
+            s = instantiated_captured_func_->Run(ctx.get(), std::move(input),
+                                                 &return_values);
           }
           WORKER_VLOG(4) << "ran function for index: " << index
                          << ", sequence_number: " << sequence_number;
@@ -1099,6 +1100,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       const std::shared_ptr<condition_variable> autotune_cond_var_;
       // The maximum number of parallel calls (can be auto-tuned).
       const std::shared_ptr<model::SharedState> num_parallel_calls_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
 
       // Caches the last-seen value of num_parallel_calls_->value to
       // short-circuit starting workers.

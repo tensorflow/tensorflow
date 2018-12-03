@@ -743,6 +743,8 @@ class HloFusionInstruction : public HloInstruction {
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
+  uint64 InnerHash() const override;
+
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
@@ -955,6 +957,7 @@ class HloConvolutionInstruction : public HloInstruction {
   // information but it is presumed that the alternate lowering is strictly
   // superior.
   const PrecisionConfig& precision_config() const { return precision_config_; }
+  PrecisionConfig* mutable_precision_config() { return &precision_config_; }
 
   string ToCategory() const override;
   // Returns a serialized representation of this instruction.
@@ -1326,6 +1329,7 @@ class HloDotInstruction : public HloInstruction {
   // information but it is presumed that the alternate lowering is strictly
   // superior.
   const PrecisionConfig& precision_config() const { return precision_config_; }
+  PrecisionConfig* mutable_precision_config() { return &precision_config_; }
 
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;

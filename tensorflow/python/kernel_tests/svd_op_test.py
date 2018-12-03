@@ -150,7 +150,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         s_tf, u_tf, v_tf = linalg_ops.svd(
             x_tf, compute_uv=compute_uv_, full_matrices=full_matrices_)
         if use_static_shape_:
-          s_tf_val, u_tf_val, v_tf_val = sess.run([s_tf, u_tf, v_tf])
+          s_tf_val, u_tf_val, v_tf_val = self.evaluate([s_tf, u_tf, v_tf])
         else:
           s_tf_val, u_tf_val, v_tf_val = sess.run(
               [s_tf, u_tf, v_tf], feed_dict={x_tf: x_np})

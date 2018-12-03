@@ -59,12 +59,12 @@ class KernelTest : public testing::FlexModelTest {
     delegate_.CopyFromBufferHandle = [](TfLiteContext* context,
                                         TfLiteDelegate* delegate,
                                         TfLiteBufferHandle buffer_handle,
-                                        void* data, size_t size) {
+                                        TfLiteTensor* output) {
       auto* delegate_data = reinterpret_cast<DelegateData*>(delegate->data_);
       tensorflow::StringPiece values = delegate_data->GetBufferMap(context)
                                            ->GetTensor(buffer_handle)
                                            .tensor_data();
-      memcpy(data, values.data(), values.size());
+      memcpy(output->data.raw, values.data(), values.size());
       return kTfLiteOk;
     };
     CHECK(interpreter_->ModifyGraphWithDelegate(&delegate_) == kTfLiteOk);

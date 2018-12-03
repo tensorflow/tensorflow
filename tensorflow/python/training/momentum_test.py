@@ -160,6 +160,7 @@ class MomentumOptimizerTest(test.TestCase):
       self.assertStartsWith(optimizer_variables[1].name, "var3")
       self.assertEquals(2, len(optimizer_variables))
 
+  @test_util.run_deprecated_v1
   def testNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -186,6 +187,7 @@ class MomentumOptimizerTest(test.TestCase):
           self.assertAllClose(var0_np, self.evaluate(var0))
           self.assertAllClose(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSparseNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -280,6 +282,7 @@ class MomentumOptimizerTest(test.TestCase):
     self.evaluate(sgd_op)
     self.assertAllCloseAccordingToType([[1, 1], [0, 0]], self.evaluate(var0))
 
+  @test_util.run_deprecated_v1
   def testTensorLearningRateAndMomentum(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -440,6 +443,7 @@ class MomentumOptimizerTest(test.TestCase):
     # pylint: enable=line-too-long
     return db_grad, db_out
 
+  @test_util.run_deprecated_v1
   def testLikeDistBeliefMom01(self):
     with self.cached_session():
       db_grad, db_out = self._dbParamsMom01()
@@ -453,6 +457,7 @@ class MomentumOptimizerTest(test.TestCase):
         mom_update.run(feed_dict={grads0: db_grad[i]})
         self.assertAllClose(np.array(db_out[i]), self.evaluate(var0))
 
+  @test_util.run_deprecated_v1
   def testSparse(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -534,6 +539,7 @@ class MomentumOptimizerTest(test.TestCase):
             ]),
             self.evaluate(var1)[2])
 
+  @test_util.run_deprecated_v1
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():

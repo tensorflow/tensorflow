@@ -22,6 +22,7 @@ import numpy as np
 import platform
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -50,10 +51,12 @@ class DenormalTest(test.TestCase):
           # Make sure the flags don't leak out
           self.testPythonHasDenormals()
 
+  @test_util.run_deprecated_v1
   def testFlushDenormalsCPU(self):
     # On CPUs, the processor flags flush for both single and double precision.
     self._flushDenormalsTest(use_gpu=False, dtypes=(np.float32, np.float64))
 
+  @test_util.run_deprecated_v1
   def testFlushDenormalsGPU(self):
     # On GPUs, only single precision can flush to zero.
     self._flushDenormalsTest(use_gpu=True, dtypes=(np.float32,))

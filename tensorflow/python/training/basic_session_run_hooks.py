@@ -83,7 +83,7 @@ class _HookTimer(object):
     raise NotImplementedError
 
 
-@tf_export("train.SecondOrStepTimer")
+@tf_export(v1=["train.SecondOrStepTimer"])
 class SecondOrStepTimer(_HookTimer):
   """Timer that triggers at most once every N seconds or once every N steps.
   """
@@ -429,7 +429,7 @@ class StopAtStepHook(session_run_hook.SessionRunHook):
         run_context.request_stop()
 
 
-@tf_export("train.CheckpointSaverListener")
+@tf_export(v1=["train.CheckpointSaverListener"])
 class CheckpointSaverListener(object):
   """Interface for listeners that take action before or after checkpoint save.
 
@@ -718,7 +718,7 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     self._last_global_step = stale_global_step
 
 
-@tf_export("train.NanLossDuringTrainingError")
+@tf_export(v1=["train.NanLossDuringTrainingError"])
 class NanLossDuringTrainingError(RuntimeError):
 
   def __str__(self):

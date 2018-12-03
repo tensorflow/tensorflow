@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
@@ -66,6 +67,7 @@ class MultinomialTest(test.TestCase):
             counts_by_indices[index] = count
     self.assertEqual(counts_by_indices[0], 100000000)
 
+  @test_util.run_deprecated_v1
   def testLargeDynamicRange3(self):
     random_seed.set_random_seed(10)
     counts_by_indices = {}

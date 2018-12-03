@@ -22,13 +22,13 @@ from absl.testing import parameterized
 
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import device_util
 
 
 class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):

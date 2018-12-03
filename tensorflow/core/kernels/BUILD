@@ -199,8 +199,16 @@ tf_kernel_library(
     name = "conv_2d",
     hdrs = ["conv_2d.h"],
     gpu_srcs = [
-        "conv_2d_gpu.cu.cc",
         "conv_2d.h",
+        "conv_2d_gpu.h",
+        "conv_2d_gpu_double.cu.cc",
+        "conv_2d_gpu_float.cu.cc",
+        "conv_2d_gpu_half.cu.cc",
+        "conv_2d_gpu_int.cu.cc",
+        "conv_2d_gpu_uint16.cu.cc",
+        "conv_2d_gpu_uint32.cu.cc",
+        "conv_2d_gpu_uint64.cu.cc",
+        "conv_2d_gpu_uint8.cu.cc",
     ],
     deps = [
         ":eigen_helpers",
@@ -4581,6 +4589,7 @@ tf_kernel_library(
         ":dense_update_functor",
         ":training_op_helpers",
         ":variable_ops",
+        ":inplace_ops",
     ],
 )
 
@@ -4818,11 +4827,13 @@ tf_kernel_library(
     name = "unicode_ops",
     prefix = "unicode_ops",
     deps = [
+        ":bounds_check",
         ":string_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:string_ops_op_lib",
+        "//third_party/eigen3",
         "//third_party/icu/data:conversion_data",
         "@icu//:common",
     ],
@@ -5723,8 +5734,8 @@ filegroup(
             "batch_kernels.*",
             "regex_full_match_op.cc",
             "regex_replace_op.cc",
-            "unicode_script_op.cc",
             "unicode_ops.cc",
+            "unicode_script_op.cc",
             # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
             "mkl_*",
             "xsmm_*",
@@ -6254,6 +6265,28 @@ tf_cc_test(
     size = "small",
     srcs = ["quantized_pooling_ops_test.cc"],
     deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test_mkl(
+    name = "mkl_quantized_pooling_ops_test",
+    size = "small",
+    srcs = ["mkl_quantized_pooling_ops_test.cc"],
+    deps = [
+        ":mkl_input_conversion_op",
+        ":mkl_pooling_ops",
         ":ops_testutil",
         ":ops_util",
         ":quantization_utils",

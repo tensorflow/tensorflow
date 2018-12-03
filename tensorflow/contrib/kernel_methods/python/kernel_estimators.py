@@ -90,7 +90,7 @@ def _update_features_and_columns(features, feature_columns,
     mapped_column_name = column_name + "_MAPPED"
     # Construct new feature columns based on provided kernel_mappers.
     column_kernel_mappers = kernel_mappers_dict[feature_column]
-    new_dim = sum([mapper.output_dim for mapper in column_kernel_mappers])
+    new_dim = sum(mapper.output_dim for mapper in column_kernel_mappers)
     mapped_columns.add(
         layers.feature_column.real_valued_column(mapped_column_name, new_dim))
 

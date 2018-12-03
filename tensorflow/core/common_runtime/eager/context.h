@@ -206,6 +206,8 @@ class EagerContext {
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
   bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
 
+  tensorflow::Env* TFEnv() const { return env_; }
+
  private:
   void InitDeviceMapAndAsync();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);

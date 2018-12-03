@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import linalg_ops
@@ -49,6 +50,7 @@ class QrOpTest(test.TestCase):
                                  "Shape must be at least rank 2 but is rank 1"):
       linalg_ops.qr(vector)
 
+  @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
     with self.session(use_gpu=True) as sess:
       all_ops = []
@@ -129,7 +131,7 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
       q_tf, r_tf = linalg_ops.qr(x_tf, full_matrices=full_matrices_)
 
       if use_static_shape_:
-        q_tf_val, r_tf_val = sess.run([q_tf, r_tf])
+        q_tf_val, r_tf_val = self.evaluate([q_tf, r_tf])
       else:
         q_tf_val, r_tf_val = sess.run([q_tf, r_tf], feed_dict={x_tf: x_np})
 

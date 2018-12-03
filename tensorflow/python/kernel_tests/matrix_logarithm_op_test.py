@@ -25,6 +25,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
@@ -39,7 +40,7 @@ class LogarithmOpTest(test.TestCase):
 
   def _verifyLogarithm(self, x, np_type):
     inp = x.astype(np_type)
-    with self.cached_session(use_gpu=True):
+    with test_util.use_gpu():
       # Verify that expm(logm(A)) == A.
       tf_ans = linalg_impl.matrix_exponential(
           gen_linalg_ops.matrix_logarithm(inp))
@@ -128,7 +129,7 @@ class LogarithmOpTest(test.TestCase):
           random_ops.random_normal([5, 5], seed=42), dtypes.complex64)
       logm1 = gen_linalg_ops.matrix_logarithm(matrix1)
       logm2 = gen_linalg_ops.matrix_logarithm(matrix2)
-      logm = sess.run([logm1, logm2])
+      logm = self.evaluate([logm1, logm2])
       self.assertAllEqual(logm[0], logm[1])
 
 

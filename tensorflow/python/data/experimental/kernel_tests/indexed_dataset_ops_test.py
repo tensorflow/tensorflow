@@ -24,6 +24,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.platform import test
@@ -31,6 +32,7 @@ from tensorflow.python.platform import test
 
 class IndexedDatasetOpsTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testLowLevelIndexedDatasetOps(self):
     identity = ged_ops.experimental_identity_indexed_dataset(
         ops.convert_to_tensor(16, dtype=dtypes.uint64))
@@ -46,9 +48,10 @@ class IndexedDatasetOpsTest(test_base.DatasetTestBase):
         handle, index, output_types=[dtypes.uint64], output_shapes=[[]])
 
     with self.cached_session() as sess:
-      sess.run(materialize)
+      self.evaluate(materialize)
       self.assertEqual([3], sess.run(get_op, feed_dict={index: 3}))
 
+  @test_util.run_deprecated_v1
   def testIdentityIndexedDataset(self):
     ds = indexed_dataset_ops.IdentityIndexedDataset(16)
     materialized = ds.materialize()
@@ -73,7 +76,8 @@ class IndexedDatasetOpsTest(test_base.DatasetTestBase):
         output = self.evaluate(n)
         self.assertEqual(i, output)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(n)
+        self.evaluate(n)
+
 
 if __name__ == "__main__":
   test.main()

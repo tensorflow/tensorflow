@@ -14,7 +14,7 @@ tf_module {
   }
   member_method {
     name: "concat"
-    argspec: "args=[\'axis\', \'sp_inputs\', \'expand_nonconcat_dim\', \'concat_dim\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\'], "
+    argspec: "args=[\'axis\', \'sp_inputs\', \'expand_nonconcat_dim\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "cross"

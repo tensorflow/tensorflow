@@ -23,6 +23,7 @@ from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import op_hint
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -328,6 +329,27 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
               stubbed_graphdef,
               output_nodes=[op_hint._tensor_name_base(output.name)]),
           set(["agg", "Const", "Identity"]))
+
+  def testConvertDtype(self):
+    self.assertEqual(
+        convert.convert_dtype_to_tflite_type(lite_constants.FLOAT),
+        _types_pb2.FLOAT)
+    self.assertEqual(
+        convert.convert_dtype_to_tflite_type(dtypes.float32), _types_pb2.FLOAT)
+    self.assertEqual(
+        convert.convert_dtype_to_tflite_type(dtypes.int32), _types_pb2.INT32)
+    self.assertEqual(
+        convert.convert_dtype_to_tflite_type(dtypes.int64), _types_pb2.INT64)
+    self.assertEqual(
+        convert.convert_dtype_to_tflite_type(dtypes.string), _types_pb2.STRING)
+    self.assertEqual(
+        convert.convert_dtype_to_tflite_type(dtypes.uint8),
+        _types_pb2.QUANTIZED_UINT8)
+    self.assertEqual(
+        convert.convert_dtype_to_tflite_type(dtypes.complex64),
+        _types_pb2.COMPLEX64)
+    with self.assertRaises(ValueError):
+      convert.convert_dtype_to_tflite_type(dtypes.bool)
 
 
 if __name__ == "__main__":

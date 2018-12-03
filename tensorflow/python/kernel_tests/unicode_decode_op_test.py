@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl as errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.platform import test
 
@@ -79,6 +80,7 @@ class UnicodeDecodeTest(test.TestCase):
       self.assertAllEqual(self.evaluate(row_splits).tolist(), [0, 4])
       self.assertAllEqual(self.evaluate(starts).tolist(), [0, 3, 6, 9])
 
+  @test_util.run_deprecated_v1
   def testStrictError(self):
     text = constant_op.constant([b"\xFEED"])
     _, error, _ = gen_string_ops.unicode_decode_with_offsets(
@@ -97,6 +99,7 @@ class UnicodeDecodeTest(test.TestCase):
     with self.test_session():
       self.assertAllEqual(self.evaluate(utf8_text).tolist(), [65533])
 
+  @test_util.run_deprecated_v1
   def testBadReplacementChar(self):
     text = constant_op.constant([b"\xFE"])
     _, error, _ = gen_string_ops.unicode_decode_with_offsets(
@@ -121,6 +124,7 @@ class UnicodeDecodeTest(test.TestCase):
           codepoint("o")
       ])
 
+  @test_util.run_deprecated_v1
   def testBadErrorPolicy(self):
     text = constant_op.constant(["hippopotamus"])
 

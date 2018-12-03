@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -67,20 +68,24 @@ class ToTFRecordOp : public AsyncOpKernel {
       OP_REQUIRES_OK_ASYNC(
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
       std::unique_ptr<IteratorBase> iterator;
+      IteratorContext::Params params(ctx);
+      std::unique_ptr<FunctionHandleCache> function_handle_cache(
+          new FunctionHandleCache(params.lib));
+      params.function_handle_cache = function_handle_cache.get();
+      IteratorContext iter_ctx(std::move(params));
+
       OP_REQUIRES_OK_ASYNC(
           ctx,
-          dataset->MakeIterator(IteratorContext(ctx), "ToTFRecordOpIterator",
-                                &iterator),
+          dataset->MakeIterator(&iter_ctx, "ToTFRecordOpIterator", &iterator),
           done);
 
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence;
       do {
-        OP_REQUIRES_OK_ASYNC(ctx,
-                             iterator->GetNext(IteratorContext(ctx),
-                                               &components, &end_of_sequence),
-                             done);
+        OP_REQUIRES_OK_ASYNC(
+            ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
+            done);
 
         if (!end_of_sequence) {
           OP_REQUIRES_OK_ASYNC(

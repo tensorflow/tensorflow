@@ -226,12 +226,14 @@ cc_library(
         "index_util.cc",
         "layout_util.cc",
         "primitive_util.cc",
+        "shape.cc",
         "shape_util.cc",
     ],
     hdrs = [
         "index_util.h",
         "layout_util.h",
         "primitive_util.h",
+        "shape.h",
         "shape_util.h",
     ],
     visibility = ["//visibility:public"],
@@ -251,6 +253,23 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "shape_test",
+    srcs = ["shape_test.cc"],
+    deps = [
+        ":shape_util",
+        ":status_macros",
+        ":test",
+        ":test_helpers",
+        ":types",
+        ":util",
+        ":xla_data_proto",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 

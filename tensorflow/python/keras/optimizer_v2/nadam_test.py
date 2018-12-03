@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.optimizer_v2 import nadam
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -48,7 +49,7 @@ def nadam_update_numpy(param,
                        beta1=0.9,
                        beta2=0.999,
                        epsilon=1e-8):
-  alpha_t = alpha * np.sqrt(1 - beta2**t) / (1 - beta1**t)
+  alpha_t = alpha * np.sqrt(1 - beta2**(t + 1)) / (1 - beta1**(t + 1))
 
   m_t = beta1 * m + (1 - beta1) * g_t
   v_t = beta2 * v + (1 - beta2) * g_t * g_t
@@ -97,9 +98,9 @@ class NadamOptimizerTest(test.TestCase):
         beta1_power, beta2_power = get_beta_accumulators(opt, dtype)
 
         # Run 3 steps of Nadam
-        for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
+        for t in range(3):
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.999**(t + 1), beta2_power.eval())
           update.run()
 
           var0_np, m0, v0 = nadam_update_numpy(
@@ -111,9 +112,11 @@ class NadamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
+  @test_util.run_deprecated_v1
   def testSparse(self):
     self.doTestSparse(use_resource=False)
 
+  @test_util.run_deprecated_v1
   def testResourceSparse(self):
     self.doTestSparse(use_resource=True)
 
@@ -146,9 +149,9 @@ class NadamOptimizerTest(test.TestCase):
         beta1_power, beta2_power = get_beta_accumulators(opt, dtype)
 
         # Run 3 steps of Nadam
-        for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
+        for t in range(3):
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.999**(t + 1), beta2_power.eval())
           update.run()
 
           var0_np, m0, v0 = nadam_update_numpy(var0_np, grads0_np, t, m0, v0)
@@ -158,11 +161,52 @@ class NadamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
-  def testBasic(self):
-    self.doTestBasic(use_resource=False)
-
+  @test_util.run_deprecated_v1
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
+
+  @test_util.run_deprecated_v1
+  def testBasicWithLearningRateDecay(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        # Initialize variables for numpy implementation.
+        m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
+
+        var0 = resource_variable_ops.ResourceVariable(var0_np)
+        var1 = resource_variable_ops.ResourceVariable(var1_np)
+        grads0 = constant_op.constant(grads0_np)
+        grads1 = constant_op.constant(grads1_np)
+        learning_rate = 0.001
+        decay = 0.5
+        opt = nadam.Nadam(learning_rate=learning_rate, decay=decay)
+        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        variables.global_variables_initializer().run()
+
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], var0.eval())
+        self.assertAllClose([3.0, 4.0], var1.eval())
+
+        beta1_power, beta2_power = get_beta_accumulators(opt, dtype)
+
+        # Run 3 steps of Nadam
+        for t in range(3):
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.999**(t + 1), beta2_power.eval())
+          update.run()
+
+          lr = learning_rate / (1 + decay * t)
+          var0_np, m0, v0 = nadam_update_numpy(
+              var0_np, grads0_np, t, m0, v0, alpha=lr)
+          var1_np, m1, v1 = nadam_update_numpy(
+              var1_np, grads1_np, t, m1, v1, alpha=lr)
+
+          # Validate updated params
+          self.assertAllCloseAccordingToType(var0_np, var0.eval())
+          self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
 
 if __name__ == "__main__":

@@ -45,6 +45,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     desc = tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
     self.assertEqual(desc.shape, tensor_shape.TensorShape(None))
 
+  @test_util.run_deprecated_v1
   def testShapeCompatibility(self):
     unknown = array_ops.placeholder(dtypes.int64)
     partial = array_ops.placeholder(dtypes.int64, shape=[None, 1])
@@ -75,6 +76,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     self.assertFalse(desc_rank3.is_compatible_with(full))
     self.assertTrue(desc_rank3.is_compatible_with(rank3))
 
+  @test_util.run_deprecated_v1
   def testTypeCompatibility(self):
     floats = array_ops.placeholder(dtypes.float32, shape=[10, 10])
     ints = array_ops.placeholder(dtypes.int32, shape=[10, 10])
@@ -106,6 +108,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     spec_2 = tensor_spec.TensorSpec.from_spec(spec_1)
     self.assertEqual(spec_1, spec_2)
 
+  @test_util.run_deprecated_v1
   def testFromTensor(self):
     zero = constant_op.constant(0)
     spec = tensor_spec.TensorSpec.from_tensor(zero)
@@ -113,6 +116,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     self.assertEqual(spec.shape, [])
     self.assertEqual(spec.name, "Const")
 
+  @test_util.run_deprecated_v1
   def testFromPlaceholder(self):
     unknown = array_ops.placeholder(dtypes.int64, name="unknown")
     partial = array_ops.placeholder(dtypes.float32,

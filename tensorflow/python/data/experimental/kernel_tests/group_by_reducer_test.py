@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -42,8 +43,9 @@ class GroupByReducerTest(test_base.DatasetTestBase):
         got = self.evaluate(get_next)
         self.assertEqual(got, expected)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
+  @test_util.run_deprecated_v1
   def testSum(self):
     reducer = grouping.Reducer(
         init_func=lambda _: np.int64(0),
@@ -55,6 +57,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
       self.checkResults(
           dataset, shapes=tensor_shape.scalar(), values=[(i - 1) * i, i * i])
 
+  @test_util.run_deprecated_v1
   def testAverage(self):
 
     def reduce_fn(x, y):
@@ -72,6 +75,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
       self.checkResults(
           dataset, shapes=tensor_shape.scalar(), values=[i - 1, i])
 
+  @test_util.run_deprecated_v1
   def testConcat(self):
     components = np.array(list("abcdefghijklmnopqrst")).view(np.chararray)
     reducer = grouping.Reducer(
@@ -88,6 +92,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
           shapes=tensor_shape.scalar(),
           values=[b"acegikmoqs" [:i], b"bdfhjlnprt" [:i]])
 
+  @test_util.run_deprecated_v1
   def testSparseSum(self):
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
@@ -105,6 +110,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
       self.checkResults(
           dataset, shapes=tensor_shape.scalar(), values=[(i - 1) * i, i * i])
 
+  @test_util.run_deprecated_v1
   def testChangingStateShape(self):
 
     def reduce_fn(x, _):
@@ -131,7 +137,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
         self.assertAllEqual([0] * (2**i), x)
         self.assertAllEqual(np.array(1, ndmin=i), y)
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+          self.evaluate(get_next)
 
   def testTypeMismatch(self):
     reducer = grouping.Reducer(

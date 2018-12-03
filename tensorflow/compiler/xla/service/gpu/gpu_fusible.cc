@@ -55,7 +55,7 @@ bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
   });
 }
 
-bool IsInputFusibleReduction(const HloInstruction& instr) {
+bool IsReduceInputFusion(const HloInstruction& instr) {
   if (instr.IsMultiOutputFusion()) {
     for (const HloInstruction* operand :
          instr.fused_expression_root()->operands()) {
@@ -67,17 +67,70 @@ bool IsInputFusibleReduction(const HloInstruction& instr) {
         return true;
       }
     }
-    return false;
-  } else if (instr.opcode() == HloOpcode::kFusion) {
-    if (IsReductionToVector(*instr.fused_expression_root())) {
-      CHECK(instr.fusion_kind() == HloInstruction::FusionKind::kInput)
-          << " Fusion rooted at reduction-to-vector op must be of kind kInput: "
-          << instr.ToString();
-      return true;
+  } else if (instr.opcode() == HloOpcode::kFusion &&
+             IsReductionToVector(*instr.fused_expression_root())) {
+    CHECK(instr.fusion_kind() == HloInstruction::FusionKind::kInput)
+        << " Fusion rooted at reduction-to-vector op must be of kind kInput: "
+        << instr.ToString();
+    return true;
+  }
+  return false;
+}
+
+bool IsInputFusibleReduction(const HloInstruction& instr) {
+  return IsReduceInputFusion(instr) || IsReductionToVector(instr);
+}
+
+bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
+                                          const HloInstruction& instr2) {
+  // Returns the instructions that determines the emitter used for lowering,
+  // sometimes referred to as "the real hero".
+  auto get_real_hero =
+      [&](const HloInstruction* instr) -> const HloInstruction* {
+    if (instr->opcode() == HloOpcode::kFusion) {
+      auto fused_expression_root = instr->fused_expression_root();
+      if (instr->IsMultiOutputFusion()) {
+        // If possible, we want to pick a reduction-to-vector operand of the
+        // fusion root, because it has the most constraints.
+        for (const auto* inst : fused_expression_root->operands()) {
+          if (IsReductionToVector(*inst)) {
+            return inst;
+          }
+        }
+        return fused_expression_root->operands()[0];
+      }
+      return fused_expression_root;
     }
+    return instr;
+  };
+
+  // Multi-output fusion kernels share a common parallel loop. The loop
+  // dimenstions are determined by instruction shapes.
+  auto get_loop_shape = [&](const HloInstruction* element_instr) {
+    // Special-case reduction-to-vector ops: The loop dimensions are determined
+    // by the shape of the first operand.
+    if (IsReductionToVector(*element_instr)) {
+      return element_instr->operand(0)->shape();
+    }
+    return element_instr->shape();
+  };
+
+  // All shapes of the root tuple of multi-output fusions should agree, i.e. all
+  // root ops should have equal output shapes. An exception are
+  // reduction-to-vector ops. Here the input shapes of the reduction (first
+  // operand shape) and the reduction dimensions need to match.
+  auto* instr_1 = get_real_hero(&instr1);
+  auto* instr_2 = get_real_hero(&instr2);
+  // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
+  if (IsReductionToVector(*instr_1) && IsReductionToVector(*instr_2) &&
+      (!ShapeUtil::Equal(instr_1->shape(), instr_2->shape()) ||
+       instr_1->dimensions() != instr_2->dimensions())) {
     return false;
   }
-  return IsReductionToVector(instr);
+  // The elementwise output shapes must be the same (including layout).
+  // TODO(tjoerg): Further relax the constraint. The datatype does not matter.
+  return ShapeUtil::EqualIgnoringFpPrecision(get_loop_shape(instr_1),
+                                             get_loop_shape(instr_2));
 }
 
 }  // namespace gpu

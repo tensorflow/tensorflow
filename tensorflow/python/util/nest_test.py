@@ -482,6 +482,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(nt.a[1][::-1], rev_nt.a[1])
     self.assertEqual(nt.b[::-1], rev_nt.b)
 
+  @test_util.run_deprecated_v1
   def testMapStructureOverPlaceholders(self):
     inp_a = (array_ops.placeholder(dtypes.float32, shape=[3, 4]),
              array_ops.placeholder(dtypes.float32, shape=[3, 7]))

@@ -41,6 +41,8 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
+from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -498,9 +500,6 @@ class Model(Network):
         raise NotImplementedError(
             'optimizer must be an instance of '
             'tf.train.Optimizer, not a %s' % type(optimizer))
-      if self.run_eagerly:
-        raise NotImplementedError('DistributionStrategy is not supported '
-                                  'when running a model eagerly.')
       if sample_weight_mode:
         raise NotImplementedError('sample_weight_mode is not supported with '
                                   'DistributionStrategy.')
@@ -568,16 +567,16 @@ class Model(Network):
               '" missing from loss dictionary. We assume '
               'this was done on purpose. The fit and evaluate APIs will not be '
               'expecting any data to be passed to "' + name + '".')
-        loss_functions.append(losses.get(loss.get(name)))
+        loss_functions.append(training_utils.get_loss_function(loss.get(name)))
     elif isinstance(loss, list):
       if len(loss) != len(self.outputs):
         raise ValueError('When passing a list as loss, '
                          'it should have one entry per model outputs. '
                          'The model has ' + str(len(self.outputs)) +
                          ' outputs, but you passed loss=' + str(loss))
-      loss_functions = [losses.get(l) for l in loss]
+      loss_functions = [training_utils.get_loss_function(l) for l in loss]
     else:
-      loss_function = losses.get(loss)
+      loss_function = training_utils.get_loss_function(loss)
       loss_functions = [loss_function for _ in range(len(self.outputs))]
     self.loss_functions = loss_functions
 
@@ -693,11 +692,15 @@ class Model(Network):
             target = None
           if target is None or K.is_placeholder(target):
             if target is None:
+              target_dtype = losses.LABEL_DTYPES_FOR_LOSSES.get(
+                  self.loss_functions[i],
+                  K.dtype(self.outputs[i]))
+
               target = K.placeholder(
                   ndim=len(shape),
                   name=name + '_target',
                   sparse=K.is_sparse(self.outputs[i]),
-                  dtype=K.dtype(self.outputs[i]))
+                  dtype=target_dtype)
             self._feed_targets.append(target)
             self._feed_outputs.append(self.outputs[i])
             self._feed_output_names.append(name)
@@ -726,8 +729,21 @@ class Model(Network):
           mask = masks[i]
           loss_weight = loss_weights_list[i]
           with K.name_scope(self.output_names[i] + '_loss'):
-            weighted_loss = training_utils.weighted_masked_objective(loss_fn)
-            output_loss = weighted_loss(y_true, y_pred, sample_weight, mask)
+            if isinstance(loss_fn, losses.Loss):
+              if mask is not None:
+                mask = math_ops.cast(mask, y_pred.dtype)
+                # Update weights with mask.
+                if sample_weight is None:
+                  sample_weight = mask
+                else:
+                  # Update dimensions of weights to match with mask if possible.
+                  mask, _, sample_weight = squeeze_or_expand_dimensions(
+                      mask, None, sample_weight)
+                  sample_weight *= mask
+              output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
+            else:
+              weighted_loss = training_utils.weighted_masked_objective(loss_fn)
+              output_loss = weighted_loss(y_true, y_pred, sample_weight, mask)
 
           if len(self.outputs) > 1:
             # Keep track of the un-aggregated loss result tensor.
@@ -735,8 +751,10 @@ class Model(Network):
                                           '_loss'] = output_loss
 
             # Keep track of stateful result tensor and function for the loss.
+            loss_name = loss_fn.name if isinstance(
+                loss_fn, losses.Loss) else loss_fn.__name__
             mean_wrapped_loss = metrics_module.MeanMetricWrapper(
-                loss_fn, name=loss_fn.__name__)
+                loss_fn, name=loss_name)
             result_tensor = training_utils.call_metric_function(
                 mean_wrapped_loss,
                 y_true,
@@ -996,7 +1014,7 @@ class Model(Network):
     # TODO(anjalisridhar): Remove this check once we refactor the
     # _standardize_user_data code path. This check is already present elsewhere
     # in the codebase.
-    if check_steps and isinstance(x, dataset_ops.Dataset) and steps is None:
+    if check_steps and isinstance(x, dataset_ops.DatasetV2) and steps is None:
       raise ValueError('When using Datasets as input, '
                        'you should specify the `{steps_name}` argument.'
                        .format(steps_name=steps_name))
@@ -1039,11 +1057,13 @@ class Model(Network):
         x = dataset_ops.Dataset.from_tensor_slices(var_x)
         x = x.batch(batch_size, drop_remainder=drop_remainder)
 
-    assert isinstance(x, dataset_ops.Dataset)
+    assert isinstance(x, dataset_ops.DatasetV2)
 
     with self._distribution_strategy.scope():
       iterator = self._distribution_strategy.make_dataset_iterator(x)
-      K.get_session().run(iterator.initialize())
+      init_op = iterator.initialize()
+      if not context.executing_eagerly():
+        K.get_session().run(init_op)
 
     training_utils.validate_iterator_input(x, y, sample_weight,
                                            validation_split)
@@ -1128,7 +1148,7 @@ class Model(Network):
           shuffle=shuffle)
       return iterator, None, None
 
-    if isinstance(x, dataset_ops.Dataset):
+    if isinstance(x, dataset_ops.DatasetV2):
       if context.executing_eagerly():
         x = x.make_one_shot_iterator()
       else:
@@ -1227,7 +1247,10 @@ class Model(Network):
       # to match the value shapes.
       if not self.inputs:
         is_build_called = True
-        self._set_inputs(x)
+        cast_inputs = x
+        if training_utils.has_tensors(x):
+          cast_inputs = training_utils.cast_if_floating_dtype(x)
+        self._set_inputs(cast_inputs)
     else:
       dict_inputs = isinstance(self.inputs, dict)
     if dict_inputs and context.executing_eagerly():
@@ -1243,6 +1266,8 @@ class Model(Network):
       if not self._is_compiled:
         # On-the-fly compilation of the model.
         # We need to use `y` to set the model targets.
+        if training_utils.has_tensors(y):
+          y = training_utils.cast_if_floating_dtype(y)
         if isinstance(y, (list, tuple)):
           if not all(isinstance(v, np.ndarray) or
                      tensor_util.is_tensor(v) for v in y):
@@ -1429,8 +1454,7 @@ class Model(Network):
 
     if self.__class__.__name__ == 'Sequential' and not self.built:
       if tensor_util.is_tensor(inputs):
-        input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
-        self.build(input_shape=input_shape)
+        input_shape = (None,) + tuple(inputs.shape.as_list()[1:])
       elif isinstance(inputs, dict):
         # We assert that the first layer is a FeatureLayer.
         if not training_utils.is_feature_layer(self.layers[0]):
@@ -1438,10 +1462,9 @@ class Model(Network):
                            'which doesn\'t have FeatureLayer as the first layer'
                            ' is an error.')
         input_shape = (None,)
-        self.build(input_shape=input_shape)
       else:
-        input_shape = (None,) + inputs.shape[1:]
-        self.build(input_shape=input_shape)
+        input_shape = (None,) + tuple(inputs.shape[1:])
+      self._build_input_shape = input_shape
 
     # On-the-fly setting of symbolic model inputs (either by using the tensor
     # provided, or by creating a placeholder if Numpy data was provided).
@@ -1459,6 +1482,8 @@ class Model(Network):
         self._feed_inputs.append(v)
         self._feed_input_names.append(k)
         self._feed_input_shapes.append(K.int_shape(v))
+
+    # TODO(fchollet): consider calling `_maybe_build` before calling the model.
 
     if outputs is None:
       # Obtain symbolic outputs by calling the model.
@@ -1650,7 +1675,8 @@ class Model(Network):
 
     # Validate and standardize user data.
     if self._distribution_strategy:
-      distributed_training_utils.validate_callbacks(callbacks)
+      distributed_training_utils.validate_callbacks(callbacks, self.optimizer,
+                                                    self._distribution_strategy)
 
       distributed_training_utils.validate_inputs(
           x, y, self._distribution_strategy)
@@ -1682,7 +1708,7 @@ class Model(Network):
     if validation_data:
       if (isinstance(validation_data, iterator_ops.Iterator) or
           isinstance(validation_data, iterator_ops.EagerIterator) or
-          isinstance(validation_data, dataset_ops.Dataset)):
+          isinstance(validation_data, dataset_ops.DatasetV2)):
         val_x = validation_data
         val_y = None
         val_sample_weight = None
@@ -1768,7 +1794,8 @@ class Model(Network):
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps)
-    elif isinstance(x, iterator_ops.EagerIterator):
+    elif (isinstance(x, iterator_ops.EagerIterator) and
+          not self._distribution_strategy):
       return training_generator.fit_generator(
           self,
           x,
@@ -2186,7 +2213,7 @@ class Model(Network):
     inputs, _, _ = self._standardize_user_data(x)
     if self.run_eagerly:
       if (isinstance(inputs, iterator_ops.EagerIterator) or
-          (isinstance(inputs, dataset_ops.Dataset))):
+          (isinstance(inputs, dataset_ops.DatasetV2))):
         inputs = training_utils.cast_if_floating_dtype(inputs)
       elif isinstance(inputs, collections.Sequence):
         inputs = [
@@ -2462,9 +2489,7 @@ class DistributedCallbackModel(Model):
 
   def __init__(self, model):
     super(DistributedCallbackModel, self).__init__()
-    # TODO(anjalisridhar): Right now the only attributes set are the layer and
-    # weights. We may need to set additional attributes as needed since we have
-    # not called compile on this model.
+    self.optimizer = model.optimizer
 
   def set_original_model(self, orig_model):
     self._original_model = orig_model

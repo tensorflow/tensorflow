@@ -67,7 +67,7 @@ def fit_generator(model,
     else:
       raise ValueError('Please specify the `steps_per_epoch` argument.')
 
-  if (isinstance(validation_data, dataset_ops.Dataset) and
+  if (isinstance(validation_data, dataset_ops.DatasetV2) and
       context.executing_eagerly()):
     validation_data = validation_data.make_one_shot_iterator()
   val_gen = (data_utils.is_generator_or_sequence(validation_data) or
@@ -388,7 +388,9 @@ def predict_generator(model,
       if isinstance(generator_output, tuple):
         # Compatibility with the generators
         # used for training.
-        if len(generator_output) == 2:
+        if len(generator_output) == 1:
+          x = generator_output[0]
+        elif len(generator_output) == 2:
           x, _ = generator_output
         elif len(generator_output) == 3:
           x, _, _ = generator_output

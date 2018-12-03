@@ -1,7 +1,8 @@
 path: "tensorflow.layers.BatchNormalization"
 tf_class {
   is_instance: "<class \'tensorflow.python.layers.normalization.BatchNormalization\'>"
-  is_instance: "<class \'tensorflow.python.keras.layers.normalization.BatchNormalization\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.normalization.BatchNormalizationV1\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.normalization.BatchNormalizationV2\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"

@@ -323,7 +323,8 @@ class XlaBuilder {
   XlaOp Broadcast(const XlaOp& operand,
                   absl::Span<const int64> broadcast_sizes);
 
-  XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
+  XlaOp BroadcastInDim(const XlaOp& operand,
+                       const absl::Span<const int64> out_dim_size,
                        const absl::Span<const int64> broadcast_dimensions);
 
   XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
@@ -824,7 +825,7 @@ class XlaBuilder {
                          absl::Span<const int64> broadcast_sizes);
 
   friend XlaOp BroadcastInDim(
-      const XlaOp& operand, const Shape& shape,
+      const XlaOp& operand, const absl::Span<const int64> out_dim_size,
       const absl::Span<const int64> broadcast_dimensions);
 
   friend XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
@@ -1217,7 +1218,8 @@ XlaOp Broadcast(const XlaOp& operand, absl::Span<const int64> broadcast_sizes);
 //   will generate output
 //   {{1 , 1},
 //    {2 , 2}}
-XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
+XlaOp BroadcastInDim(const XlaOp& operand,
+                     const absl::Span<const int64> out_dim_size,
                      const absl::Span<const int64> broadcast_dimensions);
 
 // Enqueues a pad operation onto the computation that pads the given value on

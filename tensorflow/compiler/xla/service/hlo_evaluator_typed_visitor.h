@@ -1553,10 +1553,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           const auto& row_data = row_to_sort.data<NativeT>();
 
           std::vector<NativeT> result_data(row_data.begin(), row_data.end());
-          std::sort(result_data.begin(), result_data.end(),
-                    [](const NativeT& a, const NativeT& b) {
-                      return SafeLess<NativeT>(a, b);
-                    });
+          std::stable_sort(result_data.begin(), result_data.end(),
+                           [](const NativeT& a, const NativeT& b) {
+                             return SafeLess<NativeT>(a, b);
+                           });
           Literal sorted_row(ShapeUtil::MakeShape(keys->shape().element_type(),
                                                   {sort_dim_elements}));
           sorted_row.PopulateR1(absl::Span<const NativeT>(result_data));
@@ -2543,12 +2543,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   template <typename NativeT,
             typename std::enable_if<
-                std::is_same<NativeT, float>::value ||
-                std::is_same<NativeT, int32>::value ||
-                std::is_same<NativeT, uint32>::value>::type* = nullptr>
+                std::is_integral<NativeT>::value ||
+                std::is_floating_point<NativeT>::value>::type* = nullptr>
   Status HandleIota(HloInstruction* instruction) {
     auto* iota = Cast<HloIotaInstruction>(instruction);
-    std::vector<NativeT> data(iota->shape().dimensions(iota->iota_dimension()));
+    // Avoid using std::vector since std::vector<bool> does not convert to
+    // absl::Span<bool>.
+    absl::InlinedVector<NativeT, 1> data(
+        iota->shape().dimensions(iota->iota_dimension()));
     std::iota(data.begin(), data.end(), 0);
     auto result = LiteralUtil::CreateR1<NativeT>(data);
 
@@ -2565,9 +2567,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
   template <typename NativeT,
             typename std::enable_if<
-                !(std::is_same<NativeT, float>::value ||
-                  std::is_same<NativeT, int32>::value ||
-                  std::is_same<NativeT, uint32>::value)>::type* = nullptr>
+                !(std::is_integral<NativeT>::value ||
+                  std::is_floating_point<NativeT>::value)>::type* = nullptr>
   Status HandleIota(HloInstruction* iota) {
     return InvalidArgument("Unsupported type for iota");
   }
