@@ -491,7 +491,7 @@ def check_bazel_version(min_version, max_version):
     sys.exit(0)
   if curr_version_int > max_version_int:
     print('Please downgrade your bazel installation to version %s or lower to '
-          'build TensorFlow!' % min_version)
+          'build TensorFlow!' % max_version)
     sys.exit(0)
   return curr_version
 
