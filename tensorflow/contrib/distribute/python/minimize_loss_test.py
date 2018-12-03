@@ -344,7 +344,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       run_step()
 
       v = all_vars[0]
-      self.assertTrue(all([v is vi for vi in all_vars[1:]]))
+      self.assertTrue(all(v is vi for vi in all_vars[1:]))
       weight = numpy.squeeze(self.evaluate(v))
       # Our model is:
       #   predict = x * w
@@ -486,12 +486,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     if not reduced:
       self.assertLen(distribution.unwrap(loss_output),
                      distribution.num_replicas_in_sync)
-      loss_output = distribution.reduce(
-          reduce_util.ReduceOp.MEAN, loss_output, destinations="/device:CPU:0")
-
-    unwrapped_output = distribution.unwrap(loss_output)
-    self.assertLen(unwrapped_output, 1)
-    loss_tensor = unwrapped_output[0]
+      loss_tensor = distribution.reduce(reduce_util.ReduceOp.MEAN, loss_output)
+    else:
+      unwrapped_output = distribution.unwrap(loss_output)
+      self.assertLen(unwrapped_output, 1)
+      loss_tensor = unwrapped_output[0]
     self.assertEqual(initial_loss.dtype, loss_tensor.dtype)
     self.assertEqual(initial_loss.shape, loss_tensor.shape)
 

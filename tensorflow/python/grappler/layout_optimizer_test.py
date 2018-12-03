@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import cluster as gcluster
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.layers import convolutional as conv_layers
@@ -1441,6 +1442,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nchw_to_nhwc('Add-0-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     meta_graph = _simple_metagraph()
     config = config_pb2.ConfigProto()
@@ -1458,6 +1460,7 @@ class LayoutOptimizerTest(test.TestCase):
         self.assertEqual(node.attr['data_format'].s, b'NCHW')
     self.assertEqual(found, 5)
 
+  @test_util.run_deprecated_v1
   def testDepthwise(self):
     meta_graph = _simple_metagraph(depthwise=True)
     config = config_pb2.ConfigProto()

@@ -68,6 +68,7 @@ class CondV2Test(test.TestCase):
       self.assertEqual(expected_val, actual_val)
       self.assertEqual(expected_grad_val, actual_grad_val)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -82,6 +83,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  @test_util.run_deprecated_v1
   def testMultipleOutputs(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(3.0, name="y")
@@ -96,6 +98,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  @test_util.run_deprecated_v1
   def testBasic2(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -110,6 +113,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  @test_util.run_deprecated_v1
   def testNoInputs(self):
     with self.cached_session() as sess:
       pred = array_ops.placeholder(dtypes.bool, name="pred")
@@ -126,7 +130,7 @@ class CondV2Test(test.TestCase):
       self.assertEqual(sess.run(out, {pred: False}), (2.0,))
 
   def _createCond(self, name):
-    """Helper function for testDefaultName."""
+    """Creates a cond_v2 call and returns the output tensor and the cond op."""
     pred = constant_op.constant(True, name="pred")
     x = constant_op.constant(1.0, name="x")
 
@@ -139,11 +143,11 @@ class CondV2Test(test.TestCase):
     output = cond_v2.cond_v2(pred, true_fn, false_fn, name=name)
     cond_op = output.op.inputs[0].op
     self.assertEqual(cond_op.type, "If")
-    return cond_op
+    return output, cond_op
 
   def testDefaultName(self):
     with ops.Graph().as_default():
-      cond_op = self._createCond(None)
+      _, cond_op = self._createCond(None)
       self.assertEqual(cond_op.name, "cond")
       self.assertRegexpMatches(
           cond_op.get_attr("then_branch").name, r"cond_true_\d*")
@@ -152,14 +156,14 @@ class CondV2Test(test.TestCase):
 
     with ops.Graph().as_default():
       with ops.name_scope("foo"):
-        cond1_op = self._createCond("")
+        _, cond1_op = self._createCond("")
         self.assertEqual(cond1_op.name, "foo/cond")
         self.assertRegexpMatches(
             cond1_op.get_attr("then_branch").name, r"foo_cond_true_\d*")
         self.assertRegexpMatches(
             cond1_op.get_attr("else_branch").name, r"foo_cond_false_\d*")
 
-        cond2_op = self._createCond(None)
+        _, cond2_op = self._createCond(None)
         self.assertEqual(cond2_op.name, "foo/cond_1")
         self.assertRegexpMatches(
             cond2_op.get_attr("then_branch").name, r"foo_cond_1_true_\d*")
@@ -540,6 +544,7 @@ class CondV2Test(test.TestCase):
               pred_inner: False
           }), [5., 0.])
 
+  @test_util.run_deprecated_v1
   def testSecondDerivative(self):
     with self.cached_session() as sess:
       pred = array_ops.placeholder(dtypes.bool, name="pred")
@@ -612,11 +617,11 @@ class CondV2Test(test.TestCase):
   def testLowering(self):
     with ops.Graph().as_default() as g:
       with self.session(graph=g) as sess:
-        out_cond = self._createCond("cond")
+        cond_output, _ = self._createCond("cond")
 
         run_options = config_pb2.RunOptions(output_partition_graphs=True)
         run_metadata = config_pb2.RunMetadata()
-        sess.run(out_cond, options=run_options, run_metadata=run_metadata)
+        sess.run(cond_output, options=run_options, run_metadata=run_metadata)
 
         # If lowering was enabled, there should be a `Switch` node
         switch_found = any(
@@ -636,17 +641,18 @@ class CondV2Test(test.TestCase):
         self.assertFalse(if_found,
                          "An `If` op was found, but it should be lowered.")
 
+  @test_util.run_deprecated_v1
   def testLoweringDisabledInXLA(self):
     with self.session(graph=ops.Graph()) as sess:
       # Build the cond_v2 in an XLA context
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
-      out_cond = self._createCond("cond")
+      cond_output, _ = self._createCond("cond")
       xla_context.Exit()
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       run_metadata = config_pb2.RunMetadata()
-      sess.run(out_cond, options=run_options, run_metadata=run_metadata)
+      sess.run(cond_output, options=run_options, run_metadata=run_metadata)
 
       # Lowering disabled in XLA, there should be no `Switch` node
       switch_found = any(
@@ -668,6 +674,7 @@ class CondV2Test(test.TestCase):
           if_found,
           "An `If` op was not found, but the graph should not be lowered.")
 
+  @test_util.run_deprecated_v1
   def testLoweringDisabledWithSingleThreadedExecutorContext(self):
     with self.session(graph=ops.Graph()) as sess:
       @function.defun
@@ -702,6 +709,7 @@ class CondV2Test(test.TestCase):
     self.assertEqual(self.evaluate(output[1]), 9.)
 
   @test_util.enable_control_flow_v2
+  @test_util.run_deprecated_v1
   def testRaisesOutputStructuresMismatch(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(3.0, name="y")
@@ -719,10 +727,6 @@ class CondV2Test(test.TestCase):
 
   @test_util.enable_control_flow_v2
   def testCondAndTensorArray(self):
-    if test_util.is_gpu_available():
-      old_enable_tensor_array_v2 = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
-      # TODO(b/119689663): Enable this.
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = False
     x = math_ops.range(-5, 5)
     output = tensor_array_ops.TensorArray(dtype=dtypes.int32, size=x.shape[0])
 
@@ -744,15 +748,9 @@ class CondV2Test(test.TestCase):
     output_t = output.stack()
     self.assertAllEqual(
         self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
-    if test_util.is_gpu_available():
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = old_enable_tensor_array_v2
 
   @test_util.enable_control_flow_v2
   def testCondAndTensorArrayInDefun(self):
-    if test_util.is_gpu_available():
-      old_enable_tensor_array_v2 = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
-      # TODO(b/119689663): Enable this.
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = False
 
     @function.defun
     def f():
@@ -779,9 +777,6 @@ class CondV2Test(test.TestCase):
     output_t = f()
     self.assertAllEqual(
         self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
-
-    if test_util.is_gpu_available():
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = old_enable_tensor_array_v2
 
 
 class CondV2CollectionTest(test.TestCase):

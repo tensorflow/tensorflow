@@ -65,7 +65,7 @@ class WhileContext;
 
 class NeighborIter;    // Declared below
 class NodeIter;        // Declared below
-class NodeProperties;  // Defined in .cc
+struct NodeProperties;  // Defined in .cc
 
 class Node {
  public:

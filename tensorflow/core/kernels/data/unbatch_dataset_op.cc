@@ -54,6 +54,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       }
     }
 
+    ~Dataset() override { input_->Unref(); }
+
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(

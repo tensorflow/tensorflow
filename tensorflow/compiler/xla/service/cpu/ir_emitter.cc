@@ -2565,10 +2565,17 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleAfterAll(HloInstruction* gen_token) {
-  TF_RET_CHECK(ByteSizeOf(gen_token->shape()) == 0);
+Status IrEmitter::HandleAfterAll(HloInstruction* after_all) {
+  TF_RET_CHECK(ByteSizeOf(after_all->shape()) == 0);
   // No code to generate, but we need to emit an address for book-keeping.
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(gen_token));
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(after_all));
+  return Status::OK();
+}
+
+Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
+  // AddDedendency just forwards its zero-th operand.
+  emitted_value_[add_dependency] =
+      GetEmittedValueFor(add_dependency->operand(0));
   return Status::OK();
 }
 

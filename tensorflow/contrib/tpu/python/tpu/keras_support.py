@@ -81,6 +81,7 @@ from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizers as keras_optimizers
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.layers import embeddings
@@ -438,7 +439,7 @@ class TPURewriteContext(object):
 
     self._default_placeholder = array_ops.placeholder
     self._default_name_scope = ops.name_scope
-    self._default_make_variable = base_layer.make_variable
+    self._default_make_variable = base_layer_utils.make_variable
     self._default_random_normal = random_ops.random_normal
     self._default_qr = gen_linalg_ops.qr
 
@@ -486,14 +487,14 @@ class TPURewriteContext(object):
     gen_linalg_ops.qr = qr
 
     ops.name_scope = _name_scope
-    base_layer.make_variable = variable_scope.get_variable
+    base_layer_utils.make_variable = variable_scope.get_variable
     logging.info('Overriding default placeholder.')
     return
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     array_ops.placeholder = self._default_placeholder
     ops.name_scope = self._default_name_scope
-    base_layer.make_variable = self._default_make_variable
+    base_layer_utils.make_variable = self._default_make_variable
     random_ops.random_normal = self._default_random_normal
     gen_linalg_ops.qr = self._default_qr
 
@@ -769,7 +770,7 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
 
   def _verify_dataset_shape(self, dataset):
     """Verifies a dataset is of an appropriate shape for TPUs."""
-    if not isinstance(dataset, dataset_ops.Dataset):
+    if not isinstance(dataset, dataset_ops.DatasetV2):
       raise ValueError('The function passed as the `x` parameter did not '
                        'return a `tf.data.Dataset`.')
     if not isinstance(dataset.output_classes, tuple):
@@ -1465,7 +1466,7 @@ class KerasTPUModel(models.Model):
       assert not self._numpy_to_infeed_manager_list  # Ensure empty.
 
       infeed_managers = []  # Managers to clean up at the end of the fit call.
-      if isinstance(x, dataset_ops.Dataset):
+      if isinstance(x, dataset_ops.DatasetV2):
         # TODO(b/111413240): Support taking a tf.data.Dataset directly.
         raise ValueError(
             'Taking a Dataset directly is not yet supported. Please '
@@ -1491,7 +1492,7 @@ class KerasTPUModel(models.Model):
           y = infeed_manager.dummy_y
           infeed_managers.append((x, infeed_manager))
 
-      if isinstance(validation_data, dataset_ops.Dataset):
+      if isinstance(validation_data, dataset_ops.DatasetV2):
         # TODO(b/111413240): Support taking a tf.data.Dataset directly.
         raise ValueError(
             'Taking a Dataset directly is not yet supported. Please '
@@ -1550,7 +1551,7 @@ class KerasTPUModel(models.Model):
     with _tpu_session_context():
       # Managers to clean up at the end of the evaluate call.
       infeed_managers = []
-      if isinstance(x, dataset_ops.Dataset):
+      if isinstance(x, dataset_ops.DatasetV2):
         # TODO(b/111413240): Support taking a tf.data.Dataset directly.
         raise ValueError(
             'Taking a Dataset directly is not yet supported. Please '
@@ -1922,7 +1923,7 @@ class KerasTPUModel(models.Model):
     if validation_data:
       if (isinstance(validation_data, iterator_ops.Iterator) or
           isinstance(validation_data, iterator_ops.EagerIterator) or
-          isinstance(validation_data, dataset_ops.Dataset)):
+          isinstance(validation_data, dataset_ops.DatasetV2)):
         raise ValueError('KerasTPUModel cannot handle a Dataset or Iterator '
                          'for validation_data. Please instead pass a function '
                          'that returns a `tf.data.Dataset`.')

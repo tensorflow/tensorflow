@@ -74,7 +74,7 @@ class BackpropTest(test.TestCase):
       tf_g1 = embedding_ops.embedding_lookup(tf_var, tf_ind1)
       tf_g2 = embedding_ops.embedding_lookup(tf_var, tf_ind2)
       tf_g3 = embedding_ops.embedding_lookup(tf_var, tf_ind3)
-      tf_g4 = math_ops.reduce_sum(tf_var * 2.0, reduction_indices=(0, 1))
+      tf_g4 = math_ops.reduce_sum(tf_var * 2.0, axis=(0, 1))
       tf_y = tf_g1 * tf_g2 * tf_g3 * tf_g4
       tf_grad = gradients.gradients(tf_y, [tf_var])[0]
 
@@ -1226,6 +1226,193 @@ class BackpropTest(test.TestCase):
       tf_da = gradients.gradients(tf_max, [tf_aa])
       self.assertAllEqual(da[0], tf_da[0].eval())
 
+
+@test_util.run_all_in_graph_and_eager_modes
+class JacobianTest(test.TestCase):
+
+  def _jacobian(self, experimental_use_pfor):
+    persistent = context.executing_eagerly and not experimental_use_pfor
+    with backprop.GradientTape(persistent=persistent) as g:
+      x = constant_op.constant([1., 2.])
+      y = constant_op.constant([3., 4.])
+      g.watch(x)
+      g.watch(y)
+      z = x * x * y
+    jacobian = g.jacobian(z, [x, y],
+                          experimental_use_pfor=experimental_use_pfor)
+    answer = [array_ops.diag(2 * x * y), array_ops.diag(x * x)]
+    return jacobian, answer
+
+  def testPfor(self):
+    jacobian, answer = self._jacobian(experimental_use_pfor=True)
+    for j, a in zip(jacobian, answer):
+      self.assertAllEqual(a, j)
+
+  def testWhileLoop(self):
+    jacobian, answer = self._jacobian(experimental_use_pfor=False)
+    for j, a in zip(jacobian, answer):
+      self.assertAllEqual(a, j)
+
+  def testPforDefun(self):
+
+    @function.defun
+    def _f():
+      return self._jacobian(experimental_use_pfor=True)
+
+    jacobian, answer = _f()
+    for j, a in zip(jacobian, answer):
+      self.assertAllEqual(a, j)
+
+  def testWhileLoopDefun(self):
+
+    @function.defun
+    def _f():
+      return self._jacobian(experimental_use_pfor=False)
+
+    jacobian, answer = _f()
+    for j, a in zip(jacobian, answer):
+      self.assertAllEqual(a, j)
+
+  def testPersistentTape(self):
+    if not context.executing_eagerly():
+      return
+    with backprop.GradientTape() as g:
+      x = constant_op.constant([1.0, 2.0])
+      g.watch(x)
+      y = x * x
+    with self.assertRaisesRegexp(RuntimeError, 'persistent'):
+      g.jacobian(y, x, experimental_use_pfor=False)
+
+  def testPforException(self):
+    var = variables.Variable([1.])
+
+    @custom_gradient.custom_gradient
+    def op(x):
+      def grad(_):
+        # Note that we perform a stateful operation here that will not be
+        # compatible with parallel for construct.
+        with ops.control_dependencies(
+            [var.assign(random_ops.random_uniform([1]))]):
+          return constant_op.constant(1.)
+      return x, grad
+
+    with backprop.GradientTape() as g:
+      x = constant_op.constant([1., 2.])
+      g.watch(x)
+      y = op(x)
+    with self.assertRaisesRegexp(ValueError, 'No converter'):
+      g.jacobian(y, x, experimental_use_pfor=True)
+
+  def test_parallel_iterations(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant([[1., 2], [3, 4]])
+      g.watch(x)
+      y = math_ops.matmul(x, x)
+    self.assertAllClose(g.jacobian(y, x, parallel_iterations=2),
+                        g.jacobian(y, x, parallel_iterations=3))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class BatchJacobianTest(test.TestCase):
+
+  def _batch_jacobian(self, experimental_use_pfor):
+    persistent = context.executing_eagerly and not experimental_use_pfor
+    with backprop.GradientTape(persistent=persistent) as g:
+      x = constant_op.constant([[1., 2.], [3., 4.]])
+      y = constant_op.constant([[3., 4.], [5., 6.]])
+      g.watch(x)
+      z = x * x * y
+    batch_jacobian = g.batch_jacobian(
+        z, x, experimental_use_pfor=experimental_use_pfor)
+    answer = array_ops.stack([array_ops.diag(2 * x[0] * y[0]),
+                              array_ops.diag(2 * x[1] * y[1])])
+    return batch_jacobian, answer
+
+  def testPfor(self):
+    batch_jacobian, answer = self._batch_jacobian(experimental_use_pfor=True)
+    self.assertAllEqual(answer, batch_jacobian)
+
+  def testWhileLoop(self):
+    batch_jacobian, answer = self._batch_jacobian(experimental_use_pfor=False)
+    self.assertAllEqual(answer, batch_jacobian)
+
+  def testPforDefun(self):
+
+    @function.defun
+    def _f():
+      return self._batch_jacobian(experimental_use_pfor=True)
+
+    batch_jacobian, answer = _f()
+    self.assertAllEqual(answer, batch_jacobian)
+
+  def testWhileLoopDefun(self):
+
+    @function.defun
+    def _f():
+      return self._batch_jacobian(experimental_use_pfor=False)
+
+    batch_jacobian, answer = _f()
+    self.assertAllEqual(answer, batch_jacobian)
+
+  def testPersistentTape(self):
+    if not context.executing_eagerly():
+      return
+    with backprop.GradientTape() as g:
+      x = constant_op.constant([[1.0, 2.0]])
+      g.watch(x)
+      y = x * x
+    with self.assertRaisesRegexp(RuntimeError, 'persistent'):
+      g.batch_jacobian(y, x, experimental_use_pfor=False)
+
+  def testBadShape(self):
+    x = random_ops.random_uniform([2, 3])
+    with backprop.GradientTape() as g:
+      y = array_ops.concat([x, x], axis=0)
+    with self.assertRaisesRegexp(ValueError, 'Need first dimension'):
+      g.batch_jacobian(y, x)
+
+  def testBadInputRank(self):
+    x = random_ops.random_uniform([2])
+    with backprop.GradientTape() as g:
+      y = random_ops.random_uniform([2, 2])
+    with self.assertRaisesRegexp(ValueError, 'must have rank at least 2'):
+      g.batch_jacobian(y, x)
+
+  def testBadOutputRank(self):
+    x = random_ops.random_uniform([2, 2])
+    with backprop.GradientTape() as g:
+      y = random_ops.random_uniform([2])
+    with self.assertRaisesRegexp(ValueError, 'must have rank at least 2'):
+      g.batch_jacobian(y, x)
+
+  def testPforException(self):
+    var = variables.Variable([1.])
+
+    @custom_gradient.custom_gradient
+    def op(x):
+      def grad(_):
+        # Note that we perform a stateful operation here that will not be
+        # compatible with parallel for construct.
+        with ops.control_dependencies(
+            [var.assign(random_ops.random_uniform([1]))]):
+          return constant_op.constant(1.)
+      return x, grad
+
+    with backprop.GradientTape() as g:
+      x = constant_op.constant([[1.], [2.]])
+      g.watch(x)
+      y = op(x)
+    with self.assertRaisesRegexp(ValueError, 'No converter'):
+      g.batch_jacobian(y, x, experimental_use_pfor=True)
+
+  def test_parallel_iterations(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant([[1., 2], [3, 4]])
+      g.watch(x)
+      w = constant_op.constant([[1., 2, 3, 4], [5, 6, 7, 8]])
+      y = math_ops.matmul(x, w)
+    self.assertAllClose(g.batch_jacobian(y, x, parallel_iterations=2),
+                        g.batch_jacobian(y, x, parallel_iterations=3))
 
 if __name__ == '__main__':
   test.main()

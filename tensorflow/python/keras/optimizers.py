@@ -22,8 +22,16 @@ from __future__ import print_function
 import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.python import tf2
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
+from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
+from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
+from tensorflow.python.keras.optimizer_v2 import adamax as adamax_v2
+from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
+from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import clip_ops
@@ -796,16 +804,27 @@ def deserialize(config, custom_objects=None):
   Returns:
       A Keras Optimizer instance.
   """
-  all_classes = {
-      'sgd': SGD,
-      'rmsprop': RMSprop,
-      'adagrad': Adagrad,
-      'adadelta': Adadelta,
-      'adam': Adam,
-      'adamax': Adamax,
-      'nadam': Nadam,
-      'tfoptimizer': TFOptimizer,
-  }
+  if tf2.enabled():
+    all_classes = {
+        'adadelta': adadelta_v2.Adadelta,
+        'adagrad': adagrad_v2.Adagrad,
+        'adam': adam_v2.Adam,
+        'adamax': adamax_v2.Adamax,
+        'nadam': nadam_v2.Nadam,
+        'rmsprop': rmsprop_v2.RMSprop,
+        'sgd': gradient_descent_v2.SGD
+    }
+  else:
+    all_classes = {
+        'adadelta': Adadelta,
+        'adagrad': Adagrad,
+        'adam': Adam,
+        'adamax': Adamax,
+        'nadam': Nadam,
+        'rmsprop': RMSprop,
+        'sgd': SGD,
+        'tfoptimizer': TFOptimizer
+    }
   # Make deserialization case-insensitive for built-in optimizers.
   if config['class_name'].lower() in all_classes:
     config['class_name'] = config['class_name'].lower()

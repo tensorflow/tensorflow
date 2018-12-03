@@ -31,8 +31,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
-from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribution_strategy_context
@@ -114,7 +115,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   """
 
-  def __init__(self, name):
+  def __init__(self, name, **kwargs):
     """Create a new Optimizer.
 
     This must be called by the constructors of subclasses.
@@ -128,6 +129,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Args:
       name: A non-empty string.  The name to use for accumulators created
         for the optimizer.
+      **kwargs: keyword arguments. Allowed to be {`decay`}
 
     Raises:
       ValueError: If name is malformed.
@@ -140,6 +142,12 @@ class OptimizerV2(optimizer_v1.Optimizer):
     # dict: {variable name : {slot name : variable}}
     self._slots = {}
     self._weights = []
+
+    decay = kwargs.pop("decay", 0.0)
+    if decay < 0.:
+      raise ValueError("decay cannot be less than 0: {}".format(decay))
+    self._initial_decay = decay
+
     self._prepared = False
 
   def minimize(self,
@@ -296,6 +304,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
       grads_and_vars = zip(reduced_grads, var_list)
 
     with ops.init_scope():
+      self._prepare()
       self._create_slots(var_list)
     update_ops = []
 
@@ -317,11 +326,10 @@ class OptimizerV2(optimizer_v1.Optimizer):
         return update_op
 
     with ops.name_scope(name, self._name) as name:
-      self._prepare()
       for grad, var in grads_and_vars:
         scope_name = ("" if ops.executing_eagerly_outside_functions() else
                       "_" + var.op.name)
-        with ops.name_scope("update" + scope_name), ops.colocate_with(var):
+        with ops.name_scope("update" + scope_name):
           update_ops.append(update_grad_to_var(grad, var))
       # control dependencies does not work in per replica mode, please change
       # this once b/118841692 is fixed.
@@ -345,9 +353,14 @@ class OptimizerV2(optimizer_v1.Optimizer):
       else:
         backend.set_value(self._hyper[name], value)
 
-  def _get_hyper(self, name):
+  def _get_hyper(self, name, dtype=None):
     value = self._hyper[name]
-    return self._call_if_callable(value)
+    if callable(value):
+      value = value()
+    if dtype:
+      return math_ops.cast(value, dtype)
+    else:
+      return value
 
   def __getattribute__(self, name):
     """Overridden to support hyperparameter access."""
@@ -413,7 +426,6 @@ class OptimizerV2(optimizer_v1.Optimizer):
             trainable=False,
             initializer=value,
             aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
-        self._weights.append(self._hyper[name])
     self._prepared = True
 
   @property
@@ -421,6 +433,15 @@ class OptimizerV2(optimizer_v1.Optimizer):
     if not self._prepared:
       self._prepare()
     return self._iterations
+
+  def _decayed_lr(self, var_dtype):
+    """Get decayed learning rate as a Tensor with dtype=var_dtype."""
+    lr_t = self._get_hyper("learning_rate", var_dtype)
+    if self._initial_decay > 0.:
+      local_step = math_ops.cast(self.iterations, var_dtype)
+      decay_t = self._get_hyper("decay", var_dtype)
+      lr_t = lr_t / (1. + decay_t * local_step)
+    return lr_t
 
   @abc.abstractmethod
   def get_config(self):
@@ -453,6 +474,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Returns:
         An optimizer instance.
     """
+    if "lr" in config:
+      config["learning_rate"] = config.pop("lr")
     return cls(**config)
 
   def _serialize_hyperparameter(self, hyperparameter_name):
@@ -528,7 +551,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     variable = self._add_variable_with_custom_getter(
         name=name,
         shape=shape,
-        getter=base_layer.make_variable,
+        getter=base_layer_utils.make_variable,
         overwrite=True,
         initializer=initializer,
         dtype=dtype,

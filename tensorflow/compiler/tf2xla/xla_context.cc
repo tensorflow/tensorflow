@@ -54,25 +54,14 @@ const char XlaContext::kXlaContextResourceName[] = "_xla_context";
   return *context;
 }
 
-/* static */ XlaContext& XlaContext::Get(const XlaOpKernelContext* ctx) {
-  return Get(ctx->op_kernel_context());
-}
-
 void XlaContext::set_args(std::vector<XlaExpression> args) {
   args_ = std::move(args);
 }
 
-XlaContext::XlaContext(
-    XlaCompiler* compiler, xla::XlaBuilder* builder,
-    bool allow_cpu_custom_calls,
-    const std::function<xla::StatusOr<xla::Shape>(
-        const TensorShape&, DataType)>* shape_representation_fn)
-    : compiler_(compiler),
-      builder_(builder),
-      allow_cpu_custom_calls_(allow_cpu_custom_calls),
-      shape_representation_fn_(shape_representation_fn) {}
+XlaContext::XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder)
+    : compiler_(compiler), builder_(builder) {}
 
-string XlaContext::DebugString() { return "TLA JIT context"; }
+string XlaContext::DebugString() { return "XLA JIT context"; }
 
 void XlaContext::SetRetval(int index, const XlaExpression& expression) {
   if (retvals_.size() <= index) {
@@ -81,21 +70,9 @@ void XlaContext::SetRetval(int index, const XlaExpression& expression) {
   retvals_[index] = expression;
 }
 
-Status XlaContext::CreateResource(
-    XlaResource::Kind kind, int arg_num, string name, DataType type,
-    TensorShape shape, const xla::XlaOp& handle, int64 tensor_array_size,
-    const std::set<string>& tensor_array_gradients, XlaResource** resource) {
-  resources_.emplace_back(
-      new XlaResource(kind, arg_num, std::move(name), type, std::move(shape),
-                      handle, tensor_array_size, tensor_array_gradients,
-                      /*tensor_array_multiple_writes_aggregate=*/false));
-  *resource = resources_.back().get();
-  return Status::OK();
-}
-
-xla::StatusOr<xla::Shape> XlaContext::RepresentationShape(
-    const TensorShape& shape, DataType type) const {
-  return (*shape_representation_fn_)(shape, type);
+XlaResource* XlaContext::AddResource(std::unique_ptr<XlaResource> resource) {
+  resources_.push_back(std::move(resource));
+  return resources_.back().get();
 }
 
 const xla::XlaComputation* XlaContext::GetOrCreateMax(const DataType type) {

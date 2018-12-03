@@ -30,7 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
-from tensorflow.python.layers import base as base_layer
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_array_ops
@@ -2752,7 +2752,7 @@ class SRUCell(rnn_cell_impl.LayerRNNCell):
     self._activation = activation or math_ops.tanh
 
     # Restrict inputs to be 2-dimensional matrices
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
   @property
   def state_size(self):
@@ -3089,7 +3089,7 @@ class IndRNNCell(rnn_cell_impl.LayerRNNCell):
     super(IndRNNCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     self._activation = activation or math_ops.tanh
@@ -3183,7 +3183,7 @@ class IndyGRUCell(rnn_cell_impl.LayerRNNCell):
     super(IndyGRUCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     self._activation = activation or math_ops.tanh
@@ -3323,7 +3323,7 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
     super(IndyLSTMCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     self._forget_bias = forget_bias
@@ -3444,7 +3444,7 @@ class MinimalRNNCell(rnn_cell_impl.LayerRNNCell):
     super(MinimalRNNCell, self).__init__(name=name, dtype=dtype, **kwargs)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self.units = units
     self.activation = activations.get(activation)
@@ -3558,7 +3558,7 @@ class CFNCell(rnn_cell_impl.LayerRNNCell):
     super(CFNCell, self).__init__(name=name, dtype=dtype, **kwargs)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self.units = units
     self.activation = activations.get(activation)

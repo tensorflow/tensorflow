@@ -2303,8 +2303,10 @@ bool ConvertToTensor(
       PyErr_SetString(
           PyExc_TypeError,
           tensorflow::strings::StrCat(
-              "Cannot convert value ", TFE_GetPythonString(input_str.get()),
-              " to EagerTensor with requested dtype: ", desired_dtype)
+              "Cannot convert provided value to EagerTensor. Provided value: ",
+              TFE_GetPythonString(input_str.get()), " Requested dtype: ",
+              tensorflow::DataTypeString(
+                  static_cast<tensorflow::DataType>(desired_dtype)))
               .c_str());
       return false;
     }

@@ -917,7 +917,7 @@ def save_attributes_to_hdf5_group(group, name, data):
   chunked_data = np.array_split(data_npy, num_chunks)
 
   # This will never loop forever thanks to the test above.
-  while any([x.nbytes > HDF5_OBJECT_HEADER_LIMIT for x in chunked_data]):
+  while any(x.nbytes > HDF5_OBJECT_HEADER_LIMIT for x in chunked_data):
     num_chunks += 1
     chunked_data = np.array_split(data_npy, num_chunks)
 

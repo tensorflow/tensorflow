@@ -410,6 +410,31 @@ Status XlaDevice::Sync() {
   return Status::OK();
 }
 
+void XlaDevice::Sync(const DoneCallback& done) {
+  VLOG(1) << "XlaDevice::Sync (asynchronous)";
+  std::shared_ptr<se::Stream> stream;
+  {
+    mutex_lock lock(mu_);
+    stream = stream_;
+  }
+  if (!stream) {
+    done(Status::OK());
+    return;
+  }
+
+  stream->ThenEnqueueOnBackgroundThread(
+      [this, stream, done](se::StreamExecutor*) {
+        tracing::ScopedActivity activity("XlaDevice::Sync::Callback",
+                                         /*is_expensive=*/true);
+        mutex_lock lock(mu_);
+        while (outstanding_asynchronous_operations_ > 0) {
+          outstanding_asynchronous_operations_cv_.wait(lock);
+        }
+        done(stream->ok() ? Status::OK()
+                          : errors::Internal("XlaDevice::Sync() failed."));
+      });
+}
+
 Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                       const AllocatorAttributes alloc_attrs,
                                       Tensor* tensor) {

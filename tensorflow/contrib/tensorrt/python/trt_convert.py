@@ -70,7 +70,8 @@ def get_tensorrt_rewriter_config(rewriter_config=None,
                                  minimum_segment_size=3,
                                  is_dynamic_op=False,
                                  maximum_cached_engines=1,
-                                 cached_engine_batch_sizes=None):
+                                 cached_engine_batch_sizes=None,
+                                 use_calibration=True):
   """Returns a RewriterConfig proto for TRT transformation.
 
   Args:
@@ -95,6 +96,15 @@ def get_tensorrt_rewriter_config(rewriter_config=None,
       use this list to determine the batch sizes of the cached engines, instead
       of making the decision on the fly. This is useful when we know the most
       common batch size(s) the application is going to generate.
+    use_calibration: this argument is ignored if precision_mode is not INT8. If
+      set to True, a calibration graph will be created to calibrate the missing
+      ranges. The calibration graph must be converted to an inference graph
+      using calib_graph_to_infer_graph() after running calibration. if set to
+      False, quantization nodes will be expected for every tensor in the graph
+      (exlcuding those which will be fused). If a range is missing, an error
+      will occur. Please note that accuracy may be negatively affected if there
+      is a mismatch between which tensors TRT quantizes and which tensors were
+      trained with fake quantization.
 
   Returns:
     A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -141,6 +151,7 @@ def get_tensorrt_rewriter_config(rewriter_config=None,
                        "maximum_cached_engines items.")
     optimizer.parameter_map["cached_engine_batches"].list.i.extend(
         cached_engine_batch_sizes)
+  optimizer.parameter_map["use_calibration"].b = use_calibration
   return rewriter_config_with_trt
 
 
@@ -153,6 +164,7 @@ def create_inference_graph(input_graph_def,
                            is_dynamic_op=False,
                            maximum_cached_engines=1,
                            cached_engine_batch_sizes=None,
+                           use_calibration=True,
                            input_saved_model_dir=None,
                            input_saved_model_tags=None,
                            output_saved_model_dir=None,
@@ -184,6 +196,15 @@ def create_inference_graph(input_graph_def,
       use this list to determine the batch sizes of the cached engines, instead
       of making the decision on the fly. This is useful when we know the most
       common batch size(s) the application is going to generate.
+    use_calibration: this argument is ignored if precision_mode is not INT8. If
+      set to True, a calibration graph will be created to calibrate the missing
+      ranges. The calibration graph must be converted to an inference graph
+      using calib_graph_to_infer_graph() after running calibration. if set to
+      False, quantization nodes will be expected for every tensor in the graph
+      (exlcuding those which will be fused). If a range is missing, an error
+      will occur. Please note that accuracy may be negatively affected if there
+      is a mismatch between which tensors TRT quantizes and which tensors were
+      trained with fake quantization.
     input_saved_model_dir: the directory to load the SavedModel which contains
       the input graph to transforms. Used only when input_graph_def is None.
     input_saved_model_tags: list of tags to load the SavedModel.
@@ -333,7 +354,7 @@ def create_inference_graph(input_graph_def,
   rewriter_config_with_trt = get_tensorrt_rewriter_config(
       rewriter_config, max_batch_size, max_workspace_size_bytes, precision_mode,
       minimum_segment_size, is_dynamic_op, maximum_cached_engines,
-      cached_engine_batch_sizes)
+      cached_engine_batch_sizes, use_calibration)
   session_config_with_trt.graph_options.rewrite_options.CopyFrom(
       rewriter_config_with_trt)
 

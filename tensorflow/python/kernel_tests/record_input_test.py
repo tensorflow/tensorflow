@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import data_flow_ops
@@ -94,6 +95,7 @@ class RecordInputOpTest(test.TestCase):
 
       self.assertEqual(self.evaluate(yield_op), b"0000000000")
 
+  @test_util.run_deprecated_v1
   def testRecordInputEpochs(self):
     files = 100
     records_per_file = 100
@@ -140,6 +142,7 @@ class RecordInputOpTest(test.TestCase):
         for _ in range(50):
           self.evaluate(yield_op)
 
+  @test_util.run_deprecated_v1
   def testEmptyGlob(self):
     with self.cached_session() as sess:
       record_input = data_flow_ops.RecordInput(file_pattern="foo")
@@ -148,6 +151,7 @@ class RecordInputOpTest(test.TestCase):
       with self.assertRaises(NotFoundError):
         self.evaluate(yield_op)
 
+  @test_util.run_deprecated_v1
   def testBufferTooSmall(self):
     files = 10
     records_per_file = 10

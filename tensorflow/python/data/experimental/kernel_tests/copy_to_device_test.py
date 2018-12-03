@@ -35,6 +35,7 @@ from tensorflow.python.util import compat as util_compat
 
 class CopyToDeviceTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testCopyToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -59,8 +60,9 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyToDeviceInt32(self):
     host_dataset = dataset_ops.Dataset.from_tensors([0, 1, 2, 3])
     device_dataset = host_dataset.apply(
@@ -84,8 +86,9 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     with self.test_session(config=worker_config) as sess:
       self.assertAllEqual([0, 1, 2, 3], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyToSameDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -110,8 +113,9 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyToDeviceWithPrefetch(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -136,8 +140,9 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyDictToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10).map(lambda x: {"a": x})
     device_dataset = host_dataset.apply(
@@ -162,8 +167,9 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       for i in range(10):
         self.assertEqual({"a": i}, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyDictToDeviceWithPrefetch(self):
     host_dataset = dataset_ops.Dataset.range(10).map(lambda x: {"a": x})
     device_dataset = host_dataset.apply(
@@ -188,8 +194,9 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       for i in range(10):
         self.assertEqual({"a": i}, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopySparseTensorsToDevice(self):
 
     def make_tensor(i):
@@ -222,8 +229,9 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         self.assertAllEqual([[0, 0]], actual.indices)
         self.assertAllEqual([2, 2], actual.dense_shape)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopySparseTensorsToDeviceWithPrefetch(self):
 
     def make_tensor(i):
@@ -256,7 +264,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         self.assertAllEqual([[0, 0]], actual.indices)
         self.assertAllEqual([2, 2], actual.dense_shape)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testCopyToDeviceGpu(self):
     if not test_util.is_gpu_available():
@@ -275,7 +283,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testCopyToDeviceGpuWithPrefetch(self):
     if not test_util.is_gpu_available():
@@ -294,7 +302,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testCopyToDeviceGpuWithMap(self):
     if not test_util.is_gpu_available():
@@ -330,7 +338,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         self.assertEqual(float(i**2), y)
         self.assertEqual(util_compat.as_bytes(str(i)), z)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testCopyToDeviceGpuInt32(self):
     if not test_util.is_gpu_available():
@@ -348,7 +356,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       self.evaluate(iterator.initializer)
       self.assertAllEqual([0, 1, 2, 3], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testCopyToDeviceGpuInt32AndPrefetch(self):
     if not test_util.is_gpu_available():
@@ -366,7 +374,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       self.evaluate(iterator.initializer)
       self.assertAllEqual([0, 1, 2, 3], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testCopyToDeviceGpuStrings(self):
     if not test_util.is_gpu_available():
@@ -384,7 +392,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       self.evaluate(iterator.initializer)
       self.assertAllEqual([b"a", b"b", b"c"], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testCopyToDeviceGpuStringsAndPrefetch(self):
     if not test_util.is_gpu_available():
@@ -402,7 +410,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       self.evaluate(iterator.initializer)
       self.assertAllEqual([b"a", b"b", b"c"], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testCopyToDevicePingPongCPUGPU(self):
     if not test_util.is_gpu_available():
@@ -424,8 +432,9 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         for i in range(10):
           self.assertEqual(i, self.evaluate(next_element))
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(next_element)
+          self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyToDeviceWithReInit(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -454,8 +463,9 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testCopyToDeviceWithReInitAndPrefetch(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -484,7 +494,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testCopyToDeviceGpuWithReInit(self):
     if not test_util.is_gpu_available():
@@ -506,7 +516,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testCopyToDeviceGpuWithReInitAndPrefetch(self):
     if not test_util.is_gpu_available():
@@ -528,7 +538,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testIteratorGetNextAsOptionalOnGPU(self):
     if not test_util.is_gpu_available():
@@ -547,15 +557,16 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       # Before initializing the iterator, evaluating the optional fails with
       # a FailedPreconditionError.
       with self.assertRaises(errors.FailedPreconditionError):
-        sess.run(elem_has_value_t)
+        self.evaluate(elem_has_value_t)
       with self.assertRaises(errors.FailedPreconditionError):
-        sess.run(elem_value_t)
+        self.evaluate(elem_value_t)
 
       # For each element of the dataset, assert that the optional evaluates to
       # the expected value.
       self.evaluate(iterator.initializer)
       for i in range(3):
-        elem_has_value, elem_value = sess.run([elem_has_value_t, elem_value_t])
+        elem_has_value, elem_value = self.evaluate(
+            [elem_has_value_t, elem_value_t])
         self.assertTrue(elem_has_value)
         self.assertEqual(i, elem_value)
 
@@ -564,7 +575,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       for _ in range(2):
         self.assertFalse(self.evaluate(elem_has_value_t))
         with self.assertRaises(errors.InvalidArgumentError):
-          sess.run(elem_value_t)
+          self.evaluate(elem_value_t)
 
 
 if __name__ == "__main__":

@@ -138,10 +138,10 @@ def parse_example_dataset(features, num_parallel_calls=1):
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
     out_dataset = _ParseExampleDataset(dataset, features, num_parallel_calls)
-    if any([
+    if any(
         isinstance(feature, parsing_ops.SparseFeature)
         for _, feature in features.items()
-    ]):
+    ):
       # pylint: disable=protected-access
       # pylint: disable=g-long-lambda
       out_dataset = out_dataset.map(

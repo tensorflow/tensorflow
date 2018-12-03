@@ -79,6 +79,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
@@ -306,6 +307,32 @@ xla_test(
         # disabled because of a break b/119590850.
         "cpu",
         "gpu",
+    ],
+    shard_count = 50,
+    deps = [
+        "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:bfloat16_normalization",
+        "//tensorflow/compiler/xla/service:despecializer",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+xla_test(
+    name = "grouped_convolution_test",
+    timeout = "long",
+    srcs = ["grouped_convolution_test.cc"],
+    blacklisted_backends = [
+        # disabled because of a break b/119590850.
+        "gpu",
+        # disabled because it times out.
+        "cpu",
     ],
     shard_count = 50,
     deps = [
@@ -1291,6 +1318,7 @@ xla_test(
         "enable_for_xla_interpreter",
     ],
     deps = [
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -1891,6 +1919,7 @@ xla_test(
 xla_test(
     name = "multioutput_fusion_test",
     srcs = ["multioutput_fusion_test.cc"],
+    backends = ["gpu"],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",

@@ -460,6 +460,13 @@ std::ostream& operator<<(std::ostream& out, const Layout& layout) {
   }
   hash_value = Hash64Combine(hash_value, layout.max_sparse_elements());
 
+  for (Tile tile : layout.tiles()) {
+    for (int64 tile_dim : tile.dimensions()) {
+      hash_value = Hash64Combine(hash_value, hash<int64>()(tile_dim));
+    }
+  }
+  hash_value = Hash64Combine(hash_value, layout.element_size_in_bits());
+
   return hash_value;
 }
 

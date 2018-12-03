@@ -82,6 +82,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
     self.max_elements = 1 << 16
     self.num_quantiles = constant_op.constant(3, dtype=dtypes.int64)
 
+  @test_util.run_deprecated_v1
   def testBasicQuantileBucketsSingleResource(self):
     with self.cached_session() as sess:
       quantile_accumulator_handle = self.create_resource("floats", self.eps,
@@ -106,6 +107,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self._feature_0_quantiles, quantiles[0].eval())
       self.assertAllClose(self._feature_1_quantiles, quantiles[1].eval())
 
+  @test_util.run_deprecated_v1
   def testBasicQuantileBucketsMultipleResources(self):
     with self.cached_session() as sess:
       quantile_accumulator_handle_0 = self.create_resource("float_0", self.eps,
@@ -132,14 +134,15 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
           quantile_accumulator_handle_1, num_features=1)
       quantiles = boosted_trees_ops.boosted_trees_bucketize(
           [self._feature_0, self._feature_1], bucket_0 + bucket_1)
-      sess.run([summary_op_0, summary_op_1])
-      sess.run([flush_op_0, flush_op_1])
+      self.evaluate([summary_op_0, summary_op_1])
+      self.evaluate([flush_op_0, flush_op_1])
       self.assertAllClose(self._feature_0_boundaries, bucket_0[0].eval())
       self.assertAllClose(self._feature_1_boundaries, bucket_1[0].eval())
 
       self.assertAllClose(self._feature_0_quantiles, quantiles[0].eval())
       self.assertAllClose(self._feature_1_quantiles, quantiles[1].eval())
 
+  @test_util.run_deprecated_v1
   def testSaveRestoreAfterFlush(self):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
@@ -158,7 +161,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
                                             self._example_weights)
       with ops.control_dependencies([summaries]):
         flush = accumulator.flush()
-      sess.run(flush)
+      self.evaluate(flush)
       self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
       self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
       save.save(sess, save_path)
@@ -172,6 +175,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
       self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
 
+  @test_util.run_deprecated_v1
   def testSaveRestoreBeforeFlush(self):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
@@ -185,12 +189,12 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
 
       summaries = accumulator.add_summaries([self._feature_0, self._feature_1],
                                             self._example_weights)
-      sess.run(summaries)
+      self.evaluate(summaries)
       buckets = accumulator.get_bucket_boundaries()
       self.assertAllClose([], buckets[0].eval())
       self.assertAllClose([], buckets[1].eval())
       save.save(sess, save_path)
-      sess.run(accumulator.flush())
+      self.evaluate(accumulator.flush())
       self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
       self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
 

@@ -38,8 +38,8 @@ genrule(
         ":libxsmm_interface",
     ],
     visibility = [
-        "//third_party/eigen3:__pkg__",
         "//tensorflow/core/kernels:__pkg__",
+        "//third_party/eigen3:__pkg__",
     ],
 )
 

@@ -1,22 +1,6 @@
 path: "tensorflow.train"
 tf_module {
   member {
-    name: "AdadeltaOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "AdagradDAOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "AdagradOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "AdamOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "BytesList"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -30,14 +14,6 @@ tf_module {
   }
   member {
     name: "CheckpointSaverHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "CheckpointSaverListener"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "ChiefSessionCreator"
     mtype: "<type \'type\'>"
   }
   member {
@@ -89,15 +65,7 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "FtrlOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "GlobalStepWaiterHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "GradientDescentOptimizer"
     mtype: "<type \'type\'>"
   }
   member {
@@ -113,47 +81,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "LooperThread"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "MomentumOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "MonitoredSession"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "NanLossDuringTrainingError"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "NanTensorHook"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "Optimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "ProximalAdagradOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "ProximalGradientDescentOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "RMSPropOptimizer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "Scaffold"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SecondOrStepTimer"
     mtype: "<type \'type\'>"
   }
   member {
@@ -169,31 +101,7 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "SessionCreator"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionManager"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionRunArgs"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionRunContext"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "SessionRunHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionRunValues"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SingularMonitoredSession"
     mtype: "<type \'type\'>"
   }
   member {
@@ -206,18 +114,6 @@ tf_module {
   }
   member {
     name: "SummarySaverHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "Supervisor"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "VocabInfo"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "WorkerSessionCreator"
     mtype: "<type \'type\'>"
   }
   member_method {
@@ -269,7 +165,7 @@ tf_module {
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'initial_variance\', \'variance_decay\', \'num_periods\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'1.0\', \'0.55\', \'0.5\', \'0.0\', \'0.001\', \'None\'], "
   }
   member_method {
-    name: "piecewise_constant"
+    name: "piecewise_constant_decay"
     argspec: "args=[\'x\', \'boundaries\', \'values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {

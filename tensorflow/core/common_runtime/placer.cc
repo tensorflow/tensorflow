@@ -1002,7 +1002,7 @@ Status Placer::Run() {
     int assigned_device = -1;
 
     // Heuristic A application.
-    if (IsGeneratorNode(node)) {
+    if (IsGeneratorNode(node) && !node->out_edges().empty()) {
       const Node* output = (*node->out_edges().begin())->dst();
       int output_device_name = output->assigned_device_name_index();
 

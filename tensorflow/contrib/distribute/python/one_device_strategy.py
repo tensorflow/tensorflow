@@ -20,13 +20,14 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import values
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
 
 
@@ -68,7 +69,9 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
 
   def _make_dataset_iterator(self, dataset):
     """Make iterator from dataset without splitting the batch."""
-    return values.DatasetIterator(dataset, [("/job:localhost", [self._device])])
+    worker = device_util.canonicalize("/device:CPU:0")
+    worker_device_pairs = [(worker, [self._device])]
+    return values.DatasetIterator(dataset, worker_device_pairs)
 
   def _distribute_dataset(self, dataset_fn):
     return values.PerReplicaDataset(
@@ -78,8 +81,10 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
       self,
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    worker = device_util.canonicalize("/device:CPU:0")
+    worker_device_pairs = [(worker, [self._device])]
     return values.InputFunctionIterator(
-        input_fn, [("/job:localhost", [self._device])],
+        input_fn, worker_device_pairs,
         [distribute_lib.InputContext()])
 
   def _broadcast_to(self, tensor, destinations):
@@ -194,6 +199,11 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
   def should_save_summary(self):
     return True
 
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return True
+
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
   """ReplicaContext for OneDeviceStrategy."""
@@ -205,9 +215,5 @@ class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
         replica_id_in_sync_group=constant_op.constant(0, dtypes.int32))
 
   @property
-  def device(self):
-    raise RuntimeError("Use .devices instead")
-
-  @property
   def devices(self):
-    return [self._distribution_strategy.worker_devices[0]]
+    return [self._distribution_strategy.extended.worker_devices[0]]

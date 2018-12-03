@@ -254,7 +254,7 @@ class ConcatTest(xla_test.XLATestCase):
   def DISABLED_testZeroSize(self):
     # Verify that concat doesn't crash and burn for zero size inputs
     np.random.seed(7)
-    with self.cached_session() as sess:
+    with self.cached_session():
       with self.test_scope():
         for shape0 in (), (2,):
           axis = len(shape0)
@@ -270,7 +270,7 @@ class ConcatTest(xla_test.XLATestCase):
                 self.assertAllEqual(c.eval(), correct)
                 # Check gradients
                 dc = np.random.randn(*c.get_shape().as_list())
-                dxs = sess.run(gradients_impl.gradients(c, xs, dc))
+                dxs = self.evaluate(gradients_impl.gradients(c, xs, dc))
                 self.assertAllEqual(dc, np.concatenate(dxs, axis=axis))
 
   def testConcatTuple(self):
@@ -330,7 +330,7 @@ class ConcatTest(xla_test.XLATestCase):
 class ConcatOffsetTest(xla_test.XLATestCase):
 
   def testBasic(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       with self.test_scope():
         cdim = constant_op.constant(1, dtypes.int32)
         s0 = constant_op.constant([2, 3, 5], dtypes.int32)
@@ -344,7 +344,7 @@ class ConcatOffsetTest(xla_test.XLATestCase):
 class PackTest(xla_test.XLATestCase):
 
   def testBasic(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       with self.test_scope():
         s0 = constant_op.constant([2, 3, 5], dtypes.int32)
         s1 = constant_op.constant([2, 7, 5], dtypes.int32)
@@ -354,7 +354,7 @@ class PackTest(xla_test.XLATestCase):
         self.assertAllEqual(ans, [[2, 3, 5], [2, 7, 5], [2, 20, 5]])
 
   def testScalars(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       with self.test_scope():
         s0 = constant_op.constant(2, dtypes.int32)
         s1 = constant_op.constant(3, dtypes.int32)
@@ -364,7 +364,7 @@ class PackTest(xla_test.XLATestCase):
         self.assertAllEqual(ans, [2, 3, 5])
 
   def testEmpty(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       with self.test_scope():
         s0 = constant_op.constant([[]], dtypes.int32)
         s1 = constant_op.constant([[]], dtypes.int32)

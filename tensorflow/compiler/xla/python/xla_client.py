@@ -26,6 +26,9 @@ import os
 
 import numpy as np
 
+import six
+from six.moves import xrange
+
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
 from tensorflow.compiler.xla.service import hlo_pb2
@@ -73,6 +76,13 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
       op_name=op_name,
       source_file=filename,
       source_line=lineno)
+
+
+def _maybe_encode_string(s):
+  if six.PY3:
+    return s.encode('utf-8')
+  else:
+    return s
 
 
 class PaddingType(enum.Enum):
@@ -225,7 +235,8 @@ class LocalBuffer(object):
     """Allocate and copy to XLA the given python value."""
     pyval = require_numpy_array_layout(pyval)
     if backend.backend_type == BackendType.XRT:
-      cbuf = c_api.XrtAllocation.FromLiteral(pyval, backend.target)
+      cbuf = c_api.XrtAllocation.FromLiteral(
+          pyval, _maybe_encode_string(backend.target))
     else:
       cbuf = c_api.LocalShapedBuffer.FromLiteral(pyval, None)
     return LocalBuffer(cbuf, backend)
@@ -245,8 +256,8 @@ class LocalBuffer(object):
     """Assuming a tuple buffer, unpack it into constituent tuple elements."""
     assert self.c_buffer is not None
     if self._backend.backend_type == BackendType.XRT:
-      result = c_api.DestructureXrtAllocationTuple(self.c_buffer,
-                                                   self._backend.target)
+      result = c_api.DestructureXrtAllocationTuple(
+          self.c_buffer, _maybe_encode_string(self._backend.target))
     else:
       result = c_api.DestructureLocalShapedBufferTuple(self.c_buffer)
     self.delete()
@@ -321,6 +332,9 @@ class Shape(object):
 
   def __ne__(self, other):
     return not self == other
+
+  def __hash__(self):
+    return hash((self._dtype, self._dimensions, self._minor_to_major))
 
   def __repr__(self):
     return ('xla_client.Shape(_dtype={!r}, _dimensions={!r}, '
@@ -541,10 +555,13 @@ class LocalComputation(object):
       ]
       result_shape = result_shape.map_leaves(layout_fn)
 
+    argument_shapes = list(argument_shapes)
+
     compile_options = compile_options or CompileOptions()
     compile_options.result_shape = result_shape
     if self._backend.backend_type == BackendType.XRT:
-      c = self.computation.CompileForXrt(argument_shapes, self._backend.target)
+      c = self.computation.CompileForXrt(
+          argument_shapes, _maybe_encode_string(self._backend.target))
     else:
       c = self.computation.Compile(argument_shapes, compile_options)
     return LocalComputation(c, is_compiled=True, backend=self._backend)
@@ -761,8 +778,7 @@ class ComputationBuilder(object):
     Returns:
       A LocalOp representing the added broadcast-in-dimensions op.
     """
-    xla_shape = Shape.array_shape(self.GetShape(operand).element_type(), shape)
-    return self._client.BroadcastInDim(operand, xla_shape, broadcast_dimensions)
+    return self._client.BroadcastInDim(operand, shape, broadcast_dimensions)
 
   def Concatenate(self, operands, dimension):
     """Enqueues a concatenate operation onto the computation.
@@ -1380,6 +1396,7 @@ def initialize_platform_name(platform_name):
   Raises:
     A runtime exception if the XLA service has already been initialized.
   """
+  platform_name = _maybe_encode_string(platform_name)
   c_api.InitializePlatformName(platform_name)
 
 

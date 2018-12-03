@@ -152,6 +152,13 @@ static inline absl::Span<const int64> AsInt64Slice(
                                  slice.size());
 }
 
+// TODO(b/29771030): This nop overload was added to simplify the migration of
+// Shape from a proto to a C++ class. Remove after class has been migrated.
+static inline absl::Span<const int64> AsInt64Slice(
+    absl::Span<const int64> slice) {
+  return slice;
+}
+
 // As above, but for uint64 types.
 static inline absl::Span<const uint64> AsUInt64Slice(
     const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>& v) {

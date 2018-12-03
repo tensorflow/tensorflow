@@ -25,6 +25,10 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
+#include <Accelerate/Accelerate.h>
+#endif
+
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
@@ -1868,18 +1872,45 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
     gemm_input_shape = &input_shape;
   }
 
-  const auto im2col_matrix_map =
-      MapAsMatrixWithLastDimAsRows(gemm_input_data, *gemm_input_shape);
-  const auto filter_matrix_map =
-      MapAsMatrixWithFirstDimAsCols(filter_data, filter_shape);
-  auto output_matrix_map =
-      MapAsMatrixWithLastDimAsRows(output_data, output_shape);
+  // The following code computes matrix multiplication c = a * transponse(b)
+  // with CBLAS, where:
+  // * `a` is a matrix with dimensions (m, k).
+  // * `b` is a matrix with dimensions (n, k), so transpose(b) is (k, n).
+  // * `c` is a matrix with dimensions (m, n).
+  // The naming of variables are aligned with CBLAS specification here.
+  const float* a = gemm_input_data;
+  const float* b = filter_data;
+  float* c = output_data;
+  const int gemm_input_dims = gemm_input_shape->DimensionsCount();
+  int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
+  int n = output_shape.Dims(3);
+  int k = gemm_input_shape->Dims(gemm_input_dims - 1);
 
-  Gemm(filter_matrix_map.transpose(), im2col_matrix_map, &output_matrix_map);
+#if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
+  // The stride of matrix a, b and c respectively.
+  int stride_a = k;
+  int stride_b = k;
+  int stride_c = n;
 
-  AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
-                                   bias_shape, bias_data, output_shape,
-                                   output_data);
+  cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, m, n, k, 1.0f, a,
+              stride_a, b, stride_b, 0.0f, c, stride_c);
+#else
+  // When an optimized CBLAS implementation is not available, fall back
+  // to using Eigen.
+  typedef Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
+      Matrix;
+  typedef Eigen::Map<Matrix> MatrixRef;
+  typedef Eigen::Map<const Matrix> ConstMatrixRef;
+
+  MatrixRef matrix_c(c, m, n);
+  ConstMatrixRef matrix_a(a, m, k);
+  ConstMatrixRef matrix_b(b, n, k);
+  matrix_c.noalias() = matrix_a * matrix_b.transpose();
+#endif  //  defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
+
+  optimized_ops::AddBiasAndEvalActivationFunction(
+      output_activation_min, output_activation_max, bias_shape, bias_data,
+      output_shape, output_data);
 }
 
 inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
@@ -4293,7 +4324,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   using FixedPointScaledDiff =
       gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =

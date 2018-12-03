@@ -25,6 +25,7 @@ from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import test
@@ -35,6 +36,7 @@ _NUMPY_RANDOM_SEED = 42
 
 class IgnoreErrorsTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
@@ -51,8 +53,9 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
       for x in [1., 2., 3., 5.]:
         self.assertEqual(x, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
+  @test_util.run_deprecated_v1
   def testParallelMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
@@ -69,8 +72,9 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
       for x in [1., 2., 3., 5.]:
         self.assertEqual(x, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
+  @test_util.run_deprecated_v1
   def testReadFileIgnoreError(self):
 
     def write_string_to_file(value, filename):
@@ -97,7 +101,7 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
       for filename in filenames:
         self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
       # Delete one of the files.
       os.remove(filenames[0])
@@ -108,7 +112,7 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
       for filename in filenames[1:]:
         self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
 
 if __name__ == "__main__":

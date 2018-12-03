@@ -23,15 +23,16 @@ from tensorflow.python.client import session as session_module
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
 
 
@@ -53,14 +54,18 @@ def set_weights(distribution_strategy, dist_model, weights):
     num_param = len(layer.weights)
     layer_weights = weights[:num_param]
     for sw, w in zip(layer.weights, layer_weights):
-      assign_ops.append(distribution_strategy.unwrap(sw.assign(w)))
-
+      if ops.executing_eagerly_outside_functions():
+        sw.assign(w)
+      else:
+        assign_ops.append(distribution_strategy.unwrap(sw.assign(w)))
     weights = weights[num_param:]
-  K.get_session().run(assign_ops)
+
+  if not ops.executing_eagerly_outside_functions():
+    K.get_session().run(assign_ops)
 
 
 def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
-                  grouped_updates, grouped_session_args,
+                  grouped_updates=None, grouped_session_args=None,
                   with_loss_tensor=False):
   """Unwrap and return the list of values contained in the PerDevice parameters.
 
@@ -93,11 +98,8 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
                                         grouped_inputs)
   if with_loss_tensor:
     # reduce loss tensor before adding it to the list of fetches
-    loss = distribution_strategy.unwrap(
-        distribution_strategy.reduce(distribute_lib.get_loss_reduction(),
-                                     grouped_outputs[0],
-                                     destinations='/device:CPU:0'))[0]
-
+    loss = distribution_strategy.reduce(distribute_lib.get_loss_reduction(),
+                                        grouped_outputs[0])
     all_outputs = flatten_perdevice_values(distribution_strategy,
                                            grouped_outputs[1:])
     all_outputs = [loss] + all_outputs
@@ -105,20 +107,25 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
     all_outputs = flatten_perdevice_values(distribution_strategy,
                                            grouped_outputs)
 
-  all_updates = flatten_perdevice_values(distribution_strategy,
-                                         grouped_updates)
+  if grouped_updates:
+    all_updates = flatten_perdevice_values(distribution_strategy,
+                                           grouped_updates)
+  else:
+    all_updates = None
 
   all_session_args = {}
-  grouped_feed_dict = grouped_session_args.get('feed_dict')
-  if grouped_feed_dict:
-    all_session_args['feed_dict'] = flatten_perdevice_values(
-        distribution_strategy, grouped_feed_dict)
+  if grouped_session_args:
+    grouped_feed_dict = grouped_session_args.get('feed_dict')
+    if grouped_feed_dict:
+      all_session_args['feed_dict'] = flatten_perdevice_values(
+          distribution_strategy, grouped_feed_dict)
 
-  grouped_fetches = grouped_session_args.get('fetches')
-  if grouped_fetches:
-    all_session_args['fetches'] = flatten_perdevice_values(
-        distribution_strategy, grouped_fetches)
+    grouped_fetches = grouped_session_args.get('fetches')
+    if grouped_fetches:
+      all_session_args['fetches'] = flatten_perdevice_values(
+          distribution_strategy, grouped_fetches)
 
+  # TODO(priyag): Return only non empty/None values
   return all_inputs, all_outputs, all_updates, all_session_args
 
 
@@ -145,11 +152,14 @@ def flatten_perdevice_values(distribution_strategy, perdevice_values):
           for e in distribution_strategy.unwrap(flattened)]
 
 
-def validate_callbacks(input_callbacks):
+def validate_callbacks(input_callbacks, optimizer, current_strategy):
   """Validate whether given callbacks are supported by DistributionStrategy.
 
   Args:
     input_callbacks: List of callbacks passed by the user to fit.
+    optimizer: Optimizer instance used to train the model.
+    current_strategy: The DistributionStrategy used to distribute training
+      and validation.
 
   Raises:
     ValueError: If `LearningRateScheduler` or `ReduceLROnPlateau` is one of the
@@ -171,12 +181,18 @@ def validate_callbacks(input_callbacks):
                         'these attributes are not set. You can access each of '
                         'the individual distributed models using the '
                         '`_grouped_model` attribute of your original model.')
-      if isinstance(callback, callbacks.LearningRateScheduler):
-        raise ValueError('LearningRateScheduler callback is not supported with '
-                         'DistributionStrategy.')
-      if isinstance(callback, callbacks.ReduceLROnPlateau):
-        raise ValueError('ReduceLROnPlateau callback is not supported with '
-                         'DistributionStrategy.')
+      if isinstance(callback, (callbacks.LearningRateScheduler,
+                               callbacks.ReduceLROnPlateau)):
+        strategy_name = current_strategy.__class__.__name__
+        # TODO(anjalisridhar): We might need to add a condition for multi
+        # worker strategy when we support it in Keras.
+        if is_tpu_strategy(current_strategy):
+          raise ValueError('%s callback is not supported with %s.' %
+                           (callback, strategy_name))
+
+        if not isinstance(optimizer, optimizer_v2.OptimizerV2):
+          raise ValueError('You must specify a Keras Optimizer V2 when using '
+                           '%s callback with DistributionStrategy.' % callback)
 
       # If users want to use the TensorBoard callback they cannot use certain
       # features of the callback that involve accessing model attributes and
@@ -321,7 +337,7 @@ def init_restore_or_wait_for_variables():
   """Initialize or restore variables or wait for variables to be initialized."""
   session = K._get_session()  # pylint: disable=protected-access
   worker_context = dc_context.get_current_worker_context()
-  if not worker_context or worker_context.should_init:
+  if not worker_context or worker_context.experimental_should_init:
     # TODO(yuefengz): if checkpoints exit, restore from checkpoint.
     K._initialize_variables(session)  # pylint: disable=protected-access
   else:
@@ -350,6 +366,7 @@ def configure_and_create_session(distribution_strategy):
       session = session_module.Session(
           config=dc_session_config, target=worker_context.master_target)
     else:
+      distribution_strategy.configure(session_config)
       session = session_module.Session(config=session_config)
 
   K.set_session(session)
@@ -381,9 +398,13 @@ def validate_inputs(x, y, distribution_strategy):
 
   if is_tpu_strategy(distribution_strategy):
     for i in [x, y]:
-      if isinstance(i, dataset_ops.Dataset):
+      if isinstance(i, dataset_ops.DatasetV2):
         shapes = nest.flatten(i.output_shapes)
-        if any([not s.is_fully_defined() for s in shapes]):
+        try:
+          s = next(s for s in shapes if not s.is_fully_defined())
+        except StopIteration:
+          continue
+        else:
           raise ValueError(
               'Using TPUs currently requires fully defined shapes. Either use '
               'set_shape() on the input tensors or use '
@@ -391,14 +412,11 @@ def validate_inputs(x, y, distribution_strategy):
               'Found unknown shape {} in input {}.'.format(s, i))
 
 
-# TODO(b/118776054): Currently we support global batch size for TPUStrategy
-# and CoreMirroredStrategy only. Remove this check when contrib MirroredStrategy
-# is no longer needed.
+# TODO(b/118776054): Currently we support global batch size for TPUStrategy and
+# core MirroredStrategy only. Remove this check when contrib MirroredStrategy is
+# no longer needed.
 def global_batch_size_supported(distribution_strategy):
-  strategy_name = distribution_strategy.__class__.__name__
-  # TODO(priyag): Change this to whatever condition makes sense when
-  # CoreMirroredStrategy is moved to core and renamed.
-  return strategy_name in ('TPUStrategy', 'CoreMirroredStrategy')
+  return distribution_strategy.extended._global_batch_size  # pylint: disable=protected-access
 
 
 # TODO(sourabhbajaj): Remove this once we use the same API for all strategies.

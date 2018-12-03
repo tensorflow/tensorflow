@@ -59,6 +59,7 @@ class DenseTest(test.TestCase):
     dense.apply(random_ops.random_uniform((5, 2)))
     self.assertEqual(dense.name, 'dense_2')
 
+  @test_util.run_deprecated_v1
   def testVariableInput(self):
     with self.cached_session():
       v = variable_scope.get_variable(
@@ -140,6 +141,7 @@ class DenseTest(test.TestCase):
     outputs = dense.apply(inputs)
     self.assertEqual(outputs.get_shape().as_list(), [1, 2, 4, 7])
 
+  @test_util.run_deprecated_v1
   def testCallOnPlaceHolder(self):
     inputs = array_ops.placeholder(dtype=dtypes.float32)
     dense = core_layers.Dense(4, name='my_dense')
@@ -179,6 +181,7 @@ class DenseTest(test.TestCase):
     if not context.executing_eagerly():
       self.assertEqual(outputs.op.name, 'dense2/BiasAdd')
 
+  @test_util.run_deprecated_v1
   def testActivityRegularizer(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     dense = core_layers.Dense(
@@ -189,6 +192,7 @@ class DenseTest(test.TestCase):
     self.assertEqual(len(loss_keys), 1)
     self.assertListEqual(dense.losses, loss_keys)
 
+  @test_util.run_deprecated_v1
   def testKernelRegularizer(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     dense = core_layers.Dense(
@@ -200,6 +204,7 @@ class DenseTest(test.TestCase):
     self.evaluate([v.initializer for v in dense.variables])
     self.assertAllEqual(self.evaluate(dense.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testKernelRegularizerWithReuse(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     inputs = random_ops.random_uniform((5, 3), seed=1)
@@ -212,6 +217,7 @@ class DenseTest(test.TestCase):
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
 
+  @test_util.run_deprecated_v1
   def testBiasRegularizer(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     dense = core_layers.Dense(2, name='my_dense', bias_regularizer=regularizer)
@@ -222,6 +228,7 @@ class DenseTest(test.TestCase):
     self.evaluate([v.initializer for v in dense.variables])
     self.assertAllEqual(self.evaluate(dense.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testFunctionalDense(self):
     with self.cached_session():
       inputs = random_ops.random_uniform((5, 3), seed=1)
@@ -231,6 +238,7 @@ class DenseTest(test.TestCase):
           len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
       self.assertEqual(outputs.op.name, 'my_dense/Relu')
 
+  @test_util.run_deprecated_v1
   def testFunctionalDenseTwice(self):
     inputs = random_ops.random_uniform((5, 3), seed=1)
     core_layers.dense(inputs, 2)
@@ -262,6 +270,7 @@ class DenseTest(test.TestCase):
         vars2 = variables.trainable_variables()
       self.assertEqual(vars1, vars2)
 
+  @test_util.run_deprecated_v1
   def testFunctionalDenseInitializerFromScope(self):
     with variable_scope.variable_scope(
         'scope',
@@ -307,6 +316,7 @@ class DenseTest(test.TestCase):
       core_layers.dense(inputs, 2)
     self.assertEqual(called[0], 2)
 
+  @test_util.run_deprecated_v1
   def testFunctionalDenseInScope(self):
     with self.cached_session():
       with variable_scope.variable_scope('test'):
@@ -393,6 +403,7 @@ class DropoutTest(test.TestCase):
     np_output = self.evaluate(dropped)
     self.assertAllClose(np.ones((5, 3)), np_output)
 
+  @test_util.run_deprecated_v1
   def testDynamicLearningPhase(self):
     with self.cached_session() as sess:
       dp = core_layers.Dropout(0.5, seed=1)
@@ -426,6 +437,7 @@ class DropoutTest(test.TestCase):
     self.assertAlmostEqual(0., np_output.min())
     self.assertAllClose(np_output[:, 0, :], np_output[:, 1, :])
 
+  @test_util.run_deprecated_v1
   def testFunctionalDropout(self):
     with self.cached_session():
       inputs = array_ops.ones((5, 5))
@@ -437,6 +449,7 @@ class DropoutTest(test.TestCase):
       np_output = self.evaluate(dropped)
       self.assertAllClose(np.ones((5, 5)), np_output)
 
+  @test_util.run_deprecated_v1
   def testDynamicRate(self):
     with self.cached_session() as sess:
       rate = array_ops.placeholder(dtype='float32', name='rate')
@@ -452,6 +465,7 @@ class DropoutTest(test.TestCase):
 
 class FlattenTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testCreateFlatten(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(shape=(None, 2, 3), dtype='float32')
@@ -476,6 +490,7 @@ class FlattenTest(test.TestCase):
     shape = core_layers.Flatten().compute_output_shape((None, 3, None))
     self.assertEqual(shape.as_list(), [None, None])
 
+  @test_util.run_deprecated_v1
   def testDataFormat5d(self):
     np_input_channels_last = np.arange(
         120, dtype='float32').reshape([1, 5, 4, 3, 2])
@@ -493,6 +508,7 @@ class FlattenTest(test.TestCase):
 
       self.assertAllEqual(np_output_cl, np_output_cf)
 
+  @test_util.run_deprecated_v1
   def testDataFormat4d(self):
     np_input_channels_last = np.arange(
         24, dtype='float32').reshape([1, 4, 3, 2])
@@ -510,16 +526,19 @@ class FlattenTest(test.TestCase):
 
       self.assertAllEqual(np_output_cl, np_output_cf)
 
+  @test_util.run_deprecated_v1
   def testFunctionalFlatten(self):
     x = array_ops.placeholder(shape=(None, 2, 3), dtype='float32')
     y = core_layers.flatten(x, name='flatten')
     self.assertEqual(y.get_shape().as_list(), [None, 6])
 
+  @test_util.run_deprecated_v1
   def testFlattenValueError(self):
     x = array_ops.placeholder(shape=(None,), dtype='float32')
     with self.assertRaises(ValueError):
       core_layers.Flatten()(x)
 
+  @test_util.run_deprecated_v1
   def testFlattenUnknownAxes(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(shape=(5, None, None), dtype='float32')

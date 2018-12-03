@@ -20,11 +20,13 @@ from __future__ import print_function
 from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class CounterTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testCounter(self):
     """Test dataset construction using `count`."""
     iterator = (counter.Counter(start=3, step=4)

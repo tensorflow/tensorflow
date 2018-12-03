@@ -10,7 +10,7 @@ tf_module {
   }
   member_method {
     name: "add"
-    argspec: "args=[\'a\', \'b\', \'thresh\'], varargs=None, keywords=None, defaults=[\'0\'], "
+    argspec: "args=[\'a\', \'b\', \'threshold\', \'thresh\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "concat"

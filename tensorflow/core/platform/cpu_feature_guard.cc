@@ -41,7 +41,7 @@ void CheckFeatureOrDie(CPUFeature feature, const string& feature_name) {
   }
 }
 
-// Check if CPU feature is inclued in the TensorFlow binary.
+// Check if CPU feature is included in the TensorFlow binary.
 void CheckIfFeatureUnused(CPUFeature feature, const string& feature_name,
                           string& missing_instructions) {
   if (TestCPUFeature(feature)) {

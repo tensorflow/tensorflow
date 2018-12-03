@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -73,6 +74,7 @@ class ScatterTest(test.TestCase):
           tf_scatter(ref, indices, updates).eval()
           self.assertAllClose(ref.eval(), new)
 
+  @test_util.run_deprecated_v1
   def testVariableRankUpdate(self):
     vtypes = [np.float32, np.float64]
     for vtype in vtypes:
@@ -80,6 +82,7 @@ class ScatterTest(test.TestCase):
         self._VariableRankTest(
             state_ops.batch_scatter_update, vtype, itype)
 
+  @test_util.run_deprecated_v1
   def testBooleanScatterUpdate(self):
     with self.session(use_gpu=False) as session:
       var = variables.Variable([True, False])
@@ -93,6 +96,7 @@ class ScatterTest(test.TestCase):
 
       self.assertAllEqual([False, True], self.evaluate(var))
 
+  @test_util.run_deprecated_v1
   def testScatterOutOfRange(self):
     params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
     updates = np.array([-3, -4, -5]).astype(np.float32)

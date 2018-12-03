@@ -162,7 +162,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       node_name_to_op = {node.name: node.op for node in graph_def.node}
       self.assertEqual({
           "input": "Placeholder",
-          "my_trt_op_0": "TRTEngineOp",
+          "TRTEngineOp_0": "TRTEngineOp",
           "output": "Identity"
       }, node_name_to_op)
 
@@ -188,11 +188,12 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([[[4.0]]] * batch_size, result)
     execute_engine_test_value = ("done" if expect_engine_is_run else "")
     execute_native_segment_test_value = ("" if expect_engine_is_run else "done")
-    self.assertEqual(execute_engine_test_value,
-                     trt_convert.get_test_value("my_trt_op_0:ExecuteTrtEngine"))
+    self.assertEqual(
+        execute_engine_test_value,
+        trt_convert.get_test_value("TRTEngineOp_0:ExecuteTrtEngine"))
     self.assertEqual(
         execute_native_segment_test_value,
-        trt_convert.get_test_value("my_trt_op_0:ExecuteNativeSegment"))
+        trt_convert.get_test_value("TRTEngineOp_0:ExecuteNativeSegment"))
 
   def testCreateInferenceGraph_MinimumSegmentSize(self):
     if not trt_convert.is_tensorrt_enabled():

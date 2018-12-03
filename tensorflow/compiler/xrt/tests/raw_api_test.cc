@@ -375,9 +375,12 @@ TEST(RawApiTest, CompileAndExecute) {
   xrt::XLAComputation c;
   auto config = c.mutable_config();
   auto shapes = config->mutable_program_shape();
-  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::F32, {2});
-  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::F32, {2});
-  *shapes->mutable_result() = xla::ShapeUtil::MakeShape(xla::F32, {2});
+  *shapes->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes->mutable_result() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
   StoreComputationSnapshot(AddAndScale(), c.mutable_hlo_snapshot());
 
   xrt::XRTExecutionConfig e;
@@ -411,7 +414,7 @@ TEST(RawApiTest, CompileAndExecute) {
   auto expected = xla::LiteralUtil::CreateR1<float>({27.0f, 21.0f});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 
-  xla::ProgramShape program_shape;
+  xla::ProgramShapeProto program_shape;
   EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 2);
 }
@@ -427,9 +430,12 @@ TEST(RawApiTest, CompileAndExecuteWithArgumentVector) {
   xrt::XLAComputation c;
   auto config = c.mutable_config();
   auto shapes = config->mutable_program_shape();
-  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::F32, {2});
-  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::F32, {2});
-  *shapes->mutable_result() = xla::ShapeUtil::MakeShape(xla::F32, {2});
+  *shapes->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes->mutable_result() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
   StoreComputationSnapshot(AddAndScale(), c.mutable_hlo_snapshot());
 
   xrt::XRTExecutionConfig e;
@@ -465,7 +471,7 @@ TEST(RawApiTest, CompileAndExecuteWithArgumentVector) {
   auto expected = xla::LiteralUtil::CreateR1<float>({27.0f, 21.0f});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 
-  xla::ProgramShape program_shape;
+  xla::ProgramShapeProto program_shape;
   EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 2);
 }
@@ -494,8 +500,8 @@ TEST(RawApiTest, CompileWithXlaReturnShapes) {
   xrt::XLAComputation c;
   auto config = c.mutable_config();
   auto shapes = config->mutable_program_shape();
-  *shapes->add_parameters() = param_shape;
-  *shapes->mutable_result() = result_shape;
+  *shapes->add_parameters() = param_shape.ToProto();
+  *shapes->mutable_result() = result_shape.ToProto();
   StoreComputationSnapshot(xla_computation, c.mutable_hlo_snapshot());
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
@@ -510,8 +516,9 @@ TEST(RawApiTest, CompileWithXlaReturnShapes) {
   TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(),
                            {c_handle.program_shape}, {release}, &outputs));
 
-  xla::ProgramShape program_shape;
-  EXPECT_TRUE(program_shape.ParseFromString(outputs[0].vec<string>()(0)));
+  xla::ProgramShapeProto program_shape_proto;
+  EXPECT_TRUE(program_shape_proto.ParseFromString(outputs[0].vec<string>()(0)));
+  xla::ProgramShape program_shape(program_shape_proto);
   EXPECT_EQ(program_shape.parameters_size(), 1);
 
   VLOG(2) << "Param: "
@@ -520,7 +527,7 @@ TEST(RawApiTest, CompileWithXlaReturnShapes) {
           << xla::ShapeUtil::HumanStringWithLayout(program_shape.result());
 
   xla::ProgramShape xla_program_shape =
-      XlaCompiledProgramShape(xla_computation, *shapes);
+      XlaCompiledProgramShape(xla_computation, xla::ProgramShape(*shapes));
   EXPECT_TRUE(xla::LayoutUtil::Equal(
       xla::ShapeUtil::GetSubshape(program_shape.parameters(0), {0}).layout(),
       xla::ShapeUtil::GetSubshape(xla_program_shape.parameters(0), {0})
@@ -547,11 +554,11 @@ TEST(RawApiTest, DotGeneralWithLayoutTest) {
   auto config = c.mutable_config();
   auto shapes = config->mutable_program_shape();
   *shapes->add_parameters() =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 2}, {0, 1});
+      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 2}, {0, 1}).ToProto();
   *shapes->add_parameters() =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 1}, {0, 1});
+      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 1}, {0, 1}).ToProto();
   *shapes->mutable_result() =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 1}, {0, 1});
+      xla::ShapeUtil::MakeShapeWithLayout(xla::F32, {2, 1}, {0, 1}).ToProto();
   StoreComputationSnapshot(Dot(), c.mutable_hlo_snapshot());
 
   xrt::XRTExecutionConfig e;
@@ -592,7 +599,7 @@ TEST(RawApiTest, CompileAndExecuteZeroArg) {
   xrt::XLAComputation c;
   auto config = c.mutable_config();
   auto shapes = config->mutable_program_shape();
-  *shapes->mutable_result() = xla::ShapeUtil::MakeShape(xla::F32, {});
+  *shapes->mutable_result() = xla::ShapeUtil::MakeShape(xla::F32, {}).ToProto();
 
   xrt::XRTExecutionConfig e;
   e.set_release_input_handles(true);
@@ -632,10 +639,13 @@ TEST(RawApiTest, CompileAndExecuteReturnTuple) {
   xrt::XLAComputation c;
   auto config = c.mutable_config();
   auto shapes = config->mutable_program_shape();
-  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::F32, {2});
-  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::F32, {2});
-  *shapes->mutable_result() = xla::ShapeUtil::MakeTupleShape(
-      {xla::ShapeUtil::MakeShape(xla::F32, {2})});
+  *shapes->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes->mutable_result() =
+      xla::ShapeUtil::MakeTupleShape({xla::ShapeUtil::MakeShape(xla::F32, {2})})
+          .ToProto();
   StoreComputationSnapshot(AddAndTuple(), c.mutable_hlo_snapshot());
 
   xrt::XRTExecutionConfig e;
@@ -675,10 +685,13 @@ TEST(RawApiTest, LeakCompilationReference) {
   xrt::XLAComputation c;
   auto config = c.mutable_config();
   auto shapes = config->mutable_program_shape();
-  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::F32, {2});
-  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::F32, {2});
-  *shapes->mutable_result() = xla::ShapeUtil::MakeTupleShape(
-      {xla::ShapeUtil::MakeShape(xla::F32, {2})});
+  *shapes->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes->mutable_result() =
+      xla::ShapeUtil::MakeTupleShape({xla::ShapeUtil::MakeShape(xla::F32, {2})})
+          .ToProto();
   StoreComputationSnapshot(AddAndTuple(), c.mutable_hlo_snapshot());
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
@@ -703,9 +716,9 @@ TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
   xrt::XLAComputation c;
   auto config = c.mutable_config();
   auto shapes = config->mutable_program_shape();
-  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::S64, {});
-  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::S64, {});
-  *shapes->mutable_result() = xla::ShapeUtil::MakeShape(xla::S64, {});
+  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::S64, {}).ToProto();
+  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::S64, {}).ToProto();
+  *shapes->mutable_result() = xla::ShapeUtil::MakeShape(xla::S64, {}).ToProto();
   StoreComputationSnapshot(AddS64(), c.mutable_hlo_snapshot());
 
   xrt::XRTExecutionConfig e;
@@ -739,11 +752,11 @@ TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
   auto expected = xla::LiteralUtil::CreateR0<int64>(15123899);
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 
-  xla::ProgramShape program_shape;
+  xla::ProgramShapeProto program_shape;
   EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 2);
-  EXPECT_TRUE(
-      xla::ShapeUtil::HasPrimitiveType(program_shape.result(), xla::S64));
+  EXPECT_TRUE(xla::ShapeUtil::HasPrimitiveType(
+      xla::Shape(program_shape.result()), xla::S64));
 }
 
 }  // namespace

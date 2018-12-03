@@ -19,10 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import enum
+import enum  # pylint: disable=g-bad-import-order
 import numpy as np
 
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -36,7 +38,6 @@ from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
 
 
@@ -109,7 +110,7 @@ def experimental_fit_loop(model,
         mode=_Mode.TRAIN)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.call_for_each_replica(
+     grouped_session_args) = current_strategy.extended.call_for_each_replica(
          _per_device_fit_function, args=(model._grouped_model_train,))
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -152,7 +153,7 @@ def experimental_fit_loop(model,
       name='steps_per_run')
 
   with current_strategy.scope():
-    ctx = current_strategy.run_steps_on_dataset(
+    ctx = current_strategy.extended.experimental_run_steps_on_iterator(
         step_fn, iterator, iterations=steps_per_run,
         initial_loop_values=initial_loop_values)
 
@@ -300,7 +301,7 @@ def experimental_test_loop(model,
         mode=_Mode.TEST)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.call_for_each_replica(
+     grouped_session_args) = current_strategy.extended.call_for_each_replica(
          _per_device_eval_function, args=(model._grouped_model_test,))
 
     (all_inputs, all_outputs, all_updates,
@@ -335,7 +336,7 @@ def experimental_test_loop(model,
   with current_strategy.scope():
     # TODO(priyag): Use steps_per_run when we use new metrics as they will
     # allow handling metric computation at each step using variables.
-    ctx = current_strategy.run_steps_on_dataset(
+    ctx = current_strategy.extended.experimental_run_steps_on_iterator(
         step_fn, iterator, iterations=1,
         initial_loop_values=initial_loop_values)
 
@@ -414,7 +415,7 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
         mode=_Mode.PREDICT)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.call_for_each_replica(
+     grouped_session_args) = current_strategy.extended.call_for_each_replica(
          _per_device_predict_function, args=(model._grouped_model_predict,))
 
     (all_inputs, all_outputs, all_updates,
@@ -445,7 +446,7 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
 
   with current_strategy.scope():
     # TODO(priyag, sourabhbajaj): Support steps_per_run if/when we add outfeed.
-    ctx = current_strategy.run_steps_on_dataset(
+    ctx = current_strategy.extended.experimental_run_steps_on_iterator(
         step_fn, iterator, iterations=1,
         initial_loop_values=initial_loop_values)
 
@@ -485,7 +486,17 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
   ]
 
 
-def _clone_and_build_model(model, inputs=None, targets=None):
+def _custom_compile_for_predict(model):
+  """Custom compile for TPU predict mode."""
+  model.total_loss = None
+  model._fit_function = None
+  model._eval_function = None
+  model.train_function = None
+  model.test_function = None
+  model.predict_function = None
+
+
+def _clone_and_build_model(model, inputs=None, targets=None, mode=None):
   """Clone and build the given keras_model."""
   # We need to set the import here since we run into a circular dependency
   # error.
@@ -512,24 +523,27 @@ def _clone_and_build_model(model, inputs=None, targets=None):
 
   if isinstance(targets, tuple):
     targets = nest.flatten(targets)
-  cloned_model.compile(
-      optimizer,
-      model.loss,
-      metrics=metrics_module.clone_metrics(model._compile_metrics),
-      loss_weights=model.loss_weights,
-      sample_weight_mode=model.sample_weight_mode,
-      weighted_metrics=metrics_module.clone_metrics(
-          model._compile_weighted_metrics),
-      target_tensors=targets)
+  if mode == _Mode.PREDICT:
+    _custom_compile_for_predict(cloned_model)
+  else:
+    cloned_model.compile(
+        optimizer,
+        model.loss,
+        metrics=metrics_module.clone_metrics(model._compile_metrics),
+        loss_weights=model.loss_weights,
+        sample_weight_mode=model.sample_weight_mode,
+        weighted_metrics=metrics_module.clone_metrics(
+            model._compile_weighted_metrics),
+        target_tensors=targets)
   return cloned_model
 
 
 def clone_model_on_replicas(model, strategy, make_callback_model=False,
                             inputs=None, targets=None, mode=None):
   """Create a cloned model on each replica."""
-  with strategy.scope():
-    grouped_model = strategy.call_for_each_replica(
-        _clone_and_build_model, args=(model, inputs, targets))
+  with K.get_graph().as_default(), strategy.scope():
+    grouped_model = strategy.extended.call_for_each_replica(
+        _clone_and_build_model, args=(model, inputs, targets, mode))
     if mode is _Mode.TRAIN:
       model._grouped_model_train = grouped_model
     elif mode is _Mode.TEST:
@@ -570,6 +584,9 @@ def _get_input_from_iterator(iterator, model):
 
 def _get_execution_function(model, mode):
   """Get function to run one step of distributed model execution."""
+  if context.executing_eagerly():
+    return _get_eager_execution_function(model, mode)
+
   strategy = model._distribution_strategy
   if not model._grouped_model:
     clone_model_on_replicas(
@@ -583,7 +600,7 @@ def _get_execution_function(model, mode):
     # Create train ops on each of the devices when we call
     # `_per_device_fit_function`.
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = strategy.call_for_each_replica(
+     grouped_session_args) = strategy.extended.call_for_each_replica(
          _per_device_function, args=(model._grouped_model,))
 
     if mode == 'train':
@@ -614,6 +631,40 @@ def _get_execution_function(model, mode):
         **all_session_args)
 
 
+def _get_eager_execution_function(model, mode):
+  """Get function to run one step of distributed model eager execution."""
+  strategy = model._distribution_strategy
+  if not model._grouped_model:
+    clone_model_on_replicas(
+        model, strategy, make_callback_model=(mode == 'train'))
+
+  def _per_device_function(model):
+    f = model._get_execution_function(mode)
+    return (f.inputs, f.outputs)
+
+  # NOTE(priyag): Try creating a new FuncGraph within DS scope instead of using
+  # the global one.
+  with K.get_graph().as_default(), strategy.scope():
+    # Create train ops on each of the devices when we call
+    # `_per_device_fit_function`.
+    (grouped_inputs, grouped_outputs) = strategy.call_for_each_replica(
+        _per_device_function, args=(model._grouped_model,))
+
+    # Unwrap all the per device values returned from `call_for_each_replica`.
+    # Unwrapping per device values gives you a list of values that can be
+    # used to construct a new train function that is composed of inptus/outputs
+    # on all the devices over which the model is distributed.
+    (all_inputs, all_outputs, _, _) = distributed_training_utils.unwrap_values(
+        strategy,
+        grouped_inputs,
+        grouped_outputs)
+
+    return K.function(
+        all_inputs,
+        all_outputs,
+        name='eager_distributed_{}_function'.format(mode))
+
+
 def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """Prepare feed values to the model execution function.
 
@@ -640,7 +691,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
         None for _ in range(len(model.outputs) * strategy.num_replicas_in_sync)
     ]
   ins = inputs + targets + sample_weights
-  if mode == 'train' and not isinstance(K.learning_phase(), int):
+  if mode == 'train' and not isinstance(K.symbolic_learning_phase(), int):
     ins += [True]
   return ins
 

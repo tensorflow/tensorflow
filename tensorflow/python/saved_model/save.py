@@ -27,6 +27,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -42,17 +43,50 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
+def _check_for_functional_keras_model(root):
+  """Makes an export signature for `root` if it's a functional Keras Model."""
+  # If nothing is decorated yet but this is a functional Keras Model (duck
+  # typed), we'll try to make a signature ourselves.
+  try:
+    inputs = root.inputs
+    input_names = root.input_names
+  except AttributeError:
+    return None
+  input_signature = []
+  for input_tensor, input_name in zip(inputs, input_names):
+    input_signature.append(tensor_spec.TensorSpec(
+        shape=input_tensor.shape, dtype=input_tensor.dtype,
+        name=input_name))
+
+  @def_function.function(input_signature=input_signature)
+  def _wrapped_model(*args):
+    outputs_list = nest.flatten(root(inputs=list(args)))
+    return {name: output for name, output
+            in zip(root.output_names, outputs_list)}
+  return _wrapped_model
+
+
 def _find_function_to_export(root):
   """Iterate over `root`'s attributes, finding traced functions."""
-  functions = []
-  function_attribute_names = []
+  exported_function = None
+  previous_attribute_name = None
   for attribute_name in dir(root):
     attribute_value = getattr(root, attribute_name, None)
     if isinstance(attribute_value, def_function.PolymorphicFunction):
-      functions.append(attribute_value)
-      function_attribute_names.append(attribute_name)
-  # TODO(allenl): Automatically infer signatures for Keras functional models?
-  if not functions:
+      if exported_function is not None:
+        raise ValueError(
+            ("Exporting an object with no "
+             "tf.saved_model.save(..., signatures=...) "
+             "argument specified, and with more than one "
+             "@tf.function-decorated method attached to it: {}. The signature "
+             "keys for these functions are ambiguous. Specify signature "
+             "functions explicitly.").format(
+                 [previous_attribute_name, attribute_name]))
+      exported_function = attribute_value
+      previous_attribute_name = attribute_name
+  if exported_function is None:
+    exported_function = _check_for_functional_keras_model(root)
+  if exported_function is None:
     raise ValueError(
         ("Exporting an object with no tf.saved_model.save(..., signatures=...) "
          "argument specified, and with no @tf.function-decorated methods "
@@ -61,14 +95,7 @@ def _find_function_to_export(root):
          "signatures does not make sense, as the only consumers will expect "
          "signatures. Either decorate a method or specify a signature function "
          "explicitly."))
-  elif len(functions) > 1:
-    raise ValueError(
-        ("Exporting an object with no tf.saved_model.save(..., signatures=...) "
-         "argument specified, and with more than one @tf.function-decorated "
-         "method attached to it: {}. The signature keys for these functions "
-         "are ambiguous. Specify signature functions explicitly.").format(
-             function_attribute_names))
-  return functions[0]
+  return exported_function
 
 
 def _canonicalize_signatures(signatures):
@@ -449,6 +476,19 @@ def save(obj, export_dir, signatures=None):
       m, '/tmp/saved_model/',
       signatures=m.call.get_concrete_function(
           tf.TensorSpec(shape=[None, 3], dtype=tf.float32, name="inp")))
+  ```
+
+  `tf.keras.Model` instances constructed from inputs and outputs already have a
+  signature and so do not require a `@tf.function` decorator or a `signatures`
+  argument. If neither are specified, the model's forward pass is exported.
+
+  ```python
+  x = input_layer.Input((4,), name="x")
+  y = core.Dense(5, name="out")(x)
+  model = training.Model(x, y)
+  tf.saved_model.save(model, '/tmp/saved_model/')
+  # The exported SavedModel takes "x" with shape [None, 4] and returns "out"
+  # with shape [None, 5]
   ```
 
   Variables must be tracked by assigning them to an attribute of a tracked

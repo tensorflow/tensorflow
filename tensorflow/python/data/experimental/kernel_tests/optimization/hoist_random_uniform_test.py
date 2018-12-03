@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -91,7 +92,8 @@ class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
             ["Zip[0]", "Map"] if will_optimize else ["Map"])).map(function)
 
     options = dataset_ops.Options()
-    options.experimental_hoist_random_uniform = True
+    options.experimental_optimization = OptimizationOptions()
+    options.experimental_optimization.hoist_random_uniform = True
     dataset = dataset.with_options(options)
     self._testDataset(dataset)
 
@@ -107,7 +109,8 @@ class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(5).apply(
         optimization.assert_next(["Zip[0]", "Map"])).map(random_with_capture)
     options = dataset_ops.Options()
-    options.experimental_hoist_random_uniform = True
+    options.experimental_optimization = OptimizationOptions()
+    options.experimental_optimization.hoist_random_uniform = True
     dataset = dataset.with_options(options)
     self._testDataset(dataset)
 

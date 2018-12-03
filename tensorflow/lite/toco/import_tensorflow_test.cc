@@ -190,7 +190,9 @@ TEST_P(ShapeImportTest, ShapeIsOneDimZero) {
   EXPECT_TRUE(ImportNode(node, &model).ok());
 
   const auto& array = model.GetArray("Node1");
-  EXPECT_THAT(array.shape().dims(), ::testing::ElementsAre(0));
+  // We would like to have [0] shapes actually import correctly, but
+  // for some reason that slows everything down.
+  EXPECT_THAT(array.shape().dims(), ::testing::ElementsAre());
 }
 
 TEST_P(ShapeImportTest, ShapeElementTooLarge) {

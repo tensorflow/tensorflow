@@ -348,6 +348,7 @@ class ProfileAnalyzerPrintSourceTest(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     super(ProfileAnalyzerPrintSourceTest, self).tearDown()
 
+  @test_util.run_deprecated_v1
   def testPrintSourceForWhileLoop(self):
     prof_output = self.prof_analyzer.print_source([__file__])
 
@@ -361,6 +362,7 @@ class ProfileAnalyzerPrintSourceTest(test_util.TensorFlowTestCase):
         r"\[(\|)+(\s)*\] .*us .*7\(55\) .*L%d.*(\S)+" % self.loop_lineno,
         prof_output.lines)
 
+  @test_util.run_deprecated_v1
   def testPrintSourceOutputContainsClickableLinks(self):
     prof_output = self.prof_analyzer.print_source([__file__])
     any_match, line_index = _at_least_one_line_matches(
@@ -377,6 +379,7 @@ class ProfileAnalyzerPrintSourceTest(test_util.TensorFlowTestCase):
         break
     self.assertTrue(any_menu_item_match)
 
+  @test_util.run_deprecated_v1
   def testPrintSourceWithNonDefaultTimeUnit(self):
     prof_output = self.prof_analyzer.print_source([
         __file__, "--time_unit", "ms"])
@@ -391,6 +394,7 @@ class ProfileAnalyzerPrintSourceTest(test_util.TensorFlowTestCase):
         r"\[(\|)+(\s)*\] .*ms .*7\(55\) .*L%d.*(\S)+" % self.loop_lineno,
         prof_output.lines)
 
+  @test_util.run_deprecated_v1
   def testPrintSourceWithNodeNameFilter(self):
     prof_output = self.prof_analyzer.print_source([
         __file__, "--node_name_filter", "x$"])
@@ -423,6 +427,7 @@ class ProfileAnalyzerPrintSourceTest(test_util.TensorFlowTestCase):
         break
     self.assertTrue(any_menu_item_match)
 
+  @test_util.run_deprecated_v1
   def testPrintSourceWithOpTypeFilter(self):
     prof_output = self.prof_analyzer.print_source([
         __file__, "--op_type_filter", "Less"])
