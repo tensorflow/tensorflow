@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 
@@ -52,8 +53,34 @@ Status XlaGpuDeviceFactory::CreateDevices(
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
     return Status::OK();
   }
-
-  for (int i = 0; i < platform.ValueOrDie()->VisibleDeviceCount(); ++i) {
+  const auto& allowed_gpus =
+      session_options.config.gpu_options().visible_device_list();
+  std::unordered_set<int> gpu_ids;
+  int num_visible_devices = platform.ValueOrDie()->VisibleDeviceCount();
+  if (allowed_gpus.empty()) {
+    for (int i = 0; i < num_visible_devices; ++i) gpu_ids.insert(i);
+  } else {
+    const std::vector<string> visible_devices =
+        str_util::Split(allowed_gpus, ',');
+    // copied from gpu/gpu_device.cc Should be redundant since code would fail
+    // there before it gets to here.
+    for (const string& platform_gpu_id_str : visible_devices) {
+      int32 platform_gpu_id;
+      if (!strings::safe_strto32(platform_gpu_id_str, &platform_gpu_id)) {
+        return errors::InvalidArgument(
+            "Could not parse entry in 'visible_device_list': '",
+            platform_gpu_id_str, "'. visible_device_list = ", allowed_gpus);
+      }
+      if (platform_gpu_id < 0 || platform_gpu_id >= num_visible_devices) {
+        return errors::InvalidArgument(
+            "'visible_device_list' listed an invalid GPU id '", platform_gpu_id,
+            "' but visible device count is ", num_visible_devices);
+      }
+      gpu_ids.insert(platform_gpu_id);
+    }
+  }
+  for (int i = 0; i < num_visible_devices; ++i) {
+    if (gpu_ids.count(i) == 0) continue;
     XlaDevice::Options options;
     options.platform = platform.ValueOrDie();
     options.device_name_prefix = name_prefix;
