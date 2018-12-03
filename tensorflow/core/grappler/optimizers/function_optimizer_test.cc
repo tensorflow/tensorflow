@@ -881,6 +881,59 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithControlDependencies) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
+TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithDevicePlacement) {
+  using test::function::NDef;
+  using FDH = FunctionDefHelper;
+
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+
+  FunctionDef mul_func = FunctionDefHelper::Create(
+      "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "mul:z:0"}});
+  // Add device placement spec to the function body node.
+  (*mul_func.mutable_node_def())[0].set_device("/device:CPU:1");
+
+  // We need fully defined device names to run the placer for inlined function.
+  const string cpu0 = "/job:work/replica:1/task:1/device:CPU:0";
+  const string cpu1 = "/job:work/replica:1/task:1/device:CPU:1";
+
+  // Build a graph to compute c = MyMul(a, b)
+  GrapplerItem item;
+  item.fetch = {"d"};
+  item.graph = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, cpu0),
+       NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, cpu1),
+       NDef("c", "PartitionedCall", {"a", "b"},
+            {{"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+             {"Tout", DataTypeSlice{DT_FLOAT}},
+             {"f", FDH::FunctionRef("MyMul", {{"T", DT_FLOAT}})}},
+            cpu0),
+       NDef("d", "Identity", {"c"}, {{"T", DT_FLOAT}}, cpu0)},
+      // Function library.
+      {mul_func});
+  ASSERT_TRUE(item.InferDevicesFromGraph().ok());
+
+  GraphDef optimized_graph;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
+
+  GraphDef expected = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, cpu0),
+       NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, cpu1),
+
+       // Function must be inlined and `mul` node placed on a requested device.
+       NDef("c/x", "Identity", {"a:0"}, {{"T", DT_FLOAT}}, cpu1),
+       NDef("c/y", "Identity", {"b:0"}, {{"T", DT_FLOAT}}, cpu1),
+       NDef("c/mul", "Mul", {"c/x", "c/y"}, {{"T", DT_FLOAT}}, cpu1),
+
+       NDef("d", "Identity", {"c/mul:0"}, {{"T", DT_FLOAT}}, cpu0)},
+      // Function library.
+      {mul_func});
+
+  CompareGraphs(expected, optimized_graph);
+}
+
 TEST_F(FunctionOptimizerTest, SpecializeFunctionXTimesTwo) {
   using test::function::NDef;
 

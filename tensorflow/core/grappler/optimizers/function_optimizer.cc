@@ -22,8 +22,11 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.h"
@@ -111,10 +114,26 @@ AttrSlice FunctionInstantiationAttributes(const FunctionDef& func,
   }
 }
 
-class FakeCPUDevice : public Device {
+// This is a fake device that should not be used for any op kernel execution,
+// the only purpose of this device is to be passed as a part of DeviceSet to the
+// Placer.
+class FakeDevice : public Device {
  public:
-  FakeCPUDevice(Env* env, const DeviceAttributes& attr) : Device(env, attr) {}
+  FakeDevice(Env* env, const string& device) : Device(env, attr(device)) {}
+  explicit FakeDevice(const string& device) : FakeDevice(nullptr, device) {}
   Status Sync() override { return Status::OK(); }
+
+ private:
+  static DeviceAttributes attr(const string& device) {
+    DeviceNameUtils::ParsedName parsed_name;
+    bool parsed = DeviceNameUtils::ParseFullName(device, &parsed_name);
+    DCHECK(parsed) << "Failed to parse full device name: " << device;
+
+    DeviceAttributes attr;
+    attr.set_name(device);
+    attr.set_device_type(parsed_name.type);
+    return attr;
+  }
 };
 
 // -------------------------------------------------------------------------- //
@@ -240,6 +259,7 @@ class FunctionOptimizerContext {
         graph_version_(item.graph.versions().producer()),
         opt_level_(opt_level),
         function_library_(OpRegistry::Global(), item.graph.library()),
+        available_device_names_(item.devices().begin(), item.devices().end()),
         graph_view_(&item.graph) {
     InitializeTrulyConstNodes(item);
     InitializeFetchNodes(item);
@@ -274,6 +294,18 @@ class FunctionOptimizerContext {
   const string& grappler_item_id() const { return grappler_item_id_; }
 
   const gtl::FlatSet<string>& fetch_tensors() const { return fetch_tensors_; }
+
+  const DeviceSet* devices() const {
+    // Create fake devices lazily only if we need a DeviceSet.
+    if (available_devices_.empty() && !available_device_names_.empty()) {
+      for (const string& name : available_device_names_) {
+        auto device = absl::make_unique<FakeDevice>(name);
+        available_device_set_.AddDevice(device.get());
+        available_devices_.push_back(std::move(device));
+      }
+    }
+    return &available_device_set_;
+  }
 
   bool IsFetchNode(const string& node_name) const {
     return fetch_nodes_.find(node_name) != fetch_nodes_.end();
@@ -350,11 +382,8 @@ class FunctionOptimizerContext {
   void InitializeFunctionLibraryRuntime() {
     if (!flr_) {
       Env* env = Env::Default();
-      DeviceAttributes attr;
-      attr.set_name("/device:CPU:0");
-      attr.set_device_type("CPU");
       std::vector<std::unique_ptr<Device>> devices;
-      devices.push_back(absl::make_unique<FakeCPUDevice>(env, attr));
+      devices.push_back(absl::make_unique<FakeDevice>(env, "/device:CPU:0"));
       device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
       OptimizerOptions optimizer_opts;
       optimizer_opts.set_do_function_inlining(true);
@@ -374,6 +403,16 @@ class FunctionOptimizerContext {
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> process_flr_;
   FunctionLibraryRuntime* flr_ = nullptr;
+
+  // Fully defined names of the devices available to the GrapplerItem.
+  const gtl::FlatSet<string> available_device_names_;
+
+  // List of available `FakedDevices` (lazily initialized, see devices()).
+  mutable std::vector<std::unique_ptr<Device>> available_devices_;
+
+  // DeviceSet of fake devices (`FakeDevice`) constructed from
+  // available_devices_ (lazily initialized).
+  mutable DeviceSet available_device_set_;
 
   // Nodes that are Const and not in feed.
   std::unordered_map<string, const NodeDef*> truly_const_nodes_;
@@ -1305,7 +1344,58 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   // edges from inlined side-effectful ops.
   std::vector<string> side_effectful_nodes;
 
-  for (NodeDef& func_body_node : *item.mutable_function_body().mutable_node()) {
+  // ------------------------------------------------------------------------ //
+  // First we need to assign device placements to all function body nodes.
+
+  GraphDef placed_graph_def;
+
+  const DeviceSet* devices = ctx->devices();
+
+  if (devices->devices().empty()) {
+    // If there are no devices available for placer, we just put all nodes to
+    // the same device as a function caller node. This can happen if Grappler is
+    // running "offline", without active runtime session, for example as a part
+    // of a batch job for graph analysis/optimization.
+    VLOG(3) << "Assign function call node device to all function body nodes. "
+            << "Device: " << func_node.device();
+    placed_graph_def = item.mutable_function_body();
+    for (NodeDef& node : *placed_graph_def.mutable_node()) {
+      node.set_device(func_node.device());
+    }
+  } else {
+    // If we are running in an active runtime session, Grappler will get the
+    // graph after initial placing is done, and we should have devices for the
+    // placer.
+    VLOG(3) << "Run placer for instantiated function body. Devices: ["
+            << absl::StrJoin(
+                   devices->devices(), ", ",
+                   [](string* out, const Device* d) { out->append(d->name()); })
+            << "]";
+
+    // Construct a Graph object from the instantiated function body.
+    GraphConstructorOptions opts;
+    Graph graph(ctx->function_library());
+    TF_RETURN_IF_ERROR(
+        ConvertGraphDefToGraph(opts, item.function_body(), &graph));
+
+    // Use function caller node device as a default for placer.
+    const Device* default_device =
+        devices->FindDeviceByName(func_node.device());
+
+    Placer placer(&graph, devices, nullptr, /* No session options */
+                  default_device);
+    TF_RETURN_IF_ERROR(placer.Run());
+
+    // Convert Graph back to the GraphDef.
+    graph.ToGraphDef(&placed_graph_def);
+  }
+
+  // ------------------------------------------------------------------------ //
+  // After all nodes placed we need to prepare them for inlining into the
+  // optimized graph: turn placeholders into identities, update nodes
+  // connectivity, etc...
+
+  for (NodeDef& func_body_node : *placed_graph_def.mutable_node()) {
     if (item.IsInputPlaceholder(func_body_node.name())) {
       // Turn input placeholders into identity node.
       DCHECK_EQ(0, func_body_node.input_size());
@@ -1337,10 +1427,6 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
     TF_RETURN_IF_ERROR(
         AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &func_body_node));
 
-    // TODO(ezhulenev): Call PartitionedCallOp to get placement for all function
-    // body nodes, for now just place it on function caller node device.
-    func_body_node.set_device(func_node.device());
-
     // If the function body has a side-effectful op, we double check that the
     // function call node has an output control edge, otherwise we can't safely
     // do inlining and guarantee that node will be executed.
@@ -1362,7 +1448,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
 
     // TODO(ezhulenev): Inline nested indirect function calls.
 
-    // Move the node to the main graph.
+    // Move the node to the optimized graph.
     optimized_graph->add_node()->Swap(&func_body_node);
   }
 

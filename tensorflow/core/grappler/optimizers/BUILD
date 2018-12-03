@@ -141,6 +141,7 @@ cc_library(
     deps = [
         ":graph_optimizer",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
