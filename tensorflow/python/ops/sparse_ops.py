@@ -1425,7 +1425,7 @@ def sparse_tensor_to_dense(sp_input,
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
 
-  return sparse_to_dense(
+  return gen_sparse_ops.sparse_to_dense(
       sp_input.indices,
       sp_input.dense_shape,
       sp_input.values,
