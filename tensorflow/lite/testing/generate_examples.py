@@ -1452,23 +1452,27 @@ def make_conv_with_shared_weights_tests(zip_path):
     input_shape, filter_shape = get_tensor_shapes(parameters)
     input_tensor = tf.placeholder(
         dtype=tf.float32, name="input", shape=input_shape)
+    input_tensors = [input_tensor]
 
     # Construct a constant weights tensor which will be used by both Conv2D.
     filter_tensor = tf.constant(
         create_tensor_data(np.float32, filter_shape), dtype=tf.float32)
-    input_tensors = [input_tensor]
+
+    # Ensure that FuseBinaryIntoFollowingAffine works with an input which
+    # is shared by multiple affine ops.
+    conv_input = input_tensor + 0.1
 
     # Construct 2 Conv2D operations which use exactly the same input and
     # weights.
     result1 = tf.nn.conv2d(
-        input_tensor,
+        conv_input,
         filter_tensor,
         strides=parameters["strides"],
         dilations=parameters["dilations"],
         padding=parameters["padding"],
         data_format=parameters["data_format"])
     result2 = tf.nn.conv2d(
-        input_tensor,
+        conv_input,
         filter_tensor,
         strides=parameters["strides"],
         dilations=parameters["dilations"],
