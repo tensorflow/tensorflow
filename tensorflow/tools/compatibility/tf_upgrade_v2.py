@@ -453,6 +453,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.losses.Reduction.SUM_BY_NONZERO_WEIGHTS",
         "tf.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS":
             "tf.compat.v1.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS",
+        "tf.lite.constants.FLOAT":
+            "tf.float32",
+        "tf.lite.constants.INT32":
+            "tf.int32",
+        "tf.lite.constants.INT64":
+            "tf.int64",
+        "tf.lite.constants.STRING":
+            "tf.string",
+        "tf.lite.constants.QUANTIZED_UINT8":
+            "tf.uint8",
     }
     # pylint: enable=line-too-long
 
