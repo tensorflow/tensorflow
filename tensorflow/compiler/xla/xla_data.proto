@@ -108,6 +108,16 @@ enum Format {
   SPARSE = 2;
 }
 
+// Describes a tile used in tiling-based layout. Refer to
+// g3doc/layout_with_tiling.md for details about tiling-based layout.
+message Tile {
+  // Number of elements in each dimension of the tile. It's ordered from the
+  // most major dimension of the tile to the most minor dimension of the tile.
+  // The dimensions correspond to a suffix of the dimensions of the shape being
+  // tiled.
+  repeated int64 dimensions = 1;
+}
+
 // A layout describes how the array is placed in (1D) memory space.  This
 // includes the minor-to-major ordering of dimensions within a shape.
 //
@@ -137,6 +147,20 @@ message Layout {
   // can be used to determine the maximum size in bytes of arrays stored in
   // memory.  This field must be unset unless the format is SPARSE.
   int64 max_sparse_elements = 5;
+
+  // A sequence of tiles, starting from the tile that's applied first to the
+  // Shape.
+  //
+  // TODO(b/119839262): implement tiling in each backend or add Unimplemented
+  // error.
+  repeated Tile tiles = 6;
+
+  // Bit size of each element. If the size is bigger than what the element
+  // type requires, the value is stored in the least significant
+  // bits and the additional most significant bits are filled with 0's.
+  //
+  // TODO(b/119839262): implement in each backend or add Unimplemented error.
+  int64 element_size_in_bits = 7;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.

@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.autograph.operators import exceptions
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -32,6 +33,7 @@ class ExceptionsTest(test.TestCase):
           constant_op.constant(True), lambda: constant_op.constant('ignored'))
       self.evaluate(t)
 
+  @test_util.run_deprecated_v1
   def test_assert_tf_triggered(self):
     with self.cached_session() as sess:
       t = exceptions.assert_stmt(
@@ -42,6 +44,7 @@ class ExceptionsTest(test.TestCase):
                                    'test message'):
         self.evaluate(t)
 
+  @test_util.run_deprecated_v1
   def test_assert_tf_multiple_printed_values(self):
     two_tensors = [
         constant_op.constant('test message'),

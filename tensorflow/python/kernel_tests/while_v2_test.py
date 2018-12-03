@@ -43,6 +43,7 @@ from tensorflow.python.platform import test
 
 class WhileV2Test(test.TestCase, parameterized.TestCase):
 
+  @test_util.run_deprecated_v1
   def testSingleLoopVar(self):
     x = constant_op.constant(2.)
     ret = while_loop_v2(
@@ -64,6 +65,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertEqual(16., eval_result[0])
       self.assertSequenceEqual(sess.run(grad), [32.])
 
+  @test_util.run_deprecated_v1
   def testMultipleLoopVarsBasic(self):
     x = constant_op.constant(5.)
     y = constant_op.constant(3.)
@@ -84,6 +86,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(ret), [45., 3.])
       self.assertSequenceEqual(self.evaluate(grad), [9.])
 
+  @test_util.run_deprecated_v1
   def testMultipleLoopVars(self):
     x = constant_op.constant(5.)
     y = constant_op.constant(3.)
@@ -114,6 +117,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(grady_1), [6.])
       self.assertSequenceEqual(self.evaluate(grady_2), [61.])
 
+  @test_util.run_deprecated_v1
   def testMultipleWhileLoops(self):
     x = constant_op.constant(2.)
     ret1 = while_loop_v2(
@@ -128,6 +132,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(grad), [32.])
       self.assertSequenceEqual(self.evaluate(grad_grad), [48.])
 
+  @test_util.run_deprecated_v1
   def testDoubleDerivative(self):
     x = constant_op.constant(2.)
     ret = while_loop_v2(
@@ -140,6 +145,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(grad), [32.])
       self.assertSequenceEqual(self.evaluate(grad_grad), [48.])
 
+  @test_util.run_deprecated_v1
   def testPruning(self):
     x = constant_op.constant(1)
 
@@ -175,6 +181,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     g = GetOptimizedGraph()
     self.assertEqual(len([n for n in g.node if n.op == "Enter"]), 2)
 
+  @test_util.run_deprecated_v1
   def testCaptureExternalTensorInCond(self):
     x = constant_op.constant(2.)
     y = constant_op.constant(1.)
@@ -187,6 +194,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(ret), 18.)
       self.assertSequenceEqual(self.evaluate(grad), [9.])
 
+  @test_util.run_deprecated_v1
   def testCaptureExternalTensorInBody(self):
     x = constant_op.constant(2.)
     y = constant_op.constant(3.)
@@ -197,6 +205,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(ret), 18.)
       self.assertSequenceEqual(self.evaluate(grad), [9.])
 
+  @test_util.run_deprecated_v1
   def testLoopWithTensorListPushBack(self):
     x = constant_op.constant(2.)
 
@@ -219,6 +228,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertEqual(sess.run(ret[0]), 16.)
       self.assertSequenceEqual(self.evaluate(grad), [32.])
 
+  @test_util.run_deprecated_v1
   def testDuplicateAccumulator(self):
     x = constant_op.constant(2.)
 
@@ -259,6 +269,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       ("PartiallyDefinedShape", [None, 2]),
       ("FullyDefinedShape", [1, 2]),
   )
+  @test_util.run_deprecated_v1
   def testAccumulatorElementShape(self, shape):
 
     def MatchShape(actual_tensor_shape):
@@ -344,6 +355,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
             while2_op.get_attr("body").name, r"foo_while_1_body_\d*")
 
   @test_util.enable_control_flow_v2
+  @test_util.run_deprecated_v1
   def testWhileAndTensorArray(self):
     with self.cached_session() as sess:
       param = constant_op.constant(2.0)
@@ -354,6 +366,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       r = gradients_impl.gradients(r, param)[0]
       self.assertAllClose(21.0, self.evaluate(r))
 
+  @test_util.run_deprecated_v1
   def testNestedWhile(self):
     # Compute sum of geometric progression: n^0 + n^1 + ... + n^m
     # We compute the pow using a while loop.
@@ -377,6 +390,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(result), 364.)
       self.assertSequenceEqual(self.evaluate(grad), [547.])
 
+  @test_util.run_deprecated_v1
   def testIdentityNodeInBody(self):
 
     def Body(v):
@@ -392,6 +406,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(ret), 16.)
       self.assertSequenceEqual(self.evaluate(grad), [32.])
 
+  @test_util.run_deprecated_v1
   def testNestedWhileAndTensorArray(self):
     n = constant_op.constant(3.0)
 

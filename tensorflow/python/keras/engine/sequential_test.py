@@ -132,6 +132,7 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     self.assertFalse(model._is_graph_network)
 
   @parameterized.parameters((True,), (False,))
+  @tf_test_util.run_deprecated_v1
   def test_training_and_eval_methods_on_symbolic_tensors(self, deferred):
     with self.cached_session():
 
@@ -219,6 +220,7 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     inner_model.trainable = True
     self.assertEqual(len(model.trainable_weights), 4)
 
+  @tf_test_util.run_deprecated_v1
   def test_sequential_update_disabling(self):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))

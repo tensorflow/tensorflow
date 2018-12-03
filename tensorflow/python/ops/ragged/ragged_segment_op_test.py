@@ -110,6 +110,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
       (ragged.segment_mean, mean, [5, 4, 3, 2, 1, 0]),
       (ragged.segment_mean, mean, [0, 0, 0, 10, 10, 10]),
   )
+  @test_util.run_deprecated_v1
   def testRaggedSegment_Int(self, segment_op, combiner, segment_ids):
     rt_as_list = [[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]]
     rt = ragged.constant(rt_as_list)
@@ -146,6 +147,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
       (ragged.segment_sqrt_n, sqrt_n, [5, 4, 3, 2, 1, 0]),
       (ragged.segment_sqrt_n, sqrt_n, [0, 0, 0, 10, 10, 10]),
   )
+  @test_util.run_deprecated_v1
   def testRaggedSegment_Float(self, segment_op, combiner, segment_ids):
     rt_as_list = [[0., 1., 2., 3.], [4.], [], [5., 6.], [7.], [8., 9.]]
     rt = ragged.constant(rt_as_list)
@@ -157,6 +159,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
     self.assertNestedListAmostEqual(
         self.evaluate(segmented).tolist(), expected, places=5)
 
+  @test_util.run_deprecated_v1
   def testRaggedRankTwo(self):
     rt = ragged.constant([
         [[111, 112, 113, 114], [121],],  # row 0
@@ -179,6 +182,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
                  []]  # pyformat: disable
     self.assertEqual(self.evaluate(segmented2).tolist(), expected2)
 
+  @test_util.run_deprecated_v1
   def testRaggedSegmentIds(self):
     rt = ragged.constant([
         [[111, 112, 113, 114], [121],],  # row 0
@@ -201,6 +205,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
         'but segment_ids is ragged and data is not.', ragged.segment_sum, dt,
         segment_ids, 3)
 
+  @test_util.run_deprecated_v1
   def testShapeMismatchError2(self):
     rt = ragged.constant([
         [[111, 112, 113, 114], [121]],  # row 0

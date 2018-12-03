@@ -27,6 +27,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
@@ -88,6 +89,7 @@ class XentTest(test.TestCase):
     self._testSingleClass(True)
     self._testSingleClass(False)
 
+  @test_util.run_deprecated_v1
   def testRankTooLarge(self):
     for dtype in np.float16, np.float32:
       np_features = np.array([[[1., 1., 1., 1.]], [[1., 2., 3.,
@@ -152,12 +154,14 @@ class XentTest(test.TestCase):
       self.assertAllCloseAccordingToType(np_loss, tf_loss)
       self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
+  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     with self.cached_session():
       with self.assertRaises(ValueError):
         gen_nn_ops.softmax_cross_entropy_with_logits(
             [[0., 1.], [2., 3.]], [[0., 1., 0.], [1., 0., 0.]])
 
+  @test_util.run_deprecated_v1
   def testNotMatrix(self):
     with self.cached_session():
       with self.assertRaises(ValueError):
@@ -179,6 +183,7 @@ class XentTest(test.TestCase):
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64),
         np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float64))
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     with self.cached_session() as sess:
       l = constant_op.constant(
@@ -206,6 +211,7 @@ class XentTest(test.TestCase):
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
 
+  @test_util.run_deprecated_v1
   def testGradientLabelWithV2(self):
     with self.cached_session():
       l = constant_op.constant(
@@ -224,6 +230,7 @@ class XentTest(test.TestCase):
 
     self.assertLess(err, 5e-8)
 
+  @test_util.run_deprecated_v1
   def testSecondGradient(self):
     with self.cached_session() as sess:
       l = constant_op.constant(

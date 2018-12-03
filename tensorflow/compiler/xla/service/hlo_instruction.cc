@@ -1760,6 +1760,26 @@ bool HloInstruction::IdenticalSlowPath(
   return false;
 }
 
+uint64 HloInstruction::Hash() const {
+  using tensorflow::Hash64Combine;
+
+  uint64 hash_value = Hash64Combine(0, static_cast<uint64>(opcode()));
+  hash_value = Hash64Combine(hash_value, ShapeUtil::Hash(shape()));
+
+  if (!IsCrossModuleAllReduce()) {
+    if (!operands().empty()) {
+      for (size_t i = 0; i < operands().size(); ++i) {
+        hash_value = Hash64Combine(hash_value, operand(i)->Hash());
+      }
+    }
+  }
+
+  hash_value = Hash64Combine(hash_value, InnerHash());
+  return hash_value;
+}
+
+uint64 HloInstruction::InnerHash() const { return 13; }
+
 void HloInstruction::RemoveUser(HloInstruction* user) {
   auto set_it = user_set_.find(user);
   CHECK(set_it != user_set_.end());

@@ -36,13 +36,14 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
-
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.deprecation import deprecated_argument_lookup
+
 from tensorflow.python.util.tf_export import tf_export
 
 # Aliases for some automatically-generated names.
@@ -2308,9 +2309,8 @@ def _ensure_xent_args(name, sentinel, labels, logits):
     raise ValueError("Both labels and logits must be provided.")
 
 
-@tf_export("nn.softmax_cross_entropy_with_logits",
-           v1=["nn.softmax_cross_entropy_with_logits_v2"])
-def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
+@tf_export("nn.softmax_cross_entropy_with_logits", v1=[])
+def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
   """Computes softmax cross entropy between `logits` and `labels`.
 
   Measures the probability error in discrete classification tasks in which the
@@ -2332,7 +2332,7 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
 
   A common use case is to have logits and labels of shape
   `[batch_size, num_classes]`, but higher dimensions are supported, with
-  the `dim` argument specifying the class dimension.
+  the `axis` argument specifying the class dimension.
 
   `logits` and `labels` must have the same dtype (either `float16`, `float32`,
   or `float64`).
@@ -2350,8 +2350,64 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
       probability distribution.
     logits: Unscaled log probabilities.
-    dim: The class dimension. Defaulted to -1 which is the last dimension.
+    axis: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` that contains the softmax cross entropy loss. Its type is the
+    same as `logits` and its shape is the same as `labels` except that it does
+    not have the last dimension of `labels`.
+  """
+  return softmax_cross_entropy_with_logits_v2_helper(
+      labels=labels, logits=logits, axis=axis, name=name)
+
+
+@tf_export(v1=["nn.softmax_cross_entropy_with_logits_v2"])
+@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
+def softmax_cross_entropy_with_logits_v2_helper(
+    labels, logits, axis=-1, name=None, dim=None):
+  """Computes softmax cross entropy between `logits` and `labels`.
+
+  Measures the probability error in discrete classification tasks in which the
+  classes are mutually exclusive (each entry is in exactly one class).  For
+  example, each CIFAR-10 image is labeled with one and only one label: an image
+  can be a dog or a truck, but not both.
+
+  **NOTE:**  While the classes are mutually exclusive, their probabilities
+  need not be.  All that is required is that each row of `labels` is
+  a valid probability distribution.  If they are not, the computation of the
+  gradient will be incorrect.
+
+  If using exclusive `labels` (wherein one and only
+  one class is true at a time), see `sparse_softmax_cross_entropy_with_logits`.
+
+  **WARNING:** This op expects unscaled logits, since it performs a `softmax`
+  on `logits` internally for efficiency.  Do not call this op with the
+  output of `softmax`, as it will produce incorrect results.
+
+  A common use case is to have logits and labels of shape
+  `[batch_size, num_classes]`, but higher dimensions are supported, with
+  the `axis` argument specifying the class dimension.
+
+  `logits` and `labels` must have the same dtype (either `float16`, `float32`,
+  or `float64`).
+
+  Backpropagation will happen into both `logits` and `labels`.  To disallow
+  backpropagation into `labels`, pass label tensors through `tf.stop_gradient`
+  before feeding it to this function.
+
+  **Note that to avoid confusion, it is required to pass only named arguments to
+  this function.**
+
+  Args:
+    labels: Each vector along the class dimension should hold a valid
+      probability distribution e.g. for the case in which labels are of shape
+      `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
+      probability distribution.
+    logits: Unscaled log probabilities.
+    axis: The class dimension. Defaulted to -1 which is the last dimension.
+    name: A name for the operation (optional).
+    dim: Deprecated alias for axis.
 
   Returns:
     A `Tensor` that contains the softmax cross entropy loss. Its type is the
@@ -2361,6 +2417,8 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
   # TODO(pcmurray) Raise an error when the labels do not sum to 1. Note: This
   # could break users who call this with bad labels, but disregard the bad
   # results.
+  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
+  del dim
 
   with ops.name_scope(name, "softmax_cross_entropy_with_logits",
                       [logits, labels]) as name:
@@ -2377,7 +2435,7 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
     shape = logits.get_shape()
 
     # Move the dim to the end if dim is not the last dimension.
-    if dim is not -1:
+    if axis != -1:
 
       def _move_dim_to_end(tensor, dim_index, rank):
         return array_ops.transpose(
@@ -2387,8 +2445,8 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
                 math_ops.range(dim_index + 1, rank), [dim_index]
             ], 0))
 
-      precise_logits = _move_dim_to_end(precise_logits, dim, input_rank)
-      labels = _move_dim_to_end(labels, dim, input_rank)
+      precise_logits = _move_dim_to_end(precise_logits, axis, input_rank)
+      labels = _move_dim_to_end(labels, axis, input_rank)
 
     input_shape = array_ops.shape(precise_logits)
 
@@ -2402,7 +2460,7 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
     cost, unused_backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
         precise_logits, labels, name=name)
 
-    # The output cost shape should be the input minus dim.
+    # The output cost shape should be the input minus axis.
     output_shape = array_ops.slice(input_shape, [0],
                                    [math_ops.subtract(input_rank, 1)])
     cost = array_ops.reshape(cost, output_shape)
@@ -2412,7 +2470,7 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
     if not context.executing_eagerly(
     ) and shape is not None and shape.dims is not None:
       shape = shape.as_list()
-      del shape[dim]
+      del shape[axis]
       cost.set_shape(shape)
 
     if convert_to_float32:
@@ -2490,7 +2548,7 @@ def softmax_cross_entropy_with_logits(
     labels = array_ops.stop_gradient(labels, name="labels_stop_gradient")
 
   return softmax_cross_entropy_with_logits_v2(
-      labels=labels, logits=logits, dim=dim, name=name)
+      labels=labels, logits=logits, axis=dim, name=name)
 
 
 @tf_export("nn.sparse_softmax_cross_entropy_with_logits")
@@ -2857,11 +2915,15 @@ def _get_noise_shape(x, noise_shape):
 
 
 @tf_export(v1=["nn.dropout"])
-def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: disable=invalid-name
+@deprecation.deprecated_args(None, "Please use `rate` instead of `keep_prob`. "
+                             "Rate should be set to `rate = 1 - keep_prob`.",
+                             "keep_prob")
+def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
+            rate=None):  # pylint: disable=invalid-name
   """Computes dropout.
 
-  With probability `keep_prob`, outputs the input element scaled up by
-  `1 / keep_prob`, otherwise outputs `0`.  The scaling is so that the expected
+  For each element of `x`, with probability `rate`, outputs `0`, and otherwise
+  scales up the input by `1 / (1-rate)`. The scaling is such that the expected
   sum is unchanged.
 
   By default, each element is kept or dropped independently.  If `noise_shape`
@@ -2874,48 +2936,34 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
 
   Args:
     x: A floating point tensor.
-    keep_prob: A scalar `Tensor` with the same type as x. The probability
-      that each element is kept.
+    keep_prob: (deprecated) A deprecated alias for `(1-rate)`.
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.set_random_seed` for behavior.
     name: A name for this operation (optional).
+    rate: A scalar `Tensor` with the same type as `x`. The probability that each
+      element of `x` is discarded.
 
   Returns:
     A Tensor of the same shape of `x`.
 
   Raises:
-    ValueError: If `keep_prob` is not in `(0, 1]` or if `x` is not a floating
+    ValueError: If `rate` is not in `[0, 1)` or if `x` is not a floating
       point tensor.
   """
-  with ops.name_scope(name, "dropout", [x]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    if not x.dtype.is_floating:
-      raise ValueError("x has to be a floating point tensor since it's going to"
-                       " be scaled. Got a %s tensor instead." % x.dtype)
-    if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
-      raise ValueError("keep_prob must be a scalar tensor or a float in the "
-                       "range (0, 1], got %g" % keep_prob)
+  try:
+    keep = 1. - keep_prob if keep_prob is not None else None
+  except TypeError:
+    raise ValueError("keep_prob must be a floating point number or Tensor "
+                     "(got %r)" % keep_prob)
 
-    # Early return if nothing needs to be dropped.
-    if isinstance(keep_prob, float) and keep_prob == 1:
-      return x
-    if context.executing_eagerly():
-      if isinstance(keep_prob, ops.EagerTensor):
-        if keep_prob.numpy() == 1:
-          return x
-    else:
-      keep_prob = ops.convert_to_tensor(
-          keep_prob, dtype=x.dtype, name="keep_prob")
-      keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+  rate = deprecation.deprecated_argument_lookup(
+      "rate", rate,
+      "keep_prob", keep)
 
-      # Do nothing if we know keep_prob == 1
-      if tensor_util.constant_value(keep_prob) == 1:
-        return x
-
-    rate = 1 - keep_prob
+  if rate is None:
+    raise ValueError("You must provide a rate to dropout.")
 
   return dropout_v2(x, rate, noise_shape=noise_shape, seed=seed, name=name)
 
@@ -2960,12 +3008,12 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):  # pylint: disa
     if not x.dtype.is_floating:
       raise ValueError("x has to be a floating point tensor since it's going to"
                        " be scaled. Got a %s tensor instead." % x.dtype)
-    if isinstance(rate, numbers.Real) and not 0 <= rate < 1:
+    if isinstance(rate, numbers.Real) and not (rate >= 0 and rate < 1):
       raise ValueError("rate must be a scalar tensor or a float in the "
                        "range [0, 1), got %g" % rate)
 
     # Early return if nothing needs to be dropped.
-    if isinstance(rate, float) and rate == 0:
+    if isinstance(rate, numbers.Real) and rate == 0:
       return x
     if context.executing_eagerly():
       if isinstance(rate, ops.EagerTensor):
@@ -3597,7 +3645,7 @@ def _calc_dilation2d_flops(graph, node):
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
 
 
-@tf_export("nn.erosion2d")
+@tf_export(v1=["nn.erosion2d"])
 def erosion2d(value, kernel, strides, rates, padding, name=None):
   """Computes the grayscale erosion of 4-D `value` and 3-D `kernel` tensors.
 
@@ -3652,6 +3700,75 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
             filter=array_ops.reverse_v2(kernel, [0, 1]),
             strides=strides,
             rates=rates,
+            padding=padding,
+            name=name))
+
+
+@tf_export("nn.erosion2d", v1=[])
+def erosion2d_v2(value,
+                 filters,
+                 strides,
+                 padding,
+                 data_format,
+                 dilations,
+                 name=None):
+  """Computes the grayscale erosion of 4-D `value` and 3-D `filters` tensors.
+
+  The `value` tensor has shape `[batch, in_height, in_width, depth]` and the
+  `filters` tensor has shape `[filters_height, filters_width, depth]`, i.e.,
+  each input channel is processed independently of the others with its own
+  structuring function. The `output` tensor has shape
+  `[batch, out_height, out_width, depth]`. The spatial dimensions of the
+  output tensor depend on the `padding` algorithm. We currently only support the
+  default "NHWC" `data_format`.
+
+  In detail, the grayscale morphological 2-D erosion is given by:
+
+      output[b, y, x, c] =
+         min_{dy, dx} value[b,
+                            strides[1] * y - dilations[1] * dy,
+                            strides[2] * x - dilations[2] * dx,
+                            c] -
+                      filters[dy, dx, c]
+
+  Duality: The erosion of `value` by the `filters` is equal to the negation of
+  the dilation of `-value` by the reflected `filters`.
+
+  Args:
+    value: A `Tensor`. 4-D with shape `[batch, in_height, in_width, depth]`.
+    filters: A `Tensor`. Must have the same type as `value`.
+      3-D with shape `[filters_height, filters_width, depth]`.
+    strides: A list of `ints` that has length `>= 4`.
+      1-D of length 4. The stride of the sliding window for each dimension of
+      the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
+    padding: A `string` from: `"SAME", "VALID"`.
+      The type of padding algorithm to use.
+    data_format: A `string`, only `"NHWC"` is currently supported.
+    dilations: A list of `ints` that has length `>= 4`.
+      1-D of length 4. The input stride for atrous morphological dilation.
+      Must be: `[1, rate_height, rate_width, 1]`.
+    name: A name for the operation (optional). If not specified "erosion2d"
+      is used.
+
+  Returns:
+    A `Tensor`. Has the same type as `value`.
+    4-D with shape `[batch, out_height, out_width, depth]`.
+
+  Raises:
+    ValueError: If the `value` depth does not match `filters`' shape, or if
+      padding is other than `'VALID'` or `'SAME'`.
+  """
+  if data_format != "NHWC":
+    raise ValueError("Data formats other than NHWC are not yet supported")
+
+  with ops.name_scope(name, "erosion2d", [value, filters]) as name:
+    # Reduce erosion to dilation by duality.
+    return math_ops.negative(
+        gen_nn_ops.dilation2d(
+            input=math_ops.negative(value),
+            filter=array_ops.reverse_v2(filters, [0, 1]),
+            strides=strides,
+            rates=dilations,
             padding=padding,
             name=name))
 

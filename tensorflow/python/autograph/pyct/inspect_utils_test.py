@@ -95,6 +95,13 @@ def free_factory():
 
 class InspectUtilsTest(test.TestCase):
 
+  def test_islambda(self):
+    def test_fn():
+      pass
+
+    self.assertTrue(inspect_utils.islambda(lambda x: x))
+    self.assertFalse(inspect_utils.islambda(test_fn))
+
   def test_getnamespace_globals(self):
     ns = inspect_utils.getnamespace(factory)
     self.assertEqual(ns['free_function'], free_function)

@@ -436,7 +436,6 @@ cuda_py_test(
 
 cuda_py_test(
     name = "estimator_training_test",
-    size = "large",
     srcs = ["estimator_training_test.py"],
     additional_deps = [
         ":collective_all_reduce_strategy",

@@ -29,7 +29,7 @@ class ThreadingOptions(options.OptionsBase):
   To apply `ThreadingOptions` to a `dataset` object, use the following pattern:
 
   ```python
-  options = dataset_ops.Options()
+  options = tf.data.Options()
   options.experimental_threading = tf.data.experimental.ThreadingOptions()
   options.experimental_threading.private_threadpool_size = 10
   dataset = dataset.with_options(options)

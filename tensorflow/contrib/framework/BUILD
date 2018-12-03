@@ -47,6 +47,11 @@ tf_custom_op_py_library(
         ":variable_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//video/youtube/personalization:__subpackages__",
+    ],
     deps = [
         ":gen_variable_ops",
         "//tensorflow/contrib/util:util_py",

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -32,6 +33,7 @@ class AssignOpTest(test.TestCase):
   # NOTE(mrry): We exclude thess tests from the TSAN TAP target, because they
   #   contain benign and deliberate data races when multiple threads update
   #   the same parameters without a lock.
+  @test_util.run_deprecated_v1
   def testParallelUpdateWithoutLocking(self):
     with self.cached_session() as sess:
       ones_t = array_ops.fill([1024, 1024], 1.0)
@@ -59,6 +61,7 @@ class AssignOpTest(test.TestCase):
       self.assertTrue((vals >= ones).all())
       self.assertTrue((vals <= ones * 20).all())
 
+  @test_util.run_deprecated_v1
   def testParallelAssignWithoutLocking(self):
     with self.cached_session() as sess:
       ones_t = array_ops.fill([1024, 1024], float(1))
@@ -91,6 +94,7 @@ class AssignOpTest(test.TestCase):
   # contain non-benign but known data races between the variable assignment and
   # returning the output tensors. This issue will be resolved with the new
   # resource variables.
+  @test_util.run_deprecated_v1
   def testParallelUpdateWithLocking(self):
     with self.cached_session() as sess:
       zeros_t = array_ops.fill([1024, 1024], 0.0)
@@ -118,6 +122,7 @@ class AssignOpTest(test.TestCase):
       ones = np.ones((1024, 1024)).astype(np.float32)
       self.assertAllEqual(vals, ones * 20)
 
+  @test_util.run_deprecated_v1
   def testParallelAssignWithLocking(self):
     with self.cached_session() as sess:
       zeros_t = array_ops.fill([1024, 1024], 0.0)

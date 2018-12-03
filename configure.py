@@ -452,11 +452,12 @@ def convert_version_to_int(version):
   return int(version_str)
 
 
-def check_bazel_version(min_version):
-  """Check installed bazel version is at least min_version.
+def check_bazel_version(min_version, max_version):
+  """Check installed bazel version is between min_version and max_version.
 
   Args:
     min_version: string for minimum bazel version.
+    max_version: string for maximum bazel version.
 
   Returns:
     The bazel version detected.
@@ -474,6 +475,7 @@ def check_bazel_version(min_version):
 
   min_version_int = convert_version_to_int(min_version)
   curr_version_int = convert_version_to_int(curr_version)
+  max_version_int = convert_version_to_int(max_version)
 
   # Check if current bazel version can be detected properly.
   if not curr_version_int:
@@ -485,6 +487,10 @@ def check_bazel_version(min_version):
 
   if curr_version_int < min_version_int:
     print('Please upgrade your bazel installation to version %s or higher to '
+          'build TensorFlow!' % min_version)
+    sys.exit(0)
+  if curr_version_int > max_version_int:
+    print('Please downgrade your bazel installation to version %s or lower to '
           'build TensorFlow!' % min_version)
     sys.exit(0)
   return curr_version
@@ -1559,7 +1565,7 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.15.0')
+  check_bazel_version('0.15.0', '0.19.2')
 
   reset_tf_configure_bazelrc()
   # Explicitly import tools/bazel.rc, this is needed for Bazel 0.19.0 or later

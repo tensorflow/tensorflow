@@ -37,6 +37,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -504,6 +505,7 @@ class StopAtNSession(monitored_session._WrappedSession):
 class WrappedSessionTest(test.TestCase):
   """_WrappedSession tests."""
 
+  @test_util.run_deprecated_v1
   def test_properties(self):
     with self.cached_session() as sess:
       constant_op.constant(0.0)
@@ -511,6 +513,7 @@ class WrappedSessionTest(test.TestCase):
       self.assertEquals(sess.graph, wrapped_sess.graph)
       self.assertEquals(sess.sess_str, wrapped_sess.sess_str)
 
+  @test_util.run_deprecated_v1
   def test_should_stop_on_close(self):
     with self.cached_session() as sess:
       wrapped_sess = monitored_session._WrappedSession(sess)
@@ -518,6 +521,7 @@ class WrappedSessionTest(test.TestCase):
       wrapped_sess.close()
       self.assertTrue(wrapped_sess.should_stop())
 
+  @test_util.run_deprecated_v1
   def test_should_stop_uses_check_stop(self):
     with self.cached_session() as sess:
       wrapped_sess = StopAtNSession(sess, 3)
@@ -526,6 +530,7 @@ class WrappedSessionTest(test.TestCase):
       self.assertFalse(wrapped_sess.should_stop())
       self.assertTrue(wrapped_sess.should_stop())
 
+  @test_util.run_deprecated_v1
   def test_should_stop_delegates_to_wrapped_session(self):
     with self.cached_session() as sess:
       wrapped_sess0 = StopAtNSession(sess, 4)
@@ -544,6 +549,7 @@ class WrappedSessionTest(test.TestCase):
       wrapped_sess.close()
       self.assertTrue(wrapped_sess.should_stop())
 
+  @test_util.run_deprecated_v1
   def test_run(self):
     with self.cached_session() as sess:
       c = constant_op.constant(0)
@@ -561,6 +567,7 @@ def busy_wait_for_coord_stop(coord):
 class CoordinatedSessionTest(test.TestCase):
   """_CoordinatedSession tests."""
 
+  @test_util.run_deprecated_v1
   def test_properties(self):
     with self.cached_session() as sess:
       constant_op.constant(0.0)
@@ -569,6 +576,7 @@ class CoordinatedSessionTest(test.TestCase):
       self.assertEquals(sess.graph, coord_sess.graph)
       self.assertEquals(sess.sess_str, coord_sess.sess_str)
 
+  @test_util.run_deprecated_v1
   def test_run(self):
     with self.cached_session() as sess:
       c = constant_op.constant(0)
@@ -577,6 +585,7 @@ class CoordinatedSessionTest(test.TestCase):
       coord_sess = monitored_session._CoordinatedSession(sess, coord)
       self.assertEqual(42, coord_sess.run(v, feed_dict={c: 42}))
 
+  @test_util.run_deprecated_v1
   def test_should_stop_on_close(self):
     with self.cached_session() as sess:
       coord = coordinator.Coordinator()
@@ -585,6 +594,7 @@ class CoordinatedSessionTest(test.TestCase):
       coord_sess.close()
       self.assertTrue(coord_sess.should_stop())
 
+  @test_util.run_deprecated_v1
   def test_should_stop_on_coord_stop(self):
     with self.cached_session() as sess:
       coord = coordinator.Coordinator()
@@ -593,6 +603,7 @@ class CoordinatedSessionTest(test.TestCase):
       coord.request_stop()
       self.assertTrue(coord_sess.should_stop())
 
+  @test_util.run_deprecated_v1
   def test_dont_request_stop_on_exception_in_main_thread(self):
     with self.cached_session() as sess:
       c = constant_op.constant(0)
@@ -607,6 +618,7 @@ class CoordinatedSessionTest(test.TestCase):
       self.assertFalse(coord.should_stop())
       self.assertFalse(coord_sess.should_stop())
 
+  @test_util.run_deprecated_v1
   def test_stop_threads_on_close_after_exception(self):
     with self.cached_session() as sess:
       c = constant_op.constant(0)
@@ -654,6 +666,7 @@ class CoordinatedSessionTest(test.TestCase):
       self.assertTrue(coord.should_stop())
       self.assertTrue(coord_sess.should_stop())
 
+  @test_util.run_deprecated_v1
   def test_propagates_exception_trace(self):
     assertion = control_flow_ops.Assert(False, ['This should fail.'])
     with self.cached_session() as sess:
@@ -801,6 +814,7 @@ class RecoverableSessionTest(test.TestCase):
     def create_session(self):
       return self._sess
 
+  @test_util.run_deprecated_v1
   def test_properties(self):
     with self.cached_session() as sess:
       constant_op.constant(0.0)
@@ -809,6 +823,7 @@ class RecoverableSessionTest(test.TestCase):
       self.assertEquals(sess.graph, recoverable_sess.graph)
       self.assertEquals(sess.sess_str, recoverable_sess.sess_str)
 
+  @test_util.run_deprecated_v1
   def test_run(self):
     with self.cached_session() as sess:
       c = constant_op.constant(0)
@@ -817,6 +832,7 @@ class RecoverableSessionTest(test.TestCase):
           self._SessionReturner(sess))
       self.assertEqual(51, recoverable_sess.run(v, feed_dict={c: 51}))
 
+  @test_util.run_deprecated_v1
   def test_recovery(self):
     with self.cached_session() as sess:
 
@@ -863,6 +879,7 @@ class RecoverableSessionTest(test.TestCase):
       with self.assertRaisesRegexp(IndexError, 'pop from empty list'):
         recoverable_sess.run(v, feed_dict={c: -12})
 
+  @test_util.run_deprecated_v1
   def test_recovery_from_coordinator_exception(self):
     with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
@@ -888,6 +905,7 @@ class RecoverableSessionTest(test.TestCase):
       self.assertFalse(session.should_stop())
       self.assertEqual(2, session_creator.number_of_sessions_created)
 
+  @test_util.run_deprecated_v1
   def test_recovery_from_non_preemption_in_coordinator(self):
     with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
@@ -917,6 +935,7 @@ class RecoverableSessionTest(test.TestCase):
       with self.assertRaises(errors_impl.UnknownError):
         session.close()
 
+  @test_util.run_deprecated_v1
   def test_recovery_from_session_getting_stuck(self):
     with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
@@ -941,6 +960,7 @@ class RecoverableSessionTest(test.TestCase):
       self.assertFalse(session.should_stop())
       self.assertEqual(2, session_creator.number_of_sessions_created)
 
+  @test_util.run_deprecated_v1
   def test_step_fn_recovery_from_coordinator_exception_when_run_hooks(self):
     with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
@@ -971,6 +991,7 @@ class RecoverableSessionTest(test.TestCase):
       self.assertFalse(session.should_stop())
       self.assertEqual(2, session_creator.number_of_sessions_created)
 
+  @test_util.run_deprecated_v1
   def test_recovery_from_non_preemption_in_coordinator_when_run_hooks(self):
     with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
@@ -1005,6 +1026,7 @@ class RecoverableSessionTest(test.TestCase):
       with self.assertRaises(errors_impl.UnknownError):
         session.close()
 
+  @test_util.run_deprecated_v1
   def test_recovery_from_session_getting_stuck_when_run_hooks(self):
     with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
@@ -1049,6 +1071,7 @@ class RecoverableSessionTest(test.TestCase):
     # exception.
     return session
 
+  @test_util.run_deprecated_v1
   def test_step_fn_recovery_from_coordinator_exception_with_raw_session(self):
     with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
@@ -1081,6 +1104,7 @@ class RecoverableSessionTest(test.TestCase):
       self.assertFalse(session.should_stop())
       self.assertEqual(2, session_creator.number_of_sessions_created)
 
+  @test_util.run_deprecated_v1
   def test_recovery_from_non_preemption_in_coordinator_with_raw_session(self):
     with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
@@ -1118,6 +1142,7 @@ class RecoverableSessionTest(test.TestCase):
       with self.assertRaises(errors_impl.UnknownError):
         session.close()
 
+  @test_util.run_deprecated_v1
   def test_recovery_from_session_getting_stuck_with_raw_session(self):
     with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
@@ -1443,6 +1468,7 @@ class MonitoredSessionTest(test.TestCase):
   # This set of tests, verifies the supervised session behavior when exceptions
   # are raised next to the innermost session run() call.
 
+  @test_util.run_deprecated_v1
   def test_recovery(self):
     logdir = _test_dir(self.get_temp_dir(), 'test_recovery')
     with ops.Graph().as_default():
@@ -1795,6 +1821,7 @@ class MonitoredSessionTest(test.TestCase):
             isinstance(hook.run_metadata_list[0], config_pb2.RunMetadata))
         self.assertGreater(len(hook.run_metadata_list[0].partition_graphs), 0)
 
+  @test_util.run_deprecated_v1
   def test_with_statement_and_close(self):
     # Test case for https://github.com/tensorflow/tensorflow/issues/12224
     # where close() inside the with should have a better error message.

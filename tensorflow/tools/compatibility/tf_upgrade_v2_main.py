@@ -24,7 +24,7 @@ from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import tf_upgrade_v2
 
 
-if __name__ == "__main__":
+def main():
   parser = argparse.ArgumentParser(
       formatter_class=argparse.RawDescriptionHelpFormatter,
       description="""Convert a TensorFlow Python file to 2.0
@@ -58,7 +58,7 @@ Simple usage:
       help=("If converting a whole tree of files, whether to "
             "copy the other files."),
       type=bool,
-      default=False)
+      default=True)
   parser.add_argument(
       "--reportfile",
       dest="report_filename",
@@ -98,3 +98,7 @@ Simple usage:
     print("-" * 80)
     print("\n".join(errors))
     print("\nMake sure to read the detailed log %r\n" % report_filename)
+
+
+if __name__ == "__main__":
+  main()

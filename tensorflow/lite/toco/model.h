@@ -121,6 +121,7 @@ enum class OperatorType : uint8 {
   kRsqrt,
   kShape,
   kSplit,
+  kSplitV,
   kSqrt,
   kSquare,
   kSquaredDifference,
@@ -154,7 +155,8 @@ enum class OperatorType : uint8 {
   kUnpack,
   kZerosLike,
   kResizeNearestNeighbor,
-  kLeakyRelu
+  kLeakyRelu,
+  kAbs
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -653,6 +655,17 @@ struct UnidirectionalSequenceLstmOperator : Operator {
 // TensorFlow equivalent: Mul
 struct MulOperator : Operator {
   MulOperator() : Operator(OperatorType::kMul) {}
+};
+
+// Element-wise Abs operator:
+//   x -> abs(x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Relu
+struct AbsOperator : Operator {
+  AbsOperator() : Operator(OperatorType::kAbs) {}
 };
 
 // Element-wise Relu operator:
@@ -1386,6 +1399,12 @@ struct SliceOperator : Operator {
 // support graph transformations to other operator types by matching sub-graphs.
 struct TensorFlowSplitOperator : Operator {
   TensorFlowSplitOperator() : Operator(OperatorType::kSplit) {}
+  int num_split = 0;
+};
+
+// TensorFlow SplitV equivalent. Refer to TensorFlow documentation for details.
+struct TensorFlowSplitVOperator : Operator {
+  TensorFlowSplitVOperator() : Operator(OperatorType::kSplitV) {}
   int num_split = 0;
 };
 

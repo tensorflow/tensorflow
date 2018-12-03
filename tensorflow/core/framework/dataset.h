@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
+#include <unordered_map>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -259,6 +260,7 @@ class GraphDefBuilderWrapper {
 };
 
 class StatsAggregator;
+class FunctionHandleCache;
 
 // A cut-down version of `OpKernelContext` for running computations in
 // iterators. Note that we cannot simply use `OpKernelContext` here because we
@@ -279,6 +281,7 @@ class IteratorContext {
           env(ctx->env()),
           function_library(ctx->function_library()),
           lib(ctx->lib()),
+          function_handle_cache(ctx->function_handle_cache()),
           model(ctx->model()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
@@ -315,6 +318,9 @@ class IteratorContext {
     // The FunctionLibraryRuntime object to be used to make function calls.
     FunctionLibraryRuntime* lib = nullptr;
 
+    // A FunctionHandleCache that owns all the function handles. Not owned.
+    FunctionHandleCache* function_handle_cache = nullptr;
+
     // If non-null, identifies the object used for performance modeling.
     std::shared_ptr<model::Model> model = nullptr;
 
@@ -349,6 +355,10 @@ class IteratorContext {
   }
 
   FunctionLibraryRuntime* lib() { return params_.lib; }
+
+  FunctionHandleCache* function_handle_cache() {
+    return params_.function_handle_cache;
+  }
 
   const std::shared_ptr<model::Model>& model() { return params_.model; }
 

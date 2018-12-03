@@ -196,6 +196,7 @@ class BinaryOpTest(test.TestCase):
         self._compareGradientY(x, y, np_func, tf_func)
       self._compareGpu(x, y, np_func, tf_func)
 
+  @test_util.run_deprecated_v1
   def testFloatBasic(self):
     x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float32)
     y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float32)
@@ -233,6 +234,7 @@ class BinaryOpTest(test.TestCase):
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
+  @test_util.run_deprecated_v1
   def testFloatDifferentShapes(self):
     x = np.array([1, 2, 3, 4]).reshape(2, 2).astype(np.float32)
     y = np.array([1, 2]).reshape(2, 1).astype(np.float32)
@@ -262,6 +264,7 @@ class BinaryOpTest(test.TestCase):
     self.assertAllEqual(np_result, left_result)
     self.assertAllEqual(np_result, right_result)
 
+  @test_util.run_deprecated_v1
   def testDoubleBasic(self):
     x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float64)
     y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float64)
@@ -353,6 +356,7 @@ class BinaryOpTest(test.TestCase):
     self._compareBoth(x, y, np.floor_divide, _FLOORDIV)
     self._compareBoth(x, y, np.mod, _MOD)
 
+  @test_util.run_deprecated_v1
   def testComplex64Basic(self):
     x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(
         np.complex64)
@@ -367,6 +371,7 @@ class BinaryOpTest(test.TestCase):
     self._compareBoth(x, y, np.multiply, _MUL)
     self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
 
+  @test_util.run_deprecated_v1
   def testComplex128Basic(self):
     x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(
         np.complex128)
@@ -480,198 +485,263 @@ class BinaryOpTest(test.TestCase):
     ]
     self._testBCastByFunc(funcs, xs, ys)
 
+  @test_util.run_deprecated_v1
   def testBCast_0A(self):
     self._testBCastA([1, 3, 2], [1])
 
+  @test_util.run_deprecated_v1
   def testBCast_0B(self):
     self._testBCastB([1, 3, 2], [1])
 
+  @test_util.run_deprecated_v1
   def testBCast_0C(self):
     self._testBCastC([1, 3, 2], [1])
 
+  @test_util.run_deprecated_v1
   def testBCast_0D(self):
     self._testBCastD([1, 3, 2], [1])
 
+  @test_util.run_deprecated_v1
   def testBCast_1A(self):
     self._testBCastA([1, 3, 2], [2])
 
+  @test_util.run_deprecated_v1
   def testBCast_1B(self):
     self._testBCastB([1, 3, 2], [2])
 
+  @test_util.run_deprecated_v1
   def testBCast_1C(self):
     self._testBCastC([1, 3, 2], [2])
 
+  @test_util.run_deprecated_v1
   def testBCast_1D(self):
     self._testBCastD([1, 3, 2], [2])
 
+  @test_util.run_deprecated_v1
   def testBCast_2A(self):
     self._testBCastA([1, 3, 2], [3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_2B(self):
     self._testBCastB([1, 3, 2], [3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_2C(self):
     self._testBCastC([1, 3, 2], [3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_2D(self):
     self._testBCastD([1, 3, 2], [3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_3A(self):
     self._testBCastA([1, 3, 2], [3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_3B(self):
     self._testBCastB([1, 3, 2], [3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_3C(self):
     self._testBCastC([1, 3, 2], [3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_3D(self):
     self._testBCastD([1, 3, 2], [3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_4A(self):
     self._testBCastA([1, 3, 2], [1, 3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_4B(self):
     self._testBCastB([1, 3, 2], [1, 3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_4C(self):
     self._testBCastC([1, 3, 2], [1, 3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_4D(self):
     self._testBCastD([1, 3, 2], [1, 3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_5A(self):
     self._testBCastA([1, 3, 2], [2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_5B(self):
     self._testBCastB([1, 3, 2], [2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_5C(self):
     self._testBCastC([1, 3, 2], [2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_5D(self):
     self._testBCastD([1, 3, 2], [2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_6A(self):
     self._testBCastA([1, 3, 2], [2, 1, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_6B(self):
     self._testBCastB([1, 3, 2], [2, 1, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_6C(self):
     self._testBCastC([1, 3, 2], [2, 1, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_6D(self):
     self._testBCastD([1, 3, 2], [2, 1, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_7A(self):
     self._testBCastA([1, 3, 2], [1, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_7B(self):
     self._testBCastB([1, 3, 2], [1, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_7C(self):
     self._testBCastC([1, 3, 2], [1, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_7D(self):
     self._testBCastD([1, 3, 2], [1, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_8A(self):
     self._testBCastA([2, 1, 5], [2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_8B(self):
     self._testBCastB([2, 1, 5], [2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_8C(self):
     self._testBCastC([2, 1, 5], [2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_8D(self):
     self._testBCastD([2, 1, 5], [2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_9A(self):
     self._testBCastA([2, 0, 5], [2, 0, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_9B(self):
     self._testBCastB([2, 0, 5], [2, 0, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_9C(self):
     self._testBCastC([2, 0, 5], [2, 0, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_9D(self):
     self._testBCastD([2, 0, 5], [2, 0, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_10A(self):
     self._testBCastA([2, 3, 0], [2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_10B(self):
     self._testBCastB([2, 3, 0], [2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_10C(self):
     self._testBCastC([2, 3, 0], [2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_10D(self):
     self._testBCastD([2, 3, 0], [2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testBCast_11A(self):
     self._testBCastA([1, 3, 2], [1, 3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_11B(self):
     self._testBCastB([1, 3, 2], [1, 3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_11C(self):
     self._testBCastC([1, 3, 2], [1, 3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_11D(self):
     self._testBCastD([1, 3, 2], [1, 3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_12A(self):
     self._testBCastA([1, 1, 1, 1, 3, 2], [1, 3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_12B(self):
     self._testBCastB([1, 1, 1, 1, 3, 2], [1, 3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_12C(self):
     self._testBCastC([1, 1, 1, 1, 3, 2], [1, 3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_12D(self):
     self._testBCastD([1, 1, 1, 1, 3, 2], [1, 3, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_13A(self):
     self._testBCastA([1, 3, 2, 1, 1], [1])
 
+  @test_util.run_deprecated_v1
   def testBCast_13B(self):
     self._testBCastB([1, 3, 2, 1, 1], [1])
 
+  @test_util.run_deprecated_v1
   def testBCast_13C(self):
     self._testBCastC([1, 3, 2, 1, 1], [1])
 
+  @test_util.run_deprecated_v1
   def testBCast_13D(self):
     self._testBCastD([1, 3, 2, 1, 1], [1])
 
+  @test_util.run_deprecated_v1
   def testBCast_14A(self):
     self._testBCastA([2, 3, 1, 1, 5], [1])
 
+  @test_util.run_deprecated_v1
   def testBCast_14B(self):
     self._testBCastB([2, 3, 1, 1, 5], [1])
 
+  @test_util.run_deprecated_v1
   def testBCast_14C(self):
     self._testBCastC([2, 3, 1, 1, 5], [1])
 
+  @test_util.run_deprecated_v1
   def testBCast_14D(self):
     self._testBCastD([2, 3, 1, 1, 5], [1])
 
+  @test_util.run_deprecated_v1
   def testBCast_15A(self):
     self._testBCastA([10, 3, 1, 2], [3, 1, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_15B(self):
     self._testBCastB([10, 3, 1, 2], [3, 1, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_15C(self):
     self._testBCastC([10, 3, 1, 2], [3, 1, 2])
 
+  @test_util.run_deprecated_v1
   def testBCast_15D(self):
     self._testBCastD([10, 3, 1, 2], [3, 1, 2])
 
+  @test_util.run_deprecated_v1
   def testMismatchedDimensions(self):
     for func in [
         math_ops.add, math_ops.subtract, math_ops.multiply, math_ops.div, _ADD,
@@ -683,6 +753,7 @@ class BinaryOpTest(test.TestCase):
             ops.convert_to_tensor([10.0, 20.0, 30.0]),
             ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
+  @test_util.run_deprecated_v1
   def testZeroPowGrad(self):
     with self.cached_session():
       for dtype in (np.float16, np.float32, np.float64, np.complex64,
@@ -693,6 +764,7 @@ class BinaryOpTest(test.TestCase):
         error = gradient_checker.compute_gradient_error(y, [], z, [])
         self.assertEqual(error, 0)
 
+  @test_util.run_deprecated_v1
   def testComplexPowGrad(self):
     with self.cached_session():
       for dtype in np.complex64, np.complex128:
@@ -861,6 +933,7 @@ class ComparisonOpTest(test.TestCase):
     self._testBCastByFunc(
         np.not_equal, math_ops.not_equal, include_complex=True)
 
+  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     dtypes = [np.float16, np.float32, np.float64, np.int32, np.int64]
     funcs = [

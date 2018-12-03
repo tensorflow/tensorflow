@@ -44,6 +44,7 @@ class ListFilesTest(test_base.DatasetTestBase):
       open(path.join(self.tmp_dir, filename), 'a').close()
 
   # Note: eager mode fails in assertion error same as initializer in graph mode.
+  @test_util.run_deprecated_v1
   def testSkipEagerEmptyDirectory(self):
     dataset = dataset_ops.Dataset.list_files(path.join(self.tmp_dir, '*'))
     self.assertDatasetProduces(dataset, expected_output=[])

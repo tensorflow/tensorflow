@@ -24,11 +24,13 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class EnumerateDatasetTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testEnumerateDataset(self):
     components = (["a", "b"], [1, 2], [37.0, 38])
     start = constant_op.constant(20, dtype=dtypes.int64)

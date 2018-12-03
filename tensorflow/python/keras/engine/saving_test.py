@@ -289,6 +289,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                  r'element\(s\)\.'):
       saving.load_weights_from_hdf5_group_by_name(f_model, model.layers)
 
+  @test_util.run_deprecated_v1
   def test_sequential_weight_loading_group_name_with_incorrect_shape(self):
     if h5py is None:
       return
@@ -331,6 +332,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
 class TestWholeModelSaving(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_sequential_model_saving(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -383,6 +385,7 @@ class TestWholeModelSaving(test.TestCase):
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
+  @test_util.run_deprecated_v1
   def test_sequential_model_saving_without_input_shape(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -443,6 +446,7 @@ class TestWholeModelSaving(test.TestCase):
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
+  @test_util.run_deprecated_v1
   def test_sequential_model_saving_2(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -479,6 +483,7 @@ class TestWholeModelSaving(test.TestCase):
       out2 = model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
+  @test_util.run_deprecated_v1
   def test_functional_model_saving(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -630,6 +635,7 @@ class TestWholeModelSaving(test.TestCase):
       os.close(fd)
       os.remove(fname)
 
+  @test_util.run_deprecated_v1
   def test_saving_model_with_long_weights_names(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -675,6 +681,7 @@ class TestWholeModelSaving(test.TestCase):
       os.close(fd)
       os.remove(fname)
 
+  @test_util.run_deprecated_v1
   def test_model_saving_to_pre_created_h5py_file(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -749,6 +756,7 @@ class SubclassedModel(training.Model):
 
 class TestWeightSavingAndLoadingTFFormat(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_keras_optimizer_warning(self):
     graph = ops.Graph()
     with graph.as_default(), self.session(graph):

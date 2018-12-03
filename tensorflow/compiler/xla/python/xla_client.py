@@ -778,8 +778,7 @@ class ComputationBuilder(object):
     Returns:
       A LocalOp representing the added broadcast-in-dimensions op.
     """
-    xla_shape = Shape.array_shape(self.GetShape(operand).element_type(), shape)
-    return self._client.BroadcastInDim(operand, xla_shape, broadcast_dimensions)
+    return self._client.BroadcastInDim(operand, shape, broadcast_dimensions)
 
   def Concatenate(self, operands, dimension):
     """Enqueues a concatenate operation onto the computation.

@@ -16,29 +16,14 @@
 # THIS IS A GENERATED DOCKERFILE.
 #
 # This file was assembled from multiple pieces, whose use is documented
-# below. Please refer to the the TensorFlow dockerfiles documentation for
-# more information. Build args are documented as their default value.
-#
-# Ubuntu-based, CPU-only environment for using TensorFlow
-#
-# Start from Ubuntu (no GPU support)
-# --build-arg UBUNTU_VERSION=16.04
-#    ( no description )
-#
-# Python is required for TensorFlow and other libraries.
-# --build-arg USE_PYTHON_3_NOT_2=True
-#    Install python 3 over Python 2
-#
-# Install the TensorFlow Python package.
-# --build-arg TF_PACKAGE=tensorflow (tensorflow|tensorflow-gpu|tf-nightly|tf-nightly-gpu)
-#    The specific TensorFlow Python package to install
-#
-# Configure TensorFlow's shell prompt and login tools.
+# throughout. Please refer to the the TensorFlow dockerfiles documentation
+# for more information.
 
 ARG UBUNTU_VERSION=16.04
-FROM ubuntu:${UBUNTU_VERSION}
 
-ARG USE_PYTHON_3_NOT_2=True
+FROM ubuntu:${UBUNTU_VERSION} as base
+
+ARG USE_PYTHON_3_NOT_2
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
 ARG PYTHON=python${_PY_SUFFIX}
 ARG PIP=pip${_PY_SUFFIX}
@@ -50,10 +35,18 @@ RUN apt-get update && apt-get install -y \
     ${PYTHON} \
     ${PYTHON}-pip
 
-RUN ${PIP} install --upgrade \
+RUN ${PIP} --no-cache-dir install --upgrade \
     pip \
     setuptools
 
+# Some TF tools expect a "python" binary
+RUN ln -s $(which ${PYTHON}) /usr/local/bin/python 
+
+# Options:
+#   tensorflow
+#   tensorflow-gpu
+#   tf-nightly
+#   tf-nightly-gpu
 ARG TF_PACKAGE=tensorflow
 RUN ${PIP} install ${TF_PACKAGE}
 

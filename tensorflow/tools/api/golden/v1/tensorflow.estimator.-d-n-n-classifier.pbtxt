@@ -1,7 +1,6 @@
 path: "tensorflow.estimator.DNNClassifier"
 tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.dnn.DNNClassifier\'>"
-  is_instance: "<class \'tensorflow_estimator.python.estimator.canned.dnn.DNNClassifierV2\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
   is_instance: "<type \'object\'>"

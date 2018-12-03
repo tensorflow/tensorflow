@@ -1,7 +1,6 @@
 path: "tensorflow.estimator.DNNLinearCombinedRegressor"
 tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.dnn_linear_combined.DNNLinearCombinedRegressorV2\'>"
-  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -39,10 +38,6 @@ tf_class {
   member_method {
     name: "export_saved_model"
     argspec: "args=[\'self\', \'export_dir_base\', \'serving_input_receiver_fn\', \'assets_extra\', \'as_text\', \'checkpoint_path\', \'experimental_mode\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'infer\'], "
-  }
-  member_method {
-    name: "export_savedmodel"
-    argspec: "args=[\'self\', \'export_dir_base\', \'serving_input_receiver_fn\', \'assets_extra\', \'as_text\', \'checkpoint_path\', \'strip_default_attrs\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'False\'], "
   }
   member_method {
     name: "get_variable_names"

@@ -573,27 +573,35 @@ XlaOp XlaBuilder::Broadcast(const XlaOp& operand,
 }
 
 XlaOp XlaBuilder::BroadcastInDim(
-    const XlaOp& operand, const Shape& shape,
+    const XlaOp& operand, const absl::Span<const int64> out_dim_size,
     const absl::Span<const int64> broadcast_dimensions) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
-    TF_RETURN_IF_ERROR(ShapeInference::InferBroadcastShape(operand_shape, shape,
-                                                           broadcast_dimensions)
+    // Output shape, in the case of degenerate broadcast, the out_dim_size is
+    // not necessarily the same as the dimension sizes of the output shape.
+    const auto& output_shape =
+        ShapeUtil::MakeShape(operand_shape.element_type(), out_dim_size);
+
+    TF_RETURN_IF_ERROR(ShapeInference::InferBroadcastShape(
+                           operand_shape, output_shape, broadcast_dimensions)
                            .status());
-    std::vector<int64> in_dim_size(ShapeUtil::Rank(shape));
-    absl::c_copy(shape.dimensions(), in_dim_size.begin());
+    std::vector<int64> in_dim_size(out_dim_size.begin(), out_dim_size.end());
     for (int i = 0; i < broadcast_dimensions.size(); i++) {
       in_dim_size[broadcast_dimensions[i]] = operand_shape.dimensions(i);
     }
     const auto& in_dim_shape =
-        ShapeUtil::MakeShape(shape.element_type(), in_dim_size);
+        ShapeUtil::MakeShape(operand_shape.element_type(), in_dim_size);
     TF_ASSIGN_OR_RETURN(
         XlaOp in_dim_broadcast,
         InDimBroadcast(in_dim_shape, operand, broadcast_dimensions));
-    if (ShapeUtil::Equal(in_dim_shape, shape)) {
+
+    // If broadcast is not degenerate, return broadcasted result.
+    if (ShapeUtil::Equal(in_dim_shape, output_shape)) {
       return in_dim_broadcast;
     }
-    return AddBroadcastSequence(shape, in_dim_broadcast);
+
+    // Otherwise handle degenerate broadcast case.
+    return AddBroadcastSequence(output_shape, in_dim_broadcast);
   });
 }
 
@@ -2665,9 +2673,10 @@ XlaOp Broadcast(const XlaOp& operand, absl::Span<const int64> broadcast_sizes) {
   return operand.builder()->Broadcast(operand, broadcast_sizes);
 }
 
-XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
+XlaOp BroadcastInDim(const XlaOp& operand,
+                     const absl::Span<const int64> out_dim_size,
                      const absl::Span<const int64> broadcast_dimensions) {
-  return operand.builder()->BroadcastInDim(operand, shape,
+  return operand.builder()->BroadcastInDim(operand, out_dim_size,
                                            broadcast_dimensions);
 }
 

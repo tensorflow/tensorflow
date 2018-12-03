@@ -27,6 +27,7 @@ from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
@@ -81,6 +82,7 @@ class PyBuiltinsTest(test.TestCase):
     with self.assertRaises(ValueError):
       py_builtins.len_(constant_op.constant(1))
 
+  @test_util.run_deprecated_v1
   def test_len_dynamic_shape(self):
     with self.cached_session() as sess:
       p = array_ops.placeholder(dtype=dtypes.int32, shape=None)
@@ -91,6 +93,7 @@ class PyBuiltinsTest(test.TestCase):
         t = py_builtins.len_(p)
         sess.run(t, {p: 1})
 
+  @test_util.run_deprecated_v1
   def test_print_tensors(self):
     try:
       out_capturer = six.StringIO()
@@ -101,6 +104,7 @@ class PyBuiltinsTest(test.TestCase):
     finally:
       sys.stdout = sys.__stdout__
 
+  @test_util.run_deprecated_v1
   def test_print_complex(self):
     try:
       out_capturer = six.StringIO()

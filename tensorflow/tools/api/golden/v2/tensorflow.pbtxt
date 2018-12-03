@@ -529,10 +529,6 @@ tf_module {
     argspec: "args=[\'x\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "clip_by_average_norm"
-    argspec: "args=[\'t\', \'clip_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "clip_by_global_norm"
     argspec: "args=[\'t_list\', \'clip_norm\', \'use_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
@@ -611,10 +607,6 @@ tf_module {
   member_method {
     name: "einsum"
     argspec: "args=[\'equation\'], varargs=inputs, keywords=kwargs, defaults=None"
-  }
-  member_method {
-    name: "enable_eager_execution"
-    argspec: "args=[\'config\', \'device_policy\', \'execution_mode\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "ensure_shape"
@@ -741,10 +733,6 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "lin_space"
-    argspec: "args=[\'start\', \'stop\', \'num\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "linspace"
     argspec: "args=[\'start\', \'stop\', \'num\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -755,14 +743,6 @@ tf_module {
   member_method {
     name: "load_op_library"
     argspec: "args=[\'library_filename\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "log"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "log1p"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "logical_and"
@@ -1021,10 +1001,6 @@ tf_module {
     argspec: "args=[\'input\', \'block_shape\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "sparse_concat"
-    argspec: "args=[\'axis\', \'sp_inputs\', \'expand_nonconcat_dim\', \'concat_dim\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\'], "
-  }
-  member_method {
     name: "split"
     argspec: "args=[\'value\', \'num_or_size_splits\', \'axis\', \'num\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'split\'], "
   }
@@ -1071,6 +1047,18 @@ tf_module {
   member_method {
     name: "tanh"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_scatter_add"
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_scatter_sub"
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_scatter_update"
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "tensordot"

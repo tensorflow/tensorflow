@@ -308,6 +308,7 @@ const char* OperatorTypeName(OperatorType type) {
 #define HANDLE_OPERATORTYPENAME_CASE(c) \
   case OperatorType::k##c:              \
     return #c;
+    HANDLE_OPERATORTYPENAME_CASE(Abs)
     HANDLE_OPERATORTYPENAME_CASE(Add)
     HANDLE_OPERATORTYPENAME_CASE(AddN)
     HANDLE_OPERATORTYPENAME_CASE(AveragePool)
@@ -371,6 +372,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Shape)
     HANDLE_OPERATORTYPENAME_CASE(Slice)
     HANDLE_OPERATORTYPENAME_CASE(Split)
+    HANDLE_OPERATORTYPENAME_CASE(SplitV)
     HANDLE_OPERATORTYPENAME_CASE(Sqrt)
     HANDLE_OPERATORTYPENAME_CASE(Square)
     HANDLE_OPERATORTYPENAME_CASE(Switch)
@@ -534,12 +536,12 @@ void DumpGraphvizVideoFrame(const Model& model) {
   if (!dump_hashes.count(hash)) {
     LOG(INFO) << "DUMPING GRAPHVIZ VIDEO FRAME: " << dump_id;
     dump_hashes.insert(hash);
-    CHECK(port::file::SetContents(
-              port::file::JoinPath(
-                  dump_options.dump_graphviz,
-                  toco::port::StringF("toco_video_%05d.dot", dump_id)),
-              graphviz_dump, port::file::Defaults())
-              .ok());
+    const auto result = port::file::SetContents(
+        port::file::JoinPath(
+            dump_options.dump_graphviz,
+            toco::port::StringF("toco_video_%05d.dot", dump_id)),
+        graphviz_dump, port::file::Defaults());
+    QCHECK(result.ok()) << result.error_message();
     dump_id++;
   }
 }
@@ -553,14 +555,13 @@ void LogDump(int log_level, const string& message, const Model& model) {
     string graphviz_dump;
 
     DumpGraphviz(model, &graphviz_dump);
-    CHECK(port::file::SetContents(
-              port::file::JoinPath(
-                  dump_options.dump_graphviz,
-                  absl::StrCat("toco_",
-                               absl::StrReplaceAll(message, {{" ", "_"}}),
-                               ".dot")),
-              graphviz_dump, port::file::Defaults())
-              .ok());
+    const auto result = port::file::SetContents(
+        port::file::JoinPath(
+            dump_options.dump_graphviz,
+            absl::StrCat("toco_", absl::StrReplaceAll(message, {{" ", "_"}}),
+                         ".dot")),
+        graphviz_dump, port::file::Defaults());
+    QCHECK(result.ok()) << result.error_message();
   }
 
   if (!VLOG_IS_ON(log_level)) {

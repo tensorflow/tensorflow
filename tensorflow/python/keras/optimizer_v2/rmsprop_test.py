@@ -86,6 +86,7 @@ class RMSpropOptimizerTest(test.TestCase):
       var_t[gindex] = var[gindex] - mom_t[gindex]
     return var_t, mg_t, rms_t, mom_t
 
+  @test_util.run_deprecated_v1
   def testDense(self):
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
       with test_util.use_gpu():
@@ -158,6 +159,7 @@ class RMSpropOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testDenseWithLearningRateDecay(self):
     var0_np = np.array([1.0, 2.0])
     grads0_np = np.array([0.1, 0.2])
@@ -225,6 +227,7 @@ class RMSpropOptimizerTest(test.TestCase):
       self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
       self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -249,6 +252,7 @@ class RMSpropOptimizerTest(test.TestCase):
                                            self.evaluate(var0),
                                            atol=0.01)
 
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariableCentered(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -273,6 +277,7 @@ class RMSpropOptimizerTest(test.TestCase):
                                            self.evaluate(var0),
                                            atol=0.01)
 
+  @test_util.run_deprecated_v1
   def testSparse(self):
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
       with test_util.use_gpu():

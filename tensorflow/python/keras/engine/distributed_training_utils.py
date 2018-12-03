@@ -54,14 +54,18 @@ def set_weights(distribution_strategy, dist_model, weights):
     num_param = len(layer.weights)
     layer_weights = weights[:num_param]
     for sw, w in zip(layer.weights, layer_weights):
-      assign_ops.append(distribution_strategy.unwrap(sw.assign(w)))
-
+      if ops.executing_eagerly_outside_functions():
+        sw.assign(w)
+      else:
+        assign_ops.append(distribution_strategy.unwrap(sw.assign(w)))
     weights = weights[num_param:]
-  K.get_session().run(assign_ops)
+
+  if not ops.executing_eagerly_outside_functions():
+    K.get_session().run(assign_ops)
 
 
 def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
-                  grouped_updates, grouped_session_args,
+                  grouped_updates=None, grouped_session_args=None,
                   with_loss_tensor=False):
   """Unwrap and return the list of values contained in the PerDevice parameters.
 
@@ -103,20 +107,25 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
     all_outputs = flatten_perdevice_values(distribution_strategy,
                                            grouped_outputs)
 
-  all_updates = flatten_perdevice_values(distribution_strategy,
-                                         grouped_updates)
+  if grouped_updates:
+    all_updates = flatten_perdevice_values(distribution_strategy,
+                                           grouped_updates)
+  else:
+    all_updates = None
 
   all_session_args = {}
-  grouped_feed_dict = grouped_session_args.get('feed_dict')
-  if grouped_feed_dict:
-    all_session_args['feed_dict'] = flatten_perdevice_values(
-        distribution_strategy, grouped_feed_dict)
+  if grouped_session_args:
+    grouped_feed_dict = grouped_session_args.get('feed_dict')
+    if grouped_feed_dict:
+      all_session_args['feed_dict'] = flatten_perdevice_values(
+          distribution_strategy, grouped_feed_dict)
 
-  grouped_fetches = grouped_session_args.get('fetches')
-  if grouped_fetches:
-    all_session_args['fetches'] = flatten_perdevice_values(
-        distribution_strategy, grouped_fetches)
+    grouped_fetches = grouped_session_args.get('fetches')
+    if grouped_fetches:
+      all_session_args['fetches'] = flatten_perdevice_values(
+          distribution_strategy, grouped_fetches)
 
+  # TODO(priyag): Return only non empty/None values
   return all_inputs, all_outputs, all_updates, all_session_args
 
 
@@ -328,7 +337,7 @@ def init_restore_or_wait_for_variables():
   """Initialize or restore variables or wait for variables to be initialized."""
   session = K._get_session()  # pylint: disable=protected-access
   worker_context = dc_context.get_current_worker_context()
-  if not worker_context or worker_context.should_init:
+  if not worker_context or worker_context.experimental_should_init:
     # TODO(yuefengz): if checkpoints exit, restore from checkpoint.
     K._initialize_variables(session)  # pylint: disable=protected-access
   else:

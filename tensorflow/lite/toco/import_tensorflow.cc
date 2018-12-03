@@ -935,6 +935,25 @@ tensorflow::Status ConvertSplitOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertSplitVOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "SplitV");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 3));
+  auto* op = new TensorFlowSplitVOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->inputs.push_back(node.input(2));
+  const int num_split = GetIntAttr(node, "num_split");
+  op->outputs.push_back(node.name());
+  for (int i = 1; i < num_split; i++) {
+    op->outputs.push_back(absl::StrCat(node.name(), ":", i));
+  }
+  op->num_split = num_split;
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status ConvertSwitchOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
@@ -2255,6 +2274,7 @@ ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
 
 ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
+      {"Abs", ConvertSimpleOperator<AbsOperator>},
       {"Add", ConvertSimpleOperator<AddOperator, 2>},
       {"AddN", ConvertSimpleOperatorFlexOk<AddNOperator>},
       {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
@@ -2349,6 +2369,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"SpaceToDepth", ConvertSpaceToDepthOperator},
       {"SparseToDense", ConvertSparseToDenseOperator},
       {"Split", ConvertSplitOperator},
+      {"SplitV", ConvertSplitVOperator},
       {"Sqrt", ConvertSimpleOperator<TensorFlowSqrtOperator, 1>},
       {"Square", ConvertSimpleOperator<TensorFlowSquareOperator, 1>},
       {"SquaredDifference",

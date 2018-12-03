@@ -910,13 +910,7 @@ class _EagerTensorBase(Tensor):
     return self._copy(context.context(), "GPU:" + str(gpu_index))
 
   def __bool__(self):
-    if self._shape_tuple() != ():  # pylint: disable=g-explicit-bool-comparison
-      raise ValueError(
-          "Non-scalar tensor %s cannot be converted to boolean." % repr(self))
-    if self.dtype != dtypes.bool:
-      raise ValueError(
-          "Non-boolean tensor %s cannot be converted to boolean." % repr(self))
-    return bool(self.cpu().numpy())
+    return bool(self.numpy())
 
   def __nonzero__(self):
     return self.__bool__()
@@ -2386,7 +2380,7 @@ class Operation(object):
     Raises:
       ValueError: If this op does not have an attr with the given `name`.
     """
-    fields = ["s", "i", "f", "b", "type", "shape", "tensor", "func"]
+    fields = ("s", "i", "f", "b", "type", "shape", "tensor", "func")
     try:
       with c_api_util.tf_buffer() as buf:
         c_api.TF_OperationGetAttrValueProto(self._c_op, name, buf)
@@ -2397,25 +2391,21 @@ class Operation(object):
     x = attr_value_pb2.AttrValue()
     x.ParseFromString(data)
 
-    # Treat an empty oneof value as an empty list.
-    if not x.WhichOneof("value"):
+    oneof_value = x.WhichOneof("value")
+    if oneof_value is None:
       return []
-    if x.HasField("list"):
+    if oneof_value == "list":
       for f in fields:
         if getattr(x.list, f):
           if f == "type":
-            return [dtypes.as_dtype(x) for x in list(getattr(x.list, f))]
+            return [dtypes.as_dtype(t) for t in x.list.type]
           else:
             return list(getattr(x.list, f))
       return []
-    else:
-      for f in fields:
-        if x.HasField(f):
-          if f == "type":
-            return dtypes.as_dtype(getattr(x, f))
-          else:
-            return getattr(x, f)
-      assert False, "Unsupported field type in " + str(x)
+    if oneof_value == "type":
+      return dtypes.as_dtype(x.type)
+    assert oneof_value in fields, "Unsupported field type in " + str(x)
+    return getattr(x, oneof_value)
 
   def run(self, feed_dict=None, session=None):
     """Runs this operation in a `Session`.
@@ -5403,7 +5393,7 @@ def inside_function():
   return get_default_graph().building_function
 
 
-@tf_export("enable_eager_execution")
+@tf_export(v1=["enable_eager_execution"])
 def enable_eager_execution(config=None,
                            device_policy=None,
                            execution_mode=None):
@@ -5474,6 +5464,17 @@ def enable_eager_execution(config=None,
         server_def=None)
 
 
+@tf_export(v1=["disable_eager_execution"])
+def disable_eager_execution():
+  """Disables eager execution.
+
+  This function can only be called before any Graphs, Ops, or Tensors have been
+  created. It can be used at the beginning of the program for complex migration
+  projects from TensorFlow 1.x to 2.x.
+  """
+  context.default_execution_mode = context.GRAPH_MODE
+
+
 def enable_eager_execution_internal(config=None,
                                     device_policy=None,
                                     execution_mode=None,
@@ -5481,6 +5482,7 @@ def enable_eager_execution_internal(config=None,
   """Enables eager execution for the lifetime of this program.
 
   Most of the doc string for enable_eager_execution is relevant here as well.
+
   Args:
     config: See enable_eager_execution doc string
     device_policy: See enable_eager_execution doc string

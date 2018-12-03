@@ -26,6 +26,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -126,6 +127,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
             # and may therefore vary dynamically.
             self.assertAllEqual(np_ans.shape[1:], tf_ans.shape[1:])
 
+  @test_util.run_deprecated_v1
   def testSegmentIdsShape(self):
     shape = [4, 4]
     tf_x, _ = self._input(shape)
@@ -133,6 +135,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
     with self.assertRaises(ValueError):
       math_ops.segment_sum(data=tf_x, segment_ids=indices)
 
+  @test_util.run_deprecated_v1
   def testSegmentIdsSize(self):
     shape = [4, 4]
     for use_gpu in [True, False]:
@@ -143,6 +146,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         with self.assertRaisesOpError("segment_ids should be the same size"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testSegmentIdsValid(self):
     # This is a baseline for the following SegmentIdsInvalid* tests.
     shape = [4, 4]
@@ -175,6 +179,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         tf_ans = self.evaluate(s)
         self.assertAllClose(np_ans, tf_ans)
 
+  @test_util.run_deprecated_v1
   def testSegmentIdsInvalid1(self):
     shape = [4, 4]
     with self.cached_session():
@@ -186,6 +191,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
           "'segment_ids' input is not sorted."):
         self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testSegmentIdsInvalid2(self):
     shape = [4, 4]
     with self.cached_session():
@@ -195,6 +201,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
       with self.assertRaisesOpError("segment ids are not increasing"):
         self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testSegmentIdsInvalid3(self):
     shape = [4, 4]
     with self.cached_session():
@@ -206,6 +213,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
           "because 'segment_ids' input is not sorted."):
         self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testSegmentIdsInvalid4(self):
     shape = [4, 4]
     for use_gpu in [True, False]:
@@ -216,6 +224,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         with self.assertRaisesOpError("segment ids must be >= 0"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testSegmentIdsInvalid5(self):
     shape = [4, 4]
     for use_gpu in [True, False]:
@@ -226,6 +235,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         with self.assertRaisesOpError("segment ids must be >= 0"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     shape = [4, 4]
     indices = [0, 1, 2, 2]
@@ -324,6 +334,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
         self.assertAllClose(np_ans, tf_ans)
         self.assertShapeEqual(np_ans, s)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     num_cols = 2
     indices_flat = np.array([0, 4, 0, -1, 3, -1, 4, 7, 7, 3])
@@ -346,6 +357,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
                   delta=1)
             self.assertAllClose(jacob_t, jacob_n)
 
+  @test_util.run_deprecated_v1
   def testProdGrad(self):
     # additional test for the prod gradient to ensure correct handling of zeros
     values = np.array([0, 0, 1, 0, 2, 2, 3, 3, 3], dtype=np.float32)
@@ -370,6 +382,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
           self.assertAllClose(jacob_t, jacob_n)
           self.assertAllClose(jacob_t, grad_gt)
 
+  @test_util.run_deprecated_v1
   def testGradientMatchesSegmentSum(self):
     # Strategy: compute the gradient for UnsortedSegmentSum and SegmentSum
     # and compare the outputs, which should be identical.
@@ -403,6 +416,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
       self.assertAllClose(unsorted_jacob_t, sorted_jacob_t)
       self.assertAllClose(unsorted_jacob_n, sorted_jacob_n)
 
+  @test_util.run_deprecated_v1
   def testBadIndices(self):
     # Note: GPU kernel does not return the out-of-range error needed for this
     # test, so this test is marked as cpu-only.
@@ -414,6 +428,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
             r"segment_ids\[0,0\] = %d is out of range \[0, 2\)" % bad[0][0]):
           self.evaluate(unsorted)
 
+  @test_util.run_deprecated_v1
   def testEmptySecondDimension(self):
     dtypes = [np.float16, np.float32, np.float64, np.int64, np.int32,
               np.complex64, np.complex128]
@@ -590,6 +605,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
         self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testIndicesInvalid1(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
     ops_list = [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]
@@ -602,6 +618,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             r"indices\[1\] == -1 out of range \[0, 10\)"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testIndicesInvalid2(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
     ops_list = [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]
@@ -614,6 +631,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             r"indices\[3\] == 10 out of range \[0, 10\)"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testSegmentsInvalid2(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
     ops_list = [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]
@@ -625,6 +643,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError("segment ids are not increasing"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testSegmentsInvalid3(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
     ops_list = [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]
@@ -638,6 +657,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             "'segment_ids' input is not sorted"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testSegmentsInvalid4(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
     ops_list = [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]
@@ -651,6 +671,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             "'segment_ids' input is not sorted"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testSegmentsInvalid6(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
     ops_list = [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]
@@ -662,6 +683,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError("segment ids must be >= 0"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testSegmentsInvalid7(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
     ops_list = [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]
@@ -692,6 +714,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             num_segments=num_segments)
         self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testSegmentWithNumSegmentsInvalid1(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
     ops_list = [
@@ -711,6 +734,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError("segment ids must be < num_segments"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testSegmentWithNumSegmentsInvalid2(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
     ops_list = [
@@ -730,6 +754,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
               segment_ids=segment_indices,
               num_segments=num_segments)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     shape = [10, 4]
 
@@ -748,6 +773,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             delta=1)
       self.assertAllClose(jacob_t, jacob_n)
 
+  @test_util.run_deprecated_v1
   def testGradientWithEmptySegmentsAtEnd(self):
     shape = [10, 4]
 
@@ -787,6 +813,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testGradientIndicesInvalid1(self):
     tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
     ops_list = [
@@ -800,6 +827,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError(r"Index 10 out of range \[0, 10\)"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testGradientIndicesInvalid2(self):
     tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
     ops_list = [
@@ -813,6 +841,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError(r"Index -1 out of range \[0, 10\)"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testGradientSegmentsInvalid1(self):
     tf_x, _ = self._input(
         [3, 4], dtype=dtypes_lib.float32)  # expecting 3 segments
@@ -827,6 +856,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError("Invalid number of segments"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testGradientSegmentsInvalid2(self):
     tf_x, _ = self._input([1, 4], dtype=dtypes_lib.float32)
     ops_list = [
@@ -840,6 +870,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError(r"Segment id 1 out of range \[0, 1\)"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testGradientSegmentsInvalid3(self):
     tf_x, _ = self._input([2, 4], dtype=dtypes_lib.float32)
     ops_list = [
@@ -853,6 +884,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError(r"Segment id -1 out of range \[0, 2\)"):
           self.evaluate(s)
 
+  @test_util.run_deprecated_v1
   def testGradientSegmentsInvalid4(self):
     tf_x, _ = self._input([0, 4], dtype=dtypes_lib.float32)
     ops_list = [

@@ -63,11 +63,13 @@ class FlexModelTest : public ::testing::Test {
   void SetValues(int tensor_index, const std::vector<float>& values) {
     SetTypedValues<float>(tensor_index, values);
   }
+  void SetStringValues(int tensor_index, const std::vector<string>& values);
 
   // Returns the tensor's values at the given index.
   std::vector<float> GetValues(int tensor_index) {
     return GetTypedValues<float>(tensor_index);
   }
+  std::vector<string> GetStringValues(int tensor_index) const;
 
   // Sets the tensor's shape at the given index.
   void SetShape(int tensor_index, const std::vector<int>& values);

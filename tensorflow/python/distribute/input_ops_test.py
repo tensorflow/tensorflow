@@ -24,6 +24,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.distribute import input_ops
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -96,6 +97,7 @@ class AutoShardDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testTFRecordDataset(self):
     dataset = readers.TFRecordDataset(self._createTFRecordFiles())
     dataset = input_ops.auto_shard_dataset(
@@ -103,6 +105,7 @@ class AutoShardDatasetTest(test.TestCase):
 
     self._verifySimpleShardingOutput(dataset, self._record)
 
+  @test_util.run_deprecated_v1
   def testFlatMap(self):
     dataset = dataset_ops.Dataset.from_tensor_slices(
         self._createTFRecordFiles())
@@ -112,6 +115,7 @@ class AutoShardDatasetTest(test.TestCase):
 
     self._verifySimpleShardingOutput(dataset, self._record)
 
+  @test_util.run_deprecated_v1
   def testInterleave(self):
     dataset = dataset_ops.Dataset.from_tensor_slices(
         self._createTFRecordFiles())
@@ -124,9 +128,10 @@ class AutoShardDatasetTest(test.TestCase):
     # contain records in order of files.
     self._verifySimpleShardingOutput(dataset, self._record)
 
+  @test_util.run_deprecated_v1
   def testListfiles(self):
     filenames = self._createTFRecordFiles()
-    file_pattern = filenames[0].rsplit("/", 1)[0] + "/tf_record.*.txt"
+    file_pattern = filenames[0].rsplit(os.sep, 1)[0] + "/tf_record.*.txt"
     dataset = dataset_ops.Dataset.list_files(file_pattern, shuffle=False)
     dataset = dataset.flat_map(readers.TFRecordDataset)
     dataset = input_ops.auto_shard_dataset(
@@ -144,6 +149,7 @@ class AutoShardDatasetTest(test.TestCase):
         self.evaluate(next_element)
       self.assertAllEqual(expected, actual)
 
+  @test_util.run_deprecated_v1
   def testComplexPipeline(self):
     # Setup a complex input pipeline.
     batch_size = 2
@@ -183,6 +189,7 @@ class AutoShardDatasetTest(test.TestCase):
 
       self.assertAllEqual(sorted(expected), sorted(actual))
 
+  @test_util.run_deprecated_v1
   def testZip(self):
     dataset1 = readers.TFRecordDataset(self._createTFRecordFiles())
     dataset2 = readers.TextLineDataset(self._createTextFiles())
@@ -193,6 +200,7 @@ class AutoShardDatasetTest(test.TestCase):
     record_fn = lambda r, f: (self._record(r, f), self._text_line(r, f))
     self._verifySimpleShardingOutput(dataset, record_fn)
 
+  @test_util.run_deprecated_v1
   def testConcat(self):
     dataset1 = readers.TFRecordDataset(self._createTFRecordFiles())
     dataset2 = readers.TextLineDataset(self._createTextFiles())
@@ -213,6 +221,7 @@ class AutoShardDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testTextLineReader(self):
     dataset = readers.TextLineDataset(self._createTextFiles())
     dataset = input_ops.auto_shard_dataset(
@@ -220,6 +229,7 @@ class AutoShardDatasetTest(test.TestCase):
 
     self._verifySimpleShardingOutput(dataset, self._text_line)
 
+  @test_util.run_deprecated_v1
   def testTextLineReaderWithFlatMap(self):
     dataset = dataset_ops.Dataset.from_tensor_slices(self._createTextFiles())
     dataset = dataset.flat_map(readers.TextLineDataset)
@@ -228,6 +238,7 @@ class AutoShardDatasetTest(test.TestCase):
 
     self._verifySimpleShardingOutput(dataset, self._text_line)
 
+  @test_util.run_deprecated_v1
   def testFixedLengthReader(self):
     dataset = readers.FixedLengthRecordDataset(
         self._createFixedLengthRecordFiles(), self._record_bytes)
@@ -236,6 +247,7 @@ class AutoShardDatasetTest(test.TestCase):
 
     self._verifySimpleShardingOutput(dataset, self._fixed_length_record)
 
+  @test_util.run_deprecated_v1
   def testFixedLengthReaderWithFlatMap(self):
     dataset = dataset_ops.Dataset.from_tensor_slices(
         self._createFixedLengthRecordFiles())

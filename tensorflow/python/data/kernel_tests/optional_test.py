@@ -74,6 +74,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertAllEqual(expected.dense_shape,
                           self.evaluate(actual.dense_shape))
 
+  @test_util.run_deprecated_v1
   def testFromNone(self):
     value_structure = structure.TensorStructure(dtypes.float32, [])
     opt = optional_ops.Optional.none_from_structure(value_structure)
@@ -267,6 +268,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
        optional_ops.OptionalStructure(
            structure.TensorStructure(dtypes.float32, []))),
   )
+  @test_util.run_deprecated_v1
   def testSkipEagerOptionalStructure(self, tf_value_fn,
                                      expected_value_structure):
     tf_value = tf_value_fn()
@@ -322,6 +324,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
                     indices=[[0, 1], [1, 0]], values=[37.0, 42.0],
                     dense_shape=[2, 2])}, False),
   )
+  @test_util.run_deprecated_v1
   def testSkipEagerIteratorGetNextAsOptional(self, np_value, tf_value_fn,
                                              works_on_gpu):
     if not works_on_gpu and test.is_gpu_available():

@@ -75,7 +75,7 @@ class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": [
+        "TRTEngineOp_0": [
             "weights", "conv", "bias", "bias_add", "relu", "identity",
             "max_pool"
         ]
@@ -132,10 +132,10 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": [
+        "TRTEngineOp_0": [
             "add", "add1", "c1", "div1", "mul", "mul1", "sub", "sub1"
         ],
-        "my_trt_op_1": ["c2", "conv", "div", "weights"]
+        "TRTEngineOp_1": ["c2", "conv", "div", "weights"]
     }
 
   def GetConversionParams(self, run_params):
@@ -154,7 +154,7 @@ class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
     """Setup method."""
     super(PartiallyConvertedTestA, self).setUp()
     # Let it fail to build the second engine.
-    trt_convert.add_test_value("my_trt_op_1:CreateTRTNode", "fail")
+    trt_convert.add_test_value("TRTEngineOp_1:CreateTRTNode", "fail")
 
   def GetParams(self):
     """Create a graph containing two segment."""
@@ -191,7 +191,7 @@ class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     return {
         # Only the first engine is built.
-        "my_trt_op_0": ["c0", "c1", "add0", "add1", "mul0", "mul1"]
+        "TRTEngineOp_0": ["c0", "c1", "add0", "add1", "mul0", "mul1"]
     }
 
   def ShouldRunTest(self, run_params):
@@ -210,13 +210,13 @@ class PartiallyConvertedTestB(PartiallyConvertedTestA):
     super(PartiallyConvertedTestB, self).setUp()
     # Let it fail to build the first engine.
     trt_convert.clear_test_values("")
-    trt_convert.add_test_value("my_trt_op_0:CreateTRTNode", "fail")
+    trt_convert.add_test_value("TRTEngineOp_0:CreateTRTNode", "fail")
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
         # Only the second engine is built.
-        "my_trt_op_1": ["c2", "c3", "add2", "add3", "mul2", "mul3"]
+        "TRTEngineOp_1": ["c2", "c3", "add2", "add3", "mul2", "mul3"]
     }
 
 
@@ -260,8 +260,8 @@ class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": ["add", "add1", "mul"],
-        "my_trt_op_1": ["add2", "add3", "mul1"]
+        "TRTEngineOp_0": ["add", "add1", "mul"],
+        "TRTEngineOp_1": ["add2", "add3", "mul1"]
     }
 
 
@@ -292,7 +292,7 @@ class ConstDataInputSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"my_trt_op_0": ["c", "add", "add1", "mul"]}
+    return {"TRTEngineOp_0": ["c", "add", "add1", "mul"]}
 
 
 class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
@@ -327,12 +327,12 @@ class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": ["add2", "add3", "mul1"],
+        "TRTEngineOp_0": ["add2", "add3", "mul1"],
         # Why segment ["add", "add1", "mul"] was assigned segment id 1
         # instead of 0: the parent node of this segment is actually const
         # node 'c', but it's removed later since it's const output of the
         # segment which is not allowed.
-        "my_trt_op_1": ["add", "add1", "mul"]
+        "TRTEngineOp_1": ["add", "add1", "mul"]
     }
 
 
@@ -376,8 +376,8 @@ class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": ["c1", "add", "add1", "mul"],
-        "my_trt_op_1": ["c2", "add2", "add3", "mul1"]
+        "TRTEngineOp_0": ["c1", "add", "add1", "mul"],
+        "TRTEngineOp_1": ["c2", "add2", "add3", "mul1"]
     }
 
 

@@ -10189,68 +10189,6 @@ op {
   }
 }
 op {
-  name: "ExperimentalFunctionBufferingResource"
-  input_arg {
-    name: "string_arg"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "target_device"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "resource"
-    type: DT_RESOURCE
-  }
-  attr {
-    name: "shared_name"
-    type: "string"
-  }
-  attr {
-    name: "container"
-    type: "string"
-  }
-  attr {
-    name: "f"
-    type: "func"
-  }
-  attr {
-    name: "buffer_size"
-    type: "int"
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-  }
-  is_stateful: true
-}
-op {
-  name: "ExperimentalFunctionBufferingResourceGetNext"
-  input_arg {
-    name: "function_buffer_resource"
-    type: DT_RESOURCE
-  }
-  output_arg {
-    name: "output"
-    type_list_attr: "output_types"
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  is_stateful: true
-}
-op {
-  name: "ExperimentalFunctionBufferingResourceReset"
-  input_arg {
-    name: "function_buffer_resource"
-    type: DT_RESOURCE
-  }
-  is_stateful: true
-}
-op {
   name: "ExperimentalIdentityIndexedDataset"
   input_arg {
     name: "size"
@@ -36150,6 +36088,25 @@ op {
   is_stateful: true
 }
 op {
+  name: "TensorListConcat"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "tensor"
+    type_attr: "element_dtype"
+  }
+  output_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+}
+op {
   name: "TensorListConcatLists"
   input_arg {
     name: "input_a"
@@ -36410,6 +36367,39 @@ op {
   }
 }
 op {
+  name: "TensorListSplit"
+  input_arg {
+    name: "tensor"
+    type_attr: "element_dtype"
+  }
+  input_arg {
+    name: "element_shape"
+    type_attr: "shape_type"
+  }
+  input_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "TensorListStack"
   input_arg {
     name: "input_handle"
@@ -36428,6 +36418,105 @@ op {
     type: "int"
     default_value {
       i: -1
+    }
+  }
+}
+op {
+  name: "TensorScatterAdd"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "TensorScatterSub"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "TensorScatterUpdate"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
     }
   }
 }
@@ -37160,6 +37249,53 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+}
+op {
+  name: "UnicodeEncode"
+  input_arg {
+    name: "input_values"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "input_splits"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "errors"
+    type: "string"
+    default_value {
+      s: "replace"
+    }
+    allowed_values {
+      list {
+        s: "ignore"
+        s: "replace"
+        s: "strict"
+      }
+    }
+  }
+  attr {
+    name: "output_encoding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "UTF-8"
+        s: "UTF-16-BE"
+        s: "UTF-32-BE"
+      }
+    }
+  }
+  attr {
+    name: "replacement_char"
+    type: "int"
+    default_value {
+      i: 65533
     }
   }
 }

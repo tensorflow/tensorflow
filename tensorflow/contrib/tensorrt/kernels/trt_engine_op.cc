@@ -151,9 +151,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                        AsyncHelper* helper) {
-  if (!calibration_mode_) {
-    VLOG(1) << "Executing native engine";
-  }
   std::vector<Tensor> inputs;
   std::vector<Tensor>* outputs = new std::vector<Tensor>();
   if (native_func_ == tensorflow::kInvalidHandle) {
@@ -174,7 +171,7 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
     inputs.push_back(ctx->input(i));
   }
   helper->Ref();  // Increment count for calculating native graph
-  VLOG(1) << "Executing native segment " << name();
+  VLOG(1) << "Executing native segment: " << name();
   lib->Run(opts, native_func_, inputs, outputs,
            [this, ctx, outputs, helper](const tensorflow::Status& s) {
              tensorflow::core::ScopedUnref sc(helper);
@@ -194,6 +191,7 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
 
 void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                                      AsyncHelper* helper) {
+  VLOG(1) << "Executing TRT calibration: " << name();
   helper->Ref();
   tensorflow::core::ScopedUnref sc(helper);
   // TODO(aaroey): remove the ResourceMgr singleton.
@@ -305,6 +303,7 @@ bool TRTEngineOp::ExecuteTrtEngine(
     OpKernelContext* ctx, const int num_batch,
     nvinfer1::ICudaEngine* trt_engine_ptr,
     nvinfer1::IExecutionContext* trt_execution_context_ptr) {
+  VLOG(1) << "Executing TRT engine: " << name();
   const bool kRetry = true;
   const int num_binding = ctx->num_inputs() + ctx->num_outputs();
   std::vector<void*> buffers(num_binding);
@@ -493,8 +492,8 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
     }
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
-    VLOG(0) << name() << " Constructing a new engine with batch size "
-            << batch_size;
+    LOG(INFO) << "Building a new TensorRT engine for " << name()
+              << " with batch size " << batch_size;
     // Up to this point, calibrator_ can never be empty, since otherwise it
     // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(
@@ -570,8 +569,8 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
   const int64 workspace_size_bytes = workspace_size_;
   cres->thr_.reset(new std::thread([cres, label, segment_graph, shapes,
                                     platform_gpu_id, workspace_size_bytes]() {
-    VLOG(0) << "Starting calibration thread on device " << platform_gpu_id
-            << ", Calibration Resource @ " << cres;
+    LOG(INFO) << "Starting calibration thread on device " << platform_gpu_id
+              << ", Calibration Resource @ " << cres;
     auto err = cudaSetDevice(platform_gpu_id);
     if (err != cudaSuccess) {
       // TODO(aaroey): should return error here.

@@ -392,18 +392,16 @@ class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
           # pylint: disable=g-long-lambda
           combinations.NamedDistribution(
               "CoreMirroredCPU",
-              lambda: mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus_per_worker=0),
+              lambda: mirrored_strategy.CoreMirroredStrategy(["/device:CPU:0"]),
               required_gpus=0),
           combinations.NamedDistribution(
               "CoreMirrored1GPU",
-              lambda: mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus_per_worker=1),
+              lambda: mirrored_strategy.CoreMirroredStrategy(["/device:GPU:0"]),
               required_gpus=1),
           combinations.NamedDistribution(
               "CoreMirrored2GPUs",
               lambda: mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus_per_worker=2),
+                  ["/device:GPU:0", "/device:GPU:1"]),
               required_gpus=2),
       ],
       mode=["graph"])

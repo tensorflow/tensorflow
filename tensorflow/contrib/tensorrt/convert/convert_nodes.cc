@@ -130,7 +130,7 @@ void GetOutputProperties(const grappler::GraphProperties& graph_properties,
     *dtype = out_shape.dtype();
     *shape = out_shape.shape();
   } else {
-    VLOG(0) << "Unknown output shape" << node->name();
+    LOG(INFO) << "Unknown output shape" << node->name();
     *dtype = node->output_type(out_port);
   }
 }
@@ -1977,13 +1977,43 @@ tensorflow::Status ConvertPool(OpConverterParams* params) {
 }
 
 tensorflow::Status ConvertActivation(OpConverterParams* params) {
-  const nvinfer1::ITensor* tensor = params->inputs.at(0).tensor();
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  if (inputs.size() != 1) {
+    return tensorflow::errors::InvalidArgument(
+        node_def.op(), " expects one input, at ", node_def.name());
+  }
+  if (!inputs.at(0).is_tensor()) {
+    return tensorflow::errors::Unimplemented(
+        node_def.op(), " is only implemented for tensors, at ",
+        node_def.name());
+  }
+  static const std::unordered_map<string, nvinfer1::ActivationType> ops{
+      {"Relu", nvinfer1::ActivationType::kRELU},
+      {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
+      {"Tanh", nvinfer1::ActivationType::kTANH},
+  };
+  auto op_pair = ops.find(node_def.op());
+  if (op_pair == ops.end()) {
+    return tensorflow::errors::Unimplemented(
+        "Activation op: ", node_def.op(),
+        " not supported at: ", node_def.name());
+  }
+  if (params->validation_only) return tensorflow::Status::OK();
+
+  // Start conversion.
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   nvinfer1::IActivationLayer* layer =
       params->converter->network()->addActivation(
-          *const_cast<nvinfer1::ITensor*>(tensor),
-          nvinfer1::ActivationType::kRELU);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, params->node_def.name());
+          *const_cast<nvinfer1::ITensor*>(tensor), op_pair->second);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  // Set quantization range for output of Sigmoid, Tanh.
+  if (node_def.op() == "Sigmoid") {
+    params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 1.0f);
+  } else if (node_def.op() == "Tanh") {
+    params->converter->ProvideQuantizationRange(output_tensor, -1.0f, 1.0f);
+  }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
 }
@@ -2493,6 +2523,48 @@ tensorflow::Status ConvertUnary(OpConverterParams* params) {
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->outputs->push_back(
       TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertSquare(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  if (inputs.size() != 1) {
+    return tensorflow::errors::InvalidArgument("Square expects one input, at ",
+                                               node_def.name());
+  }
+  if (inputs.at(0).is_weights()) {
+    return tensorflow::errors::Unimplemented(
+        "Square is only implemented for tensors, at ", node_def.name());
+  }
+  if (params->validation_only) return Status::OK();
+
+  // Constant 2 with same rank as input
+  nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  for (int i = 0; i < dims.nbDims; i++) {
+    dims.d[i] = 1;
+  }
+  TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
+      tensorflow::DataType::DT_FLOAT, dims);
+  auto weights_ptr =
+      static_cast<float*>(const_cast<void*>(weights.GetValues()));
+  weights_ptr[0] = 2.f;
+  nvinfer1::IConstantLayer* const2_layer =
+      params->converter->network()->addConstant(dims, weights.GetTrtWeights());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(const2_layer, node_def.name());
+
+  // ElementWise Pow Operation
+  const nvinfer1::ITensor* tensor_l = inputs.at(0).tensor();
+  const nvinfer1::ITensor* tensor_r = const2_layer->getOutput(0);
+  nvinfer1::IElementWiseLayer* layer =
+      params->converter->network()->addElementWise(
+          *const_cast<nvinfer1::ITensor*>(tensor_l),
+          *const_cast<nvinfer1::ITensor*>(tensor_r),
+          nvinfer1::ElementWiseOperation::kPOW);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
 }
 
@@ -3083,6 +3155,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Reshape"] = ConvertReshape;
   (*registration)["MatMul"] = ConvertMatMul;
   (*registration)["Relu6"] = ConvertRelu6;
+  (*registration)["Square"] = ConvertSquare;
 
   for (auto quantization_op_type :
        {"QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3",
@@ -3092,6 +3165,9 @@ static void RegisterValidatableOpConverters(
   for (auto binary_op_type :
        {"Add", "Mul", "Sub", "Div", "RealDiv", "Maximum", "Minimum"}) {
     (*registration)[binary_op_type] = ConvertBinary;
+  }
+  for (auto activation_op_type : {"Relu", "Sigmoid", "Tanh"}) {
+    (*registration)[activation_op_type] = ConvertActivation;
   }
 }
 
@@ -3104,7 +3180,6 @@ void Converter::RegisterOpConverters() {
 
   op_registry_["Conv2D"] = ConvertConv2D;
   op_registry_["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
-  op_registry_["Relu"] = ConvertActivation;
   op_registry_["MaxPool"] = ConvertPool;
   op_registry_["AvgPool"] = ConvertPool;
   // TODO(ben,jie): this is a temp hack.
@@ -3378,7 +3453,8 @@ tensorflow::Status ConvertSegmentToGraphDef(
     }
   }
   *common_scope = local_scope;
-  VLOG(0) << "Segment @scope '" << local_scope << "', converted to graph";
+  VLOG(1) << "Converted TensorRT candidate segment @scope '" << local_scope
+          << "' to a GraphDef";
   return tensorflow::Status::OK();
 }
 

@@ -26,6 +26,7 @@ from tensorflow.python.platform import googletest
 
 class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testDocStringExample(self):
     segment_ids = [0, 0, 0, 2, 2, 3, 4, 4, 4]
     expected = [0, 3, 3, 5, 6, 9]
@@ -33,6 +34,7 @@ class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
     with self.test_session():
       self.assertEqual(splits.eval().tolist(), expected)
 
+  @test_util.run_deprecated_v1
   def testEmptySegmentIds(self):
     # Note: the splits for an empty ragged tensor contains a single zero.
     segment_ids = ragged.segment_ids_to_row_splits([])
@@ -49,6 +51,7 @@ class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
     self.assertRaisesRegexp(ValueError, r'Shape \(1, 1\) must have rank 1',
                             ragged.segment_ids_to_row_splits, [[0]])
 
+  @test_util.run_deprecated_v1
   def testNumSegments(self):
     segment_ids = [0, 0, 0, 2, 2, 3, 4, 4, 4]
     num_segments = 7
@@ -57,6 +60,7 @@ class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
     with self.test_session():
       self.assertEqual(splits.eval().tolist(), expected)
 
+  @test_util.run_deprecated_v1
   def testUnsortedSegmentIds(self):
     # Segment ids are not required to be sorted.
     segment_ids = [0, 4, 3, 2, 4, 4, 2, 0, 0]

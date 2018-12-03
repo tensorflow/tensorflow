@@ -152,6 +152,7 @@ class VariableScopeTest(test.TestCase):
   # TypeError: Fetch argument <tf.Variable 'string:0' shape=() dtype=string>
   # has invalid type <class '...ResourceVariable'>, must be a string or Tensor.
   # (Can not convert a ResourceVariable into a Tensor or Operation.)
+  @test_util.run_deprecated_v1
   def testStringDefaultInitializer(self):
     with self.cached_session():
       v = variable_scope.get_variable("string", shape=[], dtype=dtypes.string)
@@ -310,6 +311,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # InvalidArgumentError: /job:moo/replica:0/task:0/device:CPU:0 unknown device.
+  @test_util.run_deprecated_v1
   def testVarScopeCachingDevice(self):
     with self.cached_session():
       caching_device = "/job:moo"
@@ -424,6 +426,7 @@ class VariableScopeTest(test.TestCase):
   # invalid type <class '...ops.resource_variable_ops.ResourceVariable'>, must
   # be a string or Tensor. (Can not convert a ResourceVariable into a Tensor or
   # Operation.)
+  @test_util.run_deprecated_v1
   def testControlDeps(self):
     with self.cached_session() as sess:
       v0 = variable_scope.get_variable(
@@ -450,6 +453,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # AssertionError: True is not false (last assertFalse)
+  @test_util.run_deprecated_v1
   def testEnableResourceVariables(self):
     old = variable_scope._DEFAULT_USE_RESOURCE
     try:
@@ -464,6 +468,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # TypeError: Fetch argument None has invalid type <type 'NoneType'>
+  @test_util.run_deprecated_v1
   def testControlFlow(self):
     with self.cached_session() as sess:
       v0 = variable_scope.get_variable(
@@ -1148,6 +1153,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testGetCollection(self):
     with self.cached_session():
       _ = variable_scope.get_variable("testGetCollection_a", [])
@@ -1204,6 +1210,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testGetTrainableVariablesWithGetVariable(self):
     with self.cached_session():
       _ = variable_scope.get_variable("testGetTrainableVariables_a", [])
@@ -1242,6 +1249,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testGetTrainableVariablesWithVariable(self):
     with self.cached_session():
       _ = variable_scope.variable(1.0, name="testGetTrainableVariables_a")
@@ -1283,6 +1291,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testGetGlobalVariables(self):
     with self.cached_session():
       _ = variable_scope.get_variable("testGetGlobalVariables_a", [])
@@ -1295,6 +1304,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testGetLocalVariables(self):
     with self.cached_session():
       _ = variable_scope.get_variable(
@@ -1370,6 +1380,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testResultNameMatchesRequested(self):
     with variable_scope.variable_scope(
         "scope0", partitioner=axis0_into2_partitioner):
@@ -1444,6 +1455,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testScalarIgnoresPartitioner(self):
     with variable_scope.variable_scope(
         "scope0", partitioner=axis0_into2_partitioner):
@@ -1583,6 +1595,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
   # dtype=float32> cannot be interpreted as a Tensor. (Tensor
   # Tensor("custom_getter/add:0", shape=(1, 2, 3), dtype=float32) is not an
   # element of this graph.)
+  @test_util.run_deprecated_v1
   def testGetterThatCreatesTwoVariablesAndSumsThem(self):
 
     def custom_getter(getter, name, *args, **kwargs):
@@ -1610,6 +1623,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
   # dtype=float32> cannot be interpreted as a Tensor. (Tensor
   # Tensor("sum_getter_2/add:0", shape=(1, 2, 3), dtype=float32) is not an
   # element of this graph.)
+  @test_util.run_deprecated_v1
   def testNestedCustomGetters(self):
 
     def sum_getter(getter, name, *args, **kwargs):

@@ -134,6 +134,7 @@ class GradientDescentOptimizerTest(test.TestCase):
                                            self.evaluate(var0))
         self.assertAllCloseAccordingToType([3.0 - 1.0], self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -173,6 +174,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
                                            self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testGradWrtRef(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -206,6 +208,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
                                            self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSparseBasicWithLearningRateDecay(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -331,6 +334,7 @@ class MomentumOptimizerTest(test.TestCase):
                 3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
             ]), self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -358,6 +362,7 @@ class MomentumOptimizerTest(test.TestCase):
           self.assertAllClose(var0_np, self.evaluate(var0))
           self.assertAllClose(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSparseNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -399,6 +404,7 @@ class MomentumOptimizerTest(test.TestCase):
           self.assertAllClose(var1_np, self.evaluate(var1))
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       # This test invokes the ResourceSparseApplyMomentum operation, which
@@ -452,6 +458,7 @@ class MomentumOptimizerTest(test.TestCase):
     self.evaluate(sgd_op)
     self.assertAllCloseAccordingToType([[1, 1], [0, 0]], self.evaluate(var0))
 
+  @test_util.run_deprecated_v1
   def testTensorLearningRateAndMomentum(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -510,6 +517,7 @@ class MomentumOptimizerTest(test.TestCase):
                 3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
             ]), self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSparse(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -585,6 +593,7 @@ class MomentumOptimizerTest(test.TestCase):
             ]),
             self.evaluate(var1)[2])
 
+  @test_util.run_deprecated_v1
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():

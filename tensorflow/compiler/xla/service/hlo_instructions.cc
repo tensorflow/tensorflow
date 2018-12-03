@@ -1372,6 +1372,10 @@ bool HloFusionInstruction::IdenticalSlowPath(
                          other.fused_instructions_computation());
 }
 
+uint64 HloFusionInstruction::InnerHash() const {
+  return fused_instructions_computation()->Hash();
+}
+
 std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import imp
 
 import gast
@@ -72,7 +73,12 @@ def is_whitelisted_for_graph(o):
   Returns:
     Boolean
   """
-  m = tf_inspect.getmodule(o)
+  if isinstance(o, functools.partial):
+    # tf_inspect.getmodule(functools.partial(...)) otherwise returns None since
+    # functools.partial objects do not have a __module__ attribute.
+    m = functools
+  else:
+    m = tf_inspect.getmodule(o)
   for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
     if m.__name__.startswith(prefix):
       return True

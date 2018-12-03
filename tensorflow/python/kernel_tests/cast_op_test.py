@@ -25,6 +25,7 @@ import platform
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
@@ -90,10 +91,12 @@ class CastOpTest(test.TestCase):
     if x.dtype == np.float32 or x.dtype == np.float64:
       self._testTypes(x, use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     self._testAll(np.arange(-10, 10).reshape(2, 10))
     self._testAll(np.linspace(-10, 10, 17))
 
+  @test_util.run_deprecated_v1
   def testSmallValues(self):
     f4 = np.finfo(np.float32)
     f8 = np.finfo(np.float64)
@@ -112,6 +115,7 @@ class CastOpTest(test.TestCase):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
       self.assertAllClose(a, self.evaluate(b), rtol=1 / 128.)
 
+  @test_util.run_deprecated_v1
   def testRandom(self):
     self._testAll(np.random.normal(0, 10, 210).reshape([2, 3, 5, 7]))
     self._testAll(np.random.normal(0, 1e6, 210).reshape([2, 3, 5, 7]))
@@ -124,6 +128,7 @@ class CastOpTest(test.TestCase):
         self._cast(
             x, dst_dtype, use_gpu=use_gpu), dst_dtype(expected))
 
+  @test_util.run_deprecated_v1
   def testIntToFloatBoundary(self):
     i4 = np.iinfo(np.int32)
     i8 = np.iinfo(np.int64)
@@ -138,6 +143,7 @@ class CastOpTest(test.TestCase):
     self._compare(i8.max, np.float64, i8.max, False)
     # NOTE: GPU does not support int32/int64 for casting.
 
+  @test_util.run_deprecated_v1
   def testInfNan(self):
     i4 = np.iinfo(np.int32)
     i8 = np.iinfo(np.int64)
@@ -181,6 +187,7 @@ class CastOpTest(test.TestCase):
   def testNotImplemented(self):
     self._OpError(np.arange(0, 10), dtypes.string, "Cast.*int64.*string.*")
 
+  @test_util.run_deprecated_v1
   def testCastToTypeOfVariable(self):
     with self.cached_session() as sess:
       x = variables.Variable(5, dtype=dtypes.float32)
@@ -189,6 +196,7 @@ class CastOpTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertEqual(1.0, self.evaluate(cast))
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     t = [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
     for src_t in t:
@@ -203,6 +211,7 @@ class CastOpTest(test.TestCase):
 
 class SparseTensorCastTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testCast(self):
     indices = constant_op.constant([[0], [1], [2]], dtypes.int64)
     values = constant_op.constant(np.array([1, 2, 3], np.int64))

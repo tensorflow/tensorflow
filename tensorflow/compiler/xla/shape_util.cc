@@ -121,6 +121,23 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
         VLOG(3) << "CompareShapes: lhs layout != rhs layout";
         return false;
       }
+
+      const auto& lhs_tiles = lhs.layout().tiles();
+      const auto& rhs_tiles = rhs.layout().tiles();
+      if (lhs_tiles.size() != rhs_tiles.size()) {
+        return false;
+      }
+      for (int64 i = 0; i < lhs_tiles.size(); i++) {
+        if (!absl::c_equal(lhs_tiles[i].dimensions(),
+                           rhs_tiles[i].dimensions())) {
+          return false;
+        }
+      }
+
+      if (lhs.layout().element_size_in_bits() !=
+          rhs.layout().element_size_in_bits()) {
+        return false;
+      }
     }
   }
 

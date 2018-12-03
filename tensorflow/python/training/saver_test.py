@@ -170,6 +170,7 @@ class SaverTest(test.TestCase):
   def testResourceBasic(self):
     self.basicSaveRestore(resource_variable_ops.ResourceVariable)
 
+  @test_util.run_deprecated_v1
   def testResourceColocation(self):
     partitioner = partitioned_variables.fixed_size_partitioner(num_shards=2)
     with ops_lib.device("/job:ps/device:GPU:0"):
@@ -300,6 +301,7 @@ class SaverTest(test.TestCase):
             not op.name.startswith("saver2/save/"))]
     self.assertEqual(ops_in_saver2_scope_but_not_save_scope, [])
 
+  @test_util.run_deprecated_v1
   def testSaveCopyRestoreWithSaveRelativePaths(self):
     """Save, copy checkpoint dir and restore from copied dir.
 
@@ -369,6 +371,7 @@ class SaverTest(test.TestCase):
       self.assertEqual(b"k1", v2.keys().eval())
       self.assertEqual(30.0, v2.values().eval())
 
+  @test_util.run_deprecated_v1
   def testFilenameTensor(self):
     v0 = variables.VariableV1(0, name="v0")
     filename = b"somerandomfilename"
@@ -387,6 +390,7 @@ class SaverTest(test.TestCase):
             ValueError, "The passed save_path is not a valid checkpoint:"):
           save.restore(sess, "invalid path")
 
+  @test_util.run_deprecated_v1
   def testInt64(self):
     save_path = os.path.join(self.get_temp_dir(), "int64")
 
@@ -462,6 +466,7 @@ class SaverTest(test.TestCase):
       # Verify non-duplicate names work.
       saver_module.Saver({"v0": v0, "v2": v2.saveable})
 
+  @test_util.run_deprecated_v1
   def testBasicsWithListOfVariables(self):
     save_path = os.path.join(self.get_temp_dir(), "basics_with_list")
 
@@ -557,6 +562,7 @@ class SaverTest(test.TestCase):
     # The cached readers should know to re-read the file.
     self._SaveAndLoad("var1", 1.1, 2.2, save_path)
 
+  @test_util.run_deprecated_v1
   def testAllowEmpty(self):
     save_path = os.path.join(self.get_temp_dir(), "allow_empty")
     with self.cached_session() as sess:
@@ -661,6 +667,7 @@ class SaverTest(test.TestCase):
       self.assertAllClose(1.0, one.eval())
       self.assertAllClose([2.0, 2.0, 2.0], twos.eval())
 
+  @test_util.run_deprecated_v1
   def testReshape(self):
     save_path = os.path.join(self.get_temp_dir(), "variables_reshape")
     with session.Session("", graph=ops_lib.Graph()) as sess:
@@ -719,6 +726,7 @@ class SaverTest(test.TestCase):
   def testSaveWithGlobalStepWithPadding(self):
     self.testSaveWithGlobalStep(pad_step_number=True)
 
+  @test_util.run_deprecated_v1
   def testSaveToNonexistingPath(self):
     file_io.write_string_to_file(
         os.path.join(self.get_temp_dir(), "actually_a_file"), "")
@@ -761,6 +769,7 @@ class SaverTest(test.TestCase):
         error_msg_template = "Parent directory of {} doesn't exist, can't save."
         self.assertEqual(error_msg_template.format(save_path), str(exc))
 
+  @test_util.run_deprecated_v1
   def testSaveToURI(self):
     # ParseURI functions don't work on Windows yet.
     # TODO(jhseu): Remove this check when it works.
@@ -982,6 +991,7 @@ class SaveRestoreShardedTest(test.TestCase):
           checkpoint_management.latest_checkpoint(self.get_temp_dir()),
           os.path.join(self.get_temp_dir(), "sharded_basics"))
 
+  @test_util.run_deprecated_v1
   def testSaverDef(self):
     with self.cached_session():
       v0 = variables.VariableV1(123, name="v0")
@@ -1087,9 +1097,11 @@ class SaveRestoreShardedTest(test.TestCase):
               num_shards=3))
       self.assertAllEqual(saved_full, restored_full)
 
+  @test_util.run_deprecated_v1
   def testPartitionedVariable(self):
     self._testPartitionedVariables(use_resource=False)
 
+  @test_util.run_deprecated_v1
   def testPartitionedResourceVariable(self):
     self._testPartitionedVariables(use_resource=True)
 
@@ -1184,6 +1196,7 @@ class MaxToKeepTest(test.TestCase):
       # Deleted by the first helper.
       self.assertFalse(checkpoint_management.checkpoint_exists(s3))
 
+  @test_util.run_deprecated_v1
   def testNonSharded(self):
     save_dir = self._get_test_dir("max_to_keep_non_sharded")
 
@@ -1421,6 +1434,7 @@ class MaxToKeepTest(test.TestCase):
       self.assertTrue(
           gfile.Exists(checkpoint_management.meta_graph_filename(s3)))
 
+  @test_util.run_deprecated_v1
   def testNoMaxToKeep(self):
     save_dir = self._get_test_dir("no_max_to_keep")
     save_dir2 = self._get_test_dir("max_to_keep_0")
@@ -1449,6 +1463,7 @@ class MaxToKeepTest(test.TestCase):
       self.assertEqual([], save2.last_checkpoints)
       self.assertTrue(checkpoint_management.checkpoint_exists(s2))
 
+  @test_util.run_deprecated_v1
   def testNoMetaGraph(self):
     save_dir = self._get_test_dir("no_meta_graph")
 
@@ -1472,6 +1487,7 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   @test.mock.patch.object(saver_module, "time")
+  @test_util.run_deprecated_v1
   def testNonSharded(self, mock_time):
     save_dir = self._get_test_dir("keep_checkpoint_every_n_hours")
 
@@ -1591,6 +1607,7 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
       self.assertEqual(20.0, self.evaluate(v1))
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def testNonReshapeResourceVariable(self):
     self._testNonReshape(resource_variable_ops.ResourceVariable)
 
@@ -1605,6 +1622,7 @@ class MetaGraphTest(test.TestCase):
     gfile.MakeDirs(test_dir)
     return test_dir
 
+  @test_util.run_deprecated_v1
   def testAddCollectionDef(self):
     test_dir = self._get_test_dir("good_collection")
     filename = os.path.join(test_dir, "metafile")
@@ -1754,11 +1772,13 @@ class MetaGraphTest(test.TestCase):
       v1 = sess.graph.get_tensor_by_name("v1:0")
       self.assertEqual(11.0, v1.eval())
 
+  @test_util.run_deprecated_v1
   def testMultiSaverCollection(self):
     test_dir = self._get_test_dir("saver_collection")
     self._testMultiSaverCollectionSave(test_dir)
     self._testMultiSaverCollectionRestore(test_dir)
 
+  @test_util.run_deprecated_v1
   def testClearExtraneousSavers(self):
     test_dir = self._get_test_dir("clear_extraneous_savers")
     filename = os.path.join(test_dir, "metafile")
@@ -1813,6 +1833,7 @@ class MetaGraphTest(test.TestCase):
       self.assertEqual(33, len(meta_graph_def0.graph_def.node))
       self.assertEqual(21, len(meta_graph_def1.graph_def.node))
 
+  @test_util.run_deprecated_v1
   def testBinaryAndTextFormat(self):
     test_dir = self._get_test_dir("binary_and_text")
     filename = os.path.join(test_dir, "metafile")
@@ -1845,6 +1866,7 @@ class MetaGraphTest(test.TestCase):
                                                lambda e: "does not exist"):
         saver_module.import_meta_graph(filename)
 
+  @test_util.run_deprecated_v1
   def testSliceVariable(self):
     test_dir = self._get_test_dir("slice_saver")
     filename = os.path.join(test_dir, "metafile")
@@ -1985,6 +2007,7 @@ class MetaGraphTest(test.TestCase):
       train_op = ops_lib.get_collection("train_op")[0]
       self.evaluate(train_op)
 
+  @test_util.run_deprecated_v1
   def testGraphExtension(self):
     test_dir = self._get_test_dir("graph_extension")
     self._testGraphExtensionSave(test_dir)
@@ -2070,6 +2093,7 @@ class MetaGraphTest(test.TestCase):
       return i + 1, x + r
     self._testWhileLoopAndGradientSerDes(body)
 
+  @test_util.run_deprecated_v1
   def testNestedControlFlowSerDes(self):
     # Test while loop in a cond in a while loop.
     # pylint: disable=g-long-lambda
@@ -2098,6 +2122,7 @@ class MetaGraphTest(test.TestCase):
                                       lambda: math_ops.multiply(x, -1.0))))
     # pylint: enable=g-long-lambda
 
+  @test_util.run_deprecated_v1
   def testStrippedOpListDef(self):
     with self.cached_session():
       # Creates a graph.
@@ -2135,6 +2160,7 @@ class MetaGraphTest(test.TestCase):
         self.assertEqual(o.summary, "")
         self.assertEqual(o.description, "")
 
+  @test_util.run_deprecated_v1
   def testStripDefaultValuedAttrs(self):
     """Verifies that default valued attrs are stripped, unless disabled."""
 
@@ -2171,6 +2197,7 @@ class MetaGraphTest(test.TestCase):
       self.assertIn("T", node_def.attr)
       self.assertIn("Tout", node_def.attr)
 
+  @test_util.run_deprecated_v1
   def testImportIntoNamescope(self):
     # Test that we can import a meta graph into a namescope.
     test_dir = self._get_test_dir("import_into_namescope")
@@ -2241,6 +2268,7 @@ class MetaGraphTest(test.TestCase):
           filename + ".meta", graph=graph_2, import_scope="my_scope")
       self.assertIsInstance(new_saver_3, saver_module.Saver)
 
+  @test_util.run_deprecated_v1
   def testImportIntoImplicitNamescope(self):
     # Test that we can import a meta graph into an implicit namescope.
     test_dir = self._get_test_dir("import_into_namescope")
@@ -2363,6 +2391,7 @@ class CheckpointReaderTest(test.TestCase):
 
   _WRITE_VERSION = saver_pb2.SaverDef.V1
 
+  @test_util.run_deprecated_v1
   def testDebugString(self):
     # Builds a graph.
     v0 = variables.VariableV1(
@@ -2594,6 +2623,7 @@ class ScopedGraphTest(test.TestCase):
 
   # Verifies that we can save the subgraph under "hidden1" and restore it
   # into "new_hidden1" in the new graph.
+  @test_util.run_deprecated_v1
   def testScopedSaveAndRestore(self):
     test_dir = self._get_test_dir("scoped_export_import")
     ckpt_filename = "ckpt"
@@ -2603,6 +2633,7 @@ class ScopedGraphTest(test.TestCase):
 
   # Verifies that we can copy the subgraph under "hidden1" and copy it
   # to different name scope in the same graph or different graph.
+  @test_util.run_deprecated_v1
   def testCopyScopedGraph(self):
     test_dir = self._get_test_dir("scoped_copy")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
@@ -2659,6 +2690,7 @@ class ScopedGraphTest(test.TestCase):
       saver3.restore(sess, saver0_ckpt)
       self.assertAllClose(expected, sess.run("new_hidden1/relu:0"))
 
+  @test_util.run_deprecated_v1
   def testExportGraphDefWithScope(self):
     test_dir = self._get_test_dir("export_graph_def")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
@@ -2695,6 +2727,7 @@ class ScopedGraphTest(test.TestCase):
       saver3.restore(sess, saver0_ckpt)
       self.assertAllClose(expected, sess.run("new_hidden1/relu:0"))
 
+  @test_util.run_deprecated_v1
   def testSerializeSaverWithScope(self):
     test_dir = self._get_test_dir("export_graph_def")
     saver1_ckpt = os.path.join(test_dir, "saver1.ckpt")
@@ -2955,6 +2988,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
       # exception" block in Python 3.
       self.assertNotIn("NewCheckpointReader", cs.exception.message)
 
+  @test_util.run_deprecated_v1
   def testGraphChangedForRestoreErrorRaised(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
@@ -2976,6 +3010,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
             "a mismatch between the current graph and the graph"):
           a_saver.restore(sess=sess, save_path=save_path)
 
+  @test_util.run_deprecated_v1
   def testLoadFromObjectBasedGraph(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
@@ -3007,7 +3042,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
       self.assertEqual(before_second_restore_ops,
                        restore_graph.get_operations())
       with self.assertRaisesRegexp(errors.NotFoundError,
-                                   "could not find a_variable"):
+                                   "Could not find some variables"):
         saver.restore(sess=sess, save_path=second_path)
 
   def testLoadFromObjectBasedEager(self):

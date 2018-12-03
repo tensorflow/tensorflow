@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -115,6 +116,7 @@ class StructureTest(test.TestCase, parameterized.TestCase):
                   indices=[[0], [1], [2]], values=[4, 5, 6], dense_shape=[3])
       }, (constant_op.constant(15.0), constant_op.constant([4, 5, 6]))]),
   )
+  @test_util.run_deprecated_v1
   def testIsCompatibleWithStructure(
       self, original_value_fn, compatible_values_fn, incompatible_values_fn):
     original_value = original_value_fn()
@@ -356,6 +358,39 @@ class StructureTest(test.TestCase, parameterized.TestCase):
         output_types, output_shapes, output_classes)
     self.assertTrue(expected_structure.is_compatible_with(actual_structure))
     self.assertTrue(actual_structure.is_compatible_with(expected_structure))
+
+  def testNestedNestedStructure(self):
+    # Although `Structure.from_value()` will not construct one, a nested
+    # structure containing nested `NestedStructure` objects can occur if a
+    # structure is constructed manually.
+    s = structure.NestedStructure(
+        (structure.TensorStructure(dtypes.int64, []),
+         structure.NestedStructure(
+             (structure.TensorStructure(dtypes.float32, []),
+              structure.TensorStructure(dtypes.string, [])))))
+
+    int64_t = constant_op.constant(37, dtype=dtypes.int64)
+    float32_t = constant_op.constant(42.0)
+    string_t = constant_op.constant("Foo")
+
+    nested_tensors = (int64_t, (float32_t, string_t))
+
+    tensor_list = s._to_tensor_list(nested_tensors)
+    for expected, actual in zip([int64_t, float32_t, string_t], tensor_list):
+      self.assertIs(expected, actual)
+
+    (actual_int64_t, (actual_float32_t, actual_string_t)) = s._from_tensor_list(
+        tensor_list)
+    self.assertIs(int64_t, actual_int64_t)
+    self.assertIs(float32_t, actual_float32_t)
+    self.assertIs(string_t, actual_string_t)
+
+    (actual_int64_t, (actual_float32_t, actual_string_t)) = (
+        s._from_compatible_tensor_list(tensor_list))
+    self.assertIs(int64_t, actual_int64_t)
+    self.assertIs(float32_t, actual_float32_t)
+    self.assertIs(string_t, actual_string_t)
+
 
 if __name__ == "__main__":
   test.main()

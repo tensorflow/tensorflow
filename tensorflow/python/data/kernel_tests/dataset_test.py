@@ -227,12 +227,12 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     options1 = dataset_ops.Options()
     options1.experimental_autotune = True
     options2 = dataset_ops.Options()
-    options2.experimental_filter_fusion = False
+    options2.experimental_deterministic = False
     ds = dataset_ops.Dataset.range(0).with_options(options1).with_options(
         options2)
     self.assertTrue(ds.options().experimental_autotune)
     # Explicitly check that flag is False since assertFalse allows None
-    self.assertIs(ds.options().experimental_filter_fusion, False)
+    self.assertIs(ds.options().experimental_deterministic, False)
 
   def testOptionsTwiceDifferentError(self):
     options1 = dataset_ops.Options()
@@ -247,12 +247,12 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     options1 = dataset_ops.Options()
     options1.experimental_autotune = True
     options2 = dataset_ops.Options()
-    options2.experimental_filter_fusion = True
+    options2.experimental_deterministic = True
     ds = dataset_ops.Dataset.zip(
         (dataset_ops.Dataset.range(0).with_options(options1),
          dataset_ops.Dataset.range(0).with_options(options2)))
     self.assertTrue(ds.options().experimental_autotune)
-    self.assertTrue(ds.options().experimental_filter_fusion)
+    self.assertTrue(ds.options().experimental_deterministic)
 
   # TODO(b/119882922): use-after-free bug in eager mode.
   # pylint: disable=g-long-lambda

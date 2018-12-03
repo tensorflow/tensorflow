@@ -33,6 +33,30 @@ from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("losses.Reduction", "keras.losses.Reduction", v1=[])
+class ReductionV2(object):
+  """Types of loss reduction.
+
+  Contains the following values:
+  `NONE`: Un-reduced weighted losses with the same shape as input.
+  `SUM`: Scalar sum of weighted losses.
+  `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
+  """
+
+  NONE = "none"
+  SUM = "sum"
+  SUM_OVER_BATCH_SIZE = "sum_over_batch_size"
+
+  @classmethod
+  def all(cls):
+    return (cls.NONE, cls.SUM, cls.SUM_OVER_BATCH_SIZE)
+
+  @classmethod
+  def validate(cls, key):
+    if key not in cls.all():
+      raise ValueError("Invalid Reduction Key %s." % key)
+
+
 @tf_export(v1=["losses.Reduction"])
 class Reduction(object):
   """Types of loss reduction.

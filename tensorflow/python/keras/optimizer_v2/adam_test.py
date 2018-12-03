@@ -25,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -62,6 +63,7 @@ def get_beta_accumulators(opt, dtype):
 
 class AdamOptimizerTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testSparse(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -106,6 +108,7 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSparseDevicePlacement(self):
     for index_dtype in [dtypes.int32, dtypes.int64]:
       with self.cached_session(force_gpu=test.is_gpu_available()):
@@ -119,6 +122,7 @@ class AdamOptimizerTest(test.TestCase):
         variables.global_variables_initializer().run()
         minimize_op.run()
 
+  @test_util.run_deprecated_v1
   def testSparseRepeatedIndices(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -208,6 +212,7 @@ class AdamOptimizerTest(test.TestCase):
     with context.eager_mode():
       self.doTestBasic(use_callable_params=True)
 
+  @test_util.run_deprecated_v1
   def testBasicWithLearningRateDecay(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       with self.session(graph=ops.Graph()):
@@ -254,6 +259,7 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -292,6 +298,7 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -341,14 +348,25 @@ class AdamOptimizerTest(test.TestCase):
       v2 = resource_variable_ops.ResourceVariable(1.)
       opt = adam.Adam(1.)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
-      # There should be iteration, hyper variables, and two unique slot
-      # variables for v1 and v2 respectively.
-      self.assertEqual(10, len(set(opt.variables())))
+      # There should be iteration, and two unique slot variables for v1 and v2.
+      self.assertEqual(5, len(set(opt.variables())))
+      self.assertEqual(
+          self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
   def testAmsgradWithError(self):
     with self.assertRaisesRegexp(ValueError,
                                  "Amsgrad is currently not supported"):
       adam.Adam(learning_rate=1., beta_1=0.9, beta_2=0.99, amsgrad=True)
+
+  def testSetWeightsFromV1AdamWithoutMinimize(self):
+    keras_v1_adam = optimizers.Adam()
+    keras_v2_adam = adam.Adam()
+    keras_v2_adam.set_weights(keras_v1_adam.get_weights())
+    keras_v1_iteration = keras_v1_adam.iterations
+    keras_v2_iteration = keras_v2_adam.iterations
+    self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(
+        self.evaluate(keras_v1_iteration), self.evaluate(keras_v2_iteration))
 
 
 if __name__ == "__main__":
