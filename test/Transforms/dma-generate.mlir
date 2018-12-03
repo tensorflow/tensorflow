@@ -158,8 +158,8 @@ mlfunc @loop_nest_modulo() {
 
 // DMA on tiled loop nest. This also tests the case where the bounds are
 // dependent on outer loop IVs.
-// CHECK-LABEL: mlfunc @loop_nest_tiled() {
-mlfunc @loop_nest_tiled() {
+// CHECK-LABEL: mlfunc @loop_nest_tiled() -> memref<256x1024xf32> {
+mlfunc @loop_nest_tiled() -> memref<256x1024xf32> {
   %0 = alloc() : memref<256x1024xf32>
   for %i0 = 0 to 256 step 32 {
     for %i1 = 0 to 1024 step 32 {
@@ -178,5 +178,6 @@ mlfunc @loop_nest_tiled() {
       }
     }
   }
-  return
+  // CHECK: return %0 : memref<256x1024xf32>
+  return %0 : memref<256x1024xf32>
 }

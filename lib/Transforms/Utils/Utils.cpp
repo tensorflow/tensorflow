@@ -51,7 +51,9 @@ static bool isMemRefDereferencingOp(const Operation &op) {
 /// at the start. 'extraOperands' is another optional argument that corresponds
 /// to additional operands (inputs) for indexRemap at the beginning of its input
 /// list. An optional argument 'domOpFilter' restricts the replacement to only
-/// those operations that are dominated by the former.
+/// those operations that are dominated by the former. The replacement succeeds
+/// and returns true if all uses of the memref in the region where the
+/// replacement is asked for are "dereferencing" memref uses.
 //  Ex: to replace load %A[%i, %j] with load %Abuf[%t mod 2, %ii - %i, %j]:
 //  The SSA value corresponding to '%t mod 2' should be in 'extraIndices', and
 //  index remap will (%i, %j) -> (%ii - %i, %j), i.e., (d0, d1, d2) -> (d0 - d1,
@@ -82,15 +84,6 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
   assert(oldMemRef->getType().cast<MemRefType>().getElementType() ==
          newMemRef->getType().cast<MemRefType>().getElementType());
 
-  // Check if memref was used in a non-deferencing context.
-  for (const StmtOperand &use : oldMemRef->getUses()) {
-    auto *opStmt = cast<OperationStmt>(use.getOwner());
-    // Failure: memref used in a non-deferencing op (potentially escapes); no
-    // replacement in these cases.
-    if (!isMemRefDereferencingOp(*opStmt))
-      return false;
-  }
-
   // Walk all uses of old memref. Statement using the memref gets replaced.
   for (auto it = oldMemRef->use_begin(); it != oldMemRef->use_end();) {
     StmtOperand &use = *(it++);
@@ -100,8 +93,13 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
     if (domStmtFilter && !dominates(*domStmtFilter, *opStmt))
       continue;
 
-    assert(isMemRefDereferencingOp(*opStmt) &&
-           "memref deferencing op expected");
+    // Check if the memref was used in a non-deferencing context. It is fine for
+    // the memref to be used in a non-deferencing way outside of the region
+    // where this replacement is happening.
+    if (!isMemRefDereferencingOp(*opStmt))
+      // Failure: memref used in a non-deferencing op (potentially escapes); no
+      // replacement in these cases.
+      return false;
 
     auto getMemRefOperandPos = [&]() -> unsigned {
       unsigned i;
