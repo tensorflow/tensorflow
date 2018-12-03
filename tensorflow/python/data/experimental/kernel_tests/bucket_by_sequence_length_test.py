@@ -154,9 +154,9 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
                                                      batch_sizes,
                                                      n_bucket_elements):
         # Initialize the sum across all batches.
-        expected_sums[length] = 0
+        generated_sums[length] = 0
         # Initialize the individual batch sizes.
-        expected_batch_sizes[length] = []
+        generated_batch_sizes[length] = []
 
       for batch in batches:
         shape = batch.dense_shape if no_padding else batch.shape
