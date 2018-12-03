@@ -73,8 +73,12 @@ struct AffineMapKeyInfo : DenseMapInfo<AffineMap> {
   // expressions.
   using KeyTy = std::tuple<unsigned, unsigned, ArrayRef<AffineExpr>,
                            ArrayRef<AffineExpr>>;
-  using DenseMapInfo<AffineMap>::getHashValue;
   using DenseMapInfo<AffineMap>::isEqual;
+
+  static unsigned getHashValue(const AffineMap &key) {
+    return getHashValue(KeyTy(key.getNumDims(), key.getNumSymbols(),
+                              key.getResults(), key.getRangeSizes()));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
@@ -96,8 +100,12 @@ struct IntegerSetKeyInfo : DenseMapInfo<IntegerSet> {
   // expressions appearing in the LHS of constraints, and eqFlags.
   using KeyTy =
       std::tuple<unsigned, unsigned, ArrayRef<AffineExpr>, ArrayRef<bool>>;
-  using DenseMapInfo<IntegerSet>::getHashValue;
   using DenseMapInfo<IntegerSet>::isEqual;
+
+  static unsigned getHashValue(const IntegerSet &key) {
+    return getHashValue(KeyTy(key.getNumDims(), key.getNumSymbols(),
+                              key.getConstraints(), key.getEqFlags()));
+  }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
