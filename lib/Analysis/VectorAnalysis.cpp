@@ -18,6 +18,7 @@
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Statements.h"
+#include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
 
@@ -27,14 +28,6 @@
 ///
 
 using namespace mlir;
-
-bool mlir::isaVectorTransferRead(const OperationStmt &stmt) {
-  return stmt.getName().getStringRef().str() == kVectorTransferReadOpName;
-}
-
-bool mlir::isaVectorTransferWrite(const OperationStmt &stmt) {
-  return stmt.getName().getStringRef().str() == kVectorTransferWriteOpName;
-}
 
 Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(ArrayRef<int> superShape,
                                                     ArrayRef<int> subShape) {
@@ -83,6 +76,20 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
   return shapeRatio(superVectorType.getShape(), subVectorType.getShape());
 }
 
+AffineMap mlir::makePermutationMap(MemRefType memrefType,
+                                   VectorType vectorType) {
+  unsigned memRefRank = memrefType.getRank();
+  unsigned vectorRank = vectorType.getRank();
+  assert(memRefRank >= vectorRank && "Broadcast not supported");
+  unsigned offset = memRefRank - vectorRank;
+  SmallVector<AffineExpr, 4> perm;
+  perm.reserve(memRefRank);
+  for (unsigned i = 0; i < vectorRank; ++i) {
+    perm.push_back(getAffineDimExpr(offset + i, memrefType.getContext()));
+  }
+  return AffineMap::get(memRefRank, 0, perm, {});
+}
+
 bool mlir::matcher::operatesOnStrictSuperVectors(const OperationStmt &opStmt,
                                                  VectorType subVectorType) {
   // First, extract the vector type and ditinguish between:
@@ -96,15 +103,11 @@ bool mlir::matcher::operatesOnStrictSuperVectors(const OperationStmt &opStmt,
   /// do not have to special case. Maybe a trait, or just a method, unclear atm.
   bool mustDivide = false;
   VectorType superVectorType;
-  if (isaVectorTransferRead(opStmt)) {
-    superVectorType = opStmt.getResult(0)->getType().cast<VectorType>();
+  if (auto read = opStmt.dyn_cast<VectorTransferReadOp>()) {
+    superVectorType = read->getResultType();
     mustDivide = true;
-  } else if (isaVectorTransferWrite(opStmt)) {
-    // TODO(ntv): if vector_transfer_write had store-like semantics we could
-    // have written something similar to:
-    //   auto store = storeOp->cast<StoreOp>();
-    //   auto *value = store->getValueToStore();
-    superVectorType = opStmt.getOperand(0)->getType().cast<VectorType>();
+  } else if (auto write = opStmt.dyn_cast<VectorTransferWriteOp>()) {
+    superVectorType = write->getVectorType();
     mustDivide = true;
   } else if (opStmt.getNumResults() == 0) {
     assert(opStmt.isa<ReturnOp>() &&

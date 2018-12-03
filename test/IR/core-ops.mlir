@@ -9,6 +9,9 @@
 
 // CHECK: #map2 = (d0, d1)[s0, s1] -> (d0 + s1, d1 + s0)
 // CHECK: #map3 = ()[s0] -> (s0 + 1)
+// CHECK-DAG: #[[map_proj_d0d1_d0:map[0-9]+]] = (d0, d1) -> (d0)
+// CHECK-DAG: #[[map_proj_d0d1_d1:map[0-9]+]] = (d0, d1) -> (d1)
+// CHECK-DAG: #[[map_proj_d0d1_d1d0:map[0-9]+]] = (d0, d1) -> (d1, d0)
 
 // CHECK-LABEL: cfgfunc @cfgfunc_with_ops(f32) {
 cfgfunc @cfgfunc_with_ops(f32) {
@@ -259,3 +262,23 @@ mlfunc @test_dimop(%arg0 : tensor<4x4x?xf32>) {
   return
 }
 
+
+// CHECK-LABEL: mlfunc @test_vector_transfer_ops(%arg0
+mlfunc @test_vector_transfer_ops(%arg0 : memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant 3.0 : f32
+  // CHECK: %0 = vector_transfer_read %arg0, %c3, %c3 {permutation_map: #[[map_proj_d0d1_d0]]} : (memref<?x?xf32>, index, index) -> vector<128xf32>
+  %0 = vector_transfer_read %arg0, %c3, %c3 {permutation_map: (d0, d1)->(d0)} : (memref<?x?xf32>, index, index) -> vector<128xf32>
+  // CHECK: %1 = vector_transfer_read %arg0, %c3, %c3 {permutation_map: #[[map_proj_d0d1_d1d0]]} : (memref<?x?xf32>, index, index) -> vector<3x7xf32>
+  %1 = vector_transfer_read %arg0, %c3, %c3 {permutation_map: (d0, d1)->(d1, d0)} : (memref<?x?xf32>, index, index) -> vector<3x7xf32>
+  // CHECK: %2 = vector_transfer_read %arg0, %c3, %c3, %cst {permutation_map: #[[map_proj_d0d1_d0]]} : (memref<?x?xf32>, index, index, f32) -> vector<128xf32>
+  %2 = vector_transfer_read %arg0, %c3, %c3, %cst {permutation_map: (d0, d1)->(d0)} : (memref<?x?xf32>, index, index, f32) -> vector<128xf32>
+  // CHECK: %3 = vector_transfer_read %arg0, %c3, %c3, %cst {permutation_map: #[[map_proj_d0d1_d1]]} : (memref<?x?xf32>, index, index, f32) -> vector<128xf32>
+  %3 = vector_transfer_read %arg0, %c3, %c3, %cst {permutation_map: (d0, d1)->(d1)} : (memref<?x?xf32>, index, index, f32) -> vector<128xf32>
+  //
+  // CHECK: vector_transfer_write %0, %arg0, %c3, %c3 {permutation_map: #[[map_proj_d0d1_d0]]} : vector<128xf32>, memref<?x?xf32>, index, index
+  vector_transfer_write %0, %arg0, %c3, %c3 {permutation_map: (d0, d1)->(d0)} : vector<128xf32>, memref<?x?xf32>, index, index
+  // CHECK: vector_transfer_write %1, %arg0, %c3, %c3 {permutation_map: #[[map_proj_d0d1_d1d0]]} : vector<3x7xf32>, memref<?x?xf32>, index, index
+  vector_transfer_write %1, %arg0, %c3, %c3 {permutation_map: (d0, d1)->(d1, d0)} : vector<3x7xf32>, memref<?x?xf32>, index, index
+  return
+}

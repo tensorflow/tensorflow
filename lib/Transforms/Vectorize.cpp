@@ -541,6 +541,7 @@ using namespace mlir;
 #define DEBUG_TYPE "early-vect"
 
 using functional::apply;
+using functional::makePtrDynCaster;
 using functional::map;
 using functional::ScopeGuard;
 using llvm::dbgs;
@@ -820,23 +821,15 @@ void VectorizationState::registerReplacement(const SSAValue *key,
 /// TODO(andydavis,bondhugula,ntv):
 ///   1. generalize to support padding semantics and offsets within vector type.
 static OperationStmt *
-createVectorTransferRead(MLFuncBuilder *b, Location loc, VectorType vectorType,
+createVectorTransferRead(OperationStmt *loadOp, VectorType vectorType,
                          SSAValue *srcMemRef, ArrayRef<SSAValue *> srcIndices) {
-  SmallVector<SSAValue *, 8> operands;
-  operands.reserve(1 + srcIndices.size());
-  operands.insert(operands.end(), srcMemRef);
-  operands.insert(operands.end(), srcIndices.begin(), srcIndices.end());
-  OperationState opState(b->getContext(), loc, kVectorTransferReadOpName,
-                         operands, vectorType);
-  return b->createOperation(opState);
-}
-
-/// Unwraps a pointer type to another type (possibly the same).
-/// Used in particular to allow easier compositions of
-///   llvm::iterator_range<ForStmt::operand_iterator> types.
-template <typename T, typename ToType = T>
-static std::function<ToType *(T *)> unwrapPtr() {
-  return [](T *val) { return dyn_cast<ToType>(val); };
+  auto memRefType = srcMemRef->getType().cast<MemRefType>();
+  MLFuncBuilder b(loadOp);
+  // TODO(ntv): neutral for noneffective padding.
+  auto transfer = b.create<VectorTransferReadOp>(
+      loadOp->getLoc(), vectorType, srcMemRef, srcIndices,
+      makePermutationMap(memRefType, vectorType));
+  return cast<OperationStmt>(transfer->getOperation());
 }
 
 /// Handles the vectorization of load and store MLIR operations.
@@ -865,15 +858,14 @@ static bool vectorizeRootOrTerminal(MLValue *iv, LoadOrStoreOpPointer memoryOp,
 
   // Materialize a MemRef with 1 vector.
   auto *opStmt = cast<OperationStmt>(memoryOp->getOperation());
-  MLFuncBuilder b(opStmt);
   // For now, vector_transfers must be aligned, operate only on indices with an
   // identity subset of AffineMap and do not change layout.
   // TODO(ntv): increase the expressiveness power of vector_transfer operations
   // as needed by various targets.
   if (opStmt->template isa<LoadOp>()) {
     auto *transfer = createVectorTransferRead(
-        &b, opStmt->getLoc(), vectorType, memoryOp->getMemRef(),
-        map(unwrapPtr<SSAValue>(), memoryOp->getIndices()));
+        opStmt, vectorType, memoryOp->getMemRef(),
+        map(makePtrDynCaster<SSAValue>(), memoryOp->getIndices()));
     state->registerReplacement(opStmt, transfer);
   } else {
     state->registerTerminator(opStmt);
@@ -1008,7 +1000,7 @@ static MLValue *vectorizeConstant(Statement *stmt, const ConstantOp &constant,
   auto *splat = cast<OperationStmt>(b.createOperation(
       loc, constantOpStmt->getName(), {}, {vectorType},
       {make_pair(Identifier::get("value", b.getContext()), attr)}));
-  return cast<MLValue>(cast<OperationStmt>(splat)->getResult(0));
+  return cast<MLValue>(splat->getResult(0));
 }
 
 /// Returns a uniqu'ed VectorType.
@@ -1106,17 +1098,17 @@ static MLValue *vectorizeOperand(SSAValue *operand, Statement *stmt,
 static OperationStmt *createVectorTransferWrite(OperationStmt *storeOp,
                                                 VectorizationState *state) {
   auto store = storeOp->cast<StoreOp>();
+  auto *memRef = store->getMemRef();
+  auto memRefType = memRef->getType().cast<MemRefType>();
   auto *value = store->getValueToStore();
-  auto indices = map(unwrapPtr<SSAValue>(), store->getIndices());
-  SmallVector<SSAValue *, 8> operands;
-  operands.reserve(1 + 1 + indices.size());
-  operands.insert(operands.end(), vectorizeOperand(value, storeOp, state));
-  operands.insert(operands.end(), store->getMemRef());
-  operands.insert(operands.end(), indices.begin(), indices.end());
+  auto *vectorValue = vectorizeOperand(value, storeOp, state);
+  auto vectorType = vectorValue->getType().cast<VectorType>();
+  auto indices = map(makePtrDynCaster<SSAValue>(), store->getIndices());
   MLFuncBuilder b(storeOp);
-  OperationState opState(b.getContext(), storeOp->getLoc(),
-                         kVectorTransferWriteOpName, operands, {});
-  return b.createOperation(opState);
+  auto transfer = b.create<VectorTransferWriteOp>(
+      storeOp->getLoc(), vectorValue, memRef, indices,
+      makePermutationMap(memRefType, vectorType));
+  return cast<OperationStmt>(transfer->getOperation());
 }
 
 /// Encodes OperationStmt-specific behavior for vectorization. In general we
@@ -1134,9 +1126,9 @@ static OperationStmt *vectorizeOneOperationStmt(MLFuncBuilder *b,
   // Sanity checks.
   assert(!stmt->isa<LoadOp>() &&
          "all loads must have already been fully vectorized independently");
-  assert(!isaVectorTransferRead(*stmt) &&
+  assert(!stmt->isa<VectorTransferReadOp>() &&
          "vector_transfer_read cannot be further vectorized");
-  assert(!isaVectorTransferWrite(*stmt) &&
+  assert(!stmt->isa<VectorTransferWriteOp>() &&
          "vector_transfer_write cannot be further vectorized");
 
   if (stmt->isa<StoreOp>()) {

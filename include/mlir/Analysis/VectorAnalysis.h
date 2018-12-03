@@ -22,14 +22,10 @@
 
 namespace mlir {
 
+class AffineMap;
+class MemRefType;
 class OperationStmt;
 class VectorType;
-
-// TODO(ntv): Drop this once we have proper Ops.
-static constexpr auto kVectorTransferReadOpName = "vector_transfer_read";
-static constexpr auto kVectorTransferWriteOpName = "vector_transfer_write";
-bool isaVectorTransferRead(const OperationStmt &stmt);
-bool isaVectorTransferWrite(const OperationStmt &stmt);
 
 /// Computes and returns the multi-dimensional ratio of `superShape` to
 /// `subShape`. This is calculated by performing a traversal from minor to major
@@ -48,6 +44,16 @@ shapeRatio(ArrayRef<int> superShape, ArrayRef<int> subShape);
 /// None.
 llvm::Optional<llvm::SmallVector<unsigned, 4>>
 shapeRatio(VectorType superVectorType, VectorType subVectorType);
+
+/// Creates a permutation map to be used as an attribute in VectorTransfer ops.
+/// Currently only returns the minor vectorType.rank identity submatrix.
+///
+/// For example, assume memrefType is of rank 5 and vectorType is of rank 3,
+/// returns the affine map:
+///     (d0, d1, d2, d3, d4) -> (d2, d3, d4)
+///
+/// TODO(ntv): support real permutations.
+AffineMap makePermutationMap(MemRefType memrefType, VectorType vectorType);
 
 namespace matcher {
 

@@ -19,6 +19,7 @@
 #define MLIR_SUPPORT_FUNCTIONAL_H_
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
 
 /// This file provides some simple template functional-style sugar to operate
 /// on **value** types. Make sure when using that the stored type is cheap to
@@ -76,6 +77,14 @@ void zipApply(Fun fun, ContainerType1 input1, ContainerType2 input2) {
   for (auto it : zipIter) {
     fun(std::get<0>(it), std::get<1>(it));
   }
+}
+
+/// Unwraps a pointer type to another type (possibly the same).
+/// Used in particular to allow easier compositions of
+///   llvm::iterator_range<ForStmt::operand_iterator> types.
+template <typename T, typename ToType = T>
+inline std::function<ToType *(T *)> makePtrDynCaster() {
+  return [](T *val) { return llvm::dyn_cast<ToType>(val); };
 }
 
 /// Simple ScopeGuard.

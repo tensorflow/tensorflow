@@ -194,7 +194,8 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
 // TODO(ntv): make the following into MLIR instructions, then use isa<>.
 static bool isVectorTransferReadOrWrite(const Statement &stmt) {
   const auto *opStmt = cast<OperationStmt>(&stmt);
-  return isaVectorTransferRead(*opStmt) || isaVectorTransferWrite(*opStmt);
+  return opStmt->isa<VectorTransferReadOp>() ||
+         opStmt->isa<VectorTransferWriteOp>();
 }
 
 using VectorizableStmtFun =
