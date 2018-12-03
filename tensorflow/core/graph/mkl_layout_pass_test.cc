@@ -515,7 +515,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Positive) {
 // _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
 // A1:control->E:control (only one control edge)
 TEST_F(MklLayoutPassTest, Input_ControlEdge_PadWithConv2D_Positive) {
-  CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
   InitGraph(
       "node { name: 'A1' op: 'Input'}"
       "node { name: 'A' op: 'Input'}"
@@ -567,7 +567,7 @@ TEST_F(MklLayoutPassTest, Input_ControlEdge_PadWithConv2D_Positive) {
 // _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
 // E:control->A1:control (only one control edge)
 TEST_F(MklLayoutPassTest, Output_ControlEdge_PadWithConv2D_Positive) {
-  CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
   InitGraph(
       "node { name: 'A1' op: 'Input'}"
       "node { name: 'A' op: 'Input'}"
@@ -612,7 +612,7 @@ TEST_F(MklLayoutPassTest, Output_ControlEdge_PadWithConv2D_Positive) {
 // After layout pass
 // _MklPadWithConv2D(A, A, B, DMT/_0, DMT/_1, DMT/_2)
 TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Common_Input) {
-  CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
   InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Int32Input'}"
@@ -648,7 +648,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Common_Input) {
 // After layout pass - No merging, since Pad and Conv2D both
 // feed to the same node (Z)
 TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Common_InOutput) {
-  CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
   InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Int32Input'}"
@@ -678,7 +678,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Common_InOutput) {
 // C=Pad(A,B); E=Conv2D(C,D); Z=Zeta(E,Y)
 // After layout pass - No merging
 TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Negative) {
-  CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
   InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Int32Input'}"

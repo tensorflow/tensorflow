@@ -776,7 +776,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // merged with 'm'. If input 'm' is Conv2D, then check if there exists Pad
   // node that can be merged with 'm'.
   static Node* GetPadOrConv2D(const Node* m) {
-    CHECK_NOTNULL(m);
+    DCHECK(m);
     Node* n = nullptr;
 
     const Node* conv_node;
@@ -790,7 +790,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         }
       }
     } else {
-      CHECK_EQ(m->type_string(), csinfo_.conv2d);
+      DCHECK_EQ(m->type_string(), csinfo_.conv2d);
       // If m is conv2D, Go over all input edges
       // and search for Pad  Node.
       for (const Edge* e : m->in_edges()) {
@@ -2182,7 +2182,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
 
 Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
                                                 Node* m, Node* n) {
-  CHECK(((m->type_string() == csinfo_.pad &&
+  DCHECK(((m->type_string() == csinfo_.pad &&
           n->type_string() == csinfo_.conv2d)) ||
         ((n->type_string() == csinfo_.pad &&
           m->type_string() == csinfo_.conv2d)));
@@ -2250,7 +2250,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
       PadDataInputEdges++;
     }
   }
-  CHECK_EQ(PadDataInputEdges, 2);
+  DCHECK_EQ(PadDataInputEdges, 2);
 
   // Conv2D must have 2 data inputs: pad output and Filter
   int ConvDataInputEdges = 0;
@@ -2259,7 +2259,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
       ConvDataInputEdges++;
     }
   }
-  CHECK_EQ(ConvDataInputEdges, 2);
+  DCHECK_EQ(ConvDataInputEdges, 2);
 
   // We will use the node name of Conv2D as the name of new node
   // Build new node. We use same name as original node, but change the op
@@ -2282,7 +2282,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   // Create node.
   Node* new_node;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
-  CHECK_NOTNULL(new_node);
+  DCHECK(new_node);
 
   // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
   // node are already copied in BuildNode.
@@ -2319,8 +2319,8 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
       // Conv2D has only 1 output (at slot 0) and merged node also has only 1
       // output (at slot 0).
       const int kPadWithConv2DOutputSlot = 0;
-      CHECK_NOTNULL((*g)->AddEdge(new_node, kPadWithConv2DOutputSlot, e->dst(),
-                                  e->dst_input()));
+      (*g)->AddEdge(new_node, kPadWithConv2DOutputSlot, e->dst(),
+                                  e->dst_input());
     }
   }
 
