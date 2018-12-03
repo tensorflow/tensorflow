@@ -24,8 +24,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -41,11 +40,11 @@ class MatVecTest(test_lib.TestCase):
   def testTwoByTwoCase(self):
     a = np.array([[1, 2], [3, 4]])
     b = np.array([5, 6])
-    with self.cached_session():
-      c = math_ops.matvec(a, b)
-      self.assertAllEqual((2,), c.shape)
-      c_ = self.evaluate(c)
-    self.assertAllEqual([5 + 2 * 6, 3 * 5 + 4 * 6], c_)
+
+    c = math_ops.matvec(a, b)
+    self.assertAllEqual((2,), c.shape)
+
+    self.assertAllEqual([5 + 2 * 6, 3 * 5 + 4 * 6], c)
 
 
 def _AddTest(test, op_name, testcase_name, fn):
@@ -85,17 +84,13 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     # np.matrix(a_np_) * np.matrix(b_np_)
     effective_a_np = _GetTransposedMatrices(a_np_, "a", kwargs_)
     effective_b_np = _GetTransposedMatrices(b_np_, "b", kwargs_)
-    with self.session(use_gpu=use_gpu) as sess:
+    with test_util.device(use_gpu=use_gpu):
       if use_static_shape_:
         a = constant_op.constant(effective_a_np)
         b = constant_op.constant(effective_b_np)
-        res = math_ops.matmul(a, b, **kwargs_)
-        tf_val = self.evaluate(res)
+        tf_val = math_ops.matmul(a, b, **kwargs_)
       else:
-        a = array_ops.placeholder(a_np_.dtype)
-        b = array_ops.placeholder(b_np_.dtype)
-        res = math_ops.matmul(a, b, **kwargs_)
-        tf_val = sess.run(res, feed_dict={a: effective_a_np, b: effective_b_np})
+        tf_val = math_ops.matmul(effective_a_np, effective_b_np, **kwargs_)
 
     self.assertAllCloseAccordingToType(
         tf_val,
@@ -119,27 +114,22 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
       self.skipTest("Skipping infeasible gradient test.")
 
     # Transpose and possibly conjugate a_np_ and b_np_ according to the
-    # attributes such that tf.matmul(effective_a_np, effective_b_np, **kwargs)
-    # results in a valid matrix multiplication and produces the same result as
+    # attributes such that tf.matmul(a, b, **kwargs) results in a valid matrix
+    # multiplication and produces the same result as
     # np.matrix(a_np_) * np.matrix(b_np_)
-    effective_a_np = _GetTransposedMatrices(a_np_, "a", kwargs_)
-    effective_b_np = _GetTransposedMatrices(b_np_, "b", kwargs_)
+    a = _GetTransposedMatrices(a_np_, "a", kwargs_)
+    b = _GetTransposedMatrices(b_np_, "b", kwargs_)
 
     epsilon = np.finfo(a_np_.dtype).eps
     delta = epsilon**(1.0 / 3.0)
     tol = 20 * delta
     with self.session(use_gpu=True):
-      a = constant_op.constant(effective_a_np)
-      b = constant_op.constant(effective_b_np)
-      res = math_ops.matmul(a, b, **kwargs_)
-      for x, x_init in [a, effective_a_np], [b, effective_b_np]:
-        theoretical, numerical = gradient_checker.compute_gradient(
-            x,
-            x_init.shape,
-            res, [a_np_.shape[0], b_np_.shape[1]],
-            x_init_value=x_init,
-            delta=delta)
-        self.assertAllClose(theoretical, numerical, rtol=tol, atol=tol)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.matmul(x, b, **kwargs_), [a])
+      self.assertAllClose(theoretical, numerical, rtol=tol, atol=tol)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.matmul(a, x, **kwargs_), [b])
+      self.assertAllClose(theoretical, numerical, rtol=tol, atol=tol)
 
   return Test
 
@@ -223,8 +213,8 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
     b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
     c = infix_matmul(a, b)
     d = math_ops.matmul(a, b)
-    with self.cached_session():
-      self.assertAllEqual(c.eval(), self.evaluate(d))
+
+    self.assertAllEqual(c, d)
 
 
 if __name__ == "__main__":
