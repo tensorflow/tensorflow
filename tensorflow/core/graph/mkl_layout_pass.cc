@@ -1125,7 +1125,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // it includes those we support.
 
     std::vector<string> fused_ops;
-    DCHECK_EQ(GetNodeAttr(n->def(), "fused_ops", &fused_ops).ok(), true);
+    TF_CHECK_OK(GetNodeAttr(n->def(), "fused_ops", &fused_ops));
     return (CompareFusedOps(fused_ops, {"BiasAdd"}) ||
             CompareFusedOps(fused_ops, {"Relu"}) ||
             CompareFusedOps(fused_ops, {"BiasAdd", "Relu"}));
