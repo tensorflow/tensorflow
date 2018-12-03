@@ -1041,11 +1041,12 @@ def _PowGrad(op, grad):
   # Avoid false singularity at x = 0
   if x.dtype.is_complex:
     # real(x) < 0 is fine for the complex case
-    log_x = array_ops.where(
-        math_ops.not_equal(x, 0), math_ops.log(x), array_ops.zeros_like(x))
+    mask = math_ops.not_equal(x, 0)
   else:
     # There's no sensible real value to return if x < 0, so return 0
-    log_x = array_ops.where(x > 0, math_ops.log(x), array_ops.zeros_like(x))
+    mask = x > 0
+  safe_x = array_ops.where(mask, x, array_ops.ones_like(x))
+  log_x = array_ops.where(mask, math_ops.log(safe_x), array_ops.zeros_like(x))
   gy = array_ops.reshape(math_ops.reduce_sum(grad * z * log_x, ry), sy)
   return gx, gy
 
