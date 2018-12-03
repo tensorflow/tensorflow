@@ -1667,6 +1667,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "ZEROS_LIKE", OperatorType::kZerosLike));
   ops.push_back(
       MakeUnique<SimpleOperator<AbsOperator>>("ABS", OperatorType::kAbs));
+  ops.push_back(
+      MakeUnique<SimpleOperator<FillOperator>>("FILL", OperatorType::kFill));
   return ops;
 }
 }  // namespace

@@ -151,6 +151,7 @@ TEST_F(OperatorTest, SimpleOperators) {
                                                    OperatorType::kZerosLike);
   CheckSimpleOperator<FloorModOperator>("FLOOR_MOD", OperatorType::kFloorMod);
   CheckSimpleOperator<RangeOperator>("RANGE", OperatorType::kRange);
+  CheckSimpleOperator<FillOperator>("FILL", OperatorType::kFill);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
