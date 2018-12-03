@@ -265,8 +265,8 @@ class MklSlicePrimitiveFactory : public MklPrimitiveFactory<T> {
     memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
     memory::dims from_strides(
         from_desc.layout_desc.blocking.strides[KIdxFirstStride],
-        &from_desc.layout_desc.blocking.strides[KIdxFirstStride]
-                                               [from_desc.ndims]);
+        &from_desc.layout_desc.blocking
+             .strides[KIdxFirstStride][from_desc.ndims]);
     memory::dims to_strides(
         to_desc.layout_desc.blocking.strides[KIdxFirstStride],
         &to_desc.layout_desc.blocking.strides[KIdxFirstStride][to_desc.ndims]);
