@@ -89,6 +89,9 @@ public:
   // Emit builder method for the operation.
   void emitBuilder();
 
+  // Emit method declaration for the getCanonicalizationPatterns() interface.
+  void emitCanonicalizationPatterns();
+
   // Emit the parser for the operation.
   void emitParser();
 
@@ -132,6 +135,7 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
   emitter.emitPrinter();
   emitter.emitVerifier();
   emitter.emitAttrGetters();
+  emitter.emitCanonicalizationPatterns();
 
   os << "private:\n  friend class ::mlir::Operation;\n";
   os << "  explicit " << def.getName()
@@ -201,6 +205,13 @@ void OpEmitter::emitBuilder() {
   }
 
   // TODO(jpienaar): Redo generating builder.
+}
+
+void OpEmitter::emitCanonicalizationPatterns() {
+  if (!def.getValueAsBit("hasCanonicalizationPatterns"))
+    return;
+  os << "  static void getCanonicalizationPatterns("
+     << "OwningRewritePatternList &results, MLIRContext* context);\n";
 }
 
 void OpEmitter::emitParser() {

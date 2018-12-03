@@ -154,6 +154,12 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   // Custom verifier.
   code verifier = ?;
 
+  // Whether this op has associated canonicalization patterns.
+  // TODO(b/120163349): figure out a better way to write canonicalization
+  // patterns in TableGen rules directly instead of using this marker
+  // and C++ implementations.
+  bit hasCanonicalizationPatterns = 0b0;
+
   // Op properties.
   list<OpProperty> properties = props;
 }
