@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import time
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -51,7 +52,7 @@ _graph_options = config_pb2.GraphOptions(rewrite_options=_rewrites)
 _config = config_pb2.ConfigProto(graph_options=_graph_options)
 
 
-class UnifiedLSTMTest(test.TestCase):
+class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def test_unifiedLSTM(self):
@@ -242,20 +243,20 @@ class UnifiedLSTMTest(test.TestCase):
         },
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  @parameterized.parameters([0, 1, 2])
   @test_util.run_in_graph_and_eager_modes(config=_config)
-  def test_implementation_mode_LSTM(self):
+  def test_implementation_mode_LSTM(self, implementation_mode):
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
     units = 2
-    for mode in [1, 2]:
-      testing_utils.layer_test(
-          UnifiedLSTM,
-          kwargs={
-              'units': units,
-              'implementation': mode
-          },
-          input_shape=(num_samples, timesteps, embedding_dim))
+    testing_utils.layer_test(
+        UnifiedLSTM,
+        kwargs={
+            'units': units,
+            'implementation': implementation_mode
+        },
+        input_shape=(num_samples, timesteps, embedding_dim))
 
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_constraints_LSTM(self):
