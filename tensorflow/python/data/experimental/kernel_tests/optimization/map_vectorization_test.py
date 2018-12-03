@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -353,7 +354,8 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     optimized = _make_dataset(["Batch", map_node_name]
                               if expect_optimized else [map_node_name, "Batch"])
     options = dataset_ops.Options()
-    options.experimental_map_vectorization = True
+    options.experimental_optimization = OptimizationOptions()
+    options.experimental_optimization.map_vectorization = True
     optimized = optimized.with_options(options)
     return unoptimized, optimized
 

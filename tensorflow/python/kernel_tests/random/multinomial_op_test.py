@@ -66,6 +66,7 @@ class MultinomialTest(test.TestCase):
             logits, num_samples, output_dtype=output_dtype))
         self.assertAllEqual([[1] * num_samples, [2] * num_samples], samples)
 
+  @test_util.run_deprecated_v1
   def testOneOpMultipleStepsIndependent(self):
     with test_util.use_gpu():
       sample_op1, _ = self._make_ops(10)
@@ -88,6 +89,7 @@ class MultinomialTest(test.TestCase):
       # 1 in 2^32 chance of this assertion failing.
       self.assertFalse(np.equal(sample1, sample2).all())
 
+  @test_util.run_deprecated_v1
   def testTwoOpsSameSeedDrawSameSequences(self):
     with test_util.use_gpu():
       sample_op1, sample_op2 = self._make_ops(1000, seed=1)
@@ -194,6 +196,7 @@ class MultinomialTest(test.TestCase):
                   array_ops.zeros([batch, classes]), samples))
           self.assertEqual(x.shape, (batch, samples))
 
+  @test_util.run_deprecated_v1
   def testEmptyClasses(self):
     with test_util.use_gpu():
       x = random_ops.multinomial(array_ops.zeros([5, 0]), 7)

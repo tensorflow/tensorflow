@@ -26,6 +26,7 @@ from tensorflow.python.estimator import model_fn
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -68,6 +69,7 @@ class CheckpointInputPipelineHookTest(test_base.DatasetTestBase):
   def _build_iterator_saver_hook(self, est):
     return iterator_ops.CheckpointInputPipelineHook(est)
 
+  @test_util.run_deprecated_v1
   def testReturnDatasetFromInputFn(self):
 
     def _input_fn():
@@ -80,6 +82,7 @@ class CheckpointInputPipelineHookTest(test_base.DatasetTestBase):
     est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
     self.assertSequenceEqual(self._read_vars(est.model_dir), (4, 3))
 
+  @test_util.run_deprecated_v1
   def testBuildIteratorInInputFn(self):
 
     def _input_fn():
@@ -94,6 +97,7 @@ class CheckpointInputPipelineHookTest(test_base.DatasetTestBase):
     est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
     self.assertSequenceEqual(self._read_vars(est.model_dir), (4, 3))
 
+  @test_util.run_deprecated_v1
   def testDoNotRestore(self):
 
     def _input_fn():

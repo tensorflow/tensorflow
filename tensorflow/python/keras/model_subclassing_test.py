@@ -917,6 +917,7 @@ class ModelSubclassingTest(test.TestCase):
 
 class GraphSpecificModelSubclassingTests(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_single_io_workflow_with_tensors(self):
     num_classes = 2
     num_samples = 10
@@ -934,6 +935,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       model.fit(x, y, epochs=2, steps_per_epoch=10, verbose=0)
       _ = model.evaluate(steps=10, verbose=0)
 
+  @test_util.run_deprecated_v1
   def test_multi_io_workflow_with_tensors(self):
     num_classes = (2, 3)
     num_samples = 10
@@ -953,6 +955,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       model.fit([x1, x2], [y1, y2], epochs=2, steps_per_epoch=10, verbose=0)
       _ = model.evaluate(steps=10, verbose=0)
 
+  @test_util.run_deprecated_v1
   def test_updates_and_losses_for_nested_models_in_subclassed_model(self):
 
     # Case 1: deferred-build sequential nested in subclass.
@@ -1020,6 +1023,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       self.assertEqual(len(model.get_updates_for(x)), 2)
       self.assertEqual(len(model.get_losses_for(x)), 1)
 
+  @test_util.run_deprecated_v1
   def test_multi_io_workflow_with_numpy_arrays_and_custom_placeholders(self):
     num_classes = (2, 3)
     num_samples = 1000

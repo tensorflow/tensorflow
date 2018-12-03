@@ -22,6 +22,7 @@ from tensorflow.python.data.util import convert
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -60,6 +61,7 @@ class ConvertTest(test.TestCase):
                             convert.partial_shape_to_tensor(
                                 constant_op.constant([1], dtype=dtypes.int64))))
 
+  @test_util.run_deprecated_v1
   def testPartialShapeToTensorUnknownDimension(self):
     self.assertAllEqual([-1],
                         self.evaluate(

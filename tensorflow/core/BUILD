@@ -96,6 +96,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 
 # For platform specific build config
@@ -868,6 +869,7 @@ tf_cuda_library(
         "framework/dataset_stateful_op_whitelist.h",
         "framework/device_base.h",
         "framework/function.h",
+        "framework/function_handle_cache.h",
         "framework/graph_def_util.h",
         "framework/graph_to_functiondef.h",
         "framework/kernel_def_builder.h",
@@ -911,6 +913,7 @@ tf_cuda_library(
         "util/bcast.h",
         "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
+        "util/dump_graph.h",
         "util/events_writer.h",
         "util/example_proto_fast_parsing.h",
         "util/example_proto_helper.h",
@@ -1114,7 +1117,11 @@ tf_gen_op_libs(
     op_lib_names = [
         "string_ops",
     ],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        ":lib_internal",
+        ":lib_proto_parsing",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_gen_op_libs(
@@ -1468,7 +1475,7 @@ tf_cuda_library(
         ":gpu_runtime",
         ":lib",
         ":ops",
-    ],
+    ] + tensorflow_opensource_extra_deps(),
 )
 
 cc_library(
@@ -3731,6 +3738,7 @@ tf_cc_tests(
         "util/bcast_test.cc",
         "util/command_line_flags_test.cc",
         "util/device_name_utils_test.cc",
+        "util/dump_graph_test.cc",
         "util/equal_graph_def_test.cc",
         "util/events_writer_test.cc",
         "util/example_proto_fast_parsing_test.cc",

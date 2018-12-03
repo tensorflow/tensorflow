@@ -39,6 +39,7 @@ from google.protobuf import message
 from google.protobuf import text_format
 
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -310,6 +311,7 @@ class ApiCompatibilityTest(test.TestCase):
         update_goldens=FLAGS.update_goldens,
         api_version=api_version)
 
+  @test_util.run_deprecated_v1
   def testAPIBackwardsCompatibility(self):
     api_version = 1
     golden_file_pattern = os.path.join(
@@ -328,6 +330,7 @@ class ApiCompatibilityTest(test.TestCase):
         'tensorflow.python.util.lazy_loader.LazyLoader'
         in str(type(tf.contrib)))
 
+  @test_util.run_deprecated_v1
   def testAPIBackwardsCompatibilityV1(self):
     api_version = 1
     golden_file_pattern = os.path.join(

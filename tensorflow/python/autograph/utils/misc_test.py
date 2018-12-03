@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.autograph.utils.misc import alias_tensors
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops.variables import Variable
 from tensorflow.python.platform import test
@@ -26,6 +27,7 @@ from tensorflow.python.platform import test
 
 class MiscTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_alias_single_tensor(self):
     a = constant(1)
 
@@ -34,6 +36,7 @@ class MiscTest(test.TestCase):
     with self.cached_session() as sess:
       self.assertEqual(1, self.evaluate(new_a))
 
+  @test_util.run_deprecated_v1
   def test_alias_tensors(self):
     a = constant(1)
     v = Variable(2)

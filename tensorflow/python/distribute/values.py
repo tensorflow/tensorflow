@@ -100,6 +100,15 @@ class DistributedValues(object):
   # DistributionStrategy implementations.
 
 
+# NOTE(josh11b,apassos): It would be great if we could inspect the values this was
+# initialized with and use that to generate the overloaded operators here.
+# Unfortunately, Python's rules for special methods don't allow this, see
+# https://docs.python.org/3/reference/datamodel.html#special-method-names
+# "if a class defines a method named __getitem__(), and x is an instance of
+# this class, then x[i] is roughly equivalent to type(x).__getitem__(x, i)."
+# In particular, these special methods don't go through __getattr__, and
+# it will only use those methods if they are defined in the class, not the
+# object.
 class DistributedDelegate(DistributedValues):
   """A map from device to values; acts as the same type as the values."""
 

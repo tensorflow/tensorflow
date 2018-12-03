@@ -34,7 +34,7 @@ class StatsOptions(options.OptionsBase):
   ```python
   aggretator = tf.data.experimental.StatsAggregator()
 
-  options = dataset_ops.Options()
+  options = tf.data.Options()
   options.experimental_stats = tf.data.experimental.StatsOptions()
   options.experimental_stats.aggregator = aggregator
   dataset = dataset.with_options(options)

@@ -199,6 +199,7 @@ class ComparisonOpTest(test.TestCase):
     self._testBCastByFunc(
         np.not_equal, math_ops.not_equal, include_complex=True)
 
+  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     dtypes = [np.float16, np.float32, np.float64, np.int32, np.int64]
     funcs = [
@@ -280,6 +281,7 @@ class LogicalOpTest(test.TestCase):
         self._compareBinary(x, y, np.logical_or, math_ops.logical_or, use_gpu)
         self._compareBinary(x, y, np.logical_xor, math_ops.logical_xor, use_gpu)
 
+  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     x = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
     y = np.random.randint(0, 2, 6).astype(np.bool).reshape(3, 2, 1)
@@ -288,6 +290,7 @@ class LogicalOpTest(test.TestCase):
           ValueError, lambda e: "Dimensions must" in str(e)):
         f(x, y)
 
+  @test_util.run_deprecated_v1
   def testUsingAsPythonValueFails(self):
     # Ensure that we raise an error when the user attempts to treat a
     # `Tensor` as a Python `bool`.
@@ -396,6 +399,7 @@ class SelectOpTest(test.TestCase):
       if t in [np.float16, np.float32, np.float64]:
         self._compare(c, xt, yt, use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
     x = np.random.rand(1, 3, 2) * 100
@@ -415,6 +419,7 @@ class SelectOpTest(test.TestCase):
         self._compareGradientX(c, xt, yt)
         self._compareGradientY(c, xt, yt)
 
+  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
     x = np.random.rand(1, 3, 2) * 100
@@ -428,6 +433,7 @@ class SelectOpTest(test.TestCase):
       with self.assertRaises(ValueError):
         array_ops.where(c, xt, yt)
 
+  @test_util.run_deprecated_v1
   def testEmptyTensor(self):
     c = np.random.randint(0, 3, 0).astype(np.bool).reshape(1, 3, 0)
     x = np.random.rand(1, 3, 0) * 100
@@ -439,6 +445,7 @@ class SelectOpTest(test.TestCase):
       z = array_ops.where(c, xt, yt).eval()
       self.assertAllEqual(z_expected, z)
 
+  @test_util.run_deprecated_v1
   def testNan(self):
     """Verify that nans don't propagate where they shouldn't."""
     with self.cached_session():
@@ -525,6 +532,7 @@ class BatchSelectOpTest(test.TestCase):
       if t in [np.float16, np.float32, np.float64]:
         self._compare(c, xt, yt, use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     c = np.random.randint(0, 2, 16).astype(np.bool)
     x = np.random.rand(16, 2, 8) * 100
@@ -544,6 +552,7 @@ class BatchSelectOpTest(test.TestCase):
         self._compareGradientX(c, xt, yt)
         self._compareGradientY(c, xt, yt)
 
+  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     c = np.random.randint(0, 2, 8).astype(np.bool)
     x = np.random.rand(16, 3, 2) * 100
@@ -622,6 +631,7 @@ class MinMaxOpTest(test.TestCase):
     elif x.dtype == np.float64:
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     x = np.random.rand(1, 3, 2) * 100.
     # ensure x != y
@@ -898,6 +908,7 @@ class ComplexMakeRealImagTest(test.TestCase):
     # build failures on GPU (See #10643 for context).
     # self._compareAngle(cplx, use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testRealReal(self):
     for dtype in (dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float32,
                   dtypes_lib.float64):
@@ -928,6 +939,7 @@ class ComplexMakeRealImagTest(test.TestCase):
     self._compareConj(cplx, use_gpu=False)
     self._compareConj(cplx, use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testConjReal(self):
     for dtype in (dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float16,
                   dtypes_lib.float32, dtypes_lib.float64):
@@ -935,6 +947,7 @@ class ComplexMakeRealImagTest(test.TestCase):
       y = math_ops.conj(x)
       self.assertEqual(x, y)
 
+  @test_util.run_deprecated_v1
   def testConjString(self):
     x = array_ops.placeholder(dtypes_lib.string)
     with self.assertRaisesRegexp(TypeError,
@@ -971,6 +984,7 @@ class ComplexMakeRealImagTest(test.TestCase):
             x_, list(x.shape), z, [1], x_init_value=x, delta=epsilon)
         self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     # complex64
     data = np.arange(1, 2, 0.10).reshape([5, 2]).astype(np.float32)
@@ -1006,6 +1020,7 @@ class ComplexMakeRealImagTest(test.TestCase):
           inp, list(data.shape), loss, [1], x_init_value=data, delta=epsilon)
     self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
 
+  @test_util.run_deprecated_v1
   def testMulGradient(self):
     data = np.arange(1, 2, 0.125).reshape([2, 4]).astype(np.float32)
     self._compareMulGradient(data)

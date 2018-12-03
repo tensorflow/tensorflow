@@ -125,7 +125,7 @@ def save_keras_model(
   export_dir = export_helpers.get_timestamped_export_dir(saved_model_path)
   temp_export_dir = export_helpers.get_temp_export_dir(export_dir)
 
-  builder = saved_model_builder.SavedModelBuilder(temp_export_dir)
+  builder = saved_model_builder._SavedModelBuilder(temp_export_dir)
 
   # Manually save variables to export them in an object-based checkpoint. This
   # skips the `builder.add_meta_graph_and_variables()` step, which saves a
@@ -227,9 +227,10 @@ def _export_mode(
       g.add_to_collection(ops.GraphKeys.GLOBAL_STEP, clone.optimizer.iterations)
 
     # Extract update and train ops from train/test/predict functions.
+    train_op = None
     if mode == model_fn_lib.ModeKeys.TRAIN:
       clone._make_train_function()
-      builder._add_train_op(clone.train_function.updates_op)
+      train_op = clone.train_function.updates_op
     elif mode == model_fn_lib.ModeKeys.EVAL:
       clone._make_test_function()
     else:
@@ -264,7 +265,8 @@ def _export_mode(
         model_fn_lib.EXPORT_TAG_MAP[mode],
         signature_def_map=_create_signature_def_map(clone, mode),
         saver=saver_lib.Saver(clone_var_list),
-        main_op=variables.local_variables_initializer())
+        init_op=variables.local_variables_initializer(),
+        train_op=train_op)
     return None
 
 

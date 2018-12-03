@@ -17,3 +17,9 @@ def tf_oss_fuzz_corpus(name):
         name = name + "_corpus",
         srcs = native.glob(["corpus/" + name + "/*"]),
     )
+
+def tf_oss_fuzz_dict(name):
+    native.filegroup(
+        name = name + "_dict",
+        srcs = native.glob(["dictionaries/" + name + ".dict"]),
+    )

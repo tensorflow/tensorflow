@@ -18,6 +18,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -28,6 +29,7 @@ TIMEOUT = 1
 
 class StageTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testSimple(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -47,6 +49,7 @@ class StageTest(test.TestCase):
         _, yval = sess.run([stage, y], feed_dict={x: i})
         self.assertAllClose(4 * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
+  @test_util.run_deprecated_v1
   def testMultiple(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -67,6 +70,7 @@ class StageTest(test.TestCase):
         self.assertAllClose(
             4 * (i - 1) * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
+  @test_util.run_deprecated_v1
   def testDictionary(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -110,6 +114,7 @@ class StageTest(test.TestCase):
 
     G.finalize()
 
+  @test_util.run_deprecated_v1
   def testPeek(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -133,6 +138,7 @@ class StageTest(test.TestCase):
       for i in range(10):
         self.assertTrue(sess.run(peek, feed_dict={p: i}) == [i])
 
+  @test_util.run_deprecated_v1
   def testSizeAndClear(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -158,6 +164,7 @@ class StageTest(test.TestCase):
       sess.run(clear)
       self.assertEqual(sess.run(size), 0)
 
+  @test_util.run_deprecated_v1
   def testCapacity(self):
     capacity = 3
 
@@ -219,6 +226,7 @@ class StageTest(test.TestCase):
       # It should now be empty
       self.assertTrue(sess.run(size) == 0)
 
+  @test_util.run_deprecated_v1
   def testMemoryLimit(self):
     memory_limit = 512 * 1024  # 512K
     chunk = 200 * 1024  # 256K

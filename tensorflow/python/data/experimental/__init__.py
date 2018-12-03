@@ -25,6 +25,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@Counter
 @@CheckpointInputPipelineHook
 @@CsvDataset
+@@OptimizationOptions
 @@Optional
 @@RandomDataset
 @@Reducer
@@ -39,6 +40,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@copy_to_device
 @@dense_to_sparse_batch
 @@enumerate_dataset
+@@filter_for_shard
 @@get_next_as_optional
 @@get_single_element
 @@group_by_reducer
@@ -74,6 +76,7 @@ from tensorflow.python.data.experimental.ops.batching import unbatch
 from tensorflow.python.data.experimental.ops.counter import Counter
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
+from tensorflow.python.data.experimental.ops.filter_for_shard_ops import filter_for_shard
 from tensorflow.python.data.experimental.ops.get_single_element import get_single_element
 from tensorflow.python.data.experimental.ops.grouping import bucket_by_sequence_length
 from tensorflow.python.data.experimental.ops.grouping import group_by_reducer
@@ -84,10 +87,8 @@ from tensorflow.python.data.experimental.ops.interleave_ops import parallel_inte
 from tensorflow.python.data.experimental.ops.interleave_ops import sample_from_datasets
 from tensorflow.python.data.experimental.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_from_iterator
-
-# Optimization constant that can be used to enable auto-tuning.
 from tensorflow.python.data.experimental.ops.optimization import AUTOTUNE
-
+from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
 from tensorflow.python.data.experimental.ops.prefetching_ops import copy_to_device
 from tensorflow.python.data.experimental.ops.prefetching_ops import prefetch_to_device

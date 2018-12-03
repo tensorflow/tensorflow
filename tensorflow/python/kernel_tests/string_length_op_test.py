@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
@@ -32,6 +33,7 @@ class StringLengthOpTest(test.TestCase):
       values = self.evaluate(lengths)
       self.assertAllEqual(values, [[[1, 2], [3, 4], [5, 6]]])
 
+  @test_util.run_deprecated_v1
   def testUnit(self):
     unicode_strings = [u"H\xc3llo", u"\U0001f604"]
     utf8_strings = [s.encode("utf-8") for s in unicode_strings]
@@ -51,6 +53,7 @@ class StringLengthOpTest(test.TestCase):
           'not in: "BYTE", "UTF8_CHAR"'):
         string_ops.string_length(utf8_strings, unit="XYZ")
 
+  @test_util.run_deprecated_v1
   def testLegacyPositionalName(self):
     # Code that predates the 'unit' parameter may have used a positional
     # argument for the 'name' parameter.  Check that we don't break such code.

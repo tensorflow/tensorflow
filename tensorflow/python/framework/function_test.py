@@ -35,6 +35,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework.errors import InvalidArgumentError
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -104,6 +105,7 @@ class FunctionTest(test.TestCase):
       with session.Session() as sess:
         self.assertAllEqual([18.0], self.evaluate(call))
 
+  @test_util.run_deprecated_v1
   def testIdentityImplicitDeref(self):
 
     @function.Defun(dtypes.float32, func_name="MyIdentity")
@@ -322,6 +324,7 @@ class FunctionTest(test.TestCase):
       self.assertEqual(x.get_shape(), dx.get_shape())
       self.assertEqual(y.get_shape(), dy.get_shape())
 
+  @test_util.run_deprecated_v1
   def testSymGradAttr(self):
 
     @function.Defun(noinline=True)
@@ -438,6 +441,7 @@ class FunctionTest(test.TestCase):
                                    "assertion failed.*-3"):
         self.assertAllEqual(Foo(constant_op.constant(-3.0)).eval(), 6.0)
 
+  @test_util.run_deprecated_v1
   def testAssertWrapper(self):
 
     @function.Defun(dtypes.float32)
@@ -452,6 +456,7 @@ class FunctionTest(test.TestCase):
                                    "assertion"):
         _ = MyFn(100.0).eval()
 
+  @test_util.run_deprecated_v1
   def testWhileLoopCallsFunc(self):
     with self.session(use_gpu=True) as sess:
 
@@ -471,6 +476,7 @@ class FunctionTest(test.TestCase):
       ans = self.evaluate(loop)
       self.assertAllClose(ans, 131072.)
 
+  @test_util.run_deprecated_v1
   def testControlFlowStrictness(self):
     """Inlined functions must not execute in a untaken control flow branch."""
 
@@ -517,6 +523,7 @@ class FunctionTest(test.TestCase):
                                    "assertion"):
         sess.run(loop, {pred: True, x: 3})
 
+  @test_util.run_deprecated_v1
   def testVar(self):
 
     @function.Defun(dtypes.float32)
@@ -532,6 +539,7 @@ class FunctionTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllEqual(z.eval(), 101.)
 
+  @test_util.run_deprecated_v1
   def testResourceVarAsImplicitInput(self):
     g = ops.Graph()
     with g.as_default(), ops.device("cpu:0"):
@@ -707,6 +715,7 @@ class FunctionTest(test.TestCase):
     gdef = g.as_graph_def()
     self.assertEqual(0, len(gdef.library.function))
 
+  @test_util.run_deprecated_v1
   def testReduction(self):
     g = ops.Graph()
 
@@ -735,6 +744,7 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(vals[0], vals[1])
       self.assertAllClose(vals[2], vals[3])
 
+  @test_util.run_deprecated_v1
   def testCapture(self):
     g = ops.Graph()
     with g.as_default():
@@ -781,6 +791,7 @@ class FunctionTest(test.TestCase):
         # NOTE: We still do not support capturing control deps.
         _ = Foo(x)
 
+  @test_util.run_deprecated_v1
   def testCaptureInWhileLoop(self):
     g = ops.Graph()
     with g.as_default():
@@ -796,6 +807,7 @@ class FunctionTest(test.TestCase):
     with self.session(graph=g) as sess:
       self.assertEqual(self.evaluate(y), 10)
 
+  @test_util.run_deprecated_v1
   def testCaptureInCond(self):
     g = ops.Graph()
     with g.as_default():
@@ -825,6 +837,7 @@ class FunctionTest(test.TestCase):
       self.assertEqual("Foo_aCYSbwBkR5A",
                        Foo.instantiate([dtypes.float32] * 3).name)
 
+  @test_util.run_deprecated_v1
   def testSignatureHash(self):
     # Foo.Inner and Bar.Inner have identical function body but have
     # different signatures. They should be treated as two different functions.
@@ -877,6 +890,7 @@ class FunctionTest(test.TestCase):
       y = Bar(array_ops.zeros([1, 2, 3]))
       self.assertAllEqual(y.get_shape().as_list(), [1, 1, 2, 3])
 
+  @test_util.run_deprecated_v1
   def testVariableReuse(self):
 
     def LinearWithReuse(input_tensor, reuse=None):
@@ -905,6 +919,7 @@ class FunctionTest(test.TestCase):
           output_op, feed_dict={input_op: np.random.rand(32, 100)})
       self.assertEqual(output_val.shape, (32, 100))
 
+  @test_util.run_deprecated_v1
   def testFunctionCallInDifferentVariableScopes(self):
 
     @function.Defun(dtypes.float32)
@@ -968,6 +983,7 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(
           np.array([1.0, 0.0]).astype(np.float32), sess.run(dinp, {inp: x}))
 
+  @test_util.run_deprecated_v1
   def testFunctionMarkedStateful(self):
 
     @function.Defun(dtypes.int32, dtypes.float32)
@@ -995,6 +1011,7 @@ class FunctionTest(test.TestCase):
       self.assertEqual(100, self.evaluate(result_2))
       self.assertEqual((4.0, 100), sess.run((result_1, result_2)))
 
+  @test_util.run_deprecated_v1
   def testStatefulFunction(self):
 
     @function.Defun()
@@ -1037,6 +1054,7 @@ class FunctionTest(test.TestCase):
         self.assertFalse(all(val3 == val1))
         self.assertFalse(all(val4 == val2))
 
+  @test_util.run_deprecated_v1
   def testSameFunctionOnTwoDevices(self):
 
     @function.Defun(dtypes.float32)
@@ -1056,6 +1074,7 @@ class FunctionTest(test.TestCase):
         self.assertEqual(44.0, self.evaluate(f_1))
         self.assertEqual((42.0, 44.0), sess.run((f_0, f_1)))
 
+  @test_util.run_deprecated_v1
   def testGuaranteedConstsAreCaptured(self):
     var = variables.Variable(1.0)
     const = array_ops.guarantee_const(var)
@@ -1079,6 +1098,7 @@ class FunctionTest(test.TestCase):
       self.evaluate(var.initializer)
       _ = sess.run(CapturesGuaranteedConst(), {also_not_const: 1.0})
 
+  @test_util.run_deprecated_v1
   def testSameFunctionDifferentGrads(self):
 
     def PartOne(x):
@@ -1150,6 +1170,7 @@ class FunctionsFromProtos(test.TestCase):
     self.assertEqual(func.declared_input_types, new_func.declared_input_types)
     self.assertEqual(func.captured_inputs, new_func.captured_inputs)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
 
     @function.Defun(dtypes.float32, dtypes.float32)
@@ -1359,6 +1380,7 @@ class FunctionsFromProtos(test.TestCase):
 
 class FunctionOverloadTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
 
     @function.Defun()
@@ -1411,6 +1433,7 @@ class FunctionOverloadTest(test.TestCase):
 
 class FunctionCaptureByValueTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testCaptureByValue(self):
     g = ops.Graph()
     with g.as_default():
@@ -1634,6 +1657,7 @@ class FunctionInlineControlTest(test.TestCase):
 
 class ModuleFunctionTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
 
     @function.Defun(*[dtypes.float32] * 3)
@@ -1717,10 +1741,12 @@ class VariableHoistingTest(test.TestCase):
     self.assertAllEqual(db.shape, (64,))
     self.assertAllClose(np.sum(db), 0.509, rtol=1e-2)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     self._testSimpleModel(True)
     self._testSimpleModel(False)
 
+  @test_util.run_deprecated_v1
   def testBasicResource(self):
     self._testSimpleModel(True, use_resource=True)
     self._testSimpleModel(False, use_resource=True)

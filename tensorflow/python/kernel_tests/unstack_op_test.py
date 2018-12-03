@@ -74,6 +74,7 @@ class UnstackOpTest(test.TestCase):
           cs = [self.evaluate(c) for c in cs]
           self.assertAllEqual(cs, data)
 
+  @test_util.run_deprecated_v1
   def testGradientsAxis0(self):
     for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
       data = np.random.randn(*shape)
@@ -86,6 +87,7 @@ class UnstackOpTest(test.TestCase):
                                                         shapes[i])
           self.assertLess(err, 1e-6)
 
+  @test_util.run_deprecated_v1
   def testGradientsAxis1(self):
     for shape in (2, 3), (3, 2), (4, 3, 2):
       data = np.random.randn(*shape)
@@ -99,6 +101,7 @@ class UnstackOpTest(test.TestCase):
                                                         out_shape)
           self.assertLess(err, 1e-6)
 
+  @test_util.run_deprecated_v1
   def testInferNum(self):
     with self.cached_session():
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
@@ -107,16 +110,19 @@ class UnstackOpTest(test.TestCase):
         self.assertEqual(type(cs), list)
         self.assertEqual(len(cs), shape[0])
 
+  @test_util.run_deprecated_v1
   def testCannotInferNumFromUnknownShape(self):
     x = array_ops.placeholder(np.float32)
     with self.assertRaisesRegexp(ValueError,
                                  r'Cannot infer num from shape <unknown>'):
       array_ops.unstack(x)
 
+  @test_util.run_deprecated_v1
   def testUnknownShapeOkWithNum(self):
     x = array_ops.placeholder(np.float32)
     array_ops.unstack(x, num=2)
 
+  @test_util.run_deprecated_v1
   def testCannotInferNumFromNoneShape(self):
     x = array_ops.placeholder(np.float32, shape=(None,))
     with self.assertRaisesRegexp(ValueError,

@@ -30,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -127,6 +128,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         self._verify_output(sess, dataset, batch_size, num_epochs, label_name,
                             expected_output, expected_keys)
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset(self):
     """Tests making a CSV dataset with keys and defaults provided."""
     record_defaults = [
@@ -158,6 +160,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         column_defaults=record_defaults,
     )
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withBatchSizeAndEpochs(self):
     """Tests making a CSV dataset with keys and defaults provided."""
     record_defaults = [
@@ -189,6 +192,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         column_defaults=record_defaults,
     )
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withCompressionType(self):
     """Tests `compression_type` argument."""
     record_defaults = [
@@ -257,6 +261,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           label_name="not_a_real_label",
           column_names=column_names)
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withNoLabel(self):
     """Tests making a CSV dataset with no label provided."""
     record_defaults = [
@@ -286,6 +291,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         column_defaults=record_defaults,
     )
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withNoHeader(self):
     """Tests that datasets can be created from CSV files with no header line.
     """
@@ -347,6 +353,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         column_defaults=record_defaults,
     )
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withNoColNames(self):
     """Tests that datasets can be created when column names are not specified.
 
@@ -451,6 +458,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         header=True,
     )
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withSelectCols(self):
     record_defaults = [
         constant_op.constant([], dtypes.int32),
@@ -557,6 +565,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           label_name=None,
           select_columns=["invalid_col_name"])
 
+  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withShuffle(self):
     record_defaults = [
         constant_op.constant([], dtypes.int32),

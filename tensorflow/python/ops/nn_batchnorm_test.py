@@ -71,6 +71,7 @@ class BatchNormalizationTest(test.TestCase):
                                        gamma if scale_after_normalization else
                                        None, epsilon)
 
+  @test_util.run_deprecated_v1
   def testBatchNorm(self):
     x_shape = [3, 5, 4, 2]
     param_shape = [2]
@@ -169,16 +170,20 @@ class BatchNormalizationTest(test.TestCase):
                                       shift_after_normalization, v,
                                       err_tolerance)
 
+  @test_util.run_deprecated_v1
   def testBatchNormInputGradient(self):
     self._testBatchNormGradientInAllNeedConfigs(0, "x")
 
+  @test_util.run_deprecated_v1
   def testBatchNormMeanGradient(self):
     self._testBatchNormGradientInAllNeedConfigs(1, "mean")
 
+  @test_util.run_deprecated_v1
   def testBatchNormVarianceGradient(self):
     self._testBatchNormGradientInAllNeedConfigs(
         2, "variance", err_tolerance=1e-03)
 
+  @test_util.run_deprecated_v1
   def testBatchNormBetaGradient(self):
     # Since beta does not exist when scale_after_normalization=False, we only
     # test for scale_after_normalization=True.
@@ -187,6 +192,7 @@ class BatchNormalizationTest(test.TestCase):
         self._testBatchNormGradient(3, "beta", scale_after_normalization, True,
                                     v)
 
+  @test_util.run_deprecated_v1
   def testBatchNormGammaGradient(self):
     # If scale_after_normalization is False, backprop for gamma in v1
     # will be 0. In version 2 of the API, if scale_after_normalization is False,
@@ -199,6 +205,7 @@ class BatchNormalizationTest(test.TestCase):
       self._testBatchNormGradient(4, "gamma", True, shift_after_normalization,
                                   2)
 
+  @test_util.run_deprecated_v1
   def testBatchNormGradImpl(self):
     x_shape = [7, 5, 4, 6]
     param_shape = [6]
@@ -245,6 +252,7 @@ class BatchNormalizationTest(test.TestCase):
             self.assertAllClose(
                 all_grads[i + len(to_check)], all_grads[i], atol=0.000001)
 
+  @test_util.run_deprecated_v1
   def testBatchNormKeepDims(self):
     """Test for tf.nn.moments(..., keep_dims=True / False).
 
@@ -391,6 +399,7 @@ class SufficientStatisticsTest(test.TestCase):
         if shift:
           self.assertAllClose(np_s, tf_s, atol=0.000001)
 
+  @test_util.run_deprecated_v1
   def testSuffStats(self):
     for has_shape in [True, False]:
       for keep_dims in [True, False]:
@@ -511,6 +520,7 @@ class MomentsTest(test.TestCase):
       self.assertAllCloseAccordingToType(expected_mean, self.evaluate(mean))
       self.assertAllCloseAccordingToType(expected_variance, self.evaluate(var))
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     for keep_dims in [False, True]:
       for dtype in [dtypes.float32, dtypes.float16]:
@@ -519,6 +529,7 @@ class MomentsTest(test.TestCase):
         self.RunMomentTestWithDynamicShape(
             shape=[2, 3, 5, 4], axes=[0], keep_dims=keep_dims, dtype=dtype)
 
+  @test_util.run_deprecated_v1
   def testGlobalNormalization(self):
     for keep_dims in [False, True]:
       for dtype in [dtypes.float32, dtypes.float16]:
@@ -533,6 +544,7 @@ class MomentsTest(test.TestCase):
             keep_dims=keep_dims,
             dtype=dtype)
 
+  @test_util.run_deprecated_v1
   def testAxes(self):
     for keep_dims in [False, True]:
       for dtype in [dtypes.float32, dtypes.float16]:
@@ -573,9 +585,11 @@ class MomentsTest(test.TestCase):
         print("Moments %s gradient err vs input %d = %g" % (from_y, i, err))
         self.assertLess(err, 1e-11)
 
+  @test_util.run_deprecated_v1
   def testMeanGlobalGradient(self):
     self._testGlobalGradient(from_y="mean")
 
+  @test_util.run_deprecated_v1
   def testVarGlobalGradient(self):
     self._testGlobalGradient(from_y="var")
 

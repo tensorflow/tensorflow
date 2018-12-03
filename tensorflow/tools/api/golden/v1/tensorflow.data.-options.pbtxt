@@ -12,43 +12,11 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "experimental_filter_fusion"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "experimental_hoist_random_uniform"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "experimental_map_and_batch_fusion"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "experimental_map_and_filter_fusion"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "experimental_map_fusion"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "experimental_map_parallelization"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "experimental_map_vectorization"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "experimental_noop_elimination"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "experimental_numa_aware"
     mtype: "<type \'property\'>"
   }
   member {
-    name: "experimental_shuffle_and_repeat_fusion"
+    name: "experimental_optimization"
     mtype: "<type \'property\'>"
   }
   member {

@@ -139,6 +139,17 @@ following common ops are not supported at the moment:
 The following TensorFlow Lite operations are fully supported and used in place
 of the TensorFlow operations listed above:
 
+**ABS**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: elementwise abs of the input
+}
+```
+
 **ADD**
 
 ```
@@ -846,6 +857,22 @@ Outputs {
 Inputs {
   0: 0D tensor (axis)
   1: tensor (input)
+}
+Outputs {
+  0-N: subtensors built from the input tensors
+}
+Options {
+  num_splits: Specifies number of outputs
+}
+```
+
+**SPLIT_V**
+
+```
+Inputs {
+  0: tensor (input)
+  1: 1-D tensor (size_splits)
+  2: 0-D tensor (axis)
 }
 Outputs {
   0-N: subtensors built from the input tensors

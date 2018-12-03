@@ -124,9 +124,11 @@ class AdamaxOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
+  @test_util.run_deprecated_v1
   def testResourceSparse(self):
     self.doTestSparse(use_resource=True)
 
+  @test_util.run_deprecated_v1
   def testSparseDevicePlacement(self):
     for index_dtype in [dtypes.int32, dtypes.int64]:
       with self.cached_session(force_gpu=test.is_gpu_available()):
@@ -140,6 +142,7 @@ class AdamaxOptimizerTest(test.TestCase):
         variables.global_variables_initializer().run()
         minimize_op.run()
 
+  @test_util.run_deprecated_v1
   def testSparseRepeatedIndices(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -272,6 +275,7 @@ class AdamaxOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1),
                                              rtol=1e-2)
 
+  @test_util.run_deprecated_v1
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -308,6 +312,7 @@ class AdamaxOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
+  @test_util.run_deprecated_v1
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -354,9 +359,8 @@ class AdamaxOptimizerTest(test.TestCase):
       v2 = resource_variable_ops.ResourceVariable(1.)
       opt = adamax.Adamax(1.)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
-      # There should be iteration, hyper variables, and two unique slot
-      # variables for v1 and v2 respectively.
-      self.assertEqual(10, len(set(opt.variables())))
+      # There should be iteration, and two unique slot variables for v1 and v2.
+      self.assertEqual(5, len(set(opt.variables())))
 
 
 if __name__ == "__main__":

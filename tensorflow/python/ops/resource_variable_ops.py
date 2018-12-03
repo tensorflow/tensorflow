@@ -26,6 +26,7 @@ from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -64,6 +65,7 @@ def eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
                                                    name=name,
                                                    container=container)
   if graph_mode:
+    handle._handle_data = get_resource_handle_data(handle)  # pylint: disable=protected-access
     return handle
 
   # We do not want two distinct ResourceVariable objects for the same
@@ -1410,13 +1412,23 @@ def _ReadGrad(_, grad):
   return grad
 
 
+def variable_shape(handle, out_type=dtypes.int32):
+  if getattr(
+      handle, "_handle_data", None) is None or not handle._handle_data.is_set:
+    return gen_resource_variable_ops.variable_shape(handle, out_type=out_type)
+  shape_proto = handle._handle_data.shape_and_type[0].shape
+  if shape_proto.unknown_rank or any(x.size == -1 for x in shape_proto.dim):
+    return gen_resource_variable_ops.variable_shape(handle, out_type=out_type)
+  return constant_op.constant([x.size for x in shape_proto.dim], dtype=out_type)
+
+
 @ops.RegisterGradient("ResourceGather")
 def _GatherGrad(op, grad):
   """Gradient for gather op."""
   # Build appropriately shaped IndexedSlices
   handle = op.inputs[0]
   indices = op.inputs[1]
-  params_shape = gen_resource_variable_ops.variable_shape(handle)
+  params_shape = variable_shape(handle)
   size = array_ops.expand_dims(array_ops.size(indices), 0)
   values_shape = array_ops.concat([size, params_shape[1:]], 0)
   values = array_ops.reshape(grad, values_shape)

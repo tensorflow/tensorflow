@@ -304,6 +304,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
       grads_and_vars = zip(reduced_grads, var_list)
 
     with ops.init_scope():
+      self._prepare()
       self._create_slots(var_list)
     update_ops = []
 
@@ -325,11 +326,10 @@ class OptimizerV2(optimizer_v1.Optimizer):
         return update_op
 
     with ops.name_scope(name, self._name) as name:
-      self._prepare()
       for grad, var in grads_and_vars:
         scope_name = ("" if ops.executing_eagerly_outside_functions() else
                       "_" + var.op.name)
-        with ops.name_scope("update" + scope_name), ops.colocate_with(var):
+        with ops.name_scope("update" + scope_name):
           update_ops.append(update_grad_to_var(grad, var))
       # control dependencies does not work in per replica mode, please change
       # this once b/118841692 is fixed.
@@ -426,7 +426,6 @@ class OptimizerV2(optimizer_v1.Optimizer):
             trainable=False,
             initializer=value,
             aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
-        self._weights.append(self._hyper[name])
     self._prepared = True
 
   @property
@@ -475,6 +474,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Returns:
         An optimizer instance.
     """
+    if "lr" in config:
+      config["learning_rate"] = config.pop("lr")
     return cls(**config)
 
   def _serialize_hyperparameter(self, hyperparameter_name):

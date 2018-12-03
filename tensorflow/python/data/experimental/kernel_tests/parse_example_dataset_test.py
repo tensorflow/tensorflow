@@ -144,6 +144,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_values=expected_output,
         create_iterator_twice=True)
 
+  @test_util.run_deprecated_v1
   def testEmptySerializedWithoutDefaultsShouldFail(self):
     input_features = {
         "st_a":
@@ -177,6 +178,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_err=(errors_impl.InvalidArgumentError,
                       "Feature: c \\(data type: float\\) is required"))
 
+  @test_util.run_deprecated_v1
   def testDenseNotMatchingShapeShouldFail(self):
     original = [
         example(features=features({
@@ -669,6 +671,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
     for batch_size in (1, 10, 20, 100, 256):
       self._testSerializedContainingVarLenDenseLargerBatch(batch_size)
 
+  @test_util.run_deprecated_v1
   def testSkipEagerSerializedShapeMismatch(self):
     aname = "a"
     bname = "b"
@@ -706,6 +709,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_err=(ValueError,
                       "Cannot reshape a tensor with 0 elements to shape"))
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingVarLenDense(self):
     aname = "a"
     bname = "b"

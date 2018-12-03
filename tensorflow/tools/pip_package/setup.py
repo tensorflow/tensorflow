@@ -107,7 +107,7 @@ CONSOLE_SCRIPTS = [
     # TensorBoard command, pip will inappropriately remove it during install,
     # even though the command is not removed, just moved to a different wheel.
     'tensorboard = tensorboard.main:run_main',
-    'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2:main',
+    'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
 ]
 # pylint: enable=line-too-long
 

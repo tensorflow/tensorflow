@@ -648,8 +648,6 @@ class _VariableStore(object):
     """
     initializing_from_value = initializer is not None and isinstance(
         initializer, ops.Tensor)
-    reuse_without_partition = reuse and not partitioner
-
     if name in self._vars:
       raise ValueError(
           "A partitioner was provided, but an unpartitioned version of the "
@@ -660,30 +658,9 @@ class _VariableStore(object):
     if initializing_from_value:
       shape = shape.merge_with(initializer.get_shape())
 
-    if not reuse_without_partition:
-      if not shape.is_fully_defined():
-        raise ValueError("Shape of a new partitioned variable (%s) must be "
-                         "fully defined, but instead was %s." % (name, shape))
-
-      if shape.ndims < 1:
-        raise ValueError("A partitioned Variable must have rank at least 1, "
-                         "shape: %s" % shape)
-
-      partitions = partitioner(shape=shape, dtype=dtype)
-
-      if not isinstance(partitions, collections_lib.Sequence):
-        raise ValueError("Partitioner must return a sequence, but saw: %s"
-                         % partitions)
-
-      if len(partitions) != shape.ndims:
-        raise ValueError(
-            "Partitioner returned a partition list that does not match the "
-            "Variable's rank: %s vs. %s" % (partitions, shape))
-
-      if any(p < 1 for p in partitions):
-        raise ValueError(
-            "Partitioner returned zero partitions for some axes: %s" %
-            partitions)
+    partitions = None
+    if not reuse or partitioner:
+      partitions = _call_partitioner(partitioner, shape, dtype)
 
     if name in self._partitioned_vars:
       if reuse is False:
@@ -705,7 +682,7 @@ class _VariableStore(object):
             % (name, dtype.name, existing_var.dtype.name))
 
       # pylint: disable=protected-access
-      if (not reuse_without_partition and
+      if (partitions is not None and
           existing_var._get_partitions() != partitions):
         raise ValueError(
             "Trying to reuse partitioned variable %s, but specified partitions "
@@ -720,14 +697,7 @@ class _VariableStore(object):
                        "created with tf.get_variable(). Did you mean to set "
                        "reuse=False or reuse=tf.AUTO_REUSE in VarScope?" % name)
 
-    slice_dim, slice_shape = _compute_slice_dim_and_shape(
-        shape.as_list(), partitions)
-
-    vs = []
-    num_slices = partitions[slice_dim]
-    num_slices_with_excess = shape.dims[slice_dim].value % num_slices
-
-    slice_offset = [0] * shape.ndims
+    slice_dim, num_slices = _get_slice_dim_and_num_slices(partitions)
 
     if "%s/part_0" % name in self._vars:
       if "%s/part_%d" % (name, num_slices - 1) not in self._vars:
@@ -743,15 +713,14 @@ class _VariableStore(object):
             "%s/part_0 was found, but so was the extra shard %s/part_%d."
             % (num_slices, name, name, num_slices))
 
-    for i in xrange(num_slices):
-      var_shape = slice_shape[:]
-      var_offset = slice_offset[:]
+    vs = []
+    for i, (var_offset, var_shape) in enumerate(_iter_slices(
+        shape.as_list(),
+        num_slices,
+        slice_dim
+    )):
       partition_info = _PartitionInfo(
           full_shape=shape.as_list(), var_offset=var_offset)
-      if i < num_slices_with_excess:
-        var_shape[slice_dim] += 1
-      slice_offset[slice_dim] += var_shape[slice_dim]
-
       var_full_name = "%s/part_%d" % (name, i)
       with ops.name_scope(var_full_name + "/PartitionedInitializer"):
         # Create the tensor to initialize the variable with default value.
@@ -2400,34 +2369,71 @@ def variable_op_scope(values,
     yield scope
 
 
-def _compute_slice_dim_and_shape(full_shape, slicing):
-  """Computes which dimension is being sliced and the typical slice shape."""
+def _call_partitioner(partitioner, shape, dtype):
+  """Call partitioner validating its inputs/output.
 
-  slice_shape = [0] * len(full_shape)
-  slice_dim = None
-  for dim, num_slices in enumerate(slicing):
-    dim_size = full_shape[dim]
-    if num_slices <= 0 or dim_size < num_slices:
-      raise ValueError("Cannot create %d slices for size %d. shape: %s, "
-                       "slicing: %s" %
-                       (num_slices, full_shape[dim], full_shape, slicing))
-    if num_slices == 1:
-      # Not slicing in this dimension.
-      slice_shape[dim] = dim_size
-    elif slice_dim is not None:
-      # We only support slicing along one of the dimensions.
-      raise ValueError("Can only slice a variable along one dimension: "
-                       "shape: %s, slicing: %s" % (full_shape, slicing))
-    else:
-      # Note: We will add any extras onto the last slice, later.
-      slice_dim = dim
-      slice_shape[dim] = dim_size // num_slices
+  Args:
+    partitioner: a function mapping `Tensor` shape and dtype to a
+        list of partitions.
+    shape: shape of the `Tensor` to partition, must have at least two
+        dimensions.
+    dtype: dtype of the elements in the `Tensor`.
 
-  # Degenerate case: If "slicing" was all ones, pretend we are slicing along
-  # the first dimension.
-  if slice_dim is None:
+  Returns:
+    A list with elements >=1 and exactly one >1. The index of that
+    element corresponds to the partitioning axis.
+  """
+  if not shape.is_fully_defined():
+    raise ValueError("Shape of a new partitioned variable must be "
+                     "fully defined, but instead was %s." % (shape,))
+  if shape.ndims < 1:
+    raise ValueError("A partitioned Variable must have rank at least 1, "
+                     "shape: %s" % shape)
+
+  slicing = partitioner(shape=shape, dtype=dtype)
+  if not isinstance(slicing, collections_lib.Sequence):
+    raise ValueError("Partitioner must return a sequence, but saw: %s"
+                     % slicing)
+  if len(slicing) != shape.ndims:
+    raise ValueError(
+        "Partitioner returned a partition list that does not match the "
+        "Variable's rank: %s vs. %s" % (slicing, shape))
+  if any(p < 1 for p in slicing):
+    raise ValueError(
+        "Partitioner returned zero partitions for some axes: %s" %
+        slicing)
+  if sum(p > 1 for p in slicing) > 1:
+    raise ValueError(
+        "Can only slice a variable along one dimension: "
+        "shape: %s, partitioning: %s" % (shape, slicing))
+  return slicing
+
+
+# TODO(slebedev): could be inlined, but
+# `_VariableStore._get_partitioned_variable` is too complex even
+# without this logic.
+def _get_slice_dim_and_num_slices(slicing):
+  """Get slicing dimension and number of slices from the partitioner output."""
+  for slice_dim, num_slices in enumerate(slicing):
+    if num_slices > 1:
+      break
+  else:
+    # Degenerate case: no partitioning applied.
     slice_dim = 0
-  return slice_dim, slice_shape
+    num_slices = 1
+  return slice_dim, num_slices
+
+
+def _iter_slices(full_shape, num_slices, slice_dim):
+  """Slices a given a shape along the specified dimension."""
+  num_slices_with_excess = full_shape[slice_dim] % num_slices
+  offset = [0] * len(full_shape)
+  min_slice_len = full_shape[slice_dim] // num_slices
+  for i in xrange(num_slices):
+    shape = full_shape[:]
+    shape[slice_dim] = min_slice_len + bool(i < num_slices_with_excess)
+    yield offset[:], shape
+    offset[slice_dim] += shape[slice_dim]
 
 
 def _get_trainable_value(synchronization, trainable):

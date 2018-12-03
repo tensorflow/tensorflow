@@ -30,8 +30,9 @@ namespace {
 
 class MapDatasetOp : public UnaryDatasetOpKernel {
  public:
-  using MapIteratorFunction = std::function<Status(
-      IteratorContext*, std::vector<Tensor>, std::vector<Tensor>*)>;
+  using MapIteratorFunction =
+      std::function<Status(IteratorContext*, InstantiatedCapturedFunction*,
+                           std::vector<Tensor>, std::vector<Tensor>*)>;
 
   explicit MapDatasetOp(OpKernelConstruction* ctx) : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
@@ -54,15 +55,18 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
     MapIteratorFunction map_func;
     CapturedFunction* raw_captured_func = captured_func.get();
     if (indices.empty()) {
-      map_func = [raw_captured_func](IteratorContext* ctx,
-                                     std::vector<Tensor> args,
-                                     std::vector<Tensor>* out_tensors) {
-        return raw_captured_func->Run(ctx, std::move(args), out_tensors);
+      map_func = [](IteratorContext* ctx,
+                    InstantiatedCapturedFunction* inst_captured_func,
+                    std::vector<Tensor> args,
+                    std::vector<Tensor>* out_tensors) {
+        return inst_captured_func->Run(ctx, std::move(args), out_tensors);
       };
     } else {
       std::vector<bool> can_move = ComputeMoveVector(indices);
       map_func = [raw_captured_func, indices, can_move](
-                     IteratorContext* ctx, std::vector<Tensor> args,
+                     IteratorContext* ctx,
+                     InstantiatedCapturedFunction* inst_captured_func,
+                     std::vector<Tensor> args,
                      std::vector<Tensor>* out_tensors) {
         const std::vector<Tensor>& captured_inputs =
             raw_captured_func->captured_inputs();
@@ -177,7 +181,8 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -194,7 +199,8 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
-        Status s = map_func_(ctx, args, out_tensors);
+        Status s = map_func_(ctx, instantiated_captured_func_.get(), args,
+                             out_tensors);
         if (errors::IsOutOfRange(s)) {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.
@@ -226,6 +232,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
      private:
       std::unique_ptr<IteratorBase> input_impl_;
       const MapIteratorFunction map_func_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;

@@ -34,7 +34,9 @@ class Subgraph {
   friend class Interpreter;
 
   Subgraph(ErrorReporter* error_reporter,
-           TfLiteExternalContext** external_contexts);
+           TfLiteExternalContext** external_contexts,
+           std::vector<std::unique_ptr<Subgraph>>* subgraphs);
+
   Subgraph(const Subgraph&) = delete;
 
   // Subgraphs should be movable but not copyable.
@@ -216,10 +218,9 @@ class Subgraph {
     if (t->data_is_stale) {
       TF_LITE_ENSURE(context_, t->delegate != nullptr);
       TF_LITE_ENSURE(context_, t->buffer_handle != kTfLiteNullBufferHandle);
-      // This can be null if the delegate doesn't use its own buffer.
       TF_LITE_ENSURE(context_, t->delegate->CopyFromBufferHandle != nullptr);
-      t->delegate->CopyFromBufferHandle(context_, t->delegate, t->buffer_handle,
-                                        t->data.raw, t->bytes);
+      TF_LITE_ENSURE(context_, t->delegate->CopyFromBufferHandle(
+                                   context_, t->delegate, t->buffer_handle, t));
       t->data_is_stale = false;
     }
     return kTfLiteOk;
@@ -243,6 +244,15 @@ class Subgraph {
   void SetProfiler(profiling::Profiler* profiler) { profiler_ = profiler; }
 
   profiling::Profiler* GetProfiler() { return profiler_; }
+
+  // Returns a pointer to vector of subgraphs.
+  // WARNING: This is an experimental API and subject to change.
+  std::vector<std::unique_ptr<Subgraph>>* GetSubgraphs() { return subgraphs_; }
+
+  // True if all tensors in the graph has static size after calling
+  // `AllocateTensors` function.
+  // Before `AllocateTensors` is called, this will always return true;
+  bool HasDynamicTensors() { return has_dynamic_tensors_; }
 
  private:
   // Prevent 'context_' from accessing functions that are only available to
@@ -475,6 +485,15 @@ class Subgraph {
 
   // Profiler for this interpreter instance.
   profiling::Profiler* profiler_ = nullptr;
+
+  // A pointer to vector of subgraphs. The vector is owned by the interpreter.
+  std::vector<std::unique_ptr<Subgraph>>* subgraphs_ = nullptr;
+
+  // True if all tensors in the graph has static size after calling
+  // `PrepareOpsStartingAt` function (which is called by the `AllocateTensors`
+  // public function).
+  // The value is invalid before `PrepareOpStartingAt` is called.
+  bool has_dynamic_tensors_ = true;
 };
 
 }  // namespace tflite

@@ -81,7 +81,8 @@ class UpdateContext(object):
 def get_loss_reduction():
   """`tf.distribute.ReduceOp` corresponding to the last loss reduction."""
   loss_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
-  if loss_reduction == losses_impl.Reduction.SUM:
+  if (loss_reduction == losses_impl.Reduction.SUM or
+      loss_reduction == losses_impl.ReductionV2.SUM):
     return reduce_util.ReduceOp.SUM
   return reduce_util.ReduceOp.MEAN
 

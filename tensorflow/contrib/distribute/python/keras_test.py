@@ -27,6 +27,7 @@ from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import values
+from tensorflow.python.eager import test
 from tensorflow.python.estimator import keras as keras_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.framework import constant_op
@@ -38,7 +39,6 @@ from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.platform import gfile
-from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
@@ -1267,9 +1267,17 @@ class TestDistributionStrategyCorrectness(test.TestCase,
         # We have initialized the model to the same weight for the distribution
         # and non-distribution run.
         model.set_weights(initial_weights)
+        # TODO(b/120245072): Also use gradient_descent_keras.SGD for
+        # TPUStrategy.
+        # pylint: disable=line-too-long
+        if with_distribution and with_distribution.__class__.__name__ == 'TPUStrategy':
+        # pylint: enable=line-too-long
+          optimizer = gradient_descent.GradientDescentOptimizer(0.5)
+        else:
+          optimizer = gradient_descent_keras.SGD(0.5)
         model.compile(
             loss=keras.losses.mean_squared_error,
-            optimizer=gradient_descent_keras.SGD(0.5),
+            optimizer=optimizer,
             distribute=with_distribution)
 
         training_inputs, eval_inputs, predict_inputs = (

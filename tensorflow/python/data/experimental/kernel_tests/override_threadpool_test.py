@@ -22,6 +22,7 @@ import threading
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.experimental.ops import threadpool
 from tensorflow.python.data.experimental.ops import unique
@@ -29,6 +30,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
@@ -54,21 +56,20 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
-      self.evaluate(iterator.initializer)
-      thread_ids = []
-      try:
-        while True:
-          thread_ids.append(self.evaluate(next_element))
-      except errors.OutOfRangeError:
-        pass
-      self.assertLen(thread_ids, len(set(thread_ids)))
-      self.assertNotEmpty(thread_ids)
-      if num_threads:
-        # NOTE(mrry): We don't control the thread pool scheduling, and
-        # so cannot guarantee that all of the threads in the pool will
-        # perform work.
-        self.assertLessEqual(len(thread_ids), num_threads)
+    self.evaluate(iterator.initializer)
+    thread_ids = []
+    try:
+      while True:
+        thread_ids.append(self.evaluate(next_element))
+    except errors.OutOfRangeError:
+      pass
+    self.assertLen(thread_ids, len(set(thread_ids)))
+    self.assertNotEmpty(thread_ids)
+    if num_threads:
+      # NOTE(mrry): We don't control the thread pool scheduling, and
+      # so cannot guarantee that all of the threads in the pool will
+      # perform work.
+      self.assertLessEqual(len(thread_ids), num_threads)
 
   @parameterized.named_parameters(
       ("1", 1, None),
@@ -81,6 +82,7 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
       ("8", 4, 1),
       ("9", 4, 4),
   )
+  @test_util.run_deprecated_v1
   def testNumThreadsDeprecated(self, num_threads, max_intra_op_parallelism):
 
     def override_threadpool_fn(dataset):
@@ -107,6 +109,7 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
       ("11", 4, 4),
       ("12", None, None),
   )
+  @test_util.run_deprecated_v1
   def testNumThreads(self, num_threads, max_intra_op_parallelism):
 
     def override_threadpool_fn(dataset):
@@ -120,6 +123,14 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
       return dataset.with_options(options)
 
     self._testNumThreadsHelper(num_threads, override_threadpool_fn)
+
+  def testMaxIntraOpParallelismAsGraphDefInternal(self):
+    dataset = dataset_ops.Dataset.from_tensors(0)
+    dataset = dataset_ops._MaxIntraOpParallelismDataset(dataset, 1)
+    graph = graph_pb2.GraphDef().FromString(
+        self.evaluate(dataset._as_serialized_graph()))
+    self.assertTrue(
+        any([node.op != "MaxIntraOpParallelismDataset" for node in graph.node]))
 
 
 if __name__ == "__main__":

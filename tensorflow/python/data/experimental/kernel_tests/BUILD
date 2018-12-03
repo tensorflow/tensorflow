@@ -149,27 +149,6 @@ py_test(
     ],
 )
 
-cuda_py_test(
-    name = "function_buffering_resource_test",
-    size = "small",
-    srcs = ["function_buffering_resource_test.py"],
-    additional_deps = [
-        "//tensorflow/python/data/experimental/ops:prefetching_ops",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/eager:function",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-    ],
-    tags = ["no_windows_gpu"],
-)
-
 py_test(
     name = "get_single_element_test",
     size = "small",

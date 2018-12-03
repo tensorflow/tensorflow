@@ -1088,16 +1088,21 @@ class PolymorphicFunction(object):
       return inputs, kwargs
     else:
       assert not kwargs
+      signature_relevant_inputs = inputs[:len(self._input_signature)]
       try:
-        nest.assert_same_structure(self._input_signature, inputs)
+        nest.assert_same_structure(self._input_signature,
+                                   signature_relevant_inputs)
       except (ValueError, TypeError):
         raise ValueError("Structure of Python function inputs does not match "
                          "input_signature.")
-      if any(not pywrap_tensorflow.IsTensor(arg) for arg in flat_inputs):
+      signature_inputs_flat = nest.flatten(signature_relevant_inputs)
+      if any(not pywrap_tensorflow.IsTensor(arg)
+             for arg in signature_inputs_flat):
         raise ValueError("When input_signature is provided, all inputs to "
                          "the Python function must be Tensors.")
       if any(not spec.is_compatible_with(other)
-             for spec, other in zip(self._flat_input_signature, flat_inputs)):
+             for spec, other in zip(self._flat_input_signature,
+                                    signature_inputs_flat)):
         raise ValueError("Python inputs incompatible with input_signature: "
                          "inputs (%s), input_signature (%s)" %
                          (str(inputs), str(self._input_signature)))

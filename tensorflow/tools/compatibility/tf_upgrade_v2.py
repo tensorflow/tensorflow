@@ -47,14 +47,17 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.expand_dims": {
             "dim": "axis",
         },
-        "tf.batch_to_space_nd": {
+        "tf.batch_to_space": {
             "block_size": "block_shape",
         },
         "tf.constant": {
-            "verify_shapes": "verify_shapes_is_now_always_true",
+            "verify_shape": "verify_shape_is_now_always_true",
         },
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
+        },
+        "tf.nn.softmax_cross_entropy_with_logits_v2": {
+            "dim": "axis"
         },
         "tf.linalg.l2_normalize": {
             "dim": "axis",
@@ -63,6 +66,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "input_tensor": "input",
             "keep_dims": "keepdims",
             "reduction_indices": "axis",
+        },
+        "tf.nn.erosion2d": {
+            "kernel": "filters",
+            "rates": "dilations",
         },
         "tf.math.l2_normalize": {
             "dim": "axis",
@@ -98,7 +105,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "t": "x",
             "msg": "message",
         },
-        "tf.sparse.add": ["a", "b", "thresh"],
+        "tf.sparse.add": {
+            "thresh": "threshold",
+        },
+        "tf.sparse_add": {
+            "thresh": "threshold",
+        },
+        "tf.sparse.concat": {
+            "concat_dim": "axis",
+        },
+        "tf.sparse_concat": {
+            "concat_dim": "axis",
+        },
         "tf.sparse.split": {
             "split_dim": "axis",
         },
@@ -115,9 +133,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "t": "input",
             "m": "mean",
             "v": "variance",
-        },
-        "tf.manip.batch_to_space_nd": {
-            "block_size": "block_shape",
         },
         "tf.nn.dilation2d": {
             "filter": "filters",
@@ -172,8 +187,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "newpath": "dst",
         },
         "tf.gfile.Rename": {
-            "oldpath": "src",
-            "newpath": "dst",
+            "oldname": "src",
+            "newname": "dst",
         },
         "tf.gfile.Walk": {
             "in_order": "topdown",
@@ -193,9 +208,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.strings.to_hash_bucket": {
             "string_tensor": "input",
         },
-        "tf.sparse.concat": [
-            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
-        ],
         "tf.reduce_all": {
             "reduction_indices": "axis",
             "keep_dims": "keepdims",
@@ -281,6 +293,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.manual_symbol_renames = {
         "tf.batch_to_space_nd":
             "tf.batch_to_space",
+        "tf.extract_image_patches":
+            "tf.image.extract_image_patches",
         "tf.gfile.Copy":
             "tf.io.gfile.copy",
         "tf.gfile.DeleteRecursively":
@@ -397,10 +411,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.batch_to_space",
         "tf.quantize_v2":
             "tf.quantization.quantize",
+        "tf.sparse_add":
+            "tf.sparse.add",
         "tf.sparse_concat":
             "tf.sparse.concat",
         "tf.sparse_split":
             "tf.sparse.split",
+        "tf.random.stateless_multinomial":
+            "tf.random.stateless_categorical",
         "tf.string_to_hash_bucket":
             "tf.strings.to_hash_bucket",
         "tf.string_to_number":
@@ -409,6 +427,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.random.categorical",
         "tf.random.multinomial":
             "tf.random.categorical",
+        "tf.reduce_join":
+            "tf.strings.reduce_join",
         "tf.load_file_system_library":
             "tf.load_library",
         "tf.pywrap_tensorflow":
@@ -421,6 +441,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.math.confusion_matrix",
         "tf.decode_csv":
             "tf.io.decode_csv",
+        "tf.data.Iterator":
+            "tf.compat.v1.data.Iterator",
+        "tf.nn.fused_batch_norm":
+            "tf.compat.v1.nn.fused_batch_norm",
+        "tf.nn.softmax_cross_entropy_with_logits_v2":
+            "tf.nn.softmax_cross_entropy_with_logits",
+        "tf.losses.Reduction.MEAN":
+            "tf.compat.v1.losses.Reduction.MEAN",
+        "tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS":
+            "tf.compat.v1.losses.Reduction.SUM_BY_NONZERO_WEIGHTS",
+        "tf.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS":
+            "tf.compat.v1.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS",
     }
     # pylint: enable=line-too-long
 
@@ -458,7 +490,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "input", "filter", "strides", "padding", "rate", "name",
             "data_format"
         ],
-        "tf.manip.batch_to_space_nd": ["input", "crops", "block_size", "name"],
         "tf.multinomial": [
             "logits", "num_samples", "seed", "name", "output_dtype"
         ],
@@ -477,7 +508,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.size": ["input", "name", "out_type"],
         "tf.random.poisson": ["lam", "shape", "dtype", "seed", "name"],
         "tf.sparse.add": ["a", "b", "thresh"],
+        "tf.sparse_add": ["a", "b", "thresh"],
         "tf.sparse.concat": [
+            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
+        ],
+        "tf.sparse_concat": [
             "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
         ],
         "tf.sparse.segment_mean": [
@@ -603,11 +638,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     }
 
     decay_function_comment = (
-        "ERROR: <function name> has been changed to return a callable instead "
-        "of a tensor when graph building, but its functionality remains "
+        "WARNING: <function name> has been changed to return a callable instead"
+        " of a tensor when graph building, but its functionality remains "
         "unchanged during eager execution (returns a callable like "
         "before). The converter cannot detect and fix this reliably, so "
-        "you need to inspect this usage manually.\n"
+        "this usage has been converted to compat.v1 (even though it may already"
+        " be correct).\n"
     )
 
     # TODO(b/118888586): add default value change to update script.
@@ -619,17 +655,23 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     assert_return_type_comment = (
         "WARNING: assert_* functions have been changed to return None, the "
         "data argument has been removed, and arguments have been reordered."
+        "\nThe calls have been converted to compat.v1 for safety (even though "
+        " they may already have been correct)."
     )
 
     assert_rank_comment = (
         "WARNING: assert_rank_* functions have been changed to return None, and"
         " the data and summarize arguments have been removed."
+        "\nThe calls have been converted to compat.v1 for safety (even though "
+        " they may already have been correct)."
     )
 
     tf_01s_like_no_optimize_comment = (
         "WARNING: tf.zeros_like and tf.ones_like no longer have the optimize "
         "argument in TF 2.0 or after (also, `tensor' argument is renamed to "
         "`input')."
+        "\nThe calls have been converted to compat.v1 for safety (even though "
+        " they may already have been correct)."
     )
 
     # Function warnings. <function name> placeholder inside warnings will be
@@ -654,9 +696,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.debugging.assert_rank": assert_rank_comment,
         "tf.debugging.assert_rank_at_least": assert_rank_comment,
         "tf.debugging.assert_rank_in": assert_rank_comment,
+        "tf.flags": "tf.flags has been removed, please use the argparse or absl"
+                    " module if you need command line parsing.",
         "tf.train.exponential_decay":
             decay_function_comment,
-        "tf.train.piecewise_constant":
+        "tf.train.piecewise_constant_decay":
             decay_function_comment,
         "tf.train.polynomial_decay":
             decay_function_comment,
@@ -699,18 +743,22 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.conv2d_backprop_input":
         "WARNING: use_cudnn_on_gpu argument has been removed and \"filter\" "
         "was renamed to \"filters\"",
+        "tf.nn.erosion2d":
+        "WARNING: <function name> now requires a data_format argument",
+        "tf.nn.nce_loss":
+        "WARNING: `partition_strategy` has been removed from `tf.nn.nce_loss` "
+        " The 'div' strategy is used by default.",
         "tf.zeros_like": tf_01s_like_no_optimize_comment,
         "tf.ones_like": tf_01s_like_no_optimize_comment,
     }
-    # Right now we can't have both a rename and a warning.
+
     self.symbol_renames = {
         name: new_name
         for name, new_name in self.symbol_renames.items()
-        if name not in self.function_warnings
     }
 
     export_saved_model_renamed = (
-        "(Manual edit required) Please rename the function export_savedmodel() "
+        "(Manual edit required) Please rename the method export_savedmodel() "
         "to export_saved_model(). Two things to note:\n\t(1) The argument "
         "strip_default_attributes has been removed. The function will always "
         "strip the default attributes from ops. If this breaks your code, "

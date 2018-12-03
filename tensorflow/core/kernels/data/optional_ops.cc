@@ -127,23 +127,27 @@ class OptionalGetValueOp : public OpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("OptionalNone").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("OptionalNone").Device(DEVICE_CPU).Priority(2),
                         OptionalNoneOp);
-REGISTER_KERNEL_BUILDER(Name("OptionalNone").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("OptionalNone").Device(DEVICE_GPU).Priority(1),
                         OptionalNoneOp);
-REGISTER_KERNEL_BUILDER(Name("OptionalFromValue").Device(DEVICE_CPU),
-                        OptionalFromValueOp);
-REGISTER_KERNEL_BUILDER(Name("OptionalFromValue").Device(DEVICE_GPU),
-                        OptionalFromValueOp);
-
-REGISTER_KERNEL_BUILDER(Name("OptionalHasValue").Device(DEVICE_CPU),
-                        OptionalHasValueOp);
 REGISTER_KERNEL_BUILDER(
-    Name("OptionalHasValue").Device(DEVICE_GPU).HostMemory("has_value"),
-    OptionalHasValueOp);
-REGISTER_KERNEL_BUILDER(Name("OptionalGetValue").Device(DEVICE_CPU),
+    Name("OptionalFromValue").Device(DEVICE_CPU).Priority(2),
+    OptionalFromValueOp);
+REGISTER_KERNEL_BUILDER(
+    Name("OptionalFromValue").Device(DEVICE_GPU).Priority(1),
+    OptionalFromValueOp);
+
+REGISTER_KERNEL_BUILDER(Name("OptionalHasValue").Device(DEVICE_CPU).Priority(2),
+                        OptionalHasValueOp);
+REGISTER_KERNEL_BUILDER(Name("OptionalHasValue")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("has_value")
+                            .Priority(1),
+                        OptionalHasValueOp);
+REGISTER_KERNEL_BUILDER(Name("OptionalGetValue").Device(DEVICE_CPU).Priority(2),
                         OptionalGetValueOp);
-REGISTER_KERNEL_BUILDER(Name("OptionalGetValue").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("OptionalGetValue").Device(DEVICE_GPU).Priority(1),
                         OptionalGetValueOp);
 
 static Status OptionalDeviceCopy(

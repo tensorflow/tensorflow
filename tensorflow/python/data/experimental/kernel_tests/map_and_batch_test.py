@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -48,6 +49,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("ParallelCallsNUMA", 2, None, True),
       ("ParallelBatchesNUMA", None, 10, True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatch(self, num_parallel_calls, num_parallel_batches,
                       numa_aware):
     """Test a dataset that maps a TF function across its input elements."""
@@ -132,6 +134,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("EvenNUMA", False, True),
       ("UnevenNUMA", True, True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchPartialBatch(self, drop_remainder, numa_aware):
     dataset = (
         dataset_ops.Dataset.range(10).apply(
@@ -163,6 +166,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchYieldsPartialBatch(self, numa_aware):
     dataset = (
         dataset_ops.Dataset.range(10).apply(
@@ -187,6 +191,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchParallelGetNext(self, numa_aware):
     dataset = dataset_ops.Dataset.range(50000).apply(
         batching.map_and_batch(lambda x: x, batch_size=100))
@@ -214,6 +219,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchParallelGetNextDropRemainder(self, numa_aware):
     dataset = dataset_ops.Dataset.range(49999).apply(
         batching.map_and_batch(
@@ -243,6 +249,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchSparse(self, numa_aware):
 
     def _sparse(i):
@@ -277,6 +284,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchFails(self, numa_aware):
     """Test a dataset that maps a TF function across its input elements."""
     dataset = dataset_ops.Dataset.from_tensors(
@@ -299,6 +307,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchShapeMismatch(self, numa_aware):
     """Test a dataset that maps a TF function across its input elements."""
 
@@ -370,6 +379,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("5NUMA", 95, True),
       ("6NUMA", 99, True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchOutOfRangeError(self, threshold, numa_aware):
 
     def raising_py_fn(i):
@@ -452,6 +462,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Swap", (None, None), lambda x, y: (y, x), None),
       ("Project", (None, None), lambda x, y: x, None),
   )
+  @test_util.run_deprecated_v1
   def testShortCircuit(self, structure, map_fn, num_parallel_calls):
     dataset = self.structuredDataset(structure).repeat().apply(
         batching.map_and_batch(map_fn, batch_size=10))
@@ -466,6 +477,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
             sess.run(self.structuredElement(structure, shape=[10])))
       self.assertAllEqual(expected, self.evaluate(get_next))
 
+  @test_util.run_deprecated_v1
   def testShortCircuitCapturedInput(self):
     captured_t = array_ops.placeholder(dtypes.int64, shape=[])
     dataset = self.structuredDataset(None).repeat().apply(
@@ -481,6 +493,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchControlFlow(self, numa_aware):
 
     def map_fn(x):

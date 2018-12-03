@@ -114,6 +114,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   # RaggedTensor class docstring examples
   #=============================================================================
 
+  @test_util.run_deprecated_v1
   def testClassDocStringExamples(self):
     # From section: "Component Tensors"
     rt = ragged.from_row_splits(
@@ -199,6 +200,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   # RaggedTensor Constructor (private)
   #=============================================================================
 
+  @test_util.run_deprecated_v1
   def testRaggedTensorConstruction(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
@@ -243,6 +245,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 # RaggedTensor Factory Ops
 #=============================================================================
 
+  @test_util.run_deprecated_v1
   def testFromValueRowIdsWithDerivedNRows(self):
     # nrows is known at graph creation time.
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
@@ -265,6 +268,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.evaluate(rt).tolist(),
         [[b'a', b'b'], [], [b'c', b'd', b'e'], [b'f'], [b'g']])
 
+  @test_util.run_deprecated_v1
   def testFromValueRowIdsWithDerivedNRowsDynamic(self):
     # nrows is not known at graph creation time.
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
@@ -288,6 +292,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.evaluate(rt).tolist(),
         [[b'a', b'b'], [], [b'c', b'd', b'e'], [b'f'], [b'g']])
 
+  @test_util.run_deprecated_v1
   def testFromValueRowIdsWithExplicitNRows(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     value_rowids = constant_op.constant([0, 0, 2, 2, 2, 3, 4], dtypes.int64)
@@ -309,6 +314,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.evaluate(rt).tolist(),
         [[b'a', b'b'], [], [b'c', b'd', b'e'], [b'f'], [b'g'], [], []])
 
+  @test_util.run_deprecated_v1
   def testFromValueRowIdsWithExplicitNRowsEqualToDefault(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     value_rowids = constant_op.constant([0, 0, 2, 2, 2, 3, 4], dtypes.int64)
@@ -332,6 +338,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.evaluate(rt).tolist(),
         [[b'a', b'b'], [], [b'c', b'd', b'e'], [b'f'], [b'g']])
 
+  @test_util.run_deprecated_v1
   def testFromValueRowIdsWithEmptyValues(self):
     rt = ragged.from_value_rowids([], [])
     rt_nrows = ragged.nrows(rt)
@@ -343,6 +350,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(self.evaluate(rt_nrows).tolist(), 0)
     self.assertEqual(self.evaluate(rt).tolist(), [])
 
+  @test_util.run_deprecated_v1
   def testFromRowSplits(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
@@ -368,6 +376,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, err_msg):
       ragged.from_row_splits([], [])
 
+  @test_util.run_deprecated_v1
   def testFromRowStarts(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     row_starts = constant_op.constant([0, 2, 2, 5, 6], dtypes.int64)
@@ -388,6 +397,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.evaluate(rt).tolist(),
         [[b'a', b'b'], [], [b'c', b'd', b'e'], [b'f'], [b'g']])
 
+  @test_util.run_deprecated_v1
   def testFromRowLimits(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     row_limits = constant_op.constant([2, 2, 5, 6, 7], dtypes.int64)
@@ -408,6 +418,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.evaluate(rt).tolist(),
         [[b'a', b'b'], [], [b'c', b'd', b'e'], [b'f'], [b'g']])
 
+  @test_util.run_deprecated_v1
   def testFromRowLengths(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     row_lengths = constant_op.constant([2, 0, 3, 1, 1], dtypes.int64)
@@ -429,6 +440,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.evaluate(rt).tolist(),
         [[b'a', b'b'], [], [b'c', b'd', b'e'], [b'f'], [b'g']])
 
+  @test_util.run_deprecated_v1
   def testFromNestedValueRowIdsWithDerivedNRows(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     nested_value_rowids = [
@@ -453,6 +465,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.evaluate(rt).tolist(),
         [[[b'a', b'b'], []], [[b'c', b'd', b'e']], [], [[b'f'], [b'g']]])
 
+  @test_util.run_deprecated_v1
   def testFromNestedValueRowIdsWithExplicitNRows(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     nested_value_rowids = [
@@ -509,6 +522,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ragged.from_nested_value_rowids([1, 2, 3], [[0, 1, 2], [0, 1, 2]],
                                       constant_op.constant([3, 3]))
 
+  @test_util.run_deprecated_v1
   def testFromNestedRowSplits(self):
     inner_values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     nested_row_splits = [
@@ -576,6 +590,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           value_rowids=value_rowids,
           nrows=array_ops.expand_dims(nrows, 0))
 
+  @test_util.run_deprecated_v1
   def testGraphMismatch(self):
     with ops.Graph().as_default():
       values = constant_op.constant([1, 2, 3])
@@ -588,6 +603,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   # Ragged Value & Row-Partitioning Tensor Accessors
   #=============================================================================
 
+  @test_util.run_deprecated_v1
   def testRaggedTensorAccessors_2d(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
@@ -622,6 +638,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           [self.evaluate(s).tolist() for s in rt.nested_row_splits],
           [[0, 2, 2, 5, 6, 7]])
 
+  @test_util.run_deprecated_v1
   def testRaggedTensorAccessors_3d_with_ragged_rank_1(self):
     values = [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13]]
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
@@ -657,6 +674,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           [self.evaluate(s).tolist() for s in rt.nested_row_splits],
           [[0, 2, 2, 5, 6, 7]])
 
+  @test_util.run_deprecated_v1
   def testRaggedTensorAccessors_3d_with_ragged_rank_2(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     nested_row_splits = [
@@ -709,6 +727,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   # RaggedTensor.shape
   #=============================================================================
 
+  @test_util.run_deprecated_v1
   def testShape(self):
     """Tests for RaggedTensor.shape."""
     rt1 = ragged.from_row_splits(b'a b c d e f g'.split(), [0, 2, 5, 6, 6, 7])
@@ -842,6 +861,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (SLICE_BUILDER[:, -2:], [row[-2:] for row in EXAMPLE_RAGGED_TENSOR_2D]),
       # TODO(edloper): Add tests for strided slices, once support is added.
   )
+  @test_util.run_deprecated_v1
   def testRaggedTensorGetItemWithRaggedRank1(self, slice_spec, expected):
     """Test that rt.__getitem__(slice_spec) == expected."""
     # Ragged tensor
@@ -883,6 +903,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (SLICE_BUILDER[..., 0, 0, 0], IndexError,
        'Too many indices for RaggedTensor'),
   )
+  @test_util.run_deprecated_v1
   def testRaggedTensorGetItemErrorsWithRaggedRank1(self, slice_spec, expected,
                                                    message):
     """Test that rt.__getitem__(slice_spec) == expected."""
@@ -961,6 +982,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       # TODO(edloper): Add tests slicing inner ragged dimensions, one support
       # is added.
   )
+  @test_util.run_deprecated_v1
   def testRaggedTensorGetItemWithRaggedRank2(self, slice_spec, expected):
     """Test that rt.__getitem__(slice_spec) == expected."""
     rt = ragged.from_nested_row_splits(
@@ -982,6 +1004,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (SLICE_BUILDER[5], ValueError, '.*out of bounds.*'),
       (SLICE_BUILDER[0, 5], ValueError, '.*out of bounds.*'),
   )
+  @test_util.run_deprecated_v1
   def testRaggedTensorGetItemErrorsWithRaggedRank2(self, slice_spec, expected,
                                                    message):
     """Test that rt.__getitem__(slice_spec) == expected."""
@@ -996,6 +1019,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (SLICE_BUILDER[2:], []),
       (SLICE_BUILDER[:-3], []),
   )
+  @test_util.run_deprecated_v1
   def testRaggedTensorGetItemWithEmptyTensor(self, slice_spec, expected):
     """Test that rt.__getitem__(slice_spec) == expected."""
     rt = ragged.from_row_splits([], [0])
@@ -1005,6 +1029,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (SLICE_BUILDER[0], ValueError, '.*out of bounds.*'),
       (SLICE_BUILDER[-1], ValueError, '.*out of bounds.*'),
   )
+  @test_util.run_deprecated_v1
   def testRaggedTensorGetItemErrorsWithEmptyTensor(self, slice_spec, expected,
                                                    message):
     """Test that rt.__getitem__(slice_spec) == expected."""
@@ -1020,6 +1045,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (SLICE_BUILDER[0, 1], EXAMPLE_RAGGED_TENSOR_2D[0][1]),
       (SLICE_BUILDER[-3, 0], EXAMPLE_RAGGED_TENSOR_2D[-3][0]),
   )
+  @test_util.run_deprecated_v1
   def testRaggedTensorGetItemWithPlaceholderShapes(self, slice_spec, expected):
     """Test that rt.__getitem__(slice_spec) == expected."""
     # Intentionally use an unknown shape for `splits`, to force the code path
@@ -1034,6 +1060,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @parameterized.parameters(
       (SLICE_BUILDER[..., 2], ValueError,
        'Ellipsis not supported for unknown shape RaggedTensors'),)
+  @test_util.run_deprecated_v1
   def testRaggedTensorGetItemErrorsWithPlaceholderShapes(
       self, slice_spec, expected, message):
     """Test that rt.__getitem__(slice_spec) == expected."""
@@ -1042,6 +1069,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     rt = ragged.from_row_splits(values, [0, 1])
     self._TestGetItemException(rt, slice_spec, expected, message)
 
+  @test_util.run_deprecated_v1
   def testGetItemNewAxis(self):
     # rt: [[[['a', 'b'], ['c', 'd']], [], [['e', 'f']]], []]
     splits1 = [0, 3, 3]
@@ -1089,6 +1117,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   #=============================================================================
   # RaggedTensor.__str__
   #=============================================================================
+  @test_util.run_deprecated_v1
   def testRaggedTensorStr(self):
     rt1 = ragged.from_row_splits(b'a b c d e f g'.split(), [0, 2, 5, 6, 6, 7])
     expected1 = ('RaggedTensor(values=Tensor("RaggedFromRowSplits/values:0", '
@@ -1126,6 +1155,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   # RaggedTensor.with_values() and RaggedTensor.with_inner_values().
   #=============================================================================
 
+  @test_util.run_deprecated_v1
   def testWithValues(self):
     rt1 = ragged.constant([[1, 2], [3, 4, 5], [6], [], [7]])
     rt2 = ragged.constant([[[1, 2], [3, 4, 5]], [[6]], [], [[], [7]]])
@@ -1147,6 +1177,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   #=============================================================================
   # Session.run
   #=============================================================================
+  @test_util.run_deprecated_v1
   def testSessionRun(self):
     rt1 = ragged.constant([[1, 2, 3], [4]])
     rt2 = ragged.constant([[[], [1, 2]], [[3]]])
@@ -1156,6 +1187,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(result['rt1'].tolist(), [[1, 2, 3], [4]])
       self.assertEqual(result['rt2'].tolist(), [[[], [1, 2]], [[3]]])
 
+  @test_util.run_deprecated_v1
   def testSessionRunFeed(self):
     rt1 = ragged.from_row_splits(
         array_ops.placeholder(dtypes.int32),
@@ -1176,6 +1208,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(result['rt1'].tolist(), [[1, 2, 3], [4]])
       self.assertEqual(result['rt2'].tolist(), [[[], [1, 2]], [[3]]])
 
+  @test_util.run_deprecated_v1
   def testSessionPartialRunFeed(self):
     # Placeholder inputs.
     a = ragged.from_row_splits(

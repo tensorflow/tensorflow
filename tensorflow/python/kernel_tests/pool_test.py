@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -301,6 +302,7 @@ class PoolingTest(test.TestCase):
     err_tolerance = 1e-2
     self.assertLess(err, err_tolerance)
 
+  @test_util.run_deprecated_v1
   def testGradient1D(self):
     with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:
@@ -327,6 +329,7 @@ class PoolingTest(test.TestCase):
                     dilation_rate=[1],
                     strides=strides)
 
+  @test_util.run_deprecated_v1
   def testGradient2D(self):
     with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:
@@ -353,6 +356,7 @@ class PoolingTest(test.TestCase):
                     dilation_rate=[1, 1],
                     strides=strides)
 
+  @test_util.run_deprecated_v1
   def testGradient3D(self):
     with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:

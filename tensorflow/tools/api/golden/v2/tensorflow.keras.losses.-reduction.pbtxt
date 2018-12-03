@@ -1,10 +1,10 @@
 path: "tensorflow.keras.losses.Reduction"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.utils.losses_utils.ReductionV2\'>"
+  is_instance: "<class \'tensorflow.python.ops.losses.losses_impl.ReductionV2\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "NONE"
-    mtype: "<type \'NoneType\'>"
+    mtype: "<type \'str\'>"
   }
   member {
     name: "SUM"

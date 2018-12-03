@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
@@ -133,6 +134,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
       values = self.evaluate(outputs)
       self.assertAllEqual(values, b"\x00 ")
 
+  @test_util.run_deprecated_v1
   def test_transcode_bad_utf8_with_strict_errors(self):
     bad_string = b"\x00\xff"
     with self.cached_session() as sess:
@@ -145,6 +147,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           "Invalid formatting on input string"):
         self.evaluate(outputs)
 
+  @test_util.run_deprecated_v1
   def test_transcode_bad_utf8_start_with_strict_errors(self):
     bad_string = b"\xffabcd"
     with self.cached_session() as sess:
@@ -317,12 +320,14 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
       (b"\xfe\xff\x00<\xfe\xff\x00>", "UTF-16", b"<\xef\xbb\xbf>"),
       (b"\xff\xfe<\x00\xff\xfe>\x00", "UTF-16", b"<\xef\xbb\xbf>"),
   )
+  @test_util.run_deprecated_v1
   def test_bom_handling(self, string, input_encoding, expected):
     with self.test_session():
       output = string_ops.unicode_transcode(
           string, input_encoding=input_encoding, output_encoding="UTF-8")
       self.assertAllEqual(output.eval(), expected)
 
+  @test_util.run_deprecated_v1
   def test_invalid_encoding_causes_errors(self):
     strings = [[b"a", b"abc"], [b"ABC", b"DEF"]]
 
@@ -349,6 +354,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
             replace_control_characters=False)
         self.evaluate(outputs)
 
+  @test_util.run_deprecated_v1
   def test_invalid_error_policy_causes_errors(self):
     strings = [[b"a", b"abc"], [b"ABC", b"DEF"]]
 
@@ -378,6 +384,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
 
       self.assertAllEqual([b"AbCdE", b"HiJkL"], transcoded)
 
+  @test_util.run_deprecated_v1
   def test_cjk_encodings(self):
     strings_ja = [
         b"\x5c\x5c",  # Yen sign

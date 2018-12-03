@@ -274,6 +274,7 @@ class TestTrainingWithDataset(test.TestCase, parameterized.TestCase):
 
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
 
+  @tf_test_util.run_deprecated_v1
   def test_dataset_input_shape_validation(self):
     with self.cached_session():
       model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)

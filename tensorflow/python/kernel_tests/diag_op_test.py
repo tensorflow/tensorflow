@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -31,6 +32,7 @@ from tensorflow.python.platform import tf_logging
 
 class MatrixDiagTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testVector(self):
     with self.session(use_gpu=True):
       v = np.array([1.0, 2.0, 3.0])
@@ -49,6 +51,7 @@ class MatrixDiagTest(test.TestCase):
       self.assertEqual((2, 3, 3), v_batch_diag.get_shape())
       self.assertAllEqual(v_batch_diag.eval(), mat_batch)
 
+  @test_util.run_deprecated_v1
   def testBatchVector(self):
     self._testBatchVector(np.float32)
     self._testBatchVector(np.float64)
@@ -56,16 +59,19 @@ class MatrixDiagTest(test.TestCase):
     self._testBatchVector(np.int64)
     self._testBatchVector(np.bool)
 
+  @test_util.run_deprecated_v1
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
       array_ops.matrix_diag(0)
 
+  @test_util.run_deprecated_v1
   def testInvalidShapeAtEval(self):
     with self.session(use_gpu=True):
       v = array_ops.placeholder(dtype=dtypes_lib.float32)
       with self.assertRaisesOpError("input must be at least 1-dim"):
         array_ops.matrix_diag(v).eval(feed_dict={v: 0.0})
 
+  @test_util.run_deprecated_v1
   def testGrad(self):
     shapes = ((3,), (7, 4))
     with self.session(use_gpu=True):
@@ -81,6 +87,7 @@ class MatrixDiagTest(test.TestCase):
 
 class MatrixSetDiagTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testSquare(self):
     with self.session(use_gpu=True):
       v = np.array([1.0, 2.0, 3.0])
@@ -91,6 +98,7 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertEqual((3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag, self.evaluate(output))
 
+  @test_util.run_deprecated_v1
   def testRectangular(self):
     with self.session(use_gpu=True):
       v = np.array([3.0, 4.0])
@@ -123,6 +131,7 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertEqual((2, 3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag_batch, self.evaluate(output))
 
+  @test_util.run_deprecated_v1
   def testSquareBatch(self):
     self._testSquareBatch(np.float32)
     self._testSquareBatch(np.float64)
@@ -130,6 +139,7 @@ class MatrixSetDiagTest(test.TestCase):
     self._testSquareBatch(np.int64)
     self._testSquareBatch(np.bool)
 
+  @test_util.run_deprecated_v1
   def testRectangularBatch(self):
     with self.session(use_gpu=True):
       v_batch = np.array([[-1.0, -2.0], [-4.0, -5.0]])
@@ -142,12 +152,14 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertEqual((2, 2, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag_batch, self.evaluate(output))
 
+  @test_util.run_deprecated_v1
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
       array_ops.matrix_set_diag(0, [0])
     with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
       array_ops.matrix_set_diag([[0]], 0)
 
+  @test_util.run_deprecated_v1
   def testInvalidShapeAtEval(self):
     with self.session(use_gpu=True):
       v = array_ops.placeholder(dtype=dtypes_lib.float32)
@@ -157,6 +169,7 @@ class MatrixSetDiagTest(test.TestCase):
           r"but received input shape: \[1,1\] and diagonal shape: \[\]"):
         array_ops.matrix_set_diag([[v]], v).eval(feed_dict={v: 0.0})
 
+  @test_util.run_deprecated_v1
   def testGrad(self):
     shapes = ((3, 4, 4), (3, 3, 4), (3, 4, 3), (7, 4, 8, 8))
     with self.session(use_gpu=True):
@@ -178,6 +191,7 @@ class MatrixSetDiagTest(test.TestCase):
             y.get_shape().as_list())
         self.assertLess(error_x_diag, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradWithNoShapeInformation(self):
     with self.session(use_gpu=True) as sess:
       v = array_ops.placeholder(dtype=dtypes_lib.float32)
@@ -200,6 +214,7 @@ class MatrixSetDiagTest(test.TestCase):
 
 class MatrixDiagPartTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testSquare(self):
     with self.session(use_gpu=True):
       v = np.array([1.0, 2.0, 3.0])
@@ -208,6 +223,7 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertEqual((3,), mat_diag.get_shape())
       self.assertAllEqual(mat_diag.eval(), v)
 
+  @test_util.run_deprecated_v1
   def testRectangular(self):
     with self.session(use_gpu=True):
       mat = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
@@ -228,6 +244,7 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertEqual((2, 3), mat_batch_diag.get_shape())
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
+  @test_util.run_deprecated_v1
   def testSquareBatch(self):
     self._testSquareBatch(np.float32)
     self._testSquareBatch(np.float64)
@@ -235,6 +252,7 @@ class MatrixDiagPartTest(test.TestCase):
     self._testSquareBatch(np.int64)
     self._testSquareBatch(np.bool)
 
+  @test_util.run_deprecated_v1
   def testRectangularBatch(self):
     with self.session(use_gpu=True):
       v_batch = np.array([[1.0, 2.0], [4.0, 5.0]])
@@ -245,16 +263,19 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertEqual((2, 2), mat_batch_diag.get_shape())
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
+  @test_util.run_deprecated_v1
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
       array_ops.matrix_diag_part(0)
 
+  @test_util.run_deprecated_v1
   def testInvalidShapeAtEval(self):
     with self.session(use_gpu=True):
       v = array_ops.placeholder(dtype=dtypes_lib.float32)
       with self.assertRaisesOpError("input must be at least 2-dim"):
         array_ops.matrix_diag_part(v).eval(feed_dict={v: 0.0})
 
+  @test_util.run_deprecated_v1
   def testGrad(self):
     shapes = ((3, 3), (2, 3), (3, 2), (5, 3, 3))
     with self.session(use_gpu=True):
@@ -407,6 +428,7 @@ class DiagTest(test.TestCase):
           dtype=dtype)
       self.diagOp(x, dtype, expected_ans)
 
+  @test_util.run_deprecated_v1
   def testInvalidRank(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
       array_ops.diag(0.0)
@@ -476,6 +498,7 @@ class DiagPartOpTest(test.TestCase):
     self.diagPartOp(x, np.complex64, expected_ans)
     self.diagPartOp(x, np.complex128, expected_ans)
 
+  @test_util.run_deprecated_v1
   def testOddRank(self):
     w = np.random.rand(2)
     x = np.random.rand(2, 2, 2)
@@ -484,6 +507,7 @@ class DiagPartOpTest(test.TestCase):
     with self.assertRaises(ValueError):
       array_ops.diag_part(0.0)
 
+  @test_util.run_deprecated_v1
   def testUnevenDimensions(self):
     w = np.random.rand(2, 5)
     x = np.random.rand(2, 1, 2, 3)
@@ -493,6 +517,7 @@ class DiagPartOpTest(test.TestCase):
 
 class DiagGradOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testDiagGrad(self):
     np.random.seed(0)
     shapes = ((3,), (3, 3), (3, 3, 3))
@@ -513,6 +538,7 @@ class DiagGradOpTest(test.TestCase):
 
 class DiagGradPartOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testDiagPartGrad(self):
     np.random.seed(0)
     shapes = ((3, 3), (3, 3, 3, 3))

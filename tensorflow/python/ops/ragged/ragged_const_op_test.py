@@ -133,6 +133,7 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       dict(pylist=[[b'a', b'b'], [b'c'], [b'd', b'e', b'f']],
            dtype=dtypes.string),
   )
+  @test_util.run_deprecated_v1
   def testRaggedConst(self,
                       pylist,
                       dtype=None,
@@ -258,6 +259,7 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           exception=ValueError,
           message='inner values have inconsistent shape'),
   )
+  @test_util.run_deprecated_v1
   def testRaggedConstError(self,
                            pylist,
                            dtype=None,

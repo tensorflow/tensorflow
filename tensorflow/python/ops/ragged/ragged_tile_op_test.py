@@ -181,6 +181,7 @@ class RaggedTileOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                     [[[5], [6]]]]),
 
   ])  # pyformat: disable
+  @test_util.run_deprecated_v1
   def testRaggedTile(self,
                      descr,
                      rt_input,
@@ -209,6 +210,7 @@ class RaggedTileOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       with self.test_session():
         self.assertEqual(tiled.eval().tolist(), expected)
 
+  @test_util.run_deprecated_v1
   def testRaggedTileWithTensorInput(self):
     # When the input is a `Tensor`, ragged_tile just delegates to tf.tile.
     dt = constant_op.constant([[1, 2], [3, 4]])

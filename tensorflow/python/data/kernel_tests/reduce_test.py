@@ -68,6 +68,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(((i + 1) * i) // 2, s)
       self.assertEqual(i, c)
 
+  @test_util.run_deprecated_v1
   def testSkipEagerSquareUsingPlaceholder(self):
     delta = array_ops.placeholder(dtype=dtypes.int64)
 

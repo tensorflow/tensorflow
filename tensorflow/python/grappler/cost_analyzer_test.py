@@ -38,6 +38,7 @@ from tensorflow.python.training import adam
 
 class CostAnalysisTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasicCost(self):
     """Make sure arguments can be passed correctly."""
     a = constant_op.constant(10, name="a")
@@ -62,6 +63,7 @@ class CostAnalysisTest(test.TestCase):
     # Also print the report to make it easier to debug
     print("{}".format(report))
 
+  @test_util.run_deprecated_v1
   def testVerbose(self):
     """Make sure the full report is generated with verbose=True."""
     a = constant_op.constant(10, name="a")
@@ -81,6 +83,7 @@ class CostAnalysisTest(test.TestCase):
     # Also print the report to make it easier to debug
     print("{}".format(report))
 
+  @test_util.run_deprecated_v1
   def testSmallNetworkCost(self):
     image = array_ops.placeholder(dtypes.float32, shape=[1, 28, 28, 1])
     label = array_ops.placeholder(dtypes.float32, shape=[1, 10])
@@ -129,6 +132,7 @@ class CostAnalysisTest(test.TestCase):
       # self.assertTrue(0 < upper)
       # self.assertTrue(lower <= upper)
 
+  @test_util.run_deprecated_v1
   def testBasicMemory(self):
     """Make sure arguments can be passed correctly."""
     with test_util.device(use_gpu=False):

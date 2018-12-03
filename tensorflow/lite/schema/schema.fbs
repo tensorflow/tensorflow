@@ -204,6 +204,7 @@ enum BuiltinOperator : byte {
   SQUARED_DIFFERENCE = 99,
   MIRROR_PAD = 100,
   ABS = 101,
+  SPLIT_V = 102,
 }
 
 // Options for the builtin operators.
@@ -286,6 +287,7 @@ union BuiltinOptions {
   SquaredDifferenceOptions,
   MirrorPadOptions,
   AbsOptions,
+  SplitVOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -531,6 +533,10 @@ table SqueezeOptions {
 }
 
 table SplitOptions {
+  num_splits: int;
+}
+
+table SplitVOptions {
   num_splits: int;
 }
 

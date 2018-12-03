@@ -96,6 +96,8 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "MaxPool",
       "BiasAdd",
       "Relu",
+      "Sigmoid",
+      "Tanh",
       "Add",
       "Mul",
       "Sub",
@@ -129,6 +131,7 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "Max",
       "Min",
       "Relu6",
+      "Square",
   };
   bool is_supported_op_type =
       (candidate_ops.count(node->type_string()) ||
@@ -183,7 +186,7 @@ tensorflow::Status BuildNodeMap(
 tensorflow::Status ConvertCalibGraphToInferGraph(
     const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* infer_graph,
     bool is_dyn_op) {
-  VLOG(0) << "Starting Calib Conversion";
+  LOG(INFO) << "Starting Calib Conversion";
   infer_graph->CopyFrom(graph_def);
   auto trt_rm = TRTResourceManager::instance();
   auto calib_rm = trt_rm->getManager("TRTCalibration");
@@ -240,12 +243,12 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   item.fetch = output_names;
   item.graph = graph_def;
 
-  // TODO(aaroey): we should have used single machine cluster like the
-  // following, but the problem is then wrap_conversion will depend on
-  // direct_session and cause double linking problems. To fix this we need to
-  // fix or get rid of the swig dependency. Here we use VirtualCluster
-  // as a work around, and we need to create a session to initialize the
-  // underlying device before calling this method.
+// TODO(aaroey): we should have used single machine cluster like the
+// following, but the problem is then wrap_conversion will depend on
+// direct_session and cause double linking problems. To fix this we need to
+// fix or get rid of the swig dependency. Here we use VirtualCluster
+// as a work around, and we need to create a session to initialize the
+// underlying device before calling this method.
 #if 0
   // Create single machine cluster. Note that this will create a session and
   // initialize the gpu devices.
@@ -450,7 +453,8 @@ tensorflow::Status GetEngineInfo(
                  << "but this shouldn't have happened";
     info->device = *segment_devices.begin();
   } else {
-    LOG(ERROR) << "Can't find a device placement for the op!";
+    VLOG(1) << "No device is assigned to the segment. "
+            << "A device will be assigned during graph execution (inference).";
   }
   return Status::OK();
 }
@@ -895,10 +899,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
       // need to check the input edges.
       [](const Edge* edge) { return true; }, OutputEdgeValidator(),
       segment_options, &initial_segments));
-  if (initial_segments.size() > 1) {
-    VLOG(0) << "MULTIPLE tensorrt candidate conversion: "
+  LOG(INFO) << "Number of TensorRT candidate segments: "
             << initial_segments.size();
-  }
 
   // Get the EngineInfo for each segment.
   std::unordered_map<string, tensorflow::Node*> node_map;
@@ -934,7 +936,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     curr_engine.use_calibration = params.use_calibration;
     curr_engine.cached_engine_batches = params.cached_engine_batches;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
-    StrAppend(&curr_engine.engine_name, "my_trt_op_", t);
+    StrAppend(&curr_engine.engine_name, "TRTEngineOp_", t);
     status = RegisterSegmentFunctionToFunctionLibrary(
         &graph, curr_engine.segment_graph_def, curr_engine.engine_name);
     if (!status.ok()) {
@@ -995,16 +997,9 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
                                 &graph, alloc.get(), &engine_nodes);
     // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
-    string msg = StrCat("Engine ", engine.engine_name, " creation for segment ",
-                        i, ", composed of ",
+    string msg = StrCat("TensorRT node ", engine.engine_name,
+                        " added for segment ", i, " consisting of ",
                         converted_segments.at(i).first.size(), " nodes");
-    if (VLOG_IS_ON(1)) {
-      StrAppend(&msg, " (");
-      for (const string& node_name : converted_segments.at(i).first) {
-        StrAppend(&msg, node_name, ", ");
-      }
-      StrAppend(&msg, ")");
-    }
     if (status.ok()) {
       LOG(INFO) << msg << " succeeded.";
       for (auto node_name : converted_segments.at(i).first) {
@@ -1012,7 +1007,14 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
       }
     } else {
       // Graph is not modified.
-      LOG(WARNING) << msg << " failed: " << status << ". Skipping...";
+      LOG(WARNING) << msg << " failed: " << status << ". Fallback to TF...";
+    }
+    if (VLOG_IS_ON(1)) {
+      msg = "Segment consists of nodes: ";
+      for (const string& node_name : converted_segments.at(i).first) {
+        StrAppend(&msg, node_name, ", ");
+      }
+      VLOG(1) << msg;
     }
   }
   cudaSetDevice(old_cuda_device);

@@ -13,12 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <vector>
+
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+namespace shape_inference {
+class InferenceContext;
+}  // namespace shape_inference
 
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
@@ -249,6 +260,31 @@ REGISTER_OP("UnicodeScript")
     .Input("input: int32")
     .Output("output: int32")
     .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("UnicodeEncode")
+    .Input("input_values: int32")
+    .Input("input_splits: int64")
+    .Attr("errors: {'ignore', 'replace', 'strict'} = 'replace'")
+    .Attr("output_encoding: {'UTF-8', 'UTF-16-BE', 'UTF-32-BE'}")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Output("output: string")
+    .SetShapeFn([](InferenceContext* c) {
+      // Check rank of inner values
+      ShapeHandle input_inner_values_shape = c->input(0);
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(input_inner_values_shape, 1, &unused));
+
+      // Check rank of input_splits
+      ShapeHandle splits_shape = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(splits_shape, 1, &unused));
+
+      // Output shape is a 1-D tensor with size equal to number of splits.
+      std::vector<DimensionHandle> dims(1);
+      TF_RETURN_IF_ERROR(c->Subtract(c->Dim(splits_shape, 0), 1, &dims[0]));
+      c->set_output(0, c->MakeShape(dims));
+
+      return Status::OK();
+    });
 
 REGISTER_OP("UnicodeTranscode")
     .Input("input: string")

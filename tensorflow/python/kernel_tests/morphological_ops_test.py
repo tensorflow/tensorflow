@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -291,6 +292,7 @@ class DilationTest(test.TestCase):
         padding="SAME",
         use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testDilationGrad(self):
     for use_gpu in True, False:
       self._testDilationGradValidPadding_1x1x1(use_gpu)
@@ -566,6 +568,7 @@ class ErosionTest(test.TestCase):
         padding="SAME",
         use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testErosionGrad(self):
     for use_gpu in True, False:
       self._testErosionGradValidPadding_1x1x1(use_gpu)

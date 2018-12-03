@@ -85,6 +85,20 @@ class CallTreesTest(converter_testing.TestCase):
       tc = TestClass()
       self.assertEquals(3, result.test_fn_2(tc, 1))
 
+  def test_known_called_lambda(self):
+
+    l = lambda x: x
+
+    def test_fn(a):
+      return l(a)
+
+    ns = {'l': l}
+    node, ctx = self.prepare(test_fn, ns)
+    node = call_trees.transform(node, ctx)
+
+    with self.compiled(node, ns) as result:
+      self.assertEquals(1, result.test_fn(1))
+
   def test_py_func_known_function(self):
 
     def test_fn():

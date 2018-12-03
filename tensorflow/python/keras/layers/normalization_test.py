@@ -301,6 +301,7 @@ class NormalizationLayersGraphModeOnlyTest(test.TestCase):
       x2 = model.predict(val_a)
       self.assertAllClose(x1, x2, atol=1e-7)
 
+  @tf_test_util.run_deprecated_v1
   def test_batchnorm_trainable(self):
     """Tests that batchnorm layer is trainable when learning phase is enabled.
 

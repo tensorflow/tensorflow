@@ -278,7 +278,7 @@ void WriteMultiDimensionalStringArray(JNIEnv* env, jobject src,
   tflite::DynamicBuffer dst_buffer;
   PopulateStringDynamicBuffer(env, src, &dst_buffer, tensor->dims->size);
   if (!env->ExceptionCheck()) {
-    dst_buffer.WriteToTensor(tensor);
+    dst_buffer.WriteToTensor(tensor, /*new_shape=*/nullptr);
   }
 }
 

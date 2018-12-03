@@ -72,6 +72,50 @@ _TENSORFLOW_CONSTANTS_ATTR_V1 = (
 _TENSORFLOW_CONSTANTS_ATTR = (
     tf_export.API_ATTRS[tf_export.TENSORFLOW_API_NAME].constants)
 
+_ESTIMATOR_API_ATTR_V1 = (
+    tf_export.API_ATTRS_V1[tf_export.ESTIMATOR_API_NAME].names)
+_ESTIMATOR_API_ATTR = tf_export.API_ATTRS[tf_export.ESTIMATOR_API_NAME].names
+_ESTIMATOR_CONSTANTS_ATTR_V1 = (
+    tf_export.API_ATTRS_V1[tf_export.ESTIMATOR_API_NAME].constants)
+_ESTIMATOR_CONSTANTS_ATTR = (
+    tf_export.API_ATTRS[tf_export.ESTIMATOR_API_NAME].constants)
+
+
+def get_v1_names(symbol):
+  names_v1 = []
+  if hasattr(symbol, _TENSORFLOW_API_ATTR_V1):
+    names_v1.extend(getattr(symbol, _TENSORFLOW_API_ATTR_V1))
+  if hasattr(symbol, _ESTIMATOR_API_ATTR_V1):
+    names_v1.extend(getattr(symbol, _ESTIMATOR_API_ATTR_V1))
+  return names_v1
+
+
+def get_v2_names(symbol):
+  names_v2 = []
+  if hasattr(symbol, _TENSORFLOW_API_ATTR):
+    names_v2.extend(getattr(symbol, _TENSORFLOW_API_ATTR))
+  if hasattr(symbol, _ESTIMATOR_API_ATTR):
+    names_v2.extend(getattr(symbol, _ESTIMATOR_API_ATTR))
+  return list(names_v2)
+
+
+def get_v1_constants(module):
+  constants_v1 = []
+  if hasattr(module, _TENSORFLOW_CONSTANTS_ATTR_V1):
+    constants_v1.extend(getattr(module, _TENSORFLOW_CONSTANTS_ATTR_V1))
+  if hasattr(module, _ESTIMATOR_CONSTANTS_ATTR_V1):
+    constants_v1.extend(getattr(module, _ESTIMATOR_CONSTANTS_ATTR_V1))
+  return constants_v1
+
+
+def get_v2_constants(module):
+  constants_v2 = []
+  if hasattr(module, _TENSORFLOW_CONSTANTS_ATTR):
+    constants_v2.extend(getattr(module, _TENSORFLOW_CONSTANTS_ATTR))
+  if hasattr(module, _ESTIMATOR_CONSTANTS_ATTR):
+    constants_v2.extend(getattr(module, _ESTIMATOR_CONSTANTS_ATTR))
+  return constants_v2
+
 
 def get_canonical_name(v2_names, v1_name):
   if v2_names:
@@ -87,9 +131,7 @@ def get_all_v2_names():
     """Visitor that collects TF 2.0 names."""
     for child in children:
       _, attr = tf_decorator.unwrap(child[1])
-      if not hasattr(attr, '__dict__'):
-        continue
-      api_names_v2 = attr.__dict__.get(_TENSORFLOW_API_ATTR, [])
+      api_names_v2 = get_v2_names(attr)
       for name in api_names_v2:
         v2_names.add(name)
 
@@ -107,10 +149,8 @@ def collect_constant_renames():
   """
   renames = set()
   for module in sys.modules.values():
-    if not hasattr(module, _TENSORFLOW_CONSTANTS_ATTR_V1):
-      continue
-    constants_v1_list = getattr(module, _TENSORFLOW_CONSTANTS_ATTR_V1)
-    constants_v2_list = getattr(module, _TENSORFLOW_CONSTANTS_ATTR)
+    constants_v1_list = get_v1_constants(module)
+    constants_v2_list = get_v2_constants(module)
 
     # _tf_api_constants attribute contains a list of tuples:
     # (api_names_list, constant_name)
@@ -146,10 +186,8 @@ def collect_function_renames():
     """Visitor that collects rename strings to add to rename_line_set."""
     for child in children:
       _, attr = tf_decorator.unwrap(child[1])
-      if not hasattr(attr, '__dict__'):
-        continue
-      api_names_v1 = attr.__dict__.get(_TENSORFLOW_API_ATTR_V1, [])
-      api_names_v2 = attr.__dict__.get(_TENSORFLOW_API_ATTR, [])
+      api_names_v1 = get_v1_names(attr)
+      api_names_v2 = get_v2_names(attr)
       deprecated_api_names = set(api_names_v1) - set(api_names_v2)
       for name in deprecated_api_names:
         renames.add((name, get_canonical_name(api_names_v2, name)))

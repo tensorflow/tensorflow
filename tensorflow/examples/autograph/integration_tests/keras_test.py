@@ -21,6 +21,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tensorflow.python import autograph
+from tensorflow.python.framework import test_util
 
 
 class MinimalKeras(tf.keras.Model):
@@ -84,6 +85,7 @@ class KerasTest(tf.test.TestCase):
     model = ModelWithStaticConditional(True)
     self.assertEqual(model.call(), 25)
 
+  @test_util.run_deprecated_v1
   def test_recursive_true(self):
     with self.assertRaisesRegexp(NotImplementedError,
                                  'Object conversion is not yet supported.'):

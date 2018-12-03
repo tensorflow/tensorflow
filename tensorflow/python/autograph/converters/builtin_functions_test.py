@@ -24,12 +24,14 @@ from tensorflow.python.autograph.converters import builtin_functions
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class BuiltinFunctionsTest(converter_testing.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_len(self):
 
     def test_fn(a):
@@ -41,6 +43,7 @@ class BuiltinFunctionsTest(converter_testing.TestCase):
         ops = result.test_fn(p)
         self.assertEqual(sess.run(ops, {p: [0, 0, 0]}), 3)
 
+  @test_util.run_deprecated_v1
   def test_print(self):
 
     if six.PY2:
@@ -54,6 +57,7 @@ class BuiltinFunctionsTest(converter_testing.TestCase):
         with self.assertPrints('a\n'):
           sess.run(result.test_fn('a'))
 
+  @test_util.run_deprecated_v1
   def test_print_multiple_values(self):
 
     if six.PY2:
