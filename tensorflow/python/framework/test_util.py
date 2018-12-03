@@ -1041,6 +1041,139 @@ def run_deprecated_v1(func=None):
   return decorator
 
 
+def run_v1_only(reason, func=None):
+  """Execute the decorated test only if running in v1 mode.
+
+  This function is intended to be applied to tests that exercise v1 only
+  functionality. If the test is run in v2 mode it will simply be skipped.
+
+  Args:
+    reason: string giving a reason for limiting the test to v1 only.
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`run_v1_only` only supports test methods.")
+
+    def decorated(self, *args, **kwargs):
+      if tf2.enabled():
+        self.skipTest(reason)
+
+      f(self, *args, **kwargs)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def run_v2_only(func=None):
+  """Execute the decorated test only if running in v2 mode.
+
+  This function is intended to be applied to tests that exercise v2 only
+  functionality. If the test is run in v1 mode it will simply be skipped.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`run_v2_only` only supports test methods.")
+
+    def decorated(self, *args, **kwargs):
+      if not tf2.enabled():
+        self.skipTest("Test is only comptaible in v2")
+
+      f(self, *args, **kwargs)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def run_gpu_only(func=None):
+  """Execute the decorated test only if a GPU is available.
+
+  This function is intended to be applied to tests that require the precense
+  of a GPU. If a GPU is absent, it will simply be skipped.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`run_gpu_only` only supports test methods.")
+
+    def decorated(self, *args, **kwargs):
+      if not is_gpu_available():
+        self.skipTest("Test requires GPU")
+
+      f(self, *args, **kwargs)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def run_cuda_only(func=None):
+  """Execute the decorated test only if a GPU is available.
+
+  This function is intended to be applied to tests that require the precense
+  of a CUDA GPU. If a CUDA GPU is absent, it will simply be skipped.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`run_cuda_only` only supports test methods.")
+
+    def decorated(self, *args, **kwargs):
+      if not is_gpu_available(cuda_only=True):
+        self.skipTest("Test requires CUDA GPU")
+
+      f(self, *args, **kwargs)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
 @tf_export("test.is_gpu_available")
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
