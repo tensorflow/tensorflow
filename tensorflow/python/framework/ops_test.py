@@ -604,6 +604,31 @@ class OperationTest(test_util.TensorFlowTestCase):
     ):
       x.op._update_input(1, x)  # pylint: disable=protected-access
 
+  @test_util.enable_control_flow_v2
+  def testAddWhileInput(self):
+    @eager_function.defun
+    def test():
+      output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
+                                           [1])
+      while_op = output.op.inputs[0].op
+      self.assertEqual(while_op.type, "While")
+      orig_num_inputs = len(while_op.inputs)
+
+      new_input1 = constant_op.constant(1.0)
+      new_input2 = constant_op.constant(True)
+
+      while_op._set_type_list_attr("T",
+                                   [t.dtype for t in while_op.inputs] +
+                                   [new_input1.dtype, new_input2.dtype])
+
+      while_op._add_while_inputs([new_input1, new_input2])
+      # Can't add an edge beyond what's specified by "T"
+      with self.assertRaises(errors.OutOfRangeError):
+        while_op._add_while_inputs([new_input2])
+      self.assertEqual(len(while_op.inputs), orig_num_inputs + 2)  # pylint: disable=g-deprecated-assert
+
+    test()
+
   @test_util.run_deprecated_v1
   def testOpDef(self):
     x = constant_op.constant(0)

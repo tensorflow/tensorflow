@@ -2086,6 +2086,31 @@ class Operation(object):
         tensor._as_tf_output(),  # pylint: disable=protected-access
         self._tf_input(index))
 
+  def _add_while_inputs(self, tensors):
+    """See AddWhileInputHack in python_api.h.
+
+    NOTE: This is for TF internal use only. Please don't use it.
+
+    Args:
+      tensors: list of Tensors
+
+    Raises:
+      TypeError: if tensor is not a Tensor,
+        or if input tensor type is not convertible to dtype.
+      ValueError: if the Tensor is from a different graph.
+    """
+    for tensor in tensors:
+      if not isinstance(tensor, Tensor):
+        raise TypeError("tensor must be a Tensor: %s" % tensor)
+      _assert_same_graph(self, tensor)
+
+      # Reset cached inputs.
+      self._inputs_val = None
+      c_api.AddWhileInputHack(
+          self._graph._c_graph,  # pylint: disable=protected-access
+          tensor._as_tf_output(),  # pylint: disable=protected-access
+          self._c_op)
+
   def _add_control_inputs(self, ops):
     """Add a list of new control inputs to this operation.
 
