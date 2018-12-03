@@ -36,6 +36,9 @@ FunctionPass *createConstantFoldPass();
 /// Creates an instance of the Canonicalizer pass.
 FunctionPass *createCanonicalizerPass();
 
+/// Creates a pass to perform common sub expression elimination.
+FunctionPass *createCSEPass();
+
 /// Creates a pass to vectorize loops, operations and data types using a
 /// target-independent, n-D super-vector abstraction.
 FunctionPass *createVectorizePass();
