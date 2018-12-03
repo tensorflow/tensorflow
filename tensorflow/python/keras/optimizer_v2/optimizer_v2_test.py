@@ -492,7 +492,7 @@ class OptimizersCompatibilityTest(test.TestCase, parameterized.TestCase):
   # NAdam has been unified: currently these three algorithms behave differently.
   @parameterized.named_parameters(
       ('adadelta', 'adadelta', True, True), ('adagrad', 'adagrad', True, True),
-      ('adam', 'adam', True, False), ('adamax', 'adamax', True, True),
+      ('adam', 'adam', True, True), ('adamax', 'adamax', True, True),
       ('nadam', 'nadam', True, False), ('momentum', 'momentum', False, False),
       ('sgd', 'sgd', False, True))
   def testOptimizersCompatibility(self, opt_str, test_weights, test_numeric):
