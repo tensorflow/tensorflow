@@ -132,7 +132,7 @@ tf_gpu_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
-    gpu_deps = [
+    cuda_deps = [
         "@local_config_cuda//cuda:cudnn_header",
     ],
     visibility = ["//visibility:public"],

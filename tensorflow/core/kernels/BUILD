@@ -313,7 +313,7 @@ tf_gpu_library(
     testonly = 1,
     srcs = ["ops_testutil.cc"],
     hdrs = ["ops_testutil.h"],
-    gpu_deps = [
+    cuda_deps = [
         "//tensorflow/core:gpu_lib",
         "//tensorflow/core:gpu_runtime",
     ],

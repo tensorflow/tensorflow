@@ -9,6 +9,7 @@ load(
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
     "tf_gpu_tests_tags",
+    "tf_cuda_tests_tags",
     "tf_sycl_tests_tags",
 )
 load(
@@ -871,6 +872,38 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+# terminology changes: saving tf_cuda_* definition for compatibility
+def tf_cuda_cc_test(
+        name,
+        srcs = [],
+        deps = [],
+        tags = [],
+        data = [],
+        size = "medium",
+        extra_copts = [],
+        linkstatic = 0,
+        args = [],
+        kernels = [],
+        linkopts = []):
+    tf_gpu_cc_test(
+        name,
+        srcs = srcs,
+        deps = deps,
+        tags = tags,
+        data = data,
+        size = size,
+        extra_copts = extra_copts,
+        linkstatic = linkstatic,
+        linkopts = linkopts,
+        args = args,
+        kernels = kernels,
+    )
+
+register_extension_info(
+    extension_name = "tf_cuda_cc_test",
+    label_regex_for_dep = "{extension_name}",
+)
+
 def tf_gpu_only_cc_test(
         name,
         srcs = [],
@@ -906,6 +939,36 @@ def tf_gpu_only_cc_test(
             "//conditions:default": 0,
         }),
         tags = tags + tf_gpu_tests_tags(),
+    )
+
+register_extension_info(
+    extension_name = "tf_gpu_only_cc_test",
+    label_regex_for_dep = "{extension_name}_gpu",
+)
+
+# terminology changes: saving tf_cuda_* definition for compatibility
+def tf_cuda_only_cc_test(
+        name,
+        srcs = [],
+        deps = [],
+        tags = [],
+        data = [],
+        size = "medium",
+        linkstatic = 0,
+        args = [],
+        kernels = [],
+        linkopts = []):
+    tf_gpu_only_cc_test(
+        name,
+        srcs = srcs,
+        deps = deps,
+        tags = tags,
+        data = data,
+        size = size,
+        linkstatic = linkstatic,
+        args = args,
+        kernels = kernels,
+        linkopts = linkopts,
     )
 
 register_extension_info(
@@ -1011,6 +1074,29 @@ def tf_gpu_cc_tests(
             deps = deps,
         )
 
+# terminology changes: saving tf_cuda_* definition for compatibility
+def tf_cuda_cc_tests(
+        srcs,
+        deps,
+        name = "",
+        tags = [],
+        size = "medium",
+        linkstatic = 0,
+        args = None,
+        kernels = [],
+        linkopts = []):
+    tf_gpu_cc_tests(
+        srcs,
+        deps,
+        name = name,
+        tags = tags,
+        size = size,
+        linkstatic = linkstatic,
+        args = args,
+        kernels = kernels,
+        linkopts = linkopts,
+    )
+
 def tf_java_test(
         name,
         srcs = [],
@@ -1088,19 +1174,19 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_gpu_library(deps = None, gpu_deps = None, copts = tf_copts(), **kwargs):
+def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
     """Generate a cc_library with a conditional set of CUDA dependencies.
 
     When the library is built with --config=cuda:
 
-    - Both deps and gpu_deps are used as dependencies.
+    - Both deps and cuda_deps are used as dependencies.
     - The cuda runtime is added as a dependency (if necessary).
     - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts.
     - In addition, when the library is also built with TensorRT enabled, it
         additionally passes -DGOOGLE_TENSORRT=1 to the list of copts.
 
     Args:
-    - gpu_deps: BUILD dependencies which will be linked if and only if:
+    - cuda_deps: BUILD dependencies which will be linked if and only if:
         '--config=cuda' is passed to the bazel command line.
     - deps: dependencies which will always be linked.
     - copts: copts always passed to the cc_library.
@@ -1108,19 +1194,33 @@ def tf_gpu_library(deps = None, gpu_deps = None, copts = tf_copts(), **kwargs):
     """
     if not deps:
         deps = []
-    if not gpu_deps:
-        gpu_deps = []
+    if not cuda_deps:
+        cuda_deps = []
 
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
     native.cc_library(
-        deps = deps + if_cuda_is_configured_compat(gpu_deps + [
+        deps = deps + if_cuda_is_configured_compat(cuda_deps + [
             clean_dep("//tensorflow/core:cuda"),
             "@local_config_cuda//cuda:cuda_headers",
-        ]) + if_rocm_is_configured(gpu_deps + [
+        ]) + if_rocm_is_configured(cuda_deps + [
             clean_dep("//tensorflow/core:rocm"),
             "@local_config_rocm//rocm:rocm_headers",
         ]),
         copts = (copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
+        **kwargs
+    )
+
+register_extension_info(
+    extension_name = "tf_gpu_library",
+    label_regex_for_dep = "{extension_name}",
+)
+
+# terminology changes: saving tf_cuda_* definition for compatibility
+def tf_cuda_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
+    tf_gpu_library(
+        deps = deps,
+        cuda_deps = cuda_deps,
+        copts = copts,
         **kwargs
     )
 
@@ -1196,7 +1296,7 @@ def tf_kernel_library(
             [prefix + "*impl.h"],
             exclude = [prefix + "*test*", prefix + "*.cu.h"],
         )
-    gpu_deps = [clean_dep("//tensorflow/core:gpu_lib")]
+    cuda_deps = [clean_dep("//tensorflow/core:gpu_lib")]
     if gpu_srcs:
         for gpu_src in gpu_srcs:
             if gpu_src.endswith(".cc") and not gpu_src.endswith(".cu.cc"):
@@ -1208,7 +1308,7 @@ def tf_kernel_library(
             deps = deps,
             **kwargs
         )
-        gpu_deps.extend([":" + name + "_gpu"])
+        cuda_deps.extend([":" + name + "_gpu"])
     kwargs["tags"] = kwargs.get("tags", []) + [
         "req_dep=%s" % clean_dep("//tensorflow/core:gpu_lib"),
         "req_dep=@local_config_cuda//cuda:cuda_headers",
@@ -1219,7 +1319,7 @@ def tf_kernel_library(
         hdrs = hdrs,
         textual_hdrs = textual_hdrs,
         copts = copts,
-        gpu_deps = gpu_deps,
+        cuda_deps = cuda_deps,
         linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
         alwayslink = alwayslink,
         deps = deps,
@@ -1857,6 +1957,42 @@ register_extension_info(
     label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
 )
 
+# terminology changes: saving cuda_* definition for compatibility
+def cuda_py_test(
+        name,
+        srcs,
+        size = "medium",
+        data = [],
+        main = None,
+        args = [],
+        shard_count = 1,
+        additional_deps = [],
+        kernels = [],
+        tags = [],
+        flaky = 0,
+        xla_enabled = False,
+        grpc_enabled = False):
+    gpu_py_test(
+        name = name,
+        srcs = srcs,
+        size = size,
+        data = data,
+        main = main,
+        args = args,
+        shard_count = shard_count,
+        additional_deps = additional_deps,
+        kernels = kernels,
+        tags = tags,
+        flaky = flaky,
+        xla_enabled = xla_enabled,
+        grpc_enabled = grpc_enabled,
+    )
+
+register_extension_info(
+    extension_name = "cuda_py_test",
+    label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
+)
+
 def sycl_py_test(
         name,
         srcs,
@@ -1948,6 +2084,33 @@ def gpu_py_tests(
         shard_count = shard_count,
         tags = test_tags,
         xla_enabled = xla_enabled,
+    )
+
+# terminology changes: saving cuda_* definition for compatibility
+def cuda_py_tests(
+        name,
+        srcs,
+        size = "medium",
+        additional_deps = [],
+        kernels = [],
+        data = [],
+        shard_count = 1,
+        tags = [],
+        prefix = "",
+        xla_enabled = False,
+        grpc_enabled = False):
+    gpu_py_tests(
+        name,
+        srcs,
+        size = size,
+        additional_deps = additional_deps,
+        kernels = kernels,
+        data = data,
+        shard_count = shard_count,
+        tags = tags,
+        prefix = prefix,
+        xla_enabled = xla_enabled,
+        grpc_enabled = grpc_enabled,
     )
 
 # Creates a genrule named <name> for running tools/proto_text's generator to

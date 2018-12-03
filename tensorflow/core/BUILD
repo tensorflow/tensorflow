@@ -3093,7 +3093,7 @@ tf_gpu_library(
         "platform/device_tracer.h",
     ],
     copts = tf_copts(),
-    gpu_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
+    cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
     visibility = [
         "//tensorflow:internal",
     ],

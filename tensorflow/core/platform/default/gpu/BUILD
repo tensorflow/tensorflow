@@ -13,7 +13,7 @@ tf_gpu_library(
         "cupti_wrapper.h",
     ],
     copts = tf_copts(),
-    gpu_deps = [
+    cuda_deps = [
         "//tensorflow/core:stream_executor",
         "@local_config_cuda//cuda:cupti_headers",
     ],
