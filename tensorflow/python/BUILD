@@ -2183,7 +2183,6 @@ py_library(
         ":control_flow_util_v2",
         ":dtypes",
         ":framework_ops",
-        ":framework_test_lib",
         ":function_def_to_graph",
         ":functional_ops_gen",
         ":gradients_impl",
