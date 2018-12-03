@@ -146,15 +146,14 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_in_graph_and_eager_modes
   def testToTensor(self):
-    with self.cached_session():
-      values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
-      indices = constant_op.constant([0, 2])
-      dense_shape = constant_op.constant([3, 2])
-      x = ops.IndexedSlices(values, indices, dense_shape)
-      tensor = ops.convert_to_tensor(x, name="tensor")
-      self.assertAllEqual(tensor.eval(), [[2, 3], [0, 0], [5, 7]])
+    values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
+    indices = constant_op.constant([0, 2])
+    dense_shape = constant_op.constant([3, 2])
+    x = ops.IndexedSlices(values, indices, dense_shape)
+    tensor = ops.convert_to_tensor(x, name="tensor")
+    self.assertAllEqual(self.evaluate(tensor), [[2, 3], [0, 0], [5, 7]])
 
   @test_util.run_deprecated_v1
   def testNegation(self):
@@ -325,12 +324,12 @@ class OperationTest(test_util.TensorFlowTestCase):
     op = test_ops.a()
     self.assertEqual(tensor_shape.unknown_shape(), op.get_shape())
 
+  @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorNestedArray(self):
-    with self.cached_session():
-      values = [[2], [3], [5], [7]]
-      tensor = ops.convert_to_tensor(values)
-      self.assertAllEqual((4, 1), tensor.get_shape().as_list())
-      self.assertAllEqual(values, self.evaluate(tensor))
+    values = [[2], [3], [5], [7]]
+    tensor = ops.convert_to_tensor(values)
+    self.assertAllEqual((4, 1), tensor.get_shape().as_list())
+    self.assertAllEqual(values, self.evaluate(tensor))
 
   def testShapeTuple(self):
     with self.cached_session():
@@ -346,57 +345,61 @@ class OperationTest(test_util.TensorFlowTestCase):
       converted = ops.convert_to_tensor(1)
       self.assertTrue(isinstance(converted, ops.EagerTensor))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorNestedTuple(self):
-    with self.cached_session():
-      values = ((2,), (3,), (5,), (7,))
-      tensor = ops.convert_to_tensor(values)
-      self.assertAllEqual((4, 1), tensor.get_shape().as_list())
-      self.assertAllEqual(values, ops.convert_to_tensor(values).eval())
+    values = ((2,), (3,), (5,), (7,))
+    tensor = ops.convert_to_tensor(values)
+    self.assertAllEqual((4, 1), tensor.get_shape().as_list())
+    self.assertAllEqual(values, self.evaluate(ops.convert_to_tensor(values)))
 
+  @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorNestedTensors(self):
-    with self.cached_session():
-      values = ((2,), (3,), (5,), (7,))
-      tensor = ops.convert_to_tensor(
-          [constant_op.constant(row) for row in values])
-      self.assertAllEqual((4, 1), tensor.get_shape().as_list())
-      self.assertAllEqual(values, self.evaluate(tensor))
-      tensor = ops.convert_to_tensor(
-          [[constant_op.constant(v) for v in row] for row in values])
-      self.assertAllEqual((4, 1), tensor.get_shape().as_list())
-      self.assertAllEqual(values, self.evaluate(tensor))
+    values = ((2,), (3,), (5,), (7,))
+    tensor = ops.convert_to_tensor(
+        [constant_op.constant(row) for row in values])
+    self.assertAllEqual((4, 1), tensor.get_shape().as_list())
+    self.assertAllEqual(values, self.evaluate(tensor))
+    tensor = ops.convert_to_tensor(
+        [[constant_op.constant(v) for v in row] for row in values])
+    self.assertAllEqual((4, 1), tensor.get_shape().as_list())
+    self.assertAllEqual(values, self.evaluate(tensor))
 
+  @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorNestedMix(self):
-    with self.cached_session():
-      values = ([2], (3,), [constant_op.constant(5)], constant_op.constant([7]))
-      tensor = ops.convert_to_tensor(values)
-      self.assertAllEqual((4, 1), tensor.get_shape().as_list())
-      self.assertAllEqual(((2,), (3,), (5,), (7,)), self.evaluate(tensor))
+    values = ([2], (3,), [constant_op.constant(5)], constant_op.constant([7]))
+    tensor = ops.convert_to_tensor(values)
+    self.assertAllEqual((4, 1), tensor.get_shape().as_list())
+    self.assertAllEqual(((2,), (3,), (5,), (7,)), self.evaluate(tensor))
 
+  @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorPreferred(self):
-    with self.cached_session():
-      values = [2, 3, 5, 7]
-      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.float32)
-      self.assertEqual(dtypes.float32, tensor.dtype)
+    values = [2, 3, 5, 7]
+    tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.float32)
+    self.assertEqual(dtypes.float32, tensor.dtype)
 
-    with self.cached_session():
-      # Convert empty tensor to anything.
-      values = []
-      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
-      self.assertEqual(dtypes.int64, tensor.dtype)
+    # Convert empty tensor to anything.
+    values = []
+    tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
+    self.assertEqual(dtypes.int64, tensor.dtype)
 
-    with self.cached_session():
-      # The preferred dtype is a type error and will convert to
-      # float32 instead.
-      values = [1.23]
-      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
-      self.assertEqual(dtypes.float32, tensor.dtype)
+    # The preferred dtype is a type error and will convert to
+    # float32 instead.
+    values = [1.23]
+    tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
+    self.assertEqual(dtypes.float32, tensor.dtype)
 
+  @test_util.run_in_graph_and_eager_modes
   def testConvertToInvalidTensorType(self):
     with self.assertRaises(TypeError):
       # Forcing an invalid dtype should fail with a type error.
       values = [1.23]
-      _ = ops.convert_to_tensor(values, dtype=dtypes.int64)
+      ops.convert_to_tensor(values, dtype=dtypes.int64)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvertToTensorFromInvalidTensor(self):
+    tensor = constant_op.constant(42.0, dtype=dtypes.float32)
+    with self.assertRaises(ValueError):
+      ops.convert_to_tensor(tensor, dtype=dtypes.int32)
 
   @test_util.run_deprecated_v1
   def testNoConvert(self):
