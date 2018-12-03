@@ -2358,10 +2358,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   }
 
   // Get nodedef for StridedSlice layer.
-  auto get_strided_slice_nodedef = [](int begin_mask = 0,
-                                      int ellipsis_mask = 0,
-                                      int end_mask = 0,
-                                      int new_axis_mask = 0,
+  auto get_strided_slice_nodedef = [](int begin_mask = 0, int ellipsis_mask = 0,
+                                      int end_mask = 0,int new_axis_mask = 0,
                                       int shrink_axis_mask = 0) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
@@ -2374,8 +2372,9 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     strided_slice_attrs.end_mask_ = end_mask;
     strided_slice_attrs.new_axis_mask_ = new_axis_mask;
     strided_slice_attrs.shrink_axis_mask_ = shrink_axis_mask;
-    auto strided_slice = ops::StridedSlice(s.WithOpName("my_strided_slice"),
-        input, begin, end, strides, strided_slice_attrs);
+    auto strided_slice = 
+        ops::StridedSlice(s.WithOpName("my_strided_slice"), input, begin, end,
+                          strides, strided_slice_attrs);
     return strided_slice.operation.node()->def();
   };
 
@@ -2405,9 +2404,9 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   {
     // Non-zero ellipsis_mask, should fail.
     Reset();
-    NodeDef node_def = get_strided_slice_nodedef(/*begin_mask=*/0,
-        /*ellipsis_mask=*/2, /*end_mask=*/0, /*new_axis_mask=*/0,
-        /*shrink_axis_mask=*/0);
+    NodeDef node_def = get_strided_slice_nodedef(
+        /*begin_mask=*/0, /*ellipsis_mask=*/2, /*end_mask=*/0,
+        /*new_axis_mask=*/0, /*shrink_axis_mask=*/0);
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
     AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
@@ -2420,9 +2419,9 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   {
     // Non-zero ellipsis_mask, should fail.
     Reset();
-    NodeDef node_def = get_strided_slice_nodedef(/*begin_mask=*/0,
-        /*ellipsis_mask=*/0, /*end_mask=*/0, /*new_axis_mask=*/2,
-        /*shrink_axis_mask=*/0);
+    NodeDef node_def = get_strided_slice_nodedef(
+        /*begin_mask=*/0, /*ellipsis_mask=*/0, /*end_mask=*/0,
+        /*new_axis_mask=*/2, /*shrink_axis_mask=*/0);
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
     AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
@@ -2435,9 +2434,9 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   {
     // Non-zero shrink_axis_mask, should fail.
     Reset();
-    NodeDef node_def = get_strided_slice_nodedef(/*begin_mask=*/0,
-        /*ellipsis_mask=*/0, /*end_mask=*/0, /*new_axis_mask=*/0,
-        /*shrink_axis_mask=*/2);
+    NodeDef node_def = get_strided_slice_nodedef(
+        /*begin_mask=*/0, /*ellipsis_mask=*/0, /*end_mask=*/0,
+        /*new_axis_mask=*/0, /*shrink_axis_mask=*/2);
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
     AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
@@ -2467,9 +2466,9 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
     AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
     AddTestWeights<int32>("strides", {4}, {1, 2, -1, 3});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED, "StridedSlice is only implemented for "
-        "stride of 1, at my_strided_slice");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "StridedSlice is only implemented for stride of "
+                               "1, at my_strided_slice");
   }
   {
     // Begin out of bounds, should fail.
@@ -2513,8 +2512,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   struct TestParams {
     TestParams(const std::vector<int>& input_dims,
                const std::vector<int>& expected_output_dims,
-               const std::vector<int>& begin,
-               const std::vector<int>& end,
+               const std::vector<int>& begin, const std::vector<int>& end,
                const std::vector<int>& begin_mask,
                const std::vector<int>& end_mask,
                const std::vector<int>& expected_output)
@@ -2551,11 +2549,11 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
       TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 2},
                  /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 0, 1, 2},
                  /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 0, 0},
-                  /*expected_output=*/{1, 2}},
+                 /*expected_output=*/{1, 2}},
       TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 2},
                  /*begin=*/{0, 0, 1, 1}, /*end=*/{0, 0, 0, 0},
                  /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 1, 1},
-                  /*expected_output=*/{5, 6}},
+                 /*expected_output=*/{5, 6}},
       TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 2},
                  /*begin=*/{0, 0, 1, 1}, /*end=*/{0, 1, 2, 3},
                  /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 0, 0},
@@ -2643,7 +2641,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_strided_slice", &output));
     std::vector<float> output_data(ok_params[i].expected_output.size());
-    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_strided_slice", 
+    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_strided_slice",
                        &output_data);
     EXPECT_THAT(output_data, ElementsAreArray(ok_params[i].expected_output));
   }

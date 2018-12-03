@@ -2033,16 +2033,15 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status GetStridedSliceBound(
-    const std::vector<int>& input_dims,
-    const TRT_ShapedWeights& bound_weights,
-    string bound_name,
-    string node_name,
-    std::vector<int>& output_bound) {
+// Gets the bounds (start or end) from the weights of a StridedSlice op.
+tensorflow::Status GetStridedSliceBound(const std::vector<int>& input_dims,
+                                        const TRT_ShapedWeights& bound_weights,
+                                        string bound_name, string node_name,
+                                        std::vector<int>& output_bound) {
   const int* weights_ptr =
       static_cast<int*>(const_cast<void*>(bound_weights.GetValues()));
-  output_bound = std::vector<int>(weights_ptr,
-                                  weights_ptr + bound_weights.count());
+  output_bound = 
+      std::vector<int>(weights_ptr, weights_ptr + bound_weights.count());
   if (output_bound.size() != input_dims.size()) {
     return tensorflow::errors::InvalidArgument(
         "StridedSlice \"", bound_name, "\" specified ",
@@ -2054,8 +2053,10 @@ tensorflow::Status GetStridedSliceBound(
     if ((output_bound[i] < -input_dims[i]) ||
         (output_bound[i] > input_dims[i])) {
       return tensorflow::errors::InvalidArgument(
-          bound_name, " for StridedSlice is invalid, must be in the range "
-          "[-rank(input), rank(input)], at ", node_name);
+          bound_name,
+          " for StridedSlice is invalid, must be in the range "
+          "[-rank(input), rank(input)], at ",
+          node_name);
     }
     // Convert negative values to their positive equivalent.
     if (output_bound[i] < 0) {
@@ -2072,8 +2073,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
     return tensorflow::errors::InvalidArgument(
         "StridedSlice expects 4 inputs, at ", node_def.name());
   }
-  if (!inputs.at(1).is_weights() ||
-      !inputs.at(2).is_weights() ||
+  if (!inputs.at(1).is_weights() || !inputs.at(2).is_weights() ||
       !inputs.at(3).is_weights()) {
     return tensorflow::errors::InvalidArgument(
         "StridedSlice expects weights for begin, end, and strides, at ",
@@ -2081,8 +2081,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   }
   if (!inputs.at(0).is_tensor()) {
     return tensorflow::errors::Unimplemented(
-        "StridedSlice is only implemented for tensors, at ",
-        node_def.name());
+        "StridedSlice is only implemented for tensors, at ", node_def.name());
   }
   // Get input dims.
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
@@ -2093,8 +2092,8 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   }
   if (input_dims.size() > 4) {
     return tensorflow::errors::Unimplemented(
-      "StridedSlice is not implemented for tensors with rank > 4, at ", 
-      node_def.name());
+        "StridedSlice is not implemented for tensors with rank > 4, at ", 
+        node_def.name());
   }
   TFAttrs attrs(node_def);
   // Get begin and end bounds per axis.
@@ -2124,8 +2123,8 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   for (int x : strides) {
     if (x != 1) {
       return tensorflow::errors::Unimplemented(
-        "StridedSlice is only implemented for stride of 1, at ", 
-        node_def.name());
+          "StridedSlice is only implemented for stride of 1, at ", 
+          node_def.name());
     }
   }
   // Unsupported options.
@@ -2133,23 +2132,22 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
     int ellipsis_mask = attrs.get<int>(attr);
     if (ellipsis_mask != 0) {
       return tensorflow::errors::Unimplemented(
-        attr, " is not implemented for StridedSlice, at ", 
-        node_def.name());
+          attr, " is not implemented for StridedSlice, at ", node_def.name());
     }
   }
 
-  nvinfer1::ITensor* tensor = const_cast<nvinfer1::ITensor*>(
-      inputs.at(0).tensor());
+  nvinfer1::ITensor* tensor = 
+      const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor());
   // Reshape if necessary to 4-D.
   const bool need_reshape = (input_dims.size() != 4);
   int reshape_dims_added = 0;
-  nvinfer1::Dims reshape_dims; 
+  nvinfer1::Dims reshape_dims;
   if (need_reshape) {
     // Add new dims after batch dim until tensor is 4D.
     while (input_dims.size() < 4) {
-      input_dims.insert(input_dims.begin()+1, 1);
-      begin.insert(begin.begin()+1, 0);
-      end.insert(end.begin()+1, 1);
+      input_dims.insert(input_dims.begin() + 1, 1);
+      begin.insert(begin.begin() + 1, 0);
+      end.insert(end.begin() + 1, 1);
       reshape_dims_added++;
     }
     reshape_dims = TensorShapeArrayToTrtDims(input_dims,
@@ -2162,9 +2160,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
       if (i == 0) {
         return tensorflow::errors::Unimplemented(
             "StridedSlice can't modify batch dim, at ", node_def.name());
-      }
-      else if ((end[i] - begin[i]) < 0) {
-        LOG(INFO) << begin[i] << ", " << end[i];
+      } else if ((end[i] - begin[i]) < 0) {
         return tensorflow::errors::InvalidArgument(
             "New size of sliced dimension is negative, at ", node_def.name());
       }
@@ -2187,8 +2183,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
     }
   } else if (pad_dims.size() > 2) {
     return tensorflow::errors::Unimplemented(
-      "StridedSlice can only modify 2 dimensions, at ", 
-      node_def.name());
+        "StridedSlice can only modify 2 dimensions, at ", node_def.name());
   }
   std::sort(pad_dims.begin(), pad_dims.end());
   // Convert to pre/post padding values.
@@ -2245,7 +2240,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   // Restore reshape
   if (need_reshape) {
     // Calculate output dimensions
-    for(int i = 0; i < pad_dims.size(); i++) {
+    for (int i = 0; i < pad_dims.size(); i++) {
       const int axis = pad_dims[i];
       input_dims[axis] = end[axis] - begin[axis];
     }
@@ -2254,14 +2249,13 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
       int value = input_dims[1];
       if (value != 1) {
         return tensorflow::errors::Internal(
-            "StridedSlice error when reshaping, at ", 
-            node_def.name());
+            "StridedSlice error when reshaping, at ", node_def.name());
       }
-      input_dims.erase(input_dims.begin()+1);
+      input_dims.erase(input_dims.begin() + 1);
     }
 
-    nvinfer1::Dims new_dims = TensorShapeArrayToTrtDims(
-        input_dims, /*ignore_first_dim=*/true);
+    nvinfer1::Dims new_dims =
+        TensorShapeArrayToTrtDims(input_dims, /*ignore_first_dim=*/true);
     const nvinfer1::ITensor* output_tensor = nullptr;
     TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
         TRT_TensorOrWeights(tensor), new_dims, &output_tensor));
