@@ -786,11 +786,32 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "only effects core estimator. If you are using "
         "tf.contrib.learn.Estimator, please switch to using core estimator.")
 
+    make_initializable_iterator_deprecation = (
+        "(Manual edit required) The "
+        "`tf.data.Dataset.make_initializable_iterator()` method has been "
+        "removed. If you are using the Estimator API, you can return a dataset "
+        "directly from your input functions without creating an iterator. "
+        "As a last resort, please replace calls to that method on `dataset` "
+        "with a call to "
+        "`tf.compat.v1.data.make_initializable_iterator(dataset)`.")
+
+    make_one_shot_iterator_deprecation = (
+        "(Manual edit required) The "
+        "`tf.data.Dataset.make_one_shot_iterator()` method has been "
+        "removed. If you are using eager execution, you can iterate over "
+        "`dataset` using a Python `for` loop. If you are using the Estimator "
+        "API, you can return a dataset directly from your input functions "
+        "without creating an iterator. As a last resort, please replace calls "
+        "to that method on `dataset` with a call to "
+        "`tf.compat.v1.data.make_one_shot_iterator(dataset)`.")
+
     # Specify warnings for functions that aren't restricted to the tf.x.y.z
     # format. This should only be used for methods with unique names, e.g.
     # export_savedmodel, which is only defined in Estimator objects.
     self.unrestricted_function_warnings = {
         "export_savedmodel": export_saved_model_renamed,
+        "make_initializable_iterator": make_initializable_iterator_deprecation,
+        "make_one_shot_iterator": make_one_shot_iterator_deprecation,
     }
 
   @staticmethod
