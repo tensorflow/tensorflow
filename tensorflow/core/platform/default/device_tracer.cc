@@ -653,7 +653,7 @@ namespace tensorflow {
 
 std::unique_ptr<DeviceTracer> CreateDeviceTracer() { return nullptr; }
 
-DeviceTracer* CreateDeviceTracerRaw() CreateDeviceTracerRaw() { return nullptr; }
+DeviceTracer* CreateDeviceTracerRaw() { return nullptr; }
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA
