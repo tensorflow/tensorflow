@@ -55,6 +55,15 @@ class Initializer(object):
   """
 
   def __call__(self, shape, dtype=None, partition_info=None):
+    """Returns a tensor object initialized as specified by the initializer.
+
+    Args:
+      shape: Shape of the tensor.
+      dtype: Optional dtype of the tensor. If not provided use the initializer
+        dtype.
+      partition_info: Optional information about the possible partitioning of a
+        tensor.
+    """
     raise NotImplementedError
 
   def get_config(self):
@@ -143,7 +152,8 @@ class Constant(Initializer):
     value: A Python scalar, list or tuple of values, or a N-dimensional numpy
       array. All elements of the initialized variable will be set to the
       corresponding value in the `value` argument.
-    dtype: The data type.
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer.
     verify_shape: Boolean that enables verification of the shape of `value`. If
       `True`, the initializer will throw an error if the shape of `value` is not
       compatible with the shape of the initialized tensor.
@@ -239,7 +249,8 @@ class RandomUniform(Initializer):
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed`
       for behavior.
-    dtype: The data type.
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer.
   """
 
   def __init__(self, minval=0, maxval=None, seed=None, dtype=dtypes.float32):
@@ -275,7 +286,8 @@ class RandomNormal(Initializer):
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed`
       for behavior.
-    dtype: The data type. Only floating point types are supported.
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
   """
 
   def __init__(self, mean=0.0, stddev=1.0, seed=None, dtype=dtypes.float32):
@@ -316,7 +328,8 @@ class TruncatedNormal(Initializer):
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed`
       for behavior.
-    dtype: The data type. Only floating point types are supported.
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
   """
 
   def __init__(self, mean=0.0, stddev=1.0, seed=None, dtype=dtypes.float32):
@@ -369,8 +382,9 @@ class UniformUnitScaling(Initializer):
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed`
       for behavior.
-    dtype: The data type. Only floating point types are supported.
-    
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
+
   References:
       [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
       ([pdf](http://arxiv.org/pdf/1412.6558.pdf))
@@ -437,7 +451,8 @@ class VarianceScaling(Initializer):
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed`
       for behavior.
-    dtype: The data type. Only floating point types are supported.
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
 
   Raises:
     ValueError: In case of an invalid value for the "scale", mode" or
@@ -483,7 +498,7 @@ class VarianceScaling(Initializer):
     else:
       scale /= max(1., (fan_in + fan_out) / 2.)
     if self.distribution == "normal" or self.distribution == "truncated_normal":
-      # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
+    # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
       stddev = math.sqrt(scale) / .87962566103423978
       return random_ops.truncated_normal(
           shape, 0.0, stddev, dtype, seed=self.seed)
@@ -534,8 +549,9 @@ class Orthogonal(Initializer):
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed`
       for behavior.
-    dtype: The data type.
-  
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
+
   References:
       [Saxe et al., 2014](https://openreview.net/forum?id=_wzZwKpTDF_9C)
       ([pdf](https://arxiv.org/pdf/1312.6120.pdf))
@@ -592,8 +608,9 @@ class ConvolutionDeltaOrthogonal(Initializer):
       `gain` after applying this convolution.
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed` for behavior.
-    dtype: The data type.
-    
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
+
   References:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
@@ -652,8 +669,9 @@ class ConvolutionOrthogonal(Initializer):
       `gain` after applying this convolution.
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed` for behavior.
-    dtype: The data type.
-    
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
+
   References:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
@@ -721,8 +739,9 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
       a factor of `gain`.
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed` for behavior.
-    dtype: The data type.
-    
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
+
   References:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
@@ -862,8 +881,9 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed`
       for behavior.
-    dtype: The data type.
-    
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
+
   References:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
@@ -982,8 +1002,9 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
       `gain` after applying this convolution.
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed` for behavior.
-    dtype: The data type.
-    
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
+
   References:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
@@ -1132,7 +1153,8 @@ class Identity(Initializer):
 
   Args:
     gain: Multiplicative factor to apply to the identity matrix.
-    dtype: The type of the output.
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
   """
 
   def __init__(self, gain=1.0, dtype=dtypes.float32):
@@ -1170,9 +1192,10 @@ class GlorotUniform(VarianceScaling):
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed`
       for behavior.
-    dtype: The data type. Only floating point types are supported.
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
 
-  References: 
+  References:
       [Glorot et al., 2010](http://proceedings.mlr.press/v9/glorot10a.html)
       ([pdf](http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf))
   """
@@ -1208,9 +1231,10 @@ class GlorotNormal(VarianceScaling):
   Args:
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed` for behavior.
-    dtype: The data type. Only floating point types are supported.
+    dtype: Default data type, used if no `dtype` argument is provided when
+      calling the initializer. Only floating point types are supported.
 
-  References: 
+  References:
       [Glorot et al., 2010](http://proceedings.mlr.press/v9/glorot10a.html)
       ([pdf](http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf))
   """
@@ -1264,7 +1288,7 @@ def lecun_normal(seed=None):
       An initializer.
 
   References:
-      - Self-Normalizing Neural Networks, 
+      - Self-Normalizing Neural Networks,
       [Klambauer et al., 2017](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks)
       ([pdf](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks.pdf))
       - Efficient Backprop,
@@ -1289,7 +1313,7 @@ def lecun_uniform(seed=None):
       An initializer.
 
   References:
-      - Self-Normalizing Neural Networks, 
+      - Self-Normalizing Neural Networks,
       [Klambauer et al., 2017](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks)
       ([pdf](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks.pdf))
       - Efficient Backprop,
