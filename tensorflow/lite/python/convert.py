@@ -301,7 +301,9 @@ def build_toco_convert_protos(input_tensors,
     process.
 
   Raises:
-    ValueError: If the input tensor type is unknown
+    ValueError:
+      If the input tensor type is unknown
+      Missing mean_values or std_dev_values
     RuntimeError: If TOCO fails to convert (in which case the runtime error's
       error text will contain the TOCO error log)
   """
@@ -339,6 +341,9 @@ def build_toco_convert_protos(input_tensors,
     input_array.data_type = convert_dtype_to_tflite_type(input_tensor.dtype)
 
     if toco.inference_input_type == _types_pb2.QUANTIZED_UINT8:
+      if not quantized_input_stats:
+        raise ValueError("std_dev and mean must be defined when "
+                         "inference_input_type is QUANTIZED_UINT8.")
       input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
     if input_shapes is None:
       shape = input_tensor.get_shape()
@@ -387,7 +392,11 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
 
   for idx, (name, shape) in enumerate(input_arrays_with_shape):
     input_array = model_flags.input_arrays.add()
-    if kwargs["inference_type"] == lite_constants.QUANTIZED_UINT8:
+    if toco_flags.inference_input_type == _types_pb2.QUANTIZED_UINT8:
+      if (("quantized_input_stats" not in kwargs) or
+          (not kwargs["quantized_input_stats"])):
+        raise ValueError("std_dev and mean must be defined when "
+                         "inference_input_type is QUANTIZED_UINT8.")
       input_array.mean_value, input_array.std_value = kwargs[
           "quantized_input_stats"][idx]
     input_array.name = name
