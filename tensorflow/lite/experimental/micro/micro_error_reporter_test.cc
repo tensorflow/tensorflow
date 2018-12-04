@@ -21,5 +21,5 @@ int main(int argc, char** argv) {
   error_reporter->Report("Number: %d", 42);
   error_reporter->Report("Badly-formed format string %");
   error_reporter->Report("Another % badly-formed %% format string");
-  error_reporter->Report("~~~%s~~~", "ALL TESTS PASSED");
+  error_reporter->Report("~~~ALL TESTS PASSED~~~");
 }

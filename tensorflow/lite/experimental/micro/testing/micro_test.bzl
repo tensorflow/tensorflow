@@ -8,7 +8,10 @@ def tflite_micro_cc_test(
         defines = [],
         copts = ["-Werror", "-Wno-unused-variable"],
         nocopts = "",
-        linkopts = [],
+        linkopts = select({
+            "@org_tensorflow//tensorflow:linux_ppc64le": ["-lm"],
+            "//conditions:default": [],
+        }),
         deps = [],
         tags = [],
         visibility = None):
