@@ -9,6 +9,14 @@
 // CHECK-DAG: [[map56:#map[0-9]+]] = () -> (56)
 // CHECK-DAG: [[map1Sym:#map[0-9]+]] = ()[s0] -> (s0)
 // CHECK-DAG: [[map1Id:#map[0-9]+]] = (d0) -> (d0)
+// Maps produced from individual affine expressions that appear in "if" conditions.
+// CHECK-DAG: [[setMap20:#map[0-9]+]] = (d0) -> (d0 * -1 + 20)
+// CHECK-DAG: [[setMap10:#map[0-9]+]] = (d0) -> (d0 - 10)
+// CHECK-DAG: [[setMapDiff:#map[0-9]+]] = (d0)[s0, s1, s2, s3] -> (d0 * -1 + s0 + 1)
+// CHECK-DAG: [[setMapS0:#map[0-9]+]] = (d0)[s0, s1, s2, s3] -> (s0 - 1)
+// CHECK-DAG: [[setMapS1:#map[0-9]+]] = (d0)[s0, s1, s2, s3] -> (s1 - 1)
+// CHECK-DAG: [[setMapS2:#map[0-9]+]] = (d0)[s0, s1, s2, s3] -> (s2 - 1)
+// CHECK-DAG: [[setMapS3:#map[0-9]+]] = (d0)[s0, s1, s2, s3] -> (s3 - 42)
 
 // CHECK-LABEL: cfgfunc @empty() {
 mlfunc @empty() {
@@ -288,3 +296,241 @@ mlfunc @affine_apply_loops_shorthand(%N : index) {
   return
 }
 
+/////////////////////////////////////////////////////////////////////
+
+extfunc @get_idx() -> (index)
+
+#set1 = (d0) : (20 - d0 >= 0)
+#set2 = (d0) : (d0 - 10 >= 0)
+
+// CHECK-LABEL: cfgfunc @if_only() {
+// CHECK-NEXT: bb0:
+// CHECK-NEXT:   %0 = call @get_idx() : () -> index
+// CHECK-NEXT:   %c0 = constant 0 : index
+// CHECK-NEXT:   %1 = affine_apply [[setMap20]](%0)
+// CHECK-NEXT:   %2 = cmpi "sge", %1, %c0 : index
+// CHECK-NEXT:   cond_br %2, [[thenBB:bb[0-9]+]], [[elseBB:bb[0-9]+]]
+// CHECK-NEXT: [[thenBB]]:
+// CHECK-NEXT:   call @body(%0) : (index) -> ()
+// CHECK-NEXT:   br [[endBB:bb[0-9]+]]
+// CHECK-NEXT: [[elseBB]]:
+// CHECK-NEXT:   br [[endBB]]
+// CHECK-NEXT: [[endBB]]:
+// CHECK-NEXT:   return
+// CHECK-NEXT: }
+mlfunc @if_only() {
+  %i = call @get_idx() : () -> (index)
+  if #set1(%i) {
+    call @body(%i) : (index) -> ()
+  }
+  return
+}
+
+// CHECK-LABEL: cfgfunc @if_else() {
+// CHECK-NEXT: bb0:
+// CHECK-NEXT:   %0 = call @get_idx() : () -> index
+// CHECK-NEXT:   %c0 = constant 0 : index
+// CHECK-NEXT:   %1 = affine_apply [[setMap20]](%0)
+// CHECK-NEXT:   %2 = cmpi "sge", %1, %c0 : index
+// CHECK-NEXT:   cond_br %2, [[thenBB:bb[0-9]+]], [[elseBB:bb[0-9]+]]
+// CHECK-NEXT: [[thenBB]]:
+// CHECK-NEXT:   call @body(%0) : (index) -> ()
+// CHECK-NEXT:   br [[endBB:bb[0-9]+]]
+// CHECK-NEXT: [[elseBB]]:
+// CHECK-NEXT:   call @mid(%0) : (index) -> ()
+// CHECK-NEXT:   br [[endBB]]
+// CHECK-NEXT: [[endBB]]:
+// CHECK-NEXT:   return
+// CHECK-NEXT: }
+mlfunc @if_else() {
+  %i = call @get_idx() : () -> (index)
+  if #set1(%i) {
+    call @body(%i) : (index) -> ()
+  } else {
+    call @mid(%i) : (index) -> ()
+  }
+  return
+}
+
+// CHECK-LABEL: cfgfunc @nested_ifs() {
+// CHECK-NEXT: bb0:
+// CHECK-NEXT:   %0 = call @get_idx() : () -> index
+// CHECK-NEXT:   %c0 = constant 0 : index
+// CHECK-NEXT:   %1 = affine_apply [[setMap20]](%0)
+// CHECK-NEXT:   %2 = cmpi "sge", %1, %c0 : index
+// CHECK-NEXT:   cond_br %2, [[thenBB:bb[0-9]+]], [[elseBB:bb[0-9]+]]
+// CHECK-NEXT: [[thenBB]]:
+// CHECK-NEXT:   %c0_0 = constant 0 : index
+// CHECK-NEXT:   %3 = affine_apply [[setMap10]](%0)
+// CHECK-NEXT:   %4 = cmpi "sge", %3, %c0_0 : index
+// CHECK-NEXT:   cond_br %4, [[thenThenBB:bb[0-9]+]], [[thenElseBB:bb[0-9]+]]
+// CHECK-NEXT: [[elseBB]]:
+// CHECK-NEXT:   %c0_1 = constant 0 : index
+// CHECK-NEXT:   %5 = affine_apply [[setMap10]](%0)
+// CHECK-NEXT:   %6 = cmpi "sge", %5, %c0_1 : index
+// CHECK-NEXT:   cond_br %6, [[elseThenBB:bb[0-9]+]], [[elseElseBB:bb[0-9]+]]
+// CHECK-NEXT: [[thenThenBB]]:
+// CHECK-NEXT:   call @body(%0) : (index) -> ()
+// CHECK-NEXT:   br [[thenEndBB:bb[0-9]+]]
+// CHECK-NEXT: [[thenElseBB]]:
+// CHECK-NEXT:   br [[thenEndBB]]
+// CHECK-NEXT: [[thenEndBB]]:
+// CHECK-NEXT:   br [[endBB:bb[0-9]+]]
+// CHECK-NEXT: [[elseThenBB]]:
+// CHECK-NEXT:   call @mid(%0) : (index) -> ()
+// CHECK-NEXT:   br [[elseEndBB:bb[0-9]+]]
+// CHECK-NEXT: [[elseElseBB]]:
+// CHECK-NEXT:   br [[elseEndBB]]
+// CHECK-NEXT: [[elseEndBB]]:
+// CHECK-NEXT:   br [[endBB]]
+// CHECK-NEXT: [[endBB]]:
+// CHECK-NEXT:   return
+// CHECK-NEXT: }
+mlfunc @nested_ifs() {
+  %i = call @get_idx() : () -> (index)
+  if #set1(%i) {
+    if #set2(%i) {
+      call @body(%i) : (index) -> ()
+    }
+  } else {
+    if #set2(%i) {
+      call @mid(%i) : (index) -> ()
+    }
+  }
+  return
+}
+
+#setN = (d0)[N,M,K,L] : (N - d0 + 1 >= 0, N - 1 >= 0, M - 1 >= 0, K - 1 >= 0, L - 42 == 0)
+
+// CHECK-LABEL: cfgfunc @multi_cond(index, index, index, index) {
+// CHECK-NEXT: bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index):
+// CHECK-NEXT:   %0 = call @get_idx() : () -> index
+// CHECK-NEXT:   %c0 = constant 0 : index
+// CHECK-NEXT:   %1 = affine_apply [[setMapDiff]](%0)[%arg0, %arg1, %arg2, %arg3]
+// CHECK-NEXT:   %2 = cmpi "sge", %1, %c0 : index
+// CHECK-NEXT:   cond_br %2, [[cond2BB:bb[0-9]+]], [[elseBB:bb[0-9]+]]
+// CHECK-NEXT: [[cond2BB]]:
+// CHECK-NEXT:   %3 = affine_apply [[setMapS0]](%0)[%arg0, %arg1, %arg2, %arg3]
+// CHECK-NEXT:   %4 = cmpi "sge", %3, %c0 : index
+// CHECK-NEXT:   cond_br %4, [[cond3BB:bb[0-9]+]], [[elseBB]]
+// CHECK-NEXT: [[cond3BB]]:
+// CHECK-NEXT:   %5 = affine_apply [[setMapS1]](%0)[%arg0, %arg1, %arg2, %arg3]
+// CHECK-NEXT:   %6 = cmpi "sge", %5, %c0 : index
+// CHECK-NEXT:   cond_br %6, [[cond4BB:bb[0-9]+]], [[elseBB]]
+// CHECK-NEXT: [[cond4BB]]:
+// CHECK-NEXT:   %7 = affine_apply [[setMapS2]](%0)[%arg0, %arg1, %arg2, %arg3]
+// CHECK-NEXT:   %8 = cmpi "sge", %7, %c0 : index
+// CHECK-NEXT:   cond_br %8, [[cond5BB:bb[0-9]+]], [[elseBB]]
+// CHECK-NEXT: [[cond5BB]]:
+// CHECK-NEXT:   %9 = affine_apply [[setMapS3]](%0)[%arg0, %arg1, %arg2, %arg3]
+// CHECK-NEXT:   %10 = cmpi "eq", %9, %c0 : index
+// CHECK-NEXT:   cond_br %10, [[thenBB:bb[0-9]+]], [[elseBB]]
+// CHECK-NEXT: [[thenBB]]:
+// CHECK-NEXT:   call @body(%0) : (index) -> ()
+// CHECK-NEXT:   br [[endBB:bb[0-9]+]]
+// CHECK-NEXT: [[elseBB]]:
+// CHECK-NEXT:   call @mid(%0) : (index) -> ()
+// CHECK-NEXT:   br [[endBB]]
+// CHECK-NEXT: [[endBB]]:
+// CHECK-NEXT:   return
+// CHECK-NEXT: }
+mlfunc @multi_cond(%N : index, %M : index, %K : index, %L : index) {
+  %i = call @get_idx() : () -> (index)
+  if #setN(%i)[%N,%M,%K,%L] {
+    call @body(%i) : (index) -> ()
+  } else {
+    call @mid(%i) : (index) -> ()
+  }
+  return
+}
+
+// CHECK-LABEL: cfgfunc @if_for() {
+mlfunc @if_for() {
+// CHECK-NEXT: bb0:
+// CHECK-NEXT:   %0 = call @get_idx() : () -> index
+  %i = call @get_idx() : () -> (index)
+// CHECK-NEXT:   %c0 = constant 0 : index
+// CHECK-NEXT:   %1 = affine_apply [[setMap20]](%0)
+// CHECK-NEXT:   %2 = cmpi "sge", %1, %c0 : index
+// CHECK-NEXT:   cond_br %2, [[outerThenBB:bb[0-9]+]], [[outerElseBB:bb[0-9]+]]
+// CHECK-NEXT: [[outerThenBB]]:
+// CHECK-NEXT:   br [[midLoopInitBB:bb[0-9]+]]
+// CHECK-NEXT: [[outerElseBB]]:
+// CHECK-NEXT:   br [[outerEndBB:bb[0-9]+]]
+// CHECK-NEXT: [[midLoopInitBB]]:
+// CHECK-NEXT:   %3 = affine_apply [[map0]]()
+// CHECK-NEXT:   %4 = affine_apply [[map42]]()
+// CHECK-NEXT:   br [[midLoopCondBB:bb[0-9]+]](%3 : index)
+// CHECK-NEXT: [[midLoopCondBB]](%5: index):
+// CHECK-NEXT:   %6 = cmpi "slt", %5, %4 : index
+// CHECK-NEXT:   cond_br %6, [[midLoopBodyBB:bb[0-9]+]], [[midLoopEndBB:bb[0-9]+]]
+// CHECK-NEXT: [[midLoopBodyBB]]:
+// CHECK-NEXT:   %c0_0 = constant 0 : index
+// CHECK-NEXT:   %7 = affine_apply [[setMap10]](%5)
+// CHECK-NEXT:   %8 = cmpi "sge", %7, %c0_0 : index
+// CHECK-NEXT:   cond_br %8, [[innerThenBB:bb[0-9]+]], [[innerElseBB:bb[0-9]+]]
+// CHECK-NEXT: [[innerThenBB:bb[0-9]+]]:
+// CHECK-NEXT:   call @body2(%0, %5) : (index, index) -> ()
+// CHECK-NEXT:   br [[innerEndBB:bb[0-9]+]]
+// CHECK-NEXT: [[innerElseBB:bb[0-9]+]]:
+// CHECK-NEXT:   br [[innerEndBB]]
+// CHECK-NEXT: [[innerEndBB]]:
+// CHECK-NEXT:   %c1 = constant 1 : index
+// CHECK-NEXT:   %9 = addi %5, %c1 : index
+// CHECK-NEXT:   br [[midLoopCondBB]](%9 : index)
+// CHECK-NEXT: [[midLoopEndBB]]:
+// CHECK-NEXT:   br [[outerEndBB]]
+// CHECK-NEXT: [[outerEndBB]]:
+// CHECK-NEXT:   br [[outerLoopInit:bb[0-9]+]]
+  if #set1(%i) {
+    for %j = 0 to 42 {
+      if #set2(%j) {
+        call @body2(%i, %j) : (index, index) -> ()
+      }
+    }
+  }
+// CHECK-NEXT: [[outerLoopInit]]:
+// CHECK-NEXT:   %10 = affine_apply [[map0]]()
+// CHECK-NEXT:   %11 = affine_apply [[map42]]()
+// CHECK-NEXT:   br [[outerLoopCond:bb[0-9]+]](%10 : index)
+// CHECK-NEXT: [[outerLoopCond]](%12: index):
+// CHECK-NEXT:   %13 = cmpi "slt", %12, %11 : index
+// CHECK-NEXT:   cond_br %13, [[outerLoopBody:bb[0-9]+]], [[outerLoopEnd:bb[0-9]+]]
+// CHECK-NEXT: [[outerLoopBody]]:
+// CHECK-NEXT:   %c0_1 = constant 0 : index
+// CHECK-NEXT:   %14 = affine_apply [[setMap10]](%12)
+// CHECK-NEXT:   %15 = cmpi "sge", %14, %c0_1 : index
+// CHECK-NEXT:   cond_br %15, [[midThenBB:bb[0-9]+]], [[midElseBB:bb[0-9]+]]
+// CHECK-NEXT: [[midThenBB]]:
+// CHECK-NEXT:   br [[innerLoopInitBB:bb[0-9]+]]
+// CHECK-NEXT: [[midElseBB]]:
+// CHECK-NEXT:   br [[midEndBB:bb[0-9]+]]
+// CHECK-NEXT: [[innerLoopInitBB:bb[0-9]+]]:
+// CHECK-NEXT:   %16 = affine_apply [[map0]]()
+// CHECK-NEXT:   %17 = affine_apply [[map42]]()
+// CHECK-NEXT:   br [[innerLoopCondBB:bb[0-9]+]](%16 : index)
+// CHECK-NEXT: [[innerLoopCondBB]](%18: index):
+// CHECK-NEXT:   %19 = cmpi "slt", %18, %17 : index
+// CHECK-NEXT:   cond_br %19, [[innerLoopBodyBB:bb[0-9]+]], [[innerLoopEndBB:bb[0-9]+]]
+// CHECK-NEXT: [[innerLoopBodyBB]]:
+// CHECK-NEXT:   call @body3(%12, %18) : (index, index) -> ()
+// CHECK-NEXT:   %c1_2 = constant 1 : index
+// CHECK-NEXT:   %20 = addi %18, %c1_2 : index
+// CHECK-NEXT:   br [[innerLoopCondBB]](%20 : index)
+// CHECK-NEXT: [[innerLoopEndBB]]:
+// CHECK-NEXT:   br [[midEndBB]]
+// CHECK-NEXT: [[midEndBB]]:
+// CHECK-NEXT:   %c1_3 = constant 1 : index
+// CHECK-NEXT:   %21 = addi %12, %c1_3 : index
+// CHECK-NEXT:   br [[outerLoopCond]](%21 : index)
+  for %k = 0 to 42 {
+    if #set2(%k) {
+      for %l = 0 to 42 {
+        call @body3(%k, %l) : (index, index) -> ()
+      }
+    }
+  }
+// CHECK-NEXT: [[outerLoopEnd]]:
+// CHECK-NEXT:   return
+  return
+}
