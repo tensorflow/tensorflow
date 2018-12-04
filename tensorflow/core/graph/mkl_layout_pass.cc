@@ -1100,7 +1100,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     DCHECK(n);
 
     float alpha;
-    DCHECK(GetNodeAttr(n->def(), "alpha", &alpha).ok());
+    bool has_attr = GetNodeAttr(n->def(), "alpha", &alpha).ok();
+    DCHECK(has_attr);
 
     // If the alpha of LeakyRelu is less than 1, rewrite the node.
     // Otherwise eigen node is used instead.
