@@ -2850,43 +2850,6 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
       b = variables.Variable([3.0], name="b")
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
 
-  @test_util.run_deprecated_v1
-  def testInconsistentDeviceWithinColocate(self):
-    with ops.device("/device:GPU:0"):
-      a = constant_op.constant([2.0], name="a")
-      with ops.colocate_with(a.op):
-        # This is allowed due to legacy but clearly wrong, since we
-        # should really be colocating with 'a'.  We allow devices to
-        # override colocate_with, but we log warnings to suggest that
-        # this is probably unintentional or misguided.
-        with ops.device("/cpu:0"):
-          b = constant_op.constant([3.0], name="b")
-
-    self.assertEqual("/device:CPU:0", b.device)
-
-  @test_util.run_deprecated_v1
-  def testMakeColocationConflictMessage(self):
-    """Test that provides an example of a complicated error message."""
-    # We could test the message with any ops, but this test will be more
-    # instructive with a real colocation conflict.
-    with ops.device("/device:GPU:0"):
-      a = constant_op.constant([2.0], name="a")
-      with ops.colocate_with(a.op):
-        with ops.device("/cpu:0"):
-          b = constant_op.constant([3.0], name="b")
-    # The definition-location of the nodes will be wrong because of running
-    # from within a TF unittest.  The rest of the info should be correct.
-    message = ops.get_default_graph()._make_colocation_conflict_message(a.op,
-                                                                        b.op)
-    self.assertRegexpMatches(message,
-                             r"Tried to colocate op 'a' \(defined at.*\)")
-    self.assertRegexpMatches(message, "No node-device.*'a'")
-    self.assertRegexpMatches(message, "Device assignments active.*'a'")
-    self.assertRegexpMatches(message, "GPU:0")
-    self.assertRegexpMatches(message, "Node-device colocations active.*'b'")
-    self.assertRegexpMatches(message, "Device assignments active.*'b'")
-    self.assertRegexpMatches(message, "cpu:0")
-
 
 class DeprecatedTest(test_util.TensorFlowTestCase):
 

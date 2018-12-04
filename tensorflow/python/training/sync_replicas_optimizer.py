@@ -44,6 +44,9 @@ from tensorflow.python.util.tf_export import tf_export
 class SyncReplicasOptimizer(optimizer.Optimizer):
   """Class to synchronize, aggregate gradients and pass them to the optimizer.
 
+  This class is deprecated. For synchrononous training, please use [Distribution
+  Strategies](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute).
+
   In a typical asynchronous training environment, it's common to have some
   stale gradients. For example, with a N-replica asynchronous training,
   gradients will be applied to the variables N times independently. Depending
@@ -142,9 +145,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
   @deprecation.deprecated(
       None,
-      "The `SyncReplicaOptimizer` is deprecated. For synchrononous training, "
-      "please use [Distribution Strategies](https://github.com/tensorflow/"
-      "tensorflow/tree/master/tensorflow/contrib/distribute).",
+      "The `SyncReplicaOptimizer` class is deprecated. For synchrononous "
+      "training, please use [Distribution Strategies](https://github.com/"
+      "tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute).",
       warn_once=True)
   def __init__(self,
                opt,

@@ -746,9 +746,9 @@ Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
   }
   if (available_device_count < arg->device_count() * replica_count) {
     return ResourceExhausted(
-        "Requested device count (%d) exceeds the number of available devices "
-        "on the target (%d)",
-        arg->device_count(), available_device_count);
+        "Requested logical device count (%d) with replica count (%d) exceeds "
+        "the number of available physical devices on the target (%d)",
+        arg->device_count(), replica_count, available_device_count);
   }
 
   for (int64 i = 0; i < arg->device_count(); ++i) {

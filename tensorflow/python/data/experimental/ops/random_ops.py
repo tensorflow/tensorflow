@@ -24,7 +24,7 @@ from tensorflow.python.data.util import random_seed
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -38,7 +38,7 @@ class RandomDatasetV2(dataset_ops.DatasetSource):
     self._seed, self._seed2 = random_seed.get_seed(seed)
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.random_dataset(
+    return gen_experimental_dataset_ops.experimental_random_dataset(
         seed=self._seed,
         seed2=self._seed2,
         **dataset_ops.flat_structure(self))

@@ -51,8 +51,8 @@ def prefetch_to_device(device, buffer_size=None):
     `tf.data.Dataset.apply`.
   """
   def _apply_fn(dataset):
-    return _CopyToDeviceDataset(
-        dataset, target_device=device).prefetch(buffer_size)
+    return dataset.apply(
+        copy_to_device(target_device=device)).prefetch(buffer_size)
 
   return _apply_fn
 
@@ -71,8 +71,11 @@ def copy_to_device(target_device, source_device="/cpu:0"):
   """
 
   def _apply_fn(dataset):
+    options = dataset_ops.Options()
+    options.experimental_autotune = False
     return _CopyToDeviceDataset(
-        dataset, target_device=target_device, source_device=source_device)
+        dataset, target_device=target_device,
+        source_device=source_device).with_options(options)
 
   return _apply_fn
 
@@ -239,36 +242,32 @@ class _MapOnGpuDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
 
-    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+    self._map_func = dataset_ops.StructuredFunctionWrapper(
         map_func,
         self._transformation_name(),
         dataset=input_dataset,
         defun_kwargs={"experimental_ints_on_device": True})
-    self._output_classes = wrapped_func.output_classes
-    self._output_shapes = wrapped_func.output_shapes
-    self._output_types = wrapped_func.output_types
-    self._map_func = wrapped_func.function
 
   def _as_variant_tensor(self):
     input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
     return ged_ops.experimental_map_dataset(
         input_t,
-        self._map_func.captured_inputs,
-        f=self._map_func,
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
         use_inter_op_parallelism=self._use_inter_op_parallelism,
         **dataset_ops.flat_structure(self))
 
   @property
   def output_classes(self):
-    return self._output_classes
+    return self._map_func.output_classes
 
   @property
   def output_shapes(self):
-    return self._output_shapes
+    return self._map_func.output_shapes
 
   @property
   def output_types(self):
-    return self._output_types
+    return self._map_func.output_types
 
   def _transformation_name(self):
     return "map_on_gpu()"

@@ -27,6 +27,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
@@ -1688,9 +1689,8 @@ class Model(Network):
                 self._distribution_strategy, first_x_value, steps_per_epoch,
                 batch_size, is_training=True))
 
-    # Backwards compatibility
-    if batch_size is None and steps_per_epoch is None:
-      batch_size = 32
+    batch_size = self._validate_or_infer_batch_size(batch_size, steps_per_epoch,
+                                                    x)
 
     x, y, sample_weights = self._standardize_user_data(
         x,
@@ -1923,9 +1923,7 @@ class Model(Network):
         steps, batch_size = distributed_training_utils.get_input_params(
             self._distribution_strategy, first_x_value, steps, batch_size)
 
-    # Backwards compatibility.
-    if batch_size is None and steps is None:
-      batch_size = 32
+    batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
 
     x, y, sample_weights = self._standardize_user_data(
         x,
@@ -1949,7 +1947,8 @@ class Model(Network):
         self._distribution_strategy):
       return training_distributed.experimental_test_loop(
           self, iterator=x, verbose=verbose, steps=steps)
-    elif isinstance(x, iterator_ops.EagerIterator):
+    elif (isinstance(x, iterator_ops.EagerIterator) and
+          not self._distribution_strategy):
       return training_generator.evaluate_generator(
           self,
           x,
@@ -2037,9 +2036,7 @@ class Model(Network):
         steps, batch_size = distributed_training_utils.get_input_params(
             self._distribution_strategy, first_x_value, steps, batch_size)
 
-    # Backwards compatibility.
-    if batch_size is None and steps is None:
-      batch_size = 32
+    batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
 
     # Validate and standardize user data.
     if self._distribution_strategy:
@@ -2060,7 +2057,8 @@ class Model(Network):
         self._distribution_strategy):
       return training_distributed.experimental_predict_loop(
           self, x, verbose=verbose, steps=steps)
-    elif isinstance(x, iterator_ops.EagerIterator):
+    elif (isinstance(x, iterator_ops.EagerIterator) and
+          not self._distribution_strategy):
       return training_generator.predict_generator(
           self,
           x,
@@ -2482,6 +2480,56 @@ class Model(Network):
     # We initialize the callback model with the first replicated model.
     self._replicated_model = DistributedCallbackModel(first_replicated_model)
     self._replicated_model.set_original_model(self)
+
+  def _validate_or_infer_batch_size(self, batch_size, steps, x):
+    """Validates that the `batch_size` provided is consistent with InputLayer.
+
+    It's possible that the user specified a static batch size in their
+    InputLayer. If so, this method checks the provided `batch_size` and `x`
+    arguments are consistent with this static batch size. Also, if
+    `batch_size` is `None`, this method will attempt to infer the batch size
+    from the static batch size of the InputLayer.
+
+    Arguments:
+      batch_size: The batch_size provided as an argument to
+        fit/evaluate/predict.
+      steps: The steps provided as an argument to fit/evaluate/predict.
+      x: The data passed as `x` to fit/evaluate/predict.
+
+    Returns:
+      The validated batch_size, auto-inferred from the first layer if not
+      provided.
+    """
+    first_layer = super(Model,
+                        self).layers[0]  # Avoids the override in Sequential.
+    static_batch_size = training_utils.get_static_batch_size(first_layer)
+    if static_batch_size is not None:
+
+      # Check `batch_size` argument is consistent with InputLayer.
+      if batch_size is not None and batch_size != static_batch_size:
+        raise ValueError('The `batch_size` argument value ' + str(batch_size) +
+                         ' is incompatible with the specified batch size '
+                         'of your Input Layer: ' + str(static_batch_size))
+
+      # Check Dataset/Iterator batch size is consistent with InputLayer.
+      if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
+                        iterator_ops.EagerIterator)):
+        ds_batch_size = tensor_shape.as_dimension(
+            nest.flatten(x.output_shapes)[0][0]).value
+        if ds_batch_size is not None and ds_batch_size != static_batch_size:
+          raise ValueError('The batch output shape of your `Dataset` is ' +
+                           str(ds_batch_size) + ' which is incompatible '
+                           'with the specified batch size of your Input '
+                           'Layer: ' + str(static_batch_size))
+
+      # Set inferred batch size from the InputLayer.
+      if steps is None:
+        batch_size = static_batch_size
+
+    if batch_size is None and steps is None:
+      # Backwards compatibility
+      batch_size = 32
+    return batch_size
 
 
 class DistributedCallbackModel(Model):

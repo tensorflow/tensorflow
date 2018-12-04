@@ -161,15 +161,14 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
     # pylint: disable=protected-access
     return ged_ops.experimental_parallel_interleave_dataset(
         self._input_dataset._as_variant_tensor(),
-        self._map_func.captured_inputs,
+        self._map_func.function.captured_inputs,
         self._cycle_length,
         self._block_length,
         self._sloppy,
         self._buffer_output_elements,
         self._prefetch_input_elements,
-        f=self._map_func,
-        **dataset_ops.flat_structure(self))
-    # pylint: enable=protected-access
+        f=self._map_func.function,
+        **dataset_ops.flat_structure(structure=self._output_structure))
 
   def _transformation_name(self):
     return "tf.data.experimental.parallel_interleave()"

@@ -297,7 +297,8 @@ class DatasetV2(object):
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization. If `tensors`
     contains one or more large NumPy arrays, consider the alternative described
-    in [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    in [this
+    guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors.
@@ -316,7 +317,8 @@ class DatasetV2(object):
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization. If `tensors`
     contains one or more large NumPy arrays, consider the alternative described
-    in [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    in [this guide](
+    https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors, each having the same size in the
@@ -1888,6 +1890,9 @@ class DatasetStructure(structure_lib.Structure):
   def _to_legacy_output_classes(self):
     return self
 
+  def _batch(self, batch_size):
+    raise NotImplementedError("Batching for `tf.data.Dataset` objects.")
+
 
 # pylint: disable=protected-access
 structure_lib.Structure._register_custom_converter(DatasetV2,
@@ -2028,8 +2033,10 @@ class StructuredFunctionWrapper(object):
     return self._function
 
 
-def flat_structure(dataset):
+def flat_structure(dataset=None, structure=None):
   """Helper for setting `output_shapes` and `output_types` attrs of Dataset ops.
+
+  Either `dataset` or `structure` must be passed to this function.
 
   Most Dataset op constructors expect `output_shapes` and `output_types`
   arguments that represent the flattened structure of an element. This helper
@@ -2038,15 +2045,17 @@ def flat_structure(dataset):
   `**flat_structure(self)` to the op constructor.
 
   Args:
-    dataset: A `tf.data.Dataset`.
+    dataset: (Optional.) A `tf.data.Dataset`.
+    structure: (Optional.) A `Structure`.
 
   Returns:
     A dictionary of keyword arguments that can be passed to many Dataset op
     constructors.
   """
   # pylint: disable=protected-access
-  structure = structure_lib.Structure._from_legacy_structure(
-      dataset.output_types, dataset.output_shapes, dataset.output_classes)
+  if structure is None:
+    structure = structure_lib.Structure._from_legacy_structure(
+        dataset.output_types, dataset.output_shapes, dataset.output_classes)
   return {
       "output_shapes": structure._flat_shapes,
       "output_types": structure._flat_types,
@@ -2421,37 +2430,37 @@ class BatchDataset(UnaryDataset):
     self._drop_remainder = ops.convert_to_tensor(
         drop_remainder, dtype=dtypes.bool, name="drop_remainder")
 
-  def _as_variant_tensor(self):
-    # TODO(jsimsa): Switch to using v2 only any time after 6/30/2018.
-    if smart_cond.smart_constant_value(self._drop_remainder) is False:
-      return gen_dataset_ops.batch_dataset(
-          self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          batch_size=self._batch_size,
-          **flat_structure(self))
+    # pylint: disable=protected-access
+    input_structure = structure_lib.Structure._from_legacy_structure(
+        input_dataset.output_types, input_dataset.output_shapes,
+        input_dataset.output_classes)
+    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
+    if constant_drop_remainder:
+      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
+      # or `False` (explicitly retaining the remainder).
+      self._output_structure = input_structure._batch(
+          tensor_util.constant_value(self._batch_size))
     else:
-      return gen_dataset_ops.batch_dataset_v2(
-          self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          batch_size=self._batch_size,
-          drop_remainder=self._drop_remainder,
-          **flat_structure(self))
+      self._output_structure = input_structure._batch(None)
+
+  def _as_variant_tensor(self):
+    return gen_dataset_ops.batch_dataset_v2(
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        batch_size=self._batch_size,
+        drop_remainder=self._drop_remainder,
+        **flat_structure(structure=self._output_structure))
 
   @property
   def output_classes(self):
-    return self._input_dataset.output_classes
+    return self._output_structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
   def output_shapes(self):
-    input_shapes = self._input_dataset.output_shapes
-    return nest.pack_sequence_as(input_shapes, [
-        tensor_shape.vector(
-            tensor_util.constant_value(self._batch_size) if smart_cond.
-            smart_constant_value(self._drop_remainder) else None).concatenate(s)
-        for s in nest.flatten(self._input_dataset.output_shapes)
-    ])
+    return self._output_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
   def output_types(self):
-    return self._input_dataset.output_types
+    return self._output_structure._to_legacy_output_types()  # pylint: disable=protected-access
 
 
 def _is_padded_shape_compatible_with(padded_shape, input_component_shape):
@@ -2677,34 +2686,29 @@ class MapDataset(UnaryDataset):
     super(MapDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
-
-    wrapped_func = StructuredFunctionWrapper(
+    self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
-    self._output_classes = wrapped_func.output_classes
-    self._output_shapes = wrapped_func.output_shapes
-    self._output_types = wrapped_func.output_types
-    self._map_func = wrapped_func.function
 
   def _as_variant_tensor(self):
     input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
     return gen_dataset_ops.map_dataset(
         input_t,
-        self._map_func.captured_inputs,
-        f=self._map_func,
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
         use_inter_op_parallelism=self._use_inter_op_parallelism,
-        **flat_structure(self))
+        **flat_structure(structure=self._map_func.output_structure))
 
   @property
   def output_classes(self):
-    return self._output_classes
+    return self._map_func.output_classes
 
   @property
   def output_shapes(self):
-    return self._output_shapes
+    return self._map_func.output_shapes
 
   @property
   def output_types(self):
-    return self._output_types
+    return self._map_func.output_types
 
   def _transformation_name(self):
     return "Dataset.map()"
@@ -2726,16 +2730,15 @@ class ParallelMapDataset(MapDataset):
         num_parallel_calls, dtype=dtypes.int32, name="num_parallel_calls")
 
   def _as_variant_tensor(self):
-    input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
     # pylint: disable=protected-access
+    input_t = self._input_dataset._as_variant_tensor()
     return gen_dataset_ops.parallel_map_dataset(
         input_t,
-        self._map_func.captured_inputs,
-        f=self._map_func,
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
         num_parallel_calls=self._num_parallel_calls,
         use_inter_op_parallelism=self._use_inter_op_parallelism,
-        **flat_structure(self))
-    # pylint: enable=protected-access
+        **flat_structure(structure=self._map_func.output_structure))
 
 
 class FlatMapDataset(UnaryDataset):
@@ -2746,35 +2749,30 @@ class FlatMapDataset(UnaryDataset):
     super(FlatMapDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
 
-    wrapped_func = StructuredFunctionWrapper(
+    self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
-    if not isinstance(wrapped_func.output_structure, DatasetStructure):
+    if not isinstance(self._map_func.output_structure, DatasetStructure):
       raise TypeError("`map_func` must return a `Dataset` object.")
-    # pylint: disable=protected-access
-    element_structure = wrapped_func.output_structure._element_structure
-    self._output_classes = element_structure._to_legacy_output_classes()
-    self._output_types = element_structure._to_legacy_output_types()
-    self._output_shapes = element_structure._to_legacy_output_shapes()
-    self._map_func = wrapped_func.function
+    self._output_structure = self._map_func.output_structure._element_structure  # pylint: disable=protected-access
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.flat_map_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._map_func.captured_inputs,
-        f=self._map_func,
-        **flat_structure(self))
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
+        **flat_structure(structure=self._output_structure))
 
   @property
   def output_classes(self):
-    return self._output_classes
+    return self._output_structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
   def output_shapes(self):
-    return self._output_shapes
+    return self._output_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
   def output_types(self):
-    return self._output_types
+    return self._output_structure._to_legacy_output_types()  # pylint: disable=protected-access
 
   def _transformation_name(self):
     return "Dataset.flat_map()"
@@ -2793,13 +2791,14 @@ class InterleaveDataset(FlatMapDataset):
         block_length, dtype=dtypes.int64, name="block_length")
 
   def _as_variant_tensor(self):
+    # pylint: disable=protected-access
     return gen_dataset_ops.interleave_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._map_func.captured_inputs,  # pylint: disable=protected-access
+        self._input_dataset._as_variant_tensor(),
+        self._map_func.function.captured_inputs,
         self._cycle_length,
         self._block_length,
-        f=self._map_func,  # pylint: disable=protected-access
-        **flat_structure(self))
+        f=self._map_func.function,
+        **flat_structure(structure=self._output_structure))
 
   def _transformation_name(self):
     return "Dataset.interleave()"
@@ -2822,14 +2821,15 @@ class ParallelInterleaveDataset(FlatMapDataset):
         num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
 
   def _as_variant_tensor(self):
+    # pylint: disable=protected-access
     return gen_dataset_ops.parallel_interleave_dataset_v2(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._map_func.captured_inputs,  # pylint: disable=protected-access
+        self._input_dataset._as_variant_tensor(),
+        self._map_func.function.captured_inputs,
         self._cycle_length,
         self._block_length,
         self._num_parallel_calls,
-        f=self._map_func,  # pylint: disable=protected-access
-        **flat_structure(self))
+        f=self._map_func.function,
+        **flat_structure(structure=self._output_structure))
 
   def _transformation_name(self):
     return "Dataset.interleave()"

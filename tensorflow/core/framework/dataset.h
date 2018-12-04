@@ -163,7 +163,7 @@ class GraphDefBuilderWrapper {
                     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
                     Node** output) {
     std::vector<std::pair<size_t, Node*>> enumerated_inputs(inputs.size());
-    for (int i = 0; i < inputs.size(); i++) {
+    for (size_t i = 0; i < inputs.size(); i++) {
       enumerated_inputs[i] = std::make_pair(i, inputs[i]);
     }
     return AddDataset(dataset, enumerated_inputs, {}, attrs, output);
