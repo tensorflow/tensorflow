@@ -106,13 +106,48 @@ class ControlFlowTransformer(converter.Base):
       return 'no variables'
     return ', '.join(map(str, symbol_set))
 
-  def visit_If(self, node):
-    node = self.generic_visit(node)
+  def _determine_aliased_symbols(self, scope, node_defined_in, block):
+    if block:
+      block_live_in = set(anno.getanno(block[0], anno.Static.LIVE_VARS_IN))
+    else:
+      block_live_in = set()
 
+    # For the purpose of aliasing, composite symbols with live owners are live
+    # as well. Otherwise this would leak tensors from the conditional's body.
+    #
+    # For example:
+    #
+    #   obj = some_obj
+    #   if cond:
+    #     obj.a = val
+    #
+    # Thanslating to the code below would be incorrect:
+    #
+    #   def true_fn():
+    #     obj.a = val()  # Wrong! leaks ops owned by true_fn
+    #     return obj.a
+    for s in scope.modified:
+      if s.is_composite():
+        live_parents = block_live_in & s.owner_set
+        if live_parents:
+          block_live_in.add(s)
+    return scope.modified & node_defined_in & block_live_in
+
+  def visit_If(self, node):
     body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
     orelse_scope = anno.getanno(node, annos.NodeAnno.ORELSE_SCOPE)
     defined_in = anno.getanno(node, anno.Static.DEFINED_VARS_IN)
     live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
+
+    # Note: this information needs to be extracted before the body conversion
+    # that happens in the call to generic_visit below, because the conversion
+    # generates nodes that lack static analysis annotations.
+    need_alias_in_body = self._determine_aliased_symbols(
+        body_scope, defined_in, node.body)
+    need_alias_in_orelse = self._determine_aliased_symbols(
+        orelse_scope, defined_in, node.orelse)
+
+    node = self.generic_visit(node)
 
     modified_in_cond = body_scope.modified | orelse_scope.modified
     returned_from_cond = set()
@@ -124,9 +159,6 @@ class ControlFlowTransformer(converter.Base):
         # are live, then they are outputs as well.
         if live_out & s.owner_set:
           returned_from_cond.add(s)
-
-    need_alias_in_body = body_scope.modified & defined_in
-    need_alias_in_orelse = orelse_scope.modified & defined_in
 
     created_in_body = body_scope.modified & returned_from_cond - defined_in
     created_in_orelse = orelse_scope.modified & returned_from_cond - defined_in
