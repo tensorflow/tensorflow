@@ -89,7 +89,7 @@ void PrintOpStatsPass::printSummary() {
     auto dialectEnd = opName.find_last_of('.');
     if (dialectEnd == StringRef::npos)
       return 0;
-    // Count the periond too.
+    // Count the period too.
     return dialectEnd + 1;
   };
 
@@ -116,7 +116,8 @@ void PrintOpStatsPass::printSummary() {
   for (const auto &key : sorted) {
     size_t prefix = maxLenDialect - dialectLen(key);
     os.indent(2 + prefix) << '\'' << key << '\'';
-    os.indent(maxLenName - key.size() - prefix) << " ,";
+    // Add one to compensate for the period of the dialect.
+    os.indent(maxLenName + 1 - key.size() - prefix) << " ,";
     os.indent(maxLenCount - (int)log10(opCount[key])) << opCount[key] << "\n";
   }
 }
