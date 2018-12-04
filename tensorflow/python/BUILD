@@ -3250,6 +3250,7 @@ cuda_py_test(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
