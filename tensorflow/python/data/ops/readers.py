@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -158,17 +159,16 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
-    return gen_dataset_ops.parallel_interleave_dataset(
+    return ged_ops.experimental_parallel_interleave_dataset(
         self._input_dataset._as_variant_tensor(),
-        self._map_func.captured_inputs,
+        self._map_func.function.captured_inputs,
         self._cycle_length,
         self._block_length,
         self._sloppy,
         self._buffer_output_elements,
         self._prefetch_input_elements,
-        f=self._map_func,
-        **dataset_ops.flat_structure(self))
-    # pylint: enable=protected-access
+        f=self._map_func.function,
+        **dataset_ops.flat_structure(structure=self._output_structure))
 
   def _transformation_name(self):
     return "tf.data.experimental.parallel_interleave()"

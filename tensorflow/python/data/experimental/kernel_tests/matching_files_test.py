@@ -23,6 +23,7 @@ import tempfile
 
 from tensorflow.python.data.experimental.ops import matching_files
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
@@ -49,7 +50,7 @@ class MatchingFilesTest(test_base.DatasetTestBase):
     dataset = matching_files.MatchingFilesDataset(
         os.path.join(self.tmp_dir, '*'))
     with self.cached_session() as sess:
-      next_element = dataset.make_one_shot_iterator().get_next()
+      next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
       with self.assertRaises(errors.NotFoundError):
         sess.run(next_element)
 
@@ -60,7 +61,7 @@ class MatchingFilesTest(test_base.DatasetTestBase):
     dataset = matching_files.MatchingFilesDataset(
         os.path.join(self.tmp_dir, '*'))
     with self.cached_session() as sess:
-      next_element = dataset.make_one_shot_iterator().get_next()
+      next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
       with self.assertRaises(errors.NotFoundError):
         sess.run(next_element)
 
@@ -74,7 +75,7 @@ class MatchingFilesTest(test_base.DatasetTestBase):
     dataset = matching_files.MatchingFilesDataset(
         os.path.join(self.tmp_dir, '*'))
     with self.cached_session() as sess:
-      next_element = dataset.make_one_shot_iterator().get_next()
+      next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
       expected_filenames = []
       actual_filenames = []
@@ -97,7 +98,7 @@ class MatchingFilesTest(test_base.DatasetTestBase):
     dataset = matching_files.MatchingFilesDataset(
         os.path.join(self.tmp_dir, '*.py'))
     with self.cached_session() as sess:
-      next_element = dataset.make_one_shot_iterator().get_next()
+      next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
       expected_filenames = []
       actual_filenames = []
       for filename in filenames[1:-1]:
@@ -119,7 +120,7 @@ class MatchingFilesTest(test_base.DatasetTestBase):
     dataset = matching_files.MatchingFilesDataset(
         os.path.join(self.tmp_dir, 'b*.py*'))
     with self.cached_session() as sess:
-      next_element = dataset.make_one_shot_iterator().get_next()
+      next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
       expected_filenames = []
       actual_filenames = []
       for filename in filenames[1:3]:
@@ -156,7 +157,7 @@ class MatchingFilesTest(test_base.DatasetTestBase):
 
     dataset = matching_files.MatchingFilesDataset(patterns)
     with self.cached_session() as sess:
-      next_element = dataset.make_one_shot_iterator().get_next()
+      next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
       expected_filenames = [
           compat.as_bytes(filename)
           for filename in filenames

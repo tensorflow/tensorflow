@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 
 
@@ -93,7 +94,7 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_fn()
     dataset = dataset_transformation(dataset, aggregator)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
     summary_t = aggregator.get_summary()
 

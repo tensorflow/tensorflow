@@ -23,6 +23,7 @@ import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
@@ -482,7 +483,7 @@ class Adam(Optimizer):
 
   def get_updates(self, loss, params):
     grads = self.get_gradients(loss, params)
-    self.updates = [state_ops.assign_add(self.iterations, 1)]
+    self.updates = []
 
     lr = self.lr
     if self.initial_decay > 0:
@@ -490,7 +491,8 @@ class Adam(Optimizer):
           1. / (1. + self.decay * math_ops.cast(self.iterations,
                                                 K.dtype(self.decay))))
 
-    t = math_ops.cast(self.iterations, K.floatx()) + 1
+    with ops.control_dependencies([state_ops.assign_add(self.iterations, 1)]):
+      t = math_ops.cast(self.iterations, K.floatx())
     lr_t = lr * (
         K.sqrt(1. - math_ops.pow(self.beta_2, t)) /
         (1. - math_ops.pow(self.beta_1, t)))

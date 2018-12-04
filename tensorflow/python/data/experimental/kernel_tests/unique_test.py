@@ -44,7 +44,7 @@ class UniqueTest(test_base.DatasetTestBase):
     current_test_case = []
     dataset = dataset_ops.Dataset.from_generator(lambda: current_test_case,
                                                  dtype).apply(unique.unique())
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:

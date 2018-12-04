@@ -49,7 +49,7 @@ class OptimizationBenchmark(test.Benchmark):
         options.experimental_map_fusion = True
         dataset = dataset.with_options(options)
 
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       next_element = iterator.get_next()
 
       with session.Session() as sess:
@@ -91,7 +91,7 @@ class OptimizationBenchmark(test.Benchmark):
         options = dataset_ops.Options()
         options.experimental_map_and_filter_fusion = True
         dataset = dataset.with_options(options)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       next_element = iterator.get_next()
 
       with session.Session() as sess:

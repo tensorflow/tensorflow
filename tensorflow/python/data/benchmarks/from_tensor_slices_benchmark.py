@@ -41,7 +41,7 @@ class FromTensorSlicesBenchmark(test.Benchmark):
     dataset = (
         dataset_ops.Dataset.from_tensor_slices(input_data)
         .repeat(num_epochs + 1).batch(batch_size))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     with session.Session() as sess:
@@ -77,7 +77,7 @@ class FromTensorSlicesBenchmark(test.Benchmark):
     dataset = (
         dataset_ops.Dataset.from_tensor_slices(input_data)
         .repeat(num_epochs + 1).batch(batch_size))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     with session.Session() as sess:
@@ -116,7 +116,7 @@ class FromTensorSlicesBenchmark(test.Benchmark):
     dataset = (
         dataset_ops.Dataset.from_tensor_slices(input_data.reshape(100, 100))
         .repeat(num_epochs + 1))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     with session.Session() as sess:
@@ -154,7 +154,7 @@ class FromTensorSlicesBenchmark(test.Benchmark):
     dataset = (
         dataset_ops.Dataset.from_tensor_slices(input_data).batch(batch_size)
         .cache().repeat(num_epochs + 1))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     with session.Session() as sess:

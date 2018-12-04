@@ -58,7 +58,7 @@ class MapBenchmark(test.Benchmark):
                 dataset,
                 map_fn,
                 use_inter_op_parallelism=use_inter_op_parallelism)
-          iterator = dataset.make_one_shot_iterator()
+          iterator = dataset_ops.make_one_shot_iterator(dataset)
           next_element = iterator.get_next()
 
           with session.Session() as sess:
@@ -108,7 +108,7 @@ class MapBenchmark(test.Benchmark):
               dataset,
               map_fn,
               use_inter_op_parallelism=use_inter_op_parallelism)
-          iterator = dataset.make_one_shot_iterator()
+          iterator = dataset_ops.make_one_shot_iterator(dataset)
           next_element = iterator.get_next()
 
           with session.Session() as sess:
