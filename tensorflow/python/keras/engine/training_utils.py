@@ -1113,6 +1113,9 @@ class ModelInputs(object):
         # to specify custom placeholders if the need arises.
         shape = (None,) + tuple(v.shape[1:])
         v = K.placeholder(shape=shape, name=k)
+      elif isinstance(v, tensor_shape.TensorShape):
+        shape = (None,) + tuple(v.as_list()[1:])
+        v = K.placeholder(shape=shape, name=k)
       self._flattened_inputs[i] = v
 
     if self._is_dict:

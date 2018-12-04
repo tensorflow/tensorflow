@@ -717,6 +717,21 @@ class TrainingTest(keras_parameterized.TestCase):
                                  'specified batch sizes of the Input Layers'):
       keras.Model([input1, input2], outputs)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_calling_subclass_model_on_different_datasets(self):
+
+    class SubclassedModel(keras.models.Model):
+
+      def call(self, inputs):
+        return inputs * 2
+
+    model = SubclassedModel()
+    dataset_one = dataset_ops.Dataset.range(2).batch(2)
+    dataset_two = dataset_ops.Dataset.range(3, 10).batch(2)
+    self.assertAllEqual([[0], [2]], model.predict(dataset_one, steps=1))
+    self.assertAllEqual([[6], [8], [10], [12]],
+                        model.predict(dataset_two, steps=2))
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
