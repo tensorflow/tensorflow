@@ -357,9 +357,9 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
     return multinomial_categorical_impl(logits, num_samples, output_dtype, seed)
 
 
-@tf_export("random.categorical", v1=[])
+@tf_export("random.categorical")
 def categorical(logits, num_samples, dtype=None, seed=None, name=None):
-  """Draws samples from a multinomial distribution.
+  """Draws samples from a categorical distribution.
 
   Example:
 
