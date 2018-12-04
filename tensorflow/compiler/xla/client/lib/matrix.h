@@ -60,6 +60,14 @@ XlaOp LowerTriangle(XlaOp x);
 xla::XlaOp BatchDot(
     xla::XlaOp x, xla::XlaOp y,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+
+// Transposes a stack of matrices `x` by swapping the last two dimensions.
+xla::XlaOp TransposeInMinorDims(xla::XlaOp x);
+
+// Transposes `x` in its minor dimensions if `transpose` is true, otherwise
+// returns `x` unchanged.
+xla::XlaOp MaybeTransposeInMinorDims(xla::XlaOp x, bool transpose);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATRIX_H_

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 
+#include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -25,13 +26,13 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class NumericTest : public ClientLibraryTestBase {
+class MatrixTest : public ClientLibraryTestBase {
  protected:
   template <typename T>
   void TestMatrixDiagonal();
 };
 
-XLA_TEST_F(NumericTest, Triangle) {
+XLA_TEST_F(MatrixTest, Triangle) {
   XlaBuilder builder(TestName());
   Array3D<int32> input(2, 3, 4);
   input.FillIota(0);
@@ -46,7 +47,7 @@ XLA_TEST_F(NumericTest, Triangle) {
 }
 
 template <typename T>
-void NumericTest::TestMatrixDiagonal() {
+void MatrixTest::TestMatrixDiagonal() {
   XlaBuilder builder("GetMatrixDiagonal");
   Array3D<T> input(2, 3, 4);
   input.FillIota(0);
@@ -59,11 +60,46 @@ void NumericTest::TestMatrixDiagonal() {
   ComputeAndCompareR2<T>(&builder, expected, {a_data.get()});
 }
 
-XLA_TEST_F(NumericTest, GetMatrixDiagonal_S32) { TestMatrixDiagonal<int32>(); }
+XLA_TEST_F(MatrixTest, GetMatrixDiagonal_S32) { TestMatrixDiagonal<int32>(); }
 
-XLA_TEST_F(NumericTest, GetMatrixDiagonal_S64) { TestMatrixDiagonal<int64>(); }
+XLA_TEST_F(MatrixTest, GetMatrixDiagonal_S64) { TestMatrixDiagonal<int64>(); }
 
-XLA_TEST_F(NumericTest, GetMatrixDiagonal_F32) { TestMatrixDiagonal<float>(); }
+XLA_TEST_F(MatrixTest, GetMatrixDiagonal_F32) { TestMatrixDiagonal<float>(); }
 
+Array3D<float> BatchedAValsFull() {
+  return {{
+              {2, 0, 1, 2},
+              {3, 6, 0, 1},
+              {4, 7, 9, 0},
+              {5, 8, 10, 11},
+          },
+          {
+              {16, 24, 8, 12},
+              {24, 61, 82, 48},
+              {8, 82, 456, 106},
+              {12, 48, 106, 62},
+          }};
+}
+
+XLA_TEST_F(MatrixTest, RowBatchDot) {
+  XlaBuilder builder(TestName());
+
+  int n = 4;
+
+  XlaOp a, row, index;
+  auto a_data =
+      CreateR3Parameter<float>(BatchedAValsFull(), 0, "a", &builder, &a);
+  auto row_data = CreateR3Parameter<float>({{{9, 1, 0, 0}}, {{2, 4, 0, 0}}}, 1,
+                                           "row", &builder, &row);
+  // Select {{3, 6, 0, 1}, {24, 61,  82,  48}} out of BatchedAValsFull().
+  auto index_data = CreateR0Parameter<int>(1, 2, "index", &builder, &index);
+
+  auto l_index = DynamicSliceInMinorDims(
+      a, {index, ConstantR0<int32>(&builder, 0)}, {1, n});
+  BatchDot(l_index, TransposeInMinorDims(row));
+
+  ComputeAndCompareR3<float>(&builder, {{{33}}, {{292}}},
+                             {a_data.get(), row_data.get(), index_data.get()});
+}
 }  // namespace
 }  // namespace xla
