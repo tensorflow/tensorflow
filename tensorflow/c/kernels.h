@@ -95,6 +95,14 @@ TF_CAPI_EXPORT extern int TF_NumInputs(TF_OpKernelContext* ctx);
 // kernel.
 TF_CAPI_EXPORT extern int TF_NumOutputs(TF_OpKernelContext* ctx);
 
+// Retrieves the ith input from ctx. If TF_GetCode(status) is TF_OK, *tensor is
+// populated and its ownership is passed to the caller. In any other case,
+// *tensor is not modified.
+//
+// If i < 0 or i >= TF_NumInputs(ctx), *status is set to TF_OUT_OF_RANGE.
+TF_CAPI_EXPORT extern void TF_GetInput(TF_OpKernelContext* ctx, int i,
+                                       TF_Tensor** tensor, TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
