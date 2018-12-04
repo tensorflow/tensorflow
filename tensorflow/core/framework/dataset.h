@@ -53,6 +53,9 @@ namespace data {
 // A constant that can be used to enable auto-tuning.
 constexpr int kAutoTune = -1;
 
+constexpr int kInfiniteCardinality = -1;
+constexpr int kUnknownCardinality = -2;
+
 class DatasetBase;
 class SerializationContext;
 
@@ -587,6 +590,9 @@ class DatasetBase : public core::RefCounted {
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;
 
+  // Returns the cardinality of this dataset.
+  virtual int64 Cardinality() const { return kUnknownCardinality; }
+
   // Serializes the dataset and writes it to the `writer`.
   virtual Status Save(SerializationContext* ctx,
                       IteratorStateWriter* writer) const;
@@ -601,7 +607,6 @@ class DatasetBase : public core::RefCounted {
                            const DatasetBase* dataset, Node** output);
   };
 
-  // TODO(jsimsa): Consolidate overloading into a single method.
   virtual Status AsGraphDefInternal(SerializationContext* ctx,
                                     DatasetGraphDefBuilder* b,
                                     Node** node) const = 0;

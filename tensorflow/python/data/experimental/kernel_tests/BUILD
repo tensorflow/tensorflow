@@ -212,18 +212,6 @@ py_test(
 )
 
 py_test(
-    name = "has_indefinite_repeat_test",
-    srcs = ["has_indefinite_repeat_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python/data/experimental/ops:has_indefinite_repeat",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_test(
     name = "ignore_errors_test",
     srcs = ["ignore_errors_test.py"],
     srcs_version = "PY2AND3",
@@ -374,6 +362,18 @@ py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "cardinality_test",
+    srcs = ["cardinality_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
