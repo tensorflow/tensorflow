@@ -518,6 +518,17 @@ public:
   void dump() const;
 
 private:
+  /// Returns false if the fields corresponding to various identifier counts, or
+  /// equality/inequality buffer sizes aren't consistent; true otherwise. This
+  /// is meant to be used within an assert internally.
+  bool hasConsistentState() const;
+
+  /// Checks all rows of equality/inequality constraints for trivial
+  /// contradictions (for example: 1 == 0, 0 >= 1), which may have surfaced
+  /// after elimination. Returns 'true' if an invalid constraint is found;
+  /// 'false'otherwise.
+  bool hasInvalidConstraint() const;
+
   // Removes coefficients in column range [colStart, colLimit),and copies any
   // remaining valid data into place, updates member variables, and resizes
   // arrays as needed.

@@ -791,18 +791,34 @@ static void normalizeConstraintByGCD(FlatAffineConstraints *constraints,
   }
 }
 
-// Checks all rows of equality/inequality constraints for contradictions
-// (i.e. 1 == 0), which may have surfaced after elimination.
-// Returns 'true' if a valid constraint is detected. Returns 'false' otherwise.
-static bool hasInvalidConstraint(const FlatAffineConstraints &constraints) {
+bool FlatAffineConstraints::hasConsistentState() const {
+  if (inequalities.size() != getNumInequalities() * numReservedCols)
+    return false;
+  if (equalities.size() != getNumEqualities() * numReservedCols)
+    return false;
+  if (ids.size() != getNumIds())
+    return false;
+
+  // Catches errors where numDims, numSymbols, numIds aren't consistent.
+  if (numDims > numIds || numSymbols > numIds || numDims + numSymbols > numIds)
+    return false;
+
+  return true;
+}
+
+/// Checks all rows of equality/inequality constraints for trivial
+/// contradictions (for example: 1 == 0, 0 >= 1), which may have surfaced
+/// after elimination. Returns 'true' if an invalid constraint is found;
+/// 'false'otherwise.
+bool FlatAffineConstraints::hasInvalidConstraint() const {
+  assert(hasConsistentState());
   auto check = [&](bool isEq) -> bool {
-    unsigned numCols = constraints.getNumCols();
-    unsigned numRows = isEq ? constraints.getNumEqualities()
-                            : constraints.getNumInequalities();
+    unsigned numCols = getNumCols();
+    unsigned numRows = isEq ? getNumEqualities() : getNumInequalities();
     for (unsigned i = 0, e = numRows; i < e; ++i) {
       unsigned j;
       for (j = 0; j < numCols - 1; ++j) {
-        int64_t v = isEq ? constraints.atEq(i, j) : constraints.atIneq(i, j);
+        int64_t v = isEq ? atEq(i, j) : atIneq(i, j);
         // Skip rows with non-zero variable coefficients.
         if (v != 0)
           break;
@@ -812,8 +828,7 @@ static bool hasInvalidConstraint(const FlatAffineConstraints &constraints) {
       }
       // Check validity of constant term at 'numCols - 1' w.r.t 'isEq'.
       // Example invalid constraints include: '1 == 0' or '-1 >= 0'
-      int64_t v = isEq ? constraints.atEq(i, numCols - 1)
-                       : constraints.atIneq(i, numCols - 1);
+      int64_t v = isEq ? atEq(i, numCols - 1) : atIneq(i, numCols - 1);
       if ((isEq && v != 0) || (!isEq && v < 0)) {
         return true;
       }
@@ -923,7 +938,7 @@ bool FlatAffineConstraints::isEmpty() const {
     for (unsigned i = 0, e = tmpCst->getNumIds(); i < e; i++)
       tmpCst->FourierMotzkinEliminate(0);
   }
-  if (hasInvalidConstraint(*tmpCst))
+  if (tmpCst->hasInvalidConstraint())
     return true;
   return false;
 }
@@ -944,6 +959,7 @@ bool FlatAffineConstraints::isEmpty() const {
 //  GCD of c_1, c_2, ..., c_n divides c_0.
 //
 bool FlatAffineConstraints::isEmptyByGCDTest() const {
+  assert(hasConsistentState());
   unsigned numCols = getNumCols();
   for (unsigned i = 0, e = getNumEqualities(); i < e; ++i) {
     uint64_t gcd = std::abs(atEq(i, 0));
@@ -993,6 +1009,7 @@ unsigned FlatAffineConstraints::gaussianEliminateIds(unsigned posStart,
                                                      unsigned posLimit) {
   // Return if identifier positions to eliminate are out of range.
   assert(posStart >= 0 && posLimit <= numIds);
+  assert(hasConsistentState());
 
   if (posStart >= posLimit)
     return 0;
@@ -1394,9 +1411,7 @@ bool FlatAffineConstraints::isHyperRectangular(unsigned pos,
 }
 
 void FlatAffineConstraints::print(raw_ostream &os) const {
-  assert(inequalities.size() == getNumInequalities() * numReservedCols);
-  assert(equalities.size() == getNumEqualities() * numReservedCols);
-  assert(ids.size() == getNumIds());
+  assert(hasConsistentState());
   os << "\nConstraints (" << getNumDimIds() << " dims, " << getNumSymbolIds()
      << " symbols, " << getNumLocalIds() << " locals): \n";
   os << "(";
@@ -1440,7 +1455,7 @@ void FlatAffineConstraints::removeId(unsigned pos) {
 
   if (pos < numDims)
     numDims--;
-  else if (pos < numSymbols)
+  else if (pos < numDims + numSymbols)
     numSymbols--;
   numIds--;
 
@@ -1525,6 +1540,7 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
   LLVM_DEBUG(llvm::dbgs() << "FM input (eliminate pos " << pos << "):\n");
   LLVM_DEBUG(dump());
   assert(pos < getNumIds() && "invalid position");
+  assert(hasConsistentState());
 
   // A fast linear time tightening.
   GCDTightenInequalities();
