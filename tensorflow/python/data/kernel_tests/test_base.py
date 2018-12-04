@@ -65,7 +65,7 @@ class DatasetTestBase(test.TestCase):
         iterator = dataset.make_initializable_iterator()
         self.evaluate(iterator.initializer)
       else:
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
       get_next = iterator.get_next()
       return lambda: get_next
 

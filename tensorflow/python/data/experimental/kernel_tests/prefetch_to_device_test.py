@@ -38,7 +38,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.prefetch_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -66,7 +66,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
             "/job:localhost/replica:0/task:0/device:CPU:0"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -92,7 +92,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.prefetch_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -123,7 +123,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.prefetch_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)

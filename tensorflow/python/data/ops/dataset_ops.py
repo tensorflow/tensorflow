@@ -199,55 +199,6 @@ class DatasetV2(object):
       raise RuntimeError("dataset.__iter__() is only supported when eager "
                          "execution is enabled.")
 
-  def make_one_shot_iterator(self):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
-
-    Note: The returned iterator will be initialized automatically.
-    A "one-shot" iterator does not currently support re-initialization.
-
-    Returns:
-      An `Iterator` over the elements of this dataset.
-    """
-    if context.executing_eagerly():
-      dataset = self._apply_options()
-      return iterator_ops.EagerIterator(dataset)
-
-    graph_level_seed, op_level_seed = core_random_seed.get_seed(None)
-
-    # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
-    # a 0-argument function.
-    @function.Defun(capture_by_value=True)
-    def _make_dataset():
-      """Factory function for a dataset."""
-      # NOTE(mrry): `Defun` does not capture the graph-level seed from the
-      # enclosing graph, so if a graph-level seed is present we set the local
-      # graph seed based on a combination of the graph- and op-level seeds.
-      if graph_level_seed is not None:
-        assert op_level_seed is not None
-        core_random_seed.set_random_seed(
-            (graph_level_seed + 87654321 * op_level_seed) % (2 ** 63 - 1))
-
-      dataset = self._apply_options()
-      return dataset._as_variant_tensor()  # pylint: disable=protected-access
-
-    try:
-      _make_dataset.add_to_graph(ops.get_default_graph())
-    except ValueError as err:
-      if "Cannot capture a stateful node" in str(err):
-        raise ValueError(
-            "Failed to create a one-shot iterator for a dataset. "
-            "`Dataset.make_one_shot_iterator()` does not support datasets that "
-            "capture stateful objects, such as a `Variable` or `LookupTable`. "
-            "In these cases, use `Dataset.make_initializable_iterator()`. "
-            "(Original error: %s)" % err)
-      else:
-        six.reraise(ValueError, err)
-
-    return iterator_ops.Iterator(
-        gen_dataset_ops.one_shot_iterator(
-            dataset_factory=_make_dataset, **flat_structure(self)),
-        None, self.output_types, self.output_shapes, self.output_classes)
-
   @abc.abstractproperty
   def output_classes(self):
     """Returns the class of each component of an element of this dataset.
@@ -378,17 +329,19 @@ class DatasetV2(object):
 
     ```python
     import itertools
+    tf.enable_eager_execution()
 
     def gen():
       for i in itertools.count(1):
         yield (i, [1] * i)
 
-    ds = Dataset.from_generator(
+    ds = tf.data.Dataset.from_generator(
         gen, (tf.int64, tf.int64), (tf.TensorShape([]), tf.TensorShape([None])))
-    value = ds.make_one_shot_iterator().get_next()
 
-    sess.run(value)  # (1, array([1]))
-    sess.run(value)  # (2, array([1, 1]))
+    for value in ds.take(2):
+      print value
+    # (1, array([1]))
+    # (2, array([1, 1]))
     ```
 
     NOTE: The current implementation of `Dataset.from_generator()` uses
@@ -1345,6 +1298,60 @@ class DatasetV1(DatasetV2):
   def __init__(self):
     pass
 
+  @deprecation.deprecated(
+      None, "Use `for ... in dataset:` to iterate over a dataset. If using "
+      "`tf.estimator`, return the `Dataset` object directly from your input "
+      "function. As a last resort, you can use "
+      "`tf.compat.v1.data.make_one_shot_iterator(dataset)`.")
+  def make_one_shot_iterator(self):
+    """Creates an `Iterator` for enumerating the elements of this dataset.
+
+    Note: The returned iterator will be initialized automatically.
+    A "one-shot" iterator does not currently support re-initialization.
+
+    Returns:
+      An `Iterator` over the elements of this dataset.
+    """
+    if context.executing_eagerly():
+      dataset = self._apply_options()
+      return iterator_ops.EagerIterator(dataset)
+
+    graph_level_seed, op_level_seed = core_random_seed.get_seed(None)
+
+    # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
+    # a 0-argument function.
+    @function.Defun(capture_by_value=True)
+    def _make_dataset():
+      """Factory function for a dataset."""
+      # NOTE(mrry): `Defun` does not capture the graph-level seed from the
+      # enclosing graph, so if a graph-level seed is present we set the local
+      # graph seed based on a combination of the graph- and op-level seeds.
+      if graph_level_seed is not None:
+        assert op_level_seed is not None
+        core_random_seed.set_random_seed(
+            (graph_level_seed + 87654321 * op_level_seed) % (2 ** 63 - 1))
+
+      dataset = self._apply_options()
+      return dataset._as_variant_tensor()  # pylint: disable=protected-access
+
+    try:
+      _make_dataset.add_to_graph(ops.get_default_graph())
+    except ValueError as err:
+      if "Cannot capture a stateful node" in str(err):
+        raise ValueError(
+            "Failed to create a one-shot iterator for a dataset. "
+            "`Dataset.make_one_shot_iterator()` does not support datasets that "
+            "capture stateful objects, such as a `Variable` or `LookupTable`. "
+            "In these cases, use `Dataset.make_initializable_iterator()`. "
+            "(Original error: %s)" % err)
+      else:
+        six.reraise(ValueError, err)
+
+    return iterator_ops.Iterator(
+        gen_dataset_ops.one_shot_iterator(
+            dataset_factory=_make_dataset, **flat_structure(self)),
+        None, self.output_types, self.output_shapes, self.output_classes)
+
   @staticmethod
   @functools.wraps(DatasetV2.from_tensors)
   def from_tensors(tensors):
@@ -1562,8 +1569,26 @@ class DatasetV1Adapter(DatasetV1):
   def __iter__(self):
     return iter(self._dataset)
 
-  def make_one_shot_iterator(self):
-    return self._dataset.make_one_shot_iterator()
+
+@tf_export(v1=["data.make_one_shot_iterator"])
+def make_one_shot_iterator(dataset):
+  """Creates a `tf.data.Iterator` for enumerating the elements of a dataset.
+
+  Note: The returned iterator will be initialized automatically.
+  A "one-shot" iterator does not support re-initialization.
+
+  Args:
+    dataset: A `tf.data.Dataset`.
+
+  Returns:
+    A `tf.data.Iterator` over the elements of this dataset.
+  """
+  try:
+    # Call the defined `make_one_shot_iterator()` if there is one, because some
+    # datasets (e.g. for prefetching) override its behavior.
+    return dataset.make_one_shot_iterator()
+  except AttributeError:
+    return DatasetV1Adapter(dataset).make_one_shot_iterator()
 
 
 @tf_export("data.Options")

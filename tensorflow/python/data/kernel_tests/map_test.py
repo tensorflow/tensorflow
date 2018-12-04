@@ -77,7 +77,7 @@ def _make_coordinated_sloppy_dataset(num_elements, num_parallel_calls):
   options.experimental_deterministic = False
   dataset = dataset_ops.Dataset.range(num_elements).map(
       map_fn, num_parallel_calls).with_options(options)
-  iterator = dataset.make_one_shot_iterator()
+  iterator = dataset_ops.make_one_shot_iterator(dataset)
   next_element = iterator.get_next()
   return next_element, coordination_events
 
@@ -544,8 +544,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_tuple = dataset_tuple.map(preprocess_tuple)
     dataset_namedtuple = dataset_namedtuple.map(preprocess_namedtuple)
 
-    next_tuple = dataset_tuple.make_one_shot_iterator().get_next()
-    next_namedtuple = dataset_namedtuple.make_one_shot_iterator().get_next()
+    next_tuple = dataset_ops.make_one_shot_iterator(dataset_tuple).get_next()
+    next_namedtuple = dataset_ops.make_one_shot_iterator(
+        dataset_namedtuple).get_next()
 
     # make sure both datasets contain the same data
     with self.cached_session() as sess:
@@ -966,7 +967,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       return tids
 
     dataset = make_dataset_fn(dataset, _map_fn)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -987,7 +988,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testShortCircuit(self, structure, map_fn, num_parallel_calls):
     dataset = self.structuredDataset(structure).repeat().map(
         map_fn, num_parallel_calls=num_parallel_calls)
-    get_next = dataset.make_one_shot_iterator().get_next()
+    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
     with self.cached_session() as sess:
       if isinstance(structure, tuple):

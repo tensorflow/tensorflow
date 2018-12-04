@@ -603,7 +603,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     dataset = dataset.apply(
         interleave_ops.parallel_interleave(
             interleave_fn, cycle_length=16, block_length=2, sloppy=sloppy))
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
     with self.cached_session() as sess:
       output_values = []

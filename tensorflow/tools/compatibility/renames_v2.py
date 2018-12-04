@@ -108,6 +108,7 @@ renames = {
     'tf.create_partitioned_variables': 'tf.compat.v1.create_partitioned_variables',
     'tf.cross': 'tf.linalg.cross',
     'tf.cumprod': 'tf.math.cumprod',
+    'tf.data.make_one_shot_iterator': 'tf.compat.v1.data.make_one_shot_iterator',
     'tf.debugging.is_finite': 'tf.math.is_finite',
     'tf.debugging.is_inf': 'tf.math.is_inf',
     'tf.debugging.is_nan': 'tf.math.is_nan',

@@ -156,7 +156,7 @@ def StreamingFilesDataset(files,
 
     source_dataset = source_dataset.prefetch(1)
 
-    source_iterator = source_dataset.make_one_shot_iterator()
+    source_iterator = dataset_ops.make_one_shot_iterator(source_dataset)
     source_handle = source_iterator.string_handle()
 
   @function.Defun(dtypes.string)

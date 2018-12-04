@@ -70,7 +70,7 @@ class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
       iterator = dataset.__iter__()
       get_next = iterator._next_internal  # pylint: disable=protected-access
     else:
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       get_next = iterator.get_next
     for _ in range(5):
       result = self.evaluate(get_next())

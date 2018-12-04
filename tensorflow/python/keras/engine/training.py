@@ -1151,7 +1151,7 @@ class Model(Network):
 
     if isinstance(x, dataset_ops.DatasetV2):
       if context.executing_eagerly():
-        x = x.make_one_shot_iterator()
+        x = iter(x)
       else:
         if x in self._dataset_iterator_cache:
           x = self._dataset_iterator_cache[x]
