@@ -118,9 +118,8 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testSkipEagerSeedZero(self):
     """Test for same behavior when the seed is a Python or Tensor zero."""
-    iterator = (
-        dataset_ops.Dataset.range(10).shuffle(10, seed=0)
-        .make_one_shot_iterator())
+    iterator = dataset_ops.make_one_shot_iterator(
+        dataset_ops.Dataset.range(10).shuffle(10, seed=0))
     get_next = iterator.get_next()
 
     elems = []
@@ -197,7 +196,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset = dataset_ops.Dataset.range(10).shuffle(
             10, seed=op_level_seed, reshuffle_each_iteration=reshuffle).repeat(
                 3)
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
         next_element = iterator.get_next()
 
         run_results = []
@@ -226,7 +225,8 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
       if initializable:
         iterators = [dataset.make_initializable_iterator() for _ in range(2)]
       else:
-        iterators = [dataset.make_one_shot_iterator() for _ in range(2)]
+        iterators = [dataset_ops.make_one_shot_iterator(dataset)
+                     for _ in range(2)]
 
       results = []
       with self.session(graph=g) as sess:

@@ -376,7 +376,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     base_dataset = dataset_ops.Dataset.range(5).repeat(5).batch(
         5, drop_remainder=True)
     _, optimized = self._get_test_datasets(base_dataset, map_fn)
-    nxt = optimized.make_one_shot_iterator().get_next()
+    nxt = dataset_ops.make_one_shot_iterator(optimized).get_next()
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r"indices = 10 is not in \[0, 5\)"):
       self.evaluate(nxt)

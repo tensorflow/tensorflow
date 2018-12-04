@@ -94,7 +94,7 @@ void GrapplerFunctionConnectivity::RegisterInputArgExpansion(
   for (int i = 0; i < placeholders.size(); ++i) {
     const string& placeholder = input_arg_expansion.placeholders[i];
     input_arg_placeholders_.insert(
-        {placeholder, InputArgPlaceholder{input_name, /*position=*/i}});
+        {placeholder, InputArgPlaceholder{input_name, /*input_position=*/i}});
   }
   input_arg_expansions_.insert(
       {std::move(input_name), std::move(input_arg_expansion)});
@@ -248,8 +248,8 @@ Status GrapplerFunctionConnectivity::AsFunctionDefInput(
     const InputArgPlaceholder* placeholder =
         FindOrNull(input_arg_placeholders_, node_name);
     if (placeholder != nullptr) {
-      *func_def_input =
-          strings::StrCat(placeholder->input_name, ":", placeholder->position);
+      *func_def_input = strings::StrCat(placeholder->input_name, ":",
+                                        placeholder->input_position);
       return Status::OK();
     }
   }

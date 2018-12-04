@@ -246,6 +246,34 @@ REGISTER_OP("ExperimentalParseExampleDataset")
     .Attr("sloppy: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ExperimentalRandomDataset")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // buffer_size, seed, and seed2 should be scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("ExperimentalScanDataset")
+    .Input("input_dataset: variant")
+    .Input("initial_state: Tstate")
+    .Input("other_arguments: Targuments")
+    .Output("handle: variant")
+    .Attr("f: func")
+    .Attr("Tstate: list(type) >= 1")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalSetStatsAggregatorDataset")
     .Input("input_dataset: variant")
     .Input("stats_aggregator: resource")

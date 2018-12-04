@@ -2029,10 +2029,10 @@ XLA_UNOP_PATTERN(Transpose)
   }                                                                         \
   template <typename Lhs, typename Rhs>                                     \
   inline auto NAME##AnyOrder(Lhs&& lhs, Rhs&& rhs)                          \
-      ->decltype(NAME##AnyOrder<HloInstruction>(                            \
+      ->decltype(NAME##AnyOrder<const HloInstruction>(                      \
           nullptr, std::forward<Lhs>(lhs), std::forward<Rhs>(rhs))) {       \
-    return NAME##AnyOrder<HloInstruction>(nullptr, std::forward<Lhs>(lhs),  \
-                                          std::forward<Rhs>(rhs));          \
+    return NAME##AnyOrder<const HloInstruction>(                            \
+        nullptr, std::forward<Lhs>(lhs), std::forward<Rhs>(rhs));           \
   }
 XLA_COMMUTATIVE_BINOP_PATTERN(Add)
 XLA_BINOP_PATTERN(Atan2)

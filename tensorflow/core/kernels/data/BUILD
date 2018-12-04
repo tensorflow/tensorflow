@@ -224,19 +224,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "scan_dataset_op",
-    srcs = ["scan_dataset_op.cc"],
-    deps = [
-        ":captured_function",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
     name = "flat_map_dataset_op",
     srcs = ["flat_map_dataset_op.cc"],
     deps = [
@@ -346,17 +333,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "random_dataset_op",
-    srcs = ["random_dataset_op.cc"],
-    deps = [
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
     name = "range_dataset_op",
     srcs = ["range_dataset_op.cc"],
     deps = [
@@ -396,17 +372,6 @@ tf_kernel_library(
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
-    ],
-)
-
-tf_kernel_library(
-    name = "tensor_queue_dataset_op",
-    srcs = ["tensor_queue_dataset_op.cc"],
-    deps = [
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -523,7 +488,6 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
@@ -532,6 +496,7 @@ tf_kernel_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/grappler/optimizers/data",
+        "//tensorflow/core/grappler/optimizers/data:function_utils",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
     ],
 )
@@ -584,17 +549,14 @@ tf_kernel_library(
         ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
         ":prefetch_dataset_op",
-        ":random_dataset_op",
         ":range_dataset_op",
         ":reader_dataset_ops",
         ":repeat_dataset_op",
-        ":scan_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",
         ":sparse_tensor_slice_dataset_op",
         ":take_dataset_op",
         ":tensor_dataset_op",
-        ":tensor_queue_dataset_op",
         ":tensor_slice_dataset_op",
         ":window_dataset_op",
         ":zip_dataset_op",

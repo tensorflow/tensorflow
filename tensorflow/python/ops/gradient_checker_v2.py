@@ -88,14 +88,18 @@ def _prepare(f, xs_dtypes):
     a function that will be evaluated in both graph and eager mode
   """
   if context.executing_eagerly():
-    return f
+
+    def decorated_eager(*xs_data):
+      return f(*map(ops.convert_to_tensor, xs_data))
+
+    return decorated_eager
   xs = [array_ops.placeholder(x_dtype) for x_dtype in xs_dtypes]
   y = f(*xs)
   sess = ops.get_default_session()
-  def decorated(*xs_data):
+  def decorated_graph(*xs_data):
     xs_data = [_to_numpy(a) for a in xs_data]
     return sess.run(y, feed_dict=dict(zip(xs, xs_data)))
-  return decorated
+  return decorated_graph
 
 
 def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
@@ -288,6 +292,9 @@ def compute_gradient(f, x, delta=1e-3):
   Raises:
     ValueError: If result is empty but the gradient is nonzero.
   """
+  if not isinstance(x, list):
+    raise ValueError(
+        "`x` must be a list of Tensors (arguments to `f`), not a %s" % type(x))
   return _compute_gradient_list(f, x, delta)
 
 

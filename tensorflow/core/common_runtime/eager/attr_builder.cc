@@ -124,7 +124,7 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
 #define DEFINE_SET_ATTR(value_type, value_field)                             \
   template <>                                                                \
   AttrBuilder& AttrBuilder::Set(StringPiece attr_name, value_type&& value) { \
-    value_field.push_back(std::make_pair(attr_name, value));                 \
+    value_field.push_back(std::make_pair(string(attr_name), value));         \
     return *this;                                                            \
   }
 

@@ -35,7 +35,7 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase):
         shuffle_ops.shuffle_and_repeat(buffer_size=5, count=count, seed=seed))
 
   def _gen_outputs(self, ds_fn, num_outputs, verify_exhausted=True):
-    get_next = ds_fn().make_one_shot_iterator().get_next()
+    get_next = dataset_ops.make_one_shot_iterator(ds_fn()).get_next()
     outputs = []
     with self.cached_session() as sess:
       for _ in range(num_outputs):

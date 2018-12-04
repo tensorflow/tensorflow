@@ -1,5 +1,5 @@
 op {
-  graph_op_name: "ScanDataset"
+  graph_op_name: "ExperimentalScanDataset"
   visibility: HIDDEN
   summary: "Creates a dataset successively reduces `f` over the elements of `input_dataset`."
 }

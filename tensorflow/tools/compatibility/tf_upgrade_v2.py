@@ -443,6 +443,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.io.decode_csv",
         "tf.data.Iterator":
             "tf.compat.v1.data.Iterator",
+        "tf.parse_example":
+            "tf.io.parse_example",
+        "tf.parse_single_example":
+            "tf.io.parse_single_example",
         "tf.nn.fused_batch_norm":
             "tf.compat.v1.nn.fused_batch_norm",
         "tf.nn.softmax_cross_entropy_with_logits_v2":
@@ -453,6 +457,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.losses.Reduction.SUM_BY_NONZERO_WEIGHTS",
         "tf.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS":
             "tf.compat.v1.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS",
+        "tf.lite.constants.FLOAT":
+            "tf.float32",
+        "tf.lite.constants.INT32":
+            "tf.int32",
+        "tf.lite.constants.INT64":
+            "tf.int64",
+        "tf.lite.constants.STRING":
+            "tf.string",
+        "tf.lite.constants.QUANTIZED_UINT8":
+            "tf.uint8",
     }
     # pylint: enable=line-too-long
 
@@ -541,6 +555,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.strings.length": ["input", "name", "unit"],
         "tf.transpose": ["a", "perm", "name", "conjugate"],
         "tf.tuple": ["tensors", "name", "control_inputs"],
+        "tf.parse_example": [
+            "serialized", "features", "name", "example_names"
+        ],
+        "tf.parse_single_example": [
+            "serialized", "features", "name", "example_names"
+        ],
         "tf.io.parse_example": [
             "serialized", "features", "name", "example_names"
         ],

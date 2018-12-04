@@ -363,6 +363,37 @@ tensorflow::ImportNumpy();
   $1 = temps;
 }
 
+%typemap(in) absl::Span<const std::vector<xla::swig::LocalShapedBuffer*> >
+    (std::vector<std::vector<LocalShapedBuffer*> > temps) {
+  if (!PySequence_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
+    SWIG_fail;
+  }
+  const int size = PySequence_Size($input);
+  temps.reserve(size);
+  for (int i = 0; i < size; ++i) {
+    PyObject* o = PySequence_GetItem($input, i);
+    std::vector<LocalShapedBuffer*> vec;
+    const int vec_size = PySequence_Size(o);
+    vec.reserve(vec_size);
+    for (int j = 0; j < vec_size; ++j) {
+      PyObject* vec_elt = PySequence_GetItem(o, j);
+      LocalShapedBuffer* lsbp;
+      if ((SWIG_ConvertPtr(vec_elt, (void**) &lsbp, $descriptor(xla::swig::LocalShapedBuffer*),
+                           SWIG_POINTER_EXCEPTION)) == -1) {
+        Py_DECREF(vec_elt);
+        Py_DECREF(o);
+        SWIG_fail;
+      }
+      vec.push_back(lsbp);
+      Py_DECREF(vec_elt);
+    }
+    temps.push_back(vec);
+    Py_DECREF(o);
+  }
+  $1 = temps;
+}
+
 %typemap(in) absl::Span<xla::swig::XrtAllocation* const>
     (std::vector<XrtAllocation*> temps) {
   if (!PySequence_Check($input)) {

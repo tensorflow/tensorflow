@@ -47,7 +47,7 @@ class IteratorClusterTest(test.TestCase):
 
     with ops.device("/job:worker/replica:0/task:0/cpu:1"):
       dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
-      iterator_3 = dataset_3.make_one_shot_iterator()
+      iterator_3 = dataset_ops.make_one_shot_iterator(dataset_3)
       iterator_3_handle = iterator_3.string_handle()
 
     with ops.device("/job:worker/replica:0/task:0/cpu:0"):
@@ -62,7 +62,7 @@ class IteratorClusterTest(test.TestCase):
   def _testRemoteIteratorHelper(self, device0, device1, target):
     with ops.device(device1):
       dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
-      iterator_3 = dataset_3.make_one_shot_iterator()
+      iterator_3 = dataset_ops.make_one_shot_iterator(dataset_3)
       iterator_3_handle = iterator_3.string_handle()
 
     @function.Defun(dtypes.string)

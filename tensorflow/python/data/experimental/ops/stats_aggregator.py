@@ -47,7 +47,6 @@ class StatsAggregator(object):
   options = dataset_ops.Options()
   options.experimental_stats = tf.data.experimental.StatsOptions(aggregator)
   dataset = dataset.with_options(options)
-  iterator = dataset.make_one_shot_iterator()
   ```
 
   To get a protocol buffer summary of the currently aggregated statistics,

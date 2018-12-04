@@ -499,6 +499,7 @@ py_test(
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -520,6 +521,7 @@ cuda_py_test(
     srcs = ["layers/unified_lstm_test.py"],
     additional_deps = [
         ":keras",
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],

@@ -572,7 +572,9 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
 
     We can construct a CsvDataset from it as follows:
     ```python
-    dataset = tf.data.experimental.CsvDataset(
+    tf.enable_eager_execution()
+
+     dataset = tf.data.experimental.CsvDataset(
         "my_file*.csv",
         [tf.float32,  # Required field, use dtype or empty tensor
          tf.constant([0.0], dtype=tf.float32),  # Optional field, default to 0.0
@@ -584,13 +586,8 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
 
     The expected output of its iterations is:
     ```python
-    next_element = dataset.make_one_shot_iterator().get_next()
-    with tf.Session() as sess:
-      while True:
-        try:
-          print(sess.run(next_element))
-        except tf.errors.OutOfRangeError:
-          break
+    for element in dataset:
+      print(element)
 
     >> (4.28e10, 5.55e6, 12)
     >> (-5.3e14, 0.0, 2)
@@ -938,17 +935,14 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
     For example:
 
     ```python
+    tf.enable_eager_execution()
+
     dataset = tf.data.experimental.SqlDataset("sqlite", "/foo/bar.sqlite3",
                                               "SELECT name, age FROM people",
                                               (tf.string, tf.int32))
-    iterator = dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
     # Prints the rows of the result set of the above query.
-    while True:
-      try:
-        print(sess.run(next_element))
-      except tf.errors.OutOfRangeError:
-        break
+    for element in dataset:
+      print(element)
     ```
 
     Args:

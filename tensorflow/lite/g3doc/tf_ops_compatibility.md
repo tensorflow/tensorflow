@@ -989,6 +989,18 @@ Outputs {
 }
 ```
 
+**FILL**
+
+```
+Inputs {
+  0: A Tensor. Must be one of the following types: int32, int64. 1-D. Represents the shape of the output tensor.
+  1: A Tensor. 0-D (scalar). Value to fill the returned tensor.
+}
+Outputs {
+  0: A tensor of the same type as value (input1).
+}
+```
+
 And these are TensorFlow Lite operations that are present but not ready for
 custom models yet:
 

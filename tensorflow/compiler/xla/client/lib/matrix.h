@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_NUMERIC_H_
-#define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_NUMERIC_H_
+#ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATRIX_H_
+#define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATRIX_H_
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -42,4 +42,4 @@ XlaOp LowerTriangle(XlaOp x);
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_NUMERIC_H_
+#endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATRIX_H_

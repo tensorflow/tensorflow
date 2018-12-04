@@ -1168,7 +1168,7 @@ Status ForEachMutableSubshapeHelper(
   // Let the argument `permutation` be P.  This is a permutation over `shape`'s
   // dimensions, so our return value will be a shape with dims P.I = P.  Our
   // goal is to construct a layout permutation L* that we can apply to P such
-  // that that the physical dimension ordering of the returned shape is the same
+  // that the physical dimension ordering of the returned shape is the same
   // as that of the original shape, namely L'.
   //
   // Our returned shape has dims P and layout L*, so its in-memory layout is
