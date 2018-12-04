@@ -85,6 +85,16 @@ TF_CAPI_EXPORT extern void TF_RegisterKernelBuilder(const char* kernel_name,
 // builder is not registered with TensorFlow via TF_RegisterKernelBuilder.
 TF_CAPI_EXPORT extern void TF_DeleteKernelBuilder(TF_KernelBuilder* builder);
 
+// --------------------------------------------------------------------------
+// OpKernelContext routines
+
+// TF_NumInputs returns the number of inputs available in ctx.
+TF_CAPI_EXPORT extern int TF_NumInputs(TF_OpKernelContext* ctx);
+
+// TF_NumOutputs returns the number of outputs to be placed in *ctx by the
+// kernel.
+TF_CAPI_EXPORT extern int TF_NumOutputs(TF_OpKernelContext* ctx);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

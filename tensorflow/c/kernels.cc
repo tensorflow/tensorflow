@@ -116,3 +116,13 @@ void TF_RegisterKernelBuilder(const char* name, TF_KernelBuilder* builder,
 
   TF_SetStatus(status, TF_OK, "");
 }
+
+int TF_NumInputs(TF_OpKernelContext* ctx) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  return cc_ctx->num_inputs();
+}
+
+int TF_NumOutputs(TF_OpKernelContext* ctx) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  return cc_ctx->num_outputs();
+}
