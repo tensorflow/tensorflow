@@ -101,4 +101,8 @@ message XRTExecutionConfig {
   bool release_input_handles = 5;
   // If true, release the handle to the computation after running.
   bool release_compilation_handle = 6;
+  // If set to true, and the result shape is a tuple, then instead of returning
+  // a single tuple allocation the execution will return a vector of
+  // allocations, one for each of the first-level elements of the result tuple.
+  bool return_exploded_tuple = 7;
 }
