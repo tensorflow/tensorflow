@@ -21,15 +21,15 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python import tf2
 from tensorflow.python.compat import compat
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
-from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -106,105 +106,101 @@ class ReluTest(test.TestCase):
 
   # The gradient test for ReLU is a bit tricky as the derivative is not well
   # defined at around zero and we want to avoid that in terms of input values.
-  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
     with self.cached_session():
-      x = constant_op.constant(
-          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5],
-          name="x")
-      y = nn_ops.relu(x, name="relu")
-      x_init = np.asarray(
+      x = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float32,
           order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], y, [2, 5], x_init_value=x_init)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(nn_ops.relu, [x]))
     print("relu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   # The gradient for fp16 is inaccurate due to the low-precision.
-  # Instead of relying on compute_gradient_error, we compare the fp16 analytical
-  # gradient against their fp32 counterpart.
-  @test_util.run_deprecated_v1
+  # We compare the fp16 analytical gradient against their fp32 counterpart.
   def testGradientFloat16(self):
-    with self.session(use_gpu=True) as sess:
-      # Randomly construct a 1D shape from [1, 40)
-      shape = random_ops.random_uniform(
-          [1], minval=1, maxval=40, dtype=dtypes.int32)
 
-      # Construct the fp32 graph and its gradient.
-      x = random_ops.random_uniform(shape, minval=-1, maxval=1, name="x")
-      y1 = nn_ops.relu(x, name="relu_fp32")
-      l1 = nn_ops.l2_loss(y1)
-      dx_f32 = gradients_impl.gradients(l1, x)
+    def grad(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = nn_ops.l2_loss(nn_ops.relu(x))
+      return tape.gradient(y, x)
 
-      # Construct the fp16 graph and its gradient.
-      # It starts with the same x, in fp32. But before it reaches Relu, it is
-      # cast into fp16. So during backprop, the gradient computation is in fp16.
-      x2 = math_ops.cast(x, dtype=dtypes.float16, name="cast")
-      y2 = nn_ops.relu(x2, name="relu_fp16")
-      l2 = nn_ops.l2_loss(y2)
-      dx_f16 = gradients_impl.gradients(l2, x)
+    def f():
+      with test_util.use_gpu():
+        # Randomly construct a 1D shape from [1, 40)
+        shape = random_ops.random_uniform([1],
+                                          minval=1,
+                                          maxval=40,
+                                          dtype=dtypes.int32)
+        x32 = random_ops.random_uniform(shape, minval=-1, maxval=1)
+        x16 = math_ops.cast(x32, dtype=dtypes.float16)
+        return grad(x32), grad(x16)
 
-      # Repeat the experiment for 100 times. All tensor shapes and its tensor
-      # values are randomly generated for each run.
-      for _ in xrange(100):
-        dx_f32_v, dx_f16_v = self.evaluate([dx_f32, dx_f16])
-        self.assertAllClose(dx_f32_v, dx_f16_v, atol=3e-4)
+    # We're going to ensure that the fp16 and fp32 gradients
+    # are "close" to each other for ~100 random values.
+    #
+    # In TensorFlow 1.x, invoking f() (without eager execution enabled)
+    # would construct a graph. Instead of construct a graph with O(100) nodes,
+    # we construct a single graph to be executed ~100 times in a Session.
+    if not tf2.enabled():
+      d32_tensor, d16_tensor = f()
+      with self.cached_session() as sess:
+        f = lambda: sess.run([d32_tensor, d16_tensor])
 
-  @test_util.run_deprecated_v1
+    # Repeat the experiment for 100 times. All tensor shapes and its tensor
+    # values are randomly generated for each run.
+    for _ in xrange(100):
+      d32, d16 = f()
+      self.assertAllClose(d32, d16, atol=3e-4)
+
   def testGradientFloat64(self):
     with self.cached_session():
-      x = constant_op.constant(
-          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5],
-          dtype=dtypes.float64,
-          name="x")
-      y = nn_ops.relu(x, name="relu")
-      x_init = np.asarray(
+      x = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float64,
           order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], y, [2, 5], x_init_value=x_init)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(nn_ops.relu, [x]))
     print("relu (float64) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
-  @test_util.run_deprecated_v1
   def testGradGradFloat32(self):
     with self.cached_session():
-      x = constant_op.constant(
-          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5],
-          name="x")
-      y = nn_ops.relu(x, name="relu")
-      z = gradients_impl.gradients(y, x)
-      x_init = np.asarray(
+
+      def f(x):
+        assert x.dtype == dtypes.float32
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = nn_ops.relu(x)
+        return tape.gradient(y, x)
+
+      x = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float32,
           order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(f, [x]))
     print("relu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
-  @test_util.run_deprecated_v1
   def testGradGradFloat64(self):
     with self.cached_session():
-      x = constant_op.constant(
-          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5],
-          dtype=dtypes.float64,
-          name="x")
-      y = nn_ops.relu(x, name="relu")
-      z = gradients_impl.gradients(y, x)
-      x_init = np.asarray(
+
+      def f(x):
+        assert x.dtype == dtypes.float64
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = nn_ops.relu(x)
+        return tape.gradient(y, x)
+
+      x = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float64,
           order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(f, [x]))
     print("relu (float64) gradient of gradient err = ", err)
     self.assertLess(err, 1e-10)
 
@@ -258,38 +254,25 @@ class Relu6Test(test.TestCase):
   # The gradient test for ReLU6 is a bit tricky as the derivative is
   # not well defined at around zero and six and we want to avoid that
   # in terms of input values.
-  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
     with self.cached_session():
-      x = constant_op.constant(
-          [-0.9, -0.7, -0.5, -0.3, -0.1, 6.1, 6.3, 6.5, 6.7, 6.9],
-          shape=[2, 5],
-          name="x")
-      y = nn_ops.relu6(x, name="relu6")
-      x_init = np.asarray(
+      x = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [6.1, 6.3, 6.5, 6.7, 6.9]],
           dtype=np.float32,
           order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], y, [2, 5], x_init_value=x_init)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(nn_ops.relu6, [x]))
     print("relu6 (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
-  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
     with self.cached_session():
-      x = constant_op.constant(
-          [-0.9, -0.7, -0.5, -0.3, -0.1, 6.1, 6.3, 6.5, 6.7, 6.9],
-          shape=[2, 5],
-          dtype=dtypes.float64,
-          name="x")
-      y = nn_ops.relu6(x, name="relu6")
-      x_init = np.asarray(
+      x = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [6.1, 6.3, 6.5, 6.7, 6.9]],
           dtype=np.float64,
           order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], y, [2, 5], x_init_value=x_init)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(nn_ops.relu6, [x]))
     print("relu6 (float64) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
@@ -333,77 +316,65 @@ class LeakyReluTest(test.TestCase):
   # The gradient test for Leaky ReLU is a bit tricky as the derivative is not
   # well defined at around zero and we want to avoid that in terms of input
   # values.
-  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
-    with self.test_session():
-      x = constant_op.constant(
-          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5],
-          name="x")
-      y = nn_ops.leaky_relu(x, alpha=0.1, name="leaky_relu")
-      x_init = np.asarray(
+    with self.cached_session():
+      x = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float32,
           order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], y, [2, 5], x_init_value=x_init)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(nn_ops.leaky_relu, [x]))
     print("leaky_relu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
-  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
-    with self.test_session():
-      x = constant_op.constant(
-          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5],
-          dtype=dtypes.float64,
-          name="x")
-      y = nn_ops.leaky_relu(x, alpha=0.2, name="leaky_relu")
-      x_init = np.asarray(
+    with self.cached_session():
+      x = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float64,
           order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], y, [2, 5], x_init_value=x_init)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(nn_ops.leaky_relu, [x]))
     print("leaky_relu (float64) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
-  @test_util.run_deprecated_v1
   def testGradGradFloat32(self):
     with compat.forward_compatibility_horizon(2018, 11, 2):
-      with self.test_session():
-        x = constant_op.constant(
-            [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-            shape=[2, 5],
-            name="x")
-        y = nn_ops.leaky_relu(x, alpha=0.1, name="leaky_relu")
-        z = gradients_impl.gradients(y, x)
-        x_init = np.asarray(
+      with self.cached_session():
+
+        def f(x):
+          assert x.dtype == dtypes.float32
+          with backprop.GradientTape() as tape:
+            tape.watch(x)
+            y = nn_ops.leaky_relu(x)
+          return tape.gradient(y, x)
+
+        x = np.asarray(
             [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
             dtype=np.float32,
             order="F")
-        err = gradient_checker.compute_gradient_error(
-            x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+        err = gradient_checker_v2.max_error(
+            *gradient_checker_v2.compute_gradient(f, [x]))
       print("leaky_relu (float32) gradient of gradient err = ", err)
       self.assertLess(err, 1e-4)
 
-  @test_util.run_deprecated_v1
   def testGradGradFloat64(self):
     with compat.forward_compatibility_horizon(2018, 11, 2):
-      with self.test_session():
-        x = constant_op.constant(
-            [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-            shape=[2, 5],
-            dtype=dtypes.float64,
-            name="x")
-        y = nn_ops.leaky_relu(x, alpha=0.02, name="leaky_relu")
-        z = gradients_impl.gradients(y, x)
-        x_init = np.asarray(
+      with self.cached_session():
+
+        def f(x):
+          assert x.dtype == dtypes.float64
+          with backprop.GradientTape() as tape:
+            tape.watch(x)
+            y = nn_ops.leaky_relu(x)
+          return tape.gradient(y, x)
+
+        x = np.asarray(
             [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
             dtype=np.float64,
             order="F")
-        err = gradient_checker.compute_gradient_error(
-            x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+        err = gradient_checker_v2.max_error(
+            *gradient_checker_v2.compute_gradient(f, [x]))
       print("leaky_relu (float64) gradient of gradient err = ", err)
       self.assertLess(err, 1e-10)
 
@@ -451,76 +422,75 @@ class EluTest(test.TestCase):
     for t in [np.float16, np.float32, np.float64]:
       self._testElu(np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 
-  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
     with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
-      x = constant_op.constant(x_val, name="x")
-      y = nn_ops.elu(x, name="elu")
-      x_init = np.asarray(x_val, dtype=np.float32, order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], y, [2, 5], x_init_value=x_init)
+      x = np.asarray(x_val, dtype=np.float32, order="F")
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(nn_ops.elu, [x]))
     print("elu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
-  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
     with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
-      x = constant_op.constant(x_val, dtype=dtypes.float64, name="x")
-      y = nn_ops.elu(x, name="elu")
-      x_init = np.asarray(x_val, dtype=np.float64, order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], y, [2, 5], x_init_value=x_init)
+      x = np.asarray(x_val, dtype=np.float64, order="F")
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(nn_ops.elu, [x]))
     print("elu (float64) gradient err = ", err)
     self.assertLess(err, 1e-6)
 
-  @test_util.run_deprecated_v1
   def testGradGrad(self):
     with self.cached_session():
-      x = array_ops.placeholder(dtype=dtypes.float32)
-      elu = nn_ops.elu(x)
-      g, = gradients_impl.gradients(elu, x)
-      gg, = gradients_impl.gradients(g, x)
 
-      for x_val in [-1, -0.5, 0.5, 1]:
-        err = np.abs(gg.eval(feed_dict={x: x_val}) - _elu_grad_grad(x_val))
+      def f(x):
+        with backprop.GradientTape(persistent=True) as tape:
+          tape.watch(x)
+          y = nn_ops.elu(x)
+          dy = tape.gradient(y, x)
+        return tape.gradient(dy, x)
+
+      for x in [-1., -0.5, 0.5, 1.]:
+        got = self.evaluate(f(constant_op.constant(x)))
+        want = _elu_grad_grad(x)
+        err = np.abs(got - want)
         self.assertLess(err, 1e-4)
 
-  @test_util.run_deprecated_v1
   def testGradGradFloat32(self):
     with self.cached_session():
-      x = constant_op.constant(
-          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5],
-          name="x")
-      y = nn_ops.elu(x, name="elu")
-      z = gradients_impl.gradients(y, x)
-      x_init = np.asarray(
+
+      def f(x):
+        assert x.dtype == dtypes.float32
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = nn_ops.elu(x)
+        return tape.gradient(y, x)
+
+      x = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float32,
           order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(f, [x]))
     print("elu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
-  @test_util.run_deprecated_v1
   def testGradGradFloat64(self):
     with self.cached_session():
-      x = constant_op.constant(
-          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5],
-          dtype=dtypes.float64,
-          name="x")
-      y = nn_ops.elu(x, name="elu")
-      z = gradients_impl.gradients(y, x)
-      x_init = np.asarray(
+
+      def f(x):
+        assert x.dtype == dtypes.float64
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = nn_ops.elu(x)
+        return tape.gradient(y, x)
+
+      x = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float64,
           order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(f, [x]))
     print("elu (float64) gradient of gradient err = ", err)
     self.assertLess(err, 1e-6)
 
@@ -556,64 +526,59 @@ class SeluTest(test.TestCase):
         self._testSelu(
             np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 
-  @test_util.run_deprecated_v1
   def testGradientFloat32(self):
     with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
-      x = constant_op.constant(x_val, name="x")
-      y = nn_ops.selu(x, name="selu")
-      x_init = np.asarray(x_val, dtype=np.float32, order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], y, [2, 5], x_init_value=x_init)
+      x = np.asarray(x_val, dtype=np.float32, order="F")
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(nn_ops.selu, [x]))
     print("selu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
-  @test_util.run_deprecated_v1
   def testGradientFloat64(self):
     with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
-      x = constant_op.constant(x_val, dtype=dtypes.float64, name="x")
-      y = nn_ops.selu(x, name="selu")
-      x_init = np.asarray(x_val, dtype=np.float64, order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], y, [2, 5], x_init_value=x_init)
+      x = np.asarray(x_val, dtype=np.float64, order="F")
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(nn_ops.selu, [x]))
     print("selu (float64) gradient err = ", err)
     self.assertLess(err, 1e-6)
 
-  @test_util.run_deprecated_v1
   def testGradGradFloat32(self):
     with self.cached_session():
-      x = constant_op.constant(
-          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5],
-          name="x")
-      y = nn_ops.selu(x, name="selu")
-      z = gradients_impl.gradients(y, x)
-      x_init = np.asarray(
+
+      def f(x):
+        assert x.dtype == dtypes.float32
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = nn_ops.selu(x)
+        return tape.gradient(y, x)
+
+      x = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float32,
           order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(f, [x]))
     print("selu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
-  @test_util.run_deprecated_v1
   def testGradGradFloat64(self):
     with self.cached_session():
-      x = constant_op.constant(
-          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5],
-          dtype=dtypes.float64,
-          name="x")
-      y = nn_ops.selu(x, name="selu")
-      z = gradients_impl.gradients(y, x)
-      x_init = np.asarray(
+
+      def f(x):
+        assert x.dtype == dtypes.float64
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = nn_ops.selu(x)
+        return tape.gradient(y, x)
+
+      x = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float64,
           order="F")
-      err = gradient_checker.compute_gradient_error(
-          x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(f, [x]))
     print("selu (float64) gradient of gradient err = ", err)
     self.assertLess(err, 1e-6)
 
