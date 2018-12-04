@@ -900,28 +900,27 @@ static void shiftColumnsToLeft(FlatAffineConstraints *constraints,
   }
 }
 
-// Removes coefficients in column range [colStart, colLimit), and copies any
+// Removes identifiers in column range [idStart, idLimit), and copies any
 // remaining valid data into place, and updates member variables.
-void FlatAffineConstraints::removeColumnRange(unsigned colStart,
-                                              unsigned colLimit) {
-  assert(colStart >= 0 && colLimit <= getNumCols());
-  // TODO(andydavis) Make 'removeColumns' a lambda called from here.
-  // Remove eliminated columns from equalities.
-  shiftColumnsToLeft(this, colStart, colLimit, /*isEq=*/true);
-  // Remove eliminated columns from inequalities.
-  shiftColumnsToLeft(this, colStart, colLimit, /*isEq=*/false);
+void FlatAffineConstraints::removeIdRange(unsigned idStart, unsigned idLimit) {
+  assert(idLimit < getNumCols());
+  // TODO(andydavis) Make 'removeIdRange' a lambda called from here.
+  // Remove eliminated identifiers from equalities.
+  shiftColumnsToLeft(this, idStart, idLimit, /*isEq=*/true);
+  // Remove eliminated identifiers from inequalities.
+  shiftColumnsToLeft(this, idStart, idLimit, /*isEq=*/false);
   // Update members numDims, numSymbols and numIds.
   unsigned numDimsEliminated = 0;
-  if (colStart < numDims) {
-    numDimsEliminated = std::min(numDims, colLimit) - colStart;
+  if (idStart < numDims) {
+    numDimsEliminated = std::min(numDims, idLimit) - idStart;
   }
-  unsigned numColsEliminated = colLimit - colStart;
+  unsigned numColsEliminated = idLimit - idStart;
   unsigned numSymbolsEliminated =
       std::min(numSymbols, numColsEliminated - numDimsEliminated);
   numDims -= numDimsEliminated;
   numSymbols -= numSymbolsEliminated;
   numIds = numIds - numColsEliminated;
-  ids.erase(ids.begin() + colStart, ids.begin() + colLimit);
+  ids.erase(ids.begin() + idStart, ids.begin() + idLimit);
 
   // No resize necessary. numReservedCols remains the same.
 }
@@ -1049,7 +1048,7 @@ unsigned FlatAffineConstraints::gaussianEliminateIds(unsigned posStart,
   // Update position limit based on number eliminated.
   posLimit = pivotCol;
   // Remove eliminated columns from all constraints.
-  removeColumnRange(posStart, posLimit);
+  removeIdRange(posStart, posLimit);
   return posLimit - posStart;
 }
 
@@ -1451,26 +1450,7 @@ void FlatAffineConstraints::clearAndCopyFrom(
 }
 
 void FlatAffineConstraints::removeId(unsigned pos) {
-  assert(pos < getNumIds());
-
-  if (pos < numDims)
-    numDims--;
-  else if (pos < numDims + numSymbols)
-    numSymbols--;
-  numIds--;
-
-  for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
-    for (unsigned c = pos; c < getNumCols(); c++) {
-      atIneq(r, c) = atIneq(r, c + 1);
-    }
-  }
-
-  for (unsigned r = 0, e = getNumEqualities(); r < e; r++) {
-    for (unsigned c = pos; c < getNumCols(); c++) {
-      atEq(r, c) = atEq(r, c + 1);
-    }
-  }
-  ids.erase(ids.begin() + pos);
+  removeIdRange(pos, pos + 1);
 }
 
 static std::pair<unsigned, unsigned>

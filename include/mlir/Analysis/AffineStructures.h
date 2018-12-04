@@ -529,10 +529,10 @@ private:
   /// 'false'otherwise.
   bool hasInvalidConstraint() const;
 
-  // Removes coefficients in column range [colStart, colLimit),and copies any
-  // remaining valid data into place, updates member variables, and resizes
-  // arrays as needed.
-  void removeColumnRange(unsigned colStart, unsigned colLimit);
+  /// Removes identifiers in column range [idStart, idLimit), and copies any
+  /// remaining valid data into place, updates member variables, and resizes
+  /// arrays as needed.
+  void removeIdRange(unsigned idStart, unsigned idLimit);
 
   /// Coefficients of affine equalities (in == 0 form).
   SmallVector<int64_t, 64> equalities;
