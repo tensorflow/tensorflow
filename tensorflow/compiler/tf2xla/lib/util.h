@@ -72,6 +72,10 @@ xla::XlaOp DynamicUpdateSliceInMinorDims(xla::XlaOp x, xla::XlaOp update,
 // Transposes a stack of matrices `x` by swapping the last two dimensions.
 xla::XlaOp TransposeInMinorDims(xla::XlaOp x);
 
+// Transposes `x` in its minor dimensions if `transpose` is true, otherwise
+// returns `x` unchanged.
+xla::XlaOp MaybeTransposeInMinorDims(xla::XlaOp x, bool transpose);
+
 // Applies a complex conjugation operation if `a` is complex and `conjugate_a`
 // is true, otherwise returns its argument.
 xla::XlaOp MaybeConjugate(xla::XlaOp x, bool conjugate);

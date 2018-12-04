@@ -126,7 +126,7 @@ XLA_TEST_F(UtilTest, RowBatchDot) {
 
   auto l_index = DynamicSliceInMinorDims(
       a, {index, xla::ConstantR0<int32>(&builder, 0)}, {1, n});
-  BatchDot(l_index, row, /*transpose_x=*/false, /*transpose_y=*/true);
+  BatchDot(l_index, TransposeInMinorDims(row));
 
   ComputeAndCompareR3<float>(&builder, {{{33}}, {{292}}},
                              {a_data.get(), row_data.get(), index_data.get()});

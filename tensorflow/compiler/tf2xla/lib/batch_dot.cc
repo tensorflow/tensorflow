@@ -26,8 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x,
-                    bool transpose_y, bool conjugate_x, bool conjugate_y,
+xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y,
                     xla::PrecisionConfig::Precision precision) {
   xla::XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
@@ -61,15 +60,14 @@ xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x,
       batch_dimension_numbers.push_back(i);
     }
 
-    int x_inner_dim = transpose_x ? (ndims - 2) : (ndims - 1);
-    int y_inner_dim = transpose_y ? (ndims - 1) : (ndims - 2);
+    int x_inner_dim = ndims - 1;
+    int y_inner_dim = ndims - 2;
     if (x_shape.dimensions(x_inner_dim) != y_shape.dimensions(y_inner_dim)) {
       return errors::InvalidArgument(
           "Dimensions ", x_inner_dim, " and ", y_inner_dim,
           " of arguments to BatchedDot must be equal: ",
-          xla::ShapeUtil::HumanString(x_shape), " transpose: ", transpose_x,
-          " vs. ", xla::ShapeUtil::HumanString(y_shape),
-          " transpose: ", transpose_y);
+          xla::ShapeUtil::HumanString(x_shape), " vs. ",
+          xla::ShapeUtil::HumanString(y_shape));
     }
 
     // Check for zero lhs/rhs dim size.
@@ -79,21 +77,14 @@ xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x,
       for (int i = 0; i < batch_dimension_numbers.size(); ++i) {
         dimensions[i] = x_shape.dimensions(batch_dimension_numbers[i]);
       }
-      int x_outer_dim = transpose_x ? (ndims - 1) : (ndims - 2);
-      int y_outer_dim = transpose_y ? (ndims - 2) : (ndims - 1);
+      int x_outer_dim = ndims - 2;
+      int y_outer_dim = ndims - 1;
       dimensions.push_back(x_shape.dimensions(x_outer_dim));
       dimensions.push_back(y_shape.dimensions(y_outer_dim));
       return xla::Broadcast(
           xla::ConstantLiteral(builder,
                                xla::LiteralUtil::Zero(x_shape.element_type())),
           dimensions);
-    }
-
-    if (x_shape.element_type() == xla::C64 && conjugate_x) {
-      x = xla::Conj(x);
-    }
-    if (y_shape.element_type() == xla::C64 && conjugate_y) {
-      y = xla::Conj(y);
     }
 
     xla::PrecisionConfig precision_proto;
