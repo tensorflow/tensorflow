@@ -97,7 +97,12 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
     PlatformGpuId platform_gpu_id;
     TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
     int bus_id = BusIdForGPU(tf_gpu_id);
-    while (bus_id >= gpu_visitors_.size()) {
+    static const int kUnknownNumaNode = -1;
+    // Not expecting `kUnknownNumaNode` for `bus_id`
+    // Default to 0, to avoid OOM exhaustion and `gpu_visitors_` address violation
+    if (bus_id == kUnknownNumaNode)
+      bus_id = 0;
+    while (bus_id >= static_cast<int64>(gpu_visitors_.size())) {
       gpu_visitors_.push_back({});
     }
     GPUMemAllocator* sub_allocator = new GPUMemAllocator(
