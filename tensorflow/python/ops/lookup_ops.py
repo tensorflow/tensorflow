@@ -161,7 +161,9 @@ class InitializableLookupTableBase(LookupInterface):
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
     self._default_value.get_shape().merge_with(tensor_shape.scalar())
-    self._initializer = self._track_checkpointable(initializer, "_initializer")
+    if isinstance(initializer, checkpointable_base.CheckpointableBase):
+      self._initializer = self._track_checkpointable(
+          initializer, "_initializer")
     self._resource_handle = self.create_resource()
     self._init_op = self.initialize()
 
