@@ -1491,26 +1491,5 @@ void BM_CreateAndMoveCtrWithBuf(int iters) {
 }
 BENCHMARK(BM_CreateAndMoveCtrWithBuf);
 
-// Benchmark creating and destroy a host-scalar tensor, using the allocator
-// interface.
-void BM_CreateAndDestroyHostScalarNonOptimized(int iters) {
-  TensorShape shape({});
-  Allocator* allocator = cpu_allocator();
-  while (--iters) {
-    Tensor a(allocator, DT_FLOAT, shape);
-    a.scalar<float>()() = 37.0;
-  }
-}
-BENCHMARK(BM_CreateAndDestroyHostScalarNonOptimized);
-
-// Benchmark creating and destroy a host-scalar tensor, using the specialized
-// constructor.
-void BM_CreateAndDestroyHostScalarOptimized(int iters) {
-  while (--iters) {
-    Tensor a(37.0);
-  }
-}
-BENCHMARK(BM_CreateAndDestroyHostScalarOptimized);
-
 }  // namespace
 }  // namespace tensorflow

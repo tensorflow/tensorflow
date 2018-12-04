@@ -199,17 +199,19 @@ class XlaTensorBuffer : public TensorBuffer {
  public:
   XlaTensorBuffer(const void* ptr, size_t expected_size, size_t actual_size,
                   Allocator* allocator)
-      : TensorBuffer(const_cast<void*>(ptr)),
-        expected_size_(expected_size),
+      : expected_size_(expected_size),
         actual_size_(actual_size),
-        allocator_(allocator) {}
+        allocator_(allocator) {
+    data_ = const_cast<void*>(ptr);
+  }
 
   ~XlaTensorBuffer() override {
     if (data_) {
-      allocator_->DeallocateRaw(data());
+      allocator_->DeallocateRaw(data_);
     }
   }
 
+  void* data() const override { return data_; }
   size_t size() const override { return expected_size_; }
 
   TensorBuffer* root_buffer() override { return this; }

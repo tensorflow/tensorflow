@@ -68,8 +68,7 @@ namespace {
 // An un-templated base class for Buffer.
 class BufferBase : public TensorBuffer {
  public:
-  explicit BufferBase(Allocator* alloc, void* data_ptr)
-      : TensorBuffer(data_ptr), alloc_(alloc) {}
+  explicit BufferBase(Allocator* alloc) : alloc_(alloc) {}
 
   TensorBuffer* root_buffer() override { return this; }
   void FillAllocationDescription(AllocationDescription* proto) const override {
@@ -107,6 +106,7 @@ class Buffer : public BufferBase {
   Buffer(Allocator* a, int64 n);
   Buffer(Allocator* a, int64 n, const AllocationAttributes& allocation_attr);
 
+  void* data() const override { return data_; }
   size_t size() const override { return sizeof(T) * elem_; }
 
  private:
@@ -442,20 +442,20 @@ struct ProtoHelper<Eigen::half> {
 
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n)
-    : BufferBase(a, a->Allocate<T>(n)), elem_(n) {}
+    : BufferBase(a), data_(a->Allocate<T>(n)), elem_(n) {}
 
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n,
                   const AllocationAttributes& allocation_attr)
-    : BufferBase(a, a->Allocate<T>(n, allocation_attr)), elem_(n) {}
+    : BufferBase(a), data_(a->Allocate<T>(n, allocation_attr)), elem_(n) {}
 
 template <typename T>
 Buffer<T>::~Buffer() {
-  if (data()) {
+  if (data_) {
     if (LogMemory::IsEnabled()) {
       RecordDeallocation();
     }
-    alloc_->Deallocate<T>(static_cast<T*>(data()), elem_);
+    alloc_->Deallocate<T>(data_, elem_);
   }
 }
 
@@ -764,9 +764,7 @@ class SubBuffer : public TensorBuffer {
  public:
   // This buffer is an alias to buf[delta, delta + n).
   SubBuffer(TensorBuffer* buf, int64 delta, int64 n)
-      : TensorBuffer(buf->base<T>() + delta),
-        root_(buf->root_buffer()),
-        elem_(n) {
+      : root_(buf->root_buffer()), data_(buf->base<T>() + delta), elem_(n) {
     // Sanity check. The caller should ensure the sub buffer is valid.
     CHECK_LE(root_->base<T>(), this->base<T>());
     T* root_limit = root_->base<T>() + root_->size() / sizeof(T);
@@ -777,6 +775,7 @@ class SubBuffer : public TensorBuffer {
     root_->Ref();
   }
 
+  void* data() const override { return data_; }
   size_t size() const override { return sizeof(T) * elem_; }
   TensorBuffer* root_buffer() override { return root_; }
   void FillAllocationDescription(AllocationDescription* proto) const override {
