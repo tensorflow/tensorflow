@@ -1136,6 +1136,13 @@ inline const HloInstruction* HloOperand(const HloInstruction* instr,
   return instr->operand(idx);
 }
 
+// Pretty-printer for HloInstruction.  Sort of like ToShortString, but with
+// fewer %s and more shapes.
+inline string InstToString(const HloInstruction* inst) {
+  return inst->ToString(
+      HloPrintOptions().set_print_metadata(false).set_print_percent(false));
+}
+
 template <typename HloInstructionType, typename Impl>
 class HloInstructionPattern;
 
@@ -1190,14 +1197,14 @@ class HloInstructionIsImpl {
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     if (inst != inst_) {
       EXPLAIN << "HloInstruction " << inst << " is not " << inst_ << " ("
-              << inst_->ToShortString() << ")";
+              << InstToString(inst_) << ")";
       return false;
     }
     return true;
   }
 
   void DescribeTo(std::ostream* os, int64 indent = 0) const {
-    *os << "which is " << inst_ << " (" << inst_->ToShortString() << ")";
+    *os << "which is " << inst_ << " (" << InstToString(inst_) << ")";
   }
 
  private:
@@ -1617,7 +1624,7 @@ class HloInstructionPatternOneUseOrUserImpl {
       if (inst->user_count() > 1) {
         EXPLAIN << "\nAll users:";
         for (const HloInstruction* user : inst->users()) {
-          EXPLAIN << "\n - " << user->ToShortString();
+          EXPLAIN << "\n - " << InstToString(user);
         }
       }
       return false;
@@ -1640,7 +1647,7 @@ class HloInstructionPatternOneUseImpl
     if (use_count != 1) {
       EXPLAIN << "HloInstruction is used " << use_count
               << " times by its user, but is expected to be used just once: "
-              << inst->users()[0]->ToShortString();
+              << InstToString(inst->users()[0]);
       return false;
     }
     return true;
@@ -1767,10 +1774,7 @@ class HloInstructionPattern {
       return true;
     }
     if (inst != nullptr) {
-      EXPLAIN << "\nin "
-              << inst->ToString(HloPrintOptions()
-                                    .set_print_metadata(false)
-                                    .set_print_percent(false));
+      EXPLAIN << "\nin " << InstToString(inst);
     }
     return false;
   }
@@ -1783,10 +1787,7 @@ class HloInstructionPattern {
       }
       return true;
     }
-    EXPLAIN << "\nin "
-            << inst->ToString(HloPrintOptions()
-                                  .set_print_metadata(false)
-                                  .set_print_percent(false));
+    EXPLAIN << "\nin " << InstToString(inst);
     return false;
   }
 
