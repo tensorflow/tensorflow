@@ -136,22 +136,16 @@ const char* TF_Message(const TF_Status* s) {
 namespace {
 class TF_ManagedBuffer : public TensorBuffer {
  public:
-  TF_ManagedBuffer(void* data, size_t len,
-                   void (*deallocator)(void* data, size_t len, void* arg),
-                   void* deallocator_arg)
-      : TensorBuffer(data),
-        len_(len),
-        deallocator_(deallocator),
-        deallocator_arg_(deallocator_arg) {}
-
-  const size_t len_;
-  void (*const deallocator_)(void* data, size_t len, void* arg);
-  void* const deallocator_arg_;
+  void* data_;
+  size_t len_;
+  void (*deallocator_)(void* data, size_t len, void* arg);
+  void* deallocator_arg_;
 
   ~TF_ManagedBuffer() override {
-    (*deallocator_)(data(), len_, deallocator_arg_);
+    (*deallocator_)(data_, len_, deallocator_arg_);
   }
 
+  void* data() const override { return data_; }
   size_t size() const override { return len_; }
   TensorBuffer* root_buffer() override { return this; }
   void FillAllocationDescription(AllocationDescription* proto) const override {
@@ -205,7 +199,8 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
   }
 
-  TF_ManagedBuffer* buf = nullptr;
+  TF_ManagedBuffer* buf = new TF_ManagedBuffer;
+  buf->len_ = len;
   if (dtype != TF_STRING && dtype != TF_RESOURCE &&
       tensorflow::DataTypeCanUseMemcpy(static_cast<DataType>(dtype)) &&
       reinterpret_cast<intptr_t>(data) % std::max(1, EIGEN_MAX_ALIGN_BYTES) !=
@@ -217,15 +212,17 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     //
     // Other types have the same representation, so copy only if it is safe to
     // do so.
-    buf = new TF_ManagedBuffer(allocate_tensor("TF_NewTensor", len), len,
-                               deallocate_buffer, nullptr);
-    std::memcpy(buf->data(), data, len);
+    buf->data_ = allocate_tensor("TF_NewTensor", len);
+    std::memcpy(buf->data_, data, len);
+    buf->deallocator_ = deallocate_buffer;
+    buf->deallocator_arg_ = nullptr;
     // Free the original buffer.
     deallocator(data, len, deallocator_arg);
   } else {
-    buf = new TF_ManagedBuffer(data, len, deallocator, deallocator_arg);
+    buf->data_ = data;
+    buf->deallocator_ = deallocator;
+    buf->deallocator_arg_ = deallocator_arg;
   }
-
   TF_Tensor* ret = new TF_Tensor{dtype, TensorShape(dimvec), buf};
   size_t elem_size = TF_DataTypeSize(dtype);
   if (elem_size > 0 && len < (elem_size * ret->shape.num_elements())) {
@@ -480,9 +477,9 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype, const TensorShape& shape) {
   CHECK_EQ(nelems, 0);
   static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
                 "64-bit int types should match in size");
-  return TF_NewTensor(
-      dtype, reinterpret_cast<const int64_t*>(dims.data()), shape.dims(),
-      reinterpret_cast<void*>(&empty), 0, [](void*, size_t, void*) {}, nullptr);
+  return TF_NewTensor(dtype, reinterpret_cast<const int64_t*>(dims.data()),
+                      shape.dims(), reinterpret_cast<void*>(&empty), 0,
+                      [](void*, size_t, void*) {}, nullptr);
 }
 
 // Non-static for testing.
@@ -1595,20 +1592,18 @@ TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
     break;                                            \
   }
 
-      LIST_CASE(
-          s, TF_ATTR_STRING, metadata.total_size = 0;
-          for (int i = 0; i < attr->list().s_size();
-               ++i) { metadata.total_size += attr->list().s(i).size(); });
+      LIST_CASE(s, TF_ATTR_STRING, metadata.total_size = 0;
+                for (int i = 0; i < attr->list().s_size();
+                     ++i) { metadata.total_size += attr->list().s(i).size(); });
       LIST_CASE(i, TF_ATTR_INT);
       LIST_CASE(f, TF_ATTR_FLOAT);
       LIST_CASE(b, TF_ATTR_BOOL);
       LIST_CASE(type, TF_ATTR_TYPE);
-      LIST_CASE(
-          shape, TF_ATTR_SHAPE, metadata.total_size = 0;
-          for (int i = 0; i < attr->list().shape_size(); ++i) {
-            const auto& s = attr->list().shape(i);
-            metadata.total_size += s.unknown_rank() ? 0 : s.dim_size();
-          });
+      LIST_CASE(shape, TF_ATTR_SHAPE, metadata.total_size = 0;
+                for (int i = 0; i < attr->list().shape_size(); ++i) {
+                  const auto& s = attr->list().shape(i);
+                  metadata.total_size += s.unknown_rank() ? 0 : s.dim_size();
+                });
       LIST_CASE(tensor, TF_ATTR_TENSOR);
       LIST_CASE(tensor, TF_ATTR_FUNC);
 #undef LIST_CASE
