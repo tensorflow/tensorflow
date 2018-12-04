@@ -767,10 +767,11 @@ TEST(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
       "in c = f64[] constant(2.25)");
   EXPECT_DESC_AND_EXPLANATION(
       constant, m::Op().Is(iota.get()),
-      absl::StrCat("an HloInstruction which is 0x", absl::Hex(iota.get()), " (",
-                   iota->ToShortString(), ")"),
+      absl::StrCat("an HloInstruction which is 0x", absl::Hex(iota.get()),
+                   " (i = s32[42]{0} iota(), iota_dimension=0)"),
       absl::StrCat("HloInstruction 0x", absl::Hex(constant.get()), " is not 0x",
-                   absl::Hex(iota.get()), " (", iota->ToShortString(), ")\n",
+                   absl::Hex(iota.get()),
+                   " (i = s32[42]{0} iota(), iota_dimension=0)\n"
                    "in c = s32[] constant(0)"));
 }
 
@@ -910,8 +911,8 @@ TEST(PatternMatcherTest, OneUseAndOneUser) {
     const char* kMultipleUserExplanation =
         "HloInstruction has 2 users, but expected exactly one.\n"
         "All users:\n"
-        " - %r = reshape(%p0)\n"
-        " - %r1 = reshape(%p0)\n"
+        " - r = f32[1]{0} reshape(f32[] p0)\n"
+        " - r1 = f32[1]{0} reshape(f32[] p0)\n"
         "in p0 = f32[] parameter(0)";
     EXPECT_EQ(Explanation(param.get(), m::Op().WithOneUse()),
               kMultipleUserExplanation);
@@ -926,7 +927,7 @@ TEST(PatternMatcherTest, OneUseAndOneUser) {
   EXPECT_FALSE(Match(param.get(), m::Op().WithOneUse()));
   EXPECT_EQ(Explanation(param.get(), m::Op().WithOneUse()),
             "HloInstruction is used 2 times by its user, but is expected to be "
-            "used just once: %add = add(%p0, %p0)\n"
+            "used just once: add = f32[] add(f32[] p0, f32[] p0)\n"
             "in p0 = f32[] parameter(0)");
 }
 
