@@ -135,51 +135,6 @@ class DatasetV2(object):
           options.experimental_stats.counter_prefix)
     return dataset
 
-  def make_initializable_iterator(self, shared_name=None):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
-
-    Note: The returned iterator will be in an uninitialized state,
-    and you must run the `iterator.initializer` operation before using it:
-
-    ```python
-    dataset = ...
-    iterator = dataset.make_initializable_iterator()
-    # ...
-    sess.run(iterator.initializer)
-    ```
-
-    Args:
-      shared_name: (Optional.) If non-empty, the returned iterator will be
-        shared under the given name across multiple sessions that share the
-        same devices (e.g. when using a remote server).
-
-    Returns:
-      An `Iterator` over the elements of this dataset.
-
-    Raises:
-      RuntimeError: If eager execution is enabled.
-    """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          "dataset.make_initializable_iterator is not supported when eager "
-          "execution is enabled.")
-    dataset = self._apply_options()
-    if shared_name is None:
-      shared_name = ""
-    if compat.forward_compatible(2018, 8, 3):
-      iterator_resource = gen_dataset_ops.iterator_v2(
-          container="", shared_name=shared_name, **flat_structure(self))
-    else:
-      iterator_resource = gen_dataset_ops.iterator(
-          container="", shared_name=shared_name, **flat_structure(self))
-    with ops.colocate_with(iterator_resource):
-      initializer = gen_dataset_ops.make_iterator(
-          dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          iterator_resource)
-    return iterator_ops.Iterator(iterator_resource, initializer,
-                                 dataset.output_types, dataset.output_shapes,
-                                 dataset.output_classes)
-
   def __iter__(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
@@ -1352,6 +1307,56 @@ class DatasetV1(DatasetV2):
             dataset_factory=_make_dataset, **flat_structure(self)),
         None, self.output_types, self.output_shapes, self.output_classes)
 
+  @deprecation.deprecated(
+      None, "Use `for ... in dataset:` to iterate over a dataset. If using "
+      "`tf.estimator`, return the `Dataset` object directly from your input "
+      "function. As a last resort, you can use "
+      "`tf.compat.v1.data.make_initializable_iterator(dataset)`.")
+  def make_initializable_iterator(self, shared_name=None):
+    """Creates an `Iterator` for enumerating the elements of this dataset.
+
+    Note: The returned iterator will be in an uninitialized state,
+    and you must run the `iterator.initializer` operation before using it:
+
+    ```python
+    dataset = ...
+    iterator = dataset.make_initializable_iterator()
+    # ...
+    sess.run(iterator.initializer)
+    ```
+
+    Args:
+      shared_name: (Optional.) If non-empty, the returned iterator will be
+        shared under the given name across multiple sessions that share the
+        same devices (e.g. when using a remote server).
+
+    Returns:
+      An `Iterator` over the elements of this dataset.
+
+    Raises:
+      RuntimeError: If eager execution is enabled.
+    """
+    if context.executing_eagerly():
+      raise RuntimeError(
+          "dataset.make_initializable_iterator is not supported when eager "
+          "execution is enabled.")
+    dataset = self._apply_options()
+    if shared_name is None:
+      shared_name = ""
+    if compat.forward_compatible(2018, 8, 3):
+      iterator_resource = gen_dataset_ops.iterator_v2(
+          container="", shared_name=shared_name, **flat_structure(self))
+    else:
+      iterator_resource = gen_dataset_ops.iterator(
+          container="", shared_name=shared_name, **flat_structure(self))
+    with ops.colocate_with(iterator_resource):
+      initializer = gen_dataset_ops.make_iterator(
+          dataset._as_variant_tensor(),  # pylint: disable=protected-access
+          iterator_resource)
+    return iterator_ops.Iterator(iterator_resource, initializer,
+                                 dataset.output_types, dataset.output_shapes,
+                                 dataset.output_classes)
+
   @staticmethod
   @functools.wraps(DatasetV2.from_tensors)
   def from_tensors(tensors):
@@ -1563,9 +1568,6 @@ class DatasetV1Adapter(DatasetV1):
   def output_types(self):
     return self._dataset.output_types
 
-  def make_initializable_iterator(self, shared_name=None):
-    return self._dataset.make_initializable_iterator(shared_name)
-
   def __iter__(self):
     return iter(self._dataset)
 
@@ -1589,6 +1591,37 @@ def make_one_shot_iterator(dataset):
     return dataset.make_one_shot_iterator()
   except AttributeError:
     return DatasetV1Adapter(dataset).make_one_shot_iterator()
+
+
+@tf_export(v1=["data.make_initializable_iterator"])
+def make_initializable_iterator(dataset):
+  """Creates a `tf.data.Iterator` for enumerating the elements of a dataset.
+
+  Note: The returned iterator will be in an uninitialized state,
+  and you must run the `iterator.initializer` operation before using it:
+
+  ```python
+  dataset = ...
+  iterator = dataset.make_initializable_iterator()
+  # ...
+  sess.run(iterator.initializer)
+  ```
+
+  Args:
+    dataset: A `tf.data.Dataset`.
+
+  Returns:
+    A `tf.data.Iterator` over the elements of `dataset`.
+
+  Raises:
+    RuntimeError: If eager execution is enabled.
+  """
+  try:
+    # Call the defined `make_one_shot_iterator()` if there is one, because some
+    # datasets (e.g. for prefetching) override its behavior.
+    return dataset.make_initializable_iterator()
+  except AttributeError:
+    return DatasetV1Adapter(dataset).make_initializable_iterator()
 
 
 @tf_export("data.Options")

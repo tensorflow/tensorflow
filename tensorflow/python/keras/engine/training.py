@@ -1156,7 +1156,7 @@ class Model(Network):
         if x in self._dataset_iterator_cache:
           x = self._dataset_iterator_cache[x]
         else:
-          iterator = x.make_initializable_iterator()
+          iterator = dataset_ops.make_initializable_iterator(x)
           self._dataset_iterator_cache[x] = iterator
           x = iterator
         K.get_session().run(x.initializer)

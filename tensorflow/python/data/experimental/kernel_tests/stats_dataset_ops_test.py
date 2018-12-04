@@ -67,7 +67,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).apply(
             stats_ops.bytes_produced_stats("bytes_produced"))
     dataset = dataset_transformation(dataset, aggregator)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
     summary_t = aggregator.get_summary()
 
@@ -93,7 +93,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     dataset = dataset_ops.Dataset.range(100).apply(
         stats_ops.latency_stats("record_latency"))
     dataset = dataset_transformation(dataset, aggregator)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
     summary_t = aggregator.get_summary()
 
@@ -114,7 +114,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     dataset = dataset_ops.Dataset.range(100).map(
         lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).prefetch(-1)
     dataset = dataset_transformation(dataset, aggregator)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
     summary_t = aggregator.get_summary()
 
@@ -142,7 +142,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     dataset = dataset_ops.Dataset.range(10).map(
         lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).prefetch(0)
     dataset = dataset_transformation(dataset, aggregator)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
     summary_t = aggregator.get_summary()
 
@@ -165,7 +165,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     dataset = dataset_ops.Dataset.range(101).filter(
         lambda x: math_ops.equal(math_ops.mod(x, 3), 0))
     dataset = dataset_transformation(dataset, aggregator)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
     summary_t = aggregator.get_summary()
 
@@ -264,7 +264,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     dataset = dataset_ops.Dataset.range(100).apply(
         stats_ops.latency_stats("record_latency"))
     dataset = dataset_transformation(dataset, aggregator)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
     summary_t = aggregator.get_summary()
 
@@ -285,7 +285,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
   def testNoAggregatorRegistered(self, dataset_transformation):
     dataset = dataset_ops.Dataset.range(100).apply(
         stats_ops.latency_stats("record_latency"))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -302,7 +302,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         stats_ops.latency_stats("record_latency")).apply(
             stats_ops.latency_stats("record_latency_2"))
     dataset = dataset_transformation(dataset, aggregator)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
     summary_t = aggregator.get_summary()
 
@@ -328,7 +328,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         stats_ops.latency_stats("record_latency")).apply(
             stats_ops.latency_stats("record_latency"))
     dataset = dataset_transformation(dataset, aggregator)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
     summary_t = aggregator.get_summary()
 
@@ -349,8 +349,8 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     dataset = dataset_ops.Dataset.range(100).apply(
         stats_ops.latency_stats("record_latency"))
     dataset = dataset_transformation(dataset, aggregator)
-    iterator_0 = dataset.make_initializable_iterator()
-    iterator_1 = dataset.make_initializable_iterator()
+    iterator_0 = dataset_ops.make_initializable_iterator(dataset)
+    iterator_1 = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator_0.get_next() + iterator_1.get_next()
     summary_t = aggregator.get_summary()
 
@@ -374,8 +374,8 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     dataset2 = dataset_ops.Dataset.range(100).apply(
         stats_ops.latency_stats("record_latency"))
     dataset2 = dataset_transformation(dataset2, aggregator, prefix="dataset2")
-    iterator_0 = dataset.make_initializable_iterator()
-    iterator_1 = dataset2.make_initializable_iterator()
+    iterator_0 = dataset_ops.make_initializable_iterator(dataset)
+    iterator_1 = dataset_ops.make_initializable_iterator(dataset2)
     next_element = iterator_0.get_next() + iterator_1.get_next()
     summary_t = aggregator.get_summary()
 
@@ -435,7 +435,7 @@ class FeatureStatsDatasetTest(
 
     dataset = dataset_transformation(
         dataset_fn(), aggregator, prefix="record_stats")
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
     summary_t = aggregator.get_summary()
 

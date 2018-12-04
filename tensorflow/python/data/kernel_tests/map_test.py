@@ -100,7 +100,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     count = array_ops.placeholder(dtypes.int64, shape=[])
 
     dataset = self._buildMapDataset(components, count)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -166,7 +166,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = self._buildParallelMapDataset(
         components, count, num_parallel_calls, output_buffer_size)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -235,7 +235,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = self._buildParallelMapDataset(components, 1000, 100, 100)
     # NOTE(mrry): Also test that the prefetching thread is cancelled correctly.
     dataset = dataset.prefetch(100)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -250,7 +250,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
                .map(lambda x: array_ops.check_numerics(x, "message"),
                     num_parallel_calls=2))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -265,7 +265,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
                .map(lambda x: array_ops.check_numerics(x, "message"),
                     num_parallel_calls=2))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -286,7 +286,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
                .map(lambda x: array_ops.check_numerics(x, "message"))
                .prefetch(2))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -312,8 +312,8 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset_ops.Dataset.range(10).map(_map_fn)
 
     def _build_graph():
-      captured_iterator = dataset_ops.Dataset.range(
-          10).make_initializable_iterator()
+      captured_iterator = dataset_ops.make_initializable_iterator(
+          dataset_ops.Dataset.range(10))
       ds = _build_ds(captured_iterator)
       iterator = ds.make_initializable_iterator()
       init_op = iterator.initializer
@@ -343,10 +343,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     input_sentences = dataset_ops.Dataset.from_tensor_slices(
         ["brain brain tank salad surgery", "surgery brain"])
 
-    iterator = (input_sentences
-                .map(lambda x: string_ops.string_split([x]).values)
-                .map(table.lookup)
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        input_sentences
+        .map(lambda x: string_ops.string_split([x]).values).map(table.lookup))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -363,8 +362,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     queue = data_flow_ops.FIFOQueue(200, dtypes.int64, shapes=[])
     enqueue_op = queue.enqueue_many(elements)
     close_op = queue.close()
-    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(-1)
-                .map(lambda _: queue.dequeue()).make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_tensors(0).repeat(-1)
+        .map(lambda _: queue.dequeue()))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -387,9 +387,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     enqueue_op = queue.enqueue_many(elements)
     close_op = queue.close()
 
-    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(-1)
-                .map(lambda _: (queue.dequeue(), queue_2.dequeue()))
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_tensors(0).repeat(-1)
+        .map(lambda _: (queue.dequeue(), queue_2.dequeue())))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -406,9 +406,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testCaptureVariable(self):
     counter_var = variable_scope.get_variable(
         "counter", (), dtypes.int32, use_resource=True)
-    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(10)
-                .map(lambda _: counter_var.assign_add(1))
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_tensors(0).repeat(10)
+        .map(lambda _: counter_var.assign_add(1)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -426,9 +426,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testCaptureUninitializedVariableError(self):
     counter_var = variable_scope.get_variable(
         "counter", (), dtypes.int32, use_resource=True)
-    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(10)
-                .map(lambda _: counter_var.assign_add(1))
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_tensors(0).repeat(10)
+        .map(lambda _: counter_var.assign_add(1)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -438,9 +438,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         sess.run(get_next)
 
   def testSeededStatefulOperatorIsProperlyStateful(self):
-    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(10)
-                .map(lambda _: random_ops.random_uniform((), seed=11)).batch(2)
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_tensors(0).repeat(10)
+        .map(lambda _: random_ops.random_uniform((), seed=11)).batch(2))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -462,11 +462,11 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertAllClose(random_values, random_values_2)
 
   def testStatefulMapKeepsStateAcrossIterators(self):
-    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(10)
-                .map(lambda _: random_ops.random_uniform((), seed=11))
-                .repeat(1000)
-                .batch(10)
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_tensors(0).repeat(10)
+        .map(lambda _: random_ops.random_uniform((), seed=11))
+        .repeat(1000)
+        .batch(10))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -491,9 +491,8 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       counter_var.assign_add(1)
       return x
 
-    iterator = (dataset_ops.Dataset.range(10)
-                .map(increment_fn)
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(10).map(increment_fn))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -509,10 +508,10 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(10, sess.run(counter_var))
 
   def testMapDict(self):
-    iterator = (dataset_ops.Dataset.range(10)
-                .map(lambda x: {"foo": x * 2, "bar": x ** 2})
-                .map(lambda d: d["foo"] + d["bar"])
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(10)
+        .map(lambda x: {"foo": x * 2, "bar": x ** 2})
+        .map(lambda d: d["foo"] + d["bar"]))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -560,10 +559,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testUseStepContainerInMap(self):
     row = np.arange(6)
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensors(row)
-        .map(lambda elems: functional_ops.map_fn(lambda x: x * x, elems))
-        .make_initializable_iterator())
+        .map(lambda elems: functional_ops.map_fn(lambda x: x * x, elems)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -599,9 +597,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           pred_fn_pairs, default=multiply, exclusive=True)
 
     def build_dataset(row, num):
-      iterator = (
+      iterator = dataset_ops.make_initializable_iterator(
           dataset_ops.Dataset.from_tensor_slices(row).map(
-              lambda x: control_map_fn(x, num)).make_initializable_iterator())
+              lambda x: control_map_fn(x, num)))
       init_op = iterator.initializer
       get_next = iterator.get_next()
       return init_op, get_next
@@ -638,11 +636,10 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     def build_dataset(row, num):
       # pylint: disable=g-long-lambda
-      iterator = (
+      iterator = dataset_ops.make_initializable_iterator(
           dataset_ops.Dataset.from_tensors(row).map(
-              lambda elems: functional_ops.map_fn(lambda x:
-                                                  control_map_fn(x, num), elems)
-              ).make_initializable_iterator())
+              lambda elems: functional_ops.map_fn(
+                  lambda x: control_map_fn(x, num), elems)))
       init_op = iterator.initializer
       get_next = iterator.get_next()
       return init_op, get_next
@@ -686,11 +683,10 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     row = np.arange(6)
     num = 2
     # pylint: disable=g-long-lambda
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensors(row).map(
-            lambda elems: functional_ops.map_fn(lambda x:
-                                                control_map_fn(x, num), elems)
-            ).make_initializable_iterator())
+            lambda elems: functional_ops.map_fn(
+                lambda x: control_map_fn(x, num), elems)))
     # pylint: enable=g-long-lambda
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -720,11 +716,10 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       return script_ops.py_func(_map_py_func, [x], x.dtype)
 
     buffer_size_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.range(100)
         .map(_map_fn)
-        .prefetch(buffer_size_placeholder)
-        .make_initializable_iterator())
+        .prefetch(buffer_size_placeholder))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -760,9 +755,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           sess.run(get_next)
 
   def testReturnList(self):
-    iterator = (dataset_ops.Dataset.range(10)
-                .map(lambda x: [x, constant_op.constant(37.0)])
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(10)
+        .map(lambda x: [x, constant_op.constant(37.0)]))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -781,9 +776,8 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       return script_ops.py_func(
           _map_py_func, [x_tensor], [dtypes.int64, dtypes.float64])
 
-    iterator = (dataset_ops.Dataset.range(10)
-                .map(_map_fn)
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(10).map(_map_fn))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -802,9 +796,8 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           values=(i * np.array([1])),
           dense_shape=np.array([1, 1]))
 
-    iterator = (dataset_ops.Dataset.range(10)
-                .map(_sparse)
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(10).map(_sparse))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -829,9 +822,8 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertTrue(sparse_tensor.is_sparse(i))
       return sparse_ops.sparse_concat(0, [i, i])
 
-    iterator = (
-        dataset_ops.Dataset.range(10).map(_sparse).map(_check)
-        .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(10).map(_sparse).map(_check))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -851,11 +843,10 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       else:
         return i
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.range(105)
         .map(lambda x: script_ops.py_func(raising_py_func, [x], dtypes.int64),
-             num_parallel_calls=2)
-        .make_initializable_iterator())
+             num_parallel_calls=2))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -867,9 +858,8 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         sess.run(get_next)
 
   def testConstantOutput(self):
-    iterator = (
-        dataset_ops.Dataset.range(10).map(lambda x: [x, "hello", 10])
-        .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(10).map(lambda x: [x, "hello", 10]))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -940,7 +930,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       return const_tensor
 
     dataset = dataset.map(broken_function)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
 
     with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "BrokenConst"):
@@ -1005,7 +995,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     captured_t = array_ops.placeholder(dtypes.int64, shape=[])
     dataset = self.structuredDataset(None).repeat().map(
         lambda x: captured_t, num_parallel_calls=num_parallel_calls)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:

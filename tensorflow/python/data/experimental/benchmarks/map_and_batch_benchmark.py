@@ -54,7 +54,7 @@ class MapAndBatchBenchmark(test.Benchmark):
 
     dataset = dataset.apply(batching.map_and_batch(
         lambda _: dense_value, batch_size_placeholder))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     for shape in shapes:

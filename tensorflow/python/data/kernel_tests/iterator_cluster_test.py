@@ -161,7 +161,7 @@ class IteratorClusterTest(test.TestCase):
         dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
         .repeat(None).prefetch(10000))
 
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 

@@ -23,6 +23,7 @@ import os
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -578,7 +579,7 @@ class DatasetSerializationTestBase(test.TestCase):
     return np.linspace(0, num_outputs, num_samples, dtype=int)
 
   def _build_graph(self, ds_fn, sparse_tensors=False):
-    iterator = ds_fn().make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(ds_fn())
 
     saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)

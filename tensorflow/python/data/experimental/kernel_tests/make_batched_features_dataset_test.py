@@ -114,7 +114,7 @@ class MakeBatchedFeaturesDatasetTest(
         core_readers.TFRecordDataset(self.test_filenames)
         .map(lambda x: parsing_ops.parse_single_example(x, features))
         .repeat(10).batch(2))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     next_element = iterator.get_next()
 

@@ -113,7 +113,7 @@ class IteratorCheckpointingTest(test_base.DatasetTestBase):
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     dataset = dataset_ops.Dataset.range(10)
     iterator = iter(dataset) if context.executing_eagerly(
-    ) else dataset.make_initializable_iterator()
+    ) else dataset_ops.make_initializable_iterator(dataset)
     get_next = iterator.get_next
     checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
     for i in range(5):

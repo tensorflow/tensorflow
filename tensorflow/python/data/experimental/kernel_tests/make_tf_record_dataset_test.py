@@ -187,7 +187,7 @@ class MakeTFRecordDatasetTest(
             num_parallel_reads=num_parallel_reads,
             shuffle=True,
             shuffle_seed=seed)
-        iterator = dataset.make_initializable_iterator()
+        iterator = dataset_ops.make_initializable_iterator(dataset)
         next_element = iterator.get_next()
 
         self.evaluate(iterator.initializer)

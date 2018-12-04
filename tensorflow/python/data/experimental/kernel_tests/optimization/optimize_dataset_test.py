@@ -45,7 +45,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None))
     dataset = dataset_ops.Dataset.from_tensors(input_t)
     dataset = dataset_ops._OptimizeDataset(dataset, [])
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -58,7 +58,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None, None))
     dataset = dataset_ops.Dataset.from_tensor_slices(input_t)
     dataset = dataset_ops._OptimizeDataset(dataset, [])
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 

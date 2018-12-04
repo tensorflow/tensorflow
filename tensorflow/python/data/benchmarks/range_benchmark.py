@@ -39,7 +39,7 @@ class RangeBenchmark(test.Benchmark):
     # costs).
     dataset = dataset_ops.Dataset.range(num_elements).skip(
         num_elements - 1).take(1).with_options(options)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     with session.Session() as sess:
