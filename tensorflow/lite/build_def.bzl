@@ -265,6 +265,7 @@ def generated_test_models():
         "maximum",
         "mean",
         "minimum",
+        "mirror_pad",
         "mul",
         "neg",
         "not_equal",

@@ -1275,6 +1275,29 @@ class SquaredDifference
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class MirrorPad
+    : public BuiltinOperator<MirrorPadOperator, ::tflite::MirrorPadOptions,
+                             ::tflite::BuiltinOptions_MirrorPadOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateMirrorPadOptions(
+        *builder, op.mode == MirrorPadMode::kReflect
+                      ? ::tflite::MirrorPadMode::MirrorPadMode_REFLECT
+                      : ::tflite::MirrorPadMode::MirrorPadMode_SYMMETRIC);
+  }
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->mode = options.mode() == ::tflite::MirrorPadMode::MirrorPadMode_REFLECT
+                   ? MirrorPadMode::kReflect
+                   : MirrorPadMode::kSymmetric;
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
     const string& tensorflow_node_def) {
   auto fbb = absl::make_unique<flexbuffers::Builder>();
@@ -1581,6 +1604,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(MakeUnique<SquaredDifference>(
       ::tflite::BuiltinOperator_SQUARED_DIFFERENCE,
       OperatorType::kSquaredDifference));
+  ops.push_back(MakeUnique<MirrorPad>(::tflite::BuiltinOperator_MIRROR_PAD,
+                                      OperatorType::kMirrorPad));
 
   // Custom Operators.
   ops.push_back(

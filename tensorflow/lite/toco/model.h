@@ -156,7 +156,8 @@ enum class OperatorType : uint8 {
   kZerosLike,
   kResizeNearestNeighbor,
   kLeakyRelu,
-  kAbs
+  kAbs,
+  kMirrorPad
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -1930,6 +1931,23 @@ struct UnpackOperator : Operator {
 // TensorFlow equivalent: tf.zeros_like
 struct TensorFlowZerosLikeOperator : Operator {
   TensorFlowZerosLikeOperator() : Operator(OperatorType::kZerosLike) {}
+};
+
+enum class MirrorPadMode { kNone, kSymmetric, kReflect };
+
+// MirrorPad Operator:
+//
+// Inputs:
+// Inputs[0]: required: input tensor to be padded.
+// Inputs[1]: required: 2 Column matrix specifying padding sizes. The number of
+// rows must be the same as the rank of the input.
+// Inputs[2]: required: REFLECT or SYMMETRIC.
+//
+// TensorFlow equivalent: MirrorPad.
+struct MirrorPadOperator : Operator {
+  MirrorPadOperator() : Operator(OperatorType::kMirrorPad) {}
+  // mode is either SYMMETRIC or REFLECT.
+  MirrorPadMode mode;
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
