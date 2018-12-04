@@ -151,6 +151,40 @@ static void BM_Momentum(int iters, int params) {
 }
 BENCHMARK(BM_Momentum)->Arg(128 << 10)->Arg(256 << 10);
 
+static void KerasMomentum(int32 n, Graph** init_g, Graph** train_g) {
+  TensorShape shape({n});
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, n);
+    auto accum = Var(g, n);
+    auto zero = Zeros(g, n);
+    test::graph::Assign(g, var, zero);
+    test::graph::Assign(g, accum, zero);
+    *init_g = g;
+  }
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, n);
+    auto accum = Var(g, n);
+    auto lr = Scalar(g, 0.01);
+    auto grad = Random(g, n);
+    auto mom = Scalar(g, 0.01);
+    test::graph::Multi(g, "ApplyKerasMomentum", {var, accum, lr, grad, mom});
+    *train_g = g;
+  }
+}
+
+static void BM_KerasMomentum(int iters, int params) {
+  const int64 tot = static_cast<int64>(iters) * params;
+  testing::ItemsProcessed(tot);
+  testing::BytesProcessed(tot * sizeof(float));
+  Graph* init;
+  Graph* train;
+  KerasMomentum(params, &init, &train);
+  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+}
+BENCHMARK(BM_KerasMomentum)->Arg(128 << 10)->Arg(256 << 10);
+
 static void Adam(int32 n, Graph** init_g, Graph** train_g) {
   TensorShape shape({n});
   {

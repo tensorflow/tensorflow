@@ -102,6 +102,27 @@ struct ApplyMomentum<GPUDevice, T> {
 };
 
 template <typename T>
+struct ApplyKerasMomentum<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar momentum, bool use_nesterov) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+    accum.device(d) = (accum * momentum.reshape(single).broadcast(bcast) -
+                       grad * lr.reshape(single).broadcast(bcast));
+    if (use_nesterov) {
+      var.device(d) += (accum * momentum.reshape(single).broadcast(bcast) -
+                        grad * lr.reshape(single).broadcast(bcast));
+    } else {
+      var.device(d) += accum;
+    }
+  }
+};
+
+template <typename T>
 struct ApplyAdam<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
@@ -301,6 +322,10 @@ template struct functor::ApplyAdadelta<GPUDevice, double>;
 template struct functor::ApplyMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyMomentum<GPUDevice, float>;
 template struct functor::ApplyMomentum<GPUDevice, double>;
+
+template struct functor::ApplyKerasMomentum<GPUDevice, Eigen::half>;
+template struct functor::ApplyKerasMomentum<GPUDevice, float>;
+template struct functor::ApplyKerasMomentum<GPUDevice, double>;
 
 template struct functor::ApplyAdam<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdam<GPUDevice, float>;

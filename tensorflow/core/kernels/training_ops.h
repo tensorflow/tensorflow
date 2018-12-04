@@ -127,6 +127,15 @@ struct ApplyMomentum {
 };
 
 template <typename Device, typename T>
+struct ApplyKerasMomentum {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar momentum, bool use_nesterov);
+};
+
+template <typename Device, typename T>
 struct ApplyAdam {
   void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,

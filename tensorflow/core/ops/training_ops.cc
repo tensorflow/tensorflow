@@ -685,6 +685,34 @@ REGISTER_OP("ResourceSparseApplyMomentum")
       return ApplyMomentumShapeFn(c, true /* sparse */);
     });
 
+REGISTER_OP("ResourceApplyKerasMomentum")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("lr: T")
+    .Input("grad: T")
+    .Input("momentum: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyMomentumShapeFn(c, false /* sparse */);
+    });
+
+REGISTER_OP("ResourceSparseApplyKerasMomentum")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("lr: T")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Input("momentum: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyMomentumShapeFn(c, true /* sparse */);
+    });
+
 static Status ApplyAdamShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle unused;
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
