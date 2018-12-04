@@ -64,6 +64,9 @@ namespace xla {
 //       e.g. IsConstantScalar() or IsConstantScalar(42).
 //     - WithFusionKind
 //     - WithTupleIndex: get-tuple-element operations with the given tuple index
+//     - WithOneUse: Instruction is used as an operand exactly once.
+//     - WithOneUser: Instruction is used by exactly one other instruction, but
+//       is possibly used more than once as an operand (e.g. multiply(x,x)).
 //
 //   Shape():
 //     - EqualTo
@@ -1603,6 +1606,64 @@ class HloInstructionPatternParameterNumImpl {
   int64 parameter_num_;
 };
 
+// Superclass that contains common code used by Op::WithOneUse() and
+// Op::WithOneUser().
+class HloInstructionPatternOneUseOrUserImpl {
+ protected:
+  bool MatchOneUser(const HloInstruction* inst, MatchOption option) const {
+    if (inst->user_count() != 1) {
+      EXPLAIN << "HloInstruction has " << inst->user_count()
+              << " users, but expected exactly one.";
+      if (inst->user_count() > 1) {
+        EXPLAIN << "\nAll users:";
+        for (const HloInstruction* user : inst->users()) {
+          EXPLAIN << "\n - " << user->ToShortString();
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+};
+
+class HloInstructionPatternOneUseImpl
+    : public HloInstructionPatternOneUseOrUserImpl {
+ public:
+  bool Match(const HloInstruction* inst, MatchOption option) const {
+    if (!MatchOneUser(inst, option)) {
+      return false;
+    }
+
+    int64 use_count = absl::c_count_if(
+        inst->users()[0]->operands(),
+        [&](const HloInstruction* operand) { return operand == inst; });
+    if (use_count != 1) {
+      EXPLAIN << "HloInstruction is used " << use_count
+              << " times by its user, but is expected to be used just once: "
+              << inst->users()[0]->ToShortString();
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "which has exactly one use";
+  }
+};
+
+class HloInstructionPatternOneUserImpl
+    : public HloInstructionPatternOneUseOrUserImpl {
+ public:
+  bool Match(const HloInstruction* inst, MatchOption option) const {
+    return MatchOneUser(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "which has exactly one user (but possibly is used multiple times by "
+           "that instruction)";
+  }
+};
+
 // Matches a constant scalar or effective scalar, optionally with a given value.
 template <typename ScalarTy>
 class HloConstantScalarImpl {
@@ -1875,6 +1936,22 @@ class HloInstructionPattern {
   constexpr auto WithParameterNum(int64 parameter_num) const -> decltype(
       this->AppendImpl(HloInstructionPatternParameterNumImpl(parameter_num))) {
     return AppendImpl(HloInstructionPatternParameterNumImpl(parameter_num));
+  }
+
+  // Modifies the pattern to match if the instruction is used exactly once.
+  // Does not match if the instruction is used twice by the same user (e.g.
+  // multiply(x,x)).
+  constexpr auto WithOneUse() const
+      -> decltype(this->AppendImpl(HloInstructionPatternOneUseImpl())) {
+    return AppendImpl(HloInstructionPatternOneUseImpl());
+  }
+
+  // Modifies the pattern to match if the instruction is used by exactly one
+  // other instruction.  Will match if the instruction is used twice, so long as
+  // it's by the same user (e.g.  multiply(x,x)).
+  constexpr auto WithOneUser() const
+      -> decltype(this->AppendImpl(HloInstructionPatternOneUserImpl())) {
+    return AppendImpl(HloInstructionPatternOneUserImpl());
   }
 
   void DescribeTo(std::ostream* os, int64 indent = 0) const {

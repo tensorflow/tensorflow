@@ -875,5 +875,60 @@ TEST(PatternMatcherTest, Parameter) {
             "in p0 = f32[] parameter(0)");
 }
 
+TEST(PatternMatcherTest, OneUseAndOneUser) {
+  auto param =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+
+  EXPECT_FALSE(Match(param.get(), m::Op().WithOneUse()));
+  EXPECT_DESC_AND_EXPLANATION(
+      param, m::Op().WithOneUse(),
+      "an HloInstruction which has exactly one use",
+      "HloInstruction has 0 users, but expected exactly one.\n"
+      "in p0 = f32[] parameter(0)");
+
+  EXPECT_FALSE(Match(param.get(), m::Op().WithOneUser()));
+  EXPECT_DESC_AND_EXPLANATION(
+      param, m::Op().WithOneUser(),
+      "an HloInstruction which has exactly one user (but possibly is used "
+      "multiple times by that instruction)",
+      "HloInstruction has 0 users, but expected exactly one.\n"
+      "in p0 = f32[] parameter(0)");
+
+  {
+    auto reshape =
+        SetName("r", HloInstruction::CreateReshape(
+                         ShapeUtil::MakeShape(F32, {1}), param.get()));
+    EXPECT_TRUE(Match(param.get(), m::Op().WithOneUse()));
+    EXPECT_TRUE(Match(param.get(), m::Op().WithOneUser()));
+
+    auto reshape1 =
+        SetName("r1", HloInstruction::CreateReshape(
+                          ShapeUtil::MakeShape(F32, {1}), param.get()));
+    EXPECT_FALSE(Match(param.get(), m::Op().WithOneUse()));
+    EXPECT_FALSE(Match(param.get(), m::Op().WithOneUser()));
+
+    const char* kMultipleUserExplanation =
+        "HloInstruction has 2 users, but expected exactly one.\n"
+        "All users:\n"
+        " - %r = reshape(%p0)\n"
+        " - %r1 = reshape(%p0)\n"
+        "in p0 = f32[] parameter(0)";
+    EXPECT_EQ(Explanation(param.get(), m::Op().WithOneUse()),
+              kMultipleUserExplanation);
+    EXPECT_EQ(Explanation(param.get(), m::Op().WithOneUser()),
+              kMultipleUserExplanation);
+  }
+
+  auto add = SetName("add", HloInstruction::CreateBinary(
+                                ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd,
+                                param.get(), param.get()));
+  EXPECT_TRUE(Match(param.get(), m::Op().WithOneUser()));
+  EXPECT_FALSE(Match(param.get(), m::Op().WithOneUse()));
+  EXPECT_EQ(Explanation(param.get(), m::Op().WithOneUse()),
+            "HloInstruction is used 2 times by its user, but is expected to be "
+            "used just once: %add = add(%p0, %p0)\n"
+            "in p0 = f32[] parameter(0)");
+}
+
 }  // namespace
 }  // namespace xla
