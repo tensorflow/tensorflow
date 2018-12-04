@@ -2,8 +2,7 @@
 
 This module provides necessary bindings and introduces
 `TRTEngineOp` operator that wraps a subgraph in TensorRT.
-This is still a work in progress but should be useable
-with most common graphs.
+This module is under active development.
 
 ## Installing TF-TRT
 
@@ -24,6 +23,21 @@ of TensorRT from the
 Installation instructions for compatibility with TensorFlow are provided on the
 [TensorFlow GPU support](https://www.tensorflow.org/install/gpu) guide.
 
+## Examples
+
+You can find example scripts for running inference on deep learning
+models in this repository: https://github.com/tensorflow/tensorrt
+
+We have used these examples to verify the accuracy and
+performance of TF-TRT. For more information see
+[Verified Models](https://docs.nvidia.com/deeplearning/dgx/integrate-tf-trt/index.html#verified-models).
+
+## Documentation
+
+[TF-TRT documentaion](https://docs.nvidia.com/deeplearning/dgx/integrate-tf-trt/index.html)
+gives an overview of the supported functionalities, provides tutorials
+and verified models, explains best practices with troubleshooting guides.
+
 ## Tests
 
 TF-TRT includes both Python tests and C++ unit tests.
@@ -32,16 +46,6 @@ and they can be executed uring `bazel test` or directly
 with the Python command. Most of the C++ unit tests are
 used to test the conversion functions that convert each TF op to
 a number of TensorRT layers.
-
-## Examples
-
-You can find example scripts for running inference on deep learning models
-in this repository: https://github.com/tensorflow/tensorrt
-
-## Documentation
-
-You can find documentation for TF-TRT here:
-https://docs.nvidia.com/deeplearning/dgx/integrate-tf-trt/index.html
 
 ## Compilation
 
@@ -56,3 +60,4 @@ has to set path to location where the library is installed during configuration.
 bazel build --config=cuda --config=opt //tensorflow/tools/pip_package:build_pip_package
 bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/
 ```
+
