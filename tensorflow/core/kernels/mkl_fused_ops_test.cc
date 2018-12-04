@@ -275,12 +275,6 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolution) {
   this->VerifyConv2DWithBias(filter_size, filter_count);
 }
 
-TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, ImageSizeConvolution) {
-  const int filter_size = TestFixture::kImageWidth;
-  const int filter_count = 12;
-  this->VerifyConv2DWithBias(filter_size, filter_count);
-}
-
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolution) {
   const int filter_size = 3;
   const int filter_count = 12;
@@ -293,12 +287,6 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndRelu) {
   this->VerifyConv2DWithBiasAndRelu(filter_size, filter_count);
 }
 
-TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, ImageSizeConvolutionAndRelu) {
-  const int filter_size = TestFixture::kImageWidth;
-  const int filter_count = 12;
-  this->VerifyConv2DWithBiasAndRelu(filter_size, filter_count);
-}
-
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndRelu) {
   const int filter_size = 3;
   const int filter_count = 12;
@@ -307,10 +295,8 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndRelu) {
 
 REGISTER_TYPED_TEST_CASE_P(MklFusedConv2DWithBiasOpTest,
                            OneByOneConvolution,          //
-                           ImageSizeConvolution,         //
                            SpatialConvolution,           //
                            OneByOneConvolutionAndRelu,   //
-                           ImageSizeConvolutionAndRelu,  //
                            SpatialConvolutionAndRelu);
 
 using MklFusedBiasAddDataTypes = ::testing::Types<float>;
