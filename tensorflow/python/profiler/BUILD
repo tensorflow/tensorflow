@@ -12,9 +12,9 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":profile_context",
         ":model_analyzer",
         ":option_builder",
+        ":profile_context",
         ":tfprof_logger",
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:util",
