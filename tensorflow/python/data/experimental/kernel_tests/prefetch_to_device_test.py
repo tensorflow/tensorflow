@@ -153,10 +153,12 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     device_dataset = host_dataset.apply(
         prefetching_ops.prefetch_to_device("/gpu:0"))
 
-    iterator = device_dataset.make_one_shot_iterator()
+    iterator = device_dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.cached_session():
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
+      self.evaluate(iterator.initializer)
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -204,7 +206,8 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     iterator = device_dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.cached_session():
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
       self.evaluate(iterator.initializer)
       for i in range(5):
         self.assertEqual(i, self.evaluate(next_element))

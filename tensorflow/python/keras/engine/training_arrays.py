@@ -23,6 +23,7 @@ import functools
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
@@ -193,8 +194,22 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     Feed values for the model in the given mode.
   """
   if model._distribution_strategy:
-    return training_distributed._prepare_feed_values(model, inputs, targets,
-                                                     sample_weights, mode)
+    def get_distributed_inputs():
+      return training_distributed._prepare_feed_values(
+          model, inputs, targets, sample_weights, mode)
+
+    # In the eager case, we want to call the input method per step, so return
+    # a lambda from here that can be called. Note that this is applicable only
+    # in Distribution Strategy case as it follows the same code path for both
+    # eager and graph modes.
+    # TODO(priyag,omalleyt): Either we should move the training DS with
+    # EagerIterator to use training_generator code path, or figure out how to
+    # set a symbolic Iterator out of a Dataset when in eager mode.
+    if context.executing_eagerly():
+      return get_distributed_inputs
+    else:
+      return get_distributed_inputs()
+
   inputs = training_utils.ModelInputs(inputs).as_list()
   targets = targets or []
   sample_weights = sample_weights or []
@@ -309,7 +324,7 @@ def model_iteration(model,
   progbar.params['verbose'] = verbose
 
   # Find beforehand arrays that need sparse-to-dense conversion.
-  if issparse is not None:
+  if issparse is not None and not use_steps:
     indices_for_conversion_to_dense = []
     feed = _get_model_feed(model, mode)
     for i, (input_data, feed_tensor) in enumerate(zip(ins, feed)):
@@ -350,7 +365,9 @@ def model_iteration(model,
 
         # Get outputs.
         try:
-          batch_outs = f(ins)
+          # `ins` can be callable in DistributionStrategy + eager case.
+          actual_inputs = ins() if callable(ins) else ins
+          batch_outs = f(actual_inputs)
         except errors.OutOfRangeError:
           logging.warning('Your dataset iterator ran out of data; '
                           'interrupting training. Make sure that your dataset '

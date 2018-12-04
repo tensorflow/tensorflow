@@ -646,6 +646,7 @@ renames = {
     'tf.train.start_queue_runners': 'tf.compat.v1.train.start_queue_runners',
     'tf.train.string_input_producer': 'tf.compat.v1.train.string_input_producer',
     'tf.train.update_checkpoint_state': 'tf.compat.v1.train.update_checkpoint_state',
+    'tf.train.warm_start': 'tf.compat.v1.train.warm_start',
     'tf.train.write_graph': 'tf.io.write_graph',
     'tf.trainable_variables': 'tf.compat.v1.trainable_variables',
     'tf.truncated_normal': 'tf.random.truncated_normal',

@@ -204,6 +204,30 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "random_dataset_op",
+    srcs = ["random_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
+    name = "scan_dataset_op",
+    srcs = ["scan_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/data:captured_function",
+    ],
+)
+
+tf_kernel_library(
     name = "set_stats_aggregator_dataset_op",
     srcs = ["set_stats_aggregator_dataset_op.cc"],
     deps = [
@@ -333,6 +357,8 @@ tf_kernel_library(
         ":parallel_interleave_dataset_op",
         ":parse_example_dataset_op",
         ":prefetching_kernels",
+        ":random_dataset_op",
+        ":scan_dataset_op",
         ":set_stats_aggregator_dataset_op",
         ":sleep_dataset_op",
         ":sliding_window_dataset_op",
