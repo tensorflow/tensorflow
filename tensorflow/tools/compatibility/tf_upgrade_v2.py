@@ -443,6 +443,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.io.decode_csv",
         "tf.data.Iterator":
             "tf.compat.v1.data.Iterator",
+        "tf.parse_example":
+            "tf.io.parse_example",
+        "tf.parse_single_example":
+            "tf.io.parse_single_example",
         "tf.nn.fused_batch_norm":
             "tf.compat.v1.nn.fused_batch_norm",
         "tf.nn.softmax_cross_entropy_with_logits_v2":
@@ -551,6 +555,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.strings.length": ["input", "name", "unit"],
         "tf.transpose": ["a", "perm", "name", "conjugate"],
         "tf.tuple": ["tensors", "name", "control_inputs"],
+        "tf.parse_example": [
+            "serialized", "features", "name", "example_names"
+        ],
+        "tf.parse_single_example": [
+            "serialized", "features", "name", "example_names"
+        ],
         "tf.io.parse_example": [
             "serialized", "features", "name", "example_names"
         ],
