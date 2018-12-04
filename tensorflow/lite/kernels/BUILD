@@ -198,6 +198,7 @@ cc_library(
         "lstm.cc",
         "maximum_minimum.cc",
         "mfcc.cc",
+        "mirror_pad.cc",
         "mul.cc",
         "neg.cc",
         "one_hot.cc",
@@ -1437,3 +1438,14 @@ filegroup(
 )
 
 tflite_portable_test_suite()
+
+tf_cc_test(
+    name = "mirror_pad_test",
+    srcs = ["mirror_pad_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

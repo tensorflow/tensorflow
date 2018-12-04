@@ -3613,6 +3613,88 @@ def make_logical_xor_tests(zip_path):
   return _make_logical_tests(tf.logical_xor)(zip_path)
 
 
+def make_mirror_pad_tests(zip_path):
+  """Make a set of tests to do mirror_pad."""
+
+  test_parameters = [
+      {
+          "input_shape": [[2, 3]],
+          "padding_matrix": [[[1, 1], [2, 1]]],
+          "mode": ["REFLECT"],
+          "type": ["const"]
+      },
+      {
+          "input_shape": [[2, 3]],
+          "padding_matrix": [[[1, 1], [1, 1]]],
+          "mode": ["REFLECT"],
+          "type": ["const"]
+      },
+      {
+          "input_shape": [[2, 3]],
+          "padding_matrix": [[[1, 1], [2, 1]]],
+          "mode": ["SYMMETRIC"],
+          "type": ["placeholder"]
+      },
+      {
+          "input_shape": [[2, 3]],
+          "padding_matrix": [[[1, 1], [2, 1]]],
+          "mode": ["REFLECT"],
+          "type": ["placeholder"]
+      },
+      {
+          "input_shape": [[3]],
+          "padding_matrix": [[[0, 2]]],
+          "mode": ["SYMMETRIC"],
+          "type": ["placeholder"]
+      },
+      {
+          "input_shape": [[3]],
+          "padding_matrix": [[[0, 2]]],
+          "mode": ["SYMMETRIC"],
+          "type": ["const"]
+      },
+      {
+          "input_shape": [[3]],
+          "padding_matrix": [[[0, 2]]],
+          "mode": ["REFLECT"],
+          "type": ["const"]
+      },
+  ]
+
+  def build_graph(parameters):
+    """Build the graph for the test case."""
+
+    input_tensor = tf.placeholder(
+        dtype=tf.int32, name="input", shape=parameters["input_shape"])
+    if parameters["type"] != "const":
+      padding_matrix = tf.placeholder(
+          dtype=tf.int32,
+          name="padding",
+          shape=[len(parameters["input_shape"]), 2])
+      input_tensors = [input_tensor, padding_matrix]
+    else:
+      padding_matrix = tf.constant(np.array(parameters["padding_matrix"]))
+      input_tensors = [input_tensor]
+    output = tf.pad(
+        input_tensor, paddings=padding_matrix, mode=parameters["mode"])
+
+    return input_tensors, [output]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = [create_tensor_data(tf.int32, parameters["input_shape"])]
+    if parameters["type"] != "const":
+      input_values.append(np.array(parameters["padding_matrix"]))
+    return input_values, sess.run(
+        outputs, feed_dict=dict(zip(inputs, input_values)))
+
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_success=7)
+
+
 def make_unroll_batch_matmul_tests(zip_path):
   """Make a set of tests to test unroll_batch_matmul."""
 
