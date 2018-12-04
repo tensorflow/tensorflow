@@ -940,7 +940,7 @@ class Model(Network):
             name='predict_function',
             **kwargs)
 
-  def _get_execution_function(self, mode):
+  def _make_execution_function(self, mode):
     if mode == 'train':
       self._make_fit_function()
       return self._fit_function
@@ -1764,24 +1764,20 @@ class Model(Network):
       val_y = None
       val_sample_weights = None
 
-    if self.run_eagerly:
-      return training_eager.fit_loop(
-          self,
-          inputs=x,
-          targets=y,
-          sample_weights=sample_weights,
-          class_weight=class_weight,
+    if (self.run_eagerly or (isinstance(x, iterator_ops.EagerIterator) and
+                             not self._distribution_strategy)):
+      return training_generator.fit_generator(
+          self, (x, y, sample_weights),
+          steps_per_epoch=steps_per_epoch,
           batch_size=batch_size,
           epochs=epochs,
+          shuffle=shuffle,
           verbose=verbose,
           callbacks=callbacks,
-          val_inputs=val_x,
-          val_targets=val_y,
-          val_sample_weights=val_sample_weights,
-          shuffle=shuffle,
-          initial_epoch=initial_epoch,
-          steps_per_epoch=steps_per_epoch,
-          validation_steps=validation_steps)
+          validation_data=validation_data,
+          validation_steps=validation_steps,
+          workers=0,
+          initial_epoch=initial_epoch)
     elif distributed_training_utils.is_tpu_strategy(
         self._distribution_strategy):
       return training_distributed.experimental_fit_loop(
@@ -1794,19 +1790,6 @@ class Model(Network):
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps)
-    elif (isinstance(x, iterator_ops.EagerIterator) and
-          not self._distribution_strategy):
-      return training_generator.fit_generator(
-          self,
-          x,
-          steps_per_epoch=steps_per_epoch,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          validation_data=validation_data,
-          validation_steps=validation_steps,
-          workers=0,
-          initial_epoch=initial_epoch)
     else:
       return training_arrays.fit_loop(
           self,
@@ -1934,27 +1917,18 @@ class Model(Network):
         steps_name='steps',
         steps=steps)
 
-    if self.run_eagerly:
-      return training_eager.test_loop(
-          self,
-          inputs=x,
-          targets=y,
-          sample_weights=sample_weights,
+    if (self.run_eagerly or (isinstance(x, iterator_ops.EagerIterator) and
+                             not self._distribution_strategy)):
+      return training_generator.evaluate_generator(
+          self, (x, y, sample_weights),
+          steps=steps,
           batch_size=batch_size,
           verbose=verbose,
-          steps=steps)
+          workers=0)
     elif distributed_training_utils.is_tpu_strategy(
         self._distribution_strategy):
       return training_distributed.experimental_test_loop(
           self, iterator=x, verbose=verbose, steps=steps)
-    elif (isinstance(x, iterator_ops.EagerIterator) and
-          not self._distribution_strategy):
-      return training_generator.evaluate_generator(
-          self,
-          x,
-          steps=steps,
-          verbose=verbose,
-          workers=0)
     else:
       return training_arrays.test_loop(
           self,
@@ -2050,26 +2024,35 @@ class Model(Network):
       x, _, _ = self._standardize_user_data(
           x, check_steps=True, steps_name='steps', steps=steps)
 
-    if self.run_eagerly:
-      return training_eager.predict_loop(
-          self, x, batch_size=batch_size, verbose=verbose, steps=steps)
-    elif distributed_training_utils.is_tpu_strategy(
-        self._distribution_strategy):
-      return training_distributed.experimental_predict_loop(
-          self, x, verbose=verbose, steps=steps)
-    elif (isinstance(x, iterator_ops.EagerIterator) and
-          not self._distribution_strategy):
+    if (self.run_eagerly or (isinstance(x, iterator_ops.EagerIterator) and
+                             not self._distribution_strategy)):
       return training_generator.predict_generator(
           self,
           x,
           steps=steps,
+          batch_size=batch_size,
           verbose=verbose,
           workers=0)
+    elif distributed_training_utils.is_tpu_strategy(
+        self._distribution_strategy):
+      return training_distributed.experimental_predict_loop(
+          self, x, verbose=verbose, steps=steps)
     else:
       return training_arrays.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
 
-  def train_on_batch(self, x, y=None, sample_weight=None, class_weight=None):
+  def reset_metrics(self):
+    """Resets the state of metrics."""
+    if hasattr(self, 'metrics'):
+      for m in self.metrics:
+        m.reset_states()
+
+  def train_on_batch(self,
+                     x,
+                     y=None,
+                     sample_weight=None,
+                     class_weight=None,
+                     reset_metrics=True):
     """Runs a single gradient update on a single batch of data.
 
     Arguments:
@@ -2097,6 +2080,9 @@ class Model(Network):
           weight (float) to apply to the model's loss for the samples from this
           class during training. This can be useful to tell the model to "pay
           more attention" to samples from an under-represented class.
+        reset_metrics: If `True`, the metrics returned will be only for this
+          batch. If `False`, the metrics will be statefully accumulated across
+          batches.
 
     Returns:
         Scalar training loss
@@ -2124,14 +2110,21 @@ class Model(Network):
       else:
         ins = x + y + sample_weights
 
-      self._make_train_function()
-      outputs = self.train_function(ins)  # pylint: disable=not-callable
+      if reset_metrics:
+        self._make_train_function()
+        outputs = self.train_function(ins)  # pylint: disable=not-callable
+      else:
+        self._make_fit_function()
+        outputs = self._fit_function(ins)  # pylint: disable=not-callable
+
+    if reset_metrics:
+      self.reset_metrics()
 
     if len(outputs) == 1:
       return outputs[0]
     return outputs
 
-  def test_on_batch(self, x, y=None, sample_weight=None):
+  def test_on_batch(self, x, y=None, sample_weight=None, reset_metrics=True):
     """Test the model on a single batch of samples.
 
     Arguments:
@@ -2157,6 +2150,9 @@ class Model(Network):
             In this case you should make sure to specify
             sample_weight_mode="temporal" in compile(). This argument is not
             supported when `x` is a dataset or a dataset iterator.
+        reset_metrics: If `True`, the metrics returned will be only for this
+          batch. If `False`, the metrics will be statefully accumulated across
+          batches.
 
     Returns:
         Scalar test loss (if the model has a single output and no metrics)
@@ -2179,8 +2175,15 @@ class Model(Network):
           self, x, y, sample_weights=sample_weights)
     else:
       inputs = x + y + sample_weights
-      self._make_test_function()
-      outputs = self.test_function(inputs)  # pylint: disable=not-callable
+      if reset_metrics:
+        self._make_test_function()
+        outputs = self.test_function(inputs)  # pylint: disable=not-callable
+      else:
+        self._make_eval_function()
+        outputs = self._eval_function(inputs)  # pylint: disable=not-callable
+
+    if reset_metrics:
+      self.reset_metrics()
 
     if len(outputs) == 1:
       return outputs[0]

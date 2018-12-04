@@ -1676,14 +1676,10 @@ class KerasTPUModel(models.Model):
         callbacks,
         self,
         do_validation=do_validation,
-        val_inputs=val_inputs,
-        val_targets=val_targets,
-        val_sample_weights=val_sample_weights,
         batch_size=batch_size,
         epochs=epochs,
         steps_per_epoch=steps_per_epoch,
         samples=num_training_samples,
-        validation_steps=validation_steps,
         verbose=verbose,
         count_mode=count_mode)
 
