@@ -113,6 +113,8 @@ class DistributedDelegate(DistributedValues):
   """A map from device to values; acts as the same type as the values."""
 
   def __getattr__(self, name):
+    # TODO(priyag): This needs to be made robust against pitfalls from mix use
+    # __getattr__ and @property. See b/120402273.
     return getattr(self.get(), name)
 
   # pylint: disable=multiple-statements

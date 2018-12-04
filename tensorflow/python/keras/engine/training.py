@@ -1947,7 +1947,8 @@ class Model(Network):
         self._distribution_strategy):
       return training_distributed.experimental_test_loop(
           self, iterator=x, verbose=verbose, steps=steps)
-    elif isinstance(x, iterator_ops.EagerIterator):
+    elif (isinstance(x, iterator_ops.EagerIterator) and
+          not self._distribution_strategy):
       return training_generator.evaluate_generator(
           self,
           x,
@@ -2056,7 +2057,8 @@ class Model(Network):
         self._distribution_strategy):
       return training_distributed.experimental_predict_loop(
           self, x, verbose=verbose, steps=steps)
-    elif isinstance(x, iterator_ops.EagerIterator):
+    elif (isinstance(x, iterator_ops.EagerIterator) and
+          not self._distribution_strategy):
       return training_generator.predict_generator(
           self,
           x,
