@@ -457,8 +457,13 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     computation_ = computation;
     reachability_ = HloReachabilityMap::Build(computation_);
 
-    HloInstructionSet do_not_duplicate =
-        ComputeGloballyUnfusible(computation_->MakeInstructionPostOrder());
+    HloInstructionSet do_not_duplicate;
+    // If we allow duplications, we need to compute which instructions we do not
+    // want to duplicate based on a global analysis of the graph.
+    if (may_duplicate_) {
+      do_not_duplicate =
+          ComputeGloballyUnfusible(computation_->MakeInstructionPostOrder());
+    }
     auto fusion_queue = GetFusionQueue(computation_);
 
     // Instruction fusion effectively fuses edges in the computation graph
@@ -566,8 +571,8 @@ HloInstruction* InstructionFusion::FuseIntoMultiOutput(
 bool InstructionFusion::MultiOutputFusionCreatesCycle(
     HloInstruction* producer, HloInstruction* consumer) {
   auto is_reachable = [&](const HloInstruction* a, const HloInstruction* b) {
-    // A consumer operand may have been multii-output fused into a parallel
-    // consumer and thus be missing  from the oridinal reachability map.
+    // A consumer operand may have been multi-output fused into a parallel
+    // consumer and thus be missing from the original reachability map.
     if (!reachability_->IsPresent(a) || !reachability_->IsPresent(b)) {
       reachability_ = HloReachabilityMap::Build(consumer->parent());
     }
