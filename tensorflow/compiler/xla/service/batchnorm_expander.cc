@@ -107,19 +107,37 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
   }
 
   std::unique_ptr<HloInstruction> Mean(
-      int64 element_count, HloInstruction* operand,
+      HloInstruction* element_count, HloInstruction* operand,
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
-    HloInstruction* elem_count_recip =
-        add_instruction(HloInstruction::CreateBroadcast(
-            operand->shape(),
-            add_instruction(HloInstruction::CreateConvert(
-                ShapeUtil::MakeShape(operand->shape().element_type(), {}),
-                add_instruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<float>(1.0 / element_count))))),
-            {}));
-    return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kMultiply,
-                                        operand, elem_count_recip);
+    auto broadcast = add_instruction(
+        HloInstruction::CreateBroadcast(operand->shape(), element_count, {}));
+    return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kDivide,
+                                        operand, broadcast);
+  }
+
+  std::unique_ptr<HloInstruction> DynamicElementCountPerFeature(
+      HloInstruction* operand, int64 feature_index,
+      const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
+          add_instruction) {
+    auto elements_per_feature_u32 = add_instruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(1)));
+
+    for (int64 i = 0; i < ShapeUtil::Rank(operand->shape()); ++i) {
+      if (i == feature_index) {
+        continue;
+      }
+      auto dynamic_dimension_size =
+          add_instruction(HloInstruction::CreateGetDimensionSize(
+              ShapeUtil::MakeShape(U32, {}), operand, i));
+      elements_per_feature_u32 = add_instruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeShape(U32, {}), HloOpcode::kMultiply,
+          dynamic_dimension_size, elements_per_feature_u32));
+    }
+
+    return HloInstruction::CreateConvert(
+        ShapeUtil::MakeShape(operand->shape().element_type(), {}),
+        elements_per_feature_u32);
   }
 
   // Replaces the existing HLO instruction old_instruction, with
@@ -195,9 +213,6 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   const Shape operand_shape = operand->shape();
   PrimitiveType ptype = operand_shape.element_type();
   int64 feature_index = batch_norm->feature_index();
-  const int64 feature_count = operand_shape.dimensions(feature_index);
-  const int64 size_in_elements = ShapeUtil::ElementsIn(operand_shape);
-  int64 elements_per_feature_int64 = size_in_elements / feature_count;
 
   HloInstruction* scale = batch_norm->mutable_operand(1);
   HloInstruction* offset = batch_norm->mutable_operand(2);
@@ -219,6 +234,9 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       dimensions_without_feature.push_back(i);
     }
   }
+
+  auto elements_per_feature =
+      add(DynamicElementCountPerFeature(operand, feature_index, add));
 
   auto scale_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, scale, {feature_index}));
@@ -243,13 +261,13 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       add_reduce_computation));
 
   // E[X].
-  auto mean = add(Mean(elements_per_feature_int64, sum, add));
+  auto mean = add(Mean(elements_per_feature, sum, add));
 
   auto mean_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, mean, {feature_index}));
 
   // E[X^2].
-  auto square_mean = add(Mean(elements_per_feature_int64, squared_sum, add));
+  auto square_mean = add(Mean(elements_per_feature, squared_sum, add));
 
   // E^2[X].
   auto mean_square =
@@ -458,9 +476,8 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   int64 feature_index = batch_norm->feature_index();
 
-  const int64 size_in_elements = ShapeUtil::ElementsIn(activation_shape);
-  const int64 feature_count = activation_shape.dimensions(feature_index);
-  const int64 elements_per_feature_int64 = size_in_elements / feature_count;
+  auto elements_per_feature =
+      add(DynamicElementCountPerFeature(activation, feature_index, add));
 
   auto zero_literal = LiteralUtil::CreateR0(0.0f);
   TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
@@ -553,15 +570,9 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       add_binary(activation_shape, HloOpcode::kMultiply, scale_broadcasted,
                  rsqrt_var_add_epsilon_broadcasted);
 
-  scale_times_rsqrt_var_add_epsilon = add(
-      Mean(elements_per_feature_int64, scale_times_rsqrt_var_add_epsilon, add));
+  scale_times_rsqrt_var_add_epsilon =
+      add(Mean(elements_per_feature, scale_times_rsqrt_var_add_epsilon, add));
 
-  auto elements_per_feature_literal =
-      LiteralUtil::CreateR0<float>(elements_per_feature_int64);
-  TF_ASSIGN_OR_RETURN(elements_per_feature_literal,
-                      elements_per_feature_literal.Convert(ptype));
-  auto elements_per_feature = add(
-      HloInstruction::CreateConstant(std::move(elements_per_feature_literal)));
   auto i1 = add_binary(activation_shape, HloOpcode::kMultiply, grad_output,
                        add(HloInstruction::CreateBroadcast(
                            activation_shape, elements_per_feature, {})));

@@ -591,6 +591,7 @@ py_library(
         "//tensorflow/contrib/distribute/python:tpu_strategy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
+        "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",

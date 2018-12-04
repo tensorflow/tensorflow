@@ -37,7 +37,7 @@ class TrainingUtilTest(test.TestCase):
     a = np.ones([10, 10])
     iterator, steps_per_epoch = training_utils.convert_to_iterator(
         x=a, batch_size=batch_size)
-    self.assertEquals(steps_per_epoch, 5)
+    self.assertEqual(steps_per_epoch, 5)
 
     expected_batch = a[:batch_size, :]
     actual_batch, = iterator.get_next()
@@ -49,7 +49,7 @@ class TrainingUtilTest(test.TestCase):
     a = ops.convert_to_tensor(np.ones([10, 10]))
     iterator, steps_per_epoch = training_utils.convert_to_iterator(
         x=a, batch_size=batch_size)
-    self.assertEquals(steps_per_epoch, 5)
+    self.assertEqual(steps_per_epoch, 5)
 
     expected_batch = a[:batch_size, :]
     actual_batch, = iterator.get_next()
@@ -62,7 +62,7 @@ class TrainingUtilTest(test.TestCase):
     b = np.ones([10, 10])
     iterator, steps_per_epoch = training_utils.convert_to_iterator(
         x=a, y=b, batch_size=batch_size)
-    self.assertEquals(steps_per_epoch, 5)
+    self.assertEqual(steps_per_epoch, 5)
 
     expected_x = a[:batch_size, :]
     expected_y = b[:batch_size, :]
@@ -78,7 +78,7 @@ class TrainingUtilTest(test.TestCase):
     sw = ops.convert_to_tensor(np.ones([10]))
     iterator, steps_per_epoch = training_utils.convert_to_iterator(
         x=a, y=b, sample_weights=sw, batch_size=batch_size)
-    self.assertEquals(steps_per_epoch, 5)
+    self.assertEqual(steps_per_epoch, 5)
 
     expected_x = a[:batch_size, :]
     expected_y = b[:batch_size, :]
@@ -94,7 +94,7 @@ class TrainingUtilTest(test.TestCase):
     x = {'1': np.ones([10, 100]), '2': [np.zeros([10, 10]), np.ones([10, 20])]}
     iterator, steps_per_epoch = training_utils.convert_to_iterator(
         x=x, batch_size=batch_size)
-    self.assertEquals(steps_per_epoch, 5)
+    self.assertEqual(steps_per_epoch, 5)
 
     expected_x1 = x['1'][:batch_size, :]
     expected_x2_0 = x['2'][0][:batch_size, :]
@@ -115,7 +115,7 @@ class TrainingUtilTest(test.TestCase):
     a = np.ones([10, 10])
     iterator, steps_per_epoch = training_utils.convert_to_iterator(
         x=a, batch_size=batch_size, epochs=2)
-    self.assertEquals(steps_per_epoch, 5)
+    self.assertEqual(steps_per_epoch, 5)
 
     expected_batch = a[:batch_size, :]
     # loop through one whole epoch
@@ -133,20 +133,20 @@ class TrainingUtilTest(test.TestCase):
   def test_nested_all(self):
     nested_data = {'a': True, 'b': [True, True, (False, True)]}
     all_true = training_utils._nested_all(nested_data, lambda x: x)
-    self.assertEquals(all_true, False)
+    self.assertEqual(all_true, False)
 
     nested_data = {'a': True, 'b': [True, True, (True, True)]}
     all_true = training_utils._nested_all(nested_data, lambda x: x)
-    self.assertEquals(all_true, True)
+    self.assertEqual(all_true, True)
 
   def test_nested_any(self):
     nested_data = [False, {'a': False, 'b': (False, True)}]
     any_true = training_utils._nested_any(nested_data, lambda x: x)
-    self.assertEquals(any_true, True)
+    self.assertEqual(any_true, True)
 
     nested_data = [False, {'a': False, 'b': (False, False)}]
     any_true = training_utils._nested_any(nested_data, lambda x: x)
-    self.assertEquals(any_true, False)
+    self.assertEqual(any_true, False)
 
   def test_check_array_lengths(self):
     training_utils.check_array_lengths(None, None, None)
@@ -166,28 +166,28 @@ class ModelInputsTest(test.TestCase):
   def test_single_thing(self):
     a = np.ones(10)
     model_inputs = training_utils.ModelInputs(a)
-    self.assertEquals(['input_1'], model_inputs.get_input_names())
+    self.assertEqual(['input_1'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
     self.assertTrue(tensor_util.is_tensor(vals))
     vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
-    self.assertEquals(1, len(vals))
+    self.assertEqual(1, len(vals))
     self.assertTrue(tensor_util.is_tensor(vals[0]))
 
   def test_single_thing_eager(self):
     with context.eager_mode():
       a = np.ones(10)
       model_inputs = training_utils.ModelInputs(a)
-      self.assertEquals(['input_1'], model_inputs.get_input_names())
+      self.assertEqual(['input_1'], model_inputs.get_input_names())
       val = model_inputs.get_symbolic_inputs()
       self.assertTrue(tf_utils.is_symbolic_tensor(val))
       vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
-      self.assertEquals(1, len(vals))
+      self.assertEqual(1, len(vals))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
 
   def test_list(self):
     a = [np.ones(10), np.ones(20)]
     model_inputs = training_utils.ModelInputs(a)
-    self.assertEquals(['input_1', 'input_2'], model_inputs.get_input_names())
+    self.assertEqual(['input_1', 'input_2'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
     self.assertTrue(tensor_util.is_tensor(vals[0]))
     self.assertTrue(tensor_util.is_tensor(vals[1]))
@@ -196,7 +196,7 @@ class ModelInputsTest(test.TestCase):
     with context.eager_mode():
       a = [np.ones(10), np.ones(20)]
       model_inputs = training_utils.ModelInputs(a)
-      self.assertEquals(['input_1', 'input_2'], model_inputs.get_input_names())
+      self.assertEqual(['input_1', 'input_2'], model_inputs.get_input_names())
       vals = model_inputs.get_symbolic_inputs()
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[1]))
@@ -204,7 +204,7 @@ class ModelInputsTest(test.TestCase):
   def test_dict(self):
     a = {'b': np.ones(10), 'a': np.ones(20)}
     model_inputs = training_utils.ModelInputs(a)
-    self.assertEquals(['a', 'b'], model_inputs.get_input_names())
+    self.assertEqual(['a', 'b'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
     self.assertTrue(tensor_util.is_tensor(vals['a']))
     self.assertTrue(tensor_util.is_tensor(vals['b']))
@@ -213,7 +213,7 @@ class ModelInputsTest(test.TestCase):
     with context.eager_mode():
       a = {'b': np.ones(10), 'a': np.ones(20)}
       model_inputs = training_utils.ModelInputs(a)
-      self.assertEquals(['a', 'b'], model_inputs.get_input_names())
+      self.assertEqual(['a', 'b'], model_inputs.get_input_names())
       vals = model_inputs.get_symbolic_inputs()
       self.assertTrue(tf_utils.is_symbolic_tensor(vals['a']))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals['b']))

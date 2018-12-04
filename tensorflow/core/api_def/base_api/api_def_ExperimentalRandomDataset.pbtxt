@@ -1,5 +1,5 @@
 op {
-  graph_op_name: "RandomDataset"
+  graph_op_name: "ExperimentalRandomDataset"
   visibility: HIDDEN
   in_arg {
     name: "seed"

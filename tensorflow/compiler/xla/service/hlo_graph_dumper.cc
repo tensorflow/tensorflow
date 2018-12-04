@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -236,34 +237,28 @@ string HtmlLikeStringSanitize(absl::string_view s) {
 // it to a short string lets us tell the user what the subcomputation is without
 // drawing it as a graph.
 optional<string> MatchTrivialComputation(const HloComputation* computation) {
+  namespace m = match;
+
   if (computation->instruction_count() != 3) {
     return nullopt;
   }
-
   HloInstruction* root = computation->root_instruction();
-  if (root->operand_count() != 2) {
+  const HloInstruction *param0, *param1;
+  if (!Match(root, m::Op()
+                       .WithNumOperands(2)
+                       .WithShape(m::Shape().IsEffectiveScalar())
+                       .WithBinaryOperandsAnyOrder(
+                           m::Parameter(&param0, 0)
+                               .WithShape(m::Shape().IsEffectiveScalar()),
+                           m::Parameter(&param1, 1)
+                               .WithShape(m::Shape().IsEffectiveScalar())))) {
     return nullopt;
   }
 
-  // Check that both of the operands to the root are parameters.
-  const HloInstruction* operand0 = root->operand(0);
-  const HloInstruction* operand1 = root->operand(1);
-  if (operand0->opcode() != HloOpcode::kParameter ||
-      operand1->opcode() != HloOpcode::kParameter) {
-    return nullopt;
-  }
-
-  // Check that the two operands of root are param0 and param1.  All of the
-  // opcodes we recognize are commutative, so we're OK with either order.
-  auto n0 = operand0->parameter_number();
-  auto n1 = operand1->parameter_number();
-  if (!(n0 == 0 && n1 == 1) && !(n1 == 0 && n0 == 1)) {
-    return nullopt;
-  }
-
-  // If the params are reversed, check that the operation being performed is
-  // commutative.
-  if (n0 == 1) {
+  // If the params are reversed (i.e. operand0 is param1 and operand1 is
+  // param0), check that the operation being performed is commutative.
+  if (root->operand(0) == param1) {
+    CHECK_EQ(root->operand(1), param0);
     switch (root->opcode()) {
       case HloOpcode::kLe:
       case HloOpcode::kGe:
@@ -273,13 +268,6 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
       default:
         break;
     }
-  }
-
-  // Check that the root and params are all effective scalars.
-  if (!ShapeUtil::IsEffectiveScalar(root->shape()) ||
-      !ShapeUtil::IsEffectiveScalar(operand0->shape()) ||
-      !ShapeUtil::IsEffectiveScalar(operand1->shape())) {
-    return nullopt;
   }
 
   // If we recognize the root's opcode, we've successfully pattern-matched!

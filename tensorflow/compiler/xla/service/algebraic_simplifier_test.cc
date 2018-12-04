@@ -1672,7 +1672,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeOfTransposeOfRngToRng) {
       (AlgebraicSimplifierOptions(bitcasting_callback())));
   EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  // Verify that that reshape(transpose(rng)) is replace by a single rng of the
+  // Verify that reshape(transpose(rng)) is replace by a single rng of the
   // same shape as the reshape.
   EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Rng()));
   EXPECT_TRUE(ShapeUtil::Equal(computation->root_instruction()->shape(),

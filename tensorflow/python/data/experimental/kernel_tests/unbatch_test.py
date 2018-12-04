@@ -63,7 +63,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     op = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -84,7 +84,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     op = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -104,7 +104,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     data = data.batch(5)
     data = data.apply(batching.unbatch())
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -126,7 +126,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     data = data.batch(5)
     data = data.apply(batching.unbatch())
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -149,7 +149,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     op = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -170,7 +170,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     self.assertAllEqual(expected_types, data.output_types)
 
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     op = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -187,7 +187,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         (constant_op.constant([]), constant_op.constant([], shape=[0, 4]),
          constant_op.constant([], shape=[0, 4, 0])))
     data = data.apply(batching.unbatch())
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:

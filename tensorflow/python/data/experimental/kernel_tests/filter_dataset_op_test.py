@@ -47,7 +47,7 @@ class FilterBenchmark(test.Benchmark):
       if optimize_dataset:
         dataset = dataset.apply(optimization.optimize(["filter_fusion"]))
 
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       next_element = iterator.get_next()
 
       with session.Session() as sess:

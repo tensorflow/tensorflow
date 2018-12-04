@@ -172,18 +172,6 @@ REGISTER_OP("PrefetchDataset")
       return shape_inference::ScalarShape(c);
     });
 
-REGISTER_OP("ScanDataset")
-    .Input("input_dataset: variant")
-    .Input("initial_state: Tstate")
-    .Input("other_arguments: Targuments")
-    .Output("handle: variant")
-    .Attr("f: func")
-    .Attr("Tstate: list(type) >= 1")
-    .Attr("Targuments: list(type) >= 0")
-    .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
-
 REGISTER_OP("FlatMapDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
@@ -340,22 +328,6 @@ REGISTER_OP("RangeDataset")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      return shape_inference::ScalarShape(c);
-    });
-
-REGISTER_OP("RandomDataset")
-    .Input("seed: int64")
-    .Input("seed2: int64")
-    .Output("handle: variant")
-    .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
-                      // stateful to inhibit constant folding.
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      shape_inference::ShapeHandle unused;
-      // buffer_size, seed, and seed2 should be scalars.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
 
@@ -611,36 +583,6 @@ REGISTER_OP("SerializeIterator")
 REGISTER_OP("DeserializeIterator")
     .Input("resource_handle: resource")
     .Input("serialized: variant")
-    .SetShapeFn(shape_inference::NoOutputs);
-
-REGISTER_OP("PrependFromQueueAndPaddedBatchDataset")
-    .Input("input_dataset: variant")
-    .Input("batch_size: int64")
-    .Input("padded_shapes: N * int64")
-    .Input("padding_values: Toutput_types")
-    .Output("handle: variant")
-    .Attr("Toutput_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
-    .Attr("N: int >= 1")
-    // TODO(ebrevdo): Validate that `padded_shapes` are all vectors, the lengths
-    // of `Toutput_types` and `output_shapes` are `N`, that the
-    // length of `output_types` is `N`, the `output_shapes` are
-    // (as far as possible to tell statically) compatible with `padded_shapes`,
-    // and that `padding_values` are all scalars.
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      shape_inference::ShapeHandle unused;
-      // batch_size should be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return shape_inference::ScalarShape(c);
-    });
-
-REGISTER_OP("EnqueueInQueueDataset")
-    .Input("queue: variant")
-    .Input("components: Tcomponents")
-    .Attr("Tcomponents: list(type) >= 1")
-    .SetIsStateful()  // To avoid CSE on multiple calls to Enqueue.
-    // TODO(ebrevdo): SetShapeFn to test input dtypes and shapes by
-    // reading from queue handle (is that even possible?).
     .SetShapeFn(shape_inference::NoOutputs);
 
 REGISTER_OP("DatasetToGraph")
