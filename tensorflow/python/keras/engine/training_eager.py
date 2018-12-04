@@ -244,15 +244,15 @@ def train_on_batch(model, inputs, targets, sample_weights=None):
       inputs = training_utils.cast_if_floating_dtype(inputs)
       targets = training_utils.cast_if_floating_dtype(targets)
     else:
-      inputs = [
-          ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
-      ]
-      targets = [
-          ops.convert_to_tensor(val, dtype=backend.floatx()) for val in targets
-      ]
+      inputs = training_utils.cast_if_floating_dtype([
+          ops.convert_to_tensor(val) for val in inputs
+      ])
+      targets = training_utils.cast_if_floating_dtype([
+          ops.convert_to_tensor(val) for val in targets
+      ])
   if sample_weights:
     sample_weights = [
-        ops.convert_to_tensor(val, dtype=backend.floatx())
+        training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
         if val is not None else None for val in sample_weights
     ]
 
@@ -292,15 +292,15 @@ def test_on_batch(model, inputs, targets, sample_weights=None):
       inputs = training_utils.cast_if_floating_dtype(inputs)
       targets = training_utils.cast_if_floating_dtype(targets)
     else:
-      inputs = [
-          ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
-      ]
-      targets = [
-          ops.convert_to_tensor(val, dtype=backend.floatx()) for val in targets
-      ]
+      inputs = training_utils.cast_if_floating_dtype([
+          ops.convert_to_tensor(val) for val in inputs
+      ])
+      targets = training_utils.cast_if_floating_dtype([
+          ops.convert_to_tensor(val) for val in targets
+      ])
   if sample_weights:
     sample_weights = [
-        ops.convert_to_tensor(val, dtype=backend.floatx())
+        training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
         if val is not None else None for val in sample_weights
     ]
   outs, loss, loss_metrics, _, masks = _model_loss(
