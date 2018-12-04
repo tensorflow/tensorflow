@@ -590,6 +590,39 @@ class OptimizersCompatibilityTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(hist_k_v1.history['loss'], hist_tf.history['loss'])
       self.assertAllClose(hist_k_v1.history['loss'], hist_k_v2.history['loss'])
 
+  def testNumericEquivalenceForAmsgrad(self):
+    np.random.seed(1331)
+    with self.cached_session():
+      train_samples = 20
+      input_dim = 3
+      num_classes = 2
+      (x, y), _ = testing_utils.get_test_data(
+          train_samples=train_samples,
+          test_samples=10,
+          input_shape=(input_dim,),
+          num_classes=num_classes)
+      y = keras.utils.to_categorical(y)
+
+      num_hidden = 5
+      model_k_v1 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2.set_weights(model_k_v1.get_weights())
+
+      opt_k_v1 = optimizers.Adam(amsgrad=True)
+      opt_k_v2 = adam.Adam(amsgrad=True)
+
+      model_k_v1.compile(opt_k_v1, loss='categorical_crossentropy', metrics=[])
+      model_k_v2.compile(opt_k_v2, loss='categorical_crossentropy', metrics=[])
+
+      hist_k_v1 = model_k_v1.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+      hist_k_v2 = model_k_v2.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+
+      self.assertAllClose(model_k_v1.get_weights(), model_k_v2.get_weights())
+      self.assertAllClose(opt_k_v1.get_weights(), opt_k_v2.get_weights())
+      self.assertAllClose(hist_k_v1.history['loss'], hist_k_v2.history['loss'])
+
 
 def disable_tf2():
   if 'TF2_BEHAVIOR' in os.environ:
