@@ -189,9 +189,6 @@ gpu_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     shard_count = 5,
-    tags = [
-        "no_windows",
-    ],
 )
 
 gpu_py_test(
@@ -214,9 +211,6 @@ gpu_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     shard_count = 15,
-    tags = [
-        "no_windows",
-    ],
 )
 
 py_library(

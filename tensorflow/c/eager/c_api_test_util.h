@@ -37,6 +37,9 @@ TFE_TensorHandle* TestMatrixTensorHandle3X2();
 // Return a matmul op multiplying `a` by `b`.
 TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b);
 
+// Return a shape op fetching the shape of `a`.
+TFE_Op* ShapeOp(TFE_Context* ctx, TFE_TensorHandle* a);
+
 // Return an 1-D INT32 tensor containing a single value 1.
 TFE_TensorHandle* TestAxisTensorHandle();
 

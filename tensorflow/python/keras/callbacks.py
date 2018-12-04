@@ -494,7 +494,8 @@ class ProgbarLogger(Callback):
       self.progbar = Progbar(
           target=self.target,
           verbose=self.verbose,
-          stateful_metrics=self.stateful_metrics)
+          stateful_metrics=self.stateful_metrics,
+          unit_name='step' if self.use_steps else 'sample')
 
   def on_batch_begin(self, batch, logs=None):
     if self.seen < self.target:

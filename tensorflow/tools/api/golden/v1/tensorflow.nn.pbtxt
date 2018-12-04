@@ -154,7 +154,7 @@ tf_module {
   }
   member_method {
     name: "dropout"
-    argspec: "args=[\'x\', \'keep_prob\', \'noise_shape\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'x\', \'keep_prob\', \'noise_shape\', \'seed\', \'name\', \'rate\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "dynamic_rnn"
@@ -326,7 +326,7 @@ tf_module {
   }
   member_method {
     name: "softmax_cross_entropy_with_logits_v2"
-    argspec: "args=[\'labels\', \'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'axis\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "softplus"

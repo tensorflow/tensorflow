@@ -177,13 +177,6 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
-  llvm_ir::SetTargetOptions(
-      /*fast_math_enabled=*/hlo_module_config.debug_options()
-          .xla_gpu_enable_fast_math(),
-      &target_options);
-
-  // Enable FMA synthesis.
-  target_options.AllowFPOpFusion = FPOpFusion::Fast;
 
   // Set the verbose assembly options.
   target_options.MCOptions.AsmVerbose = false;
@@ -464,6 +457,9 @@ void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   // which contains a lot of load instructions and many arithmetic instructions
   // between those loads.
   FeedLLVMWithFlags({"-memdep-block-scan-limit=500"});
+
+  // Use div.approx -- it matters for some float-division heavy benchmarks.
+  FeedLLVMWithFlags({"-nvptx-prec-divf32=0"});
 
   llvm_ir::InitializeLLVMCommandLineOptions(hlo_module_config);
 

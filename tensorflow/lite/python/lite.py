@@ -25,8 +25,6 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 @@convert_op_hints_to_stubs
 @@build_toco_convert_protos
 
-@@FLOAT
-@@QUANTIZED_UINT8
 @@TFLITE
 @@GRAPHVIZ_DOT
 
@@ -78,10 +76,10 @@ class TFLiteConverter(object):
   Attributes:
 
     inference_type: Target data type of real-number arrays in the output file.
-      Must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
+      Must be `{tf.float32, tf.uint8}`. (default tf.float32)
     inference_input_type: Target data type of real-number input arrays. Allows
       for a different type for input arrays in the case of quantization.
-      Must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
+      Must be `{tf.float32, tf.uint8}`. (default `inference_type`)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: Dict of strings representing input tensor names
@@ -402,15 +400,16 @@ class TFLiteConverter(object):
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
       for tensor in self._input_tensors:
-        if not tensor.get_shape():
+        shape = tensor.get_shape()
+        if not shape or not shape.as_list():
           raise ValueError("Provide an input shape for input array "
                            "'{0}'.".format(_tensor_name(tensor)))
-        shape = tensor.get_shape().as_list()
-        if None in shape[1:]:
+        shape_list = shape.as_list()
+        if None in shape_list[1:]:
           raise ValueError(
               "None is only supported in the 1st dimension. Tensor '{0}' has "
-              "invalid shape '{1}'.".format(_tensor_name(tensor), shape))
-        elif shape[0] is None:
+              "invalid shape '{1}'.".format(_tensor_name(tensor), shape_list))
+        elif shape_list[0] is None:
           self._set_batch_size(batch_size=1)
 
     # Get quantization stats. Ensures there is one stat per name if the stats

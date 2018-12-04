@@ -199,7 +199,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
 
   def _initialize_local(self, num_gpus_per_worker):
     """Initialize internal devices for local training."""
-    self._worker_device = "/job:localhost"
+    self._worker_device = device_util.canonicalize("/device:CPU:0")
     # Define compute devices which is a list of device strings and one for each
     # replica. When there are GPUs, replicate operations on these GPUs.
     # Otherwise, place operations on CPU.
@@ -236,6 +236,11 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     """Distributes the dataset to each local GPU."""
     return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._compute_devices, True)
+
+  def _make_dataset_iterator(self, dataset):
+    worker_device_pairs = [(self._worker_device, self._compute_devices)]
+    return values.DatasetIterator(dataset, worker_device_pairs,
+                                  self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,

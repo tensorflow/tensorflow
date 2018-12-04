@@ -199,7 +199,7 @@ class SingleOpModel {
     for (const string& s : content) {
       buf.AddString(s.data(), s.length());
     }
-    buf.WriteToTensor(tensor);
+    buf.WriteToTensor(tensor, /*new_shape=*/nullptr);
   }
 
   // Populate the tensor given its index.

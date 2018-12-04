@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -142,6 +144,15 @@ def pfor(loop_fn, iters, parallel_iterations=None):
   Raises:
     ValueError: If parallel_iterations is not None and not an integer > 1.
   """
+  def f():
+    return _pfor_impl(loop_fn, iters, parallel_iterations=parallel_iterations)
+  if context.executing_eagerly():
+    f = function.defun(f)
+  return f()
+
+
+def _pfor_impl(loop_fn, iters, parallel_iterations=None):
+  """Implementation of pfor."""
   existing_ops = set(ops.get_default_graph().get_operations())
   with ops.name_scope("loop_body"):
     loop_var = array_ops.placeholder(dtypes.int32, shape=[])

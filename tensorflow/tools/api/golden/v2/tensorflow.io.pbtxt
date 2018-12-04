@@ -66,7 +66,7 @@ tf_module {
   }
   member_method {
     name: "decode_csv"
-    argspec: "args=[\'records\', \'record_defaults\', \'field_delim\', \'use_quote_delim\', \'name\', \'na_value\', \'select_cols\'], varargs=None, keywords=None, defaults=[\',\', \'True\', \'None\', \'\', \'None\'], "
+    argspec: "args=[\'records\', \'record_defaults\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'select_cols\', \'name\'], varargs=None, keywords=None, defaults=[\',\', \'True\', \'\', \'None\', \'None\'], "
   }
   member_method {
     name: "decode_gif"

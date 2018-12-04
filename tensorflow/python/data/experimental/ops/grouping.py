@@ -28,7 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -237,29 +237,6 @@ def bucket_by_sequence_length(element_length_func,
     return _apply_fn
 
 
-def _map_x_dataset(map_func):
-  """A transformation that maps `map_func` across its input.
-
-  This transformation is similar to `tf.data.Dataset.map`, but in addition to
-  supporting dense and sparse tensor inputs, it also supports dataset inputs.
-
-  Args:
-    map_func: A function mapping a nested structure of tensors and/or datasets
-      (having shapes and types defined by `self.output_shapes` and
-     `self.output_types`) to another nested structure of tensors and/or
-     datasets.
-
-  Returns:
-    Dataset: A `Dataset`.
-  """
-
-  def _apply_fn(dataset):
-    """Function from `Dataset` to `Dataset` that applies the transformation."""
-    return _MapXDataset(dataset, map_func)
-
-  return _apply_fn
-
-
 class _GroupByReducerDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that groups its input and performs a reduction."""
 
@@ -386,7 +363,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
     return self._output_types
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.group_by_reducer_dataset(
+    return ged_ops.experimental_group_by_reducer_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._key_func.captured_inputs,
         self._init_func.captured_inputs,
@@ -482,7 +459,7 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
     return self._output_types
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.group_by_window_dataset(
+    return ged_ops.experimental_group_by_window_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._key_func.captured_inputs,
         self._reduce_func.captured_inputs,
@@ -522,42 +499,3 @@ class Reducer(object):
   @property
   def finalize_func(self):
     return self._finalize_func
-
-
-class _MapXDataset(dataset_ops.UnaryDataset):
-  """A `Dataset` that maps a function over elements in its input."""
-
-  def __init__(self, input_dataset, map_func):
-    """See `map_x_dataset()` for details."""
-    super(_MapXDataset, self).__init__(input_dataset)
-    self._input_dataset = input_dataset
-
-    wrapped_func = dataset_ops.StructuredFunctionWrapper(
-        map_func, self._transformation_name(), dataset=input_dataset)
-    self._output_classes = wrapped_func.output_classes
-    self._output_shapes = wrapped_func.output_shapes
-    self._output_types = wrapped_func.output_types
-    self._map_func = wrapped_func.function
-
-  def _as_variant_tensor(self):
-    input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
-    return gen_dataset_ops.map_dataset(
-        input_t,
-        self._map_func.captured_inputs,
-        f=self._map_func,
-        **dataset_ops.flat_structure(self))
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
-
-  def _transformation_name(self):
-    return "tf.data.experimental.map_x_dataset()"

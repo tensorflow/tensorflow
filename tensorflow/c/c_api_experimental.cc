@@ -6530,7 +6530,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/cycle_length"
+      name: "ExperimentalParallelInterleaveDataset/cycle_length"
       op: "Const"
       attr {
         key: "dtype"
@@ -6551,7 +6551,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/block_length"
+      name: "ExperimentalParallelInterleaveDataset/block_length"
       op: "Const"
       attr {
         key: "dtype"
@@ -6572,7 +6572,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/sloppy"
+      name: "ExperimentalParallelInterleaveDataset/sloppy"
       op: "Const"
       attr {
         key: "dtype"
@@ -6593,7 +6593,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/buffer_output_elements"
+      name: "ExperimentalParallelInterleaveDataset/buffer_output_elements"
       op: "Const"
       attr {
         key: "dtype"
@@ -6614,7 +6614,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/prefetch_input_elements"
+      name: "ExperimentalParallelInterleaveDataset/prefetch_input_elements"
       op: "Const"
       attr {
         key: "dtype"
@@ -6635,14 +6635,14 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset"
-      op: "ParallelInterleaveDataset"
+      name: "ExperimentalParallelInterleaveDataset"
+      op: "ExperimentalParallelInterleaveDataset"
       input: "RepeatDataset:handle:0"
-      input: "ParallelInterleaveDataset/cycle_length:output:0"
-      input: "ParallelInterleaveDataset/block_length:output:0"
-      input: "ParallelInterleaveDataset/sloppy:output:0"
-      input: "ParallelInterleaveDataset/buffer_output_elements:output:0"
-      input: "ParallelInterleaveDataset/prefetch_input_elements:output:0"
+      input: "ExperimentalParallelInterleaveDataset/cycle_length:output:0"
+      input: "ExperimentalParallelInterleaveDataset/block_length:output:0"
+      input: "ExperimentalParallelInterleaveDataset/sloppy:output:0"
+      input: "ExperimentalParallelInterleaveDataset/buffer_output_elements:output:0"
+      input: "ExperimentalParallelInterleaveDataset/prefetch_input_elements:output:0"
       attr {
         key: "Targuments"
         value {
@@ -6742,7 +6742,7 @@ library {
     node_def {
       name: "ShuffleDataset_2"
       op: "ShuffleDataset"
-      input: "ParallelInterleaveDataset:handle:0"
+      input: "ExperimentalParallelInterleaveDataset:handle:0"
       input: "ShuffleDataset_2/buffer_size_1:output:0"
       input: "ShuffleDataset_2/seed_2:output:0"
       input: "ShuffleDataset_2/seed2_2:output:0"
@@ -8799,6 +8799,10 @@ void TF_MakeInternalErrorStatus(TF_Status* status, const char* errMsg) {
 // This builder is used in the eager API to build a NodeDef.
 struct TF_AttrBuilder : public tensorflow::AttrBuilder {
   using tensorflow::AttrBuilder::AttrBuilder;
+  // The string buffers to make sure that any `attr_name` we pass into
+  // `builder->Set()` will outlive the subsequent
+  // `TF_AttrBuilderCheckCanRunOnDevice()` call(s) on the same `builder`.
+  std::set<std::string> attr_names;
 };
 
 TF_AttrBuilder* TF_NewAttrBuilder(const char* op_name) {
@@ -8809,13 +8813,15 @@ void TF_DeleteAttrBuilder(TF_AttrBuilder* builder) { delete builder; }
 
 void TF_AttrBuilderSetType(TF_AttrBuilder* builder, const char* attr_name,
                            TF_DataType value) {
-  builder->Set(attr_name, static_cast<tensorflow::DataType>(value));
+  auto iter = builder->attr_names.insert(attr_name).first;
+  builder->Set((*iter).c_str(), static_cast<tensorflow::DataType>(value));
 }
 
 void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder, const char* attr_name,
                                const TF_DataType* values, int num_values) {
+  auto iter = builder->attr_names.insert(attr_name).first;
   builder->Set(
-      attr_name,
+      (*iter).c_str(),
       tensorflow::gtl::ArraySlice<const tensorflow::DataType>(
           reinterpret_cast<const tensorflow::DataType*>(values), num_values));
 }
@@ -8869,4 +8875,14 @@ void TF_InitMain(const char* usage, int* argc, char*** argv) {
 
 int TF_PickUnusedPortOrDie() {
   return tensorflow::internal::PickUnusedPortOrDie();
+}
+
+TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType dtype_arg,
+                                                void* data, size_t len) {
+  auto dtype = static_cast<tensorflow::DataType>(dtype_arg);
+  DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
+
+  tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
+  std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
+  return new TFE_TensorHandle(tensor, nullptr, nullptr);
 }

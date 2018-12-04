@@ -27,6 +27,7 @@ from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import values
+from tensorflow.python.eager import test
 from tensorflow.python.estimator import keras as keras_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.framework import constant_op
@@ -35,13 +36,12 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.platform import gfile
-from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
-
 
 _RANDOM_SEED = 1337
 _TRAIN_SIZE = 200
@@ -973,6 +973,28 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       ref_output = np.ones((160, 1), dtype=np.float32)
       self.assertArrayNear(output, ref_output, 1e-1)
 
+  @combinations.generate(strategy_minus_tpu_combinations())
+  def testOptimizerWithCallbacks(self, distribution):
+    with self.cached_session():
+      model = get_model()
+
+      optimizer = gradient_descent_keras.SGD(0.01)
+      loss = 'mse'
+      model.compile(optimizer, loss, distribute=distribution)
+
+      dataset = get_dataset(distribution)
+
+      def schedule(_):
+        return 0.001
+
+      model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
+                callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
+      grouped_models = distribution.unwrap(model._grouped_model)
+      with distribution.scope():
+        for m in grouped_models:
+          self.assertAllClose(0.001, keras.backend.get_value(
+              m.optimizer.lr), atol=1e-05, rtol=1e-05)
+
 
 class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
@@ -1090,14 +1112,14 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       def schedule(_):
         return 0.001
       with self.assertRaisesRegexp(ValueError,
-                                   'LearningRateScheduler callback is not '
-                                   'supported with DistributionStrategy.'):
+                                   'You must specify a Keras Optimizer V2 when '
+                                   'using'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                   callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
 
       with self.assertRaisesRegexp(ValueError,
-                                   'ReduceLROnPlateau callback is not '
-                                   'supported with DistributionStrategy.'):
+                                   'You must specify a Keras Optimizer V2 when '
+                                   'using'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                   callbacks=[keras.callbacks.ReduceLROnPlateau()])
       with self.assertRaisesRegexp(ValueError,
@@ -1241,13 +1263,13 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       model.add(keras.layers.Dense(1))
       initial_weights = model.get_weights()
 
-      def fit_and_predict(with_distribution=None):
+      def fit_eval_and_predict(with_distribution=None):
         # We have initialized the model to the same weight for the distribution
         # and non-distribution run.
         model.set_weights(initial_weights)
         model.compile(
             loss=keras.losses.mean_squared_error,
-            optimizer=gradient_descent.GradientDescentOptimizer(0.5),
+            optimizer=gradient_descent_keras.SGD(0.5),
             distribute=with_distribution)
 
         training_inputs, eval_inputs, predict_inputs = (
@@ -1261,10 +1283,10 @@ class TestDistributionStrategyCorrectness(test.TestCase,
 
         return weights, eval_result, predict_result
 
-      wts_with_ds, eval_with_ds, predict_with_ds = fit_and_predict(
+      wts_with_ds, eval_with_ds, predict_with_ds = fit_eval_and_predict(
           with_distribution=distribution)
-      wts_without_ds, eval_without_ds, predict_without_ds = fit_and_predict(
-          with_distribution=None)
+      wts_without_ds, eval_without_ds, predict_without_ds = (
+          fit_eval_and_predict(with_distribution=None))
 
       # Verify that the weights, eval results, predict outputs  are the same
       # within some limits of tolerance.

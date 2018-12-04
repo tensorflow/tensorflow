@@ -31,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import init_ops
@@ -1458,6 +1459,7 @@ class CheckpointableSaver(object):
     elif session is None:
       session = ops.get_default_session()
 
+    file_io.recursive_create_dir(os.path.dirname(file_prefix))
     with ops.device("/cpu:0"):
       save_path = saver.save(
           sess=_SessionWithFeedDictAdditions(

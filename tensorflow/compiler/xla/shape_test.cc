@@ -30,7 +30,51 @@ limitations under the License.
 namespace xla {
 namespace {
 
-TEST(ShapeTest, ProgramShapeToFromProto) {
+class ShapeTest : public ::testing::Test {
+ protected:
+  const Shape opaque_ = ShapeUtil::MakeOpaqueShape();
+  const Shape token_ = ShapeUtil::MakeTokenShape();
+  const Shape scalar_ = ShapeUtil::MakeShape(F32, {});
+  const Shape matrix_ = ShapeUtil::MakeShape(U32, {1, 2});
+  const Shape matrix2_ = ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1});
+  const Shape tuple_ =
+      ShapeUtil::MakeTupleShape({opaque_, scalar_, matrix_, matrix2_});
+  const Shape nested_tuple_ =
+      ShapeUtil::MakeTupleShape({tuple_, matrix_, token_});
+};
+
+TEST_F(ShapeTest, ShapeToFromProto) {
+  for (const Shape& shape :
+       {opaque_, token_, scalar_, matrix_, matrix2_, tuple_, nested_tuple_}) {
+    Shape shape_copy(shape.ToProto());
+    EXPECT_TRUE(ShapeUtil::Equal(shape, shape_copy))
+        << shape << " != " << shape_copy;
+  }
+}
+
+TEST_F(ShapeTest, ShapeToString) {
+  EXPECT_EQ("opaque[]", opaque_.ToString());
+  EXPECT_EQ("token[]", token_.ToString());
+  EXPECT_EQ("f32[]", scalar_.ToString());
+  EXPECT_EQ("u32[1,2]", matrix_.ToString());
+  EXPECT_EQ("s32[3,4]", matrix2_.ToString());
+  EXPECT_EQ("(opaque[], f32[], u32[1,2], s32[3,4])", tuple_.ToString());
+  EXPECT_EQ("((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
+            nested_tuple_.ToString());
+
+  EXPECT_EQ("opaque[]", opaque_.ToString(/*print_layout=*/true));
+  EXPECT_EQ("f32[]", scalar_.ToString(/*print_layout=*/true));
+  EXPECT_EQ("u32[1,2]{1,0}", matrix_.ToString(/*print_layout=*/true));
+  EXPECT_EQ("s32[3,4]{0,1}", matrix2_.ToString(/*print_layout=*/true));
+  EXPECT_EQ("(opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1})",
+            tuple_.ToString(/*print_layout=*/true));
+  EXPECT_EQ(
+      "((opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1}), u32[1,2]{1,0}, "
+      "token[])",
+      nested_tuple_.ToString(/*print_layout=*/true));
+}
+
+TEST_F(ShapeTest, ProgramShapeToFromProto) {
   ProgramShape program_shape;
   *program_shape.add_parameters() = ShapeUtil::MakeShape(F32, {1, 2, 3});
   *program_shape.add_parameters() = ShapeUtil::MakeTokenShape();
@@ -67,17 +111,10 @@ TEST(ShapeTest, ProgramShapeToFromProto) {
   }
 }
 
-TEST(ShapeTest, ProgramShapeToString) {
-  Shape opaque = ShapeUtil::MakeOpaqueShape();
-  Shape token = ShapeUtil::MakeTokenShape();
-  Shape scalar = ShapeUtil::MakeShape(F32, {});
-  Shape matrix = ShapeUtil::MakeShape(U32, {1, 2});
-  Shape matrix2 = ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1});
-  Shape tuple = ShapeUtil::MakeTupleShape({opaque, scalar, matrix, matrix2});
-  Shape nested_tuple = ShapeUtil::MakeTupleShape({tuple, matrix, token});
-
+TEST_F(ShapeTest, ProgramShapeToString) {
   ProgramShape prog = ShapeUtil::MakeProgramShape(
-      {opaque, scalar, matrix, matrix2, tuple, nested_tuple}, nested_tuple);
+      {opaque_, scalar_, matrix_, matrix2_, tuple_, nested_tuple_},
+      nested_tuple_);
   EXPECT_EQ(
       "((unknown): opaque[], "
       "(unknown): f32[], "
@@ -87,7 +124,7 @@ TEST(ShapeTest, ProgramShapeToString) {
       "(unknown): ((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])) "
       "-> "
       "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
-      ShapeUtil::HumanString(prog));
+      prog.ToString());
 
   prog.add_parameter_names("arg0");
   prog.add_parameter_names("scalar");
@@ -105,7 +142,7 @@ TEST(ShapeTest, ProgramShapeToString) {
       "token[])) "
       "-> "
       "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
-      ShapeUtil::HumanString(prog));
+      prog.ToString());
 }
 
 }  // namespace

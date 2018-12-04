@@ -182,7 +182,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     out_tensor = in_tensor + in_tensor
     sess = session.Session()
 
-    # Test invalid shape. None after 1st dimension.
+    # Test None as shape.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
     with self.assertRaises(ValueError) as error:
@@ -190,7 +190,20 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
                      str(error.exception))
 
-  def testBatchSizeInvalid(self):
+  def testSizeEmptyInvalid(self):
+    in_tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[])
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Test empty shape.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    with self.assertRaises(ValueError) as error:
+      converter.convert()
+    self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
+                     str(error.exception))
+
+  def testSizeInvalid(self):
     in_tensor = array_ops.placeholder(
         shape=[1, None, 16, 3], dtype=dtypes.float32)
     out_tensor = in_tensor + in_tensor
@@ -931,12 +944,13 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     """Test a Sequential tf.keras model testing input shapes argument."""
     keras_file = self._getSequentialModel()
 
-    # Passing in shape of invalid input array has no impact as long as all input
-    # arrays have a shape.
-    converter = lite.TFLiteConverter.from_keras_model_file(
-        keras_file, input_shapes={'invalid-input': [2, 3]})
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # Passing in shape of invalid input array raises error.
+    with self.assertRaises(ValueError) as error:
+      converter = lite.TFLiteConverter.from_keras_model_file(
+          keras_file, input_shapes={'invalid-input': [2, 3]})
+    self.assertEqual(
+        "Invalid tensor 'invalid-input' found in tensor shapes map.",
+        str(error.exception))
 
     # Passing in shape of valid input array.
     converter = lite.TFLiteConverter.from_keras_model_file(

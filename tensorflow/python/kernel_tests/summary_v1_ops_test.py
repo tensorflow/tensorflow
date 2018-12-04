@@ -26,6 +26,7 @@ from __future__ import print_function
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
@@ -42,7 +43,7 @@ class SummaryV1OpsTest(test.TestCase):
     with self.cached_session() as sess:
       const = constant_op.constant([10.0, 20.0])
       summ = logging_ops.scalar_summary(["c1", "c2"], const, name="mysumm")
-      value = sess.run(summ)
+      value = self.evaluate(summ)
     self.assertEqual([], summ.get_shape())
     self.assertProtoEquals("""
       value { tag: "c1" simple_value: 10.0 }
@@ -53,20 +54,21 @@ class SummaryV1OpsTest(test.TestCase):
     with self.cached_session() as sess:
       const = constant_op.constant([10.0, 20.0])
       summ = logging_ops.scalar_summary(["c1", "c2"], const)
-      value = sess.run(summ)
+      value = self.evaluate(summ)
     self.assertEqual([], summ.get_shape())
     self.assertProtoEquals("""
       value { tag: "c1" simple_value: 10.0 }
       value { tag: "c2" simple_value: 20.0 }
       """, self._AsSummary(value))
 
+  @test_util.run_deprecated_v1
   def testMergeSummary(self):
     with self.cached_session() as sess:
       const = constant_op.constant(10.0)
       summ1 = summary.histogram("h", const)
       summ2 = logging_ops.scalar_summary("c", const)
       merge = summary.merge([summ1, summ2])
-      value = sess.run(merge)
+      value = self.evaluate(merge)
     self.assertEqual([], merge.get_shape())
     self.assertProtoEquals("""
       value {

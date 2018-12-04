@@ -507,9 +507,14 @@ bool ROCMExecutor::MemcpyDeviceToDevice(Stream *stream,
                                            AsROCMStreamValue(stream));
 }
 
-bool ROCMExecutor::HostCallback(Stream *stream,
-                                std::function<void()> callback) {
-  auto callback_ptr = new std::function<void()>(callback);
+bool ROCMExecutor::HostCallback(Stream* stream,
+                                std::function<port::Status()> callback) {
+  auto callback_ptr = new std::function<void()>([callback]() {
+    port::Status s = callback();
+    if (!s.ok()) {
+      LOG(WARNING) << "Host callback failed: " << s;
+    }
+  });
   return ROCMDriver::AddStreamCallback(device_ordinal_, AsROCMStreamValue(stream),
                                        InternalHostCallback, callback_ptr);
 }

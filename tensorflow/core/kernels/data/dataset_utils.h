@@ -44,8 +44,8 @@ std::vector<bool> ComputeMoveVector(const std::vector<int>& indices);
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, CapturedFunction* captured_func, StringPiece prefix,
-    std::unique_ptr<IteratorBase>* out_iterator);
+    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
+    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
 
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.

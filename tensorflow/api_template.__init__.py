@@ -28,8 +28,6 @@ _component_api_helper.package_hook(
 
 # API IMPORTS PLACEHOLDER
 
-from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
-
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
 # We're using bitwise, but there's nothing special about that.
@@ -37,8 +35,9 @@ _tf_api_dir = _os.path.dirname(_os.path.dirname(bitwise.__file__))  # pylint: di
 if _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
-# Calls to enable and disable features.
-enable_eager_execution()  # pylint: disable=undefined-variable
+# Enable TF2 behaviors
+from tensorflow.python.compat import compat as _compat  # pylint: disable=g-import-not-at-top
+_compat.enable_v2_behavior()
 
 # These symbols appear because we import the python package which
 # in turn imports from tensorflow.core and tensorflow.python. They

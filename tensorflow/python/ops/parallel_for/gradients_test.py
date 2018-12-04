@@ -484,8 +484,8 @@ class GradientsTest(test.TestCase):
     pfor_jacobian, while_gradients = create_dynamic_lstm_batch_jacobian(8, 4, 3)
     with session.Session() as sess:
       init = variables.global_variables_initializer()
-      sess.run(init)
-      pfor = sess.run(pfor_jacobian)
+      self.evaluate(init)
+      pfor = self.evaluate(pfor_jacobian)
       for i in range(4):
         while_i = sess.run(while_gradients[i])
         self.assertAllClose(while_i, pfor[:, i, ...])
@@ -560,11 +560,11 @@ class GradientsBenchmarks(test.Benchmark):
     sess = session.Session()
     with sess:
       init = variables.global_variables_initializer()
-      sess.run(init)
-      sess.run(targets)
+      self.evaluate(init)
+      self.evaluate(targets)
       begin = time.time()
       for _ in range(iters):
-        sess.run(targets)
+        self.evaluate(targets)
       end = time.time()
     avg_time_ms = 1000 * (end - begin) / iters
     self.report_benchmark(iters=iters, wall_time=avg_time_ms, name=name)

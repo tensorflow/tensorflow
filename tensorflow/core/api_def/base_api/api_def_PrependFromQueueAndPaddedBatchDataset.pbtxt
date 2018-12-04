@@ -1,3 +1,4 @@
 op {
   graph_op_name: "PrependFromQueueAndPaddedBatchDataset"
+  visibility: HIDDEN
 }

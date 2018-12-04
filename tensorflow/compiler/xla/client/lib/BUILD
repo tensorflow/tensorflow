@@ -104,9 +104,9 @@ xla_test(
 )
 
 cc_library(
-    name = "numeric",
-    srcs = ["numeric.cc"],
-    hdrs = ["numeric.h"],
+    name = "matrix",
+    srcs = ["matrix.cc"],
+    hdrs = ["matrix.h"],
     deps = [
         ":arithmetic",
         ":constants",
@@ -118,11 +118,11 @@ cc_library(
 )
 
 xla_test(
-    name = "numeric_test",
-    srcs = ["numeric_test.cc"],
+    name = "matrix_test",
+    srcs = ["matrix_test.cc"],
     tags = ["enable_for_xla_interpreter"],
     deps = [
-        ":numeric",
+        ":matrix",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",

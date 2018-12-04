@@ -34,7 +34,7 @@ tf_module {
   }
   member_method {
     name: "rename"
-    argspec: "args=[\'src\', \'dst\', \'overwrite\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'src\', \'dst\', \'overwrite\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "rmtree"

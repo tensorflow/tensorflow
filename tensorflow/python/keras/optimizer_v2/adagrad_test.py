@@ -116,6 +116,51 @@ class AdagradOptimizerTest(test.TestCase):
     with context.eager_mode():
       self.doTestBasic(use_callable_params=True)
 
+  def testBasicWithLearningRateDecay(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
+        grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
+        var0 = resource_variable_ops.ResourceVariable(var0_np)
+        var1 = resource_variable_ops.ResourceVariable(var1_np)
+        grads0 = constant_op.constant(grads0_np)
+        grads1 = constant_op.constant(grads1_np)
+
+        learning_rate = 3.0
+        decay = 0.5
+
+        ada_opt = adagrad.Adagrad(learning_rate, decay=decay)
+
+        accum0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
+        accum1_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
+
+        if not context.executing_eagerly():
+          ada_update = ada_opt.apply_gradients(
+              zip([grads0, grads1], [var0, var1]))
+          self.evaluate(variables.global_variables_initializer())
+
+        # Fetch params to validate initial values
+        v0_val, v1_val = self.evaluate([var0, var1])
+        self.assertAllClose([1.0, 2.0], v0_val)
+        self.assertAllClose([3.0, 4.0], v1_val)
+
+        # Run 3 steps of adagrad
+        for t in range(3):
+          if not context.executing_eagerly():
+            self.evaluate(ada_update)
+          else:
+            ada_opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+          lr_np = learning_rate / (1 + decay * t)
+          var0_np, accum0_np = adagrad_update_numpy(var0_np, accum0_np,
+                                                    grads0_np, lr_np)
+          var1_np, accum1_np = adagrad_update_numpy(var1_np, accum1_np,
+                                                    grads1_np, lr_np)
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -135,6 +180,7 @@ class AdagradOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             [[0, 1], [3, 4]], var0.eval(), atol=0.01)
 
+  @test_util.run_deprecated_v1
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -167,6 +213,7 @@ class AdagradOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSparseBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -211,6 +258,7 @@ class AdagradOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSparseRepeatedIndices(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -243,6 +291,7 @@ class AdagradOptimizerTest(test.TestCase):
           self.assertAllClose(aggregated_update_var.eval(),
                               repeated_index_update_var.eval())
 
+  @test_util.run_deprecated_v1
   def testSparseRepeatedIndicesByEmbeddingLookUp(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -267,6 +316,7 @@ class AdagradOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(
               var_repeated.eval(), var_aggregated.eval())
 
+  @test_util.run_deprecated_v1
   def testSparseStability(self):
     for dtype in [dtypes.half]:
       with self.cached_session():
@@ -299,6 +349,7 @@ class AdagradOptimizerTest(test.TestCase):
                   -0.01029443
               ]]), var0.eval())
 
+  @test_util.run_deprecated_v1
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():

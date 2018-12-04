@@ -175,7 +175,7 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
   // Holds block plus halo and filter data for blockDim.x depths.
 #if GOOGLE_CUDA
   extern __shared__ __align__(8) unsigned char shared_memory[];
-  static_assert(sizeof(S) <= 8, "Insufficient alignement detected");
+  static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
 #elif TENSORFLOW_USE_ROCM
   HIP_DYNAMIC_SHARED(unsigned char, shared_memory);
 #endif
@@ -463,7 +463,7 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNCHWSmall(
   // Holds block plus halo and filter data for blockDim.z depths.
 #if GOOGLE_CUDA
   extern __shared__ __align__(8) unsigned char shared_memory[];
-  static_assert(sizeof(S) <= 8, "Insufficient alignement detected");
+  static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
 #elif TENSORFLOW_USE_ROCM
   HIP_DYNAMIC_SHARED(unsigned char, shared_memory);
 #endif
@@ -1193,7 +1193,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
   // Holds block plus halo and filter data for blockDim.x depths.
 #if GOOGLE_CUDA
   extern __shared__ __align__(8) unsigned char shared_memory[];
-  static_assert(sizeof(S) <= 8, "Insufficient alignement detected");
+  static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
 #elif TENSORFLOW_USE_ROCM
   HIP_DYNAMIC_SHARED(unsigned char, shared_memory);
 #endif
@@ -1469,7 +1469,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall(
   // Holds block plus halo and filter data for blockDim.z depths.
 #if GOOGLE_CUDA
   extern __shared__ __align__(8) unsigned char shared_memory[];
-  static_assert(sizeof(S) <= 8, "Insufficient alignement detected");
+  static_assert(sizeof(S) <= 8, "Insufficient aligement detected");
 #elif TENSORFLOW_USE_ROCM
   HIP_DYNAMIC_SHARED(unsigned char, shared_memory);
 #endif

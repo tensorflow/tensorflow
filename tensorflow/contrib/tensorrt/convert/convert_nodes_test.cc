@@ -151,6 +151,26 @@ void ExpectTrtDimsEqualsArray(const std::vector<int>& lhs,
       << "  actual: " << DebugString(rhs);
 }
 
+template <typename T>
+void ExpectArrayNear(const std::vector<T>& lhs, const std::vector<T>& rhs) {
+  ASSERT_EQ(lhs.size(), rhs.size());
+  for (int i = 0; i < lhs.size(); i++) {
+    EXPECT_FLOAT_EQ(lhs[i], rhs[i]);
+  }
+}
+
+// Eigen::half cannot implicitly convert to float which is required for
+// EXPECT_FLOAT_EQ.
+template <>
+void ExpectArrayNear(const std::vector<Eigen::half>& lhs,
+                     const std::vector<Eigen::half>& rhs) {
+  ASSERT_EQ(lhs.size(), rhs.size());
+  for (int i = 0; i < lhs.size(); i++) {
+    EXPECT_FLOAT_EQ(Eigen::half_impl::half_to_float(lhs[i]),
+                    Eigen::half_impl::half_to_float(rhs[i]));
+  }
+}
+
 bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
                             const TRT_ShapedWeights& rhs) {
   return TrtDimsEquals(lhs.shape_, rhs.shape_) && lhs.type_ == rhs.type_ &&
@@ -1961,6 +1981,135 @@ TEST_F(OpConverterTest, ConvertRelu6) {
     BuildAndRun<float>({{"input", {-100, -1, 0, 3, 5, 9}}}, "my_relu6",
                        &output_data);
     EXPECT_THAT(output_data, ElementsAre(0, 0, 0, 3, 5, 6));
+  }
+}
+
+template <DataType dtype>
+void TestConvertSquare(OpConverterTest* test) {
+  test->Reset();
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), dtype);
+  auto square = ops::Square(s.WithOpName("my_square"), input);
+  NodeDef node_def = square.operation.node()->def();
+
+  test->AddTestTensor("input", {1, 20});
+  test->RunValidationAndConversion(node_def);
+  TRT_TensorOrWeights output;
+  TF_EXPECT_OK(test->GetTensorOrWeights("my_square", &output));
+  EXPECT_TRUE(output.is_tensor());
+  ExpectTrtDimsEqualsArray({1, 20}, output.tensor()->getDimensions());
+
+  const int num_inputs = 20;
+  std::vector<CType> input_data(num_inputs);
+  std::vector<CType> expected_output_data(num_inputs);
+  for (int i = 0; i < 20; i++) {
+    const CType value = CType(i - 9);
+    input_data[i] = value;
+    expected_output_data[i] = value * value;
+  }
+  std::vector<CType> output_data(num_inputs);
+  test->BuildAndRun<CType>({{"input", input_data}}, "my_square", &output_data);
+  ExpectArrayNear(expected_output_data, output_data);
+}
+
+TEST_F(OpConverterTest, ConvertSquare) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_square", "Square", {});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Square expects one input, at my_square");
+  }
+  {
+    // Input is weights, should fail.
+    Reset();
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto square = ops::Square(s.WithOpName("my_square"), input);
+    NodeDef node_def = square.operation.node()->def();
+    AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, -5, 6});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Square is only implemented for tensors, at my_square");
+  }
+
+  // OK. Note that kINT32 is not supported by IElementWiseLayer, so we don't
+  // test DT_INT32 type here.
+  TestConvertSquare<DT_FLOAT>(this);
+  // TODO(tmorris): Looks like there may be a bug with this layer for FP16
+  // inputs. Disabling for now.
+  // TestConvertSquare<DT_HALF>(this);
+}
+
+TEST_F(OpConverterTest, ConvertActivation) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_act", "Relu", {});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Relu expects one input, at my_act");
+  }
+  {
+    // Input is weights, should fail.
+    Reset();
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto relu = ops::Relu(s.WithOpName("my_act"), input);
+    const NodeDef& node_def = relu.operation.node()->def();
+    AddTestWeights<int32>("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Relu is only implemented for tensors, at my_act");
+  }
+
+  // Get nodedef for activation layer.
+  auto get_act_nodedef = [](string op_name) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    if (op_name == "Relu") {
+      auto act = ops::Relu(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
+    } else if (op_name == "Sigmoid") {
+      auto act = ops::Sigmoid(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
+    } else if (op_name == "Tanh") {
+      auto act = ops::Tanh(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
+    }
+    EXPECT_TRUE(false);
+    return NodeDef();
+  };
+  // Get expected output for activation layer.
+  auto get_act_output = [](string op_name, float input) -> float {
+    if (op_name == "Relu") {
+      return (input > 0.0f) ? input : 0.0f;
+    } else if (op_name == "Sigmoid") {
+      return 1.0f / (1.0f + std::exp(-input));
+    } else if (op_name == "Tanh") {
+      return std::tanh(input);
+    }
+    EXPECT_TRUE(false);
+    return 0;
+  };
+
+  // Ok.
+  for (string op_name : {"Relu", "Sigmoid", "Tanh"}) {
+    Reset();
+    NodeDef node_def = get_act_nodedef(op_name);
+    AddTestTensor("input", {1, 2, 3});
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_act", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
+
+    const std::vector<float> input_data = {-100, -2, -1, 0, 1, 100};
+    std::vector<float> output_data(6);
+    BuildAndRun<float>({{"input", input_data}}, "my_act", &output_data);
+    for (int i = 0; i < input_data.size(); i++) {
+      const float expected_output = get_act_output(op_name, input_data[i]);
+      EXPECT_FLOAT_EQ(output_data[i], expected_output);
+    }
   }
 }
 

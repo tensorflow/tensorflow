@@ -61,52 +61,9 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     std::vector<int> indices;
     OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
 
-    ParallelMapIteratorFunction map_func;
-    CapturedFunction* raw_captured_func = captured_func.get();
-    if (indices.empty()) {
-      map_func = [raw_captured_func](IteratorContext* ctx, const string& prefix,
-                                     std::vector<Tensor> args,
-                                     std::vector<Tensor>* out_tensors,
-                                     StatusCallback done) {
-        raw_captured_func->RunAsync(ctx, std::move(args), out_tensors,
-                                    std::move(done), prefix);
-      };
-      if (!use_inter_op_parallelism_) {
-        map_func = [map_func](IteratorContext* ctx, const string& prefix,
-                              std::vector<Tensor> args,
-                              std::vector<Tensor>* out_tensors,
-                              StatusCallback done) {
-          (*ctx->runner())(std::bind(map_func, ctx, prefix, std::move(args),
-                                     out_tensors, std::move(done)));
-        };
-      }
-    } else {
-      std::vector<bool> can_move = ComputeMoveVector(indices);
-      map_func = [raw_captured_func, indices, can_move](
-                     IteratorContext* ctx, const string& prefix,
-                     std::vector<Tensor> args, std::vector<Tensor>* out_tensors,
-                     StatusCallback done) {
-        const std::vector<Tensor>& captured_inputs =
-            raw_captured_func->captured_inputs();
-        size_t num_args = args.size();
-        for (size_t i = 0; i < indices.size(); ++i) {
-          if (indices[i] < num_args) {
-            if (can_move[i]) {
-              out_tensors->push_back(std::move(args[indices[i]]));
-            } else {
-              out_tensors->push_back(args[indices[i]]);
-            }
-          } else {
-            out_tensors->push_back(captured_inputs[indices[i] - num_args]);
-          }
-        }
-        done(Status::OK());
-      };
-    }
-
     *output = new Dataset(ctx, input, func_, num_parallel_calls, output_types_,
                           output_shapes_, use_inter_op_parallelism_, sloppy_,
-                          std::move(captured_func), std::move(map_func));
+                          std::move(captured_func), indices);
   }
 
  private:
@@ -118,7 +75,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
             const std::vector<PartialTensorShape>& output_shapes,
             bool use_inter_op_parallelism, bool sloppy,
             std::unique_ptr<CapturedFunction> captured_func,
-            ParallelMapIteratorFunction map_func)
+            const std::vector<int> indices)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
@@ -128,7 +85,9 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           use_inter_op_parallelism_(use_inter_op_parallelism),
           sloppy_(sloppy),
           captured_func_(std::move(captured_func)),
-          map_func_(std::move(map_func)) {
+          indices_(indices),
+          can_move_(indices.empty() ? std::vector<bool>()
+                                    : ComputeMoveVector(indices)) {
       input_->Ref();
     }
 
@@ -136,13 +95,15 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      auto init_func = [this](IteratorContext* ctx) {
-        return captured_func_->Instantiate(ctx);
-      };
-
+      std::unique_ptr<ParallelMapFunctor> parallel_map_functor(nullptr);
+      if (indices_.empty()) {
+        parallel_map_functor.reset(new ParallelMapDatasetFunctor(this));
+      } else {
+        parallel_map_functor.reset(new ShortCircuitFunctor(this));
+      }
       return NewParallelMapIterator(
           {this, strings::StrCat(prefix, "::ParallelMap")}, input_,
-          std::move(init_func), map_func_, num_parallel_calls_, sloppy_);
+          std::move(parallel_map_functor), num_parallel_calls_, sloppy_);
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -215,6 +176,71 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     }
 
    private:
+    class ShortCircuitFunctor : public ParallelMapFunctor {
+     public:
+      explicit ShortCircuitFunctor(const Dataset* dataset)
+          : dataset_(dataset) {}
+
+      void MapFunc(IteratorContext* ctx, const string& prefix,
+                   std::vector<Tensor> input_element,
+                   std::vector<Tensor>* result, StatusCallback done) override {
+        const std::vector<Tensor>& captured_inputs =
+            dataset_->captured_func_->captured_inputs();
+        size_t num_args = input_element.size();
+        for (size_t i = 0; i < dataset_->indices_.size(); ++i) {
+          if (dataset_->indices_[i] < num_args) {
+            if (dataset_->can_move_[i]) {
+              result->push_back(
+                  std::move(input_element[dataset_->indices_[i]]));
+            } else {
+              result->push_back(input_element[dataset_->indices_[i]]);
+            }
+          } else {
+            result->push_back(
+                captured_inputs[dataset_->indices_[i] - num_args]);
+          }
+        }
+        done(Status::OK());
+      }
+
+      const Dataset* const dataset_;
+    };
+
+    class ParallelMapDatasetFunctor : public ParallelMapFunctor {
+     public:
+      explicit ParallelMapDatasetFunctor(const Dataset* dataset)
+          : dataset_(dataset) {}
+
+      Status InitFunc(IteratorContext* ctx) override {
+        return dataset_->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
+      }
+
+      void MapFunc(IteratorContext* ctx, const string& prefix,
+                   std::vector<Tensor> input_element,
+                   std::vector<Tensor>* result, StatusCallback done) override {
+        auto map_func = [this](IteratorContext* ctx, const string& prefix,
+                               std::vector<Tensor> input_element,
+                               std::vector<Tensor>* result,
+                               StatusCallback done) {
+          instantiated_captured_func_->RunAsync(
+              ctx, std::move(input_element), result, std::move(done), prefix);
+        };
+        if (!dataset_->use_inter_op_parallelism_) {
+          (*ctx->runner())(std::bind(map_func, ctx, prefix,
+                                     std::move(input_element), result,
+                                     std::move(done)));
+        } else {
+          map_func(ctx, prefix, std::move(input_element), result,
+                   std::move(done));
+        }
+      }
+
+     private:
+      const Dataset* const dataset_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
+    };
+
     const DatasetBase* const input_;
     const NameAttrList func_;
     const int32 num_parallel_calls_;
@@ -223,7 +249,8 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     const bool use_inter_op_parallelism_;
     const bool sloppy_;
     const std::unique_ptr<CapturedFunction> captured_func_;
-    const ParallelMapIteratorFunction map_func_;
+    const std::vector<int> indices_;
+    const std::vector<bool> can_move_;
   };
 
   DataTypeVector output_types_;

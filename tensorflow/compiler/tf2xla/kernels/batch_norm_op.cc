@@ -115,9 +115,9 @@ class FusedBatchNormGradOp : public XlaOpKernel {
     // operators. For now, cast everything to the statistics type (which
     // may be more precise than the input type).
     auto grad_backprop =
-        XlaHelpers::ConvertElementType(b, ctx->Input(0), scale_dtype);
+        XlaHelpers::ConvertElementType(ctx->Input(0), scale_dtype);
     auto activations =
-        XlaHelpers::ConvertElementType(b, ctx->Input(1), scale_dtype);
+        XlaHelpers::ConvertElementType(ctx->Input(1), scale_dtype);
     auto scale = ctx->Input(2);
     auto mean = ctx->Input(3);
     auto var = ctx->Input(4);
@@ -151,11 +151,11 @@ class FusedBatchNormGradOp : public XlaOpKernel {
       const DataType accumulation_type =
           XlaHelpers::SumAccumulationType(scale_dtype);
       auto converted =
-          XlaHelpers::ConvertElementType(b, grad_backprop, accumulation_type);
+          XlaHelpers::ConvertElementType(grad_backprop, accumulation_type);
       auto reduce =
           xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
                       *ctx->GetOrCreateAdd(accumulation_type), reduction_dims);
-      offset_backprop = XlaHelpers::ConvertElementType(b, reduce, scale_dtype);
+      offset_backprop = XlaHelpers::ConvertElementType(reduce, scale_dtype);
 
       // scratch1 = rsqrt(pop_var + epsilon)
       auto neg_half = XlaHelpers::FloatLiteral(b, scale_dtype, -0.5);
@@ -165,19 +165,18 @@ class FusedBatchNormGradOp : public XlaOpKernel {
       // scratch2 = sum(y_backprop * (x - mean))
       auto mul =
           xla::Mul(grad_backprop, xla::Sub(activations, mean, {feature_index}));
-      converted = XlaHelpers::ConvertElementType(b, mul, accumulation_type);
+      converted = XlaHelpers::ConvertElementType(mul, accumulation_type);
       reduce =
           xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
                       *ctx->GetOrCreateAdd(accumulation_type), reduction_dims);
-      auto scratch2 = XlaHelpers::ConvertElementType(b, reduce, scale_dtype);
+      auto scratch2 = XlaHelpers::ConvertElementType(reduce, scale_dtype);
 
       x_backprop =
           xla::Mul(grad_backprop, xla::Mul(scratch1, scale), {feature_index});
       scale_backprop = xla::Mul(scratch1, scratch2);
     }
 
-    ctx->SetOutput(0,
-                   XlaHelpers::ConvertElementType(b, x_backprop, input_dtype));
+    ctx->SetOutput(0, XlaHelpers::ConvertElementType(x_backprop, input_dtype));
     ctx->SetOutput(1, scale_backprop);
     ctx->SetOutput(2, offset_backprop);
     ctx->SetConstantOutput(3, Tensor());

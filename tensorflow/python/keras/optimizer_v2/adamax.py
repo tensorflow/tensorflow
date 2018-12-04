@@ -44,7 +44,8 @@ class Adamax(adam.Adam):
                beta_1=0.9,
                beta_2=0.999,
                epsilon=1e-7,
-               name='Adamax'):
+               name='Adamax',
+               **kwargs):
     """Construct a new Adamax optimizer.
 
     Initialization:
@@ -87,6 +88,7 @@ class Adamax(adam.Adam):
       epsilon: A small constant for numerical stability.
       name: Optional name for the operations created when applying gradients.
         Defaults to "Adamax".
+      **kwargs: keyword arguments. Allowed to be {`decay`}
     """
     # pylint: disable=useless-super-delegation
     super(Adamax, self).__init__(
@@ -95,38 +97,40 @@ class Adamax(adam.Adam):
         beta_2=beta_2,
         epsilon=epsilon,
         amsgrad=False,
-        name=name)
+        name=name,
+        **kwargs)
     # pylint: enable=useless-super-delegation
 
   def _resource_apply_dense(self, grad, var):
-    grad_dtype = grad.dtype.base_dtype
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
     m = self.get_slot(var, 'm')
     v = self.get_slot(var, 'v')
-    local_step = math_ops.cast(self.iterations + 1, grad_dtype)
-    beta_1_t = math_ops.cast(self._get_hyper('beta_1'), grad_dtype)
-    beta_2_t = math_ops.cast(self._get_hyper('beta_2'), grad_dtype)
+    beta_1_t = self._get_hyper('beta_1', var_dtype)
+    beta_2_t = self._get_hyper('beta_2', var_dtype)
+    local_step = math_ops.cast(self.iterations + 1, var_dtype)
     beta_1_power = math_ops.pow(beta_1_t, local_step)
     return training_ops.resource_apply_ada_max(
         var.handle,
         m.handle,
         v.handle,
         beta_1_power,
-        math_ops.cast(self._get_hyper('learning_rate'), grad_dtype),
+        lr_t,
         beta_1_t,
         beta_2_t,
-        math_ops.cast(self._get_hyper('epsilon'), grad_dtype),
+        self._get_hyper('epsilon', var_dtype),
         grad,
         use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices):
-    grad_dtype = grad.dtype.base_dtype
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
 
-    local_step = math_ops.cast(self.iterations + 1, grad_dtype)
-    beta_1_t = math_ops.cast(self._get_hyper('beta_1'), grad_dtype)
-    beta_2_t = math_ops.cast(self._get_hyper('beta_2'), grad_dtype)
+    beta_1_t = self._get_hyper('beta_1', var_dtype)
+    beta_2_t = self._get_hyper('beta_2', var_dtype)
+    local_step = math_ops.cast(self.iterations + 1, var_dtype)
     beta_1_power = math_ops.pow(beta_1_t, local_step)
-    lr_t = math_ops.cast(self._get_hyper('learning_rate'), grad_dtype)
-    epsilon_t = math_ops.cast(self._get_hyper('epsilon'), grad_dtype)
+    epsilon_t = self._get_hyper('epsilon', var_dtype)
 
     # m_t = beta1 * m + (1 - beta1) * g_t
     m = self.get_slot(var, 'm')

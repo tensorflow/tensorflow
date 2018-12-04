@@ -143,6 +143,11 @@ The following operations are specific to ragged tensors:
 <!-- Elementwise Ops -->
 @@make_elementwise_op
 
+<!-- Shape & broadcasting -->
+@@RaggedTensorDynamicShape
+@@broadcast_to
+@@broadcast_dynamic_shape
+
 <!-- Symbols from  ragged_elementwise_ops._symbols_to_export are whitelisted -->
 """
 
@@ -151,6 +156,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.ops.ragged import ragged_operators
+from tensorflow.python.ops.ragged import ragged_string_ops
 
 from tensorflow.python.ops.ragged.ragged_array_ops import batch_gather
 from tensorflow.python.ops.ragged.ragged_array_ops import boolean_mask
@@ -213,6 +219,10 @@ from tensorflow.python.ops.ragged.ragged_math_ops import segment_sum
 from tensorflow.python.ops.ragged.ragged_tensor import is_ragged
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensorType
+
+from tensorflow.python.ops.ragged.ragged_tensor_shape import broadcast_dynamic_shape
+from tensorflow.python.ops.ragged.ragged_tensor_shape import broadcast_to
+from tensorflow.python.ops.ragged.ragged_tensor_shape import RaggedTensorDynamicShape
 
 from tensorflow.python.ops.ragged.ragged_tensor_value import RaggedTensorValue
 

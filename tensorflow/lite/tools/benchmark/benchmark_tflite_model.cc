@@ -279,7 +279,7 @@ void BenchmarkTfLiteModel::PrepareInputsAndOutputs() {
       FillRandomString(&buffer, sizes, []() {
         return "we're have some friends over saturday to hang out in the yard";
       });
-      buffer.WriteToTensor(interpreter->tensor(i));
+      buffer.WriteToTensor(interpreter->tensor(i), /*new_shape=*/nullptr);
     } else {
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
                         << " of type " << t->type;

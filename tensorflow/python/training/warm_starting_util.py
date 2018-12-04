@@ -32,7 +32,7 @@ from tensorflow.python.training import saver
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.VocabInfo")
+@tf_export(v1=["train.VocabInfo"])
 class VocabInfo(
     collections.namedtuple("VocabInfo", [
         "new_vocab",

@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
@@ -319,6 +320,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       (np.int32, "UTF8_CHAR"),
       (np.int64, "UTF8_CHAR"),
   )
+  @test_util.run_deprecated_v1
   def testBadBroadcast(self, dtype, unit):
     test_string = [[b"ten", b"eleven", b"twelve"],
                    [b"thirteen", b"fourteen", b"fifteen"],
@@ -338,6 +340,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       (np.int32, -6, "UTF8_CHAR"),
       (np.int64, -6, "UTF8_CHAR"),
   )
+  @test_util.run_deprecated_v1
   def testOutOfRangeError_Scalar(self, dtype, pos, unit):
     # Scalar/Scalar
     test_string = {
@@ -361,6 +364,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       (np.int32, -4, "UTF8_CHAR"),
       (np.int64, -4, "UTF8_CHAR"),
   )
+  @test_util.run_deprecated_v1
   def testOutOfRangeError_VectorScalar(self, dtype, pos, unit):
     # Vector/Scalar
     test_string = {
@@ -381,6 +385,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       (np.int32, "UTF8_CHAR"),
       (np.int64, "UTF8_CHAR"),
   )
+  @test_util.run_deprecated_v1
   def testOutOfRangeError_MatrixMatrix(self, dtype, unit):
     # Matrix/Matrix
     test_string = {
@@ -414,6 +419,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       (np.int32, "UTF8_CHAR"),
       (np.int64, "UTF8_CHAR"),
   )
+  @test_util.run_deprecated_v1
   def testOutOfRangeError_Broadcast(self, dtype, unit):
     # Broadcast
     test_string = {
@@ -444,6 +450,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       (np.int32, "UTF8_CHAR"),
       (np.int64, "UTF8_CHAR"),
   )
+  @test_util.run_deprecated_v1
   def testMismatchPosLenShapes(self, dtype, unit):
     test_string = {
         "BYTE": [[b"ten", b"eleven", b"twelve"],
@@ -471,6 +478,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       string_ops.substr(test_string, position, length)
 
+  @test_util.run_deprecated_v1
   def testWrongDtype(self):
     with self.cached_session():
       with self.assertRaises(TypeError):
@@ -478,6 +486,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(TypeError):
         string_ops.substr(b"test", 3, 1.0)
 
+  @test_util.run_deprecated_v1
   def testInvalidUnit(self):
     with self.cached_session():
       with self.assertRaises(ValueError):

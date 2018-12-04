@@ -102,6 +102,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":functional_ops",
         ":gradient_checker",
+        ":gradient_checker_v2",
         ":graph_util",
         ":histogram_ops",
         ":image_ops",
@@ -861,6 +862,7 @@ py_library(
         ":platform",
         ":registry",
         ":tensor_shape",
+        ":tf2",
         ":traceable_stack",
         ":util",
         ":versions",
@@ -984,6 +986,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":dtypes",
+        ":tf2",
         ":util",
         "//tensorflow/core:protos_all_py",
     ],
@@ -1081,10 +1084,13 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":client",
+        ":cond_v2",
         ":framework_test_lib",
         ":gradient_checker",
+        ":gradient_checker_v2",
         ":platform_test",
         ":util",
+        ":while_v2",
     ],
 )
 
@@ -1389,6 +1395,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_pip"],  # test_ops_2 is not available in pip.
     deps = [
+        ":cond_v2",
         ":control_flow_ops",
         ":errors",
         ":framework",
@@ -1403,6 +1410,7 @@ py_test(
         ":util",
         ":variable_scope",
         ":variables",
+        ":while_v2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
@@ -1969,6 +1977,15 @@ py_library(
 )
 
 py_library(
+    name = "optional_grad",
+    srcs = ["ops/optional_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_ops",
+    ],
+)
+
+py_library(
     name = "sets",
     srcs = [
         "ops/sets.py",
@@ -2083,7 +2100,6 @@ py_library(
     srcs = ["ops/control_flow_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "tensor_shape",
         ":array_ops",
         ":array_ops_gen",
         ":constant_op",
@@ -2098,6 +2114,7 @@ py_library(
         ":resource_variable_ops_gen",
         ":sparse_tensor",
         ":tensor_array_ops",
+        ":tensor_shape",
         ":tf2",
         ":tf_should_use",
         ":util",
@@ -2147,6 +2164,7 @@ py_library(
         ":graph_to_function_def",
         ":pywrap_tensorflow",
         ":util",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:function",
     ],
 )
@@ -2291,6 +2309,7 @@ py_library(
         ":manip_ops",
         ":math_grad",
         ":math_ops",
+        ":optional_grad",
         ":platform",
         ":random_grad",
         ":resource_variable_ops",
@@ -3161,6 +3180,19 @@ py_library(
     ],
 )
 
+py_library(
+    name = "gradient_checker_v2",
+    srcs = ["ops/gradient_checker_v2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":framework_for_generated_wrappers",
+        ":gradients",
+        ":platform",
+        "//third_party/py/numpy",
+    ],
+)
+
 # This target is deprecated.
 py_library(
     name = "ops",
@@ -3214,6 +3246,22 @@ gpu_py_test(
     name = "gradient_checker_test",
     size = "medium",
     srcs = ["ops/gradient_checker_test.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":nn_grad",
+        ":nn_ops",
+        ":platform",
+        "//third_party/py/numpy",
+    ],
+)
+
+gpu_py_test(
+    name = "gradient_checker_v2_test",
+    size = "medium",
+    srcs = ["ops/gradient_checker_v2_test.py"],
     additional_deps = [
         ":array_ops",
         ":client_testlib",
@@ -3517,6 +3565,19 @@ py_library(
     ],
 )
 
+# Dependency added and used by ClusterResolvers to avoid circular dependency between keras, distribute, and training.
+py_library(
+    name = "training_server_lib",
+    srcs = ["training/server_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":pywrap_tensorflow",
+        ":util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
 py_library(
     name = "saveable_object",
     srcs = ["training/saveable_object.py"],
@@ -3588,15 +3649,6 @@ py_library(
         "//tensorflow/python/training/checkpointable:base",
         "//third_party/py/numpy",
         "@six_archive//:six",
-    ],
-)
-
-py_library(
-    name = "device_util",
-    srcs = ["training/device_util.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python/distribute:device_util",
     ],
 )
 

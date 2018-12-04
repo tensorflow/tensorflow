@@ -161,6 +161,9 @@ def are_all_symbolic_tensors(tensors):
   return all(is_symbolic_tensor(tensor) for tensor in tensors)
 
 
+_user_convertible_tensor_types = set()
+
+
 def is_symbolic_tensor(tensor):
   """Returns whether a tensor is symbolic (from a TF graph) or an eager tensor.
 
@@ -176,9 +179,40 @@ def is_symbolic_tensor(tensor):
   if isinstance(tensor, variables.Variable):
     return not context.executing_eagerly()
   if isinstance(tensor, (ops.Tensor, sparse_tensor.SparseTensor)):
-    try:
-      _ = tensor.graph
-      return True
-    except AttributeError:
-      return False
+    return hasattr(tensor, 'graph')
+  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
+    return hasattr(ops.convert_to_tensor(tensor), 'graph')
   return False
+
+
+def register_symbolic_tensor_type(cls):
+  """Allows users to specify types regarded as symbolic `Tensor`s.
+
+  Used in conjunction with `tf.register_tensor_conversion_function`, calling
+  `tf.keras.utils.register_symbolic_tensor_type(cls)` allows non-`Tensor`
+  objects to be plumbed through Keras layers.
+
+  Example:
+
+  ```python
+  # One-time setup.
+  class Foo(object):
+    def __init__(self, input_):
+      self._input = input_
+    def value(self):
+      return tf.constant(42.)
+
+  tf.register_tensor_conversion_function(
+      Foo, lambda x, *args, **kwargs: x.value())
+
+  tf.keras.utils.register_symbolic_tensor_type(Foo)
+
+  # User-land.
+  layer = tf.keras.layers.Lambda(lambda input_: Foo(input_))
+  ```
+
+  Arguments:
+    cls: A `class` type which shall be regarded as a symbolic `Tensor`.
+  """
+  global _user_convertible_tensor_types
+  _user_convertible_tensor_types.add(cls)

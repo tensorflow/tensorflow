@@ -26,6 +26,8 @@ import numpy as np
 import six
 
 from tensorflow.python.compat import compat
+from tensorflow.python.data.experimental.ops import filter_for_shard_ops
+from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.ops import iterator_ops
@@ -293,9 +295,9 @@ class DatasetV2(object):
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
-    memory and run into byte limits of graph serialization.  If tensors contains
-    one or more large NumPy arrays, consider the alternative described in
-    [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    memory and run into byte limits of graph serialization. If `tensors`
+    contains one or more large NumPy arrays, consider the alternative described
+    in [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors.
@@ -312,9 +314,9 @@ class DatasetV2(object):
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
-    memory and run into byte limits of graph serialization.  If tensors contains
-    one or more large NumPy arrays, consider the alternative described in
-    [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    memory and run into byte limits of graph serialization. If `tensors`
+    contains one or more large NumPy arrays, consider the alternative described
+    in [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors, each having the same size in the
@@ -581,7 +583,7 @@ class DatasetV2(object):
     ```
 
     Args:
-      *args: follow same semantics as python's xrange.
+      *args: follows the same semantics as python's xrange.
         len(args) == 1 -> start = 0, stop = args[0], step = 1
         len(args) == 2 -> start = args[0], stop = args[1], step = 1
         len(args) == 3 -> start = args[0], stop = args[1, stop = args[2]
@@ -821,78 +823,6 @@ class DatasetV2(object):
     """
     return SkipDataset(self, count)
 
-  def shard(self, num_shards, index):
-    """Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
-
-    This dataset operator is very useful when running distributed training, as
-    it allows each worker to read a unique subset.
-
-    When reading a single input file, you can skip elements as follows:
-
-    ```python
-    d = tf.data.TFRecordDataset(FLAGS.input_file)
-    d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
-    d = d.repeat(FLAGS.num_epochs)
-    d = d.shuffle(FLAGS.shuffle_buffer_size)
-    d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)
-    ```
-
-    Important caveats:
-
-    - Be sure to shard before you use any randomizing operator (such as
-      shuffle).
-    - Generally it is best if the shard operator is used early in the dataset
-      pipeline. For example, when reading from a set of TFRecord files, shard
-      before converting the dataset to input samples. This avoids reading every
-      file on every worker. The following is an example of an efficient
-      sharding strategy within a complete pipeline:
-
-    ```python
-    d = Dataset.list_files(FLAGS.pattern)
-    d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
-    d = d.repeat(FLAGS.num_epochs)
-    d = d.shuffle(FLAGS.shuffle_buffer_size)
-    d = d.interleave(tf.data.TFRecordDataset,
-                     cycle_length=FLAGS.num_readers, block_length=1)
-    d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)
-    ```
-
-    Args:
-      num_shards: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        shards operating in parallel.
-      index: A `tf.int64` scalar `tf.Tensor`, representing the worker index.
-
-    Returns:
-      Dataset: A `Dataset`.
-
-    Raises:
-      ValueError: if `num_shards` or `index` are illegal values. Note: error
-        checking is done on a best-effort basis, and aren't guaranteed to be
-        caught upon dataset creation. (e.g. providing in a placeholder tensor
-        bypasses the early checking, and will instead result in an error during
-        a session.run call.)
-    """
-    num_shards = ops.convert_to_tensor(
-        num_shards, name="num_shards", dtype=dtypes.int64)
-    num_shards_static = tensor_util.constant_value(num_shards)
-    index = ops.convert_to_tensor(index, name="index", dtype=dtypes.int64)
-    index_static = tensor_util.constant_value(index)
-
-    if num_shards_static is not None and num_shards_static < 1:
-      raise ValueError("num_shards must be >= 1; got: %s" % num_shards_static)
-    if index_static is not None and index_static < 0:
-      raise ValueError("index must be >= 0; got: %s" % index_static)
-    if (index_static is not None and num_shards_static is not None and
-        index_static >= num_shards_static):
-      raise ValueError("index must be <= num_shards; %s is not < %s" %
-                       (index_static, num_shards_static))
-
-    def filter_fn(elem_index, _):
-      mod_result = math_ops.mod(elem_index, num_shards)
-      return math_ops.equal(mod_result, index)
-
-    return self._enumerate().filter(filter_fn).map(lambda _, elem: elem)
-
   def batch(self, batch_size, drop_remainder=False):
     """Combines consecutive elements of this dataset into batches.
 
@@ -907,7 +837,7 @@ class DatasetV2(object):
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
         consecutive elements of this dataset to combine in a single batch.
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
-        whether the last batch should be dropped in the case its has fewer than
+        whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
         batch.
 
@@ -964,7 +894,7 @@ class DatasetV2(object):
         respective components.  Defaults are `0` for numeric types and
         the empty string for string types.
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
-        whether the last batch should be dropped in the case its has fewer than
+        whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
         batch.
 
@@ -1486,9 +1416,60 @@ class DatasetV1(DatasetV2):
   def skip(self, count):
     return DatasetV1Adapter(super(DatasetV1, self).skip(count))
 
-  @functools.wraps(DatasetV2.shard)
+  @deprecation.deprecated(
+      None, "Use `dataset.apply(tf.data.experimental.filter_for_shard(...))`.")
   def shard(self, num_shards, index):
-    return DatasetV1Adapter(super(DatasetV1, self).shard(num_shards, index))
+    """Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
+
+    This dataset operator is very useful when running distributed training, as
+    it allows each worker to read a unique subset.
+
+    When reading a single input file, you can skip elements as follows:
+
+    ```python
+    d = tf.data.TFRecordDataset(FLAGS.input_file)
+    d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
+    d = d.repeat(FLAGS.num_epochs)
+    d = d.shuffle(FLAGS.shuffle_buffer_size)
+    d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)
+    ```
+
+    Important caveats:
+
+    - Be sure to shard before you use any randomizing operator (such as
+      shuffle).
+    - Generally it is best if the shard operator is used early in the dataset
+      pipeline. For example, when reading from a set of TFRecord files, shard
+      before converting the dataset to input samples. This avoids reading every
+      file on every worker. The following is an example of an efficient
+      sharding strategy within a complete pipeline:
+
+    ```python
+    d = Dataset.list_files(FLAGS.pattern)
+    d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
+    d = d.repeat(FLAGS.num_epochs)
+    d = d.shuffle(FLAGS.shuffle_buffer_size)
+    d = d.interleave(tf.data.TFRecordDataset,
+                     cycle_length=FLAGS.num_readers, block_length=1)
+    d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)
+    ```
+
+    Args:
+      num_shards: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        shards operating in parallel.
+      index: A `tf.int64` scalar `tf.Tensor`, representing the worker index.
+
+    Returns:
+      Dataset: A `Dataset`.
+
+    Raises:
+      ValueError: if `num_shards` or `index` are illegal values. Note: error
+        checking is done on a best-effort basis, and errors aren't guaranteed
+        to be caught upon dataset creation. (e.g. providing in a placeholder
+        tensor bypasses the early checking, and will instead result in an error
+        during a session.run call.)
+    """
+    return self.apply(filter_for_shard_ops.filter_for_shard(num_shards, index))
 
   @functools.wraps(DatasetV2.batch)
   def batch(self, batch_size, drop_remainder=False):
@@ -1587,7 +1568,7 @@ class DatasetV1Adapter(DatasetV1):
 class Options(options_lib.OptionsBase):
   """Represents options for tf.data.Dataset.
 
-  An `Options` object can be for instance used to control which static
+  An `Options` object can be, for instance, used to control which static
   optimizations to apply or whether to use performance modeling to dynamically
   tune the parallelism of operations such as `tf.data.Dataset.map` or
   `tf.data.Dataset.interleave`.
@@ -1607,56 +1588,15 @@ class Options(options_lib.OptionsBase):
       "Whether to dynamically adjust the values of tunable parameters (e.g. "
       "degrees of parallelism).")
 
-  experimental_filter_fusion = options_lib.create_option(
-      name="experimental_filter_fusion",
-      ty=bool,
-      docstring="Whether to fuse filter transformations.")
-
-  experimental_hoist_random_uniform = options_lib.create_option(
-      name="experimental_hoist_random_uniform",
-      ty=bool,
-      docstring=
-      "Whether to hoist `tf.random_uniform()` ops out of map transformations.")
-
-  experimental_map_and_batch_fusion = options_lib.create_option(
-      name="experimental_map_and_batch_fusion",
-      ty=bool,
-      docstring="Whether to fuse map and batch transformations.")
-
-  experimental_map_and_filter_fusion = options_lib.create_option(
-      name="experimental_map_and_filter_fusion",
-      ty=bool,
-      docstring="Whether to fuse map and filter transformations.")
-
-  experimental_map_fusion = options_lib.create_option(
-      name="experimental_map_and_filter_fusion",
-      ty=bool,
-      docstring="Whether to fuse map transformations.")
-
-  experimental_map_parallelization = options_lib.create_option(
-      name="experimental_map_parallelization",
-      ty=bool,
-      docstring="Whether to parallelize stateless map transformations.")
-
-  experimental_map_vectorization = options_lib.create_option(
-      name="experimental_map_vectorization",
-      ty=bool,
-      docstring="Whether to vectorize map transformations.")
-
-  experimental_noop_elimination = options_lib.create_option(
-      name="experimental_noop_elimination",
-      ty=bool,
-      docstring="Whether to eliminate no-op transformations.")
-
   experimental_numa_aware = options_lib.create_option(
       name="experimental_numa_aware",
       ty=bool,
       docstring="Whether to use NUMA-aware operations.")
 
-  experimental_shuffle_and_repeat_fusion = options_lib.create_option(
-      name="experimental_shuffle_and_repeat_fusion",
-      ty=bool,
-      docstring="Whether to fuse shuffle and repeat transformations.")
+  experimental_optimization = options_lib.create_option(
+      name="experimental_optimization",
+      ty=optimization_options.OptimizationOptions,
+      docstring="Associates the given optimization options with the dataset.")
 
   experimental_stats = options_lib.create_option(
       name="experimental_stats",
@@ -1670,29 +1610,30 @@ class Options(options_lib.OptionsBase):
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
-    experimental_optimizations = [
-        "filter_fusion",
-        "hoist_random_uniform",
-        "map_and_batch_fusion",
-        "map_and_filter_fusion",
-        "map_fusion",
-        "map_parallelization",
-        "map_vectorization",
-        "noop_elimination",
-        "shuffle_and_repeat_fusion",
-    ]
-    result = []
-    for exp_opt in experimental_optimizations:
-      if getattr(self, "experimental_" + exp_opt):
-        result.append(exp_opt)
 
-    if getattr(self, "experimental_numa_aware"):
+    result = []
+    exp_optimization_options = self.experimental_optimization
+    if exp_optimization_options:
+      optimizations = [
+          "filter_fusion",
+          "hoist_random_uniform",
+          "map_and_batch_fusion",
+          "map_and_filter_fusion",
+          "map_fusion",
+          "map_parallelization",
+          "map_vectorization",
+          "noop_elimination",
+          "shuffle_and_repeat_fusion",
+      ]
+      for optimization in optimizations:
+        if getattr(exp_optimization_options, optimization):
+          result.append(optimization)
+    if self.experimental_numa_aware:
       result.append("make_numa_aware")
-    if getattr(self, "experimental_deterministic") is False:
+    if self.experimental_deterministic is False:
       result.append("make_sloppy")
-    experimental_stats_options = getattr(self, "experimental_stats")
-    if experimental_stats_options and getattr(experimental_stats_options,
-                                              "latency_all_edges"):
+    exp_stats_options = self.experimental_stats
+    if exp_stats_options and exp_stats_options.latency_all_edges:
       result.append("latency_all_edges")
     return result
 
@@ -3051,7 +2992,7 @@ class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
     self._counter_prefix = counter_prefix
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.set_stats_aggregator_dataset(
+    return ged_ops.experimental_set_stats_aggregator_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._stats_aggregator._resource,  # pylint: disable=protected-access
         self._prefix,

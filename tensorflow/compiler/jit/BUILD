@@ -21,10 +21,9 @@ package(
 )
 
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gpu_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
-load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
@@ -56,6 +55,7 @@ cc_library(
     deps = [
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:cpu_plugin",
@@ -278,6 +278,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
@@ -746,7 +747,10 @@ tf_custom_op_py_library(
     visibility = [
         ":friends",
     ],
-    deps = ["//tensorflow/compiler/jit/ops:xla_ops_wrapper_py"],
+    deps = [
+        "//tensorflow/compiler/jit/ops:xla_ops_grad",
+        "//tensorflow/compiler/jit/ops:xla_ops_wrapper_py",
+    ],
 )
 
 # This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.

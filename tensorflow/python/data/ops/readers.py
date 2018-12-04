@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -158,7 +159,7 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
-    return gen_dataset_ops.parallel_interleave_dataset(
+    return ged_ops.experimental_parallel_interleave_dataset(
         self._input_dataset._as_variant_tensor(),
         self._map_func.captured_inputs,
         self._cycle_length,
@@ -180,7 +181,7 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
 
   def __init__(self, filenames, compression_type=None, buffer_size=None,
                num_parallel_reads=None):
-    """Creates a `TFRecordDataset` to read for one or more TFRecord files.
+    """Creates a `TFRecordDataset` to read one or more TFRecord files.
 
     NOTE: The `num_parallel_reads` argument can be used to improve performance
     when reading from a remote filesystem.

@@ -33,6 +33,7 @@ namespace {
 BenchmarkParams CreateParams() {
   BenchmarkParams params;
   params.AddParam("num_runs", BenchmarkParam::Create<int32_t>(2));
+  params.AddParam("min_secs", BenchmarkParam::Create<float>(1.0f));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
@@ -42,6 +43,7 @@ BenchmarkParams CreateParams() {
   params.AddParam("input_layer", BenchmarkParam::Create<std::string>(""));
   params.AddParam("input_layer_shape", BenchmarkParam::Create<std::string>(""));
   params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
+  params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
   return params;
 }
 

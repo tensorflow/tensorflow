@@ -170,8 +170,18 @@ class RaggedTileOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           rt_input=[[[[1], [2]], [[3]]], [[]], [[[4, 5]]]],
           multiples=[1, 1, 1, 0],
           expected=[[[[], []], [[]]], [[]], [[[]]]]),
+      #=========================================================================
+      # multiple=1
+      #=========================================================================
+      dict(
+          descr='rank=4, multiples=1 (no repeats)',
+          rt_input=[[[[1], [2]], [[3], [4]]], [[[5], [6]]]],
+          multiples=[1, 1, 1, 1],
+          expected=[[[[1], [2]], [[3], [4]]],
+                    [[[5], [6]]]]),
 
   ])  # pyformat: disable
+  @test_util.run_deprecated_v1
   def testRaggedTile(self,
                      descr,
                      rt_input,
@@ -200,6 +210,7 @@ class RaggedTileOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       with self.test_session():
         self.assertEqual(tiled.eval().tolist(), expected)
 
+  @test_util.run_deprecated_v1
   def testRaggedTileWithTensorInput(self):
     # When the input is a `Tensor`, ragged_tile just delegates to tf.tile.
     dt = constant_op.constant([[1, 2], [3, 4]])

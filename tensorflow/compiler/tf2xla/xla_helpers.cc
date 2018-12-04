@@ -215,8 +215,7 @@ DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
   return dtype;
 }
 
-xla::XlaOp XlaHelpers::ConvertElementType(xla::XlaBuilder* const builder,
-                                          const xla::XlaOp& operand,
+xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp& operand,
                                           const DataType new_element_type) {
   xla::PrimitiveType convert_to;
   TF_CHECK_OK(DataTypeToPrimitiveType(new_element_type, &convert_to));

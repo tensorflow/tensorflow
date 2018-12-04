@@ -24,6 +24,11 @@ py_library(
         exclude = ["python/learn/**/*_test.py"],
     ),
     srcs_version = "PY2AND3",
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//video/youtube/personalization:__subpackages__",
+    ],
     # This library should not depend on sklearn, even though some of the code
     # refers to it. (The code handles the presence of sklearn conditionally.)
     deps = [

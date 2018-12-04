@@ -320,9 +320,8 @@ class ResourceApplyAdagradDA : public XlaOpKernel {
     xla::XlaOp lr = ctx->Input(4);
     xla::XlaOp l1 = ctx->Input(5);
     xla::XlaOp l2 = ctx->Input(6);
-    xla::XlaBuilder* const b = ctx->builder();
     xla::XlaOp global_step =
-        XlaHelpers::ConvertElementType(b, ctx->Input(7), dtype_);
+        XlaHelpers::ConvertElementType(ctx->Input(7), dtype_);
 
     accum = accum + grad;
     squared_accum = squared_accum + xla::Square(grad);

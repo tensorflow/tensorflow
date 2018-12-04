@@ -105,7 +105,7 @@ class MakeTFRecordDatasetTest(
     for expected_batch in self._next_expected_batch(
         file_indices, batch_size, num_epochs, interleave_cycle_length,
         drop_final_batch, use_parser_fn):
-      actual_batch = sess.run(outputs)
+      actual_batch = self.evaluate(outputs)
       self.assertAllEqual(expected_batch, actual_batch)
 
   def _read_test(self, batch_size, num_epochs, file_index=None,
@@ -135,7 +135,7 @@ class MakeTFRecordDatasetTest(
             interleave_cycle_length=num_parallel_reads,
             drop_final_batch=drop_final_batch, use_parser_fn=parser_fn)
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(outputs)
+          self.evaluate(outputs)
 
   def testRead(self):
     for batch_size in [1, 2]:
@@ -188,19 +188,19 @@ class MakeTFRecordDatasetTest(
         iterator = dataset.make_initializable_iterator()
         next_element = iterator.get_next()
 
-        sess.run(iterator.initializer)
+        self.evaluate(iterator.initializer)
         first_batches = []
         try:
           while True:
-            first_batches.append(sess.run(next_element))
+            first_batches.append(self.evaluate(next_element))
         except errors.OutOfRangeError:
           pass
 
-        sess.run(iterator.initializer)
+        self.evaluate(iterator.initializer)
         second_batches = []
         try:
           while True:
-            second_batches.append(sess.run(next_element))
+            second_batches.append(self.evaluate(next_element))
         except errors.OutOfRangeError:
           pass
 

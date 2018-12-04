@@ -53,8 +53,8 @@ class TestTrainingWithDatasetIterators(test.TestCase, parameterized.TestCase):
     metrics = ['mae', metrics_module.CategoricalAccuracy()]
     model.compile(optimizer, loss, metrics=metrics)
 
-    inputs = np.zeros((10, 3))
-    targets = np.zeros((10, 4))
+    inputs = np.zeros((10, 3), np.float32)
+    targets = np.zeros((10, 4), np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
@@ -112,8 +112,8 @@ class TestTrainingWithDatasetIterators(test.TestCase, parameterized.TestCase):
     metrics = ['mae']
     model.compile(optimizer, loss, metrics=metrics)
 
-    inputs = np.zeros((10, 3))
-    targets = np.zeros((10, 4))
+    inputs = np.zeros((10, 3), np.float32)
+    targets = np.zeros((10, 4), np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
@@ -133,8 +133,8 @@ class TestTrainingWithDatasetIterators(test.TestCase, parameterized.TestCase):
     metrics = ['mae']
     model.compile(optimizer, loss, metrics=metrics)
 
-    inputs = np.zeros((10, 3))
-    targets = np.zeros((10, 4))
+    inputs = np.zeros((10, 3), np.float32)
+    targets = np.zeros((10, 4), np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
     dataset = dataset.repeat(2)
     dataset = dataset.batch(10)
@@ -157,8 +157,8 @@ class TestTrainingWithDataset(test.TestCase, parameterized.TestCase):
     metrics = ['mae']
     model.compile(optimizer, loss, metrics=metrics)
 
-    inputs = np.zeros((10, 3))
-    targets = np.zeros((10, 4))
+    inputs = np.zeros((10, 3), np.float32)
+    targets = np.zeros((10, 4), np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
@@ -180,8 +180,8 @@ class TestTrainingWithDataset(test.TestCase, parameterized.TestCase):
     metrics = ['mae', metrics_module.CategoricalAccuracy()]
     model.compile(optimizer, loss, metrics=metrics)
 
-    inputs = np.zeros((10, 3))
-    targets = np.zeros((10, 4))
+    inputs = np.zeros((10, 3), np.float32)
+    targets = np.zeros((10, 4), np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
@@ -274,6 +274,7 @@ class TestTrainingWithDataset(test.TestCase, parameterized.TestCase):
 
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
 
+  @tf_test_util.run_deprecated_v1
   def test_dataset_input_shape_validation(self):
     with self.cached_session():
       model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)

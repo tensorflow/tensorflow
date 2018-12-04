@@ -82,8 +82,6 @@ def argmax(input,
            output_type=dtypes.int64):
   axis = deprecation.deprecated_argument_lookup(
       "axis", axis, "dimension", dimension)
-  if axis is None:
-    axis = 0
   return argmax_v2(input, axis, output_type, name)
 
 
@@ -111,6 +109,8 @@ def argmax_v2(input,
   Returns:
     A `Tensor` of type `output_type`.
   """
+  if axis is None:
+    axis = 0
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 
@@ -127,8 +127,6 @@ def argmin(input,
            output_type=dtypes.int64):
   axis = deprecation.deprecated_argument_lookup(
       "axis", axis, "dimension", dimension)
-  if axis is None:
-    axis = 0
   return argmin_v2(input, axis, output_type, name)
 
 
@@ -156,6 +154,8 @@ def argmin_v2(input,
   Returns:
     A `Tensor` of type `output_type`.
   """
+  if axis is None:
+    axis = 0
   return gen_math_ops.arg_min(input, axis, name=name, output_type=output_type)
 
 
@@ -440,8 +440,8 @@ def erf(x, name=None):
       return gen_math_ops.erf(x, name=name)
 
 
-@tf_export("math.scalar_mul", "scalar_mul")
-def scalar_mul(scalar, x):
+@tf_export(v1=["math.scalar_mul", "scalar_mul"])
+def scalar_mul(scalar, x, name=None):
   """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
 
   Intended for use in gradient code which might deal with `IndexedSlices`
@@ -451,6 +451,7 @@ def scalar_mul(scalar, x):
   Args:
     scalar: A 0-D scalar `Tensor`. Must have known shape.
     x: A `Tensor` or `IndexedSlices` to be scaled.
+    name: A name for the operation (optional).
 
   Returns:
     `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
@@ -463,11 +464,19 @@ def scalar_mul(scalar, x):
   shape = scalar.get_shape()
   if shape.ndims == 0:
     if isinstance(x, ops.IndexedSlices):
-      return ops.IndexedSlices(scalar * x.values, x.indices, x.dense_shape)
+      return ops.IndexedSlices(gen_math_ops.mul(scalar, x.values, name),
+                               x.indices, x.dense_shape)
     else:
-      return scalar * x
+      return gen_math_ops.mul(scalar, x, name)
   else:
     raise ValueError("Only scalar multiply works, got shape %s" % shape)
+
+
+@tf_export("math.scalar_mul", "scalar_mul", v1=[])
+@_set_doc(scalar_mul.__doc__)
+def scalar_mul_v2(scalar, x, name=None):
+  with ops.name_scope(name, "scalar_mul", [x]) as name:
+    return scalar_mul(scalar, x, name)
 
 
 @tf_export("math.pow", "pow")
@@ -1512,8 +1521,6 @@ def count_nonzero(input_tensor,
       "axis", axis,
       "reduction_indices", reduction_indices
       )
-  if keepdims is None:
-    keepdims = False
 
   return count_nonzero_v2(input_tensor, axis, keepdims, dtype, name)
 
@@ -1571,6 +1578,8 @@ def count_nonzero_v2(input,  # pylint: disable=redefined-builtin
   Returns:
     The reduced tensor (number of nonzero values).
   """
+  if keepdims is None:
+    keepdims = False
   with ops.name_scope(name, "count_nonzero", [input]):
     input = ops.convert_to_tensor(input, name="input")
     # A scalar of 'zero' is enough as `not_equal` will broadcast.
@@ -2927,13 +2936,13 @@ def tanh(x, name=None):
       return gen_math_ops.tanh(x, name=name)
 
 
-@tf_export("math.bincount", v1=["math.bincount", "bincount"])
-@deprecation.deprecated_endpoints("bincount")
+@tf_export("math.bincount", v1=[])
 def bincount(arr,
              weights=None,
              minlength=None,
              maxlength=None,
-             dtype=dtypes.int32):
+             dtype=dtypes.int32,
+             name=None):
   """Counts the number of occurrences of each value in an integer array.
 
   If `minlength` and `maxlength` are not given, returns a vector with length
@@ -2945,34 +2954,70 @@ def bincount(arr,
   Args:
     arr: An int32 tensor of non-negative values.
     weights: If non-None, must be the same shape as arr. For each value in
-        `arr`, the bin will be incremented by the corresponding weight instead
-        of 1.
+      `arr`, the bin will be incremented by the corresponding weight instead of
+      1.
     minlength: If given, ensures the output has length at least `minlength`,
-        padding with zeros at the end if necessary.
+      padding with zeros at the end if necessary.
     maxlength: If given, skips values in `arr` that are equal or greater than
-        `maxlength`, ensuring that the output has length at most `maxlength`.
+      `maxlength`, ensuring that the output has length at most `maxlength`.
+    dtype: If `weights` is None, determines the type of the output bins.
+    name: A name scope for the associated operations (optional).
+
+  Returns:
+    A vector with the same dtype as `weights` or the given `dtype`. The bin
+    values.
+  """
+  name = "bincount" if name is None else name
+  with ops.name_scope(name):
+    arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
+    array_is_nonempty = reduce_prod(array_ops.shape(arr)) > 0
+    output_size = cast(array_is_nonempty, dtypes.int32) * (reduce_max(arr) + 1)
+    if minlength is not None:
+      minlength = ops.convert_to_tensor(
+          minlength, name="minlength", dtype=dtypes.int32)
+      output_size = gen_math_ops.maximum(minlength, output_size)
+    if maxlength is not None:
+      maxlength = ops.convert_to_tensor(
+          maxlength, name="maxlength", dtype=dtypes.int32)
+      output_size = gen_math_ops.minimum(maxlength, output_size)
+    if weights is not None:
+      weights = ops.convert_to_tensor(weights, name="weights")
+      return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
+    weights = constant_op.constant([], dtype)
+    return gen_math_ops.bincount(arr, output_size, weights)
+
+
+@tf_export(v1=["math.bincount", "bincount"])
+@deprecation.deprecated_endpoints("bincount")
+def bincount_v1(arr,
+                weights=None,
+                minlength=None,
+                maxlength=None,
+                dtype=dtypes.int32):
+  """Counts the number of occurrences of each value in an integer array.
+
+  If `minlength` and `maxlength` are not given, returns a vector with length
+  `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
+  If `weights` are non-None, then index `i` of the output stores the sum of the
+  value in `weights` at each index where the corresponding value in `arr` is
+  `i`.
+
+  Args:
+    arr: An int32 tensor of non-negative values.
+    weights: If non-None, must be the same shape as arr. For each value in
+      `arr`, the bin will be incremented by the corresponding weight instead of
+      1.
+    minlength: If given, ensures the output has length at least `minlength`,
+      padding with zeros at the end if necessary.
+    maxlength: If given, skips values in `arr` that are equal or greater than
+      `maxlength`, ensuring that the output has length at most `maxlength`.
     dtype: If `weights` is None, determines the type of the output bins.
 
   Returns:
     A vector with the same dtype as `weights` or the given `dtype`. The bin
     values.
   """
-  arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
-  array_is_nonempty = reduce_prod(array_ops.shape(arr)) > 0
-  output_size = cast(array_is_nonempty, dtypes.int32) * (reduce_max(arr) + 1)
-  if minlength is not None:
-    minlength = ops.convert_to_tensor(
-        minlength, name="minlength", dtype=dtypes.int32)
-    output_size = gen_math_ops.maximum(minlength, output_size)
-  if maxlength is not None:
-    maxlength = ops.convert_to_tensor(
-        maxlength, name="maxlength", dtype=dtypes.int32)
-    output_size = gen_math_ops.minimum(maxlength, output_size)
-  if weights is not None:
-    weights = ops.convert_to_tensor(weights, name="weights")
-    return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
-  weights = constant_op.constant([], dtype)
-  return gen_math_ops.bincount(arr, output_size, weights)
+  return bincount(arr, weights, minlength, maxlength, dtype)
 
 
 @tf_export("math.cumsum", "cumsum")

@@ -29,6 +29,16 @@ py_library(
 )
 
 py_library(
+    name = "has_indefinite_repeat",
+    srcs = ["has_indefinite_repeat.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
     name = "iterator_ops",
     srcs = [
         "iterator_ops.py",
@@ -140,6 +150,18 @@ py_library(
 )
 
 py_library(
+    name = "filter_for_shard_ops",
+    srcs = ["filter_for_shard_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:tensor_util",
+    ],
+)
+
+py_library(
     name = "error_ops",
     srcs = ["error_ops.py"],
     srcs_version = "PY2AND3",
@@ -220,6 +242,16 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+    ],
+)
+
+py_library(
+    name = "optimization_options",
+    srcs = ["optimization_options.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/util:options",
     ],
 )
 
@@ -403,8 +435,10 @@ py_library(
         ":counter",
         ":enumerate_ops",
         ":error_ops",
+        ":filter_for_shard_ops",
         ":get_single_element",
         ":grouping",
+        ":has_indefinite_repeat",
         ":indexed_dataset_ops",
         ":interleave_ops",
         ":map_defun",

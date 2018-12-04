@@ -21,7 +21,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -29,7 +30,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-namespace op = ::xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 using absl::string_view;
 
 struct TestData {
@@ -1893,7 +1894,8 @@ ENTRY ReduceR3ToR2 {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(original));
   ASSERT_NE(module->entry_computation(), nullptr);
-  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Reduce());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Reduce()));
 }
 
 TEST_F(HloParserTest, ParseSharding) {
@@ -1953,7 +1955,7 @@ TEST(HloParserSingleOpTest, SingleOp) {
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(op::Parameter(0), op::Parameter(1)));
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(1))));
 }
 
 TEST(HloParserSingleOpTest, SingleOpNoShapeProducesError) {
@@ -1981,7 +1983,7 @@ TEST(HloParserSingleOpTest, SingleOpNoNames) {
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(op::Parameter(0), op::Parameter(1)));
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(1))));
 }
 
 TEST(HloParserSingleOpTest, CanonicalOp) {
@@ -1990,7 +1992,7 @@ TEST(HloParserSingleOpTest, CanonicalOp) {
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(op::Parameter(0), op::Parameter(1)));
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(1))));
   EXPECT_EQ(
       computation->root_instruction()->ToString(HloPrintOptions::Canonical()),
       text);
@@ -2044,7 +2046,11 @@ TEST(HloParserSingleOpTest, SingleOpWithNested) {
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
-              op::Fusion(op::Parameter(0), op::Parameter(1)));
+              GmockMatch(m::Op()
+                             .WithOpcode(HloOpcode::kFusion)
+                             .WithNumOperands(2)
+                             .WithOperand(0, m::Parameter(0))
+                             .WithOperand(1, m::Parameter(1))));
 }
 
 TEST(HloParserSingleOpTest, SingleOpWithNested_DoesNotExist) {
@@ -2088,7 +2094,7 @@ TEST(HloParserSingleOpTest, ConvolutionTrivialFeatureGroupCount) {
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
-              op::Convolution(op::Parameter(0), op::Parameter(1)));
+              GmockMatch(m::Convolution(m::Parameter(0), m::Parameter(1))));
   auto* convolution =
       Cast<HloConvolutionInstruction>(computation->root_instruction());
   EXPECT_EQ(convolution->feature_group_count(), 1);
@@ -2152,8 +2158,10 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
       module->schedule().is_computation_scheduled(module->entry_computation()));
   EXPECT_THAT(
       module->schedule().sequence(module->entry_computation()).instructions(),
-      ::testing::ElementsAre(op::Parameter(), op::Broadcast(), op::Parameter(),
-                             op::Multiply(), op::Parameter(), op::Add()));
+      ::testing::ElementsAre(
+          GmockMatch(m::Parameter()), GmockMatch(m::Broadcast()),
+          GmockMatch(m::Parameter()), GmockMatch(m::Multiply()),
+          GmockMatch(m::Parameter()), GmockMatch(m::Add())));
 }
 
 TEST_F(HloParserTest, IsScheduledIsTrueDifferentOrder) {
@@ -2179,8 +2187,10 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
       module->schedule().is_computation_scheduled(module->entry_computation()));
   EXPECT_THAT(
       module->schedule().sequence(module->entry_computation()).instructions(),
-      ::testing::ElementsAre(op::Parameter(), op::Parameter(), op::Parameter(),
-                             op::Broadcast(), op::Multiply(), op::Add()));
+      ::testing::ElementsAre(
+          GmockMatch(m::Parameter()), GmockMatch(m::Parameter()),
+          GmockMatch(m::Parameter()), GmockMatch(m::Broadcast()),
+          GmockMatch(m::Multiply()), GmockMatch(m::Add())));
 }
 
 TEST_F(HloParserTest, CustomCallWrongNumberofOperandConstraints) {

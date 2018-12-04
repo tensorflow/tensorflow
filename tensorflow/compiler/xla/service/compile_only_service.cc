@@ -89,7 +89,7 @@ CompileOnlyService::CompileAheadOfTime(
     ExecutionOptions execution_options;
     *execution_options.mutable_debug_options() = debug_options;
     *execution_options.mutable_shape_with_output_layout() =
-        *instance.result_layout;
+        instance.result_layout->ToProto();
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(

@@ -228,9 +228,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _PrepareRun(self, graph_state):
     """Set up necessary testing environment before calling sess.run()."""
     # Clear test values added by TRTEngineOp.
-    trt_convert.clear_test_values("my_trt_op_.*:ExecuteTrtEngine")
-    trt_convert.clear_test_values("my_trt_op_.*:ExecuteCalibration")
-    trt_convert.clear_test_values("my_trt_op_.*:ExecuteNativeSegment")
+    trt_convert.clear_test_values("TRTEngineOp_.*:ExecuteTrtEngine")
+    trt_convert.clear_test_values("TRTEngineOp_.*:ExecuteCalibration")
+    trt_convert.clear_test_values("TRTEngineOp_.*:ExecuteNativeSegment")
 
   def _GetGPUOptions(self):
     gpu_options = config_pb2.GPUOptions()

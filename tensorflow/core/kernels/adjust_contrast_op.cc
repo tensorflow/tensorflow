@@ -320,13 +320,14 @@ class AdjustContrastOpv2<CPUDevice> : public AdjustContrastOpV2Base {
     int64 batch = outputs.dimension(0);
     int64 image_size = outputs.dimension(1);
     int64 channels = outputs.dimension(2);
-    // Similar to the reduction case, a straighforward implementation of this
+    // Similar to the reduction case, a straightforward implementation of this
     // does not utilize vectorization well because of the small channel size.
     // This algorithm repeatedly increases the area to be copied, and leads to
     // much better vectorinizations in the copy.
     for (int64 i = 0; i < batch; i++) {
       // Copy over the inputs into outputs in this batch. Effectively:
-      // outputs(i, :, k) = inputs(i, k). An example of how this algorith works:
+      // outputs(i, :, k) = inputs(i, k). An example of how this algorithm
+      // works:
       //
       //    x = float[1, 3], y = float[2048, 3]
       //    round 0

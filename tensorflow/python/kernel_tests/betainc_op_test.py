@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -109,36 +110,42 @@ class BetaincTest(test.TestCase):
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
+  @test_util.run_deprecated_v1
   def testBetaIncFloat(self):
     a_s = np.abs(np.random.randn(10, 10) * 30)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 30)  # in (0, infty)
     x_s = np.random.rand(10, 10)  # in (0, 1)
     self._testBetaInc(a_s, b_s, x_s, dtypes.float32)
 
+  @test_util.run_deprecated_v1
   def testBetaIncDouble(self):
     a_s = np.abs(np.random.randn(10, 10) * 30)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 30)  # in (0, infty)
     x_s = np.random.rand(10, 10)  # in (0, 1)
     self._testBetaInc(a_s, b_s, x_s, dtypes.float64)
 
+  @test_util.run_deprecated_v1
   def testBetaIncDoubleVeryLargeValues(self):
     a_s = np.abs(np.random.randn(10, 10) * 1e15)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 1e15)  # in (0, infty)
     x_s = np.random.rand(10, 10)  # in (0, 1)
     self._testBetaInc(a_s, b_s, x_s, dtypes.float64)
 
+  @test_util.run_deprecated_v1
   def testBetaIncDoubleVerySmallValues(self):
     a_s = np.abs(np.random.randn(10, 10) * 1e-16)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 1e-16)  # in (0, infty)
     x_s = np.random.rand(10, 10)  # in (0, 1)
     self._testBetaInc(a_s, b_s, x_s, dtypes.float64)
 
+  @test_util.run_deprecated_v1
   def testBetaIncFloatVerySmallValues(self):
     a_s = np.abs(np.random.randn(10, 10) * 1e-8)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 1e-8)  # in (0, infty)
     x_s = np.random.rand(10, 10)  # in (0, 1)
     self._testBetaInc(a_s, b_s, x_s, dtypes.float32)
 
+  @test_util.run_deprecated_v1
   def testBetaIncFpropAndBpropAreNeverNAN(self):
     with self.cached_session() as sess:
       space = np.logspace(-8, 5).tolist()
@@ -159,6 +166,7 @@ class BetaincTest(test.TestCase):
       self.assertAllEqual(np.zeros_like(grads_x).astype(np.bool),
                           np.isnan(grads_x))
 
+  @test_util.run_deprecated_v1
   def testBetaIncGrads(self):
     err_tolerance = 1e-3
     with self.cached_session():
