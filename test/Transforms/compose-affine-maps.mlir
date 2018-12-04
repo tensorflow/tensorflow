@@ -24,6 +24,9 @@
 // Affine maps for test case: compose_affine_maps_diamond_dependency
 // CHECK: [[MAP13:#map[0-9]+]] = (d0) -> ((d0 + 6) ceildiv 8, ((d0 - 1) * 4) floordiv 3)
 
+// Affine maps for test case: arg_used_as_dim_and_symbol
+// CHECK: [[MAP14:#map[0-9]+]] = (d0, d1, d2, d3)[s0, s1] -> (d2, d3 + s0 + s1 - (d0 + d1))
+
 // CHECK-LABEL: mlfunc @compose_affine_maps_1dto2d_no_symbols() {
 mlfunc @compose_affine_maps_1dto2d_no_symbols() {
   %0 = alloc() : memref<4x4xf32>
@@ -188,6 +191,25 @@ mlfunc @compose_affine_maps_diamond_dependency() {
     // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I0]]#0, [[I0]]#1{{\]}}
     %v = load %0[%d#0, %d#1] : memref<4x4xf32>
   }
-  
+
+  return
+}
+
+// CHECK-LABEL: mlfunc @arg_used_as_dim_and_symbol(%arg0 : memref<100x100xf32>, %arg1 : index) {
+mlfunc @arg_used_as_dim_and_symbol(%arg0 : memref<100x100xf32>, %arg1 : index) {
+  %c9 = constant 9 : index
+  %1 = alloc() : memref<100x100xf32, 1>
+  %2 = alloc() : memref<1xi32>
+  for %i0 = 0 to 100 {
+    for %i1 = 0 to 100 {
+      %3 = affine_apply (d0, d1)[s0, s1] -> (d0, d1 + s0 + s1)
+        (%i0, %i1)[%arg1, %c9]
+      %4 = affine_apply (d0, d1, d2, d3) -> (d2, d3 - (d0 + d1))
+        (%arg1, %c9, %3#0, %3#1)
+      // CHECK: [[I0:%[0-9]+]] = affine_apply [[MAP14]](%arg1, %c9, %i0, %i1)[%arg1, %c9]
+      // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I0]]#0, [[I0]]#1{{\]}}
+      %5 = load %1[%4#0, %4#1] : memref<100x100xf32, 1>
+    }
+  }
   return
 }
