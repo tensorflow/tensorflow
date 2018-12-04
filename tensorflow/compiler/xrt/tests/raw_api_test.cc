@@ -102,7 +102,7 @@ bool CompareLiteralProtos(const xla::LiteralProto& a,
   auto l_b = xla::Literal::CreateFromProto(b).ValueOrDie();
   bool equal = l_a == l_b;
   if (!equal) {
-    LOG(INFO) << "LiteralProtos don't match " << a.DebugString()
+    LOG(INFO) << "LiteralProtos don't match: " << a.DebugString()
               << " != " << b.DebugString();
   }
   return equal;
@@ -213,6 +213,56 @@ xla::ProgramShape XlaCompiledProgramShape(
       ->module()
       .entry_computation()
       ->ComputeProgramShape();
+}
+
+TEST(RawApiTest, AllocAndRewrite) {
+  xrt::XLAAllocation alloc;
+  alloc.set_device_ordinal(0);
+  *alloc.mutable_value() =
+      xla::LiteralUtil::CreateR2({{4, 5}, {6, 7}}).ToProto();
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto value =
+      ops::Const(root.WithDevice("/device:CPU:0"), alloc.SerializeAsString());
+  auto handle = ops::XRTAllocate(root, value);
+  auto read_back = ops::XRTReadLiteral(root, handle);
+  TF_ASSERT_OK(root.status());
+
+  tensorflow::ClientSession session(root);
+  std::vector<tensorflow::Tensor> outputs;
+  TF_EXPECT_OK(session.Run({read_back, handle}, &outputs));
+  EXPECT_EQ(outputs.size(), 2);
+
+  int64 allocation_handle = outputs[1].scalar<int64>()();
+  xla::LiteralProto response;
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(CompareLiteralProtos(alloc.value(), response));
+  outputs.clear();
+
+  xla::LiteralProto new_literal =
+      xla::LiteralUtil::CreateR2({{9, 2}, {4, 1}}).ToProto();
+  auto new_value = ops::Const(root.WithDevice("/device:CPU:0"),
+                              new_literal.SerializeAsString());
+  auto write_op =
+      ops::XRTWriteLiteral(root, Input(allocation_handle), new_value);
+  TF_ASSERT_OK(root.status());
+  TF_EXPECT_OK(session.Run({write_op}, &outputs));
+  EXPECT_EQ(outputs.size(), 1);
+  EXPECT_EQ(allocation_handle, outputs[0].scalar<int64>()());
+  outputs.clear();
+
+  auto read_after_write = ops::XRTReadLiteral(root, Input(allocation_handle));
+  TF_EXPECT_OK(session.Run({read_after_write}, &outputs));
+  EXPECT_EQ(outputs.size(), 1);
+
+  xla::LiteralProto new_response;
+  EXPECT_TRUE(new_response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(CompareLiteralProtos(new_literal, new_response));
+
+  auto release =
+      ops::XRTReleaseAllocationHandle(root, Input(allocation_handle));
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {}, {release},
+                           &outputs));
 }
 
 TEST(RawApiTest, ReadAndWriteState) {
