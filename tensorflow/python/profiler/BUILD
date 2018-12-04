@@ -12,6 +12,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":profile_context",
         ":model_analyzer",
         ":option_builder",
         ":tfprof_logger",
