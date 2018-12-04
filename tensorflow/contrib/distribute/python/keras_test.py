@@ -27,7 +27,6 @@ from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import values
-from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.estimator import keras as keras_lib
 from tensorflow.python.estimator import run_config as run_config_lib
@@ -1210,8 +1209,7 @@ class TestDistributionStrategyWithNormalizationLayer(
 class TestDistributionStrategyCorrectness(test.TestCase,
                                           parameterized.TestCase):
 
-  # TODO(b/120186218): Enable this for eager once metrics are working.
-  @combinations.generate(strategy_for_numpy_input_combinations())
+  @combinations.generate(all_strategy_combinations())
   def test_metric_correctness(self, distribution):
     with self.cached_session():
       keras.backend.set_image_data_format('channels_last')
@@ -1309,12 +1307,10 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       self.assertAllClose(
           wts_with_ds, wts_without_ds, atol=tolerance, rtol=tolerance)
 
-      # TODO(b/120186218): Enable this once metrics are working with eager.
-      if not context.executing_eagerly():
-        self.assertAllClose(
-            eval_with_ds, eval_without_ds, atol=tolerance, rtol=tolerance)
-        self.assertAllClose(
-            predict_with_ds, predict_without_ds, atol=tolerance, rtol=tolerance)
+      self.assertAllClose(
+          eval_with_ds, eval_without_ds, atol=tolerance, rtol=tolerance)
+      self.assertAllClose(
+          predict_with_ds, predict_without_ds, atol=tolerance, rtol=tolerance)
 
 
 if __name__ == '__main__':

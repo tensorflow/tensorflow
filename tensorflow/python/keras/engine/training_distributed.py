@@ -657,7 +657,8 @@ def _get_eager_execution_function(model, mode):
     (all_inputs, all_outputs, _, _) = distributed_training_utils.unwrap_values(
         strategy,
         grouped_inputs,
-        grouped_outputs)
+        grouped_outputs,
+        with_loss_tensor=(mode != 'predict'))
 
     return K.function(
         all_inputs,
