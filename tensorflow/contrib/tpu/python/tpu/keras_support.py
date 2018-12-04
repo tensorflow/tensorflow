@@ -133,7 +133,7 @@ def _tpu_session_context():
 An error occurred connecting or initializing your TPU.
 
 The session has been reset. re-run keras_to_tpu_model to create a new session.
-""" + e)
+""" + str(e))
 
 
 def setup_tpu_session(cluster_resolver):
