@@ -899,6 +899,9 @@ void CheckNonExistentIOArrays(const Model& model) {
         << "\" is not consumed by any op in this graph. " << general_comment;
   }
   for (const string& output_array : model.flags.output_arrays()) {
+    if (IsConstantParameterArray(model, output_array)) {
+      continue;  // It is OK to request that a constant be an output.
+    }
     QCHECK(GetOpWithOutput(model, output_array))
         << "Specified output array \"" << output_array
         << "\" is not produced by any op in this graph. " << general_comment;
