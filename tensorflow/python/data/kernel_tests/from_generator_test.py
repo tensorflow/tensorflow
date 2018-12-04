@@ -38,11 +38,10 @@ class FromGeneratorTest(test_base.DatasetTestBase):
                          output_types=None):
     if output_types is None:
       output_types = dtypes.int64
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_generator(generator, output_types=output_types)
         .repeat(num_repeats)
-        .prefetch(5)
-        .make_initializable_iterator())
+        .prefetch(5))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -129,11 +128,10 @@ class FromGeneratorTest(test_base.DatasetTestBase):
           output_shapes=([None], [3]))
               .repeat(num_inner_repeats).prefetch(5))
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.range(num_outer_repeats)
         .interleave(interleave_fn, cycle_length=10,
-                    block_length=len(input_list))
-        .make_initializable_iterator())
+                    block_length=len(input_list)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -188,11 +186,10 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       return dataset_ops.Dataset.from_generator(
           generator, output_types=dtypes.int64, output_shapes=[]).prefetch(2)
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.range(num_parallel_iterators)
         .interleave(
-            interleave_fn, cycle_length=num_parallel_iterators, block_length=1)
-        .make_initializable_iterator())
+            interleave_fn, cycle_length=num_parallel_iterators, block_length=1))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -212,9 +209,9 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       yield [3]
 
     for dtype in [dtypes.int8, dtypes.int32, dtypes.int64]:
-      iterator = (dataset_ops.Dataset.from_generator(
-          generator, output_types=dtype, output_shapes=[1])
-                  .make_initializable_iterator())
+      iterator = dataset_ops.make_initializable_iterator(
+          dataset_ops.Dataset.from_generator(
+              generator, output_types=dtype, output_shapes=[1]))
       init_op = iterator.initializer
       get_next = iterator.get_next()
 
@@ -236,9 +233,9 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       yield b"bar"
       yield u"baz"
 
-    iterator = (dataset_ops.Dataset.from_generator(
-        generator, output_types=dtypes.string, output_shapes=[])
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_generator(
+            generator, output_types=dtypes.string, output_shapes=[]))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -258,9 +255,9 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       yield "ERROR"
       yield np.array([7, 8, 9], dtype=np.int64)
 
-    iterator = (dataset_ops.Dataset.from_generator(
-        generator, output_types=dtypes.int64, output_shapes=[3])
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_generator(
+            generator, output_types=dtypes.int64, output_shapes=[3]))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -282,9 +279,9 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       yield np.array([7, 8, 9, 10], dtype=np.int64)
       yield np.array([11, 12, 13], dtype=np.int64)
 
-    iterator = (dataset_ops.Dataset.from_generator(
-        generator, output_types=dtypes.int64, output_shapes=[3])
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_generator(
+            generator, output_types=dtypes.int64, output_shapes=[3]))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -307,9 +304,9 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       yield 6, 7, 8
       yield 9, 10
 
-    iterator = (dataset_ops.Dataset.from_generator(
-        generator, output_types=(dtypes.int64, dtypes.int64))
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_generator(
+            generator, output_types=(dtypes.int64, dtypes.int64)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -333,9 +330,9 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       yield 1
       yield [2, 3]
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_generator(
-            generator, output_types=dtypes.int64).make_initializable_iterator())
+            generator, output_types=dtypes.int64))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -354,9 +351,9 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       yield 1
       yield 2
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_generator(
-            generator, output_types=dtypes.int64).make_initializable_iterator())
+            generator, output_types=dtypes.int64))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -384,9 +381,9 @@ class FromGeneratorTest(test_base.DatasetTestBase):
       def __del__(self):
         event.set()
 
-    iterator = dataset_ops.Dataset.from_generator(
-        GeneratorWrapper,
-        output_types=dtypes.int64).take(2).make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_generator(
+            GeneratorWrapper, output_types=dtypes.int64).take(2))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -413,10 +410,8 @@ class FromGeneratorTest(test_base.DatasetTestBase):
           generator_with_arg, output_types=dtypes.int64, output_shapes=(),
           args=(elem,))
 
-    iterator = (dataset_ops.Dataset
-                .range(5)
-                .flat_map(flat_map_fn)
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(5).flat_map(flat_map_fn))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -441,12 +436,11 @@ class FromGeneratorTest(test_base.DatasetTestBase):
           generator_with_arg, output_types=(dtypes.int64, dtypes.string),
           output_shapes=((), ()), args=(elem, message))
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.zip(
             (dataset_ops.Dataset.range(5),
              dataset_ops.Dataset.from_tensors("Hi!").repeat(None)))
-        .flat_map(flat_map_fn)
-        .make_initializable_iterator())
+        .flat_map(flat_map_fn))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -478,10 +472,9 @@ class FromGeneratorTest(test_base.DatasetTestBase):
                                 stateful=True)
 
     dummy = constant_op.constant(37)
-    iterator = (dataset_ops._GeneratorDataset(dummy, lambda x: x,
-                                              lambda x: x, finalize_fn)
-                .take(2)
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops._GeneratorDataset(
+            dummy, lambda x: x, lambda x: x, finalize_fn).take(2))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 

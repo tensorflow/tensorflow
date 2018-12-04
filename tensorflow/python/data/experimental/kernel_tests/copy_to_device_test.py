@@ -275,7 +275,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/gpu:0"))
 
     with ops.device("/gpu:0"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     with self.cached_session(
@@ -295,7 +295,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/gpu:0")).prefetch(1)
 
     with ops.device("/gpu:0"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     with self.cached_session(
@@ -329,7 +329,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     device_dataset = device_dataset.with_options(options)
 
     with ops.device("/gpu:0"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     with self.cached_session(
@@ -352,7 +352,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/gpu:0"))
 
     with ops.device("/gpu:0"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     with self.cached_session(
@@ -371,7 +371,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/gpu:0")).prefetch(1)
 
     with ops.device("/gpu:0"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     with self.cached_session(
@@ -390,7 +390,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/gpu:0"))
 
     with ops.device("/gpu:0"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     with self.cached_session(
@@ -409,7 +409,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/gpu:0"))
 
     with ops.device("/gpu:0"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     with self.cached_session(
@@ -431,7 +431,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
           prefetching_ops.copy_to_device("/cpu:0", source_device="/gpu:0"))
 
       with ops.device("/cpu:0"):
-        iterator = back_to_cpu_dataset.make_initializable_iterator()
+        iterator = dataset_ops.make_initializable_iterator(back_to_cpu_dataset)
         next_element = iterator.get_next()
 
       with self.cached_session(
@@ -449,7 +449,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -480,7 +480,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/cpu:1")).prefetch(1)
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -513,7 +513,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/gpu:0"))
 
     with ops.device("/gpu:0"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     with self.cached_session(
@@ -536,7 +536,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/gpu:0")).prefetch(1)
 
     with ops.device("/gpu:0"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     with self.cached_session(
@@ -558,7 +558,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     device_dataset = host_dataset.apply(
         prefetching_ops.copy_to_device("/gpu:0"))
     with ops.device("/gpu:0"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_elem = iterator_ops.get_next_as_optional(iterator)
       elem_has_value_t = next_elem.has_value()
       elem_value_t = next_elem.get_value()

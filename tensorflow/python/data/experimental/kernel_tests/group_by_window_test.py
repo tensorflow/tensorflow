@@ -65,7 +65,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
             lambda x, y, z: 0,
             lambda k, bucket: self._dynamicPad(k, bucket, 32), 32))
 
-    iterator = bucketed_dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(bucketed_dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -101,7 +101,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
             lambda x, y, z: math_ops.cast(x % 2, dtypes.int64),
             lambda k, bucket: self._dynamicPad(k, bucket, 32), 32))
 
-    iterator = bucketed_dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(bucketed_dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -173,7 +173,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
             lambda d: math_ops.cast(d["x"] % 2, dtypes.int64),
             lambda k, bucket: _dynamic_pad_fn(k, bucket, 32), 32))
 
-    iterator = bucketed_dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(bucketed_dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -207,7 +207,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.from_tensor_slices(components).apply(
         grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(20),
                                  None, window_size_func))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -229,11 +229,11 @@ class GroupByWindowTest(test_base.DatasetTestBase):
   @test_util.run_deprecated_v1
   def testSimple(self):
     components = np.random.randint(100, size=(200,)).astype(np.int64)
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components).map(lambda x: x * x)
         .apply(
             grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(4),
-                                     4)).make_initializable_iterator())
+                                     4)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -258,10 +258,10 @@ class GroupByWindowTest(test_base.DatasetTestBase):
   def testImmediateOutput(self):
     components = np.array(
         [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0], dtype=np.int64)
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components).repeat(-1).apply(
             grouping.group_by_window(lambda x: x % 3, lambda _, xs: xs.batch(4),
-                                     4)).make_initializable_iterator())
+                                     4)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -280,10 +280,10 @@ class GroupByWindowTest(test_base.DatasetTestBase):
   @test_util.run_deprecated_v1
   def testSmallGroups(self):
     components = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0], dtype=np.int64)
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components).apply(
             grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(4),
-                                     4)).make_initializable_iterator())
+                                     4)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -298,10 +298,9 @@ class GroupByWindowTest(test_base.DatasetTestBase):
 
   @test_util.run_deprecated_v1
   def testEmpty(self):
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.range(4).apply(
-            grouping.group_by_window(lambda _: 0, lambda _, xs: xs, 0))
-        .make_initializable_iterator())
+            grouping.group_by_window(lambda _: 0, lambda _, xs: xs, 0)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -324,11 +323,10 @@ class GroupByWindowTest(test_base.DatasetTestBase):
           padded_shapes=(tensor_shape.TensorShape([]),
                          constant_op.constant([5], dtype=dtypes.int64) * -1))
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: (x, ops.convert_to_tensor([x * x]))).apply(
-            grouping.group_by_window(lambda x, _: x % 2, reduce_func,
-                                     32)).make_initializable_iterator())
+            grouping.group_by_window(lambda x, _: x % 2, reduce_func, 32)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -351,13 +349,12 @@ class GroupByWindowTest(test_base.DatasetTestBase):
               4, padded_shapes=ops.convert_to_tensor([(key + 1) * 10])),
       ))
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: array_ops.fill([math_ops.cast(x, dtypes.int32)], x))
         .apply(grouping.group_by_window(
             lambda x: math_ops.cast(array_ops.shape(x)[0] // 10, dtypes.int64),
-            reduce_func, 4))
-        .make_initializable_iterator())
+            reduce_func, 4)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 

@@ -78,7 +78,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
 
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -262,7 +262,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
 
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -296,7 +296,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
 
     init_op = iterator.initializer
     with self.cached_session() as sess:
@@ -325,7 +325,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
 
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -482,7 +482,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     captured_t = array_ops.placeholder(dtypes.int64, shape=[])
     dataset = self.structuredDataset(None).repeat().apply(
         batching.map_and_batch(lambda x: captured_t, batch_size=10))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:

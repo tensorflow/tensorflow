@@ -153,7 +153,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     device_dataset = host_dataset.apply(
         prefetching_ops.prefetch_to_device("/gpu:0"))
 
-    iterator = device_dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(device_dataset)
     next_element = iterator.get_next()
 
     with self.cached_session(
@@ -171,7 +171,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.prefetch_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -203,7 +203,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     device_dataset = host_dataset.apply(
         prefetching_ops.prefetch_to_device("/gpu:0"))
 
-    iterator = device_dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(device_dataset)
     next_element = iterator.get_next()
 
     with self.cached_session(

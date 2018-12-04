@@ -38,7 +38,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
     ]
     dataset = interleave_ops._DirectedInterleaveDataset(selector_dataset,
                                                         input_datasets)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:

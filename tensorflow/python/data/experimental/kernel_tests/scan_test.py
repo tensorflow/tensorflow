@@ -48,8 +48,8 @@ class ScanTest(test_base.DatasetTestBase):
     start = array_ops.placeholder(dtypes.int32, shape=[])
     step = array_ops.placeholder(dtypes.int32, shape=[])
     take = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = self._counting_dataset(
-        start, make_scan_fn(step)).take(take).make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(self._counting_dataset(
+        start, make_scan_fn(step)).take(take))
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -98,9 +98,8 @@ class ScanTest(test_base.DatasetTestBase):
     start = array_ops.placeholder(dtypes.int32, shape=[])
     step = array_ops.placeholder(dtypes.int32, shape=[])
     take = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = self._counting_dataset(
-        _sparse(start),
-        make_scan_fn(step)).take(take).make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(self._counting_dataset(
+        _sparse(start), make_scan_fn(step)).take(take))
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:

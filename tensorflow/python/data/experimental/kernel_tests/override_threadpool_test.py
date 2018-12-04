@@ -53,7 +53,7 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
             lambda x: script_ops.py_func(get_thread_id, [x], dtypes.int64),
             num_parallel_calls=32).apply(unique.unique()))
     dataset = override_threadpool_fn(dataset)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     self.evaluate(iterator.initializer)
