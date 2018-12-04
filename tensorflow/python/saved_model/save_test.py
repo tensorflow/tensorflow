@@ -152,9 +152,9 @@ class SaveTest(test.TestCase):
       save.save(root, save_dir, to_save)
 
   def test_nested_dict_outputs(self):
-    root = tracking.Checkpointable()
-    root.f = def_function.function(
-        lambda x: {"a": 2. * x, "b": (3. * x, 4. * x)})
+    root = util.Checkpoint(
+        f=def_function.function(
+            lambda x: {"a": 2. * x, "b": (3. * x, 4. * x)}))
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
