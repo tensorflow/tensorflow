@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/kernels.h"
 
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb_text.h"
 #include "tensorflow/core/framework/op.h"
@@ -131,10 +132,25 @@ TEST(TestKernel, TestInputAndOutputCount) {
   static int num_outputs = 0;
 
   // A kernel whose Compute function has a side-effect of updating num_inputs
-  // and num_outputs.
+  // and num_outputs. Various functions on TF_OpKernelContext are also
+  // exercised.
   auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
     num_inputs = TF_NumInputs(ctx);
     num_outputs = TF_NumOutputs(ctx);
+
+    TF_Tensor* input = nullptr;
+    TF_Status* s = TF_NewStatus();
+    TF_GetInput(ctx, 0, &input, s);
+    EXPECT_EQ(TF_OK, TF_GetCode(s)) << "Failed to get input: " << TF_Message(s);
+    EXPECT_EQ(123, *static_cast<tensorflow::uint8*>(TF_TensorData(input)));
+    TF_GetInput(ctx, -1, &input, s);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s));
+    TF_GetInput(ctx, 3, &input, s);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s));
+    TF_DeleteStatus(s);
+    if (input != nullptr) {
+      TF_DeleteTensor(input);
+    }
   };
 
   TF_KernelBuilder* builder = TF_NewKernelBuilder(op_name, device_name, nullptr,
@@ -152,9 +168,11 @@ TEST(TestKernel, TestInputAndOutputCount) {
     DummyDevice dummy_device(nullptr, false);
     p.device = &dummy_device;
 
+    Tensor t(tensorflow::uint8(123));
+
     gtl::InlinedVector<TensorValue, 4> inputs;
     // Simulate 2 inputs
-    inputs.emplace_back();
+    inputs.emplace_back(&t);
     inputs.emplace_back();
     p.inputs = &inputs;
 
