@@ -84,21 +84,21 @@ class TestModelCloning(test.TestCase):
       # With placeholder creation
       new_model = keras.models.clone_model(model)
       # update ops from batch norm needs to be included
-      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(val_a, val_out)
 
       # On top of new tensor
       input_a = keras.Input(shape=(4,))
       new_model = keras.models.clone_model(model, input_tensors=input_a)
-      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(val_a, val_out)
 
       # On top of new, non-Keras tensor
       input_a = keras.backend.variable(val_a)
       new_model = keras.models.clone_model(model, input_tensors=input_a)
-      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(None, val_out)
 
@@ -168,7 +168,7 @@ class TestModelCloning(test.TestCase):
     with self.cached_session():
       # With placeholder creation
       new_model = keras.models.clone_model(model)
-      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch([val_a, val_b], val_out)
 
@@ -177,7 +177,7 @@ class TestModelCloning(test.TestCase):
       input_b = keras.Input(shape=(4,), name='b')
       new_model = keras.models.clone_model(
           model, input_tensors=[input_a, input_b])
-      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch([val_a, val_b], val_out)
 
@@ -186,7 +186,7 @@ class TestModelCloning(test.TestCase):
       input_b = keras.backend.variable(val_b)
       new_model = keras.models.clone_model(
           model, input_tensors=[input_a, input_b])
-      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(None, val_out)
 

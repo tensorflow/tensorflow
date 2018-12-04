@@ -38,7 +38,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
     ]
     dataset = interleave_ops._DirectedInterleaveDataset(selector_dataset,
                                                         input_datasets)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -67,7 +67,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
         for i in range(num_datasets)
     ], weights)
     dataset = dataset.take(num_samples)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -106,7 +106,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
     choice_array = np.random.randint(3, size=(15,), dtype=np.int64)
     choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
     dataset = interleave_ops.choose_from_datasets(datasets, choice_dataset)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:

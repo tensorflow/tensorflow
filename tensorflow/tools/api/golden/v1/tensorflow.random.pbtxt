@@ -1,6 +1,10 @@
 path: "tensorflow.random"
 tf_module {
   member_method {
+    name: "categorical"
+    argspec: "args=[\'logits\', \'num_samples\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "gamma"
     argspec: "args=[\'shape\', \'alpha\', \'beta\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \'None\', \'None\'], "
   }

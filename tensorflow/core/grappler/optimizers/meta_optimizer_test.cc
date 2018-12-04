@@ -108,7 +108,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
                   GraphDef* optimized_graph) override {
     *optimized_graph = item.graph;
     if (allowed_optimizations_) {
-      allowed_optimizations_->insert({item.id, item.allowed_optimizations});
+      allowed_optimizations_->insert({item.id, item.allowed_optimizations()});
     }
     return Status::OK();
   }

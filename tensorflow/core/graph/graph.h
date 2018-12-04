@@ -493,10 +493,16 @@ class Graph {
   // the corresponding NodeDef to reflect the change.
   // REQUIRES: The control edge must exist.
   void RemoveControlEdge(const Edge* e);
+
   // Updates the input to a node.  The existing edge to `dst` is removed and an
   // edge from `new_src` to `dst` is created. The NodeDef associated with `dst`
   // is also updated.
   Status UpdateEdge(Node* new_src, int new_src_index, Node* dst, int dst_index);
+
+  // Like AddEdge but updates dst's NodeDef. Used to add an input edge to a
+  // "While" op during gradient construction, see AddInputWhileHack in
+  // python_api.h for more details.
+  Status AddWhileInputHack(Node* new_src, int new_src_index, Node* dst);
 
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an

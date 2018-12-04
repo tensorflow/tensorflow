@@ -305,7 +305,6 @@ xla_test(
     srcs = ["conv_depthwise_test.cc"],
     blacklisted_backends = [
         # disabled because of a break b/119590850.
-        "cpu",
         "gpu",
     ],
     shard_count = 50,

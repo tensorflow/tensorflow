@@ -42,7 +42,7 @@ class BatchBenchmark(test.Benchmark):
 
     dataset = dataset_ops.Dataset.from_tensors(sparse_placeholder).repeat(
         ).batch(batch_size_placeholder)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     for non_zeros_per_row in non_zeros_per_row_values:

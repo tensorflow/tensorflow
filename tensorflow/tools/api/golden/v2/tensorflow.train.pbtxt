@@ -188,8 +188,4 @@ tf_module {
     name: "summary_iterator"
     argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
   }
-  member_method {
-    name: "warm_start"
-    argspec: "args=[\'ckpt_to_initialize_from\', \'vars_to_warm_start\', \'var_name_to_vocab_info\', \'var_name_to_prev_var_name\'], varargs=None, keywords=None, defaults=[\'.*\', \'None\', \'None\'], "
-  }
 }

@@ -3081,7 +3081,7 @@ class _Inputs(object):
 
     The initializer must be run before calling `features_and_labels`.
     """
-    self._iterator = self._dataset.make_initializable_iterator()
+    self._iterator = dataset_ops.make_initializable_iterator(self._dataset)
     return self._iterator.initializer
 
   def features_and_labels(self):

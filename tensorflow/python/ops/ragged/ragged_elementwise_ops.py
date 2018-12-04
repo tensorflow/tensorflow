@@ -269,6 +269,10 @@ def _add_elementwise_ops_to_this_module(specs, verbose=False):
       op_name = canonical_name
     else:
       op_name = original_op.__name__
+
+    # Temporary hack (will be removed once dispatch is added for RaggedTensors):
+    if op_name == 'neg': op_name = 'negative'
+
     if verbose:
       print('Adding ragged_elementwise_op: tf.ragged.%s (based on tf.%s)' %
             (op_name, canonical_name))
@@ -382,3 +386,4 @@ _TF_ELEMENTWISE_OPS = [
     (parsing_ops.string_to_number, 'string_tensor'),
 ]
 _add_elementwise_ops_to_this_module(_TF_ELEMENTWISE_OPS)
+

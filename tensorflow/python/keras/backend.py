@@ -3161,7 +3161,8 @@ class EagerExecutionFunction(object):
         if value is None:
           raise ValueError(
               'You must feed a value for placeholder %s' % (tensor,))
-      value = ops.convert_to_tensor(value, dtype=tensor.dtype)
+      if not isinstance(value, ops.Tensor):
+        value = ops.convert_to_tensor(value, dtype=tensor.dtype)
       if value.dtype != tensor.dtype:
         # Temporary workaround due to `convert_to_tensor` not casting floats.
         # See b/119637405

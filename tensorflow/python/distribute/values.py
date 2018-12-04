@@ -113,6 +113,8 @@ class DistributedDelegate(DistributedValues):
   """A map from device to values; acts as the same type as the values."""
 
   def __getattr__(self, name):
+    # TODO(priyag): This needs to be made robust against pitfalls from mix use
+    # __getattr__ and @property. See b/120402273.
     return getattr(self.get(), name)
 
   # pylint: disable=multiple-statements
@@ -1169,7 +1171,7 @@ class PerReplicaDataset(object):
     # Eager mode prefetching would error out in constructor. Only remaining
     # case is non-prefetching in eager mode. We delegate to
     # PerReplicaDataIterator to handle that case.
-    dataset_iterator = self._dataset.make_one_shot_iterator()
+    dataset_iterator = dataset_ops.make_one_shot_iterator(self._dataset)
     return PerReplicaDataIterator(
         dataset_iterator, self._devices, prefetch_on_device=False)
 
@@ -1184,7 +1186,7 @@ class PerReplicaDataset(object):
       dataset_iterator = multi_device_iterator_ops.MultiDeviceIterator(
           self._dataset, self._devices)
     else:
-      dataset_iterator = self._dataset.make_initializable_iterator()
+      dataset_iterator = dataset_ops.make_initializable_iterator(self._dataset)
     return PerReplicaDataIterator(
         dataset_iterator,
         self._devices,
@@ -1302,14 +1304,15 @@ class MultiWorkerDataset(object):
     iterators = []
     for worker, dataset in self._datasets:
       with ops.device(worker):
-        iterators.append((worker, dataset.make_one_shot_iterator()))
+        iterators.append((worker, dataset_ops.make_one_shot_iterator(dataset)))
     return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
 
   def make_initializable_iterator(self):
     iterators = []
     for worker, dataset in self._datasets:
       with ops.device(worker):
-        iterators.append((worker, dataset.make_initializable_iterator()))
+        iterators.append(
+            (worker, dataset_ops.make_initializable_iterator(dataset)))
     return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
 
 
@@ -1521,7 +1524,7 @@ class _SingleWorkerDatasetIterator(object):
         # TODO(priyag): Measure the performance of this approach vs calling
         # get_next on the original dataset N times.
         dataset = self._dataset.batch(len(self._devices), drop_remainder=True)
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
       else:
         iterator = multi_device_iterator_ops.MultiDeviceIterator(
             self._dataset, self._devices)

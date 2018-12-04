@@ -24,7 +24,7 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -130,7 +130,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
 
   def _as_variant_tensor(self):
     input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
-    return gen_dataset_ops.scan_dataset(
+    return gen_experimental_dataset_ops.experimental_scan_dataset(
         input_t,
         nest.flatten(sparse.serialize_sparse_tensors(self._initial_state)),
         self._scan_func.captured_inputs,

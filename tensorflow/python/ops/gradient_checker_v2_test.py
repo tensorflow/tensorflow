@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -176,6 +177,19 @@ class GradientCheckerTest(test.TestCase):
     # raise AssertionError, since NaN is not < 1.0.
     with self.assertRaisesRegexp(AssertionError, "False is not true"):
       self.assertTrue(error < 1.0)
+
+  def testGradGrad(self):
+
+    def f(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.square(x)
+        z = math_ops.square(y)
+      return tape.gradient(z, x)
+
+    analytical, numerical = gradient_checker.compute_gradient(f, [2.0])
+    self.assertAllEqual([[[48.]]], analytical)
+    self.assertAllClose([[[48.]]], numerical, rtol=1e-4)
 
 
 @test_util.run_all_in_graph_and_eager_modes
