@@ -2661,9 +2661,10 @@ class UnifiedLSTM(LSTM):
     ]
     self._num_constants = None
     self._num_inputs = None
+    self._dropout_mask = None
     self.could_use_cudnn = (
-        activation == 'tanh' and dropout == 0 and not unroll and use_bias and
-        unit_forget_bias)
+        activation == 'tanh' and recurrent_dropout == 0 and
+        not unroll and use_bias and bias_regularizer is None)
 
   def build(self, input_shape):
     super(UnifiedLSTM, self).build(input_shape)
@@ -2721,6 +2722,16 @@ class UnifiedLSTM(LSTM):
         inputs = K.reverse(inputs, 1)
 
       combined_bias = array_ops.concat([self.cudnn_bias, self.cell.bias], 0)
+
+      if 0 < self.dropout < 1:
+        if self._dropout_mask is None:
+          self._dropout_mask = _generate_dropout_mask(
+              array_ops.ones_like(inputs),
+              self.dropout,
+              training=training,
+              count=4)
+
+        inputs *= self._dropout_mask[0]
 
       # Each time a defun function is called, we will give a unique identifiable
       # API name, so that the grappler won't get confused when it sees multiple
@@ -2835,9 +2846,33 @@ class UnifiedLSTM(LSTM):
     K.batch_set_value(tuples)
 
 
-def _canonical_to_params(weights, biases, shape):
-  """Utility function convert variable to CuDNN compatible parameter."""
-  weights = [array_ops.reshape(x, shape) for x in weights]
+def _canonical_to_params(weights, biases, shape, transpose_weights=False):
+  """Utility function convert variable to CuDNN compatible parameter.
+
+  Note that Keras weights for kernels are different from the CuDNN format. Eg.:
+
+  ```
+    Keras                 CuDNN
+    [[0, 1, 2],  <--->  [[0, 2, 4],
+     [3, 4, 5]]          [1, 3, 5]]
+  ```
+
+  If the input weights need to be in a unified format, then set
+  `transpose_weights=True` to convert the weights.
+
+  Args:
+    weights: list of weights for the individual kernels and recurrent kernels.
+    biases: list of biases for individual gate.
+    shape: the shape for the converted variables that will be feed to CuDNN.
+    transpose_weights: boolean, whether to transpose the weights.
+
+  Returns:
+    The converted weights that can be feed to CuDNN ops as param.
+  """
+  def convert(w):
+    return array_ops.transpose(w) if transpose_weights else w
+
+  weights = [array_ops.reshape(convert(x), shape) for x in weights]
   biases = [array_ops.reshape(x, shape) for x in biases]
   return array_ops.concat(weights + biases, axis=0)
 
@@ -2930,15 +2965,17 @@ def cudnn_lstm(inputs, input_h, input_c, kernel, recurrent_kernel, bias,
   params = _canonical_to_params(
       weights=weights,
       biases=array_ops.split(bias, 8),
-      shape=constant_op.constant([-1]))
+      shape=constant_op.constant([-1]),
+      transpose_weights=True)
 
   outputs, h, c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
-      inputs, input_h=input_h, input_c=input_c, params=params)
+      inputs, input_h=input_h, input_c=input_c, params=params, is_training=True)
+  last_output = outputs[-1]
   if not time_major:
     outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
   h = h[0]
   c = c[0]
-  last_output = outputs[:, -1, :]
+
   return last_output, outputs, h, c, constant_op.constant(
       'cudnn', dtype=dtypes.string, name='runtime')
 
