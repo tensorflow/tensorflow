@@ -19,8 +19,8 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
-#include "tensorflow/compiler/tf2xla/lib/batch_dot.h"
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"

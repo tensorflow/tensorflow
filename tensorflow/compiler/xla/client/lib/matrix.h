@@ -40,6 +40,26 @@ XlaOp UpperTriangle(XlaOp x);
 // Get the lower triangle part of the last two dimensions
 XlaOp LowerTriangle(XlaOp x);
 
+// Multiplies slices of two tensors in batches.
+
+// Multiplies all slices of `Tensor` `x` and `y` (each slice can be
+// viewed as an element of a batch), and arranges the individual results
+// in a single output tensor of the same batch size.
+//
+// The input tensors `x` and `y` are 2-D or higher with shape `[..., r_x, c_x]`
+// and `[..., r_y, c_y]`.
+//
+// The output tensor is 2-D or higher with shape `[..., r_o, c_o]`, where:
+//
+//     r_o = c_x if transpose_x else r_x
+//     c_o = r_y if transpose_y else c_y
+//
+// It is computed as:
+//
+//     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
+xla::XlaOp BatchDot(
+    xla::XlaOp x, xla::XlaOp y,
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATRIX_H_
