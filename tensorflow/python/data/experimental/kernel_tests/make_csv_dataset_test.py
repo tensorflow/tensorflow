@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -83,7 +84,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
       expected_output,
       expected_keys,
   ):
-    nxt = dataset.make_one_shot_iterator().get_next()
+    nxt = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
     for expected_features in self._next_expected_batch(
         expected_output,
@@ -613,8 +614,8 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
               shuffle_seed=5,
               num_epochs=2,
           )
-          outputs1 = dataset1.make_one_shot_iterator().get_next()
-          outputs2 = dataset2.make_one_shot_iterator().get_next()
+          outputs1 = dataset_ops.make_one_shot_iterator(dataset1).get_next()
+          outputs2 = dataset_ops.make_one_shot_iterator(dataset2).get_next()
           for _ in range(total_records // batch_size):
             batch1 = nest.flatten(self.evaluate(outputs1))
             batch2 = nest.flatten(self.evaluate(outputs2))
@@ -644,8 +645,8 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
               shuffle_seed=6,
               num_epochs=2,
           )
-          outputs1 = dataset1.make_one_shot_iterator().get_next()
-          outputs2 = dataset2.make_one_shot_iterator().get_next()
+          outputs1 = dataset_ops.make_one_shot_iterator(dataset1).get_next()
+          outputs2 = dataset_ops.make_one_shot_iterator(dataset2).get_next()
           all_equal = False
           for _ in range(total_records // batch_size):
             batch1 = nest.flatten(self.evaluate(outputs1))

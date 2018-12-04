@@ -58,7 +58,7 @@ class TestTrainingWithDatasetIterators(test.TestCase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
     model.fit(iterator, epochs=1, steps_per_epoch=2, verbose=1)
     model.evaluate(iterator, steps=2, verbose=1)
@@ -117,7 +117,7 @@ class TestTrainingWithDatasetIterators(test.TestCase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
     model.fit(iterator, epochs=1, steps_per_epoch=2, verbose=1)
     # Finalize graph to make sure we are not appending another iterator
@@ -138,7 +138,7 @@ class TestTrainingWithDatasetIterators(test.TestCase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
     dataset = dataset.repeat(2)
     dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
     with test.mock.patch.object(logging, 'warning') as mock_log:
       model.fit(iterator, epochs=1, steps_per_epoch=3, verbose=0)
@@ -325,7 +325,7 @@ class TestMetricsWithDatasetIterators(test.TestCase):
     y = np.random.randint(2, size=(100, 1)).astype(np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
     dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     outs = model.evaluate(iterator, steps=10)
     self.assertEqual(np.around(outs[1], decimals=1), 0.5)
     self.assertEqual(np.around(outs[2], decimals=1), 0.5)
@@ -334,7 +334,7 @@ class TestMetricsWithDatasetIterators(test.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     outs = model.evaluate(iterator, steps=10)
     self.assertEqual(outs[1], 0.)
     self.assertEqual(outs[2], 0.)

@@ -177,7 +177,7 @@ def convert_to_iterator(x=None,
   if shuffle:
     dataset = dataset.shuffle(buffer_size=10000)
   dataset = dataset.repeat(epochs)
-  iterator = dataset.make_one_shot_iterator()
+  iterator = dataset_ops.make_one_shot_iterator(dataset)
 
   return iterator, steps_per_epoch
 

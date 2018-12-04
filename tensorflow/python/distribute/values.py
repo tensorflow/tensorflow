@@ -1171,7 +1171,7 @@ class PerReplicaDataset(object):
     # Eager mode prefetching would error out in constructor. Only remaining
     # case is non-prefetching in eager mode. We delegate to
     # PerReplicaDataIterator to handle that case.
-    dataset_iterator = self._dataset.make_one_shot_iterator()
+    dataset_iterator = dataset_ops.make_one_shot_iterator(self._dataset)
     return PerReplicaDataIterator(
         dataset_iterator, self._devices, prefetch_on_device=False)
 
@@ -1304,7 +1304,7 @@ class MultiWorkerDataset(object):
     iterators = []
     for worker, dataset in self._datasets:
       with ops.device(worker):
-        iterators.append((worker, dataset.make_one_shot_iterator()))
+        iterators.append((worker, dataset_ops.make_one_shot_iterator(dataset)))
     return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
 
   def make_initializable_iterator(self):
@@ -1523,7 +1523,7 @@ class _SingleWorkerDatasetIterator(object):
         # TODO(priyag): Measure the performance of this approach vs calling
         # get_next on the original dataset N times.
         dataset = self._dataset.batch(len(self._devices), drop_remainder=True)
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
       else:
         iterator = multi_device_iterator_ops.MultiDeviceIterator(
             self._dataset, self._devices)

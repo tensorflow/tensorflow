@@ -68,10 +68,6 @@ tf_class {
     argspec: "args=[\'self\', \'shared_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "make_one_shot_iterator"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "map"
     argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

@@ -143,7 +143,7 @@ class MapAndBatchBenchmark(test.Benchmark):
         chained_dataset = dataset.map(
             math_ops.matmul,
             num_parallel_calls=num_calls).batch(batch_size=batch_size)
-        chained_iterator = chained_dataset.make_one_shot_iterator()
+        chained_iterator = dataset_ops.make_one_shot_iterator(chained_dataset)
         chained_get_next = chained_iterator.get_next()
 
         chained_deltas = []
@@ -164,7 +164,7 @@ class MapAndBatchBenchmark(test.Benchmark):
                 math_ops.matmul,
                 num_parallel_calls=num_calls,
                 batch_size=batch_size))
-        fused_iterator = fused_dataset.make_one_shot_iterator()
+        fused_iterator = dataset_ops.make_one_shot_iterator(fused_dataset)
         fused_get_next = fused_iterator.get_next()
 
         fused_deltas = []

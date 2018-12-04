@@ -67,9 +67,9 @@ class ScanTest(test_base.DatasetTestBase):
 
   @test_util.run_in_graph_and_eager_modes
   def testFibonacci(self):
-    iterator = dataset_ops.Dataset.from_tensors(1).repeat(None).apply(
-        scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1]))
-    ).make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(
+        dataset_ops.Dataset.from_tensors(1).repeat(None).apply(
+            scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1]))))
 
     if context.executing_eagerly():
       next_element = iterator.get_next
@@ -134,7 +134,7 @@ class ScanTest(test_base.DatasetTestBase):
     self.assertIs(None, dataset.output_shapes[0][1].ndims)
     self.assertEqual([], dataset.output_shapes[1].as_list())
 
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:

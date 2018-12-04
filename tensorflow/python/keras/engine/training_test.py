@@ -563,7 +563,7 @@ class TrainingTest(test.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
     dataset = dataset.repeat(10)
     dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     model.fit(iterator, epochs=1, steps_per_epoch=2)
 
     if context.executing_eagerly():

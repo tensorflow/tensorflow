@@ -42,7 +42,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -69,7 +69,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -95,7 +95,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/cpu:0"))
 
     with ops.device("/cpu:0"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -122,7 +122,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/cpu:1")).prefetch(1)
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -149,7 +149,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -176,7 +176,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/cpu:1")).prefetch(1)
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -209,7 +209,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -244,7 +244,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.copy_to_device("/cpu:1")).prefetch(1)
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)

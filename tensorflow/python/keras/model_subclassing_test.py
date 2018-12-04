@@ -461,7 +461,7 @@ class ModelSubclassingTest(test.TestCase):
       dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
 
       model.fit(iterator, epochs=2, steps_per_epoch=10, verbose=0)
       _ = model.evaluate(iterator, steps=10, verbose=0)

@@ -56,11 +56,10 @@ class FromGeneratorTest(test_base.DatasetTestBase):
           sess.run(get_next)
 
   def _testFromGeneratorOneShot(self, generator, elem_sequence, num_repeats):
-    iterator = (
+    iterator = dataset_ops.make_one_shot_iterator(
         dataset_ops.Dataset.from_generator(generator, output_types=dtypes.int64)
         .repeat(num_repeats)
-        .prefetch(5)
-        .make_one_shot_iterator())
+        .prefetch(5))
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
