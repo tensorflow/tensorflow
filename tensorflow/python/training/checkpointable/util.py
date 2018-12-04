@@ -26,6 +26,7 @@ from tensorflow.core.protobuf import checkpointable_object_graph_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -1712,7 +1713,8 @@ class Checkpoint(tracking.Checkpointable):
     """
     super(Checkpoint, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, base.CheckpointableBase):
+      if not isinstance(v, (base.CheckpointableBase,
+                            def_function.PolymorphicFunction)):
         raise ValueError(
             ("`Checkpoint` was expecting a checkpointable object (an object "
              "derived from `CheckpointableBase`), got %s. If you believe this "
@@ -1926,4 +1928,3 @@ class Checkpoint(tracking.Checkpointable):
     # initialization when executing eagerly.
     self._maybe_create_save_counter()
     return status
-
