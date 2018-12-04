@@ -335,9 +335,11 @@ def build_toco_convert_protos(input_tensors,
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
     input_array = model.input_arrays.add()
+    input_array.name = tensor_name(input_tensor)
+    input_array.data_type = convert_dtype_to_tflite_type(input_tensor.dtype)
+
     if toco.inference_input_type == _types_pb2.QUANTIZED_UINT8:
       input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
-    input_array.name = tensor_name(input_tensor)
     if input_shapes is None:
       shape = input_tensor.get_shape()
     else:
