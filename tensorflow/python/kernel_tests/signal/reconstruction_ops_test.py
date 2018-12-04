@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -66,6 +67,10 @@ class ReconstructionOpsTest(test.TestCase):
       self.assertAllClose(output, expected_output)
 
   def test_unknown_shapes(self):
+    # This test uses placeholders and does not work in eager mode.
+    if context.executing_eagerly():
+      return
+
     signal = array_ops.placeholder(dtype=dtypes.int32, shape=[None, None, None])
     frame_step = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     reconstruction = reconstruction_ops.overlap_and_add(signal, frame_step)
@@ -81,6 +86,10 @@ class ReconstructionOpsTest(test.TestCase):
       self.assertAllClose(output, expected_output)
 
   def test_unknown_rank(self):
+    # This test uses placeholders and does not work in eager mode.
+    if context.executing_eagerly():
+      return
+
     signal = array_ops.placeholder(dtype=dtypes.int32, shape=None)
     frame_step = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     reconstruction = reconstruction_ops.overlap_and_add(signal, frame_step)
@@ -96,15 +105,18 @@ class ReconstructionOpsTest(test.TestCase):
       self.assertAllClose(output, expected_output)
 
   def test_fast_path(self):
-    signal = array_ops.placeholder(dtype=dtypes.int32, shape=[3, 5])
+    # This test uses tensor names and does not work in eager mode.
+    if context.executing_eagerly():
+      return
+
+    signal = array_ops.ones([3, 5])
     frame_step = 5
     reconstruction = reconstruction_ops.overlap_and_add(signal, frame_step)
 
     self.assertEqual(reconstruction.name, "overlap_and_add/fast_path:0")
 
     with self.session(use_gpu=True) as sess:
-      output = sess.run(reconstruction,
-                        feed_dict={signal: np.ones([3, 5])})
+      output = self.evaluate(reconstruction)
 
       expected_output = np.ones([15])
 
