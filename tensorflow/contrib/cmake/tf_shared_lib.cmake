@@ -23,6 +23,8 @@ if(WIN32)
   # we need.
   #
   add_library(tensorflow_static STATIC
+      $<TARGET_OBJECTS:tf_c_eager>
+      $<TARGET_OBJECTS:tf_core_eager_runtime>
       $<TARGET_OBJECTS:tf_c>
       $<TARGET_OBJECTS:tf_cc>
       $<TARGET_OBJECTS:tf_cc_framework>
@@ -65,6 +67,8 @@ endif(WIN32)
 # tensorflow is a shared library containing all of the
 # TensorFlow runtime and the standard ops and kernels.
 add_library(tensorflow SHARED
+    $<TARGET_OBJECTS:tf_c_eager>
+    $<TARGET_OBJECTS:tf_core_eager_runtime>
     $<TARGET_OBJECTS:tf_c>
     $<TARGET_OBJECTS:tf_cc>
     $<TARGET_OBJECTS:tf_cc_framework>
@@ -96,6 +100,27 @@ if(CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 5.0)
     target_link_libraries(tensorflow PRIVATE gcc_s gcc)
 endif()
 
+# Offer the user the choice of overriding the installation directories
+set(INSTALL_LIB_DIR lib CACHE PATH "Installation directory for libraries")
+set(INSTALL_BIN_DIR bin CACHE PATH "Installation directory for executables")
+set(INSTALL_INCLUDE_DIR include CACHE PATH
+  "Installation directory for header files")
+if(WIN32 AND NOT CYGWIN)
+  set(DEF_INSTALL_CMAKE_DIR cmake)
+else()
+  set(DEF_INSTALL_CMAKE_DIR lib/cmake)
+endif()
+set(INSTALL_CMAKE_DIR ${DEF_INSTALL_CMAKE_DIR} CACHE PATH
+  "Installation directory for CMake files")
+
+# Make relative paths absolute (needed later on)
+foreach(p LIB BIN INCLUDE CMAKE)
+  set(var INSTALL_${p}_DIR)
+  if(NOT IS_ABSOLUTE "${${var}}")
+    set(${var} "${CMAKE_INSTALL_PREFIX}/${${var}}")
+  endif()
+endforeach()
+
 if(WIN32)
   add_dependencies(tensorflow tensorflow_static)
 endif(WIN32)
@@ -103,14 +128,57 @@ endif(WIN32)
 target_include_directories(tensorflow PUBLIC 
     $<INSTALL_INTERFACE:include/>)
 
-install(TARGETS tensorflow EXPORT tensorflow_export
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib)
+# Add all targets to build-tree export set
+export(TARGETS tensorflow
+  FILE ${PROJECT_BINARY_DIR}/TensorflowTargets.cmake)
+
+# Export the package for use from the build-tree
+export(PACKAGE Tensorflow)
+
+# Create the TensorflowConfig.cmake and TensorflowConfigVersion files
+file(RELATIVE_PATH REL_INCLUDE_DIR "${INSTALL_CMAKE_DIR}"
+   "${INSTALL_INCLUDE_DIR}")
+# for the build tree
+set(CONF_INCLUDE_DIRS "${tensorflow_source_dir}" 
+                      "${PROJECT_BINARY_DIR}"
+                      "${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/src"
+                      "${CMAKE_CURRENT_BINARY_DIR}/nsync/install/include" # Please if there is a better directory
+                      "${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen/Eigen/"
+                      "${CMAKE_CURRENT_BINARY_DIR}/external/eigen_archive/"
+                      "${tensorflow_source_dir}/third_party/eigen3/"
+                      "${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen/unsupported/Eigen/")
+configure_file(TensorflowConfig.cmake.in
+  "${PROJECT_BINARY_DIR}/TensorflowConfig.cmake" @ONLY)
+# for the install tree, yet to be complete
+set(CONF_INCLUDE_DIRS "\${TENSORFLOW_CMAKE_DIR}/${REL_INCLUDE_DIR}")
+configure_file(TensorflowConfig.cmake.in
+  "${PROJECT_BINARY_DIR}/${CMAKE_FILES_DIRECTORY}/TensorflowConfig.cmake" @ONLY)
+# for both
+configure_file(TensorflowConfigVersion.cmake.in
+  "${PROJECT_BINARY_DIR}/TensorflowConfigVersion.cmake" @ONLY)
+
+# install(TARGETS tensorflow EXPORT tensorflow_export
+#         RUNTIME DESTINATION ${INSTALL_BIN_DIR}
+#         LIBRARY DESTINATION ${INSTALL_LIB_DIR}
+#         ARCHIVE DESTINATION ${INSTALL_LIB_DIR})
+
+# install(EXPORT tensorflow_export
+#         FILE TensorflowConfig.cmake
+#         DESTINATION ${INSTALL_CMAKE_DIR})
         
-install(EXPORT tensorflow_export
-        FILE TensorflowConfig.cmake
-        DESTINATION lib/cmake)
+install(FILES
+  "${PROJECT_BINARY_DIR}/${CMAKE_FILES_DIRECTORY}/TensorflowConfig.cmake"
+  "${PROJECT_BINARY_DIR}/TensorflowConfigVersion.cmake"
+  DESTINATION "${INSTALL_CMAKE_DIR}" COMPONENT dev)
+
+# install the export set for use with the install-tree
+install(EXPORT TensorflowTargets 
+  DESTINATION ${INSTALL_CMAKE_DIR})
+
+install(TARGETS tensorflow EXPORT TensorflowTargets
+        RUNTIME DESTINATION ${INSTALL_BIN_DIR}
+        LIBRARY DESTINATION ${INSTALL_LIB_DIR}
+        ARCHIVE DESTINATION ${INSTALL_LIB_DIR})
 
 # install necessary headers
 # tensorflow headers
