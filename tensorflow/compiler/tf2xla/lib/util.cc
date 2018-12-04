@@ -239,6 +239,10 @@ xla::XlaOp TransposeInMinorDims(xla::XlaOp x) {
   });
 }
 
+xla::XlaOp MaybeTransposeInMinorDims(xla::XlaOp x, bool transpose) {
+  return transpose ? TransposeInMinorDims(x) : x;
+}
+
 xla::XlaOp MaybeConjugate(xla::XlaOp x, bool conjugate) {
   xla::XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
