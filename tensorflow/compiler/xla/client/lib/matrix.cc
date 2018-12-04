@@ -166,4 +166,20 @@ XlaOp BatchDot(XlaOp x, XlaOp y, PrecisionConfig::Precision precision) {
   });
 }
 
+XlaOp TransposeInMinorDims(XlaOp x) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    const int64 n_dims = ShapeUtil::Rank(shape);
+    TF_RET_CHECK(n_dims >= 2);
+    std::vector<int64> permutation(n_dims);
+    std::iota(permutation.begin(), permutation.end(), 0);
+    std::swap(permutation[n_dims - 1], permutation[n_dims - 2]);
+    return Transpose(x, permutation);
+  });
+}
+
+XlaOp MaybeTransposeInMinorDims(XlaOp x, bool transpose) {
+  return transpose ? TransposeInMinorDims(x) : x;
+}
 }  // namespace xla
