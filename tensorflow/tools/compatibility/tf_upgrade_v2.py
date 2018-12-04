@@ -417,6 +417,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.sparse.concat",
         "tf.sparse_split":
             "tf.sparse.split",
+        "tf.sparse_matmul":
+            "tf.linalg.matmul",
         "tf.random.stateless_multinomial":
             "tf.random.stateless_categorical",
         "tf.string_to_hash_bucket":
@@ -537,6 +539,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         ],
         "tf.sparse.segment_sum": [
             "data", "indices", "segment_ids", "name", "num_segments"
+        ],
+        "tf.sparse_matmul": [
+            "a", "b", "transpose_a", "transpose_b", "a_is_sparse",
+            "b_is_sparse", "name"
         ],
         "tf.io.decode_csv": [
             "records",
