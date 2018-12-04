@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -1020,6 +1021,7 @@ void RdmaTensorResponse::Resume() { SendContent(*tensor_, *proto_, is_dead_); }
 // device in "*src_dev".
 Status RdmaTensorResponse::PrepareRecvTensor(
     const Rendezvous::ParsedKey& parsed, Device** src_dev) {
+  parsed_ = parsed;
   // Figures out which device the tensor is hosted on.
   string local_name = DeviceNameUtils::LocalName(parsed.src_device);
   TF_RETURN_IF_ERROR(channel_->adapter_->worker_env_->device_mgr->LookupDevice(
@@ -1196,27 +1198,28 @@ void RdmaTensorResponse::SendMetaData(const Tensor& in,
 void RdmaTensorResponse::SendContent(const Tensor& in, const TensorProto& proto,
                                      bool is_dead) {
   bool can_memcpy = DataTypeCanUseMemcpy(in.dtype());
-  size_t tensor_bytes = (can_memcpy) ? in.TotalBytes() : proto.ByteSize();
+  tensor_bytes_ = (can_memcpy) ? in.TotalBytes() : proto.ByteSize();
   uint32_t imm_data = rm_.request_index_;
   if (!is_dead) {
+     start_usecs_ = Env::Default()->NowMicros();
     if (can_memcpy) {
       src_buffer_ = const_cast<TensorBuffer*>(DMAHelper::buffer(&in));
       if (src_buffer_ != nullptr) {
         src_buffer_->Ref();  // Keep buffer alive until write is complete
         src_addr_ = src_buffer_->data();
         mr_ = RdmaMemoryMgr::Singleton().FindMemoryRegion(src_addr_,
-                                                          tensor_bytes);
+                                                          tensor_bytes_);
       }
     } else {
       RDMA_LOG(2) << "Encoding proto: " << rm_.name_
-                  << " (Size: " << tensor_bytes << ") " << in.DebugString();
-      src_addr_ = malloc(tensor_bytes);
-      mr_ = ibv_reg_mr(channel_->adapter_->pd_, src_addr_, tensor_bytes,
+                  << " (Size: " << tensor_bytes_ << ") " << in.DebugString();
+      src_addr_ = malloc(tensor_bytes_);
+      mr_ = ibv_reg_mr(channel_->adapter_->pd_, src_addr_, tensor_bytes_,
                        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
-      proto.SerializeToArray(src_addr_, tensor_bytes);
+      proto.SerializeToArray(src_addr_, tensor_bytes_);
     }
   } else {
-    tensor_bytes = 0;
+    tensor_bytes_ = 0;
   }
 
   uint32_t lkey = (mr_ == nullptr) ? 0 : mr_->lkey;
@@ -1224,10 +1227,10 @@ void RdmaTensorResponse::SendContent(const Tensor& in, const TensorProto& proto,
               << ": Sending tensor content #" << rm_.request_index_ << " from "
               << std::hex << src_addr_ << " (0x" << lkey << ")"
               << " to " << rm_.remote_addr_ << " (0x" << rm_.rkey_
-              << "): " << rm_.name_ << " (size: 0x" << std::hex << tensor_bytes
+              << "): " << rm_.name_ << " (size: 0x" << std::hex << tensor_bytes_
               << ")";
 
-  RdmaMessageBuffer::Write(channel_, imm_data, tensor_bytes,
+  RdmaMessageBuffer::Write(channel_, imm_data, tensor_bytes_,
                            (uint64_t)src_addr_, lkey, rm_.remote_addr_,
                            rm_.rkey_, RDMA_WRITE_ID_TENSOR_WRITE, this);
 }
@@ -1253,6 +1256,17 @@ void RdmaTensorResponse::SendErrorStatus(const Status& status) {
 }
 
 void RdmaTensorResponse::Destroy() {
+  uint64_t end_usecs = Env::Default()->NowMicros();
+  WorkerCacheLogger* logger = 
+        channel_->adapter_->worker_env_->session_mgr->LegacySession()->worker_cache->GetLogger();
+  if (logger->LoggingActive() && start_usecs_ > 0) {
+      logger->RecordDataTransfer(rm_.step_id_, start_usecs_, end_usecs,
+                                 std::string(parsed_.edge_name), 
+                                 std::string(parsed_.src_device),
+                                 std::string(parsed_.dst_device),
+                                 tensor_bytes_, "", "SendTensor");
+  }
+
   if (src_buffer_ != nullptr) {
     src_buffer_->Unref();
   }

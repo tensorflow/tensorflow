@@ -357,11 +357,14 @@ class RdmaTensorResponse {
   ibv_mr* mr_ = nullptr;
   uint64_t checksum_ = 0;
   bool meta_data_changed_ = false;
+  Rendezvous::ParsedKey parsed_;
 
   // Re-item:
   TensorProto* proto_ = nullptr;
   Tensor* tensor_ = nullptr;
   bool is_dead_ = false;
+  uint64_t start_usecs_ = 0;
+  size_t tensor_bytes_ = 0;
 };
 
 class RdmaMessageBuffer;

@@ -77,33 +77,8 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
     return;
   }
 
-  // Type-specialized logging for this method.
-  WorkerCacheLogger* logger = rdma_mgr_->GetLogger();
-
-  bool logging_active = logger->LoggingActive();
-  DoneCallback wrapper_done;
-  const DoneCallback* cb_to_use;
-  if(!logging_active) { 
-    cb_to_use = &done; //No additional work to do, so just use done directly
-  } else {
-    int64 step_id = step_id_;
-    wrapper_done = [this, logger, step_id, parsed, done, start_usec] (const Status& s, const Args& send_args, const Args& recv_args,
-  	                                                               const Tensor& recv_tensor, const bool is_dead) {
-      
-      if (logger->LoggingActive()) {
-        int64 end_usec = Env::Default()->NowMicros();
-        int64 bytes = recv_tensor.TotalBytes();
-        logger->RecordRecvTensor(step_id_, start_usec, end_usec,
-                                 std::string(parsed.edge_name), std::string(parsed.src_device), std::string(parsed.dst_device),
-                                 bytes);
-      }
-      done(s, send_args, recv_args, recv_tensor, is_dead);      
-    };
-    cb_to_use = &wrapper_done;
-  }
-
   RdmaTensorRequest* request =
-      rc->InsertTensorRequest(key, step_id_, dst_dev, recv_args, *cb_to_use);
+      rc->InsertTensorRequest(key, step_id_, dst_dev, recv_args, done);
   request->Start();
 }
 
