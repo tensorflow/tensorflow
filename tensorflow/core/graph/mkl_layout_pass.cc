@@ -1340,8 +1340,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsPadWithConv2D(const Node* orig_node, NodeBuilder* nb,
                                      bool change_format = false);
   static void CopyAttrsFromPadAndConv2D(const Node* orig_node1,
-                                        const Node* orig_node2,
-                                        NodeBuilder* nb,
+                                        const Node* orig_node2, NodeBuilder* nb,
                                         bool change_format = false);
   static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb,
                                bool change_format = false);
@@ -2435,9 +2434,9 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
 Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
                                                 Node* m, Node* n) {
   DCHECK(((m->type_string() == csinfo_.pad &&
-          n->type_string() == csinfo_.conv2d)) ||
-        ((n->type_string() == csinfo_.pad &&
-          m->type_string() == csinfo_.conv2d)));
+           n->type_string() == csinfo_.conv2d)) ||
+         ((n->type_string() == csinfo_.pad &&
+           m->type_string() == csinfo_.conv2d)));
 
   // Conv2D is successor node, and Pad predecessor node.
   Node* pred = m->type_string() == csinfo_.pad ? m : n;
@@ -2572,7 +2571,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
       // output (at slot 0).
       const int kPadWithConv2DOutputSlot = 0;
       (*g)->AddEdge(new_node, kPadWithConv2DOutputSlot, e->dst(),
-                                  e->dst_input());
+                    e->dst_input());
     }
   }
 
