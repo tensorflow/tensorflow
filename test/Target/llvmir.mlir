@@ -559,3 +559,41 @@ bb0(%arg0: memref<42x?x10x?xf32>):
 // CHECK-NEXT: ret i64 %6
   return %d0123 : index
 }
+
+extfunc @get_i64() -> (i64)
+extfunc @get_f32() -> (f32)
+extfunc @get_memref() -> (memref<42x?x10x?xf32>)
+
+// CHECK-LABEL: define { i64, float, { float*, i64, i64 } } @multireturn() {
+cfgfunc @multireturn() -> (i64, f32, memref<42x?x10x?xf32>) {
+bb0:
+  %0 = call @get_i64() : () -> (i64)
+  %1 = call @get_f32() : () -> (f32)
+  %2 = call @get_memref() : () -> (memref<42x?x10x?xf32>)
+// CHECK:        %{{[0-9]+}} = insertvalue { i64, float, { float*, i64, i64 } } undef, i64 %{{[0-9]+}}, 0
+// CHECK-NEXT:   %{{[0-9]+}} = insertvalue { i64, float, { float*, i64, i64 } } %{{[0-9]+}}, float %{{[0-9]+}}, 1
+// CHECK-NEXT:   %{{[0-9]+}} = insertvalue { i64, float, { float*, i64, i64 } } %{{[0-9]+}}, { float*, i64, i64 } %{{[0-9]+}}, 2
+// CHECK-NEXT:   ret { i64, float, { float*, i64, i64 } } %{{[0-9]+}}
+  return %0, %1, %2 : i64, f32, memref<42x?x10x?xf32>
+}
+
+
+// CHECK-LABEL: define void @multireturn_caller() {
+cfgfunc @multireturn_caller() {
+bb0:
+// CHECK-NEXT:   %1 = call { i64, float, { float*, i64, i64 } } @multireturn()
+// CHECK-NEXT:   [[ret0:%[0-9]+]] = extractvalue { i64, float, { float*, i64, i64 } } %1, 0
+// CHECK-NEXT:   [[ret1:%[0-9]+]] = extractvalue { i64, float, { float*, i64, i64 } } %1, 1
+// CHECK-NEXT:   [[ret2:%[0-9]+]] = extractvalue { i64, float, { float*, i64, i64 } } %1, 2
+  %0 = call @multireturn() : () -> (i64, f32, memref<42x?x10x?xf32>)
+  %1 = constant 42 : i64
+// CHECK:   add i64 [[ret0]], 42
+  %2 = addi %0#0, %1 : i64
+  %3 = constant 42.0 : f32
+// CHECK:   fadd float [[ret1]], 4.200000e+01
+  %4 = addf %0#1, %3 : f32
+  %5 = constant 0 : index
+// CHECK:   extractvalue { float*, i64, i64 } [[ret2]], 0
+  %6 = load %0#2 [%5, %5, %5, %5] : memref<42x?x10x?xf32>
+  return
+}
