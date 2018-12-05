@@ -50,6 +50,9 @@ LIBS := \
 -ljpeg \
 -lz
 
+# The libs are required to build app "camera". They are compiled by arm-linux-gnueabihf
+# in case of Raspberry Pi, which can be installed on Pi and copied from there.
+
 CAMERA_LIBS := \
 tensorflow/contrib/lite/examples/camera/libs/libv4l2.a \
 tensorflow/contrib/lite/examples/camera/libs/libv4lconvert.a \
@@ -151,6 +154,7 @@ include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
 
 ALL_SRCS := \
 	$(MINIMAL_SRCS) \
+	$(PROFILER_SRCS) \
 	$(LABEL_IMAGE_SRCS) \
 	$(CAMERA_SRCS) \
 	$(PROFILER_SUMMARY_SRCS) \
