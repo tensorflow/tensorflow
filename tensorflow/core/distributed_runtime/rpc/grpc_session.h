@@ -106,6 +106,9 @@ class GrpcSession : public Session {
  protected:
   // Takes ownership of `*master`.
   void SetRemoteMaster(std::unique_ptr<MasterInterface> master);
+  // Allows subclasses to customize Session creation.
+  void SetHandleAndGraphVersion(string handle, int64 graph_version)
+      LOCKS_EXCLUDED(mu_);
 
  private:
   SessionOptions options_;

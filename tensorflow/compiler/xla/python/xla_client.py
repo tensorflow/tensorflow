@@ -222,30 +222,42 @@ class LocalBuffer(object):
   means the referent is in device memory.
   """
 
-  def __init__(self, c_buffer, backend):
+  def __init__(self, c_buffer, backend, replica):
     self.c_buffer = c_buffer
     self._backend = backend
+    self._replica = replica
     if backend.backend_type == BackendType.XRT:
       self._delete = c_api.DeleteXrtAllocation
     else:
       self._delete = c_api.DeleteLocalShapedBuffer
 
   @staticmethod
-  def from_pyval(pyval, backend=XLA_LOCAL_BACKEND):
+  def from_pyval(pyval, replica=0, backend=XLA_LOCAL_BACKEND):
     """Allocate and copy to XLA the given python value."""
     pyval = require_numpy_array_layout(pyval)
+    num_replicas = get_replica_count()
+    if not 0 <= replica < num_replicas:
+      raise ValueError(
+          'Attempt to place buffer on replica {} when the replica count is {}'
+          .format(replica, num_replicas))
     if backend.backend_type == BackendType.XRT:
+      if replica != 0:
+        raise NotImplementedError(
+            'Multi-replica execution is not yet supported via the XRT backend.')
       cbuf = c_api.XrtAllocation.FromLiteral(
           pyval, _maybe_encode_string(backend.target))
     else:
-      cbuf = c_api.LocalShapedBuffer.FromLiteral(pyval, None)
-    return LocalBuffer(cbuf, backend)
+      cbuf = c_api.LocalShapedBuffer.FromLiteral(pyval, None, replica)
+    return LocalBuffer(cbuf, backend, replica)
 
   def to_py(self):
     return self.c_buffer.ToLiteral()
 
   def shape(self):
     return _wrap_shape(self.c_buffer.shape())
+
+  def replica(self):
+    return self._replica
 
   def delete(self):
     if self.c_buffer is not None:
@@ -263,7 +275,8 @@ class LocalBuffer(object):
     self.delete()
     size = result.size()
     destructured = tuple(
-        LocalBuffer(result.Release(i), backend=self._backend)
+        LocalBuffer(
+            result.Release(i), replica=self._replica, backend=self._backend)
         for i in xrange(size))
     return destructured
 
@@ -575,22 +588,86 @@ class LocalComputation(object):
         compile_options=compile_options,
         layout_fn=layout_fn)
 
-  def Execute(self, arguments=()):
-    """Execute with LocalBuffer arguments and return value."""
+  def GetReturnValueShape(self):
+    return _wrap_shape(self._c_computation.GetReturnValueShape())
+
+  def Execute(self, arguments=(), check_for_deleted_args=True):
+    """Execute on one replica with LocalBuffer arguments and return value."""
+    if check_for_deleted_args and any(arg.is_deleted() for arg in arguments):
+      raise ValueError('Executing with deleted local buffer argument')
+    raw_args = [arg.c_buffer for arg in arguments]
+    output_buffer = self._c_computation.Execute(raw_args)
+    return LocalBuffer(output_buffer, backend=self._backend, replica=0)
+
+  def ExecutePerReplica(self, arguments=None):
+    """Execute on many replicas with LocalBuffer arguments and return value.
+
+    Args:
+      arguments: A sequence of sequences of LocalBuffers. The i'th inner
+        sequence comprises the arguments for execution on the i'th replica.
+
+    Returns:
+      A list of the computation's outputs on each replica, as a LocalBuffer. If
+      a shallow sequence of arguments was passed in for `arguments`, then the
+      sole, zero'th replica's output is returned instead, as a LocalBuffer.
+    """
     if not self._is_compiled:
       raise ValueError('Cannot execute an uncompiled local XLA computation.')
-    arguments = tuple(arguments)
-    if any(arg.is_deleted() for arg in arguments):
-      raise ValueError('Executing with deleted local buffer argument')
-    return LocalBuffer(
-        self._c_computation.Execute([arg.c_buffer for arg in arguments]),
-        backend=self._backend)
+    if arguments is None:
+      arguments = ((),) * get_replica_count()
+    else:
+      arguments = [list(replica_args) for replica_args in arguments]
+
+    # Check arguments
+    for replica, replica_args in enumerate(arguments):
+      for arg in replica_args:
+        if arg.is_deleted():
+          raise ValueError('Executing with deleted local buffer argument')
+        if arg.replica() != replica:
+          raise ValueError(
+              'Executing on replica {} with argument from replica {}'.format(
+                  replica, arg.replica()))
+
+    # Pull out argument buffer handles
+    stripped_args = [
+        [arg.c_buffer for arg in replica_args] for replica_args in arguments
+    ]
+
+    # Execute
+    if self._backend.backend_type == BackendType.XRT:
+      if len(stripped_args) > 1:
+        raise NotImplementedError(
+            'Multi-replica execution is not yet supported via the XRT backend.')
+      output_buffers = [self._c_computation.Execute(stripped_args[0])]
+    else:
+      output_buffer_tup = self._c_computation.ExecutePerReplica(stripped_args)
+      size = output_buffer_tup.size()
+      output_buffers = [output_buffer_tup.Release(i) for i in xrange(size)]
+
+    # Wrap output handles in LocalBuffer instances
+    return tuple(
+        LocalBuffer(output_buffer, backend=self._backend, replica=replica)
+        for replica, output_buffer in enumerate(output_buffers))
 
   def ExecuteWithPythonValues(self, arguments=()):
-    """Execute with Python values as arguments and return value."""
-    arguments = tuple(
-        LocalBuffer.from_pyval(arg, backend=self._backend) for arg in arguments)
+    """Execute on one replica with Python values as arguments and output."""
+
+    def put(arg):
+      return LocalBuffer.from_pyval(arg, backend=self._backend)
+
+    arguments = [put(arg) for arg in arguments]
     return self.Execute(arguments).to_py()
+
+  def ExecuteWithPythonValuesPerReplica(self, arguments):
+    """Execute on many replicas with Python values as arguments and output."""
+
+    def put(arg, replica):
+      return LocalBuffer.from_pyval(arg, replica, backend=self._backend)
+
+    arguments = [[put(arg, replica)
+                  for arg in replica_args]
+                 for replica, replica_args in enumerate(arguments)]
+    return [out.to_py() for out in self.ExecutePerReplica(arguments)]
 
   def __del__(self):
     self._delete(self._c_computation)

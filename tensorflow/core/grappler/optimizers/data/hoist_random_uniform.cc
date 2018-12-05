@@ -67,7 +67,7 @@ NodeDef MakeStatelessMap(const NodeDef& map_node, const NodeDef& zip_node,
 NodeDef MakeRandomDataset(const NodeDef& random_uniform_node,
                           MutableGraphView* graph) {
   NodeDef random_dataset;
-  random_dataset.set_op("RandomDataset");
+  random_dataset.set_op("ExperimentalRandomDataset");
   graph_utils::SetUniqueGraphNodeName("RandomDataset", graph->graph(),
                                       &random_dataset);
 

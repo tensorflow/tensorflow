@@ -111,8 +111,10 @@ class GrapplerFunctionConnectivity {
   std::unordered_map<string, tensorflow::NameRangeMap> function_body_outputs_;
 
   struct InputArgPlaceholder {
-    string input_name;
-    int position;
+    string input_name;   // Name of the function input argument.
+    int input_position;  // Index of a tensor in the function input argument
+                         // expansion, it can be greater than `0` if input
+                         // argument is a list of tensors (aka list(type)).
   };
 
   // Mapping from input arg placeholder to the function input tensor.

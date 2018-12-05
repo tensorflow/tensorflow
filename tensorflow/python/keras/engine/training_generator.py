@@ -69,7 +69,7 @@ def fit_generator(model,
 
   if (isinstance(validation_data, dataset_ops.DatasetV2) and
       context.executing_eagerly()):
-    validation_data = validation_data.make_one_shot_iterator()
+    validation_data = iter(validation_data)
   val_gen = (data_utils.is_generator_or_sequence(validation_data) or
              isinstance(validation_data, iterator_ops.EagerIterator))
   if (val_gen and not isinstance(validation_data, data_utils.Sequence) and

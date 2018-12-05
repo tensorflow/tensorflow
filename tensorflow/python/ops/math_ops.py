@@ -43,6 +43,7 @@ from tensorflow.python.ops.gen_math_ops import *
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -165,6 +166,7 @@ def argmin_v2(input,
 # pylint: disable=anomalous-backslash-in-string,protected-access
 # pylint: disable=g-docstring-has-escape
 @tf_export("math.abs", "abs")
+@dispatch.add_dispatch_support
 def abs(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the absolute value of a tensor.
 
@@ -189,22 +191,10 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
       of type `float32` or `float64`, respectively.
   """
   with ops.name_scope(name, "Abs", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      if x.values.dtype.is_complex:
-        x_abs = gen_math_ops.complex_abs(
-            x.values, Tout=x.values.dtype.real_dtype, name=name)
-        return sparse_tensor.SparseTensor(
-            indices=x.indices, values=x_abs, dense_shape=x.dense_shape)
-      x_abs = gen_math_ops._abs(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_abs, dense_shape=x.dense_shape)
-    else:
-      x = ops.convert_to_tensor(x, name="x")
-      if x.dtype.is_complex:
-        return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
-      return gen_math_ops._abs(x, name=name)
-
-
+    x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.is_complex:
+      return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
+    return gen_math_ops._abs(x, name=name)
 # pylint: enable=g-docstring-has-escape
 
 
@@ -291,31 +281,7 @@ _sub.__doc__ = (
     gen_math_ops.sub.__doc__ + ("" if _sub.__doc__ is None else _sub.__doc__))
 
 
-# pylint: disable=g-docstring-has-escape
-@tf_export("math.negative", "negative")
-def negative(x, name=None):
-  """Computes numerical negative value element-wise.
-
-  I.e., \\(y = -x\\).
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-  """
-  with ops.name_scope(name, "Neg", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_neg = gen_math_ops.neg(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_neg, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.neg(x, name=name)
-
-
-# pylint: enable=g-docstring-has-escape
+negative = gen_math_ops.neg
 
 
 # pylint: disable=g-docstring-has-escape
@@ -339,105 +305,6 @@ def _neg(x, name=None):
 
 
 # pylint: enable=g-docstring-has-escape
-
-
-@tf_export("math.sign", "sign")
-def sign(x, name=None):
-  """Returns an element-wise indication of the sign of a number.
-
-  `y = sign(x) = -1` if `x < 0`; 0 if `x == 0` or `tf.is_nan(x)`; 1 if `x > 0`.
-
-  Zero is returned for NaN inputs.
-
-  For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-
-  @compatibility(numpy)
-  Equivalent to numpy.sign except for the behavior for input values of NaN.
-  @end_compatibility
-  """
-  with ops.name_scope(name, "Sign", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_sign = gen_math_ops.sign(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_sign, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.sign(x, name=name)
-
-
-@tf_export("math.square", "square")
-def square(x, name=None):
-  r"""Computes square of x element-wise.
-
-  I.e., \\(y = x * x = x^2\\).
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`. Has the same type as `x`.
-  """
-  with ops.name_scope(name, "Square", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_square = gen_math_ops.square(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_square, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.square(x, name=name)
-
-
-@tf_export("math.sqrt", "sqrt")
-def sqrt(x, name=None):
-  r"""Computes square root of x element-wise.
-
-  I.e., \\(y = \sqrt{x} = x^{1/2}\\).
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `complex64`, `complex128`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-  """
-  with ops.name_scope(name, "Sqrt", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_sqrt = gen_math_ops.sqrt(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_sqrt, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.sqrt(x, name=name)
-
-
-@tf_export("math.erf", v1=["math.erf", "erf"])
-@deprecation.deprecated_endpoints("erf")
-def erf(x, name=None):
-  """Computes the Gauss error function of `x` element-wise.
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-  """
-  with ops.name_scope(name, "Erf", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_erf = gen_math_ops.erf(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_erf, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.erf(x, name=name)
 
 
 @tf_export(v1=["math.scalar_mul", "scalar_mul"])
@@ -1757,7 +1624,7 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_variance"
   with ops.name_scope(name):
     means = reduce_mean(input_tensor, axis=axis, keepdims=True)
-    squared_deviations = square(input_tensor - means)
+    squared_deviations = gen_math_ops.square(input_tensor - means)
     return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
 
 
@@ -1804,7 +1671,7 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_std"
   with ops.name_scope(name):
     variance = reduce_variance(input_tensor, axis=axis, keepdims=keepdims)
-    return sqrt(variance)
+    return gen_math_ops.sqrt(variance)
 
 
 @tf_export("math.reduce_prod", "reduce_prod", v1=[])
@@ -2915,27 +2782,6 @@ def log_sigmoid(x, name=None):
     return gen_math_ops.neg(gen_nn_ops.softplus(-x), name=name)
 
 
-@tf_export("math.tanh", "nn.tanh", "tanh")
-def tanh(x, name=None):
-  """Computes hyperbolic tangent of `x` element-wise.
-
-  Args:
-    x: A Tensor or SparseTensor with type `float16`, `float32`, `double`,
-      `complex64`, or `complex128`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A Tensor or SparseTensor respectively with the same type as `x`.
-  """
-  with ops.name_scope(name, "Tanh", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_tanh = gen_math_ops.tanh(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_tanh, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.tanh(x, name=name)
-
-
 @tf_export("math.bincount", v1=[])
 def bincount(arr,
              weights=None,
@@ -3762,63 +3608,3 @@ def polyval(coeffs, x, name=None):
     for c in coeffs[1:]:
       p = c + p * x
     return p
-
-
-@tf_export("math.bessel_i0e")
-def bessel_i0e(x, name=None):
-  """Computes the Bessel i0e function of `x` element-wise.
-
-  Exponentially scaled modified Bessel function of order 0 defined as
-  `bessel_i0e(x) = exp(-abs(x)) bessel_i0(x)`.
-
-  This function is faster and numerically stabler than `bessel_i0(x)`.
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-
-  @compatibility(scipy)
-  Equivalent to scipy.special.i0e
-  @end_compatibility
-  """
-  with ops.name_scope(name, "bessel_i0e", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_i0e = gen_math_ops.bessel_i0e(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_i0e, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.bessel_i0e(x, name=name)
-
-
-@tf_export("math.bessel_i1e")
-def bessel_i1e(x, name=None):
-  """Computes the Bessel i1e function of `x` element-wise.
-
-  Exponentially scaled modified Bessel function of order 1 defined as
-  `bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
-
-  This function is faster and numerically stabler than `bessel_i1(x)`.
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-
-  @compatibility(scipy)
-  Equivalent to scipy.special.i1e
-  @end_compatibility
-  """
-  with ops.name_scope(name, "bessel_i1e", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_i1e = gen_math_ops.bessel_i1e(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_i1e, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.bessel_i1e(x, name=name)

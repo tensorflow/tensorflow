@@ -93,6 +93,11 @@ class TfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
 class StringTfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
  public:
   explicit StringTfLiteTensorBuffer(const TfLiteTensor* tensor) {
+    if (tensor->data.raw == nullptr) {
+      num_strings_ = 0;
+      data_ = nullptr;
+      return;
+    }
     num_strings_ = GetStringCount(tensor->data.raw);
     data_ = tensorflow::cpu_allocator()->Allocate<string>(num_strings_);
 

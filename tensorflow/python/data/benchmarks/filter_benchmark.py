@@ -36,7 +36,7 @@ class FilterBenchmark(test.Benchmark):
     with ops.Graph().as_default():
       dataset = (
           dataset_ops.Dataset.from_tensors(True).repeat(None).filter(predicate))
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       next_element = iterator.get_next()
 
       with session.Session() as sess:

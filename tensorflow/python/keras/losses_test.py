@@ -501,10 +501,10 @@ class CosineProximityTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class BinaryCrossEntropyTest(test.TestCase):
+class BinaryCrossentropyTest(test.TestCase):
 
   def test_config(self):
-    bce_obj = keras.losses.BinaryCrossEntropy(
+    bce_obj = keras.losses.BinaryCrossentropy(
         reduction=losses_impl.ReductionV2.SUM, name='bce_1')
     self.assertEqual(bce_obj.name, 'bce_1')
     self.assertEqual(bce_obj.reduction, losses_impl.ReductionV2.SUM)
@@ -512,7 +512,7 @@ class BinaryCrossEntropyTest(test.TestCase):
   def test_all_correct_unweighted(self):
     y_true = constant_op.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]],
                                   dtype=dtypes.float32)
-    bce_obj = keras.losses.BinaryCrossEntropy()
+    bce_obj = keras.losses.BinaryCrossentropy()
     loss = bce_obj(y_true, y_true)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
@@ -520,12 +520,12 @@ class BinaryCrossEntropyTest(test.TestCase):
     logits = constant_op.constant([[100.0, -100.0, -100.0],
                                    [-100.0, 100.0, -100.0],
                                    [-100.0, -100.0, 100.0]])
-    bce_obj = keras.losses.BinaryCrossEntropy(from_logits=True)
+    bce_obj = keras.losses.BinaryCrossentropy(from_logits=True)
     loss = bce_obj(y_true, logits)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
   def test_unweighted(self):
-    bce_obj = keras.losses.BinaryCrossEntropy()
+    bce_obj = keras.losses.BinaryCrossentropy()
     y_true = constant_op.constant([1, 0, 1, 0, 0, 1], shape=(2, 3))
     y_pred = constant_op.constant([1, 1, 1, 0, 1, 0],
                                   shape=(2, 3),
@@ -537,12 +537,12 @@ class BinaryCrossEntropyTest(test.TestCase):
     logits = constant_op.constant([10., 10., 10., -10., 10, -10],
                                   shape=(2, 3),
                                   dtype=dtypes.float32)
-    bce_obj = keras.losses.BinaryCrossEntropy(from_logits=True)
+    bce_obj = keras.losses.BinaryCrossentropy(from_logits=True)
     loss = bce_obj(y_true, logits)
     self.assertAlmostEqual(self.evaluate(loss), 5., 3)
 
   def test_scalar_weighted(self):
-    bce_obj = keras.losses.BinaryCrossEntropy()
+    bce_obj = keras.losses.BinaryCrossentropy()
     y_true = constant_op.constant([1, 0, 1, 0, 0, 1], shape=(2, 3))
     y_pred = constant_op.constant([1, 1, 1, 0, 1, 0],
                                   shape=(2, 3),
@@ -553,12 +553,12 @@ class BinaryCrossEntropyTest(test.TestCase):
     # Test with logits.
     y_true = array_ops.ones((32, 1))
     logits = array_ops.ones((32, 1), dtype=dtypes.float32)
-    bce_obj = keras.losses.BinaryCrossEntropy(from_logits=True)
+    bce_obj = keras.losses.BinaryCrossentropy(from_logits=True)
     loss = bce_obj(y_true, logits, sample_weight=2.3)
     self.assertAlmostEqual(self.evaluate(loss), 0.7205, 3)
 
   def test_sample_weighted(self):
-    bce_obj = keras.losses.BinaryCrossEntropy()
+    bce_obj = keras.losses.BinaryCrossentropy()
     y_true = constant_op.constant([1, 0, 1, 0, 0, 1], shape=(2, 3))
     y_pred = constant_op.constant([1, 1, 1, 0, 1, 0],
                                   shape=(2, 3),
@@ -574,7 +574,7 @@ class BinaryCrossEntropyTest(test.TestCase):
          [-100.0, -100.0, 100.0]],
         dtype=dtypes.float64)
     weights = constant_op.constant([3, 2, 8])
-    bce_obj = keras.losses.BinaryCrossEntropy(from_logits=True)
+    bce_obj = keras.losses.BinaryCrossentropy(from_logits=True)
     loss = bce_obj(y_true, logits, sample_weight=weights)
     self.assertAlmostEqual(self.evaluate(loss), 288.8888, 3)
 
@@ -583,7 +583,7 @@ class BinaryCrossEntropyTest(test.TestCase):
     logits = constant_op.constant(((100.0, -100.0, 100.0),
                                    (100.0, -100.0, 100.0),
                                    (100.0, 100.0, -100.0)))
-    bce_obj = keras.losses.BinaryCrossEntropy(
+    bce_obj = keras.losses.BinaryCrossentropy(
         from_logits=True, reduction=losses_impl.ReductionV2.NONE)
     loss = bce_obj(y_true, logits)
     self.assertAllClose((0., 66.6666, 66.6666), self.evaluate(loss), 3)
@@ -601,7 +601,7 @@ class BinaryCrossEntropyTest(test.TestCase):
     #  0   + 100 * (0.5 L)      + 0 +
     #  0   + 100 * (1 - 0.5 L)  + 0) * (1/3)
     #  = (100 + 50L) * 1/3
-    bce_obj = keras.losses.BinaryCrossEntropy(
+    bce_obj = keras.losses.BinaryCrossentropy(
         from_logits=True, label_smoothing=label_smoothing)
     loss = bce_obj(y_true, logits)
     expected_value = (100.0 + 50.0 * label_smoothing) / 3.0
@@ -609,10 +609,10 @@ class BinaryCrossEntropyTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class CategoricalCrossEntropyTest(test.TestCase):
+class CategoricalCrossentropyTest(test.TestCase):
 
   def test_config(self):
-    cce_obj = keras.losses.CategoricalCrossEntropy(
+    cce_obj = keras.losses.CategoricalCrossentropy(
         reduction=losses_impl.ReductionV2.SUM, name='bce_1')
     self.assertEqual(cce_obj.name, 'bce_1')
     self.assertEqual(cce_obj.reduction, losses_impl.ReductionV2.SUM)
@@ -622,18 +622,18 @@ class CategoricalCrossEntropyTest(test.TestCase):
                                   dtype=dtypes.int64)
     y_pred = constant_op.constant([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
                                   dtype=dtypes.float32)
-    cce_obj = keras.losses.CategoricalCrossEntropy()
+    cce_obj = keras.losses.CategoricalCrossentropy()
     loss = cce_obj(y_true, y_pred)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
     # Test with logits.
     logits = constant_op.constant([[10., 0., 0.], [0., 10., 0.], [0., 0., 10.]])
-    cce_obj = keras.losses.CategoricalCrossEntropy(from_logits=True)
+    cce_obj = keras.losses.CategoricalCrossentropy(from_logits=True)
     loss = cce_obj(y_true, logits)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
   def test_unweighted(self):
-    cce_obj = keras.losses.CategoricalCrossEntropy()
+    cce_obj = keras.losses.CategoricalCrossentropy()
     y_true = constant_op.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     y_pred = constant_op.constant(
         [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]], dtype=dtypes.float32)
@@ -642,12 +642,12 @@ class CategoricalCrossEntropyTest(test.TestCase):
 
     # Test with logits.
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
-    cce_obj = keras.losses.CategoricalCrossEntropy(from_logits=True)
+    cce_obj = keras.losses.CategoricalCrossentropy(from_logits=True)
     loss = cce_obj(y_true, logits)
     self.assertAlmostEqual(self.evaluate(loss), .0573, 3)
 
   def test_scalar_weighted(self):
-    cce_obj = keras.losses.CategoricalCrossEntropy()
+    cce_obj = keras.losses.CategoricalCrossentropy()
     y_true = constant_op.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     y_pred = constant_op.constant(
         [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]], dtype=dtypes.float32)
@@ -656,12 +656,12 @@ class CategoricalCrossEntropyTest(test.TestCase):
 
     # Test with logits.
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
-    cce_obj = keras.losses.CategoricalCrossEntropy(from_logits=True)
+    cce_obj = keras.losses.CategoricalCrossentropy(from_logits=True)
     loss = cce_obj(y_true, logits, sample_weight=2.3)
     self.assertAlmostEqual(self.evaluate(loss), .1317, 3)
 
   def test_sample_weighted(self):
-    cce_obj = keras.losses.CategoricalCrossEntropy()
+    cce_obj = keras.losses.CategoricalCrossentropy()
     y_true = constant_op.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     y_pred = constant_op.constant(
         [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]], dtype=dtypes.float32)
@@ -671,14 +671,14 @@ class CategoricalCrossEntropyTest(test.TestCase):
 
     # Test with logits.
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
-    cce_obj = keras.losses.CategoricalCrossEntropy(from_logits=True)
+    cce_obj = keras.losses.CategoricalCrossentropy(from_logits=True)
     loss = cce_obj(y_true, logits, sample_weight=sample_weight)
     self.assertAlmostEqual(self.evaluate(loss), 0.31829, 3)
 
   def test_no_reduction(self):
     y_true = constant_op.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
-    cce_obj = keras.losses.CategoricalCrossEntropy(
+    cce_obj = keras.losses.CategoricalCrossentropy(
         from_logits=True, reduction=losses_impl.ReductionV2.NONE)
     loss = cce_obj(y_true, logits)
     self.assertAllClose((0.001822, 0.000459, 0.169846), self.evaluate(loss), 3)
@@ -699,7 +699,7 @@ class CategoricalCrossEntropyTest(test.TestCase):
     #                  0  = L/n
     # Applying the above two fns to the given input:
     # -0 * (1 - L + L/n) + 200 * L/n + 200 * L/n = 400 L/n
-    cce_obj = keras.losses.CategoricalCrossEntropy(
+    cce_obj = keras.losses.CategoricalCrossentropy(
         from_logits=True, label_smoothing=label_smoothing)
     loss = cce_obj(y_true, logits)
     expected_value = 400.0 * label_smoothing / 3.0
@@ -709,18 +709,18 @@ class CategoricalCrossEntropyTest(test.TestCase):
     y_true = constant_op.constant([[0], [1], [2]], dtype=dtypes.int64)
     y_pred = constant_op.constant([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
                                   dtype=dtypes.float32)
-    cce_obj = keras.losses.CategoricalCrossEntropy()
+    cce_obj = keras.losses.CategoricalCrossentropy()
     loss = cce_obj(y_true, y_pred)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
     # Test with logits.
     logits = constant_op.constant([[10., 0., 0.], [0., 10., 0.], [0., 0., 10.]])
-    cce_obj = keras.losses.CategoricalCrossEntropy(from_logits=True)
+    cce_obj = keras.losses.CategoricalCrossentropy(from_logits=True)
     loss = cce_obj(y_true, logits)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
   def test_unweighted_sparse(self):
-    cce_obj = keras.losses.CategoricalCrossEntropy()
+    cce_obj = keras.losses.CategoricalCrossentropy()
     y_true = constant_op.constant([0, 1, 2])
     y_pred = constant_op.constant(
         [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]], dtype=dtypes.float32)
@@ -729,12 +729,12 @@ class CategoricalCrossEntropyTest(test.TestCase):
 
     # Test with logits.
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
-    cce_obj = keras.losses.CategoricalCrossEntropy(from_logits=True)
+    cce_obj = keras.losses.CategoricalCrossentropy(from_logits=True)
     loss = cce_obj(y_true, logits)
     self.assertAlmostEqual(self.evaluate(loss), .0573, 3)
 
   def test_scalar_weighted_sparse(self):
-    cce_obj = keras.losses.CategoricalCrossEntropy()
+    cce_obj = keras.losses.CategoricalCrossentropy()
     y_true = constant_op.constant([[0], [1], [2]])
     y_pred = constant_op.constant(
         [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]], dtype=dtypes.float32)
@@ -743,12 +743,12 @@ class CategoricalCrossEntropyTest(test.TestCase):
 
     # Test with logits.
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
-    cce_obj = keras.losses.CategoricalCrossEntropy(from_logits=True)
+    cce_obj = keras.losses.CategoricalCrossentropy(from_logits=True)
     loss = cce_obj(y_true, logits, sample_weight=2.3)
     self.assertAlmostEqual(self.evaluate(loss), .1317, 3)
 
   def test_sample_weighted_sparse(self):
-    cce_obj = keras.losses.CategoricalCrossEntropy()
+    cce_obj = keras.losses.CategoricalCrossentropy()
     y_true = constant_op.constant([[0], [1], [2]])
     y_pred = constant_op.constant(
         [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]], dtype=dtypes.float32)
@@ -758,14 +758,14 @@ class CategoricalCrossEntropyTest(test.TestCase):
 
     # Test with logits.
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
-    cce_obj = keras.losses.CategoricalCrossEntropy(from_logits=True)
+    cce_obj = keras.losses.CategoricalCrossentropy(from_logits=True)
     loss = cce_obj(y_true, logits, sample_weight=sample_weight)
     self.assertAlmostEqual(self.evaluate(loss), 0.31829, 3)
 
   def test_no_reduction_sparse(self):
     y_true = constant_op.constant([[0], [1], [2]])
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
-    cce_obj = keras.losses.CategoricalCrossEntropy(
+    cce_obj = keras.losses.CategoricalCrossentropy(
         from_logits=True, reduction=losses_impl.ReductionV2.NONE)
     loss = cce_obj(y_true, logits)
     self.assertAllClose((0.001822, 0.000459, 0.169846), self.evaluate(loss), 3)

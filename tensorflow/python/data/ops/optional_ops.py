@@ -191,6 +191,10 @@ class OptionalStructure(structure.Structure):
   def _to_legacy_output_classes(self):
     return self
 
+  def _batch(self, batch_size):
+    raise NotImplementedError(
+        "Batching for `tf.data.experimental.Optional` objects.")
+
 
 # pylint: disable=protected-access
 structure.Structure._register_custom_converter(Optional,
