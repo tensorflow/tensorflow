@@ -60,11 +60,12 @@ Status XlaGpuDeviceFactory::CreateDevices(
   std::set<int> gpu_ids;
   int num_visible_devices = platform.ValueOrDie()->VisibleDeviceCount();
   if (allowed_gpus.empty()) {
-    for (int i = 0; i < num_visible_devices; ++i) gpu_ids.insert(i);
+    for (int i = 0; i < num_visible_devices; ++i) {
+      gpu_ids.insert(i);
+    }
   } else {
     // For loop below is copied from gpu/gpu_device.cc. It validates
-    // configuration string. It should be redundant since code would fail there
-    // before it gets to here.
+    // the visible_device_list and populates gpu_ids set.
     const std::vector<string> visible_devices =
         absl::StrSplit(allowed_gpus, ',');
     for (const string& platform_gpu_id_str : visible_devices) {
@@ -82,8 +83,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
       gpu_ids.insert(platform_gpu_id);
     }
   }
-  for (const auto i : gpu_ids) {
-    // Skip devices that are not in the set.
+  for (int i : gpu_ids) {
     XlaDevice::Options options;
     options.platform = platform.ValueOrDie();
     options.device_name_prefix = name_prefix;
