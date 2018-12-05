@@ -878,7 +878,9 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithControlDependencies) {
 
   GrapplerItem optimized(item, std::move(optimized_graph));
   auto tensors = EvaluateFetchNodes(optimized);
+  ASSERT_EQ(tensors.size(), 2);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+  test::ExpectTensorEqual<float>(tensors_expected[1], tensors[1]);
 }
 
 TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithDevicePlacement) {
@@ -932,6 +934,94 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithDevicePlacement) {
       {mul_func});
 
   CompareGraphs(expected, optimized_graph);
+}
+
+TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithoutSideEffects) {
+  using test::function::NDef;
+  using FDH = FunctionDefHelper;
+
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+
+  const Tensor kOne = test::AsScalar<float>(1.0);
+  const Tensor kTwo = test::AsScalar<float>(2.0);
+  const TensorShape scalar = TensorShape({});
+
+  // MyMul doesn't have any side-effectful nodes in the function body, but the
+  // optimized graph has a control dependency edge `f1->f2`.
+  FunctionDef mul_func = FunctionDefHelper::Create(
+      "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "mul:z:0"}});
+
+  // Build a graph to compute:
+  //   a = Placeholder
+  //   b = Placeholder
+  //   f1 = MyMul(a, b)
+  //   f2 = MyMul(a, b, ^f1)  <-- control dependency on inlined function!
+  //   return f2
+  GrapplerItem item;
+  item.fetch = {"out"};
+  item.graph = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+
+       // Call function first time.
+       NDef("f1", "PartitionedCall", {"a", "b"},
+            {{"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+             {"Tout", DataTypeSlice{DT_FLOAT}},
+             {"f", FDH::FunctionRef("MyMul", {{"T", DT_FLOAT}})}},
+            kDevice),
+
+       // Call function second time.
+       NDef("f2", "PartitionedCall", {"f1", "f1", "^f1"},
+            {{"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+             {"Tout", DataTypeSlice{DT_FLOAT}},
+             {"f", FDH::FunctionRef("MyMul", {{"T", DT_FLOAT}})}},
+            kDevice),
+
+       // Return result of f2.
+       NDef("out", "Identity", {"f2"}, {{"T", DT_FLOAT}}, kDevice)},
+
+      // Function library.
+      {mul_func});
+
+  GraphDef optimized_graph;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
+
+  GraphDef expected = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+
+       // Function body of a first function call inlined into the graph.
+       NDef("f1/x", "Identity", {"a:0"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("f1/y", "Identity", {"b:0"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("f1/mul", "Mul", {"f1/x", "f1/y"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Function body of a second function call also inlined into the graph,
+       // and input nodes read directly from the inlined nodes of the first
+       // function call, and control dependency edge removed.
+       NDef("f2/x", "Identity", {"f1/mul:0"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("f2/y", "Identity", {"f1/mul:0"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("f2/mul", "Mul", {"f2/x", "f2/y"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Return directly from inlined node of f2.
+       NDef("out", "Identity", {"f2/mul:0"}, {{"T", DT_FLOAT}}, kDevice)},
+
+      // Function library.
+      {mul_func});
+
+  CompareGraphs(expected, optimized_graph);
+
+  item.feed.emplace_back("a", kOne);
+  item.feed.emplace_back("b", kTwo);
+
+  auto tensors_expected = EvaluateFetchNodes(item);
+  ASSERT_EQ(tensors_expected.size(), 1);
+
+  GrapplerItem optimized(item, std::move(optimized_graph));
+  auto tensors = EvaluateFetchNodes(optimized);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(FunctionOptimizerTest, SpecializeFunctionXTimesTwo) {
