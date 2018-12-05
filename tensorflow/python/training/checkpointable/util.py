@@ -649,8 +649,10 @@ def _add_attributes_to_object_graph(
   return named_saveable_objects, feed_additions
 
 
-def _fill_object_graph_proto(checkpointable_objects, node_ids, slot_variables,
-                             object_graph_proto=None):
+def fill_object_graph_proto(checkpointable_objects,
+                            node_ids,
+                            slot_variables,
+                            object_graph_proto=None):
   """Name non-slot `Checkpointable`s and add them to `object_graph_proto`."""
   if object_graph_proto is None:
     object_graph_proto = (
@@ -679,7 +681,7 @@ def _serialize_gathered_objects(
       checkpointable_objects=checkpointable_objects,
       node_ids=node_ids,
       object_names=object_names)
-  object_graph_proto = _fill_object_graph_proto(
+  object_graph_proto = fill_object_graph_proto(
       checkpointable_objects=checkpointable_objects,
       node_ids=node_ids,
       slot_variables=slot_variables)
@@ -732,7 +734,7 @@ def named_saveables(root_checkpointable):
   return _serialize_object_graph(root_checkpointable, None)[0]
 
 
-def _find_objects(root_checkpointable):
+def find_objects(root_checkpointable):
   """Find and number objects which are dependencies of `root_checkpointable`."""
   checkpointable_objects, path_to_root = (
       _breadth_first_checkpointable_traversal(root_checkpointable))
@@ -763,16 +765,8 @@ def list_objects(root_checkpointable):
   Returns:
     A flat list of objects.
   """
-  checkpointable_objects, _, _ = _find_objects(root_checkpointable)
+  checkpointable_objects, _, _ = find_objects(root_checkpointable)
   return checkpointable_objects
-
-
-def make_object_graph_without_attributes(root_checkpointable, proto=None):
-  """Fill an object graph proto, ignoring variable values."""
-  checkpointable_objects, node_ids, slot_variables = _find_objects(
-      root_checkpointable)
-  return _fill_object_graph_proto(
-      checkpointable_objects, node_ids, slot_variables, proto)
 
 
 def gather_initializers(root_checkpointable):
