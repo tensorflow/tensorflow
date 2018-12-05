@@ -123,7 +123,7 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
                             const DeviceMemoryBase &gpu_src,
                             uint64 size) override;
 
-  bool HostCallback(Stream *stream, std::function<void()> callback) override;
+  bool HostCallback(Stream *stream, std::function<port::Status()> callback) override;
 
   bool AllocateStream(Stream *stream) override;
 
