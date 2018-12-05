@@ -202,8 +202,9 @@ void OpEmitter::emitAttrGetters() {
     const auto &attrVal = Twine("this->getAttrOfType<") +
                           attr.getValueAsString("storageType").trim() + ">(\"" +
                           val.getName() + "\").getValue()";
-    os << formatv(attr.getValueAsString("convertFromStorage"), attrVal.str())
-       << "\n  }\n";
+    os << "    return "
+       << formatv(attr.getValueAsString("convertFromStorage"), attrVal.str())
+       << ";\n  }\n";
   }
 }
 
@@ -273,8 +274,8 @@ void OpEmitter::emitVerifier() {
     }
 
     os << "    if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
-       << attr.second->getValueAsString("storageType").trim() << ">("
-       << ")) return emitOpError(\"requires "
+       << attr.second->getValueAsString("storageType").trim()
+       << ">()) return emitOpError(\"requires "
        << attr.second->getValueAsString("returnType").trim() << " attribute '"
        << name << "'\");\n";
   }

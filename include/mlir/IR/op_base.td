@@ -19,19 +19,25 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Base class for all types.
-class Type {
-  string builder = ?;
-}
+//===----------------------------------------------------------------------===//
+// Types.
+//===----------------------------------------------------------------------===//
 
-// Scalar types.
-def F32 : Type {
-  let builder = "getF32Type()";
-}
+// Base class for all types.
+class Type;
+
+// Integer types.
 class I<int width> : Type {
-  let builder = "getIntegerType(" # width # ")";
-  int intWidth = width;
+  int bitwidth = width;
 }
+def I1  : I<1>;
+def I32 : I<32>;
+
+// Floating point types.
+class F<int width> : Type {
+  int bitwidth = width;
+}
+def F32 : F<32>;
 
 // Vector types.
 class Vector<Type t, list<int> dims> : Type {
@@ -44,96 +50,90 @@ class Vector<Type t, list<int> dims> : Type {
 // rank, size.
 def Tensor : Type;
 
+// String type.
 def String : Type;
 
-// The operands of an op.
-class Operands<list<Type> types> {
-  list<Type> operandTypes = types;
-}
+def DerivedAttrBody : Type;
 
-// The result types of an op.
-class Results<list<Type> types> {
-  list<Type> returnTypes = types;
-}
+//===----------------------------------------------------------------------===//
+// Attributes
+//===----------------------------------------------------------------------===//
 
-// Add an attribute to the generated op class.
+// Base class for all attributes.
 class Attr<Type t> {
   Type type = t;
 
-  // Define the storage and return type in the subclass.
-  code storageType = ?;
-  code returnType = ?;
+  code storageType = ?; // The backing mlir::Attribute type
+  code returnType = ?;  // The underlying C++ value type
 
   // Define converter method to convert from the storage type to the return
-  // type. For example, the FloatAttr storage is APFloat, while the returned
-  // primitive type could be float. Similiarly a enum can be stored as a int
-  // but returned as an enum class.
+  // type. For example, an enum can be stored as an int but returned as an
+  // enum class.
   //
   // Format: {0} will be expanded to the attribute's value. So
-  // 'return {0}.convertToFloat();' for 'FloatAttr val' will expand to
-  // 'return getAttrOfType<FloatAttr>("val").getValue().convertToFloat();'
-  code convertFromStorage = "return {0};";
+  // '{0}.convertToFloat()' for 'FloatAttr val' will expand to
+  // 'getAttrOfType<FloatAttr>("val").getValue().convertToFloat()'.
+  code convertFromStorage = "{0}";
 }
 
-class BoolAttr : Attr<I<1>> {
- let storageType = [{ BoolAttr }];
- let returnType = [{ bool }];
+class BoolAttr : Attr<I1> {
+  let storageType = [{ BoolAttr }];
+  let returnType = [{ bool }];
 }
 class F32Attr : Attr<F32> {
- let storageType = [{ FloatAttr }];
- let returnType = [{ float }];
- let convertFromStorage = [{ return {0}.convertToFloat(); }];
+  let storageType = [{ FloatAttr }];
+  let returnType = [{ float }];
+  let convertFromStorage = [{ {0}.convertToFloat() }];
 }
-class I32Attr : Attr<I<32>> {
- let storageType = [{ IntegerAttr }];
- let returnType = [{ int }];
- let convertFromStorage = [{ return {0}.getSExtValue(); }];
+class I32Attr : Attr<I32> {
+  let storageType = [{ IntegerAttr }];
+  let returnType = [{ int }];
+  let convertFromStorage = [{ {0}.getSExtValue() }];
 }
 class StrAttr : Attr<String> {
- let storageType = [{ StringAttr }];
- let returnType = [{ StringRef }];
+  let storageType = [{ StringAttr }];
+  let returnType = [{ StringRef }];
 }
 
 // DerivedAttr are attributes whose value is computed from properties
 // of the operation. They do not require additional storage and are
 // materialized as needed.
-def DerivedAttrBody : Type;
 class DerivedAttr<code ReturnType, code Body> : Attr<DerivedAttrBody> {
   let returnType = ReturnType;
   code body = Body;
 }
 
-// Class representing a Trait (defined in a C++ file that needs to be included
-// before the generated op definitions).
-class Traits<list<string> Traits> {
-  list<string> traits = Traits;
-}
+//===----------------------------------------------------------------------===//
+// Op Properties
+//===----------------------------------------------------------------------===//
 
 class OpProperty;
 
-//===----------------------------------------------------------------------===//
-// Op Properties.
 //
 // Note: These are hard coded into mlir-op-gen.
 //
 def Commutative   : OpProperty;   // X op Y == Y op X
-def NoSideEffect  : OpProperty;   // Sets 'HasNoSideEffects'.
+def NoSideEffect  : OpProperty;   // op has no side effect
 
-// Base class for Ops.
+//===----------------------------------------------------------------------===//
+// Ops
+//===----------------------------------------------------------------------===//
+
+// Base class for all ops.
 class Op<string mnemonic, list<OpProperty> props = []> {
-  // The mnemonic of the Op.
+  // The mnemonic of the op.
   string name = mnemonic;
 
-  // One-line human-readable description of what the Op does.
+  // One-line human-readable description of what the op does.
   string summary = ?;
 
-  // Additional, longer human-readable description of what the Op does.
+  // Additional, longer human-readable description of what the op does.
   string description = ?;
 
-  // The list of operands of the Op. Default 0 operands.
+  // The list of operands of the op. Default 0 operands.
   list<Type> operandTypes = [];
 
-  // The list of return types of the Op. Default no return type set.
+  // The list of return types of the op. Default no return type set.
   list<Type> returnTypes = [];
 
   // Attribute getters can be added to the op by adding an Attr member
@@ -142,6 +142,7 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   //   I32Attr value;
 
   // Define the hooks used for building, parsing, printing, verification.
+
   // Custom builder.
   code builder = ?;
 
@@ -164,6 +165,23 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   list<OpProperty> properties = props;
 }
 
+// The operand types of an op.
+class Operands<list<Type> types> {
+  list<Type> operandTypes = types;
+}
+
+// The result types of an op.
+class Results<list<Type> types> {
+  list<Type> returnTypes = types;
+}
+
+// The traits of an op.
+// Traits are defined in C++ and need to be included for the generated
+// op definitions.
+class Traits<list<string> Traits> {
+  list<string> traits = Traits;
+}
+
 class BinaryOp<string mnemonic, list<OpProperty> props> :
     Op<mnemonic, props>, Operands<[Tensor, Tensor]>, Results<[Tensor]> {
 
@@ -172,7 +190,7 @@ class BinaryOp<string mnemonic, list<OpProperty> props> :
   // type propagation information.
   let builder = [{
     static void build(Builder *builder, OperationState *result, SSAValue *lhs,
-	              SSAValue *rhs) {
+                      SSAValue *rhs) {
       return impl::buildBinaryOp(builder, result, lhs, rhs);
     }
   }];
