@@ -154,7 +154,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     else:
       self.assertEqual([None, 1], iterator.output_shapes.as_list())
     next_element = iterator.get_next()
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.assertAllEqual([[0], [1], [4], [9]], self.evaluate(next_element))
       self.assertAllEqual([[16], [25], [36], [49]], self.evaluate(next_element))
       if not drop_remainder:
@@ -180,7 +180,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     self.assertEqual([None, 1], iterator.output_shapes.as_list())
     next_element = iterator.get_next()
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.assertAllEqual([[0], [1], [4], [9]], self.evaluate(next_element))
       self.assertAllEqual([[16], [25], [36], [49]], self.evaluate(next_element))
       self.assertAllEqual([[64], [81]], self.evaluate(next_element))
@@ -204,7 +204,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     elements = []
     for _ in range(100):
       elements.append(iterator.get_next())
-    with self.cached_session() as sess:
+    with self.cached_session():
       for i in range(5):
         got = self.evaluate(elements)
         got.sort(key=lambda x: x[0])
@@ -234,7 +234,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     elements = []
     for _ in range(100):
       elements.append(iterator.get_next())
-    with self.cached_session() as sess:
+    with self.cached_session():
       for i in range(4):
         got = self.evaluate(elements)
         got.sort(key=lambda x: x[0])
@@ -267,7 +267,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(init_op)
       for i in range(2):
         actual = self.evaluate(get_next)
@@ -329,7 +329,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(init_op)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "number of elements does not match"):
@@ -361,7 +361,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       for _ in range(3):
         self.evaluate(get_next)
 
@@ -380,13 +380,11 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("6NUMA", 99, True),
   )
   @test_util.run_deprecated_v1
-  def testMapAndBatchOutOfRangeError(self, threshold, numa_aware):
+  def testMapAndBatchMapError(self, threshold, numa_aware):
 
     def raising_py_fn(i):
-      if i == threshold:
+      if i >= threshold:
         raise StopIteration()
-      elif i > threshold:
-        raise RuntimeError("Alternate error; you shouldn't see me! (i: %s)" % i)
       else:
         return i
 
@@ -401,14 +399,19 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       for i in range(threshold // 10):
         self.assertAllEqual([i * 10 + j for j in range(10)],
                             self.evaluate(get_next))
-      if threshold % 10 != 0:
-        self.assertAllEqual(
-            [threshold // 10 * 10 + j for j in range(threshold % 10)],
-            self.evaluate(get_next))
+      if numa_aware:
+        if threshold % 10 != 0:
+          self.assertAllEqual(
+              [threshold // 10 * 10 + j for j in range(threshold % 10)],
+              self.evaluate(get_next))
+      else:
+        for i in range(threshold // 10, 10):
+          with self.assertRaises(errors.InvalidArgumentError):
+            self.evaluate(get_next)
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(get_next)
 
@@ -451,7 +454,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       for _ in range(10):
         self.assertAllEqual([element for _ in range(10)],
                             self.evaluate(get_next))
@@ -511,9 +514,8 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.with_options(options)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
-    with self.cached_session() as sess:
+    with self.cached_session():
       for i in range(10):
-        print("Case %d" % i)
         if i < 5:
           self.assertAllEqual([i * 10 + j + 1 for j in range(10)],
                               self.evaluate(get_next))

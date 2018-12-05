@@ -608,6 +608,7 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
         batch_size=self._batch_size_t,
         num_parallel_calls=self._num_parallel_calls_t,
         drop_remainder=self._drop_remainder_t,
+        preserve_cardinality=True,
         **dataset_ops.flat_structure(structure=self._output_structure))
 
   @property

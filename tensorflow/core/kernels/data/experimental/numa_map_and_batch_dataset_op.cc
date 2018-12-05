@@ -59,6 +59,9 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    // TODO(saeta): Implement support for preserve_cardinality logic.
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
   }
 
  protected:
@@ -133,6 +136,8 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       return "NumaMapAndBatchDatasetOp::Dataset";
     }
 
+    // TODO(b/120482302): Note that this is inaccurate until
+    // NumaMapAndBatchMapDataset modified to preserve cardinality.
     int64 Cardinality() const override {
       int64 n = input_->Cardinality();
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
@@ -1138,6 +1143,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList func_;
+  bool preserve_cardinality_;
 };
 
 REGISTER_KERNEL_BUILDER(
