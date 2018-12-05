@@ -171,7 +171,6 @@ class CondV2Test(test.TestCase):
             cond2_op.get_attr("else_branch").name, r"foo_cond_1_false_\d*")
 
   def testDefunInCond(self):
-    self.skipTest("b/117293122")
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
@@ -191,8 +190,6 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [y])
 
   def testNestedDefunInCond(self):
-    self.skipTest("b/117284369")
-
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
@@ -217,8 +214,6 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [y])
 
   def testDoubleNestedDefunInCond(self):
-    self.skipTest("b/117284369")
-
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
@@ -777,6 +772,25 @@ class CondV2Test(test.TestCase):
     output_t = f()
     self.assertAllEqual(
         self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
+
+  def testForwardPassRewrite(self):
+    x = constant_op.constant(1.0, name="x")
+    output = cond_v2.cond_v2(constant_op.constant(True),
+                             lambda: x * 2.0,
+                             lambda: x)
+    if_op = output.op.inputs[0].op
+    self.assertEqual(if_op.type, "If")
+    # pylint: disable=g-deprecated-assert
+    self.assertEqual(len(if_op.outputs), 1)
+
+    gradients_impl.gradients(output, x)
+    # if_op should have been rewritten to output 2.0 intermediate.
+    self.assertEqual(len(if_op.outputs), 2)
+
+    gradients_impl.gradients(output, x)
+    # Computing the gradient again shouldn't rewrite if_op again.
+    self.assertEqual(len(if_op.outputs), 2)
+    # pylint: enable=g-deprecated-assert
 
 
 class CondV2CollectionTest(test.TestCase):
