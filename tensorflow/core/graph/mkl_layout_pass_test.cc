@@ -126,6 +126,7 @@ REGISTER_OP("Input").Output("o: float").SetIsStateful();
 REGISTER_OP("InputList").Output("o: N * float").Attr("N: int").SetIsStateful();
 REGISTER_OP("HalfInput").Output("o: half").SetIsStateful();
 REGISTER_OP("Int32Input").Output("o: int32").SetIsStateful();
+REGISTER_OP("DoubleInput").Output("o: double").SetIsStateful();
 REGISTER_OP("_MklInput").Output("o: uint8").SetIsStateful();
 REGISTER_OP("_MklInput2")
     .Output("o: uint8")
@@ -943,6 +944,29 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Negative1) {
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(Input);D(_FusedConv2D);E(Zeta)|A->D;"
             "B->D:1;C->D:2;C->E:1;D->E");
+}
+
+// Rewrite test for _FusedConv2D Op with unsupported type
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Negative2) {
+  InitGraph(
+      "node { name: 'A' op: 'DoubleInput'}"
+      "node { name: 'B' op: 'DoubleInput'}"
+      "node { name: 'C' op: 'DoubleInput'}"
+      "node { name: 'D' op: '_FusedConv2D'"
+      " attr { key: 'T'                value { type: DT_DOUBLE } }"
+      " attr { key: 'num_args'         value { i: 1 } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'fused_ops'        value { list: {s: 'BiasAdd'} } }"
+      " attr { key: 'epsilon'          value { f: 0.001 }}"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_DOUBLE } }"
+      " input: ['D', 'C'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(DoubleInput);B(DoubleInput);C(DoubleInput);"
+            "D(_FusedConv2D);E(Zeta)|A->D;B->D:1;C->D:2;C->E:1;D->E");
 }
 
 TEST_F(MklLayoutPassTest, NodeRewrite_Conv2DGradFilter_Positive) {

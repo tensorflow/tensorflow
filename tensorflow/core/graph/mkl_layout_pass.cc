@@ -1123,6 +1123,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // MKL DNN currently doesn't support all fusions that grappler fuses
     // together with Conv2D (ex. batchnorm). We rewrite _FusedConv2D only if
     // it includes those we support.
+    DataType T;
+    if (!GetNodeAttr(n->def(), "T", &T).ok() ||
+        !mkl_op_registry::IsMklOp(csinfo_.mkl_fused_conv2d, T)) {
+      return false;
+    }
 
     std::vector<string> fused_ops;
     TF_CHECK_OK(GetNodeAttr(n->def(), "fused_ops", &fused_ops));
