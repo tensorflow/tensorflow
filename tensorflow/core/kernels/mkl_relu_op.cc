@@ -1331,7 +1331,7 @@ class MklLeakyReluOp : public MklReluOpBase<Device, T, eltwise_relu> {
     float alpha;
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha));
     OP_REQUIRES(context, alpha <= 1,
-                errors::InvalidArgument("MKL LeakyRelu only support alpha < 1. "
+                errors::InvalidArgument("MKL LeakyRelu only supports alpha <= 1. "
                                         "alpha is: ",
                                         alpha));
 
