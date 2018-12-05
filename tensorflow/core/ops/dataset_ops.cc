@@ -144,6 +144,7 @@ REGISTER_OP("MapDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("use_inter_op_parallelism: bool = true")
+    .Attr("preserve_cardinality: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ParallelMapDataset")
@@ -157,6 +158,7 @@ REGISTER_OP("ParallelMapDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("use_inter_op_parallelism: bool = true")
     .Attr("sloppy: bool = false")
+    .Attr("preserve_cardinality: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("PrefetchDataset")

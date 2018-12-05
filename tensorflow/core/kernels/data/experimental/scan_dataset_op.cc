@@ -37,6 +37,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Tstate", &state_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -53,7 +55,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
     *output = new Dataset(ctx, input, func_, std::move(initial_state),
                           std::move(captured_func), state_types_, output_types_,
-                          output_shapes_);
+                          output_shapes_, preserve_cardinality_);
   }
 
  private:
@@ -64,7 +66,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
             std::unique_ptr<CapturedFunction> captured_func,
             const DataTypeVector& state_types,
             const DataTypeVector& output_types,
-            const std::vector<PartialTensorShape>& output_shapes)
+            const std::vector<PartialTensorShape>& output_shapes,
+            bool preserve_cardinality)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
@@ -72,7 +75,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
           captured_func_(std::move(captured_func)),
           state_types_(state_types),
           output_types_(output_types),
-          output_shapes_(output_shapes) {
+          output_shapes_(output_shapes),
+          preserve_cardinality_(preserve_cardinality) {
       input_->Ref();
     }
 
@@ -93,8 +97,6 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "ScanDatasetOp::Dataset"; }
 
-    // TODO(b/120482302): Note that this is inaccurate until MapDataset is
-    // modified to preserve cardinality.
     int64 Cardinality() const override { return input_->Cardinality(); }
 
    protected:
@@ -207,10 +209,19 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
             out_tensors->push_back(std::move(state_and_output[i]));
           }
         } else if (errors::IsOutOfRange(s)) {
-          // `f` may deliberately raise `errors::OutOfRange` to indicate
-          // that we should terminate the iteration early.
-          *end_of_sequence = true;
-          return Status::OK();
+          if (dataset()->preserve_cardinality_) {
+            // To guarantee that the transformation preserves the cardinality of
+            // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
+            // former may be interpreted by a caller as the end of sequence.
+            return errors::InvalidArgument(
+                "Function invocation produced OutOfRangeError: ",
+                s.error_message());
+          } else {
+            // `f` may deliberately raise `errors::OutOfRange` to indicate
+            // that we should terminate the iteration early.
+            *end_of_sequence = true;
+            return Status::OK();
+          }
         }
         return s;
       }
@@ -267,12 +278,14 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     const DataTypeVector state_types_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
+    const bool preserve_cardinality_;
   };
 
   DataTypeVector state_types_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList func_;
+  bool preserve_cardinality_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ExperimentalScanDataset").Device(DEVICE_CPU),

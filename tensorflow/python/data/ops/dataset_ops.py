@@ -944,9 +944,10 @@ class DatasetV2(object):
       Dataset: A `Dataset`.
     """
     if num_parallel_calls is None:
-      return MapDataset(self, map_func)
+      return MapDataset(self, map_func, preserve_cardinality=True)
     else:
-      return ParallelMapDataset(self, map_func, num_parallel_calls)
+      return ParallelMapDataset(
+          self, map_func, num_parallel_calls, preserve_cardinality=True)
 
   def flat_map(self, map_func):
     """Maps `map_func` across this dataset and flattens the result.
@@ -1540,8 +1541,13 @@ class DatasetV1(DatasetV2):
 
   @functools.wraps(DatasetV2.map)
   def map(self, map_func, num_parallel_calls=None):
-    return DatasetV1Adapter(super(DatasetV1, self).map(
-        map_func, num_parallel_calls))
+    if num_parallel_calls is None:
+      return DatasetV1Adapter(
+          MapDataset(self, map_func, preserve_cardinality=False))
+    else:
+      return DatasetV1Adapter(
+          ParallelMapDataset(
+              self, map_func, num_parallel_calls, preserve_cardinality=False))
 
   @functools.wraps(DatasetV2.flat_map)
   def flat_map(self, map_func):
@@ -2781,11 +2787,16 @@ def _warn_if_collections(transformation_name):
 class MapDataset(UnaryDataset):
   """A `Dataset` that maps a function over elements in its input."""
 
-  def __init__(self, input_dataset, map_func, use_inter_op_parallelism=True):
+  def __init__(self,
+               input_dataset,
+               map_func,
+               use_inter_op_parallelism=True,
+               preserve_cardinality=False):
     """See `Dataset.map()` for details."""
     super(MapDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
+    self._preserve_cardinality = preserve_cardinality
     self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
 
@@ -2796,6 +2807,7 @@ class MapDataset(UnaryDataset):
         self._map_func.function.captured_inputs,
         f=self._map_func.function,
         use_inter_op_parallelism=self._use_inter_op_parallelism,
+        preserve_cardinality=self._preserve_cardinality,
         **flat_structure(structure=self._map_func.output_structure))
 
   def _functions(self):
@@ -2824,10 +2836,11 @@ class ParallelMapDataset(MapDataset):
                input_dataset,
                map_func,
                num_parallel_calls,
-               use_inter_op_parallelism=True):
+               use_inter_op_parallelism=True,
+               preserve_cardinality=False):
     """See `Dataset.map()` for details."""
-    super(ParallelMapDataset, self).__init__(input_dataset, map_func,
-                                             use_inter_op_parallelism)
+    super(ParallelMapDataset, self).__init__(
+        input_dataset, map_func, use_inter_op_parallelism, preserve_cardinality)
 
     self._num_parallel_calls = ops.convert_to_tensor(
         num_parallel_calls, dtype=dtypes.int32, name="num_parallel_calls")
@@ -2841,6 +2854,7 @@ class ParallelMapDataset(MapDataset):
         f=self._map_func.function,
         num_parallel_calls=self._num_parallel_calls,
         use_inter_op_parallelism=self._use_inter_op_parallelism,
+        preserve_cardinality=self._preserve_cardinality,
         **flat_structure(structure=self._map_func.output_structure))
 
 

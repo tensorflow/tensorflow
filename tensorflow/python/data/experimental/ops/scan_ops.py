@@ -138,6 +138,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
         nest.flatten(sparse.serialize_sparse_tensors(self._initial_state)),
         self._scan_func.function.captured_inputs,
         f=self._scan_func.function,
+        preserve_cardinality=True,
         **dataset_ops.flat_structure(self))
 
   @property
