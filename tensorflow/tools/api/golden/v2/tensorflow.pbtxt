@@ -5,14 +5,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "AttrValue"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "ConfigProto"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "DType"
     mtype: "<type \'type\'>"
   }
@@ -25,10 +17,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "GPUOptions"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "GradientTape"
     mtype: "<type \'type\'>"
   }
@@ -37,56 +25,16 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "GraphDef"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "GraphOptions"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "HistogramProto"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "IndexedSlices"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "LogMessage"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "MetaGraphDef"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "NameAttrList"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "NodeDef"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Operation"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "OptimizerOptions"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "RegisterGradient"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "RunMetadata"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "RunOptions"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "SessionLog"

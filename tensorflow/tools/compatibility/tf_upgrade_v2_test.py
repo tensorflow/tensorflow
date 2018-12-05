@@ -142,6 +142,8 @@ class TestUpgrade(test_util.TensorFlowTestCase):
 
     # Converts all symbols in the v1 namespace to the v2 namespace, raising
     # an error if the target of the conversion is not in the v2 namespace.
+    # Please regenerate the renames file or edit any manual renames if this
+    # test fails.
     def conversion_visitor(unused_path, unused_parent, children):
       for child in children:
         _, attr = tf_decorator.unwrap(child[1])
