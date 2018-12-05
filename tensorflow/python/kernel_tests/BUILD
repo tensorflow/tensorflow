@@ -2840,6 +2840,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "extract_volume_patches_grad_test",
+    size = "medium",
+    srcs = ["extract_volume_patches_grad_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+    tags = ["notap"],  # http://b/31080670
+)
+
+cuda_py_test(
     name = "stage_op_test",
     size = "medium",
     srcs = ["stage_op_test.py"],
