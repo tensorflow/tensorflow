@@ -1307,12 +1307,18 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
       std::back_inserter(happens_before),
       [](const GraphView::OutputPort port) { return port.node->name(); });
 
+  VLOG(3) << "Happens before set (size = " << happens_before.size()
+          << "): " << absl::StrJoin(happens_before, ", ");
+
   // Nodes that must observe side effects to the captured resources.
   std::vector<string> happens_after;
   absl::c_transform(
       ctx->graph_view().GetFanout(control_output_port),
       std::back_inserter(happens_after),
       [](const GraphView::InputPort port) { return port.node->name(); });
+
+  VLOG(3) << "Happens after set (size = " << happens_after.size()
+          << "): " << absl::StrJoin(happens_after, ", ");
 
   // Regular (positional) inputs to the function call.
   std::vector<SafeTensorId> inputs;
