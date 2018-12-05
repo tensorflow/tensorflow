@@ -1234,8 +1234,8 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     def step_function(inputs, states):
       return inputs, [s + 1 for s in states]
 
-    inputs_vals = np.random.random(
-        (num_samples, num_timesteps, state_and_io_size))
+    inputs_vals = np.random.random((num_samples, num_timesteps,
+                                    state_and_io_size))
     initial_state_vals = np.random.random((num_samples, state_and_io_size))
     # masking of two last timesteps for second sample only
     mask_vals = np.ones((num_samples, num_timesteps))
@@ -1268,8 +1268,8 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
           input_length=num_timesteps if unroll else None)
 
       self.assertAllClose(keras.backend.eval(outputs), expected_outputs)
-      self.assertAllClose(keras.backend.eval(
-          last_states[0]), expected_last_state)
+      self.assertAllClose(
+          keras.backend.eval(last_states[0]), expected_last_state)
 
   def test_rnn_output_num_dim_larger_than_2_masking(self):
     num_samples = 3

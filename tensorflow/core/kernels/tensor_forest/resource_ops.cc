@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 #include "tensorflow/core/kernels/tensor_forest/resources.h"
 
 namespace tensorflow {
@@ -24,7 +25,7 @@ namespace tensorflow {
 class TensorForestCreateTreeVariableOp : public OpKernel {
  public:
   explicit TensorForestCreateTreeVariableOp(OpKernelConstruction* context)
-      : OpKernel(context){};
+      : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor* tree_config_t;

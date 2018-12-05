@@ -667,8 +667,9 @@ class MklPoolingForwardOpBase : public MklPoolingOpBase<T> {
                   errors::InvalidArgument("Input must be 4 or 5-dimensional"));
     } else {
       OP_REQUIRES(
-          context, input_mkl_shape.GetDimension() == 4 ||
-                       input_mkl_shape.GetDimension() == 5,
+          context,
+          input_mkl_shape.GetDimension() == 4 ||
+              input_mkl_shape.GetDimension() == 5,
           errors::InvalidArgument("Input shape must be 4 or 5-dimensional"));
     }
   }

@@ -586,8 +586,12 @@ def main(argv):
                   detach=True,
                   stderr=True,
                   stdout=True,
-                  volumes={FLAGS.run_tests_path:
-                           {'bind': '/tests', 'mode': 'ro'}},
+                  volumes={
+                      FLAGS.run_tests_path: {
+                          'bind': '/tests',
+                          'mode': 'ro'
+                      }
+                  },
                   runtime=tag_def['test_runtime']),
               ret = container.wait()
               code = ret['StatusCode']
@@ -648,8 +652,7 @@ def main(argv):
   if failed_tags:
     eprint(
         '> Some tags failed to build or failed testing, check scrollback for '
-        'errors: {}'.format(
-            ','.join(failed_tags)))
+        'errors: {}'.format(','.join(failed_tags)))
     exit(1)
 
 

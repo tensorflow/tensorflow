@@ -44,8 +44,8 @@ def enumerate_dataset(start=0):
   ```
 
   Args:
-    start: A `tf.int64` scalar `tf.Tensor`, representing the start
-      value for enumeration.
+    start: A `tf.int64` scalar `tf.Tensor`, representing the start value for
+      enumeration.
 
   Returns:
     A `Dataset` transformation function, which can be passed to

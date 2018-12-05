@@ -30,8 +30,9 @@ namespace xla {
 // fully utilizes the interconnect bandwidth.
 class ArCrsCombiner : public HloModulePass {
  public:
-  ArCrsCombiner(int num_spatial_partitions)
-      : num_spatial_partitions_(num_spatial_partitions) {}
+  ArCrsCombiner(int num_spatial_partitions, int num_replicas)
+      : num_spatial_partitions_(num_spatial_partitions),
+        num_replicas_(num_replicas) {}
   absl::string_view name() const override { return "ar-crs-combiner"; }
   StatusOr<bool> Run(HloModule* module) override;
 
@@ -76,6 +77,7 @@ class ArCrsCombiner : public HloModulePass {
   StatusOr<bool> RewriteGraph();
 
   int num_spatial_partitions_;
+  int num_replicas_;
 
   // Map from all-reduce ids to the all reduce instructions.
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> all_reduce_map_;

@@ -17,14 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.ops import resources
-
 from tensorflow.python import ops
 from tensorflow.python.ops import gen_tensor_forest_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.training import saver
 
 
 class TreeVariableSaveable(saver.BaseSaverBuilder.SaveableObject):
+  """Resource that holds a tree."""
 
   def __init__(self, type_name, name, container, config, resource_handle_func,
                create_op_func, is_initialized_op_func, serialize_op_func,
@@ -34,25 +34,21 @@ class TreeVariableSaveable(saver.BaseSaverBuilder.SaveableObject):
       self._resource_handle = resource_handle_func(
           container, shared_name=name, name=name)
 
-    self._is_initialized_op = is_initialized_op_func(
-        self._resource_handle)
+    self._is_initialized_op = is_initialized_op_func(self._resource_handle)
     tensor = serialize_op_func(self._resource_handle)
-    self._create_op = create_op_func(
-        self._resource_handle,
-        config)
+    self._create_op = create_op_func(self._resource_handle, config)
     # slice_spec is useful for saving a slice from a variable.
     # It's not meaningful the tree variable. So we just pass an empty
     # value.
-    slice_spec = ""
+    slice_spec = ''
     specs = [saver.BaseSaverBuilder.SaveSpec(tensor, slice_spec, name)]
-    super(TreeVariableSaveable,
-          self).__init__(self._resource_handle, specs, name)
+    super(TreeVariableSaveable, self).__init__(self._resource_handle, specs,
+                                               name)
 
-    ops.add_to_collection(
-        ops.GraphKeys.SAVEABLE_OBJECTS, self)
+    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self)
 
-    resources.register_resource(
-        self._resource_handle, self._create_op, self._is_initialized_op)
+    resources.register_resource(self._resource_handle, self._create_op,
+                                self._is_initialized_op)
     self._deserialize_op_func = deserialize_op_func
 
   def restore(self, restored_tensors, unused_restored_shapes):
@@ -79,10 +75,7 @@ class TreeVariableSaveable(saver.BaseSaverBuilder.SaveableObject):
 
 def tree_variable(tree_config, name, container=None):
   return TreeVariableSaveable(
-      "TreeVariable",
-      name,
-      container,
-      tree_config,
+      'TreeVariable', name, container, tree_config,
       gen_tensor_forest_ops.tensor_forest_tree_resource_handle_op,
       gen_tensor_forest_ops.tensor_forest_create_tree_variable,
       gen_tensor_forest_ops.tensor_forest_tree_is_initialized_op,
@@ -91,9 +84,9 @@ def tree_variable(tree_config, name, container=None):
 
 
 class ForestVariables(object):
+  """Resource that holds all trees from a forest."""
 
-  def __init__(self, params,
-               tree_configs=None):
+  def __init__(self, params, tree_configs=None):
 
     self._variables = []
 

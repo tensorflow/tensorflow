@@ -19,10 +19,22 @@ limitations under the License.
 
 namespace tensorflow {
 
+const boosted_trees::Tree& TensorForestTreeResource::decision_tree() const {
+  return *decision_tree_;
+}
+
+const int32 TensorForestTreeResource::get_size() const {
+  return decision_tree_->nodes_size();
+}
+
+TensorForestTreeResource::TensorForestTreeResource()
+    : decision_tree_(
+          protobuf::Arena::CreateMessage<boosted_trees::Tree>(&arena_)) {}
+
 const float TensorForestTreeResource::get_prediction(
     const int32 id, const int32 dimension_id) const {
   return decision_tree_->nodes(id).leaf().vector().value(dimension_id);
-};
+}
 
 const int32 TensorForestTreeResource::TraverseTree(
     const int32 example_id,
@@ -34,7 +46,7 @@ const int32 TensorForestTreeResource::TraverseTree(
     const Node& current = decision_tree_->nodes(current_id);
     if (current.has_leaf()) {
       return current_id;
-    };
+    }
     DCHECK_EQ(current.node_case(), Node::kDenseSplit);
     const auto& split = current.dense_split();
 
@@ -44,7 +56,7 @@ const int32 TensorForestTreeResource::TraverseTree(
       current_id = split.right_id();
     }
   }
-};
+}
 
 bool TensorForestTreeResource::InitFromSerialized(const string& serialized) {
   return ParseProtoUnlimited(decision_tree_, serialized);
@@ -52,7 +64,7 @@ bool TensorForestTreeResource::InitFromSerialized(const string& serialized) {
 
 void TensorForestTreeResource::Reset() {
   arena_.Reset();
-  CHECK_EQ(0, arena_.SpaceAllocated());
+  DCHECK_EQ(0, arena_.SpaceAllocated());
   decision_tree_ = protobuf::Arena::CreateMessage<boosted_trees::Tree>(&arena_);
 }
 

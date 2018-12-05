@@ -75,7 +75,7 @@ class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": [
+        "TRTEngineOp_0": [
             "weights", "conv", "bias", "bias_add", "relu", "identity",
             "max_pool"
         ]
@@ -132,10 +132,10 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": [
+        "TRTEngineOp_0": [
             "add", "add1", "c1", "div1", "mul", "mul1", "sub", "sub1"
         ],
-        "my_trt_op_1": ["c2", "conv", "div", "weights"]
+        "TRTEngineOp_1": ["c2", "conv", "div", "weights"]
     }
 
   def GetConversionParams(self, run_params):

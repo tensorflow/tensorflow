@@ -84,11 +84,8 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
                           false_graph.external_captures,
                           name=scope)
 
-    # Packing output tensors in the same nested structure as the true and false
-    # functions return
-    result = nest.pack_sequence_as(structure=true_graph.structured_outputs, 
-                                   flat_sequence=tensors[:num_cond_outputs])
-    return result
+    return func_graph_module.pack_sequence_as(true_graph.structured_outputs,
+                                              outputs)
 
 
 @ops.RegisterGradient("If")
@@ -523,9 +520,13 @@ def _check_same_outputs(true_graph, false_graph):
         "  true_fn: %s\n"
         "  false_fn: %s" % (true_output_types, false_output_types))
 
-  # Make sure both structured outputs for both graphs have the same structure
-  nest.assert_same_structure(true_graph.structured_outputs, 
-                             false_graph.structured_outputs)
+  # Make sure `structured_outputs` for both graphs have the same structure.
+  try:
+    nest.assert_same_structure(true_graph.structured_outputs,
+                               false_graph.structured_outputs)
+  except (ValueError, TypeError) as e:
+    raise ValueError("Outputs of true_fn and false_fn must have the same "
+                     "structure: %s" % str(e))
 
 
 def _get_output_shapes(true_graph_outputs, false_graph_outputs):

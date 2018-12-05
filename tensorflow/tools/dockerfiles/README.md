@@ -1,13 +1,13 @@
 # TensorFlow Dockerfiles
 
 This directory houses TensorFlow's Dockerfiles and the infrastructure used to
-create and deploy them to [Docker
-Hub](https://hub.docker.com/r/tensorflow/tensorflow).
+create and deploy them to
+[Docker Hub](https://hub.docker.com/r/tensorflow/tensorflow).
 
 **DO NOT EDIT THE DOCKERFILES/ DIRECTORY MANUALLY!** The files within are
 maintained by `assembler.py`, which builds Dockerfiles from the files in
-`partials/` and the rules in `spec.yml`. See [the Contributing
-section](#contributing) for more information.
+`partials/` and the rules in `spec.yml`. See
+[the Contributing section](#contributing) for more information.
 
 These Dockerfiles are planned to replace the Dockerfiles used to generate
 [TensorFlow's official Docker images](https://hub.docker.com/r/tensorflow/tensorflow).
@@ -70,7 +70,7 @@ that has all of the Python dependencies you'll need:
 $ docker build -t tf-tools -f tools.Dockerfile .
 
 # Set --user to set correct permissions on generated files
-$ docker run --user $(id -u):$(id -g) -it -v $(pwd):/tf tf-tools bash 
+$ docker run --user $(id -u):$(id -g) -it -v $(pwd):/tf tf-tools bash
 
 # Next you can make a handy alias depending on what you're doing. When building
 # Docker images, you need to run as root with docker.sock mounted so that the

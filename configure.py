@@ -243,7 +243,7 @@ def setup_python(environ_cp):
   if environ_cp.get('PYTHONPATH'):
     python_paths = environ_cp.get('PYTHONPATH').split(':')
     if python_lib_path in python_paths:
-         write_action_env_to_bazelrc('PYTHONPATH', environ_cp.get('PYTHONPATH'))
+      write_action_env_to_bazelrc('PYTHONPATH', environ_cp.get('PYTHONPATH'))
 
   # Write tools/python_bin_path.sh
   with open(

@@ -190,8 +190,8 @@ tensorflow::Status TRTOptimizationPass::Optimize(
     *optimized_graph = item.graph;
     return tensorflow::Status::OK();
   }
-  if (VLOG_IS_ON(2)) {
-    VLOG(2) << CurrentStackTrace();
+  if (VLOG_IS_ON(3)) {
+    LOG(INFO) << CurrentStackTrace();
     PrintDebugInfo(cluster, item);
   }
   int max_dim = -1;

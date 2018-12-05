@@ -637,37 +637,84 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
+  def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `IndexedSlices` to this variable batch-wise.
+
+    Analogous to `batch_gather`. This assumes that this variable and the
+    sparse_delta IndexedSlices have a series of leading dimensions that are the
+    same for all of them, and the updates are performed on the last dimension of
+    indices. In other words, the dimensions should be the following:
+
+    `num_prefix_dims = sparse_delta.indices.ndims - 1`
+    `batch_dim = num_prefix_dims + 1`
+    `sparse_delta.updates.shape = sparse_delta.indices.shape + var.shape[
+         batch_dim:]`
+
+    where
+
+    `sparse_delta.updates.shape[:num_prefix_dims]`
+    `== sparse_delta.indices.shape[:num_prefix_dims]`
+    `== var.shape[:num_prefix_dims]`
+
+    And the operation performed can be expressed as:
+
+    `var[i_1, ..., i_n,
+         sparse_delta.indices[i_1, ..., i_n, j]] = sparse_delta.updates[
+            i_1, ..., i_n, j]`
+
+    When sparse_delta.indices is a 1D tensor, this operation is equivalent to
+    `scatter_update`.
+
+    To avoid this operation one can looping over the first `ndims` of the
+    variable and using `scatter_update` on the subtensors that result of slicing
+    the first dimension. This is a valid option for `ndims = 1`, but less
+    efficient than this implementation.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
   def scatter_nd_sub(self, indices, updates, name=None):
     """Applies sparse subtraction to individual values or slices in a Variable.
 
-    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+    Assuming the variable has rank `P` and `indices` is a `Tensor` of rank `Q`.
 
-    `indices` must be integer tensor, containing indices into `ref`.
+    `indices` must be integer tensor, containing indices into self.
     It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
 
     The innermost dimension of `indices` (with length `K`) corresponds to
     indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-    dimension of `ref`.
+    dimension of self.
 
     `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
     ```
-    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    [d_0, ..., d_{Q-2}, self.shape[K], ..., self.shape[P-1]].
     ```
 
     For example, say we want to add 4 scattered elements to a rank-1 tensor to
     8 elements. In Python, that update would look like this:
 
     ```python
-        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        op = ref.scatter_nd_sub(indices, updates)
+        op = v.scatter_nd_sub(indices, updates)
         with tf.Session() as sess:
           print sess.run(op)
     ```
 
-    The resulting update to ref would look like this:
+    The resulting update to v would look like this:
 
         [1, -9, 3, -6, -6, 6, 7, -4]
 
@@ -691,34 +738,34 @@ class Variable(six.with_metaclass(VariableMetaclass,
   def scatter_nd_add(self, indices, updates, name=None):
     """Applies sparse addition to individual values or slices in a Variable.
 
-    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+    The Variable has rank `P` and `indices` is a `Tensor` of rank `Q`.
 
-    `indices` must be integer tensor, containing indices into `ref`.
+    `indices` must be integer tensor, containing indices into self.
     It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
 
     The innermost dimension of `indices` (with length `K`) corresponds to
     indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-    dimension of `ref`.
+    dimension of self.
 
     `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
     ```
-    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    [d_0, ..., d_{Q-2}, self.shape[K], ..., self.shape[P-1]].
     ```
 
     For example, say we want to add 4 scattered elements to a rank-1 tensor to
     8 elements. In Python, that update would look like this:
 
     ```python
-        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        add = ref.scatter_nd_add(indices, updates)
+        add = v.scatter_nd_add(indices, updates)
         with tf.Session() as sess:
           print sess.run(add)
     ```
 
-    The resulting update to ref would look like this:
+    The resulting update to v would look like this:
 
         [1, 13, 3, 14, 14, 6, 7, 20]
 
@@ -742,34 +789,34 @@ class Variable(six.with_metaclass(VariableMetaclass,
   def scatter_nd_update(self, indices, updates, name=None):
     """Applies sparse assignment to individual values or slices in a Variable.
 
-    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+    The Variable has rank `P` and `indices` is a `Tensor` of rank `Q`.
 
-    `indices` must be integer tensor, containing indices into `ref`.
+    `indices` must be integer tensor, containing indices into self.
     It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
 
     The innermost dimension of `indices` (with length `K`) corresponds to
     indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-    dimension of `ref`.
+    dimension of self.
 
     `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
     ```
-    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    [d_0, ..., d_{Q-2}, self.shape[K], ..., self.shape[P-1]].
     ```
 
     For example, say we want to add 4 scattered elements to a rank-1 tensor to
     8 elements. In Python, that update would look like this:
 
     ```python
-        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        op = ref.scatter_nd_assign(indices, updates)
+        op = v.scatter_nd_assign(indices, updates)
         with tf.Session() as sess:
           print sess.run(op)
     ```
 
-    The resulting update to ref would look like this:
+    The resulting update to v would look like this:
 
         [1, 11, 3, 10, 9, 6, 7, 12]
 
@@ -1842,6 +1889,55 @@ class RefVariable(VariableV1):
         use_locking=use_locking,
         name=name)
 
+  def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `IndexedSlices` to this variable batch-wise.
+
+    Analogous to `batch_gather`. This assumes that this variable and the
+    sparse_delta IndexedSlices have a series of leading dimensions that are the
+    same for all of them, and the updates are performed on the last dimension of
+    indices. In other words, the dimensions should be the following:
+
+    `num_prefix_dims = sparse_delta.indices.ndims - 1`
+    `batch_dim = num_prefix_dims + 1`
+    `sparse_delta.updates.shape = sparse_delta.indices.shape + var.shape[
+         batch_dim:]`
+
+    where
+
+    `sparse_delta.updates.shape[:num_prefix_dims]`
+    `== sparse_delta.indices.shape[:num_prefix_dims]`
+    `== var.shape[:num_prefix_dims]`
+
+    And the operation performed can be expressed as:
+
+    `var[i_1, ..., i_n,
+         sparse_delta.indices[i_1, ..., i_n, j]] = sparse_delta.updates[
+            i_1, ..., i_n, j]`
+
+    When sparse_delta.indices is a 1D tensor, this operation is equivalent to
+    `scatter_update`.
+
+    To avoid this operation one can looping over the first `ndims` of the
+    variable and using `scatter_update` on the subtensors that result of slicing
+    the first dimension. This is a valid option for `ndims = 1`, but less
+    efficient than this implementation.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return state_ops.batch_scatter_update(
+        self, sparse_delta.indices, sparse_delta.values,
+        use_locking=use_locking, name=name)
+
   def scatter_nd_sub(self, indices, updates, name=None):
     """Applies sparse subtraction to individual values or slices in a Variable.
 
@@ -2909,7 +3005,8 @@ def report_uninitialized_variables(var_list=None,
     # Run all operations on CPU
     if var_list:
       init_vars = [state_ops.is_variable_initialized(v) for v in var_list]
-    local_device = os.environ.get("TF_DEVICE_FOR_UNINITIALIZED_VARIABLE_REPORTING", "/cpu:0")
+    local_device = os.environ.get(
+        "TF_DEVICE_FOR_UNINITIALIZED_VARIABLE_REPORTING", "/cpu:0")
     with ops.device(local_device):
       if not var_list:
         # Return an empty tensor so we only need to check for returned tensor

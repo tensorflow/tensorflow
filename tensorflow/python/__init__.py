@@ -78,6 +78,7 @@ from tensorflow.python.ops import initializers_ns as initializers
 
 # Bring in subpackages.
 from tensorflow.python import data
+from tensorflow.python import distribute
 from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.layers import layers

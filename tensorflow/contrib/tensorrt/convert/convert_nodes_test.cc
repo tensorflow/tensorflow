@@ -1471,168 +1471,6 @@ void TestConvertBiasAdd(OpConverterTest* test) {
   }
 }
 
-TEST_F(OpConverterTest, ConvertQuantize) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def =
-        MakeNodeDef("my_quantize", "QuantizeAndDequantizeV2", {});
-    RunConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Invalid number of inputs for QuantizeAndDequantizeV2, at my_quantize");
-  }
-  {
-    // FakeQuantWithMinMaxArgs attributes are empty, should fail.
-    NodeDef node_def =
-        MakeNodeDef("my_quantize", "FakeQuantWithMinMaxArgs", {"input"});
-    AddTestTensor("input", {1, 2, 3});
-    RunConversion(node_def, error::INVALID_ARGUMENT,
-                  "Min or max attribute not found for FakeQuantWithMinMaxArgs "
-                  "at my_quantize");
-  }
-  {
-    // FakeQuantWithMinMaxArgs ranges set via attributes, ok.
-    Reset();
-    Scope s = Scope::NewRootScope();
-    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    ops::FakeQuantWithMinMaxArgs::Attrs quantize_attrs;
-    quantize_attrs.min_ = -6.0f;
-    quantize_attrs.max_ = 6.0f;
-    auto quantize = ops::FakeQuantWithMinMaxArgs(s.WithOpName("my_quantize"),
-                                                 input, quantize_attrs);
-    const NodeDef& node_def = quantize.operation.node()->def();
-    AddTestTensor("input", {1, 2, 3});
-    RunConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
-    EXPECT_TRUE(output.is_tensor());
-    auto ranges = quantization_ranges();
-    EXPECT_EQ(ranges.count(output.tensor()), 1);
-    EXPECT_EQ(ranges[output.tensor()], 6.0f);
-  }
-  {
-    // FakeQuantWithMinMaxVars ranges set via inputs, ok.
-    Reset();
-    Scope s = Scope::NewRootScope();
-    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    auto weights_min = ops::Placeholder(s.WithOpName("weights_min"), DT_FLOAT);
-    auto weights_max = ops::Placeholder(s.WithOpName("weights_max"), DT_FLOAT);
-    auto quantize = ops::FakeQuantWithMinMaxVars(
-        s.WithOpName("my_quantize"), input, weights_min, weights_max);
-    const NodeDef& node_def = quantize.operation.node()->def();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<float>("weights_min", {1}, {-6.0f});
-    AddTestWeights<float>("weights_max", {1}, {6.0f});
-    RunConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
-    EXPECT_TRUE(output.is_tensor());
-    auto ranges = quantization_ranges();
-    EXPECT_EQ(ranges.count(output.tensor()), 1);
-    EXPECT_EQ(ranges[output.tensor()], 6.0f);
-  }
-  {
-    // QuantizeAndDequantizeV2 ranges set via inputs, ok.
-    Reset();
-    Scope s = Scope::NewRootScope();
-    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    auto weights_min = ops::Placeholder(s.WithOpName("weights_min"), DT_FLOAT);
-    auto weights_max = ops::Placeholder(s.WithOpName("weights_max"), DT_FLOAT);
-    auto quantize = ops::QuantizeAndDequantizeV2(
-        s.WithOpName("my_quantize"), input, weights_min, weights_max);
-    const NodeDef& node_def = quantize.operation.node()->def();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<float>("weights_min", {1}, {-6.0f});
-    AddTestWeights<float>("weights_max", {1}, {6.0f});
-    RunConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
-    EXPECT_TRUE(output.is_tensor());
-    auto ranges = quantization_ranges();
-    EXPECT_EQ(ranges.count(output.tensor()), 1);
-    EXPECT_EQ(ranges[output.tensor()], 6.0f);
-  }
-  {
-    // QuantizeAndDequantizeV3 ranges set via inputs, ok.
-    Reset();
-    Scope s = Scope::NewRootScope();
-    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    auto weights_min = ops::Placeholder(s.WithOpName("weights_min"), DT_FLOAT);
-    auto weights_max = ops::Placeholder(s.WithOpName("weights_max"), DT_FLOAT);
-    auto num_bits = ops::Placeholder(s.WithOpName("num_bits"), DT_INT32);
-    auto quantize = ops::QuantizeAndDequantizeV3(
-        s.WithOpName("my_quantize"), input, weights_min, weights_max, num_bits);
-    const NodeDef& node_def = quantize.operation.node()->def();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<float>("weights_min", {1}, {-6.0f});
-    AddTestWeights<float>("weights_max", {1}, {6.0f});
-    AddTestWeights<int>("num_bits", {1}, {8});
-    RunConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
-    EXPECT_TRUE(output.is_tensor());
-    auto ranges = quantization_ranges();
-    EXPECT_EQ(ranges.count(output.tensor()), 1);
-    EXPECT_EQ(ranges[output.tensor()], 6.0f);
-  }
-  {
-    // QuantizeAndDequantizeV2 Range inputs are tensors, should fail.
-    Reset();
-    Scope s = Scope::NewRootScope();
-    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    auto weights_min = ops::Placeholder(s.WithOpName("weights_min"), DT_FLOAT);
-    auto weights_max = ops::Placeholder(s.WithOpName("weights_max"), DT_FLOAT);
-    auto quantize = ops::QuantizeAndDequantizeV2(
-        s.WithOpName("my_quantize"), input, weights_min, weights_max);
-    const NodeDef& node_def = quantize.operation.node()->def();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestTensor("weights_min", {1});
-    AddTestTensor("weights_max", {1});
-    RunConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Min and max inputs for QuantizeAndDequantizeV2 must be weights not "
-        "tensors, at my_quantize");
-  }
-}
-
-TEST_F(OpConverterTest, ConvertRelu6) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_relu6", "Relu6", {});
-    RunConversion(node_def, error::INVALID_ARGUMENT,
-                  "Invalid number of inputs for Relu6, at my_relu6");
-  }
-
-  // Get the NodeDef for Relu6.
-  Scope s = Scope::NewRootScope();
-  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-  auto relu6 = ops::Relu6(s.WithOpName("my_relu6"), input);
-  const NodeDef& node_def = relu6.operation.node()->def();
-
-  {
-    // Clip tensor values and set quantization ranges, ok.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    RunConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_relu6", &output));
-    EXPECT_TRUE(output.is_tensor());
-    auto ranges = quantization_ranges();
-    EXPECT_EQ(ranges[output.tensor()], 6.0f);
-
-    std::vector<float> output_data(6);
-    BuildAndRun("input", {-100, -1, 0, 3, 5, 9}, "my_relu6", &output_data);
-    EXPECT_THAT(output_data, ElementsAre(0, 0, 0, 3, 5, 6));
-  }
-  {
-    // Input is weights, should fail.
-    Reset();
-    AddTestWeights<float>("input", {1, 2, 3}, {-100, -1, 0, 3, 5, 9});
-    RunConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Relu6 is only implemented for tensors, not weights, at my_relu6");
-  }
-}
-
 TEST_F(OpConverterTest, ConvertBiasAdd) {
   {
     // Input list is empty, should fail.
@@ -2202,6 +2040,77 @@ TEST_F(OpConverterTest, ConvertSquare) {
   // TODO(tmorris): Looks like there may be a bug with this layer for FP16
   // inputs. Disabling for now.
   // TestConvertSquare<DT_HALF>(this);
+}
+
+TEST_F(OpConverterTest, ConvertActivation) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_act", "Relu", {});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Relu expects one input, at my_act");
+  }
+  {
+    // Input is weights, should fail.
+    Reset();
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto relu = ops::Relu(s.WithOpName("my_act"), input);
+    const NodeDef& node_def = relu.operation.node()->def();
+    AddTestWeights<int32>("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Relu is only implemented for tensors, at my_act");
+  }
+
+  // Get nodedef for activation layer.
+  auto get_act_nodedef = [](string op_name) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    if (op_name == "Relu") {
+      auto act = ops::Relu(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
+    } else if (op_name == "Sigmoid") {
+      auto act = ops::Sigmoid(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
+    } else if (op_name == "Tanh") {
+      auto act = ops::Tanh(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
+    }
+    EXPECT_TRUE(false);
+    return NodeDef();
+  };
+  // Get expected output for activation layer.
+  auto get_act_output = [](string op_name, float input) -> float {
+    if (op_name == "Relu") {
+      return (input > 0.0f) ? input : 0.0f;
+    } else if (op_name == "Sigmoid") {
+      return 1.0f / (1.0f + std::exp(-input));
+    } else if (op_name == "Tanh") {
+      return std::tanh(input);
+    }
+    EXPECT_TRUE(false);
+    return 0;
+  };
+
+  // Ok.
+  for (string op_name : {"Relu", "Sigmoid", "Tanh"}) {
+    Reset();
+    NodeDef node_def = get_act_nodedef(op_name);
+    AddTestTensor("input", {1, 2, 3});
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_act", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
+
+    const std::vector<float> input_data = {-100, -2, -1, 0, 1, 100};
+    std::vector<float> output_data(6);
+    BuildAndRun<float>({{"input", input_data}}, "my_act", &output_data);
+    for (int i = 0; i < input_data.size(); i++) {
+      const float expected_output = get_act_output(op_name, input_data[i]);
+      EXPECT_FLOAT_EQ(output_data[i], expected_output);
+    }
+  }
 }
 
 }  // namespace convert

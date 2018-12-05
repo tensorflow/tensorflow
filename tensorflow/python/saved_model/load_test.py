@@ -19,11 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import tempfile
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.training.checkpointable import tracking
@@ -45,6 +47,37 @@ class LoadTest(test.TestCase):
     imported = load.load(save_dir)
     self.assertIs(imported.dep_three, imported.dep_two.dep)
     self.assertIsNot(imported.dep_one, imported.dep_two)
+
+  def _make_asset(self, contents):
+    filename = tempfile.mktemp(prefix=self.get_temp_dir())
+    with open(filename, "w") as f:
+      f.write(contents)
+    return filename
+
+  def test_assets_import(self):
+    file1 = self._make_asset("contents 1")
+    file2 = self._make_asset("contents 2")
+
+    root = tracking.Checkpointable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    root.asset1 = tracking.TrackableAsset(file1)
+    root.asset2 = tracking.TrackableAsset(file2)
+
+    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save(root, save_dir)
+
+    file_io.delete_file(file1)
+    file_io.delete_file(file2)
+    load_dir = os.path.join(self.get_temp_dir(), "load_dir")
+    file_io.rename(save_dir, load_dir)
+
+    imported = load.load(load_dir)
+    with open(imported.asset1.asset_path.numpy(), "r") as f:
+      self.assertEquals("contents 1", f.read())
+    with open(imported.asset2.asset_path.numpy(), "r") as f:
+      self.assertEquals("contents 2", f.read())
 
 
 if __name__ == "__main__":

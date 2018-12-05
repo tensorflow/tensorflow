@@ -447,22 +447,6 @@ class Converter {
   // building the engine.
   void MaybeApplyQuantizationRanges();
 
-  // This should be called on the inputs and outputs of any layer we create
-  // where we know that the quantization range does not change during that
-  // operation. (e.g. Reshape, Transpose, Identity, MaxPool).
-  void MarkQuantizationRangesAsInferrable(nvinfer1::ITensor* input,
-                                          nvinfer1::ITensor* output);
-
-  // This function should be called when we know the quantization range of a
-  // tensor, either from a quantize/dequantize node or when the output is a
-  // fixed range (e.g. SoftMax, Relu6, Sigmoid).
-  void ProvideQuantizationRange(nvinfer1::ITensor* tensor,
-                                float min_range, float max_range);
-
-  // Should be called when full TRT network has been constructed and before
-  // building the engine.
-  void ApplyQuantizationRanges(bool warn_missing_ranges);
-
   // Below are helper methods for op converters to add different layers to the
   // TRT network.
 

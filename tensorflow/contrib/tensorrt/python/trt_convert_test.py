@@ -188,9 +188,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([[[4.0]]] * batch_size, result)
     execute_engine_test_value = ("done" if expect_engine_is_run else "")
     execute_native_segment_test_value = ("" if expect_engine_is_run else "done")
-    self.assertEqual(execute_engine_test_value,
-                     trt_convert.get_test_value(
-                         "TRTEngineOp_0:ExecuteTrtEngine"))
+    self.assertEqual(
+        execute_engine_test_value,
+        trt_convert.get_test_value("TRTEngineOp_0:ExecuteTrtEngine"))
     self.assertEqual(
         execute_native_segment_test_value,
         trt_convert.get_test_value("TRTEngineOp_0:ExecuteNativeSegment"))

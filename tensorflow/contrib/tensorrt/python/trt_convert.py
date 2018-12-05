@@ -96,7 +96,7 @@ def get_tensorrt_rewriter_config(rewriter_config=None,
       use this list to determine the batch sizes of the cached engines, instead
       of making the decision on the fly. This is useful when we know the most
       common batch size(s) the application is going to generate.
-    use_calibration: this argument is ignored if precision_mode is not INT8. if
+    use_calibration: this argument is ignored if precision_mode is not INT8. If
       set to True, a calibration graph will be created to calibrate the missing
       ranges. The calibration graph must be converted to an inference graph
       using calib_graph_to_infer_graph() after running calibration. if set to
@@ -196,7 +196,7 @@ def create_inference_graph(input_graph_def,
       use this list to determine the batch sizes of the cached engines, instead
       of making the decision on the fly. This is useful when we know the most
       common batch size(s) the application is going to generate.
-    use_calibration: this argument is ignored if precision_mode is not INT8. if
+    use_calibration: this argument is ignored if precision_mode is not INT8. If
       set to True, a calibration graph will be created to calibrate the missing
       ranges. The calibration graph must be converted to an inference graph
       using calib_graph_to_infer_graph() after running calibration. if set to

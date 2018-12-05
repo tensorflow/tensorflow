@@ -62,13 +62,13 @@ class TensorForestTreePredictOp : public OpKernel {
     const int64 cost_per_traverse = 500;
     auto traverse = [this, &out, &dense_features, decision_tree_resource,
                      batch_size](int64 start, int64 end) {
-      CHECK_LE(start, end) << "Start exceeding End";
-      CHECK_LE(end, batch_size) << "End exceeding batch size";
+      DCHECK_LE(start, end) << "Start exceeding End";
+      DCHECK_LE(end, batch_size) << "End exceeding batch size";
       for (int example_id = start; example_id < end; ++example_id) {
         const int32 leaf_id =
             decision_tree_resource->TraverseTree(example_id, &dense_features);
         set_output_value(example_id, leaf_id, decision_tree_resource, &out);
-      };
+      }
     };
     Shard(num_threads, worker_threads->workers, batch_size, cost_per_traverse,
           traverse);
@@ -81,7 +81,7 @@ class TensorForestTreePredictOp : public OpKernel {
       const float logit = decision_tree_resource->get_prediction(leaf_id, j);
       (*out)(example_id, j) = logit;
     }
-  };
+  }
 
  private:
   int32 logits_dimension_;

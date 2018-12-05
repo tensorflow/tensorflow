@@ -517,20 +517,38 @@ def _fill_meta_graph_def(meta_graph_def, obj, signature_functions,
   return asset_info.asset_filename_map
 
 
-def _write_object_graph(obj, export_dir):
-  """Save a SavedObjectGraph proto for `obj`."""
+def _write_object_graph(root, export_dir, asset_filename_map):
+  """Save a SavedObjectGraph proto for `root`."""
   # SavedObjectGraph is similar to the CheckpointableObjectGraph proto in the
   # checkpoint. It will eventually go into the SavedModel.
-  object_proto = util.make_object_graph_without_attributes(
-      obj, proto=saved_object_graph_pb2.SavedObjectGraph())
+  proto = saved_object_graph_pb2.SavedObjectGraph()
+
+  checkpointable_objects, node_ids, slot_variables = util.find_objects(root)
+  util.fill_object_graph_proto(checkpointable_objects, node_ids, slot_variables,
+                               proto)
+
+  # Build map from original filename to relative asset filename.
+  filename_map = {v: k for k, v in asset_filename_map.items()}
+
+  for obj, obj_proto in zip(checkpointable_objects, proto.nodes):
+    _write_object_proto(obj, obj_proto, filename_map)
+
   extra_asset_dir = os.path.join(
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.EXTRA_ASSETS_DIRECTORY))
   file_io.recursive_create_dir(extra_asset_dir)
   object_graph_filename = os.path.join(
       extra_asset_dir, compat.as_bytes("object_graph.pb"))
-  file_io.write_string_to_file(object_graph_filename,
-                               object_proto.SerializeToString())
+  file_io.write_string_to_file(object_graph_filename, proto.SerializeToString())
+
+
+def _write_object_proto(obj, proto, filename_map):
+  """Saves an object into SavedObject proto."""
+  if isinstance(obj, tracking.TrackableAsset):
+    proto.asset.SetInParent()
+    proto.asset.relative_filename = filename_map[obj.asset_path.numpy()]
+  else:
+    proto.user_object.SetInParent()
 
 
 @tf_export("saved_model.save", v1=["saved_model.experimental.save"])
@@ -711,4 +729,4 @@ def save(obj, export_dir, signatures=None):
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
   file_io.write_string_to_file(path, saved_model.SerializeToString())
-  _write_object_graph(obj, export_dir)
+  _write_object_graph(obj, export_dir, asset_filename_map)

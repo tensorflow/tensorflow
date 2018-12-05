@@ -469,6 +469,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.string",
         "tf.lite.constants.QUANTIZED_UINT8":
             "tf.uint8",
+        "tf.arg_max":
+            "tf.argmax",
+        "tf.arg_min":
+            "tf.argmin",
     }
     # pylint: enable=line-too-long
 
@@ -498,9 +502,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "data_format"
         ],
         "tf.nn.crelu": ["features", "name", "axis"],
+        "tf.nn.weighted_moments": [
+            "x", "axes", "frequency_weights", "name", "keep_dims"
+        ],
         "tf.nn.pool": [
             "input", "window_shape", "pooling_type", "padding", "dilation_rate",
             "strides", "name", "data_format"
+        ],
+        "tf.nn.separable_conv2d": [
+            "input", "depthwise_filter", "pointwise_filter", "strides",
+            "padding", "rate", "name", "data_format"
         ],
         "tf.nn.depthwise_conv2d": [
             "input", "filter", "strides", "padding", "rate", "name",

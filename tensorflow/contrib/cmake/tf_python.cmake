@@ -424,8 +424,6 @@ GENERATE_PYTHON_OP_LIB("contrib_bigquery_reader_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cloud/python/ops/gen_bigquery_reader_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_gcs_config_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cloud/python/ops/gen_gcs_config_ops.py)
-GENERATE_PYTHON_OP_LIB("stateless_random_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/stateless/gen_stateless_random_ops.py)
 GENERATE_PYTHON_OP_LIB("debug_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/debug/ops/gen_debug_ops.py)
 
@@ -829,10 +827,10 @@ add_dependencies(tf_python_api tf_python_ops)
 ########################################################
 
 # Parse tensorflow/python/tools/api/generator/BUILD to get list of generated files.
-FILE(READ ${tensorflow_source_dir}/tensorflow/python/tools/api/generator/api_gen.bzl api_generator_BUILD_text)
-STRING(REGEX MATCH "# BEGIN GENERATED ESTIMATOR FILES.*# END GENERATED ESTIMATOR FILES" api_init_files_text ${api_generator_BUILD_text})
-string(REPLACE "# BEGIN GENERATED ESTIMATOR FILES" "" api_init_files_text ${api_init_files_text})
-string(REPLACE "# END GENERATED ESTIMATOR FILES" "" api_init_files_text ${api_init_files_text})
+FILE(READ ${tensorflow_source_dir}/tensorflow/python/tools/api/generator/api_init_files.bzl api_generator_BUILD_text)
+STRING(REGEX MATCH "# BEGIN GENERATED FILES.*# END GENERATED FILES" api_init_files_text ${api_generator_BUILD_text})
+string(REPLACE "# BEGIN GENERATED FILES" "" api_init_files_text ${api_init_files_text})
+string(REPLACE "# END GENERATED FILES" "" api_init_files_text ${api_init_files_text})
 string(REPLACE "," ";" api_init_files_list ${api_init_files_text})
 
 set(api_init_files "")

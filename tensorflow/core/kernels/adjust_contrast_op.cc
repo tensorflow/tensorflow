@@ -326,7 +326,8 @@ class AdjustContrastOpv2<CPUDevice> : public AdjustContrastOpV2Base {
     // much better vectorinizations in the copy.
     for (int64 i = 0; i < batch; i++) {
       // Copy over the inputs into outputs in this batch. Effectively:
-      // outputs(i, :, k) = inputs(i, k). An example of how this algorithm works:
+      // outputs(i, :, k) = inputs(i, k). An example of how this algorithm
+      // works:
       //
       //    x = float[1, 3], y = float[2048, 3]
       //    round 0

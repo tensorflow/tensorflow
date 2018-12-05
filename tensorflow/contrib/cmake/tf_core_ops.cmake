@@ -28,6 +28,7 @@ set(tf_op_lib_names
     "dataset_ops"
     "decode_proto_ops"
     "encode_proto_ops"
+    "function_ops"
     "functional_ops"
     "image_ops"
     "io_ops"

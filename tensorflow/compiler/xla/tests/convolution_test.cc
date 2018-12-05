@@ -1957,14 +1957,14 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF64ForwardReversed)) {
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF32ForwardReversed)) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
 ENTRY Test {
-  %arg0 = f64[3,56,56,16] parameter(0)
-  %arg1 = f64[3,3,3,64] parameter(1)
-  ROOT %conv = f64[54,54,16,64] convolution(%arg0, %arg1), window={size=3x3 rhs_reversal=1x1}, dim_labels=f01b_i01o->01bf
+  %arg0 = f32[3,56,56,16] parameter(0)
+  %arg1 = f32[3,3,3,32] parameter(1)
+  ROOT %conv = f32[54,54,16,32] convolution(%arg0, %arg1), window={size=3x3 rhs_reversal=1x1}, dim_labels=f01b_i01o->01bf
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
