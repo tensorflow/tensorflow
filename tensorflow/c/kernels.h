@@ -103,6 +103,14 @@ TF_CAPI_EXPORT extern int TF_NumOutputs(TF_OpKernelContext* ctx);
 TF_CAPI_EXPORT extern void TF_GetInput(TF_OpKernelContext* ctx, int i,
                                        TF_Tensor** tensor, TF_Status* status);
 
+// Sets the ith output of ctx to tensor. If TF_GetCode(status) is anything but
+// TF_OK, ctx is left unmodified.
+//
+// If i < 0 or i >= TF_NumOutputs(ctx), *status is set to TF_OUT_OF_RANGE.
+TF_CAPI_EXPORT extern void TF_SetOutput(TF_OpKernelContext* ctx, int i,
+                                        const TF_Tensor* tensor,
+                                        TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
