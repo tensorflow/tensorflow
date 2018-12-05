@@ -133,7 +133,7 @@ bool ArCrsCombiner::TupleElementsComputeSameValue(
 /* static */
 bool ArCrsCombiner::TestInstructionsComputeSameValue(HloInstruction* i1,
                                                      HloInstruction* i2) {
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/1);
   auto module = i1->parent()->parent();
   CHECK_EQ(module, i2->parent()->parent());
   combiner.call_graph_ = CallGraph::Build(module);
@@ -242,26 +242,22 @@ StatusOr<bool> ArCrsCombiner::RewriteGraph() {
       HloInstruction* other_summand = (add->operands()[0] == convert)
                                           ? add->operands()[1]
                                           : add->operands()[0];
-      // Remove the AllReduce and replace the CRS with:
-      // AllReduce - (other_summand * (num_spatial_partitions_ - 1))
+      // Remove the AllReduce and replace the CRS with an all-core AllReduce,
+      // then subtract:
+      // other_summand * num_replicas_ * (num_spatial_partitions_ - 1)
       TF_CHECK_OK(
           all_reduce->ReplaceAllUsesWith(all_reduce->mutable_operand(0)));
       crs->set_all_reduce_id(all_reduce->all_reduce_id());
       auto new_shape = crs->shape();
-      HloInstruction* to_subtract;
-      if (num_spatial_partitions_ == 2) {
-        to_subtract = other_summand;
-      } else {
-        Literal partitions_minus_1_lit = Literal(new_shape);
-        partitions_minus_1_lit.PopulateWithValue<float>(
-            num_spatial_partitions_ - 1);
-        auto partitions_minus_1_const = parent_computation->AddInstruction(
-            HloInstruction::CreateConstant(partitions_minus_1_lit.Clone()));
-        to_subtract =
-            parent_computation->AddInstruction(HloInstruction::CreateBinary(
-                new_shape, HloOpcode::kMultiply, other_summand,
-                partitions_minus_1_const));
-      }
+      Literal lit(new_shape);
+      lit.PopulateWithValue<float>(num_replicas_ *
+                                   (num_spatial_partitions_ - 1));
+      auto partitions_minus_1_const = parent_computation->AddInstruction(
+          HloInstruction::CreateConstant(lit.Clone()));
+      auto to_subtract =
+          parent_computation->AddInstruction(HloInstruction::CreateBinary(
+              new_shape, HloOpcode::kMultiply, other_summand,
+              partitions_minus_1_const));
       auto sub =
           parent_computation->AddInstruction(HloInstruction::CreateBinary(
               new_shape, HloOpcode::kSubtract, crs, to_subtract));
