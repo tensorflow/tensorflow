@@ -2126,8 +2126,8 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
   Scope s = Scope::NewRootScope();
   auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
   auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
-  auto expanddims = ops::ExpandDims(s.WithOpName("my_expanddims"), input, 
-                                    weights);
+  auto expanddims =
+      ops::ExpandDims(s.WithOpName("my_expanddims"), input, weights);
   const NodeDef& node_def = expanddims.operation.node()->def();
 
   {
@@ -2153,7 +2153,8 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     Reset();
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<int32>("weights", {1}, {0});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
         "Modifying batch dimension is not supported for ExpandDims, at "
         "my_expanddims");
   }
@@ -2163,7 +2164,8 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     AddTestTensor("input", {1, 2, 3});
     // Input is rank 4 (batch dim included)
     AddTestWeights<int32>("weights", {1}, {-5});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
         "Modifying batch dimension is not supported for ExpandDims, at "
         "my_expanddims");
   }
@@ -2173,7 +2175,8 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     AddTestTensor("input", {1, 2, 3});
     // Input is rank 4 (batch dim included)
     AddTestWeights<int32>("weights", {1}, {5});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
         "Axis for ExpandDims is invalid, must be in the range "
         "[-rank(input) - 1, rank(input)], at my_expanddims");
   }
@@ -2183,14 +2186,14 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     AddTestTensor("input", {1, 2, 3});
     // Input is rank 4 (batch dim included)
     AddTestWeights<int32>("weights", {1}, {-6});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
         "Axis for ExpandDims is invalid, must be in the range "
         "[-rank(input) - 1, rank(input)], at my_expanddims");
   }
 
   struct TestParams {
-    TestParams(const std::vector<int>& input_dims,
-               int axis,
+    TestParams(const std::vector<int>& input_dims, int axis,
                const std::vector<int>& expected_output_dims)
         : input_dims(input_dims),
           axis(axis),
@@ -2203,14 +2206,10 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
   // Ok.
   const int kExpandDimsOKCases = 8;
   TestParams ok_params[kExpandDimsOKCases] = {
-      TestParams{{2, 3}, 1, {1, 2, 3}},
-      TestParams{{2, 3}, -3, {1, 2, 3}},
-      TestParams{{2, 3}, 3, {2, 3, 1}},
-      TestParams{{2, 3}, -1, {2, 3, 1}},
-      TestParams{{2, 3}, 2, {2, 1, 3}},
-      TestParams{{2, 3}, -2, {2, 1, 3}},
-      TestParams{{6}, 1, {1, 6}},
-      TestParams{{6}, -1, {6, 1}},
+      TestParams{{2, 3}, 1, {1, 2, 3}}, TestParams{{2, 3}, -3, {1, 2, 3}},
+      TestParams{{2, 3}, 3, {2, 3, 1}}, TestParams{{2, 3}, -1, {2, 3, 1}},
+      TestParams{{2, 3}, 2, {2, 1, 3}}, TestParams{{2, 3}, -2, {2, 1, 3}},
+      TestParams{{6}, 1, {1, 6}},       TestParams{{6}, -1, {6, 1}},
   };
   for (int i = 0; i < kExpandDimsOKCases; ++i) {
     Reset();
@@ -2234,9 +2233,8 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
   {
     // Input list is empty, should fail.
     NodeDef node_def = MakeNodeDef("my_squeeze", "Squeeze", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "One input expected for Squeeze, at my_squeeze");
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "One input expected for Squeeze, at my_squeeze");
   }
   {
     // No attrs, should fail.
@@ -2257,8 +2255,8 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     ops::Squeeze::Attrs squeeze_attrs;
     squeeze_attrs.axis_ = gtl::ArraySlice<int>(axis);
-    auto squeeze = ops::Squeeze(s.WithOpName("my_squeeze"), input,
-                                squeeze_attrs);
+    auto squeeze =
+        ops::Squeeze(s.WithOpName("my_squeeze"), input, squeeze_attrs);
     return squeeze.operation.node()->def();
   };
 
@@ -2276,18 +2274,16 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     Reset();
     NodeDef node_def = get_squeeze_nodedef({0});
     AddTestTensor("input", {1, 2, 3});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Cannot squeeze batch dimension, at my_squeeze");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Cannot squeeze batch dimension, at my_squeeze");
   }
   {
     // Squeeze batch dim via negative axis, should fail.
     Reset();
     NodeDef node_def = get_squeeze_nodedef({-4});
     AddTestTensor("input", {1, 2, 3});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Cannot squeeze batch dimension, at my_squeeze");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Cannot squeeze batch dimension, at my_squeeze");
   }
   {
     // Squeeze >= rank(input), should fail.
@@ -2311,8 +2307,7 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
   }
 
   struct TestParams {
-    TestParams(const std::vector<int>& input_dims,
-               const std::vector<int>& axis,
+    TestParams(const std::vector<int>& input_dims, const std::vector<int>& axis,
                const std::vector<int>& expected_output_dims)
         : input_dims(input_dims),
           axis(axis),

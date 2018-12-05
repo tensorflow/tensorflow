@@ -1894,11 +1894,11 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
     return tensorflow::errors::InvalidArgument(
         "Two inputs expected for ExpandDims, at ", node_def.name());
   }
-  if (inputs.at(0).is_weights() ) {
+  if (inputs.at(0).is_weights()) {
     return tensorflow::errors::Unimplemented(
         "ExpandDims expects tensor for input, at ", node_def.name());
   }
-  if (!inputs.at(1).is_weights() ) {
+  if (!inputs.at(1).is_weights()) {
     return tensorflow::errors::InvalidArgument(
         "ExpandDims expects weights for axis, at ", node_def.name());
   }
@@ -1937,11 +1937,11 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
   if (params->validation_only) return Status::OK();
 
   // ExpandDims: Insert new dim of size 1.
-  input_dims.insert(input_dims.begin()+axis, 1);
+  input_dims.insert(input_dims.begin() + axis, 1);
   // Reshape tensor.
   const bool ignore_first_dim = input_tensor.is_tensor();
-  nvinfer1::Dims new_dims = TensorShapeArrayToTrtDims(input_dims,
-                                                      ignore_first_dim);
+  nvinfer1::Dims new_dims =
+      TensorShapeArrayToTrtDims(input_dims, ignore_first_dim);
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, &output_tensor));
@@ -1957,7 +1957,7 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
     return tensorflow::errors::InvalidArgument(
         "One input expected for Squeeze, at ", node_def.name());
   }
-  if (inputs.at(0).is_weights() ) {
+  if (inputs.at(0).is_weights()) {
     return tensorflow::errors::Unimplemented(
         "Squeeze expects tensor for input, at ", node_def.name());
   }
@@ -2002,14 +2002,14 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
     input_dims[axis] = 0;
   }
   if (params->validation_only) return Status::OK();
-  
+
   // Remove all dims which are equal to 0.
   input_dims.erase(std::remove(input_dims.begin(), input_dims.end(), 0),
                    input_dims.end());
-    // Reshape tensor.
+  // Reshape tensor.
   const bool ignore_first_dim = input_tensor.is_tensor();
-  nvinfer1::Dims new_dims = TensorShapeArrayToTrtDims(input_dims,
-                                                      ignore_first_dim);
+  nvinfer1::Dims new_dims =
+      TensorShapeArrayToTrtDims(input_dims, ignore_first_dim);
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, &output_tensor));
