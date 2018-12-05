@@ -18,7 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import enum  # pylint: disable=g-bad-import-order
-
+import functools
+import os
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -58,6 +59,21 @@ def _make_getter(captured_getter, captured_previous):
   return getter
 
 
+def _has_cycle(op, path):
+  """Detect cycles in the dependencies of `initial_value`."""
+  if op.name in path:
+    return True
+  path.add(op.name)
+  for op_input in op.inputs:
+    if _has_cycle(op_input.op, path):
+      return True
+  for op_control_input in op.control_inputs:
+    if _has_cycle(op_control_input, path):
+      return True
+  path.remove(op.name)
+  return False
+
+
 @tf_export("VariableSynchronization")
 class VariableSynchronization(enum.Enum):
   """Indicates when a distributed variable will be synced.
@@ -79,28 +95,42 @@ class VariableSynchronization(enum.Enum):
   ON_READ = 3
 
 
-@tf_export("VariableAggregation")
-class VariableAggregation(enum.Enum):
+@tf_export("VariableAggregation", v1=[])
+class VariableAggregationV2(enum.Enum):
   """Indicates how a distributed variable will be aggregated.
 
   `tf.contrib.distribute.DistributionStrategy` distributes a model by making
-  multiple copies (called "towers") acting data-parallel on different elements
+  multiple copies (called "replicas") acting data-parallel on different elements
   of the input batch. When performing some variable-update operation, say
   `var.assign_add(x)`, in a model, we need to resolve how to combine the
-  different values for `x` computed in the different towers.
+  different values for `x` computed in the different replicas.
 
   * `NONE`: This is the default, giving an error if you use a
-    variable-update operation with multiple towers.
-  * `SUM`: Add the updates across towers.
-  * `MEAN`: Take the arithmetic mean ("average") of the updates across towers.
-  * `ONLY_FIRST_TOWER`: This is for when every tower is performing the same
+    variable-update operation with multiple replicas.
+  * `SUM`: Add the updates across replicas.
+  * `MEAN`: Take the arithmetic mean ("average") of the updates across replicas.
+  * `ONLY_FIRST_REPLICA`: This is for when every replica is performing the same
     update, but we only want to perform the update once. Used, e.g., for the
     global step counter.
   """
   NONE = 0
   SUM = 1
   MEAN = 2
-  ONLY_FIRST_TOWER = 3
+  ONLY_FIRST_REPLICA = 3
+
+
+@tf_export(v1=["VariableAggregation"])
+class VariableAggregation(enum.Enum):
+  NONE = 0
+  SUM = 1
+  MEAN = 2
+  ONLY_FIRST_REPLICA = 3
+  ONLY_FIRST_TOWER = 3  # DEPRECATED
+
+
+VariableAggregation.__doc__ = (
+    VariableAggregationV2.__doc__ +
+    "* `ONLY_FIRST_TOWER`: Deprecated alias for `ONLY_FIRST_REPLICA`.\n  ")
 
 
 class VariableMetaclass(type):
@@ -187,7 +217,7 @@ class VariableMetaclass(type):
       return super(VariableMetaclass, cls).__call__(*args, **kwargs)
 
 
-@tf_export(v2=["Variable"])
+@tf_export("Variable", v1=[])
 class Variable(six.with_metaclass(VariableMetaclass,
                                   checkpointable.CheckpointableBase)):
   """See the [Variables Guide](https://tensorflow.org/guide/variables).
@@ -607,37 +637,84 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
+  def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `IndexedSlices` to this variable batch-wise.
+
+    Analogous to `batch_gather`. This assumes that this variable and the
+    sparse_delta IndexedSlices have a series of leading dimensions that are the
+    same for all of them, and the updates are performed on the last dimension of
+    indices. In other words, the dimensions should be the following:
+
+    `num_prefix_dims = sparse_delta.indices.ndims - 1`
+    `batch_dim = num_prefix_dims + 1`
+    `sparse_delta.updates.shape = sparse_delta.indices.shape + var.shape[
+         batch_dim:]`
+
+    where
+
+    `sparse_delta.updates.shape[:num_prefix_dims]`
+    `== sparse_delta.indices.shape[:num_prefix_dims]`
+    `== var.shape[:num_prefix_dims]`
+
+    And the operation performed can be expressed as:
+
+    `var[i_1, ..., i_n,
+         sparse_delta.indices[i_1, ..., i_n, j]] = sparse_delta.updates[
+            i_1, ..., i_n, j]`
+
+    When sparse_delta.indices is a 1D tensor, this operation is equivalent to
+    `scatter_update`.
+
+    To avoid this operation one can looping over the first `ndims` of the
+    variable and using `scatter_update` on the subtensors that result of slicing
+    the first dimension. This is a valid option for `ndims = 1`, but less
+    efficient than this implementation.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
   def scatter_nd_sub(self, indices, updates, name=None):
     """Applies sparse subtraction to individual values or slices in a Variable.
 
-    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+    Assuming the variable has rank `P` and `indices` is a `Tensor` of rank `Q`.
 
-    `indices` must be integer tensor, containing indices into `ref`.
+    `indices` must be integer tensor, containing indices into self.
     It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
 
     The innermost dimension of `indices` (with length `K`) corresponds to
     indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-    dimension of `ref`.
+    dimension of self.
 
     `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
     ```
-    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    [d_0, ..., d_{Q-2}, self.shape[K], ..., self.shape[P-1]].
     ```
 
     For example, say we want to add 4 scattered elements to a rank-1 tensor to
     8 elements. In Python, that update would look like this:
 
     ```python
-        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        op = ref.scatter_nd_sub(indices, updates)
+        op = v.scatter_nd_sub(indices, updates)
         with tf.Session() as sess:
           print sess.run(op)
     ```
 
-    The resulting update to ref would look like this:
+    The resulting update to v would look like this:
 
         [1, -9, 3, -6, -6, 6, 7, -4]
 
@@ -661,34 +738,34 @@ class Variable(six.with_metaclass(VariableMetaclass,
   def scatter_nd_add(self, indices, updates, name=None):
     """Applies sparse addition to individual values or slices in a Variable.
 
-    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+    The Variable has rank `P` and `indices` is a `Tensor` of rank `Q`.
 
-    `indices` must be integer tensor, containing indices into `ref`.
+    `indices` must be integer tensor, containing indices into self.
     It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
 
     The innermost dimension of `indices` (with length `K`) corresponds to
     indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-    dimension of `ref`.
+    dimension of self.
 
     `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
     ```
-    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    [d_0, ..., d_{Q-2}, self.shape[K], ..., self.shape[P-1]].
     ```
 
     For example, say we want to add 4 scattered elements to a rank-1 tensor to
     8 elements. In Python, that update would look like this:
 
     ```python
-        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        add = ref.scatter_nd_add(indices, updates)
+        add = v.scatter_nd_add(indices, updates)
         with tf.Session() as sess:
           print sess.run(add)
     ```
 
-    The resulting update to ref would look like this:
+    The resulting update to v would look like this:
 
         [1, 13, 3, 14, 14, 6, 7, 20]
 
@@ -712,34 +789,34 @@ class Variable(six.with_metaclass(VariableMetaclass,
   def scatter_nd_update(self, indices, updates, name=None):
     """Applies sparse assignment to individual values or slices in a Variable.
 
-    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+    The Variable has rank `P` and `indices` is a `Tensor` of rank `Q`.
 
-    `indices` must be integer tensor, containing indices into `ref`.
+    `indices` must be integer tensor, containing indices into self.
     It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
 
     The innermost dimension of `indices` (with length `K`) corresponds to
     indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-    dimension of `ref`.
+    dimension of self.
 
     `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
     ```
-    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    [d_0, ..., d_{Q-2}, self.shape[K], ..., self.shape[P-1]].
     ```
 
     For example, say we want to add 4 scattered elements to a rank-1 tensor to
     8 elements. In Python, that update would look like this:
 
     ```python
-        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        op = ref.scatter_nd_assign(indices, updates)
+        op = v.scatter_nd_assign(indices, updates)
         with tf.Session() as sess:
           print sess.run(op)
     ```
 
-    The resulting update to ref would look like this:
+    The resulting update to v would look like this:
 
         [1, 11, 3, 10, 9, 6, 7, 12]
 
@@ -831,18 +908,18 @@ class Variable(six.with_metaclass(VariableMetaclass,
     else:
       return v.value()
 
-  @staticmethod
-  def _OverloadAllOperators():  # pylint: disable=invalid-name
+  @classmethod
+  def _OverloadAllOperators(cls):  # pylint: disable=invalid-name
     """Register overloads for all operators."""
     for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
-      Variable._OverloadOperator(operator)
+      cls._OverloadOperator(operator)
     # For slicing, bind getitem differently than a tensor (use SliceHelperVar
     # instead)
     # pylint: disable=protected-access
-    setattr(Variable, "__getitem__", array_ops._SliceHelperVar)
+    setattr(cls, "__getitem__", array_ops._SliceHelperVar)
 
-  @staticmethod
-  def _OverloadOperator(operator):  # pylint: disable=invalid-name
+  @classmethod
+  def _OverloadOperator(cls, operator):  # pylint: disable=invalid-name
     """Defer an operator overload to `ops.Tensor`.
 
     We pull the operator out of ops.Tensor dynamically to avoid ordering issues.
@@ -850,17 +927,26 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Args:
       operator: string. The operator name.
     """
+    tensor_oper = getattr(ops.Tensor, operator)
 
-    def _run_op(a, *args):
+    def _run_op(a, *args, **kwargs):
       # pylint: disable=protected-access
-      return getattr(ops.Tensor, operator)(a._AsTensor(), *args)
-    # Propagate __doc__ to wrapper
-    try:
-      _run_op.__doc__ = getattr(ops.Tensor, operator).__doc__
-    except AttributeError:
-      pass
+      return tensor_oper(a._AsTensor(), *args, **kwargs)
 
-    setattr(Variable, operator, _run_op)
+    functools.update_wrapper(_run_op, tensor_oper)
+    setattr(cls, operator, _run_op)
+
+  def __iter__(self):
+    """Dummy method to prevent iteration. Do not call.
+
+    NOTE(mrry): If we register __getitem__ as an overloaded operator,
+    Python will valiantly attempt to iterate over the variable's Tensor from 0
+    to infinity.  Declaring this method prevents this unintended behavior.
+
+    Raises:
+      TypeError: when invoked.
+    """
+    raise TypeError("'Variable' object is not iterable.")
 
   # NOTE(mrry): This enables the Variable's overloaded "right" binary
   # operators to run when the left operand is an ndarray, because it
@@ -1015,27 +1101,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
         return save_slice_info_def
       else:
         return None
-
-  def __iadd__(self, other):
-    raise NotImplementedError
-
-  def __isub__(self, other):
-    raise NotImplementedError
-
-  def __imul__(self, other):
-    raise NotImplementedError
-
-  def __idiv__(self, other):
-    raise NotImplementedError
-
-  def __itruediv__(self, other):
-    raise NotImplementedError
-
-  def __irealdiv__(self, other):
-    raise NotImplementedError
-
-  def __ipow__(self, other):
-    raise NotImplementedError
 
 
 @tf_export(v1=["Variable"])
@@ -1547,18 +1612,6 @@ class RefVariable(VariableV1):
     """
     return self._snapshot
 
-  def __iter__(self):
-    """Dummy method to prevent iteration. Do not call.
-
-    NOTE(mrry): If we register __getitem__ as an overloaded operator,
-    Python will valiantly attempt to iterate over the variable's Tensor from 0
-    to infinity.  Declaring this method prevents this unintended behavior.
-
-    Raises:
-      TypeError: when invoked.
-    """
-    raise TypeError("'Variable' object is not iterable.")
-
   def value(self):
     """Returns the last snapshot of this variable.
 
@@ -1836,6 +1889,55 @@ class RefVariable(VariableV1):
         use_locking=use_locking,
         name=name)
 
+  def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `IndexedSlices` to this variable batch-wise.
+
+    Analogous to `batch_gather`. This assumes that this variable and the
+    sparse_delta IndexedSlices have a series of leading dimensions that are the
+    same for all of them, and the updates are performed on the last dimension of
+    indices. In other words, the dimensions should be the following:
+
+    `num_prefix_dims = sparse_delta.indices.ndims - 1`
+    `batch_dim = num_prefix_dims + 1`
+    `sparse_delta.updates.shape = sparse_delta.indices.shape + var.shape[
+         batch_dim:]`
+
+    where
+
+    `sparse_delta.updates.shape[:num_prefix_dims]`
+    `== sparse_delta.indices.shape[:num_prefix_dims]`
+    `== var.shape[:num_prefix_dims]`
+
+    And the operation performed can be expressed as:
+
+    `var[i_1, ..., i_n,
+         sparse_delta.indices[i_1, ..., i_n, j]] = sparse_delta.updates[
+            i_1, ..., i_n, j]`
+
+    When sparse_delta.indices is a 1D tensor, this operation is equivalent to
+    `scatter_update`.
+
+    To avoid this operation one can looping over the first `ndims` of the
+    variable and using `scatter_update` on the subtensors that result of slicing
+    the first dimension. This is a valid option for `ndims = 1`, but less
+    efficient than this implementation.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return state_ops.batch_scatter_update(
+        self, sparse_delta.indices, sparse_delta.values,
+        use_locking=use_locking, name=name)
+
   def scatter_nd_sub(self, indices, updates, name=None):
     """Applies sparse subtraction to individual values or slices in a Variable.
 
@@ -2094,37 +2196,6 @@ class RefVariable(VariableV1):
     else:
       return v.value()
 
-  @staticmethod
-  def _OverloadAllOperators():  # pylint: disable=invalid-name
-    """Register overloads for all operators."""
-    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
-      Variable._OverloadOperator(operator)  # pylint: disable=protected-access
-    # For slicing, bind getitem differently than a tensor (use SliceHelperVar
-    # instead)
-    # pylint: disable=protected-access
-    setattr(Variable, "__getitem__", array_ops._SliceHelperVar)
-
-  @staticmethod
-  def _OverloadOperator(operator):  # pylint: disable=invalid-name
-    """Defer an operator overload to `ops.Tensor`.
-
-    We pull the operator out of ops.Tensor dynamically to avoid ordering issues.
-
-    Args:
-      operator: string. The operator name.
-    """
-
-    def _run_op(a, *args):
-      # pylint: disable=protected-access
-      return getattr(ops.Tensor, operator)(a._AsTensor(), *args)
-    # Propagate __doc__ to wrapper
-    try:
-      _run_op.__doc__ = getattr(ops.Tensor, operator).__doc__
-    except AttributeError:
-      pass
-
-    setattr(Variable, operator, _run_op)
-
   def _gather_saveables_for_checkpoint(self):
     """For implementing `Checkpointable`. This object is saveable on its own."""
     return {checkpointable.VARIABLE_VALUE_KEY: self}
@@ -2158,20 +2229,7 @@ class RefVariable(VariableV1):
       raise TypeError("initial_value needs to be a Tensor: %s" % initial_value)
 
     # Don't modify initial_value if it contains any cyclic dependencies.
-    def has_cycle(op, path):
-      """Detect cycles in the dependencies of `initial_value`."""
-      if op.name in path:
-        return True
-      path.add(op.name)
-      for op_input in op.inputs:
-        if has_cycle(op_input.op, path):
-          return True
-      for op_control_input in op.control_inputs:
-        if has_cycle(op_control_input, path):
-          return True
-      path.remove(op.name)
-      return False
-    if has_cycle(initial_value.op, path=set()):
+    if _has_cycle(initial_value.op, path=set()):
       return initial_value
 
     return self._safe_initial_value_from_tensor(initial_value, op_cache={})
@@ -2441,34 +2499,6 @@ class PartitionedVariable(object):
   @end_compatibility
   """
 
-  class PartitionedVariableIterator(object):
-    """An iterator that allows accessing the underlying `Variable` objects.
-
-    This iterator is necessary to control order of access when Variables
-    are not partitioned in a standard way along a single axis.
-
-    Allows e.g. `list(partitioned_variable)` to return a proper list.
-    """
-
-    def __init__(self, partitioned_variable):
-      self._ix = 0
-      self._partitioned_variable = partitioned_variable
-
-    def __iter__(self):
-      return self
-
-    def __next__(self):  # For python3 compatibility.
-      return self.next()
-
-    def next(self):
-      # pylint: disable=protected-access
-      if self._ix >= len(self._partitioned_variable._variable_list):
-        raise StopIteration()
-      variable = self._partitioned_variable._variable_list[self._ix]
-      # pylint: enable=protected-access
-      self._ix += 1
-      return variable
-
   def __init__(self, name, shape, dtype, variable_list, partitions):
     """Creates a new partitioned variable wrapper.
 
@@ -2488,31 +2518,27 @@ class PartitionedVariable(object):
         `partitions` is not a list.
       ValueError: If `variable_list` is empty, or the `Variable` shape
         information does not match `shape`, or `partitions` has invalid values.
-      RuntimeError: If eager execution is enabled
     """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          "tf.PartitionedVariable not supported with eager execution enabled.")
     if not isinstance(variable_list, (list, tuple)):
       raise TypeError(
           "variable_list is not a list or tuple: %s" % variable_list)
     if not isinstance(partitions, (list, tuple)):
       raise TypeError("partitions is not a list or tuple: %s" % partitions)
-    if not all([p >= 1 for p in partitions]):
+    if not all(p >= 1 for p in partitions):
       raise ValueError("partition values must be positive: %s" % partitions)
     if not variable_list:
       raise ValueError("variable_list may not be empty")
     # pylint: disable=protected-access
     for v in variable_list:
       # Sort the variable_list lexicographically according to var offset value.
-      if not all([v._get_save_slice_info() is not None for v in variable_list]):
+      if not all(v._get_save_slice_info() is not None for v in variable_list):
         raise ValueError(
             "All variables must have a save_slice_info available: %s"
             % [v.name for v in variable_list])
       if len(shape) != len(partitions):
         raise ValueError("len(shape) != len(partitions): %s vs. %s"
                          % (shape, partitions))
-      if not all([v._get_save_slice_info().full_shape == shape]):
+      if v._get_save_slice_info().full_shape != shape:
         raise ValueError(
             "All variables' full shapes must match shape: %s; "
             "but full shapes were: %s"
@@ -2529,7 +2555,7 @@ class PartitionedVariable(object):
 
   def __iter__(self):
     """Return an iterable for accessing the underlying partition Variables."""
-    return self.PartitionedVariableIterator(self)
+    return iter(self._variable_list)
 
   def __len__(self):
     num_partition_axes = len(self._partition_axes())
@@ -2539,7 +2565,7 @@ class PartitionedVariable(object):
     return len(self._variable_list)
 
   def _partition_axes(self):
-    if all([p == 1 for p in self._partitions]):
+    if all(p == 1 for p in self._partitions):
       return [0]
     else:
       return [i for i, p in enumerate(self._partitions) if p > 1]
@@ -2627,44 +2653,51 @@ class PartitionedVariable(object):
           "Cannot do assign action along more than one dimension: %s.  "
           "Multi-axis partition assign action is not supported " %
           str(partition_axes))
-    partition_ix = partition_axes[0]
-    size_splits_list = [
-        var.shape[partition_ix].value for var in self._variable_list
-    ]
-    value_list = array_ops.split(value, size_splits_list, axis=partition_ix)
+    if isinstance(value, list):
+      assert len(value) == len(self._variable_list)
+      value_list = value
+    elif isinstance(value, PartitionedVariable):
+      value_list = [var_part for var_part in value]
+    else:
+      partition_ix = partition_axes[0]
+      size_splits_list = [
+          tensor_shape.dimension_value(var.shape[partition_ix])
+          for var in self._variable_list
+      ]
+      value_list = array_ops.split(value, size_splits_list, axis=partition_ix)
+
     op_list = [
-        assign_fn(var, value_list[idx], idx)
+        assign_fn(var, value_list[idx])
         for idx, var in enumerate(self._variable_list)
     ]
     return op_list
 
   def assign(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, r_value, idx: var.assign(
+    assign_fn = lambda var, r_value: var.assign(
         r_value, use_locking=use_locking,
-        name="%s_%d" % (name, idx), read_value=read_value)
+        name=name, read_value=read_value)
     assign_list = self._apply_assign_fn(assign_fn, value)
     if read_value:
       return assign_list
     return [assign.op for assign in assign_list]
 
   def assign_add(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, r_value, idx: var.assign_add(
+    assign_fn = lambda var, r_value: var.assign_add(
         r_value, use_locking=use_locking,
-        name="%s_%d" % (name, idx), read_value=read_value)
+        name=name, read_value=read_value)
     assign_list = self._apply_assign_fn(assign_fn, value)
     if read_value:
       return assign_list
     return [assign.op for assign in assign_list]
 
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, r_value, idx: var.assign_sub(
+    assign_fn = lambda var, r_value: var.assign_sub(
         r_value, use_locking=use_locking,
-        name="%s_%d" % (name, idx), read_value=read_value)
+        name=name, read_value=read_value)
     assign_list = self._apply_assign_fn(assign_fn, value)
     if read_value:
       return assign_list
     return [assign.op for assign in assign_list]
-
 
 @tf_export(v1=["global_variables"])
 def global_variables(scope=None):
@@ -2972,7 +3005,9 @@ def report_uninitialized_variables(var_list=None,
     # Run all operations on CPU
     if var_list:
       init_vars = [state_ops.is_variable_initialized(v) for v in var_list]
-    with ops.device("/cpu:0"):
+    local_device = os.environ.get(
+        "TF_DEVICE_FOR_UNINITIALIZED_VARIABLE_REPORTING", "/cpu:0")
+    with ops.device(local_device):
       if not var_list:
         # Return an empty tensor so we only need to check for returned tensor
         # size being 0 as an indication of model ready.

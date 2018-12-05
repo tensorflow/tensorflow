@@ -4,7 +4,6 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow/python/tools/api/generator:api_gen.bzl", "ESTIMATOR_API_INIT_FILES")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
 load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "TENSORFLOW_API_INIT_FILES_V1")
 
@@ -63,23 +62,6 @@ py_test(
         ":doc_srcs",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:no_contrib",
-    ],
-)
-
-py_test(
-    name = "estimator_doc_srcs_test",
-    srcs = ["doc_srcs_test.py"],
-    args = [
-        "--package=tensorflow.python.estimator",
-        "--api_name=estimator",
-    ] + ESTIMATOR_API_INIT_FILES,
-    main = "doc_srcs_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":doc_srcs",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:no_contrib",
-        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 

@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class GeneratorDatasetOp::Dataset : public DatasetBase {
@@ -73,7 +73,8 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
     ~Iterator() override {
       if (!finalized_) {
         std::vector<Tensor> ignored;
-        Status s = dataset()->finalize_func_->RunInstantiated(state_, &ignored);
+        Status s =
+            instantiated_finalize_func_->RunInstantiated(state_, &ignored);
         if (!s.ok()) {
           LOG(WARNING)
               << "Error occurred when finalizing GeneratorDataset iterator: "
@@ -83,9 +84,12 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
     }
 
     Status Initialize(IteratorContext* ctx) override {
-      TF_RETURN_IF_ERROR(dataset()->init_func_->Instantiate(ctx));
-      TF_RETURN_IF_ERROR(dataset()->next_func_->Instantiate(ctx));
-      TF_RETURN_IF_ERROR(dataset()->finalize_func_->Instantiate(ctx));
+      TF_RETURN_IF_ERROR(
+          dataset()->init_func_->Instantiate(ctx, &instantiated_init_func_));
+      TF_RETURN_IF_ERROR(
+          dataset()->next_func_->Instantiate(ctx, &instantiated_next_func_));
+      TF_RETURN_IF_ERROR(dataset()->finalize_func_->Instantiate(
+          ctx, &instantiated_finalize_func_));
       return Status::OK();
     }
 
@@ -96,7 +100,7 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
 
       if (!initialized_) {
         TF_RETURN_IF_ERROR(
-            dataset()->init_func_->RunWithBorrowedArgs(ctx, {}, &state_));
+            instantiated_init_func_->RunWithBorrowedArgs(ctx, {}, &state_));
         initialized_ = true;
       }
 
@@ -105,8 +109,8 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
 
-      Status s =
-          dataset()->next_func_->RunWithBorrowedArgs(ctx, state_, out_tensors);
+      Status s = instantiated_next_func_->RunWithBorrowedArgs(ctx, state_,
+                                                              out_tensors);
       if (s.ok()) {
         *end_of_sequence = false;
       } else if (errors::IsOutOfRange(s)) {
@@ -119,10 +123,16 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
         // finalize function.
         std::vector<Tensor> ignored;
         TF_RETURN_IF_ERROR(
-            dataset()->finalize_func_->RunInstantiated(state_, &ignored));
+            instantiated_finalize_func_->RunInstantiated(state_, &ignored));
         finalized_ = true;
       }
       return s;
+    }
+
+   protected:
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeSourceNode(std::move(args));
     }
 
    private:
@@ -130,6 +140,9 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
     bool initialized_ GUARDED_BY(mu_) = false;
     bool finalized_ GUARDED_BY(mu_) = false;
     std::vector<Tensor> state_ GUARDED_BY(mu_);
+    std::unique_ptr<InstantiatedCapturedFunction> instantiated_init_func_;
+    std::unique_ptr<InstantiatedCapturedFunction> instantiated_next_func_;
+    std::unique_ptr<InstantiatedCapturedFunction> instantiated_finalize_func_;
   };
 
   const std::unique_ptr<CapturedFunction> init_func_;
@@ -169,11 +182,13 @@ void GeneratorDatasetOp::MakeDataset(OpKernelContext* ctx,
 }
 
 namespace {
-REGISTER_KERNEL_BUILDER(Name("GeneratorDataset").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("GeneratorDataset").Device(DEVICE_CPU).Priority(2),
                         GeneratorDatasetOp);
-REGISTER_KERNEL_BUILDER(
-    Name("GeneratorDataset").Device(DEVICE_GPU).HostMemory("handle"),
-    GeneratorDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("GeneratorDataset")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("handle")
+                            .Priority(1),
+                        GeneratorDatasetOp);
 }  // namespace
 
 }  // namespace data

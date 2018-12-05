@@ -131,7 +131,15 @@ def custom_gradient(f):
          a list of `Tensor`s - the derivatives of `Tensor`s in `y` with respect
          to the `Tensor`s in `x`.  `grad_ys` is a `Tensor` or sequence of
          `Tensor`s the same size as `y` holding the initial value gradients for
-         each `Tensor` in `y`. If `f` uses `Variable`s (that are not part of the
+         each `Tensor` in `y`. In a pure mathematical sense, a vector-argument
+         vector-valued function `f`'s derivatives should be its Jacobian matrix
+         `J`. Here we are expressing the Jacobian `J` as a function `grad_fn`
+         which defines how `J` will transform a vector `grad_ys` when
+         left-multiplied with it (`grad_ys * J`). This functional representation
+         of a matrix is convenient to use for chain-rule calculation
+         (in e.g. the back-propagation algorithm).
+
+         If `f` uses `Variable`s (that are not part of the
          inputs), i.e. through `get_variable`, then `grad_fn` should have
          signature `g(*grad_ys, variables=None)`, where `variables` is a list of
          the `Variable`s, and return a 2-tuple `(grad_xs, grad_vars)`, where
@@ -202,8 +210,7 @@ def _graph_mode_decorator(f, *args, **kwargs):
   flat_result = nest.flatten(result)
   all_tensors = flat_result + args + variables
 
-  @ops.RegisterGradient(name)
-  def internal_grad_fn(unused_op, *result_grads):  # pylint: disable=unused-variable
+  def tape_grad_fn(*result_grads):
     """Custom grad fn wrapper."""
     result_grads = result_grads[:len(flat_result)]
     if variables:
@@ -221,9 +228,16 @@ def _graph_mode_decorator(f, *args, **kwargs):
     input_grads = nest.flatten(input_grads)
     return ([None] * len(flat_result)) + input_grads + variable_grads
 
+  @ops.RegisterGradient(name)
+  def internal_grad_fn(unused_op, *result_grads):  # pylint: disable=unused-variable
+    """Custom grad fn wrapper."""
+    return tape_grad_fn(*result_grads)
+
   original_tensors = all_tensors
   with ops.get_default_graph().gradient_override_map({"IdentityN": name}):
     all_tensors = array_ops.identity_n(all_tensors)
+  tape_lib.record_operation(
+      f.__name__, all_tensors, original_tensors, tape_grad_fn)
   for ot, t in zip(original_tensors, all_tensors):
     copy_handle_data(ot, t)
   return nest.pack_sequence_as(

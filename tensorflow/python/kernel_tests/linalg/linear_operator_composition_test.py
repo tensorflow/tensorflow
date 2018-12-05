@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
@@ -42,8 +43,12 @@ class SquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
+  @property
+  def _tests_to_skip(self):
+    # Cholesky not implemented.
+    return ["cholesky"]
+
   def _operator_and_matrix(self, build_info, dtype, use_placeholder):
-    sess = ops.get_default_session()
     shape = list(build_info.shape)
 
     # Either 1 or 2 matrices, depending.
@@ -175,6 +180,7 @@ class NonSquareLinearOperatorCompositionTest(
 
     return operator, mat
 
+  @test_util.run_deprecated_v1
   def test_static_shapes(self):
     operators = [
         linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 4)),
@@ -183,6 +189,7 @@ class NonSquareLinearOperatorCompositionTest(
     operator = linalg.LinearOperatorComposition(operators)
     self.assertAllEqual((2, 3, 5), operator.shape)
 
+  @test_util.run_deprecated_v1
   def test_shape_tensors_when_statically_available(self):
     operators = [
         linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 4)),
@@ -192,6 +199,7 @@ class NonSquareLinearOperatorCompositionTest(
     with self.cached_session():
       self.assertAllEqual((2, 3, 5), operator.shape_tensor().eval())
 
+  @test_util.run_deprecated_v1
   def test_shape_tensors_when_only_dynamically_available(self):
     mat_1 = rng.rand(1, 2, 3, 4)
     mat_2 = rng.rand(1, 2, 4, 5)

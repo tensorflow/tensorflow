@@ -219,6 +219,7 @@ class BatchOpsTest(test.TestCase):
 
       @batch_ops.batch_function(1, 10, 100000)
       def computation(in_t):
+        self.assertTrue(in_t.shape is not None)
         return in_t + 1
 
       inp = array_ops.placeholder(dtype=dtypes.int32, shape=[1])

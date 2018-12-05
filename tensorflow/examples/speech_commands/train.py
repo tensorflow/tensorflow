@@ -125,18 +125,8 @@ def main(_):
   input_placeholder = tf.placeholder(
       tf.float32, [None, fingerprint_size], name='fingerprint_input')
   if FLAGS.quantize:
-    # TODO(petewarden): These values have been derived from the observed ranges
-    # of spectrogram and MFCC inputs. If the preprocessing pipeline changes,
-    # they may need to be updated.
-    if FLAGS.preprocess == 'average':
-      fingerprint_min = 0.0
-      fingerprint_max = 2048.0
-    elif FLAGS.preprocess == 'mfcc':
-      fingerprint_min = -247.0
-      fingerprint_max = 30.0
-    else:
-      raise Exception('Unknown preprocess mode "%s" (should be "mfcc" or'
-                      ' "average")' % (FLAGS.preprocess))
+    fingerprint_min, fingerprint_max = input_data.get_features_range(
+        model_settings)
     fingerprint_input = tf.fake_quant_with_min_max_args(
         input_placeholder, fingerprint_min, fingerprint_max)
   else:

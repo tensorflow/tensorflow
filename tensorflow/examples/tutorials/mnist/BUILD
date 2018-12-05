@@ -71,36 +71,16 @@ py_binary(
     ],
 )
 
-py_binary(
-    name = "mnist_softmax",
-    srcs = [
-        "mnist_softmax.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":input_data",
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-# Note: we need to add --define=with_xla_support=true to the build command in
-# order to run the mnist_softmax_xla example with xla.
+# Note: We need to set the evironment variable to use CPU JIT.
+# The way to achieve this is via setting the following:
+# TF_XLA_FLAGS='--tf_xla_cpu_global_jit=true'
+# before the run command. To use XLA, we also must build
+# with --define=with_xla_support=true flag.
+# Note (GPU): Add --config=cuda to the build command.
 py_binary(
     name = "mnist_softmax_xla",
     srcs = [
         "mnist_softmax_xla.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":input_data",
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "mnist_deep",
-    srcs = [
-        "mnist_deep.py",
     ],
     srcs_version = "PY2AND3",
     deps = [

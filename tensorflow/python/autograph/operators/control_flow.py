@@ -61,7 +61,7 @@ def for_stmt(iter_, extra_test, body, init_state):
   """
   if tensor_util.is_tensor(iter_):
     return _known_len_for_stmt(iter_, extra_test, body, init_state)
-  elif isinstance(iter_, dataset_ops.Dataset):
+  elif isinstance(iter_, dataset_ops.DatasetV2):
     return _dataset_for_stmt(iter_, extra_test, body, init_state)
   else:
     return _py_for_stmt(iter_, extra_test, body, init_state)
@@ -123,7 +123,7 @@ def _dataset_for_stmt(ds, extra_test, body, init_state):
         (dataset_ops.Dataset.from_tensors(tag).repeat(), ds))
   ds_with_epoch = epoch_numbers.flat_map(lambda i: tag_with(ds, i))
 
-  iterator = ds_with_epoch.make_initializable_iterator()
+  iterator = dataset_ops.make_initializable_iterator(ds_with_epoch)
   with ops.control_dependencies((iterator.initializer,)):
     epoch_number, iterate = iterator.get_next()
 

@@ -68,7 +68,7 @@ class LLVMCompilerTest : public ::testing::Test {
     builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
 
-    auto hlo_module = CreateNewModule();
+    auto hlo_module = CreateNewUnverifiedModule();
     hlo_module->AddEntryComputation(builder.Build());
 
     compiler->SetPreOptimizationHook(pre_opt_hook);
@@ -90,7 +90,7 @@ class LLVMCompilerTest : public ::testing::Test {
     builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
 
-    std::unique_ptr<HloModule> hlo_module = CreateNewModule();
+    std::unique_ptr<HloModule> hlo_module = CreateNewUnverifiedModule();
     hlo_module->AddEntryComputation(builder.Build());
 
     auto module_group = absl::make_unique<HloModuleGroup>("test_module_group");
@@ -124,9 +124,9 @@ class LLVMCompilerTest : public ::testing::Test {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
-  static std::unique_ptr<HloModule> CreateNewModule() {
+  static std::unique_ptr<HloModule> CreateNewUnverifiedModule() {
     HloModuleConfig config;
-    config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+    config.set_debug_options(GetDebugOptionsFromFlags());
     return absl::make_unique<HloModule>(TestName(), config);
   }
 };

@@ -25,6 +25,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CheckpointManager"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CheckpointSaverHook"
     mtype: "<type \'type\'>"
   }
@@ -273,10 +277,6 @@ tf_module {
     argspec: "args=[\'checkpoint_prefix\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "confusion_matrix"
-    argspec: "args=[\'labels\', \'predictions\', \'num_classes\', \'dtype\', \'name\', \'weights\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int32\'>\", \'None\', \'None\'], "
-  }
-  member_method {
     name: "cosine_decay"
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\'], "
   }
@@ -394,6 +394,10 @@ tf_module {
   }
   member_method {
     name: "piecewise_constant"
+    argspec: "args=[\'x\', \'boundaries\', \'values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "piecewise_constant_decay"
     argspec: "args=[\'x\', \'boundaries\', \'values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {

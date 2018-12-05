@@ -1,9 +1,9 @@
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 LABEL maintainer="Cong Xu <cong.xu@intel.com>"
 
 # These parameters can be overridden by parameterized_docker_build.sh
-ARG TF_BUILD_VERSION=r1.9
+ARG TF_BUILD_VERSION=r1.11
 ARG PYTHON="python"
 ARG PYTHON3_DEV=""
 ARG WHL_DIR="/tmp/pip"
@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libcurl3-dev \
         libfreetype6-dev \
         libhdf5-serial-dev \
-        libpng12-dev \
+        libpng-dev \
         libzmq3-dev \
         pkg-config \
         python-dev \
@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         openjdk-8-jdk \
         openjdk-8-jre-headless \
         wget \
-        numactl \
+        libnuma-dev \
         openssh-client \
         openssh-server \
         && \

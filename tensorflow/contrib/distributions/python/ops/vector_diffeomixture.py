@@ -183,7 +183,7 @@ def quadrature_scheme_softmaxnormal_quantiles(
     def _get_final_shape(qs):
       """Helper to build `TensorShape`."""
       bs = dist.batch_shape.with_rank_at_least(1)
-      num_components = bs[-1].value
+      num_components = tensor_shape.dimension_value(bs[-1])
       if num_components is not None:
         num_components += 1
       tail = tensor_shape.TensorShape([num_components, qs])
@@ -791,7 +791,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
 
   def _expand_mix_distribution_probs(self):
     p = self.mixture_distribution.probs  # [B, deg]
-    deg = p.shape.with_rank_at_least(1)[-1].value
+    deg = tensor_shape.dimension_value(p.shape.with_rank_at_least(1)[-1])
     if deg is None:
       deg = array_ops.shape(p)[-1]
     event_ndims = self.event_shape.ndims
@@ -831,10 +831,12 @@ def maybe_check_quadrature_param(param, name, validate_args):
 
     # TODO(jvdillon): Remove once we support k-mixtures.
     if param.shape.with_rank_at_least(1)[-1] is not None:
-      if param.shape[-1].value != 1:
+      if tensor_shape.dimension_value(param.shape[-1]) != 1:
         raise NotImplementedError("Currently only bimixtures are supported; "
                                   "{}.shape[-1]={} is not 1.".format(
-                                      name, param.shape[-1].value))
+                                      name,
+                                      tensor_shape.dimension_value(
+                                          param.shape[-1])))
     elif validate_args:
       assertions.append(check_ops.assert_equal(
           array_ops.shape(param)[-1], 1,
@@ -905,7 +907,7 @@ def interpolate_loc(grid, loc):
   if len(loc) != 2:
     raise NotImplementedError("Currently only bimixtures are supported; "
                               "len(scale)={} is not 2.".format(len(loc)))
-  deg = grid.shape.with_rank_at_least(1)[-1].value
+  deg = tensor_shape.dimension_value(grid.shape.with_rank_at_least(1)[-1])
   if deg is None:
     raise ValueError("Num quadrature grid points must be known prior "
                      "to graph execution.")
@@ -939,7 +941,7 @@ def interpolate_scale(grid, scale):
   if len(scale) != 2:
     raise NotImplementedError("Currently only bimixtures are supported; "
                               "len(scale)={} is not 2.".format(len(scale)))
-  deg = grid.shape.with_rank_at_least(1)[-1].value
+  deg = tensor_shape.dimension_value(grid.shape.with_rank_at_least(1)[-1])
   if deg is None:
     raise ValueError("Num quadrature grid points must be known prior "
                      "to graph execution.")

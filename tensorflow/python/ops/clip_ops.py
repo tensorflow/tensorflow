@@ -131,7 +131,7 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
   an optimizer.
 
   Args:
-    t: A `Tensor`.
+    t: A `Tensor` or `IndexedSlices`.
     clip_norm: A 0-D (scalar) `Tensor` > 0. A maximum clipping value.
     axes: A 1-D (vector) `Tensor` of type int32 containing the dimensions
       to use for computing the L2-norm. If `None` (the default), uses all
@@ -139,25 +139,29 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    A clipped `Tensor`.
+    A clipped `Tensor` or `IndexedSlices`.
   """
   with ops.name_scope(name, "clip_by_norm", [t, clip_norm]) as name:
-    t = ops.convert_to_tensor(t, name="t")
+    values = ops.convert_to_tensor(
+        t.values if isinstance(t, ops.IndexedSlices) else t, name="t")
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
-    l2sum = math_ops.reduce_sum(t * t, axes, keepdims=True)
+    l2sum = math_ops.reduce_sum(values * values, axes, keepdims=True)
     pred = l2sum > 0
     # Two-tap tf.where trick to bypass NaN gradients
     l2sum_safe = array_ops.where(pred, l2sum, array_ops.ones_like(l2sum))
     l2norm = array_ops.where(pred, math_ops.sqrt(l2sum_safe), l2sum)
-    intermediate = t * clip_norm
+    intermediate = values * clip_norm
     # Assert that the shape is compatible with the initial shape,
     # to prevent unintentional broadcasting.
-    _ = t.shape.merge_with(intermediate.shape)
-    tclip = array_ops.identity(
+    _ = values.shape.merge_with(intermediate.shape)
+    values_clip = array_ops.identity(
         intermediate / math_ops.maximum(l2norm, clip_norm), name=name)
 
-  return tclip
+    if isinstance(t, ops.IndexedSlices):
+      return ops.IndexedSlices(values_clip, t.indices, t.dense_shape)
+
+    return values_clip
 
 
 @tf_export("linalg.global_norm", v1=["linalg.global_norm", "global_norm"])
@@ -296,7 +300,12 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   return list_clipped, use_norm
 
 
-@tf_export("clip_by_average_norm")
+@deprecation.deprecated(
+    date=None,
+    instructions=
+    "clip_by_average_norm is deprecated in TensorFlow 2.0. Please use "
+    "clip_by_norm(t, clip_norm * tf.to_float(tf.size(t), name)) instead.")
+@tf_export(v1=["clip_by_average_norm"])
 def clip_by_average_norm(t, clip_norm, name=None):
   """Clips tensor values to a maximum average L2-norm.
 

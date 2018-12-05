@@ -25,8 +25,8 @@ class FuzzStringSplit : public FuzzSession {
         tensorflow::ops::Placeholder(scope.WithOpName("input1"), DT_STRING);
     auto delimeter =
         tensorflow::ops::Placeholder(scope.WithOpName("input2"), DT_STRING);
-    std::ignore = tensorflow::ops::StringSplit(scope.WithOpName("output"),
-                                               input, delimeter);
+    (void)tensorflow::ops::StringSplit(scope.WithOpName("output"), input,
+                                       delimeter);
   }
 
   void FuzzImpl(const uint8_t* data, size_t size) final {
@@ -37,8 +37,7 @@ class FuzzStringSplit : public FuzzSession {
       // The spec for split is that the delimeter should be 0 or 1 characters.
       // Naturally, fuzz it with something larger.  (This omits the possibility
       // of handing it a > int32_max size string, which should be tested for in
-      // an
-      // explicit test).
+      // an explicit test).
       size_t delim_len = static_cast<size_t>(data[0]);
       if (delim_len > size) {
         delim_len = size - 1;

@@ -72,6 +72,7 @@ def variable_scoped_function_with_local_variable():
 
 class TemplateTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_end_to_end(self):
     """This test shows a very simple line model with test_loss.
 
@@ -104,10 +105,10 @@ class TemplateTest(test.TestCase):
     train_op = optimizer.minimize(train_loss)
 
     with session.Session() as sess:
-      sess.run(variables.global_variables_initializer())
-      initial_test_loss = sess.run(test_loss)
-      sess.run(train_op)
-      final_test_loss = sess.run(test_loss)
+      self.evaluate(variables.global_variables_initializer())
+      initial_test_loss = self.evaluate(test_loss)
+      self.evaluate(train_op)
+      final_test_loss = self.evaluate(test_loss)
 
     # Parameters are tied, so the loss should have gone down when we trained it.
     self.assertLess(final_test_loss, initial_test_loss)
@@ -172,6 +173,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1/dummy:0", v1.name)
     self.assertEqual("s1_1/dummy:0", v3.name)
 
+  @test_util.run_deprecated_v1
   def test_same_unique_name_raise_error(self):
     tmpl1 = template.make_template(
         "_", variable_scoped_function, unique_name_="s1")
@@ -190,6 +192,7 @@ class TemplateTest(test.TestCase):
         template.make_template(
             "_", variable_scoped_function, unique_name_="s1")
 
+  @test_util.run_deprecated_v1
   def test_unique_name_and_reuse(self):
     tmpl1 = template.make_template(
         "_", variable_scoped_function, unique_name_="s1")
@@ -260,6 +263,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1/test/dummy:0", v1.name)
     self.assertEqual("s1_1/test/dummy:0", v3.name)
 
+  @test_util.run_deprecated_v1
   def test_enforces_no_extra_trainable_variables(self):
     tmpl = template.make_template("s", function_with_create, trainable=True)
 
@@ -675,6 +679,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual(1, len(tb.variables))
 
   # TODO(apassos) handle local variables in Eager
+  @test_util.run_deprecated_v1
   def test_local_variables(self):
     # Make sure trainable_variables are created.
     with variable_scope.variable_scope("foo3"):

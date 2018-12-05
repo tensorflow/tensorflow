@@ -626,7 +626,12 @@ class BaseSaverBuilder(object):
         op, variables.Variable):
       # pylint: disable=protected-access
       for attr, factory in op._gather_saveables_for_checkpoint().items():
-        op = (factory(name + "_" + attr) if callable(factory) else factory)
+        if attr == checkpointable.VARIABLE_VALUE_KEY:
+          # Keep original name for classes masquerading as variables.
+          full_name = name
+        else:
+          full_name = name + "_" + attr
+        op = (factory(full_name) if callable(factory) else factory)
         for op in BaseSaverBuilder.SaveableObjectsForOp(op, op.name):
           yield op
       # pylint: enable=protected-access
@@ -776,8 +781,12 @@ class BaseSaverBuilder(object):
 
     with ops.name_scope(name, "save",
                         [saveable.op for saveable in saveables]) as name:
-      # Add the Constant string tensor for the filename.
-      filename_tensor = constant_op.constant(filename or "model")
+      # Add a placeholder string tensor for the filename.
+      filename_tensor = array_ops.placeholder_with_default(
+          filename or "model", shape=(), name="filename")
+      # Keep the name "Const" for backwards compatibility.
+      filename_tensor = array_ops.placeholder_with_default(
+          filename_tensor, shape=(), name="Const")
 
       # Add the save ops.
       if sharded:
@@ -889,7 +898,7 @@ def _get_saver_or_default():
   return saver
 
 
-@tf_export("train.Saver")
+@tf_export(v1=["train.Saver"])
 class Saver(object):
   """Saves and restores variables.
 
@@ -1068,16 +1077,28 @@ class Saver(object):
     @compatibility(eager)
     When eager execution is enabled, `var_list` must specify a `list` or `dict`
     of variables to save. Otherwise, a `RuntimeError` will be raised.
+
+    Although Saver works in some cases when executing eagerly, it is
+    fragile. Please switch to `tf.train.Checkpoint` or
+    `tf.keras.Model.save_weights`, which perform a more robust object-based
+    saving. These APIs will load checkpoints written by `Saver`.
     @end_compatibility
     """
     if defer_build and var_list:
       raise ValueError(
           "If `var_list` is provided then build cannot be deferred. "
           "Either set defer_build=False or var_list=None.")
-    if context.executing_eagerly() and var_list is None:
-      raise RuntimeError(
-          "When eager execution is enabled, `var_list` must specify a list or "
-          "dict of variables to save")
+    if context.executing_eagerly():
+      logging.warning(
+          "Saver is deprecated, please switch to tf.train.Checkpoint or "
+          "tf.keras.Model.save_weights for training checkpoints. When "
+          "executing eagerly variables do not necessarily have unique names, "
+          "and so the variable.name-based lookups Saver performs are "
+          "error-prone.")
+      if var_list is None:
+        raise RuntimeError(
+            "When eager execution is enabled, `var_list` must specify a list "
+            "or dict of variables to save")
     self._var_list = var_list
     self._reshape = reshape
     self._sharded = sharded
@@ -1594,7 +1615,7 @@ class Saver(object):
                                   export_scope=export_scope)
 
 
-@tf_export("train.import_meta_graph")
+@tf_export(v1=["train.import_meta_graph"])
 def import_meta_graph(meta_graph_or_file, clear_devices=False,
                       import_scope=None, **kwargs):
   """Recreates a Graph saved in a `MetaGraphDef` proto.
@@ -1724,7 +1745,7 @@ def _create_saver_from_imported_meta_graph(
       return None
 
 
-@tf_export("train.export_meta_graph")
+@tf_export(v1=["train.export_meta_graph"])
 def export_meta_graph(filename=None,
                       meta_info_def=None,
                       graph_def=None,
@@ -1890,16 +1911,40 @@ def saver_from_object_based_checkpoint(
     builder = BulkSaverBuilder()
 
   saveables = builder._ValidateAndSliceInputs(var_list)  # pylint: disable=protected-access
+  current_names = set()
   for saveable in saveables:
     for spec in saveable.specs:
-      if spec.name not in names_to_keys:
-        raise errors.NotFoundError(
-            None, None,
-            message=("Attempting to load an object-based checkpoint using "
-                     "variable names, but could not find %s in the "
-                     "checkpoint.") % spec.name)
+      current_names.add(spec.name)
+  previous_names = set(names_to_keys.keys())
+  missing_names = current_names - previous_names
+  if missing_names:
+    extra_names = previous_names - current_names
+    intersecting_names = previous_names.intersection(current_names)
+    raise errors.NotFoundError(
+        None, None,
+        message=(
+            "\n\nExisting variables not in the checkpoint: %s\n\n"
+            "Variables names when this checkpoint was written which don't "
+            "exist now: %s\n\n"
+            "(%d variable name(s) did match)\n\n"
+            "Could not find some variables in the checkpoint (see names "
+            "above). Saver was attempting to load an object-based checkpoint "
+            "(saved using tf.train.Checkpoint or tf.keras.Model.save_weights) "
+            "using variable names. If the checkpoint was written with eager "
+            "execution enabled, it's possible that variable names have "
+            "changed (for example missing a '_1' suffix). It's also "
+            "possible that there are new variables which did not exist "
+            "when the checkpoint was written. You can construct a "
+            "Saver(var_list=...) with only the variables which previously "
+            "existed, and if variable names have changed you may need to "
+            "make this a dictionary with the old names as keys. If you're "
+            "using an Estimator, you'll need to return a tf.train.Saver "
+            "inside a tf.train.Scaffold from your model_fn.")
+        % (", ".join(sorted(missing_names)), ", ".join(sorted(extra_names)),
+           len(intersecting_names)))
+  for saveable in saveables:
+    for spec in saveable.specs:
       spec.name = names_to_keys[spec.name]
-
   if cached_saver is None:
     return Saver(saveables)
   return cached_saver

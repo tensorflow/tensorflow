@@ -122,6 +122,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
@@ -152,7 +153,7 @@ py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:layers",

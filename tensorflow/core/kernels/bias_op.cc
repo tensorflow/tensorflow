@@ -43,11 +43,12 @@ typedef Eigen::SyclDevice SYCLDevice;
 namespace {
 
 void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
-                      int32* batch, int32* height, int32* width,
+                      int32* batch, int32* height, int32* width, int32* depth,
                       int32* channel) {
   *batch = 1;
-  *width = 1;
   *height = 1;
+  *width = 1;
+  *depth = 1;
   *channel = 1;
   if (data_format == FORMAT_NHWC) {
     int32 channel_dim = value_tensor.dims() - 1;
@@ -56,14 +57,14 @@ void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
       *batch *= static_cast<int32>(value_tensor.dim_size(i));
     }
   } else if (data_format == FORMAT_NCHW) {
-    int32 channel_dim = value_tensor.dims() - 3;
-    int32 height_dim = value_tensor.dims() - 2;
-    int32 width_dim = value_tensor.dims() - 1;
-    *channel = static_cast<int32>(value_tensor.dim_size(channel_dim));
-    *height = static_cast<int32>(value_tensor.dim_size(height_dim));
-    *width = static_cast<int32>(value_tensor.dim_size(width_dim));
-    for (int32 i = 0; i < channel_dim; i++) {
-      *batch *= static_cast<int32>(value_tensor.dim_size(i));
+    *batch = static_cast<int32>(value_tensor.dim_size(0));
+    *channel = static_cast<int32>(value_tensor.dim_size(1));
+    *height = static_cast<int32>(value_tensor.dim_size(2));
+    if (value_tensor.dims() > 3) {
+      *width = static_cast<int32>(value_tensor.dim_size(3));
+    }
+    if (value_tensor.dims() > 4) {
+      *depth = static_cast<int32>(value_tensor.dim_size(4));
     }
   }
 }
@@ -109,10 +110,8 @@ class BiasOp : public BinaryOp<T> {
     // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
     size_t channel_dim;
     if (data_format_ == FORMAT_NCHW) {
-      OP_REQUIRES(context, input.dims() == 4,
-                  errors::InvalidArgument(
-                      "NCHW format supports only 4D input tensor."));
-      channel_dim = 1;
+      channel_dim = 1;  // NCHW always have channel dim in 1 (with 3, 4, 5
+                        // dimensions data).
     } else {
       channel_dim = input.shape().dims() - 1;  // End of code by intel_tf.
     }
@@ -132,14 +131,41 @@ class BiasOp : public BinaryOp<T> {
 
     // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
     if (data_format_ == FORMAT_NCHW) {
-      int32 batch, height, width, channel;
-      GetBiasValueDims(input, data_format_, &batch, &height, &width, &channel);
-      Eigen::DSizes<Eigen::Index, 4> four_dims(1, channel, 1, 1);
-      Eigen::DSizes<Eigen::Index, 4> broad_cast_dims(batch, 1, height, width);
-      const Device& d = context->eigen_device<Device>();
-      output->tensor<T, 4>().device(d) =
-          input.tensor<T, 4>() +
-          bias.tensor<T, 1>().reshape(four_dims).broadcast(broad_cast_dims);
+      int32 batch, height, width, depth, channel;
+      GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
+                       &channel);
+      switch (input.shape().dims()) {
+        case 3: {
+          Eigen::DSizes<int32, 3> three_dims(1, channel, 1);
+          Eigen::DSizes<int32, 3> broad_cast_dims(batch, 1, height);
+          const Device& d = context->eigen_device<Device>();
+          output->tensor<T, 3>().device(d) =
+              input.tensor<T, 3>() + bias.tensor<T, 1>()
+                                         .reshape(three_dims)
+                                         .broadcast(broad_cast_dims);
+        } break;
+        case 4: {
+          Eigen::DSizes<int32, 4> four_dims(1, channel, 1, 1);
+          Eigen::DSizes<int32, 4> broad_cast_dims(batch, 1, height, width);
+          const Device& d = context->eigen_device<Device>();
+          output->tensor<T, 4>().device(d) =
+              input.tensor<T, 4>() +
+              bias.tensor<T, 1>().reshape(four_dims).broadcast(broad_cast_dims);
+        } break;
+        case 5: {
+          Eigen::DSizes<int32, 5> four_dims(1, channel, 1, 1, 1);
+          Eigen::DSizes<int32, 5> broad_cast_dims(batch, 1, height, width,
+                                                  depth);
+          const Device& d = context->eigen_device<Device>();
+          output->tensor<T, 5>().device(d) =
+              input.tensor<T, 5>() +
+              bias.tensor<T, 1>().reshape(four_dims).broadcast(broad_cast_dims);
+        } break;
+        default:
+          OP_REQUIRES(context, false,
+                      errors::InvalidArgument("Only ranks up to 5 supported: ",
+                                              input.shape().DebugString()));
+      }
       return;
     }  // End of code by intel_tf.
 
@@ -229,9 +255,9 @@ class BiasGradOp : public OpKernel {
                         std::numeric_limits<int32>::max()),
         errors::InvalidArgument("BiasGrad requires tensor size <= int32 max"));
 
-    int32 batch, height, width, channel;
+    int32 batch, height, width, depth, channel;
     GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
-                     &channel);
+                     &depth, &channel);
     Tensor* output = nullptr;
     TensorShape output_shape{channel};
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
@@ -243,6 +269,7 @@ class BiasGradOp : public OpKernel {
       output->template flat<T>().setZero();
     } else {
       // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
+      // TODO(yongtang): Add 3/4/5 dimensional data support for NCHW format.
       if (data_format_ == FORMAT_NCHW) {
         OP_REQUIRES(context, output_backprop.dims() == 4,
                     errors::InvalidArgument(
@@ -330,8 +357,9 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
                 errors::InvalidArgument("Biases must be 1D: ",
                                         bias.shape().DebugString()));
-    int32 batch, height, width, channel;
-    GetBiasValueDims(input, data_format_, &batch, &height, &width, &channel);
+    int32 batch, height, width, depth, channel;
+    GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
+                     &channel);
     OP_REQUIRES(context, bias.shape().dim_size(0) == channel,
                 errors::InvalidArgument(
                     "Must provide as many biases as the channel dimension "
@@ -344,7 +372,7 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     if (input.NumElements() > 0) {
       BiasGPU<T>::compute(context->template eigen_device<Device>(),
                           input.flat<T>().data(), bias.flat<T>().data(),
-                          output->flat<T>().data(), batch, width, height,
+                          output->flat<T>().data(), batch, width, height, depth,
                           channel, data_format_);
     }
   }
@@ -516,9 +544,9 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                 TensorShapeUtils::IsMatrixOrHigher(output_backprop.shape()),
                 errors::InvalidArgument("Input tensor must be at least 2D: ",
                                         output_backprop.shape().DebugString()));
-    int32 batch, height, width, channel;
+    int32 batch, height, width, depth, channel;
     GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
-                     &channel);
+                     &depth, &channel);
     Tensor* output = nullptr;
     TensorShape output_shape{channel};
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));

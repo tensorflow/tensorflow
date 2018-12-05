@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
 
+#include <memory>
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 #include "absl/memory/memory.h"
@@ -28,9 +29,13 @@ namespace xla {
 // TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
-  explicit ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision)
+  ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision)
       : layout_sensitive_(layout_sensitive),
         allow_mixed_precision_(allow_mixed_precision) {}
+
+  // Verifies that entry computation layout matches parameters and root shape of
+  // the module's entry computation.
+  virtual Status VerifyEntryComputationLayout(const HloModule& module);
 
   Status Preprocess(HloInstruction* hlo) override;
 
@@ -89,6 +94,8 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleGather(HloInstruction* gather) override;
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleAfterAll(HloInstruction* token) override;
+  Status HandleGetDimensionSize(HloInstruction* get_size) override;
+  Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   Status FinishVisit(HloInstruction*) override { return Status::OK(); }
 
@@ -123,6 +130,13 @@ class ShapeVerifier : public DfsHloVisitor {
                              : ShapeUtil::HumanString(s);
   }
 
+  // Helpers that switch on allow_mixed_precision_.
+  bool SameElementType(const Shape& a, const Shape& b) {
+    return allow_mixed_precision_
+               ? ShapeUtil::SameElementTypeIgnoringFpPrecision(a, b)
+               : ShapeUtil::SameElementType(a, b);
+  }
+
   // Checks that the given operand of the given instruction is of type TOKEN.
   Status CheckIsTokenOperand(const HloInstruction* instruction,
                              int64 operand_no);
@@ -151,27 +165,64 @@ class ShapeVerifier : public DfsHloVisitor {
   bool allow_mixed_precision_;
 };
 
+// An interface used to encapsulate target-specific verification quirks.
+class TargetVerifierMetadata {
+ public:
+  // Returns a target-specific shape size.
+  virtual int64 ShapeSize(const Shape& shape) const = 0;
+
+  virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
+
+  TargetVerifierMetadata() {}
+  virtual ~TargetVerifierMetadata() {}
+
+  TargetVerifierMetadata(const TargetVerifierMetadata&) = delete;
+  TargetVerifierMetadata& operator=(const TargetVerifierMetadata&) = delete;
+};
+
+// The default implementation of TargetVerifierMetadata, used unless the target
+// needs to override it.
+class DefaultVerifierMetadata : public TargetVerifierMetadata {
+ public:
+  DefaultVerifierMetadata(bool layout_sensitive, bool allow_mixed_precision)
+      : layout_sensitive_(layout_sensitive),
+        allow_mixed_precision_(allow_mixed_precision) {}
+
+  int64 ShapeSize(const Shape& shape) const override {
+    return ShapeUtil::ByteSizeOf(shape);
+  }
+
+  // Creates a ShapeVerifier that checks that shapes match inferred
+  // expectations. This creates a new verifier every time because ShapeVerifier,
+  // being a DfsHloVisitor, is stateful. We want a clean object for each run of
+  // the verifier.
+  std::unique_ptr<ShapeVerifier> GetVerifier() const override {
+    return absl::make_unique<ShapeVerifier>(layout_sensitive_,
+                                            allow_mixed_precision_);
+  }
+
+ private:
+  bool layout_sensitive_;
+  bool allow_mixed_precision_;
+};
+
 // HLO pass that verifies invariants of HLO instructions for each computation in
 // the module.
 class HloVerifier : public HloModulePass {
  public:
-  using ShapeVerifierFactory = std::function<std::unique_ptr<ShapeVerifier>()>;
-
   explicit HloVerifier(bool layout_sensitive, bool allow_mixed_precision,
                        std::function<bool(const HloInstruction*)>
                            instruction_can_change_layout_func = {})
-      : shape_verifier_factory_([layout_sensitive, allow_mixed_precision] {
-          return absl::make_unique<ShapeVerifier>(layout_sensitive,
-                                                  allow_mixed_precision);
-        }),
+      : target_metadata_(absl::make_unique<DefaultVerifierMetadata>(
+            layout_sensitive, allow_mixed_precision)),
         instruction_can_change_layout_func_(
             std::move(instruction_can_change_layout_func)) {
     CHECK(instruction_can_change_layout_func_ == nullptr || layout_sensitive);
   }
 
-  // Uses custom shape verification.
-  explicit HloVerifier(ShapeVerifierFactory shape_verifier_factory)
-      : shape_verifier_factory_(std::move(shape_verifier_factory)) {}
+  // Uses custom target metadata
+  explicit HloVerifier(std::unique_ptr<TargetVerifierMetadata> target_metadata)
+      : target_metadata_(std::move(target_metadata)) {}
 
   ~HloVerifier() override = default;
   absl::string_view name() const override { return "verifier"; }
@@ -180,11 +231,7 @@ class HloVerifier : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  // Creates a ShapeVerifier that checks that shapes match inferred
-  // expectations. This is a factory function because ShapeVerifier,
-  // being a DfsHloVisitor, is stateful. We want a clean object
-  // for each run of the verifier.
-  ShapeVerifierFactory shape_verifier_factory_;
+  std::unique_ptr<TargetVerifierMetadata> target_metadata_;
 
   // Determines whether an instruction can change layouts.
   std::function<bool(const HloInstruction*)>

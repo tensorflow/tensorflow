@@ -18,12 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from functools import wraps
+import collections
+import functools
 import imp
+import types
+import weakref
 
 import six
 
+from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
 
@@ -42,7 +47,7 @@ def wrapping_decorator():
     def replacement(*_):
       return None
 
-    @wraps(f)
+    @functools.wraps(f)
     def wrapper(*args, **kwargs):
       return replacement(*args, **kwargs)
     return wrapper
@@ -90,6 +95,38 @@ def free_factory():
 
 
 class InspectUtilsTest(test.TestCase):
+
+  def test_islambda(self):
+    def test_fn():
+      pass
+
+    self.assertTrue(inspect_utils.islambda(lambda x: x))
+    self.assertFalse(inspect_utils.islambda(test_fn))
+
+  def test_isnamedtuple(self):
+    nt = collections.namedtuple('TestNamedTuple', ['a', 'b'])
+
+    class NotANamedTuple(tuple):
+      pass
+
+    self.assertTrue(inspect_utils.isnamedtuple(nt))
+    self.assertFalse(inspect_utils.isnamedtuple(NotANamedTuple))
+
+  def test_isnamedtuple_confounder(self):
+    """This test highlights false positives when detecting named tuples."""
+
+    class NamedTupleLike(tuple):
+      _fields = ('a', 'b')
+
+    self.assertTrue(inspect_utils.isnamedtuple(NamedTupleLike))
+
+  def test_isnamedtuple_subclass(self):
+    """This test highlights false positives when detecting named tuples."""
+
+    class NamedTupleSubclass(collections.namedtuple('Test', ['a', 'b'])):
+      pass
+
+    self.assertTrue(inspect_utils.isnamedtuple(NamedTupleSubclass))
 
   def test_getnamespace_globals(self):
     ns = inspect_utils.getnamespace(factory)
@@ -146,6 +183,14 @@ class InspectUtilsTest(test.TestCase):
     self.assertEqual(inspect_utils.getqualifiedname(ns, bar), 'bar')
     self.assertEqual(inspect_utils.getqualifiedname(ns, baz), 'bar.baz')
 
+  def test_getqualifiedname_finds_via_parent_module(self):
+    # TODO(mdan): This test is vulnerable to change in the lib module.
+    # A better way to forge modules should be found.
+    self.assertEqual(
+        inspect_utils.getqualifiedname(
+            lib.__dict__, lib.io.file_io.FileIO, max_depth=1),
+        'io.file_io.FileIO')
+
   def test_getmethodclass(self):
 
     self.assertEqual(
@@ -175,16 +220,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = TestClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.static_method),
         TestClass)
@@ -233,16 +278,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = LocalClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        LocalClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        LocalClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        LocalClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        LocalClass)
+        test_obj)
 
   def test_getmethodclass_callables(self):
     class TestCallable(object):
@@ -252,6 +297,25 @@ class InspectUtilsTest(test.TestCase):
 
     c = TestCallable()
     self.assertEqual(inspect_utils.getmethodclass(c), TestCallable)
+
+  def test_getmethodclass_weakref_mechanism(self):
+    test_obj = TestClass()
+
+    class WeakrefWrapper(object):
+
+      def __init__(self):
+        self.ag_self_weakref__ = weakref.ref(test_obj)
+
+    def test_fn(self):
+      return self
+
+    bound_method = types.MethodType(test_fn, WeakrefWrapper())
+    self.assertEqual(inspect_utils.getmethodclass(bound_method), test_obj)
+
+  def test_getmethodclass_no_bool_conversion(self):
+
+    tensor = constant_op.constant([1])
+    self.assertEqual(inspect_utils.getmethodclass(tensor.get_shape), tensor)
 
   def test_getdefiningclass(self):
     class Superclass(object):

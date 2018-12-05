@@ -133,7 +133,7 @@ def StreamingFilesDataset(files,
   with ops.device('/job:%s' % file_reader_job):
     if isinstance(files, str):
       source_dataset = dataset_ops.Dataset.list_files(files)
-    elif isinstance(files, dataset_ops.Dataset):
+    elif isinstance(files, dataset_ops.DatasetV2):
       source_dataset = files
     else:
       raise ValueError('files was not a string or a dataset: %s' % files)
@@ -156,7 +156,7 @@ def StreamingFilesDataset(files,
 
     source_dataset = source_dataset.prefetch(1)
 
-    source_iterator = source_dataset.make_one_shot_iterator()
+    source_iterator = dataset_ops.make_one_shot_iterator(source_dataset)
     source_handle = source_iterator.string_handle()
 
   @function.Defun(dtypes.string)

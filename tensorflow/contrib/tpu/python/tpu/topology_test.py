@@ -27,7 +27,7 @@ from tensorflow.python.platform import test
 class TopologyTest(test.TestCase):
 
   def testSerialization(self):
-    """Test if the class is able to generate serialzied string."""
+    """Tests if the class is able to generate serialized strings."""
     original_topology = topology.Topology(
         mesh_shape=[1, 1, 2],
         device_coordinates=[[[0, 0, 0], [0, 0, 1]]],

@@ -370,6 +370,11 @@ HloAllReduceInstruction::HloAllReduceInstruction(
   AppendComputation(reduce_computation);
 }
 
+void HloAllReduceInstruction::set_all_reduce_id(
+    const absl::optional<int64>& all_reduce_id) {
+  all_reduce_id_ = all_reduce_id;
+}
+
 HloInstructionProto HloAllReduceInstruction::ToProto() const {
   HloInstructionProto proto = HloCollectiveInstruction::ToProto();
   // Proto3 is so sad.
@@ -1367,6 +1372,10 @@ bool HloFusionInstruction::IdenticalSlowPath(
                          other.fused_instructions_computation());
 }
 
+uint64 HloFusionInstruction::InnerHash() const {
+  return fused_instructions_computation()->Hash();
+}
+
 std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
@@ -1610,7 +1619,7 @@ HloOutfeedInstruction::HloOutfeedInstruction(const Shape& outfeed_shape,
 HloInstructionProto HloOutfeedInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_outfeed_config(outfeed_config());
-  *proto.mutable_outfeed_shape() = outfeed_shape();
+  *proto.mutable_outfeed_shape() = outfeed_shape().ToProto();
   return proto;
 }
 
@@ -1862,7 +1871,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
   if (layout_constrained()) {
     proto.set_constrain_layout(true);
     for (const Shape& shape : operand_shapes_with_layout_) {
-      *proto.add_operand_shapes_with_layout() = shape;
+      *proto.add_operand_shapes_with_layout() = shape.ToProto();
     }
   }
   return proto;
@@ -2335,18 +2344,57 @@ HloInstructionProto HloDomainInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   auto operand_side_sharding =
       dynamic_cast<const ShardingMetadata*>(operand_side_metadata_.get());
-  if (operand_side_sharding) {
+  if (operand_side_sharding && operand_side_sharding->sharding() != nullptr) {
     *proto.mutable_domain_entry_sharding() =
         operand_side_sharding->sharding()->ToProto();
   }
 
   auto user_side_sharding =
       dynamic_cast<const ShardingMetadata*>(user_side_metadata_.get());
-  if (user_side_sharding) {
+  if (user_side_sharding && user_side_sharding->sharding() != nullptr) {
     *proto.mutable_domain_exit_sharding() =
         user_side_sharding->sharding()->ToProto();
   }
 
   return proto;
 }
+
+HloGetDimensionSizeInstruction::HloGetDimensionSizeInstruction(
+    const Shape& shape, HloInstruction* operand, int64 dimension)
+    : HloInstruction(HloOpcode::kGetDimensionSize, shape),
+      dimension_(dimension) {
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloGetDimensionSizeInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.add_dimensions(dimension());
+  return proto;
+}
+
+std::vector<string> HloGetDimensionSizeInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& /*options*/) const {
+  return {StrCat("dimensions={", dimension(), "}")};
+}
+
+bool HloGetDimensionSizeInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    /*eq_computations*/) const {
+  const auto& casted_other =
+      static_cast<const HloGetDimensionSizeInstruction&>(other);
+  return dimension() == casted_other.dimension();
+}
+
+std::unique_ptr<HloInstruction>
+HloGetDimensionSizeInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* /*context*/) const {
+  if (new_operands.size() != 1) {
+    LOG(FATAL) << "expects 1 operand";
+  }
+  return absl::make_unique<HloGetDimensionSizeInstruction>(
+      shape, new_operands[0], dimension());
+}
+
 }  // namespace xla

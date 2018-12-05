@@ -255,7 +255,7 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
             t1, t2, strides=[1, stride, stride, 1], padding=padding)
       value = sess.run(conv, {t1: x1, t2: x2})
     print("value = ", value)
-    self.assertArrayNear(expected, np.ravel(value), 1e-5)
+    self.assertArrayNear(expected, np.ravel(value), 1e-4)
     self.assertShapeEqual(value, conv)
 
   def testConv2D2x2Filter(self):

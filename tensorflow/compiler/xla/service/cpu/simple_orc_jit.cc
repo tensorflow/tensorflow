@@ -108,15 +108,15 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
           [](llvm::Error Err) {
             cantFail(std::move(Err), "lookupFlags failed");
           })),
-      object_layer_(execution_session_,
-                    [this](llvm::orc::VModuleKey) {
-                      llvm::orc::RTDyldObjectLinkingLayer::Resources result;
-                      result.MemMgr =
-                          std::make_shared<llvm::SectionMemoryManager>(
-                              orc_jit_memory_mapper::GetInstance());
-                      result.Resolver = symbol_resolver_;
-                      return result;
-                    }),
+      object_layer_(
+          execution_session_,
+          [this](llvm::orc::VModuleKey) {
+            llvm::orc::LegacyRTDyldObjectLinkingLayer::Resources result;
+            result.MemMgr = std::make_shared<llvm::SectionMemoryManager>(
+                orc_jit_memory_mapper::GetInstance());
+            result.Resolver = symbol_resolver_;
+            return result;
+          }),
       compile_layer_(object_layer_,
                      CompilerFunctor(target_machine_.get(), &disassembler_,
                                      opt_level, optimize_for_size,
@@ -128,8 +128,18 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
 }
 
 llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
-  void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
+  void* func_addr = nullptr;
+  if (name.size() > 1 && name.front() == data_layout_.getGlobalPrefix()) {
+    // On Mac OS X, 'name' may have a leading underscore prefix, even though the
+    // registered name may not.
+    std::string stripped_name(name.begin() + 1, name.end());
+    func_addr = CustomCallTargetRegistry::Global()->Lookup(stripped_name);
+  } else {
+    func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
+  }
+
   if (func_addr == nullptr) {
+    VLOG(2) << "Unable to resolve runtime symbol: " << name;
     return nullptr;
   }
   llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),

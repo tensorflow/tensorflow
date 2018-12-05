@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/contrib/tensorboard/db/summary_file_writer.h"
 
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -104,6 +105,23 @@ TEST_F(SummaryFileWriterTest, WriteTensor) {
                                   CHECK_EQ(e.summary().value_size(), 1);
                                   EXPECT_EQ(e.summary().value(0).tag(), "name");
                                 }));
+  TF_CHECK_OK(SummaryTestHelper(
+      "string_tensor_test",
+      [](SummaryWriterInterface* writer) {
+        Tensor hello(DT_STRING, TensorShape({}));
+        hello.scalar<string>()() = "hello";
+        TF_RETURN_IF_ERROR(writer->WriteTensor(
+            2, hello, "name", SummaryMetadata().SerializeAsString()));
+        TF_RETURN_IF_ERROR(writer->Flush());
+        return Status::OK();
+      },
+      [](const Event& e) {
+        EXPECT_EQ(e.step(), 2);
+        CHECK_EQ(e.summary().value_size(), 1);
+        EXPECT_EQ(e.summary().value(0).tag(), "name");
+        EXPECT_EQ(e.summary().value(0).tensor().dtype(), DT_STRING);
+        EXPECT_EQ(e.summary().value(0).tensor().string_val()[0], "hello");
+      }));
 }
 
 TEST_F(SummaryFileWriterTest, WriteScalar) {

@@ -28,6 +28,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import embedding_ops
@@ -61,7 +62,7 @@ class ScatterAddSubTest(test.TestCase):
       scatter_op: ScatterAdd or ScatterSub.
     """
     super(ScatterAddSubTest, self).setUp()
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       # Create a random parameter array of given shape
       p_init = np.random.rand(*shape).astype("f")
       # Create the shape of the update array. All dimensions except the last
@@ -76,7 +77,7 @@ class ScatterAddSubTest(test.TestCase):
       # p = init
       variables.global_variables_initializer().run()
       # p += vals
-      result = p2.eval()
+      result = self.evaluate(p2)
     # Compute the expected 'p' using numpy operations.
     for i, ind in enumerate(indices):
       if scatter_op == state_ops.scatter_add:
@@ -87,16 +88,19 @@ class ScatterAddSubTest(test.TestCase):
             vals_shape[0], -1)[i, :])
     self.assertTrue(all((p_init == result).ravel()))
 
+  @test_util.run_deprecated_v1
   def testNoRepetitions(self):
     self._TestCase([2, 2], [1])
     self._TestCase([4, 4, 4], [2, 0])
     self._TestCase([43, 20, 10, 10], [42, 5, 6, 1, 3, 5, 7, 9])
 
+  @test_util.run_deprecated_v1
   def testWithRepetitions(self):
     self._TestCase([2, 2], [1, 1])
     self._TestCase([5, 3, 9, 5], [2, 0, 4, 1, 3, 1, 4, 0, 4, 3])
     self._TestCase([32, 4, 4], [31] * 8)
 
+  @test_util.run_deprecated_v1
   def testRandom(self):
     # Random shapes of rank 4, random indices
     for _ in range(5):
@@ -104,6 +108,7 @@ class ScatterAddSubTest(test.TestCase):
       indices = np.random.randint(shape[0], size=2 * shape[0])
       self._TestCase(_AsLong(list(shape)), list(indices))
 
+  @test_util.run_deprecated_v1
   def testSubRandom(self):
     # Random shapes of rank 4, random indices
     for _ in range(5):
@@ -111,6 +116,7 @@ class ScatterAddSubTest(test.TestCase):
       indices = np.random.randint(shape[0], size=2 * shape[0])
       self._TestCase(_AsLong(list(shape)), list(indices), state_ops.scatter_sub)
 
+  @test_util.run_deprecated_v1
   def testWrongShape(self):
     # Indices and values mismatch.
     var = variables.Variable(
@@ -241,6 +247,7 @@ class EmbeddingLookupTest(test.TestCase):
   # both the ids are in the first shard, one of the resulting lookup
   # vector is going to be empty. The subsequent DivOp fails because of that.
   # TODO(keveman): Disabling the test until the underlying problem is fixed.
+  @test_util.run_deprecated_v1
   def testSimpleSharded(self):
     with self.cached_session():
       num_shards = 2
@@ -257,6 +264,7 @@ class EmbeddingLookupTest(test.TestCase):
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
+  @test_util.run_deprecated_v1
   def testMaxNorm(self):
     with self.cached_session():
       embeddings = constant_op.constant([[2.0]])
@@ -267,6 +275,7 @@ class EmbeddingLookupTest(test.TestCase):
 
       self.assertAllEqual(embedding.eval(), [[1.0]])
 
+  @test_util.run_deprecated_v1
   def testMaxNormNontrivial(self):
     with self.cached_session():
       embeddings = constant_op.constant([[2.0, 4.0], [3.0, 1.0]])
@@ -278,8 +287,9 @@ class EmbeddingLookupTest(test.TestCase):
       norms = math_ops.sqrt(
           math_ops.reduce_sum(embeddings * embeddings, axis=1))
       normalized = embeddings / array_ops.stack([norms, norms], axis=1)
-      self.assertAllEqual(embedding.eval(), 2 * normalized.eval())
+      self.assertAllEqual(embedding.eval(), 2 * self.evaluate(normalized))
 
+  @test_util.run_deprecated_v1
   def testSimpleShardedPartitionedVariable(self):
     with self.cached_session() as sess:
       num_shards = 2
@@ -294,7 +304,7 @@ class EmbeddingLookupTest(test.TestCase):
       variables.global_variables_initializer().run()
       params_values = [params[p_i.name] for p_i in p]
       # Test that the PartitionedVariable components equal the list in p
-      p_var_val = sess.run(list(p_variable))
+      p_var_val = self.evaluate(list(p_variable))
       # Actual test
       tf_result = embedding.eval(feed_dict=feed_dict)
     np_result, _, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
@@ -302,6 +312,7 @@ class EmbeddingLookupTest(test.TestCase):
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
+  @test_util.run_deprecated_v1
   def testSimpleShardedPartitionedResourceVariable(self):
     with self.cached_session() as sess:
       num_shards = 2
@@ -316,15 +327,16 @@ class EmbeddingLookupTest(test.TestCase):
       variables.global_variables_initializer().run()
       params_values = [params[p_i.name] for p_i in p]
       # Test that the PartitionedVariable components equal the list in p
-      p_var_val = sess.run(list(p_variable))
+      p_var_val = self.evaluate(list(p_variable))
       # Actual test
       print(ops.get_default_graph().as_graph_def())
-      tf_result = embedding.eval()
+      tf_result = self.evaluate(embedding)
     np_result, _, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
     self.assertAllEqual(params_values, p_var_val)
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
+  @test_util.run_deprecated_v1
   def testShardedModPartitioningInt32Ids(self):
     with self.cached_session():
       num_shards = 5
@@ -347,6 +359,7 @@ class EmbeddingLookupTest(test.TestCase):
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
+  @test_util.run_deprecated_v1
   def testShardedModPartitioningInt64Ids(self):
     with self.cached_session():
       num_shards = 5
@@ -369,6 +382,7 @@ class EmbeddingLookupTest(test.TestCase):
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
+  @test_util.run_deprecated_v1
   def testShardedDivPartitioningInt32Ids(self):
     with self.cached_session():
       num_shards = 5
@@ -393,6 +407,7 @@ class EmbeddingLookupTest(test.TestCase):
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
+  @test_util.run_deprecated_v1
   def testShardedDivPartitioningInt32IdsPartitionedVariable(self):
     with self.cached_session():
       num_shards = 5
@@ -418,6 +433,7 @@ class EmbeddingLookupTest(test.TestCase):
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
+  @test_util.run_deprecated_v1
   def testShardedDivPartitioningInt64Ids(self):
     with self.cached_session():
       num_shards = 5
@@ -442,6 +458,7 @@ class EmbeddingLookupTest(test.TestCase):
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
+  @test_util.run_deprecated_v1
   def testShardedDivPartitioningUnknownParamShape(self):
     with self.cached_session():
       num_shards = 5
@@ -468,6 +485,7 @@ class EmbeddingLookupTest(test.TestCase):
         params, id_vals, num_shards, vocab_size, partition_strategy="div")
     self.assertAllEqual(np_result, tf_result)
 
+  @test_util.run_deprecated_v1
   def testGradientsEmbeddingLookup(self):
     vocab_size = 9
     num_ids = 10
@@ -488,6 +506,7 @@ class EmbeddingLookupTest(test.TestCase):
               x, x_shape, y, y_shape, x_init_value=x_init_value)
         self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradientsEmbeddingLookupWithComputedParams(self):
     vocab_size = 9
     num_ids = 5
@@ -526,6 +545,7 @@ class EmbeddingLookupTest(test.TestCase):
         ids = constant_op.constant([0, 1, 1, 17], dtype=dtypes.int32)
       embedding_ops.embedding_lookup(p, ids)
 
+  @test_util.run_deprecated_v1
   def testHigherRank(self):
     np.random.seed(8)
     with self.cached_session():
@@ -546,6 +566,7 @@ class EmbeddingLookupTest(test.TestCase):
             sharded = embedding_ops.embedding_lookup(split_params, ids).eval()
             self.assertAllEqual(simple, sharded)
 
+  @test_util.run_deprecated_v1
   def testHigherRankMaxNorm(self):
     np.random.seed(8)
     with self.cached_session():
@@ -574,6 +595,7 @@ class EmbeddingLookupTest(test.TestCase):
                 split_params, ids, max_norm=1.0).eval()
             self.assertAllEqual(simple, sharded)
 
+  @test_util.run_deprecated_v1
   def testTransform(self):
     # This tests all combinations of:
     #   - ids rank 0, 1, >1
@@ -648,6 +670,7 @@ class EmbeddingLookupSparseTest(test.TestCase):
       index += num_val
     return grouped_vals
 
+  @test_util.run_deprecated_v1
   def testEmbeddingLookupSparse(self):
     vocab_size = 13
     batch_size = 10
@@ -706,6 +729,7 @@ class EmbeddingLookupSparseTest(test.TestCase):
         atol = rtol
         self.assertAllClose(np_embedding_sum, tf_embedding_sum, rtol, atol)
 
+  @test_util.run_deprecated_v1
   def testGradientsEmbeddingLookupSparse(self):
     vocab_size = 12
     batch_size = 4
@@ -733,6 +757,7 @@ class EmbeddingLookupSparseTest(test.TestCase):
             x, x_shape, y, y_shape, x_init_value=x_init_value)
       self.assertLess(err, 1e-5 if dtype == dtypes.float64 else 2e-3)
 
+  @test_util.run_deprecated_v1
   def testIncompatibleShapes(self):
     with self.cached_session():
       x, _, _ = _EmbeddingParams(1, 10, dtype=dtypes.float32)
@@ -758,11 +783,13 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
     assert num_shards > 0
     assert num_shards <= vocab_size
 
-    embedding_weights = partitioned_variables.create_partitioned_variables(
+    initializer = init_ops.truncated_normal_initializer(
+        mean=0.0, stddev=1.0 / math.sqrt(vocab_size), dtype=dtypes.float32)
+    embedding_weights = list(variable_scope.get_variable(
+        name="embedding_weights",
         shape=[vocab_size, embed_dim],
-        slicing=[num_shards, 1],
-        initializer=init_ops.truncated_normal_initializer(
-            mean=0.0, stddev=1.0 / math.sqrt(vocab_size), dtype=dtypes.float32))
+        partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
+        initializer=initializer))
     for w in embedding_weights:
       w.initializer.run()
     embedding_weights = [w.eval() for w in embedding_weights]
@@ -818,6 +845,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
 
     return sparse_ids, sparse_weights
 
+  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_return_zero_vector(self):
     with self.cached_session():
       embedding_weights = self._random_weights()
@@ -831,6 +859,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
           [(1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) /
            3.0, [0] * 4, [0] * 4, embedding_weights[0][2], [0] * 4])
 
+  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_return_special_vector(self):
     with self.cached_session():
       embedding_weights = self._random_weights()
@@ -845,6 +874,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
            3.0, embedding_weights[0][3], embedding_weights[0][3],
            embedding_weights[0][2], embedding_weights[0][3]])
 
+  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_no_weights(self):
     with self.cached_session():
       embedding_weights = self._random_weights()
@@ -859,6 +889,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
            [0] * 4, embedding_weights[0][2], (
                embedding_weights[0][0] + embedding_weights[0][1]) / 2.0])
 
+  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_partitioned(self):
     with self.cached_session():
       embedding_weights = self._random_weights(num_shards=3)
@@ -873,6 +904,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
                            [0] * 4, [0] * 4, embedding_weights[2],
                            (embedding_weights[0] + embedding_weights[1]) / 2.0])
 
+  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_partitioned_inconsistent_weights(self):
     with self.cached_session():
       embedding_weights = self._random_weights(num_shards=3)
@@ -888,6 +920,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       self.assertRaises(ValueError, embedding_ops.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids, sparse_weights)
 
+  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_3d_return_zero_vector(self):
     with self.cached_session():
       embedding_weights = self._random_weights()
@@ -901,6 +934,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
           [0] * 4, [0] * 4
       ], [embedding_weights[0][2], [0] * 4, [0] * 4]])
 
+  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_3d_return_special_vector(self):
     with self.cached_session():
       embedding_weights = self._random_weights()
@@ -917,6 +951,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
                 embedding_weights[0][3]
             ]])
 
+  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_3d_no_weights(self):
     with self.cached_session():
       embedding_weights = self._random_weights()
@@ -933,6 +968,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
               (embedding_weights[0][0] + embedding_weights[0][1]) / 2.0, [0] * 4
           ]])
 
+  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_3d_partitioned(self):
     with self.cached_session():
       embedding_weights = self._random_weights(num_shards=3)
@@ -949,6 +985,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
           (embedding_weights[0] + embedding_weights[1]) / 2.0, [0] * 4
       ]])
 
+  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_3d_partitioned_inconsistent_weights(
       self):
     with self.cached_session():
@@ -968,8 +1005,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
 
 class DynamicStitchOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testCint32Cpu(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])
@@ -981,8 +1019,9 @@ class DynamicStitchOpTest(test.TestCase):
       self.assertAllEqual(
           data_flow_ops.dynamic_stitch(indices, values).eval(), [12, 23, 1, 2])
 
+  @test_util.run_deprecated_v1
   def testCint32Gpu(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])
@@ -994,8 +1033,9 @@ class DynamicStitchOpTest(test.TestCase):
       self.assertAllEqual(
           data_flow_ops.dynamic_stitch(indices, values).eval(), [12, 23, 1, 2])
 
+  @test_util.run_deprecated_v1
   def testInt32Cpu(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])
@@ -1007,8 +1047,9 @@ class DynamicStitchOpTest(test.TestCase):
       self.assertAllEqual(
           data_flow_ops.dynamic_stitch(indices, values).eval(), [12, 23, 1, 2])
 
+  @test_util.run_deprecated_v1
   def testInt32Gpu(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])
@@ -1020,8 +1061,9 @@ class DynamicStitchOpTest(test.TestCase):
       self.assertAllEqual(
           data_flow_ops.dynamic_stitch(indices, values).eval(), [12, 23, 1, 2])
 
+  @test_util.run_deprecated_v1
   def testSumGradArgs(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = [
           ops.convert_to_tensor([0, 1, 2, 3]),
           ops.convert_to_tensor([2, 3])
@@ -1034,6 +1076,7 @@ class DynamicStitchOpTest(test.TestCase):
           data_flow_ops.dynamic_stitch(indices, values).eval(), [2, 3, 1, 1])
 
   # We expect that the values are merged in order.
+  @test_util.run_deprecated_v1
   def testStitchOrder(self):
     with self.cached_session():
       indices = []
@@ -1049,8 +1092,9 @@ class DynamicStitchOpTest(test.TestCase):
 
 class ParallelDynamicStitchOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testCint32Cpu(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = [
           ops.convert_to_tensor([0, 1, 4, 6]),
           ops.convert_to_tensor([2, 3, 5])
@@ -1063,8 +1107,9 @@ class ParallelDynamicStitchOpTest(test.TestCase):
           data_flow_ops.parallel_dynamic_stitch(indices, values).eval(),
           [12, 23, 1, 2, 34, 3, 45])
 
+  @test_util.run_deprecated_v1
   def testInt32Cpu(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = [
           ops.convert_to_tensor([0, 1, 5, 6, 7]),
           ops.convert_to_tensor([2, 4, 3])
@@ -1077,8 +1122,9 @@ class ParallelDynamicStitchOpTest(test.TestCase):
           data_flow_ops.parallel_dynamic_stitch(indices, values).eval(),
           [12, 23, 1, 2, 3, 34, 45, 56])
 
+  @test_util.run_deprecated_v1
   def testSimple(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = [ops.convert_to_tensor([0, 1]), ops.convert_to_tensor([2, 3])]
       values = [ops.convert_to_tensor([2, 3]), ops.convert_to_tensor([1, 1])]
       self.assertAllEqual(

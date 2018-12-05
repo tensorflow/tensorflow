@@ -100,7 +100,7 @@ def exponential_decay(learning_rate,
   return decayed_lr
 
 
-@tf_export(v1=["train.piecewise_constant"])
+@tf_export(v1=["train.piecewise_constant_decay", "train.piecewise_constant"])
 def piecewise_constant(x, boundaries, values, name=None):
   """Piecewise constant from boundaries and interval values.
 

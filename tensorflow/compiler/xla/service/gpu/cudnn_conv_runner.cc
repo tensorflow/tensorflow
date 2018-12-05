@@ -126,9 +126,9 @@ Status RunCudnnConvImpl(CudnnConvParams params,
   int64 feature_group_count = params.feature_group_count;
   AlgorithmConfig algorithm = params.algorithm;
 
-  VLOG(3) << "Convolution Algorithm: " << algorithm.algorithm().algo_id();
+  VLOG(3) << "Convolution Algorithm: " << algorithm.algorithm()->algo_id();
   VLOG(3) << "tensor_ops_enabled: "
-          << algorithm.algorithm().tensor_ops_enabled();
+          << algorithm.algorithm()->tensor_ops_enabled();
   VLOG(3) << "Convolution kind: " << CudnnConvKindToString(kind);
   VLOG(3) << "input shape: " << ShapeUtil::HumanStringWithLayout(input_shape);
   VLOG(3) << "filter shape: " << ShapeUtil::HumanStringWithLayout(filter_shape);
@@ -138,6 +138,7 @@ Status RunCudnnConvImpl(CudnnConvParams params,
 
   const int num_dimensions = window.dimensions_size();
   CHECK_LE(num_dimensions, 3);
+  CHECK_GE(num_dimensions, 1);
   // cuDNN does not support 1D convolutions. We therefore express 1D
   // convolutions as 2D convolutions where the first spatial dimension is 1.
   // This matches the behavior of TF (see definition of conv1d in
@@ -148,11 +149,22 @@ Status RunCudnnConvImpl(CudnnConvParams params,
            output_shape.element_type())
       << ShapeUtil::HumanString(output_shape);
 
+  // If one dimension is reversed, we need to have all dimensions reversed (so
+  // we're doing convolution not cross correlation).
+  const bool dims_reversed = window.dimensions()[0].window_reversal();
+
   CHECK_EQ(num_dimensions, dnums.input_spatial_dimensions_size());
   CHECK_EQ(num_dimensions, dnums.kernel_spatial_dimensions_size());
   CHECK_EQ(num_dimensions, dnums.output_spatial_dimensions_size());
   for (const WindowDimension& dim : window.dimensions()) {
+    CHECK_EQ(dims_reversed, dim.window_reversal());
     CHECK_EQ(dim.padding_low(), dim.padding_high());
+    CHECK_EQ(dim.base_dilation(), 1)
+        << "cudnn does not support base dilation; it "
+           "must be made explicit with a kPad";
+    CHECK_EQ(dim.window_dilation(), 1)
+        << "XLA does not support window dilation (although cudnn does); it "
+           "must be made explicit with a kPad";
   }
 
   // cuDNN's convolution APIs support the BDYX layout for activations/output and
@@ -192,6 +204,7 @@ Status RunCudnnConvImpl(CudnnConvParams params,
 
   ConvolutionDescriptor convolution_descriptor(effective_num_dimensions);
   convolution_descriptor.set_group_count(feature_group_count);
+  convolution_descriptor.set_convolution_not_crosscorr(dims_reversed);
   for (int dim = 0; dim < num_dimensions; ++dim) {
     convolution_descriptor
         .set_zero_padding(
@@ -296,8 +309,8 @@ Status RunCudnnConvImpl(CudnnConvParams params,
   if (!stream->ok()) {
     return InternalError(
         "Unable to launch convolution with type %s and algorithm (%d, %d)",
-        CudnnConvKindToString(kind), algorithm.algorithm().algo_id(),
-        algorithm.algorithm_no_scratch().algo_id());
+        CudnnConvKindToString(kind), algorithm.algorithm()->algo_id(),
+        algorithm.algorithm_no_scratch()->algo_id());
   }
   return Status::OK();
 }
@@ -357,14 +370,12 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
       params.output_shape = &conv_result_shape;
       params.fusion.emplace();
       auto& fusion = *params.fusion;
-      if (backend_config.activation_mode() <
-          static_cast<int64>(se::dnn::ActivationMode::kNumActivationModes)) {
-        fusion.mode = static_cast<se::dnn::ActivationMode>(
-            backend_config.activation_mode());
-      } else {
+      if (!se::dnn::ActivationMode_IsValid(backend_config.activation_mode())) {
         return InternalError("Bad activation mode: %s",
                              backend_config.ShortDebugString());
       }
+      fusion.mode = static_cast<se::dnn::ActivationMode>(
+          backend_config.activation_mode());
       fusion.side_input_scale = backend_config.side_input_scale();
       params.input_buf = operand_buffers[0];
       params.filter_buf = operand_buffers[1];
