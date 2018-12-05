@@ -341,7 +341,6 @@ cc_library(
 tf_cc_test(
     name = "import_tensorflow_test",
     srcs = ["import_tensorflow_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":toco_tooling",
         "//tensorflow/core:framework",
@@ -384,7 +383,6 @@ cc_library(
 tf_cc_test(
     name = "tooling_util_test",
     srcs = ["tooling_util_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":model",
         ":tooling_util",
@@ -468,7 +466,6 @@ tf_cc_test(
     data = [
         "toco_port_test.cc",
     ],
-    tags = ["no_oss"],
     deps = [
         ":toco_port",
         "@com_google_googletest//:gtest_main",
