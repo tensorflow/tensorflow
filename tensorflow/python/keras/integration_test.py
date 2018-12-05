@@ -320,15 +320,6 @@ class KerasIntegrationTest(test.TestCase):
                           verbose=0)
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
-  def test_regularizers_with_get_variable(self):
-    # Test case for GitHub issue 22470.
-    with self.cached_session():
-      v = variable_scope.get_variable(
-          "v",
-          shape=[4, 4],
-          initializer=keras.initializers.glorot_uniform(),
-          regularizer=keras.regularizers.l2(0.))
-
 
 if __name__ == '__main__':
   test.main()

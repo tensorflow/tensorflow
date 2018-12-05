@@ -357,10 +357,11 @@ class MklAvgPoolingGradOp : public OpKernel {
       if (!outbackprop_in_mkl_format) {
         // For avgpooling, tensor_in_shape should have 1 dimension, and 4
         // elements.
-        OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
-                                 tensor_in_shape.NumElements() == 4,
-                    errors::InvalidArgument("original input shape must be "
-                                            "1-dimensional and 4 elements"));
+        OP_REQUIRES(
+            context,
+            tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
+            errors::InvalidArgument("original input shape must be "
+                                    "1-dimensional and 4 elements"));
 
         // For avgpooling, out_backprop should have 4 dimensions.
         OP_REQUIRES(
@@ -551,9 +552,9 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
         output_max->flat<float>()(0) = max_input;
       }
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
-                         string(e.message) + ", in file " + string(__FILE__) +
-                         ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) +
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -653,9 +654,9 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       // execute pooling op
       pooling_bwd->Execute(diff_dst_data, diff_src_data);
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
-                         string(e.message) + ", in file " + string(__FILE__) +
-                         ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) +
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(context, errors::Aborted("Compute received an exception:",
                                               error_msg));
     }
@@ -674,13 +675,15 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                          const MklDnnShape& original_input_mkl_shape,
                          const MklDnnShape& input_gradient_mkl_shape) {
     if (!original_input_mkl_shape.IsMklTensor()) {
-      OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
-                               tensor_in_shape.NumElements() == 4,
-                  errors::InvalidArgument("original input shape must be "
-                                          "1-dimensional and 4 elements"));
+      OP_REQUIRES(
+          context,
+          tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
+          errors::InvalidArgument("original input shape must be "
+                                  "1-dimensional and 4 elements"));
     } else {
-      OP_REQUIRES(context, original_input_mkl_shape.GetDimension() == 1 &&
-                               original_input_mkl_shape.DimSize(0) == 4,
+      OP_REQUIRES(context,
+                  original_input_mkl_shape.GetDimension() == 1 &&
+                      original_input_mkl_shape.DimSize(0) == 4,
                   errors::InvalidArgument("original input shape must be "
                                           "1-dimensional and 4 elements"));
     }
