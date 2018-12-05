@@ -3348,9 +3348,9 @@ def rnn(step_function,
     assert not nest.is_sequence(input_t)
     rank_diff = len(input_t.shape) - len(mask_t.shape)
     for _ in range(rank_diff):
-      mask_t = array_ops.expand_dims(mask_t)
-    expand_dims = [1] * fixed_dim + input_t.shape.as_list()[fixed_dim:]
-    return array_ops.tile(mask_t, expand_dims)
+      mask_t = array_ops.expand_dims(mask_t, -1)
+    multiples = [1] * fixed_dim + input_t.shape.as_list()[fixed_dim:]
+    return array_ops.tile(mask_t, multiples)
 
   if unroll:
     if not time_steps:

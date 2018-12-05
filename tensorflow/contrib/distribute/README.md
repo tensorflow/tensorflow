@@ -248,7 +248,6 @@ Let's use the same example for multi-worker. We'll start a cluster with 3
 workers doing synchronous all-reduce training. In the following code snippet, we
 start multi-worker training using `tf.estimator.train_and_evaluate`:
 
-
 ```python
 def model_main():
   distribution = tf.contrib.distribute.CollectiveAllReduceStrategy(
@@ -259,7 +258,6 @@ def model_main():
   eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 ```
-
 
 **Note**: You don't have to set "TF\_CONFIG" manually if you use our provided
 Kubernetes template.

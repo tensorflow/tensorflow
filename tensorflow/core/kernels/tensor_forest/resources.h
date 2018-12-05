@@ -18,19 +18,21 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
+// Forward declaration for proto class Tree.
+namespace boosted_trees {
+class Tree;
+}  // namespace boosted_trees
+
 // Keep a tree ensemble in memory for efficient evaluation and mutation.
 class TensorForestTreeResource : public ResourceBase {
  public:
-  TensorForestTreeResource()
-      : decision_tree_(
-            protobuf::Arena::CreateMessage<boosted_trees::Tree>(&arena_)){};
+  TensorForestTreeResource();
 
   string DebugString() override {
     return strings::StrCat("TensorForestTree[size=", get_size(), "]");
@@ -44,9 +46,9 @@ class TensorForestTreeResource : public ResourceBase {
   // Caller needs to hold the mutex lock while calling this.
   void Reset();
 
-  const int32 get_size() const { return decision_tree_->nodes_size(); }
+  const int32 get_size() const;
 
-  const boosted_trees::Tree& decision_tree() const { return *decision_tree_; }
+  const boosted_trees::Tree& decision_tree() const;
 
   const float get_prediction(const int32 id, const int32 dimension_id) const;
 

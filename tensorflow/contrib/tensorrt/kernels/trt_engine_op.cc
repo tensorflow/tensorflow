@@ -151,9 +151,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                        AsyncHelper* helper) {
-  if (!calibration_mode_) {
-    VLOG(1) << "Executing native engine";
-  }
   std::vector<Tensor> inputs;
   std::vector<Tensor>* outputs = new std::vector<Tensor>();
   if (native_func_ == tensorflow::kInvalidHandle) {
@@ -174,7 +171,7 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
     inputs.push_back(ctx->input(i));
   }
   helper->Ref();  // Increment count for calculating native graph
-  VLOG(1) << "Executing native segment " << name();
+  VLOG(1) << "Executing native segment: " << name();
   lib->Run(opts, native_func_, inputs, outputs,
            [this, ctx, outputs, helper](const tensorflow::Status& s) {
              tensorflow::core::ScopedUnref sc(helper);
@@ -194,6 +191,7 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
 
 void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                                      AsyncHelper* helper) {
+  VLOG(1) << "Executing TRT calibration: " << name();
   helper->Ref();
   tensorflow::core::ScopedUnref sc(helper);
   // TODO(aaroey): remove the ResourceMgr singleton.
@@ -304,6 +302,7 @@ bool TRTEngineOp::ExecuteTrtEngine(
     OpKernelContext* ctx, const int num_batch,
     nvinfer1::ICudaEngine* trt_engine_ptr,
     nvinfer1::IExecutionContext* trt_execution_context_ptr) {
+  VLOG(1) << "Executing TRT engine: " << name();
   const bool kRetry = true;
   const int num_binding = ctx->num_inputs() + ctx->num_outputs();
   std::vector<void*> buffers(num_binding);

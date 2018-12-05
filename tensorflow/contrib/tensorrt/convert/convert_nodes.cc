@@ -426,8 +426,8 @@ size_t TRT_ShapedWeights::size_bytes() const {
 
 string TRT_ShapedWeights::DebugString() const {
   return StrCat("TRT_ShapedWeights(shape=", convert::DebugString(shape_),
-                ", type=", DataTypeString(type_), ", values=",
-                reinterpret_cast<uintptr_t>(GetValues()), ")");
+                ", type=", DataTypeString(type_),
+                ", values=", reinterpret_cast<uintptr_t>(GetValues()), ")");
 }
 
 // A fake ITensor implementation used to check whether the TF-TRT converter can
@@ -673,10 +673,11 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
       break;
     }
     case tensorflow::DataType::DT_HALF: {
-      Reorder2({k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
-               istrides, static_cast<Eigen::half*>(
-                             const_cast<void*>(oweights->GetValues())),
-               ostrides);
+      Reorder2(
+          {k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
+          istrides,
+          static_cast<Eigen::half*>(const_cast<void*>(oweights->GetValues())),
+          ostrides);
       break;
     }
     default:
@@ -1994,9 +1995,9 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
   };
   auto op_pair = ops.find(node_def.op());
   if (op_pair == ops.end()) {
-    return tensorflow::errors::Unimplemented("Activation op: ", node_def.op(),
-                                             " not supported at: ",
-                                             node_def.name());
+    return tensorflow::errors::Unimplemented(
+        "Activation op: ", node_def.op(),
+        " not supported at: ", node_def.name());
   }
   if (params->validation_only) return tensorflow::Status::OK();
 
@@ -2396,9 +2397,9 @@ tensorflow::Status ConvertConst(OpConverterParams* params) {
           uint8* data = reinterpret_cast<uint8*>(temp_weights.data());
           std::copy(data, data + tensor.NumElements(), dst);
         } else {
-          return errors::FailedPrecondition("Unexpected data type: ",
-                                            DataTypeString(dtype), " at: ",
-                                            node_def.name());
+          return errors::FailedPrecondition(
+              "Unexpected data type: ", DataTypeString(dtype),
+              " at: ", node_def.name());
         }
       }
     }
@@ -3129,9 +3130,9 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
     op = nvinfer1::TopKOperation::kMAX;
     reducedAxes |= 1 << (nbDims - 1);
   } else {
-    return tensorflow::errors::Unimplemented("Operation: " + node_def.op() +
-                                             " not implemented, at: " +
-                                             node_def.name());
+    return tensorflow::errors::Unimplemented(
+        "Operation: " + node_def.op() +
+        " not implemented, at: " + node_def.name());
   }
 
   nvinfer1::ITopKLayer* layer = params->converter->network()->addTopK(
@@ -3207,11 +3208,6 @@ void Converter::RegisterOpConverters() {
   op_registry_["Softmax"] = ConvertSoftmax;
   op_registry_["BatchMatMul"] = ConvertBatchMatMul;
   op_registry_["TopKV2"] = ConvertTopK;
-  op_registry_["Relu6"] = ConvertRelu6;
-  op_registry_["QuantizeAndDequantizeV2"] = ConvertQuantize;
-  op_registry_["QuantizeAndDequantizeV3"] = ConvertQuantize;
-  op_registry_["FakeQuantWithMinMaxVars"] = ConvertQuantize;
-  op_registry_["FakeQuantWithMinMaxArgs"] = ConvertQuantize;
 
   plugin_converter_ = ConvertPlugin;
 }

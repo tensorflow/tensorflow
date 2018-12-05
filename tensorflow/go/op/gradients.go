@@ -22,7 +22,6 @@ import (
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
-
 // Gradients adds gradients computation ops to the graph according to scope.
 //
 // Arguments:

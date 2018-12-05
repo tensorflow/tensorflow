@@ -64,12 +64,12 @@ class MklSoftmaxOp : public OpKernel {
       auto src_dims = TFShapeToMklDnnDims(src_tf_shape);
       auto output_dims = src_dims;
       memory::format layout_type;
-      // In MKL, data format passed to mkl softmax op depends on dimension of the input tensor.
-      // Here "x" data format in MKL is used for 1 dim tensor, "nc" for 2 dim tensor, 
-      // "tnc" for 3 dim tensor, "nchw" for 4 dim tensor, and "ncdhw" for 5 dim tensor.
-      // Each of the simbols has the following meaning:
-      // n = batch, c = channels, t = sequence length, h = height,
-      // w = width, d = depth 
+      // In MKL, data format passed to mkl softmax op depends on dimension of
+      // the input tensor. Here "x" data format in MKL is used for 1 dim tensor,
+      // "nc" for 2 dim tensor, "tnc" for 3 dim tensor, "nchw" for 4 dim tensor,
+      // and "ncdhw" for 5 dim tensor. Each of the simbols has the following
+      // meaning: n = batch, c = channels, t = sequence length, h = height, w =
+      // width, d = depth
       switch (input_dims) {
         case 1:
           layout_type = memory::format::x;

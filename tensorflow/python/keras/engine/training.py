@@ -1205,12 +1205,57 @@ class Model(Network):
           x, y, sample_weight = next_element
       else:
         x = next_element
-    x, y, sample_weights = self._standardize_weights(x, y, sample_weight,
-                                                     class_weight, batch_size)
+    x, y, sample_weights = self._standardize_weights(
+        x, y, sample_weight, class_weight, batch_size, is_x_iterator)
     return x, y, sample_weights
 
-  def _standardize_weights(self, x, y, sample_weight=None, class_weight=None,
-                           batch_size=None,):
+  def _standardize_weights(self,
+                           x,
+                           y,
+                           sample_weight=None,
+                           class_weight=None,
+                           batch_size=None,
+                           from_iterator=False):
+    """Standardize input data, target data, and weight values.
+
+    This method reformats all data passed to the model to an ordered list of
+    array/tensors, matching the order expected by the model. This also validates
+    the input and target data shapes.
+
+    Args:
+      x: Input data. It could be:
+        - A Numpy array (or array-like), or a list of arrays
+          (in case the model has multiple inputs).
+        - A TensorFlow tensor, or a list of tensors
+          (in case the model has multiple inputs).
+        - A dict mapping input names to the corresponding array/tensors,
+          if the model has named inputs.
+        x cannot not be an iterator.
+      y: Target data. Like the input data `x`,
+        it could be either Numpy array(s) or TensorFlow tensor(s).
+        It should be consistent with `x` (you cannot have Numpy inputs and
+        tensor targets, or inversely).
+      sample_weight: An optional sample-weight array passed by the user to
+        weight the importance of each sample in `x`.
+      class_weight: An optional class-weight array by the user to
+        weight the importance of samples in `x` based on the class they belong
+        to, as conveyed by `y`.
+      batch_size: Integer batch size. If provided, it is used to run additional
+        validation checks on stateful models.
+      from_iterator: Whether x and y were obtained from an iterator.
+
+    Returns:
+      Tuple of standardized data that will be fed to the model:
+        (input data, target data, sample weights)
+
+    Raises:
+      RuntimeError: If target data is provided, but the model has not yet been
+        compiled.
+      ValueError: If the input data, target data, and batch size have invalid
+        shapes or formats (e.g. the model expects input to be a list of three
+        tensors, but x is a list with two tensors). Error is also raised if the
+        input and target data are not both arrays or tensors.
+    """
     # TODO(sourabhbajaj): Split input validation from weight standardization.
     if sample_weight is not None and class_weight is not None:
       logging.warning(
@@ -1244,13 +1289,16 @@ class Model(Network):
         all_inputs.append(x)
 
       # Build the model using the retrieved inputs (value or symbolic).
-      # If values, then in symbolic-mode placeholders will be created
-      # to match the value shapes.
+      # If values or generated from a dataset, then in symbolic-mode
+      # placeholders will be created to match the value shapes.
       if not self.inputs:
         is_build_called = True
-        cast_inputs = x
-        if training_utils.has_tensors(x):
+        if from_iterator:
+          cast_inputs = nest.map_structure(lambda v: v.shape, x)
+        elif training_utils.has_tensors(x):
           cast_inputs = training_utils.cast_if_floating_dtype(x)
+        else:
+          cast_inputs = x
         self._set_inputs(cast_inputs)
     else:
       dict_inputs = isinstance(self.inputs, dict)
@@ -1293,7 +1341,7 @@ class Model(Network):
                              'TensorFlow tensors. '
                              'You passed: x=' + str(x) + '; y=' + str(y))
 
-        if self.run_eagerly:
+        if self.run_eagerly or from_iterator:
           target_tensors = None
         else:
           # Handle target tensors if any passed.
@@ -1316,9 +1364,8 @@ class Model(Network):
     # part of the graph.
     # Note: in this case, `any` and `all` are equivalent since we disallow
     # mixed symbolic/value inputs.
-    if (not self.run_eagerly and is_build_called and
-        is_compile_called and
-        any(_is_symbolic_tensor(v) for v in all_inputs)):
+    if (not self.run_eagerly and is_build_called and is_compile_called and
+        not from_iterator and any(_is_symbolic_tensor(v) for v in all_inputs)):
       return [], [], []
 
     # What follows is input validation and standardization to list format,
@@ -1432,12 +1479,12 @@ class Model(Network):
 
     Args:
       inputs: Single array, or list of arrays. The arrays could be placeholders,
-        Numpy arrays, or data tensors.
+        Numpy arrays, data tensors, or TensorShapes.
         - if placeholders: the model is built on top of these placeholders,
           and we expect Numpy data to be fed for them when calling `fit`/etc.
-        - if Numpy data: we create placeholders matching the shape of the Numpy
-          arrays. We expect Numpy data to be fed for these placeholders
-          when calling `fit`/etc.
+        - if Numpy data or TensorShapes: we create placeholders matching the
+          TensorShapes or shapes of the Numpy arrays. We expect Numpy data to be
+          fed for these placeholders when calling `fit`/etc.
         - if data tensors: the model is built on top of these tensors.
           We do not expect any Numpy data to be provided when calling `fit`/etc.
       outputs: None, a data tensor, or a list of tensors. If None, the
@@ -1456,6 +1503,8 @@ class Model(Network):
     if self.__class__.__name__ == 'Sequential' and not self.built:
       if tensor_util.is_tensor(inputs):
         input_shape = (None,) + tuple(inputs.shape.as_list()[1:])
+      elif isinstance(inputs, tensor_shape.TensorShape):
+        input_shape = (None,) + tuple(inputs.as_list()[1:])
       elif isinstance(inputs, dict):
         # We assert that the first layer is a FeatureLayer.
         if not training_utils.is_feature_layer(self.layers[0]):
@@ -2503,31 +2552,32 @@ class Model(Network):
       The validated batch_size, auto-inferred from the first layer if not
       provided.
     """
-    first_layer = super(Model,
-                        self).layers[0]  # Avoids the override in Sequential.
-    static_batch_size = training_utils.get_static_batch_size(first_layer)
-    if static_batch_size is not None:
+    layers = super(Model, self).layers  # Avoids the override in Sequential.
+    if layers:
+      first_layer = layers[0]
+      static_batch_size = training_utils.get_static_batch_size(first_layer)
+      if static_batch_size is not None:
 
-      # Check `batch_size` argument is consistent with InputLayer.
-      if batch_size is not None and batch_size != static_batch_size:
-        raise ValueError('The `batch_size` argument value ' + str(batch_size) +
-                         ' is incompatible with the specified batch size '
-                         'of your Input Layer: ' + str(static_batch_size))
+        # Check `batch_size` argument is consistent with InputLayer.
+        if batch_size is not None and batch_size != static_batch_size:
+          raise ValueError('The `batch_size` argument value {} is incompatible '
+                           'with the specified batch size of your Input Layer: '
+                           '{}'.format(batch_size, static_batch_size))
 
-      # Check Dataset/Iterator batch size is consistent with InputLayer.
-      if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
-                        iterator_ops.EagerIterator)):
-        ds_batch_size = tensor_shape.as_dimension(
-            nest.flatten(x.output_shapes)[0][0]).value
-        if ds_batch_size is not None and ds_batch_size != static_batch_size:
-          raise ValueError('The batch output shape of your `Dataset` is ' +
-                           str(ds_batch_size) + ' which is incompatible '
-                           'with the specified batch size of your Input '
-                           'Layer: ' + str(static_batch_size))
+        # Check Dataset/Iterator batch size is consistent with InputLayer.
+        if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
+                          iterator_ops.EagerIterator)):
+          ds_batch_size = tensor_shape.as_dimension(
+              nest.flatten(x.output_shapes)[0][0]).value
+          if ds_batch_size is not None and ds_batch_size != static_batch_size:
+            raise ValueError('The batch output shape of your `Dataset` is {}, '
+                             'which is incompatible with the specified batch '
+                             'size of your Input Layer: {}'.format(
+                                 ds_batch_size, static_batch_size))
 
-      # Set inferred batch size from the InputLayer.
-      if steps is None:
-        batch_size = static_batch_size
+        # Set inferred batch size from the InputLayer.
+        if steps is None:
+          batch_size = static_batch_size
 
     if batch_size is None and steps is None:
       # Backwards compatibility

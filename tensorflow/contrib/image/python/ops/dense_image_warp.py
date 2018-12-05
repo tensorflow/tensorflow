@@ -24,8 +24,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import math_ops
+
 
 def _interpolate_bilinear(grid,
                           query_points,
@@ -77,18 +78,16 @@ def _interpolate_bilinear(grid,
         check_ops.assert_equal(
             array_ops.shape(query_points)[2],
             2,
-            message='Query points must be size 2 in dim 2.')]):
+            message='Query points must be size 2 in dim 2.')
+    ]):
       num_queries = array_ops.shape(query_points)[1]
 
     with ops.control_dependencies([
         check_ops.assert_greater_equal(
-            height,
-            2,
-            message='Grid height must be at least 2.'),
+            height, 2, message='Grid height must be at least 2.'),
         check_ops.assert_greater_equal(
-            width,
-            2,
-            message='Grid width must be at least 2.')]):
+            width, 2, message='Grid width must be at least 2.')
+    ]):
       alphas = []
       floors = []
       ceils = []
@@ -130,7 +129,8 @@ def _interpolate_bilinear(grid,
             np.iinfo(np.int32).max / 8,
             message="""The image size or batch size is sufficiently large
                        that the linearized addresses used by array_ops.gather
-                       may exceed the int32 limit.""")]):
+                       may exceed the int32 limit.""")
+    ]):
       flattened_grid = array_ops.reshape(
           grid, [batch_size * height * width, channels])
       batch_offsets = array_ops.reshape(

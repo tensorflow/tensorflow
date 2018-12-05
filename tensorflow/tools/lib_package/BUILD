@@ -169,7 +169,6 @@ genrule(
         "grpc",
         [
             "@grpc//:LICENSE",
-            "@grpc//third_party/nanopb:LICENSE.txt",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
     ),
@@ -208,7 +207,6 @@ genrule(
         "@zlib_archive//:zlib.h",
         "@grpc//:LICENSE",
         "@grpc//third_party/address_sorting:LICENSE",
-        "@grpc//third_party/nanopb:LICENSE.txt",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],

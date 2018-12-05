@@ -3,10 +3,10 @@ cmake_minimum_required(VERSION 3.5)
 
 if(WIN32)
 	if(${CMAKE_VERSION} VERSION_LESS "3.8")
-		message(WARNING "Your current cmake version is ${CMAKE_VERSION} which does not support setting the toolset architecture to x64. This may cause \"compiler out of heap space\" errors when building. Consider upgrading your cmake to > 3.8 and using the flag -Thost=x64 when running cmake.")
+		message(WARNING "Your current cmake version is ${CMAKE_VERSION} which does not support setting the toolset architecture to x64. This may cause \"compiler out of heap space\" errors when building. Consider upgrading your cmake to > 3.8 and using the flag -Thost=x64 when running cmake. Ignore this if you are on CMake GUI.")
 	else()
 		if(NOT CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE OR NOT "${CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE}" STREQUAL "x64")
-			message(WARNING "Your current cmake generator is set to use 32 bit toolset architecture. This may cause \"compiler out of heap space\" errors when building. Consider using the flag -Thost=x64 when running cmake.")
+			message(WARNING "Your current cmake generator is set to use 32 bit toolset architecture. This may cause \"compiler out of heap space\" errors when building. Consider using the flag -Thost=x64 when running cmake. Ignore this if you are on CMake GUI.")
 		endif()
 	endif()
 endif()
@@ -52,10 +52,16 @@ option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for th
 option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
 option(tensorflow_DISABLE_EIGEN_FORCEINLINE "Disable forceinline, to speed up build on windows." OFF)
 
+if (WIN32)
+SET(tensorflow_WIN_CPU_SIMD_OPTIONS "/arch:AVX" CACHE STRING "Enables CPU SIMD instructions")
+SET_PROPERTY(CACHE tensorflow_WIN_CPU_SIMD_OPTIONS PROPERTY STRINGS /arch:AVX) 
+endif()
+
 # SIMD, MKL and MKLDNN options
 option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions" OFF)
 option(tensorflow_ENABLE_MKL_SUPPORT "Enable Intel MKL support" OFF)
 option(tensorflow_ENABLE_MKLDNN_SUPPORT "Enable Intel MKLDNN support, requires MKL enabled" OFF)
+
 
 # GPU, CUDA and cuDNN options
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
@@ -79,6 +85,11 @@ if (NOT WIN32)
     # option's default value is OFF. Fill it with real default values
     set(tensorflow_CUDNN_INCLUDE /usr/include)
   endif (NOT tensorflow_CUDNN_INCLUDE)
+  option(tensorflow_NCCL_INCLUDE "nccl.h header install path" /usr/include/)
+  if (NOT tensorflow_NCCL_INCLUDE)
+    # option's default value is OFF. Fill it with real default values
+    set(tensorflow_NCCL_INCLUDE /usr/include)
+  endif (NOT tensorflow_NCCL_INCLUDE)
   option(tensorflow_PATH_CUDNN_LIB "Override PATH_CUDA_LIB for cudnn" ${tensorflow_PATH_CUDA_LIB})
   if (NOT tensorflow_PATH_CUDNN_LIB)
     # option's default value is OFF. Fill it with real default values
@@ -387,8 +398,8 @@ if (tensorflow_ENABLE_GPU)
     list(APPEND CMAKE_LIBRARY_PATH "${tensorflow_CUDA_LIBRARY_PATH}/stubs")
   endif (NOT WIN32)
 
-  # minimum 9.1 in cuda version
-  find_package(CUDA 9.1 REQUIRED)
+  # minimum 9.0 in cuda version
+  find_package(CUDA 9.0 REQUIRED)
   if(NOT CUDA_FOUND)
     message(FATAL_ERROR "CUDA not found.")
   endif()

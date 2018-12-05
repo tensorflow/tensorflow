@@ -189,11 +189,13 @@ tf_cuda_library(
         "//tensorflow:android": [
             ":c_api",
             ":c_api_internal",
+            ":tf_status_helper",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api",
             ":c_api_internal",
+            ":tf_status_helper",
             "//tensorflow/core:framework",
         ],
     }),

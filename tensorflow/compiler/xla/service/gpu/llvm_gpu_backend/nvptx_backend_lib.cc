@@ -394,8 +394,16 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   int32 opt_level =
       hlo_module_config.debug_options().xla_backend_optimization_level();
 
-  CHECK_GE(opt_level, 2)
-      << "The XLA GPU backend doesn't support unoptimized code generation";
+  if (opt_level < 2) {
+    LOG(ERROR) << std::string(80, '*');
+    LOG(ERROR) << "The XLA GPU backend doesn't support unoptimized code "
+                  "generation but ";
+    LOG(ERROR) << "--xla_backend_optimization_level is set to " << opt_level
+               << "!";
+    LOG(ERROR) << "(Supported configuration is "
+                  "--xla_backend_optimization_level >= 2.)";
+    LOG(ERROR) << std::string(80, '*');
+  }
 
   AddOptimizationPasses(opt_level,
                         /*size_level=*/0, target_machine.get(), &module_passes,

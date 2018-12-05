@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <set>
-#include <set>
 #include <stack>
 #include <tuple>
 #include <unordered_set>

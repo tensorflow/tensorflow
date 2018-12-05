@@ -186,7 +186,7 @@ bool HasWindowReversal(const Window& window) {
 }
 
 bool AllOrNoneReversed(const Window& window) {
-  if (window.dimensions().size() == 0) {
+  if (window.dimensions().empty()) {
     return true;
   }
   bool reversed = window.dimensions()[0].window_reversal();

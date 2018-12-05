@@ -103,8 +103,6 @@ KNOWN_BUGS = {
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
     # Div will use floordiv.
     r"div.*int32": "72051395",
-    # Constant 1D gather crashes toco.
-    r"gather_buggy.*input_shape=\[3\].*": "120029508",
 }
 
 
@@ -1260,8 +1258,8 @@ def make_gather_tests(zip_path):
       expected_tf_success=60)
 
 
-def make_gather_buggy_tests(zip_path):
-  """Make a set of tests to show gather crashes toco."""
+def make_gather_with_constant_tests(zip_path):
+  """Make a set of test which feed a constant to gather toco."""
 
   test_parameters = [{
       "input_shape": [[3]],

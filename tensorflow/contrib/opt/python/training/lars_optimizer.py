@@ -168,8 +168,8 @@ class LARSOptimizer(optimizer.Optimizer):
     learning_rate = self._learning_rate
     if callable(learning_rate):
       learning_rate = learning_rate()
-    self._learning_rate_tensor = ops.convert_to_tensor(learning_rate,
-                                                       name="learning_rate")
+    self._learning_rate_tensor = ops.convert_to_tensor(
+        learning_rate, name="learning_rate")
     momentum = self._momentum
     if callable(momentum):
       momentum = momentum()

@@ -663,8 +663,10 @@ class ControlFlowTest(test.TestCase):
       x = constant_op.constant(10)
       y = constant_op.constant(200)
       pred = math_ops.less(1, 2)
-      fn1 = lambda: {"a": {"c": math_ops.add(x, y)}, "b": {"d": math_ops.add(x, y)}}
-      fn2 = lambda: {"a": {"c": y}, "b": {"d": y}}
+      fn1 = lambda: {"a": {"c": math_ops.add(x, y)},
+                     "b": {"d": math_ops.add(x, y)}}
+      fn2 = lambda: {"a": {"c": y},
+                     "b": {"d": y}}
       r = control_flow_ops.cond(pred, fn1, fn2)
       test_result = self.evaluate(r)
       self.assertDictEqual({"a": {"c": 210}, "b": {"d": 210}}, test_result)
@@ -676,7 +678,10 @@ class ControlFlowTest(test.TestCase):
       pred = math_ops.less(1, 2)
       fn1 = lambda: {"a": math_ops.add(x, y), "b": math_ops.add(x, y)}
       fn2 = lambda: {"c": y, "d": y}
-      with self.assertRaisesRegexp(ValueError, "The two structures don't have the same nested structure"):
+      v1_msg = "The two structures don't have the same nested structure"
+      v2_msg = "Outputs of true_fn and false_fn must have the same structure"
+      with self.assertRaisesRegexp(
+          ValueError, v2_msg if control_flow_ops.ENABLE_COND_V2 else v1_msg):
         r = control_flow_ops.cond(pred, fn1, fn2)
         self.evaluate(r)
 
@@ -2223,7 +2228,7 @@ class ControlFlowTest(test.TestCase):
 
   def testWhileGradInCond(self):
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       n = ops.convert_to_tensor(1.0, name="n")
       x = array_ops.placeholder(dtypes.float32, shape=None)
       c = lambda n: math_ops.less(n, 10.0)
@@ -2232,14 +2237,10 @@ class ControlFlowTest(test.TestCase):
       def fn1():
         r = control_flow_ops.while_loop(c, b, [n],
                                         [tensor_shape.unknown_shape()])
-        return gradients_impl.gradients(r, x)
+        return gradients_impl.gradients(r, x)[0]
 
-      #placed lambda function return tensor in list and set strict flag to True
-      #as cond_v2 implementation preserves nested output structures even with singeltons
-      r = control_flow_ops.cond(math_ops.less(1, 2), fn1, lambda: [x], strict=True)
-      #cannot run eval() on list object so use sess.run() and save output
-      result = sess.run(r,feed_dict={x: 1.0})
-      self.assertAllClose([9.0], result)
+      r = control_flow_ops.cond(math_ops.less(1, 2), fn1, lambda: x)
+      self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
 
   @test_util.disable_control_flow_v2("b/116340060")
   @test_util.run_deprecated_v1
