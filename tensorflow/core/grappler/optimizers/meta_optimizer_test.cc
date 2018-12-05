@@ -396,7 +396,7 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   item.feed.emplace_back("b", test::AsScalar<int>(4));
   auto tensors_expected = EvaluateFetchNodes(item);
 
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
 
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
@@ -502,7 +502,7 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneFunctionBody) {
   item.feed.emplace_back("b", test::AsScalar<float>(3.123f));
   auto tensors_expected = EvaluateFetchNodes(item);
 
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
 
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);

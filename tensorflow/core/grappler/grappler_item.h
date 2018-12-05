@@ -35,11 +35,14 @@ namespace grappler {
 // nodes, and potentially a set of nodes to feed.
 struct GrapplerItem {
   GrapplerItem() = default;
-  GrapplerItem(const GrapplerItem& other, GraphDef&& graph_def)
-      : GrapplerItem(other, &graph_def) {}
-  // Swaps *graph_def with an empty GraphDef.
-  GrapplerItem(const GrapplerItem& other, GraphDef* graph_def);
+  GrapplerItem(const GrapplerItem& other) = default;
+  GrapplerItem(GrapplerItem&& other) = default;
+  GrapplerItem& operator=(const GrapplerItem& other) = default;
+  GrapplerItem& operator=(GrapplerItem&& other) = default;
   virtual ~GrapplerItem() = default;
+
+  // Create a copy of this GrapplerItem with graph swapped with the argument.
+  GrapplerItem WithGraph(GraphDef&& graph) const;
 
   string id;  // A unique id for this item
 

@@ -440,7 +440,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           item.graph)
           .ToProto();
 
-  GrapplerItem trimmed_item(item, std::move(trimmed_graph));
+  GrapplerItem trimmed_item = item.WithGraph(std::move(trimmed_graph));
 
   VLOG(1) << absl::Substitute(
       "Deleted $0 unreachable functions from the graph (library size = $1)",

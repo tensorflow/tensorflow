@@ -108,7 +108,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_SimpleFunction) {
   item.fetch = {"z"};
   item.feed.emplace_back("x", pi);
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
@@ -184,7 +184,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_SkipErrorsIfGraphNotModified) {
   item.fetch = {"z1"};
   item.feed.emplace_back("x", pi);
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
@@ -284,7 +284,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FixedTypeFunction) {
   item.fetch = {"z"};
   item.feed.emplace_back("x", pi);
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
@@ -368,7 +368,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithOutputMapping) {
   item.fetch = {"z"};
   item.feed.emplace_back("x", pi);
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
@@ -418,7 +418,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithInputForwarding) {
   item.feed.emplace_back("x4", test::AsScalar<float>(-1.0f));
   item.feed.emplace_back("x3", test::AsScalar<int>(1234));
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
   test::ExpectTensorEqual<float>(tensors_expected[1], tensors[1]);
@@ -549,7 +549,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithNestedFunctionCall) {
   item.feed.emplace_back("a", test::AsScalar<float>(2.0f));
   auto tensors_expected = EvaluateFetchNodes(item);
 
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
 
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
@@ -748,7 +748,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionSimpleFunction) {
   item.feed.emplace_back("a", pi);
   item.feed.emplace_back("b", pi);
 
-  GrapplerItem optimized(item, std::move(optimized_graph));
+  GrapplerItem optimized = item.WithGraph(std::move(optimized_graph));
   auto tensors_expected = EvaluateFetchNodes(item);
   auto tensors = EvaluateFetchNodes(optimized);
   ASSERT_EQ(tensors_expected.size(), 1);
@@ -876,7 +876,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithControlDependencies) {
   EXPECT_EQ(tensors_expected[0].flat<float>()(0), 4.0);  // mul
   EXPECT_EQ(tensors_expected[1].flat<float>()(0), 3.0);  // read variable
 
-  GrapplerItem optimized(item, std::move(optimized_graph));
+  GrapplerItem optimized = item.WithGraph(std::move(optimized_graph));
   auto tensors = EvaluateFetchNodes(optimized);
   ASSERT_EQ(tensors.size(), 2);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
@@ -1019,7 +1019,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithoutSideEffects) {
   auto tensors_expected = EvaluateFetchNodes(item);
   ASSERT_EQ(tensors_expected.size(), 1);
 
-  GrapplerItem optimized(item, std::move(optimized_graph));
+  GrapplerItem optimized = item.WithGraph(std::move(optimized_graph));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
@@ -1067,7 +1067,7 @@ TEST_F(FunctionOptimizerTest, SpecializeFunctionXTimesTwo) {
   item.feed.emplace_back("x", pi);
 
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
@@ -1131,7 +1131,7 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionXTimesTwo) {
   item.feed.emplace_back("x", pi);
 
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
@@ -1194,7 +1194,7 @@ TEST_F(FunctionOptimizerTest, SpecializeFunctionPushDownConstInput) {
   item.feed.emplace_back("x", pi);
 
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
@@ -1274,7 +1274,7 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionPushDownConstInput) {
   item.feed.emplace_back("x", pi);
 
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
@@ -1390,7 +1390,7 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_OncePerUniqueContext) {
   item.feed = {{"xf", pi}, {"yf", pi}, {"xi", four}, {"yi", four}};
 
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
 
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
@@ -1499,7 +1499,7 @@ TEST_F(FunctionOptimizerTest, SpecializeFunctionForUsedOutputTensors) {
   item.feed = {{"xf", pi}, {"yf", pi}};
 
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
 
   ASSERT_EQ(tensors_expected.size(), tensors.size());
@@ -1660,7 +1660,7 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionForUsedOutputTensors) {
   item.feed = {{"xf", pi}, {"yf", pi}};
 
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
 
   ASSERT_EQ(tensors_expected.size(), tensors.size());
