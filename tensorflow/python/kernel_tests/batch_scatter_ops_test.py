@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -50,7 +51,8 @@ class ScatterTest(test.TestCase):
                         vtype,
                         itype,
                         repeat_indices=False,
-                        updates_are_scalar=False):
+                        updates_are_scalar=False,
+                        method=False):
     np.random.seed(8)
     with self.cached_session(use_gpu=False):
       for indices_shape in (2,), (3, 7), (3, 4, 7):
@@ -71,7 +73,10 @@ class ScatterTest(test.TestCase):
           # Scatter via tensorflow
           ref = variables.Variable(old)
           ref.initializer.run()
-          tf_scatter(ref, indices, updates).eval()
+          if method:
+            ref.batch_scatter_update(ops.IndexedSlices(indices, updates))
+          else:
+            tf_scatter(ref, indices, updates).eval()
           self.assertAllClose(ref.eval(), new)
 
   @test_util.run_deprecated_v1

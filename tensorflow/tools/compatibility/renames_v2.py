@@ -90,6 +90,7 @@ renames = {
     'tf.assign': 'tf.compat.v1.assign',
     'tf.assign_add': 'tf.compat.v1.assign_add',
     'tf.assign_sub': 'tf.compat.v1.assign_sub',
+    'tf.batch_scatter_update': 'tf.compat.v1.batch_scatter_update',
     'tf.betainc': 'tf.math.betainc',
     'tf.ceil': 'tf.math.ceil',
     'tf.check_numerics': 'tf.debugging.check_numerics',
