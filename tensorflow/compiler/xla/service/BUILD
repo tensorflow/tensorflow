@@ -1910,6 +1910,41 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "dynamic_dimension_inference",
+    srcs = ["dynamic_dimension_inference.cc"],
+    hdrs = ["dynamic_dimension_inference.h"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "dynamic_dimension_inference_test",
+    srcs = ["dynamic_dimension_inference_test.cc"],
+    deps = [
+        ":dynamic_dimension_inference",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cc_test(
     name = "reshape_mover_test",
     srcs = ["reshape_mover_test.cc"],
