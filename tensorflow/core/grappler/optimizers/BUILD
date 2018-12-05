@@ -385,7 +385,7 @@ cc_library(
     srcs = [
         "gpu_swapping_ops.cc",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
