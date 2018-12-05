@@ -51,7 +51,7 @@
 /tensorflow/contrib/pi_examples/ @maciekcc
 /tensorflow/contrib/quantization/ @petewarden
 /tensorflow/contrib/rnn/ @ebrevdo @scottzhu
-/tensorflow/contrib/saved_model/ @nfiedel @sukritiramesh @allenl
+/tensorflow/contrib/saved_model/ @nfiedel @sukritiramesh @allenlavoie
 /tensorflow/contrib/seq2seq/ @ebrevdo @lmthang
 /tensorflow/contrib/session_bundle/ @nfiedel @sukritiramesh
 /tensorflow/contrib/slim/ @sguada @thenbasilmanran
