@@ -296,27 +296,32 @@ struct less_equal : std::binary_function<T, T, bool> {
   }
 };
 
-// Functor that enables composition of multiple Eigen functors.
-template <typename Scalar, typename UnaryFunctor, typename BinaryFunctor>
-struct scalar_compose_op {
+// Functor that enables squared difference functor.
+template <typename Scalar>
+struct scalar_squared_difference_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
   operator()(const Scalar& a, const Scalar& b) const {
-    return UnaryFunctor()(BinaryFunctor()(a, b));
+    const Scalar v = scalar_difference_op<Scalar>()(a, b);
+    return scalar_product_op<Scalar>()(v, scalar_conjugate_op<Scalar>()(v));
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
   packetOp(const Packet& a, const Packet& b) const {
-    return UnaryFunctor().packetOp(BinaryFunctor().packetOp(a, b));
+    const Packet v = scalar_difference_op<Scalar>().packetOp(a, b);
+    return scalar_product_op<Scalar>().packetOp(
+        v, scalar_conjugate_op<Scalar>().packetOp(v));
   }
 };
 
-template <typename Scalar, typename UnaryFunctor, typename BinaryFunctor>
-struct functor_traits<scalar_compose_op<Scalar, UnaryFunctor, BinaryFunctor>> {
+template <typename Scalar>
+struct functor_traits<scalar_squared_difference_op<Scalar>> {
   enum {
-    Cost = functor_traits<UnaryFunctor>::Cost +
-           functor_traits<BinaryFunctor>::Cost,
-    PacketAccess = functor_traits<UnaryFunctor>::PacketAccess &&
-                   functor_traits<BinaryFunctor>::PacketAccess
+    Cost = functor_traits<scalar_difference_op<Scalar>>::Cost +
+           functor_traits<scalar_conjugate_op<Scalar>>::Cost +
+           functor_traits<scalar_product_op<Scalar>>::Cost,
+    PacketAccess = functor_traits<scalar_difference_op<Scalar>>::PacketAccess &&
+                   functor_traits<scalar_conjugate_op<Scalar>>::PacketAccess &&
+                   functor_traits<scalar_product_op<Scalar>>::PacketAccess
   };
 };
 
@@ -775,7 +780,7 @@ struct rint : base<T, scalar_rint_op<T>> {};
 // pow(x, y) = x ^ y
 // maximum(x, y) = x > y ? x : y
 // minimum(x, y) = x < y ? x : y
-// squared_difference(x, y) = (x - y) * (x - y)
+// squared_difference(x, y) = conj(x - y) * (x - y)
 
 template <typename T>
 struct add : base<T, Eigen::internal::scalar_sum_op<T>> {
@@ -885,9 +890,7 @@ struct atan2 : base<T, scalar_atan2_op<T>> {};
 
 template <typename T>
 struct squared_difference
-    : base<T, Eigen::internal::scalar_compose_op<
-                  T, Eigen::internal::scalar_square_op<T>,
-                  Eigen::internal::scalar_difference_op<T>>> {};
+    : base<T, Eigen::internal::scalar_squared_difference_op<T>> {};
 
 template <typename T>
 struct xdivy : base<T, Eigen::internal::xdivy_op<T>> {};
