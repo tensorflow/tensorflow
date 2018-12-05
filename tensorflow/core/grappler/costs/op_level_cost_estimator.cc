@@ -401,9 +401,11 @@ DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
     } else if (architecture < "6") {
       // Maxwell
       cores_per_multiprocessor = 128;
+    } else if (architecture < "7") {
+      // Pascal
+      cores_per_multiprocessor = 128;
     } else {
-      // Pascal (compute capability version 6) and Volta (compute capability
-      // version 7)
+      // Turing
       cores_per_multiprocessor = 64;
     }
     gflops = device.num_cores() * device.frequency() * 1e-3 *
