@@ -1136,10 +1136,10 @@ void FlatAffineConstraints::addUpperBound(ArrayRef<int64_t> expr,
   }
 }
 
-bool FlatAffineConstraints::findId(const MLValue &operand, unsigned *pos) {
+bool FlatAffineConstraints::findId(const MLValue &id, unsigned *pos) const {
   unsigned i = 0;
   for (const auto &mayBeId : ids) {
-    if (mayBeId.hasValue() && mayBeId.getValue() == &operand) {
+    if (mayBeId.hasValue() && mayBeId.getValue() == &id) {
       *pos = i;
       return true;
     }
@@ -1148,29 +1148,42 @@ bool FlatAffineConstraints::findId(const MLValue &operand, unsigned *pos) {
   return false;
 }
 
+void FlatAffineConstraints::setDimSymbolSeparation(unsigned newSymbolCount) {
+  assert(newSymbolCount <= numDims + numSymbols &&
+         "invalid separation position");
+  numDims = numDims + numSymbols - newSymbolCount;
+  numSymbols = newSymbolCount;
+}
+
 // TODO(andydavis, bondhugula) AFFINE REFACTOR: merge with loop bounds
 // code in dependence analysis.
-bool FlatAffineConstraints::addBoundsFromForStmt(unsigned pos,
-                                                 ForStmt *forStmt) {
+bool FlatAffineConstraints::addBoundsFromForStmt(const ForStmt &forStmt) {
+  unsigned pos;
+  // Pre-condition for this method.
+  if (!findId(*cast<MLValue>(&forStmt), &pos)) {
+    assert(0 && "MLValue not found");
+    return false;
+  }
+
   // Adds a lower or upper bound when the bounds aren't constant.
   auto addLowerOrUpperBound = [&](bool lower) -> bool {
-    const auto &operands = lower ? forStmt->getLowerBoundOperands()
-                                 : forStmt->getUpperBoundOperands();
-    SmallVector<unsigned, 8> positions;
+    auto operands = lower ? forStmt.getLowerBoundOperands()
+                          : forStmt.getUpperBoundOperands();
 
+    SmallVector<unsigned, 8> positions;
     for (const auto &operand : operands) {
       unsigned loc;
       // TODO(andydavis, bondhugula) AFFINE REFACTOR: merge with loop bounds
       // code in dependence analysis.
       if (!findId(*operand, &loc)) {
-        addDimId(getNumDimIds(), operand);
+        addDimId(getNumDimIds(), const_cast<MLValue *>(operand));
         loc = getNumDimIds() - 1;
       }
       positions.push_back(loc);
     }
 
     auto boundMap =
-        lower ? forStmt->getLowerBoundMap() : forStmt->getUpperBoundMap();
+        lower ? forStmt.getLowerBoundMap() : forStmt.getUpperBoundMap();
 
     for (auto result : boundMap.getResults()) {
       SmallVector<int64_t, 4> flattenedExpr;
@@ -1206,16 +1219,16 @@ bool FlatAffineConstraints::addBoundsFromForStmt(unsigned pos,
     return true;
   };
 
-  if (forStmt->hasConstantLowerBound()) {
-    addConstantLowerBound(pos, forStmt->getConstantLowerBound());
+  if (forStmt.hasConstantLowerBound()) {
+    addConstantLowerBound(pos, forStmt.getConstantLowerBound());
   } else {
     // Non-constant lower bound case.
     if (!addLowerOrUpperBound(/*lower=*/true))
       return false;
   }
 
-  if (forStmt->hasConstantUpperBound()) {
-    addConstantUpperBound(pos, forStmt->getConstantUpperBound() - 1);
+  if (forStmt.hasConstantUpperBound()) {
+    addConstantUpperBound(pos, forStmt.getConstantUpperBound() - 1);
     return true;
   }
   // Non-constant upper bound case.
@@ -1230,6 +1243,16 @@ void FlatAffineConstraints::setIdToConstant(unsigned pos, int64_t val) {
             equalities.begin() + offset + getNumCols(), 0);
   equalities[offset + pos] = 1;
   equalities[offset + getNumCols() - 1] = -val;
+}
+
+/// Sets the specified identifer to a constant value; asserts if the id is not
+/// found.
+void FlatAffineConstraints::setIdToConstant(const MLValue &id, int64_t val) {
+  unsigned pos;
+  if (!findId(id, &pos))
+    // This is a pre-condition for this method.
+    assert(0 && "id not found");
+  setIdToConstant(pos, val);
 }
 
 void FlatAffineConstraints::removeEquality(unsigned pos) {
@@ -1295,12 +1318,105 @@ FlatAffineConstraints::getConstantLowerBound(unsigned pos) const {
   return lb;
 }
 
-/// Returns the extent of the specified identifier (upper bound - lower bound)
-/// if it found to be a constant; returns None if it's not a constant.
-/// 'lbPosition' is set to the row position of the corresponding lower bound.
-Optional<int64_t>
-FlatAffineConstraints::getConstantBoundDifference(unsigned pos,
-                                                  unsigned *lbPosition) const {
+/// Finds an equality that equates the specified identifier to a constant.
+/// Returns the position of the equality row. If 'symbolic' is set to true,
+/// symbols are also treated like a constant, i.e., an affine function of the
+/// symbols is also treated like a constant.
+static int findEqualityToConstant(const FlatAffineConstraints &cst,
+                                  unsigned pos, bool symbolic = false) {
+  assert(pos < cst.getNumIds() && "invalid position");
+  for (unsigned r = 0, e = cst.getNumEqualities(); r < e; r++) {
+    int64_t v = cst.atEq(r, pos);
+    if (v * v != 1)
+      continue;
+    unsigned c;
+    unsigned f = symbolic ? cst.getNumDimIds() : cst.getNumIds();
+    // This checks for zeros in all positions other than 'pos' in [0, f)
+    for (c = 0; c < f; c++) {
+      if (c == pos)
+        continue;
+      if (cst.atEq(r, c) != 0) {
+        // Dependent on another identifier.
+        break;
+      }
+    }
+    if (c == f)
+      // Equality is free of other identifiers.
+      return r;
+  }
+  return -1;
+}
+
+void FlatAffineConstraints::setAndEliminate(unsigned pos, int64_t constVal) {
+  assert(pos < getNumIds() && "invalid position");
+  for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
+    atIneq(r, getNumCols() - 1) += atIneq(r, pos) * constVal;
+  }
+  for (unsigned r = 0, e = getNumEqualities(); r < e; r++) {
+    atEq(r, getNumCols() - 1) += atEq(r, pos) * constVal;
+  }
+  removeId(pos);
+}
+
+bool FlatAffineConstraints::constantFoldId(unsigned pos) {
+  assert(pos < getNumIds() && "invalid position");
+  int rowIdx;
+  if ((rowIdx = findEqualityToConstant(*this, pos)) == -1)
+    return false;
+
+  // atEq(rowIdx, pos) is either -1 or 1.
+  assert(atEq(rowIdx, pos) * atEq(rowIdx, pos) == 1);
+  int64_t constVal = atEq(rowIdx, getNumCols() - 1) / -atEq(rowIdx, pos);
+  setAndEliminate(pos, constVal);
+  return true;
+}
+
+void FlatAffineConstraints::constantFoldIdRange(unsigned pos, unsigned num) {
+  for (unsigned s = pos, t = pos, e = pos + num; s < e; s++) {
+    if (!constantFoldId(t))
+      t++;
+  }
+}
+
+/// Returns the extent (upper bound - lower bound) of the specified
+/// identifier if it is found to be a constant; returns None if it's not a
+/// constant. This methods treats symbolic identifiers specially, i.e.,
+/// it looks for constant differences between affine expressions involving
+/// only the symbolic identifiers. See comments at function definition for
+/// example. 'lb', if provided, is set to the lower bound associated with the
+/// constant difference. Note that 'lb' is purely symbolic and thus will contain
+/// the coefficients of the symbolic identifiers and the constant coefficient.
+//  Egs: 0 <= i <= 15, return 16.
+//       s0 + 2 <= i <= s0 + 17, returns 16. (s0 has to be a symbol)
+//       i + s0 + 16 <= d0 <= i + s0  + 31, returns 16.
+Optional<int64_t> FlatAffineConstraints::getConstantBoundDifference(
+    unsigned pos, SmallVectorImpl<int64_t> *lb) const {
+  assert(pos < getNumDimIds() && "Invalid position");
+  assert(getNumLocalIds() == 0);
+
+  // TODO(bondhugula): eliminate all remaining dimensional identifiers (other
+  // than the one at 'pos' to make this more powerful. Not needed for
+  // hyper-rectangular spaces.
+
+  // Find an equality for 'pos'^th identifier that equates it to some function
+  // of the symbolic identifiers (+ constant).
+  int eqRow = findEqualityToConstant(*this, pos, /*symbolic=*/true);
+  if (eqRow != -1) {
+    // This identifier can only take a single value.
+    if (lb) {
+      // Set lb to the symbolic value.
+      lb->resize(getNumSymbolIds() + 1);
+      for (unsigned c = 0, f = getNumSymbolIds() + 1; c < f; c++) {
+        int64_t v = atEq(eqRow, pos);
+        // atEq(eqRow, pos) is either -1 or 1.
+        assert(v * v == 1);
+        (*lb)[c] = v < 0 ? atEq(eqRow, getNumDimIds() + c) / -v
+                         : -atEq(eqRow, getNumDimIds() + c) / v;
+      }
+    }
+    return 1;
+  }
+
   // Check if the identifier appears at all in any of the inequalities.
   unsigned r, e;
   for (r = 0, e = getNumInequalities(); r < e; r++) {
@@ -1328,10 +1444,11 @@ FlatAffineConstraints::getConstantBoundDifference(unsigned pos,
       ubIndices.push_back(r);
   }
 
-  // TODO(bondhugula): eliminate all variables that aren't part of any of the
-  // lower/upper bounds - to make this more powerful.
+  // TODO(bondhugula): eliminate other dimensional identifiers to make this more
+  // powerful. Not needed for hyper-rectangular iteration spaces.
 
   Optional<int64_t> minDiff = None;
+  unsigned minLbPosition;
   for (auto ubPos : ubIndices) {
     for (auto lbPos : lbIndices) {
       // Look for a lower bound and an upper bound that only differ by a
@@ -1351,8 +1468,15 @@ FlatAffineConstraints::getConstantBoundDifference(unsigned pos,
           atIneq(ubPos, getNumCols() - 1) + atIneq(lbPos, getNumCols() - 1) + 1;
       if (minDiff == None || mayDiff < minDiff) {
         minDiff = mayDiff;
-        *lbPosition = lbPos;
+        minLbPosition = lbPos;
       }
+    }
+  }
+  if (lb && minDiff.hasValue()) {
+    // Set lb to the symbolic lower bound.
+    lb->resize(getNumSymbolIds() + 1);
+    for (unsigned c = 0; c < getNumSymbolIds() + 1; c++) {
+      (*lb)[c] = -atIneq(minLbPosition, getNumDimIds() + c);
     }
   }
   return minDiff;

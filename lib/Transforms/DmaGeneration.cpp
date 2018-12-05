@@ -200,14 +200,15 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
   SmallVector<AffineExpr, 4> offsets;
   offsets.reserve(rank);
   for (unsigned d = 0; d < rank; d++) {
-    unsigned lbPos;
-    cst->getConstantBoundDifference(d, &lbPos);
+    SmallVector<int64_t, 4> lb;
+    cst->getConstantBoundDifference(d, &lb);
+    assert(lb.size() == cst->getNumCols() - rank && "incorrect bound size");
 
     AffineExpr offset = top.getAffineConstantExpr(0);
-    for (unsigned j = rank; j < cst->getNumCols() - 1; j++) {
-      offset = offset - cst->atIneq(lbPos, j) * top.getAffineDimExpr(j - rank);
+    for (unsigned j = 0, e = cst->getNumCols() - rank - 1; j < e; j++) {
+      offset = offset + lb[j] * top.getAffineDimExpr(j);
     }
-    offset = offset - cst->atIneq(lbPos, cst->getNumCols() - 1);
+    offset = offset + lb[cst->getNumCols() - 1 - rank];
 
     // Set DMA start location for this dimension in the lower memory space
     // memref.

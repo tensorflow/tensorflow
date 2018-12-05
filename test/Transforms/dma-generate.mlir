@@ -5,6 +5,9 @@
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (d0 * 16 + d1)
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (d0, d1)
 // CHECK-DAG: [[MAP_INDEX_DIFF:#map[0-9]+]] = (d0, d1, d2, d3) -> (d2 - d0, d3 - d1)
+// CHECK-DAG: [[MAP_MINUS_ONE:#map[0-9]+]] = (d0, d1) -> (d0 - 1, d1)
+// CHECK-DAG: [[MAP_ORIG_ACCESS:#map[0-9]+]] = (d0, d1)[s0, s1] -> (d0, d1 + s0 + s1)
+// CHECK-DAG: [[MAP_SUB_OFFSET:#map[0-9]+]] = (d0, d1, d2) -> (d1, d2 - (d0 + 9))
 
 // CHECK-LABEL: mlfunc @loop_nest_1d() {
 mlfunc @loop_nest_1d() {
@@ -132,16 +135,17 @@ mlfunc @loop_nest_high_d(%A: memref<512 x 32 x f32>,
 // CHECK-LABEL: mlfunc @loop_nest_modulo() {
 // CHECK:       %0 = alloc() : memref<256x8xf32>
 // CHECK-NEXT:    for %i0 = 0 to 32 step 4 {
-// CHECK-NEXT:    %1 = alloc() : memref<32x2xf32, 1>
-// CHECK-NEXT:    %2 = alloc() : memref<1xi32>
-// CHECK-NEXT:    dma_start %0[%c0, %c0], %1[%c0, %c0], %c64, %2[%c0] : memref<256x8xf32>, memref<32x2xf32, 1>, memref<1xi32>
-// CHECK-NEXT:    dma_wait %2[%c0], %c64 : memref<1xi32>
-// CHECK-NEXT:    for %i1 = 0 to 8 {
-//                  ...
-//                  ...
-// CHECK:         }
-// CHECK-NEXT:  }
-// CHECK-NEXT:  return
+// CHECK-NEXT:      %1 = affine_apply #map{{[0-9]+}}(%i0)
+// CHECK-NEXT:      %2 = alloc() : memref<1x2xf32, 1>
+// CHECK-NEXT:      %3 = alloc() : memref<1xi32>
+// CHECK-NEXT:      dma_start %0[%1, %c0], %2[%c0, %c0], %c2, %3[%c0] : memref<256x8xf32>, memref<1x2xf32, 1>, memref<1xi32>
+// CHECK-NEXT:      dma_wait %3[%c0], %c2 : memref<1xi32>
+// CHECK-NEXT:      for %i1 = 0 to 8 {
+//                    ...
+//                    ...
+// CHECK:           }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    return
 mlfunc @loop_nest_modulo() {
   %A = alloc() : memref<256 x 8 x f32>
   for %i = 0 to 32 step 4 {
@@ -180,4 +184,45 @@ mlfunc @loop_nest_tiled() -> memref<256x1024xf32> {
   }
   // CHECK: return %0 : memref<256x1024xf32>
   return %0 : memref<256x1024xf32>
+}
+
+// CHECK-LABEL: mlfunc @dma_constant_dim_access
+mlfunc @dma_constant_dim_access(%A : memref<100x100xf32>) {
+  %one = constant 1 : index
+  // CHECK:      %0 = alloc() : memref<1x100xf32, 1>
+  // CHECK-NEXT: %1 = alloc() : memref<1xi32>
+  // CHECK:      dma_start %arg0[%c1, %c0], %0[%c0, %c0], %c100,
+  // CHECK-NEXT: dma_wait %1[%c0], %c100 : memref<1xi32>
+  for %i = 0 to 100 {
+    for %j = 0 to 100 {
+      // CHECK:      %2 = affine_apply [[MAP_MINUS_ONE]](%c1, %i1)
+      // CHECK-NEXT: %3 = load %0[%2#0, %2#1] : memref<1x100xf32, 1>
+      load %A[%one, %j] : memref<100 x 100 x f32>
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: mlfunc @dma_with_symbolic_accesses
+mlfunc @dma_with_symbolic_accesses(%A : memref<100x100xf32>, %M : index) {
+  %N = constant 9 : index
+  for %i = 0 to 100 {
+    for %j = 0 to 100 {
+      %idx = affine_apply (d0, d1) [s0, s1] -> (d0, d1 + s0 + s1)(%i, %j)[%M, %N]
+      load %A[%idx#0, %idx#1] : memref<100 x 100 x f32>
+    }
+  }
+  return
+// CHECK:       %1 = alloc() : memref<100x100xf32, 1>
+// CHECK-NEXT:  %2 = alloc() : memref<1xi32>
+// CHECK-NEXT:  dma_start %arg0[%c0, %0], %1[%c0, %c0], %c10000, %2[%c0]
+// CHECK-NEXT:  dma_wait %2[%c0], %c10000
+// CHECK-NEXT:  for %i0 = 0 to 100 {
+// CHECK-NEXT:    for %i1 = 0 to 100 {
+// CHECK-NEXT:      %3 = affine_apply [[MAP_ORIG_ACCESS]](%i0, %i1)[%arg1, %c9]
+// CHECK-NEXT:      %4 = affine_apply [[MAP_SUB_OFFSET]](%arg1, %3#0, %3#1)
+// CHECK-NEXT:      %5 = load %1[%4#0, %4#1] : memref<100x100xf32, 1>
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// CHECK-NEXT:  return
 }

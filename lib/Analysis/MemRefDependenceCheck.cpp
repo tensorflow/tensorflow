@@ -22,6 +22,7 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Passes.h"
+#include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/StmtVisitor.h"
@@ -90,18 +91,6 @@ static void getMemRefAccess(const OperationStmt *loadOrStoreOpStmt,
   }
 }
 
-// Populates 'loops' with the loop nest surrounding 'stmt', ordered from
-// outer-most ForStmt to inner-most.
-static void getLoopNest(Statement *stmt,
-                        SmallVector<const ForStmt *, 4> *loops) {
-  const auto *currStmt = stmt->getParentStmt();
-  while (currStmt != nullptr && isa<ForStmt>(currStmt)) {
-    loops->push_back(dyn_cast<ForStmt>(currStmt));
-    currStmt = currStmt->getParentStmt();
-  }
-  std::reverse(loops->begin(), loops->end());
-}
-
 // Returns the number of surrounding loops common to 'loopsA' and 'loopsB',
 // where each lists loops from outer-most to inner-most in loop nest.
 static unsigned getNumCommonSurroundingLoops(ArrayRef<const ForStmt *> loopsA,
@@ -148,14 +137,14 @@ static void checkDependences(ArrayRef<OperationStmt *> loadsAndStores) {
     MemRefAccess srcAccess;
     getMemRefAccess(srcOpStmt, &srcAccess);
     SmallVector<const ForStmt *, 4> srcLoops;
-    getLoopNest(srcOpStmt, &srcLoops);
+    getLoopIVs(*srcOpStmt, &srcLoops);
     for (unsigned j = 0; j < e; ++j) {
       auto *dstOpStmt = loadsAndStores[j];
       MemRefAccess dstAccess;
       getMemRefAccess(dstOpStmt, &dstAccess);
 
       SmallVector<const ForStmt *, 4> dstLoops;
-      getLoopNest(dstOpStmt, &dstLoops);
+      getLoopIVs(*dstOpStmt, &dstLoops);
       unsigned numCommonLoops =
           getNumCommonSurroundingLoops(srcLoops, dstLoops);
       for (unsigned d = 1; d <= numCommonLoops + 1; ++d) {

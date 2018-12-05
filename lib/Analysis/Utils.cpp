@@ -68,6 +68,18 @@ bool mlir::dominates(const Statement &a, const Statement &b) {
   return &a == &b || properlyDominates(a, b);
 }
 
+/// Populates 'loops' with IVs of the loops surrounding 'stmt' ordered from
+/// the outermost 'for' statement to the innermost one.
+void mlir::getLoopIVs(const Statement &stmt,
+                      SmallVector<const ForStmt *, 4> *loops) {
+  const auto *currStmt = stmt.getParentStmt();
+  while (currStmt != nullptr && isa<ForStmt>(currStmt)) {
+    loops->push_back(dyn_cast<ForStmt>(currStmt));
+    currStmt = currStmt->getParentStmt();
+  }
+  std::reverse(loops->begin(), loops->end());
+}
+
 Optional<int64_t> MemRefRegion::getConstantSize() const {
   auto memRefType = memref->getType().cast<MemRefType>();
   unsigned rank = memRefType.getRank();
@@ -75,8 +87,7 @@ Optional<int64_t> MemRefRegion::getConstantSize() const {
   // Compute the extents of the buffer.
   int64_t numElements = 1;
   for (unsigned d = 0; d < rank; d++) {
-    unsigned lbPos;
-    Optional<int64_t> diff = cst.getConstantBoundDifference(d, &lbPos);
+    Optional<int64_t> diff = cst.getConstantBoundDifference(d);
 
     if (!diff.hasValue())
       return None;
@@ -96,8 +107,7 @@ bool MemRefRegion::getConstantShape(SmallVectorImpl<int> *shape) const {
 
   // Compute the extents of this memref region.
   for (unsigned d = 0; d < rank; d++) {
-    unsigned lbPos;
-    Optional<int64_t> diff = cst.getConstantBoundDifference(d, &lbPos);
+    Optional<int64_t> diff = cst.getConstantBoundDifference(d);
     if (!diff.hasValue())
       return false;
 
@@ -172,16 +182,16 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
     if (auto *loop = dyn_cast<ForStmt>(accessValueMap.getOperand(i))) {
       // Note that regionCst can now have more dimensions than accessMap if the
       // bounds expressions involve outer loops or other symbols.
-      if (!regionCst->addBoundsFromForStmt(i, loop))
+      if (!regionCst->addBoundsFromForStmt(*loop))
         return false;
     } else {
       // Has to be a valid symbol.
       auto *symbol = cast<MLValue>(accessValueMap.getOperand(i));
       assert(symbol->isValidSymbol());
-      // Check if the symbols is a constant.
+      // Check if the symbol is a constant.
       if (auto *opStmt = symbol->getDefiningStmt()) {
         if (auto constOp = opStmt->dyn_cast<ConstantIndexOp>()) {
-          regionCst->setIdToConstant(i, constOp->getValue());
+          regionCst->setIdToConstant(*symbol, constOp->getValue());
         }
       }
     }
@@ -193,12 +203,20 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
     return false;
   }
 
-  // Eliminate the loop IVs and any local variables to yield the memory
-  // region involving just the memref dimensions and outer loop IVs up to
-  // loopDepth.
+  // Eliminate any loop IVs other than the outermost 'loopDepth' IVs, on which
+  // this memref region is symbolic.
+  SmallVector<const ForStmt *, 4> outerIVs;
+  getLoopIVs(*opStmt, &outerIVs);
+  outerIVs.resize(loopDepth);
   for (auto *operand : accessValueMap.getOperands()) {
-    regionCst->projectOut(operand);
+    ForStmt *iv;
+    if ((iv = dyn_cast<ForStmt>(operand)) &&
+        std::find(outerIVs.begin(), outerIVs.end(), iv) == outerIVs.end()) {
+      regionCst->projectOut(operand);
+    }
   }
+  // Project out any local variables (these would have been added for any
+  // mod/divs).
   regionCst->projectOut(regionCst->getNumDimIds() +
                             regionCst->getNumSymbolIds(),
                         regionCst->getNumLocalIds());
@@ -206,7 +224,17 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
   // Tighten the set.
   regionCst->GCDTightenInequalities();
 
-  assert(regionCst->getNumDimIds() >= rank);
+  // Set all identifiers appearing after the first 'rank' identifiers as
+  // symbolic identifiers - so that the ones correspoding to the memref
+  // dimensions are the dimensional identifiers for the memref region.
+  regionCst->setDimSymbolSeparation(regionCst->getNumIds() - rank);
+
+  // Constant fold any symbolic identifiers.
+  regionCst->constantFoldIdRange(/*pos=*/regionCst->getNumDimIds(),
+                                 /*num=*/regionCst->getNumSymbolIds());
+
+  assert(regionCst->getNumDimIds() == rank && "unexpected MemRefRegion format");
+
   return true;
 }
 

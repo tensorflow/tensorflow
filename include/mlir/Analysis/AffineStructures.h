@@ -403,11 +403,13 @@ public:
   /// Adds a lower bound expression for the specified expression.
   void addLowerBound(ArrayRef<int64_t> expr, ArrayRef<int64_t> lb);
 
-  /// Adds constraints (lower and upper bounds) from the ForStmt into the
-  /// FlatAffineConstraints. 'forStmt's' MLValue is used to look up the right
-  /// identifier, and if it doesn't exist, a new one is added. Returns false for
-  /// the yet unimplemented/unsupported cases.
-  bool addBoundsFromForStmt(unsigned pos, ForStmt *forStmt);
+  /// Adds constraints (lower and upper bounds) for the specified 'for'
+  /// statement's MLValue using IR information stored in its bound maps. The
+  /// right identifier is first looked up using forStmt's MLValue. Returns
+  /// false for the yet unimplemented/unsupported cases, and true if the
+  /// information is succesfully added. Asserts if the MLValue corresponding to
+  /// the 'for' statement isn't found in the system.
+  bool addBoundsFromForStmt(const ForStmt &forStmt);
 
   /// Adds an upper bound expression for the specified expression.
   void addUpperBound(ArrayRef<int64_t> expr, ArrayRef<int64_t> ub);
@@ -420,9 +422,14 @@ public:
   /// Sets the identifier at the specified position to a constant.
   void setIdToConstant(unsigned pos, int64_t val);
 
+  /// Sets the identifier corresponding to the specified MLValue id to a
+  /// constant. Asserts if the 'id' is not found.
+  void setIdToConstant(const MLValue &id, int64_t val);
+
   /// Looks up the identifier with the specified MLValue. Returns false if not
-  /// found.
-  bool findId(const MLValue &operand, unsigned *pos);
+  /// found, true if found. pos is set to the (column) position of the
+  /// identifier.
+  bool findId(const MLValue &id, unsigned *pos) const;
 
   // Add identifiers of the specified kind - specified positions are relative to
   // the kind of identifier. 'id' is the MLValue corresponding to the
@@ -465,6 +472,24 @@ public:
   void removeEquality(unsigned pos);
   void removeInequality(unsigned pos);
 
+  /// Changes the partition between dimensions and symbols. Depending on the new
+  /// symbol count, either a chunk of trailing dimensional identifiers becomes
+  /// symbols, or some of the leading symbols become dimensions.
+  void setDimSymbolSeparation(unsigned newSymbolCount);
+
+  /// Sets the specified identifier to a constant and removes it.
+  void setAndEliminate(unsigned pos, int64_t constVal);
+
+  /// Tries to fold the specified identifer to a constant using a trivial
+  /// equality detection; if successful, the constant is substituted for the
+  /// identifier everywhere in the constraint system and then removed from the
+  /// system. Returns true if the folding happens, false otherwise.
+  bool constantFoldId(unsigned pos);
+
+  /// This method calls constantFoldId for the specified range of identifiers,
+  /// 'num' identifiers starting at position 'pos'.
+  void constantFoldIdRange(unsigned pos, unsigned num);
+
   unsigned getNumConstraints() const {
     return getNumInequalities() + getNumEqualities();
   }
@@ -493,12 +518,18 @@ public:
   /// inclusive.
   Optional<int64_t> getConstantUpperBound(unsigned pos) const;
 
-  /// Returns the extent (upper bound - lower bound) of the specified
-  /// identifier if it is found to be a constant; returns None if it's not a
-  /// constant. 'lbPosition' is set to the row position of the corresponding
-  /// lower bound.
-  Optional<int64_t> getConstantBoundDifference(unsigned pos,
-                                               unsigned *lbPosition) const;
+  /// Returns the smallest known constant bound for the extent of the
+  /// specified identifier, i.e., the smallest known constant that is greater
+  /// than or equal to 'exclusive upper bound' - 'lower bound' of the
+  /// identifier; returns None if it's not a constant. This method employs
+  /// trivial (low complexity / cost) checks and detection. Symbolic identifiers
+  /// are treated specially, i.e., it looks for constant differences between
+  /// affine expressions involving only the symbolic identifiers. See comments
+  /// at function definition for examples. 'lb', if provided, is set to the
+  /// lower bound associated with the constant difference.
+  Optional<int64_t>
+  getConstantBoundDifference(unsigned pos,
+                             SmallVectorImpl<int64_t> *lb = nullptr) const;
 
   // Returns the lower and upper bounds of the specified dimensions as
   // AffineMap's. Returns false for the unimplemented cases for the moment.

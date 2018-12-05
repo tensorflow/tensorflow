@@ -423,7 +423,15 @@ ForStmt::operand_range ForStmt::getLowerBoundOperands() {
   return {operand_begin(), operand_begin() + getLowerBoundMap().getNumInputs()};
 }
 
+ForStmt::const_operand_range ForStmt::getLowerBoundOperands() const {
+  return {operand_begin(), operand_begin() + getLowerBoundMap().getNumInputs()};
+}
+
 ForStmt::operand_range ForStmt::getUpperBoundOperands() {
+  return {operand_begin() + getLowerBoundMap().getNumInputs(), operand_end()};
+}
+
+ForStmt::const_operand_range ForStmt::getUpperBoundOperands() const {
   return {operand_begin() + getLowerBoundMap().getNumInputs(), operand_end()};
 }
 

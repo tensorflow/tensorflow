@@ -43,6 +43,10 @@ bool dominates(const Statement &a, const Statement &b);
 /// Returns true if statement 'a' properly dominates statement b.
 bool properlyDominates(const Statement &a, const Statement &b);
 
+/// Populates 'loops' with IVs of the loops surrounding 'stmt' ordered from
+/// the outermost 'for' statement to the innermost one.
+void getLoopIVs(const Statement &stmt, SmallVector<const ForStmt *, 4> *loops);
+
 /// A region of a memref's data space; this is typically constructed by
 /// analyzing load/store op's on this memref and the index space of loops
 /// surrounding such op's.
@@ -92,18 +96,22 @@ private:
 /// Computes the memory region accessed by this memref with the region
 /// represented as constraints symbolic/parameteric in 'loopDepth' loops
 /// surrounding opStmt. Returns false if this fails due to yet unimplemented
-/// cases.
-//  For example, the memref region for this operation at loopDepth = 1 will be:
-//
-//    for %i = 0 to 32 {
-//      for %ii = %i to (d0) -> (d0 + 8) (%i) {
-//        load %A[%ii]
-//      }
-//    }
-//
-//   {memref = %A, write = false, {%i <= m0 <= %i + 7} }
-// The last field is a 2-d FlatAffineConstraints symbolic in %i.
-//
+/// cases. The computed region's 'cst' field has exactly as many dimensional
+/// identifiers as the rank of the memref, and *potentially* additional symbolic
+/// identifiers which could include any of the loop IVs surrounding opStmt up
+/// until 'loopDepth' and another additional MLFunction symbols involved with
+/// the access (for eg., those appear in affine_apply's, loop bounds, etc.).
+///  For example, the memref region for this operation at loopDepth = 1 will be:
+///
+///    for %i = 0 to 32 {
+///      for %ii = %i to (d0) -> (d0 + 8) (%i) {
+///        load %A[%ii]
+///      }
+///    }
+///
+///   {memref = %A, write = false, {%i <= m0 <= %i + 7} }
+/// The last field is a 2-d FlatAffineConstraints symbolic in %i.
+///
 bool getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
                      MemRefRegion *region);
 

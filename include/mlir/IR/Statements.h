@@ -338,8 +338,11 @@ public:
 
   /// Returns operands for the lower bound map.
   operand_range getLowerBoundOperands();
+  const_operand_range getLowerBoundOperands() const;
+
   /// Returns operands for the upper bound map.
   operand_range getUpperBoundOperands();
+  const_operand_range getUpperBoundOperands() const;
 
   //===--------------------------------------------------------------------===//
   // Other
