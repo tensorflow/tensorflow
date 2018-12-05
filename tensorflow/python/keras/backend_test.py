@@ -1069,13 +1069,13 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
                                                              initial_states,
                                                              **kwargs)
         # check static shape inference
-        self.assertEquals(last_output.get_shape().as_list(),
-                          [num_samples, output_dim])
-        self.assertEquals(outputs.get_shape().as_list(),
-                          [num_samples, timesteps, output_dim])
+        self.assertEqual(last_output.get_shape().as_list(),
+                         [num_samples, output_dim])
+        self.assertEqual(outputs.get_shape().as_list(),
+                         [num_samples, timesteps, output_dim])
         for state in new_states:
-          self.assertEquals(state.get_shape().as_list(),
-                            [num_samples, output_dim])
+          self.assertEqual(state.get_shape().as_list(),
+                           [num_samples, output_dim])
 
         last_output_list[i].append(keras.backend.eval(last_output))
         outputs_list[i].append(keras.backend.eval(outputs))
@@ -1173,7 +1173,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(outputs.get_shape().as_list(),
                          [num_samples, timesteps, output_dim])
         # for state in new_states:
-        #   self.assertEquals(state.get_shape().as_list(),
+        #   self.assertEqual(state.get_shape().as_list(),
         #                     [num_samples, output_dim])
         self.assertEqual(new_states[0].get_shape().as_list(),
                          [num_samples, output_dim])

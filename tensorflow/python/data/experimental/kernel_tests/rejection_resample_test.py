@@ -48,7 +48,7 @@ def _time_resampling(
           initial_dist=init_dist,
           seed=142))
 
-  get_next = dataset.make_one_shot_iterator().get_next()
+  get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
   with test_obj.test_session() as sess:
     start_time = time.time()
@@ -73,12 +73,12 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
         200, seed=21).map(lambda c: (c, string_ops.as_string(c))).repeat()
 
-    get_next = dataset.apply(
+    get_next = dataset_ops.make_one_shot_iterator(dataset.apply(
         resampling.rejection_resample(
             target_dist=target_dist,
             initial_dist=initial_dist,
             class_func=lambda c, _: c,
-            seed=27)).make_one_shot_iterator().get_next()
+            seed=27))).get_next()
 
     with self.cached_session() as sess:
       returned = []
@@ -117,7 +117,7 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
             target_dist=target_dist,
             initial_dist=init_dist))
 
-    get_next = dataset.make_one_shot_iterator().get_next()
+    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
     with self.cached_session() as sess:
       returned = []
@@ -149,7 +149,7 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
             target_dist=target_dist,
             initial_dist=init_dist))
 
-    get_next = dataset.make_one_shot_iterator().get_next()
+    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
     with self.cached_session() as sess:
       returned = []

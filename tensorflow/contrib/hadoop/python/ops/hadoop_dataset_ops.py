@@ -40,15 +40,12 @@ class SequenceFileDataset(dataset_ops.DatasetSource):
     For example:
 
     ```python
+    tf.enable_eager_execution()
+
     dataset = tf.contrib.hadoop.SequenceFileDataset("/foo/bar.seq")
-    iterator = dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
     # Prints the (key, value) pairs inside a hadoop sequence file.
-    while True:
-      try:
-        print(sess.run(next_element))
-      except tf.errors.OutOfRangeError:
-        break
+    for key, value in dataset:
+      print(key, value)
     ```
 
     Args:

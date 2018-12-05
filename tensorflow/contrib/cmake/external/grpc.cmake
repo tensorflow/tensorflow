@@ -26,9 +26,9 @@ if(WIN32)
   set(grpc_SSL_PROVIDER NONE)
   if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
     set(grpc_STATIC_LIBRARIES
-        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc++_unsecure.lib
-        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc_unsecure.lib
-        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/gpr.lib)
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/$(Configuration)/grpc++_unsecure.lib
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/$(Configuration)/grpc_unsecure.lib
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/$(Configuration)/gpr.lib)
   else()
     set(grpc_STATIC_LIBRARIES
         ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/grpc++_unsecure.lib
@@ -43,8 +43,9 @@ else()
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libaddress_sorting.a
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/third_party/cares/cares/lib/libcares.a
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a)
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/third_party/zlib/libz.a)
 endif()
 
 add_definitions(-DGRPC_ARES=0)
@@ -66,7 +67,7 @@ ExternalProject_Add(grpc
         -DPROTOBUF_INCLUDE_DIRS:STRING=${PROTOBUF_INCLUDE_DIRS}
         -DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
-	-DgRPC_SSL_PROVIDER:STRING=${grpc_SSL_PROVIDER}
+        -DgRPC_SSL_PROVIDER:STRING=${grpc_SSL_PROVIDER}
 )
 
 # grpc/src/core/ext/census/tracing.c depends on the existence of openssl/rand.h.

@@ -135,51 +135,6 @@ class DatasetV2(object):
           options.experimental_stats.counter_prefix)
     return dataset
 
-  def make_initializable_iterator(self, shared_name=None):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
-
-    Note: The returned iterator will be in an uninitialized state,
-    and you must run the `iterator.initializer` operation before using it:
-
-    ```python
-    dataset = ...
-    iterator = dataset.make_initializable_iterator()
-    # ...
-    sess.run(iterator.initializer)
-    ```
-
-    Args:
-      shared_name: (Optional.) If non-empty, the returned iterator will be
-        shared under the given name across multiple sessions that share the
-        same devices (e.g. when using a remote server).
-
-    Returns:
-      An `Iterator` over the elements of this dataset.
-
-    Raises:
-      RuntimeError: If eager execution is enabled.
-    """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          "dataset.make_initializable_iterator is not supported when eager "
-          "execution is enabled.")
-    dataset = self._apply_options()
-    if shared_name is None:
-      shared_name = ""
-    if compat.forward_compatible(2018, 8, 3):
-      iterator_resource = gen_dataset_ops.iterator_v2(
-          container="", shared_name=shared_name, **flat_structure(self))
-    else:
-      iterator_resource = gen_dataset_ops.iterator(
-          container="", shared_name=shared_name, **flat_structure(self))
-    with ops.colocate_with(iterator_resource):
-      initializer = gen_dataset_ops.make_iterator(
-          dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          iterator_resource)
-    return iterator_ops.Iterator(iterator_resource, initializer,
-                                 dataset.output_types, dataset.output_shapes,
-                                 dataset.output_classes)
-
   def __iter__(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
@@ -198,55 +153,6 @@ class DatasetV2(object):
     else:
       raise RuntimeError("dataset.__iter__() is only supported when eager "
                          "execution is enabled.")
-
-  def make_one_shot_iterator(self):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
-
-    Note: The returned iterator will be initialized automatically.
-    A "one-shot" iterator does not currently support re-initialization.
-
-    Returns:
-      An `Iterator` over the elements of this dataset.
-    """
-    if context.executing_eagerly():
-      dataset = self._apply_options()
-      return iterator_ops.EagerIterator(dataset)
-
-    graph_level_seed, op_level_seed = core_random_seed.get_seed(None)
-
-    # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
-    # a 0-argument function.
-    @function.Defun(capture_by_value=True)
-    def _make_dataset():
-      """Factory function for a dataset."""
-      # NOTE(mrry): `Defun` does not capture the graph-level seed from the
-      # enclosing graph, so if a graph-level seed is present we set the local
-      # graph seed based on a combination of the graph- and op-level seeds.
-      if graph_level_seed is not None:
-        assert op_level_seed is not None
-        core_random_seed.set_random_seed(
-            (graph_level_seed + 87654321 * op_level_seed) % (2 ** 63 - 1))
-
-      dataset = self._apply_options()
-      return dataset._as_variant_tensor()  # pylint: disable=protected-access
-
-    try:
-      _make_dataset.add_to_graph(ops.get_default_graph())
-    except ValueError as err:
-      if "Cannot capture a stateful node" in str(err):
-        raise ValueError(
-            "Failed to create a one-shot iterator for a dataset. "
-            "`Dataset.make_one_shot_iterator()` does not support datasets that "
-            "capture stateful objects, such as a `Variable` or `LookupTable`. "
-            "In these cases, use `Dataset.make_initializable_iterator()`. "
-            "(Original error: %s)" % err)
-      else:
-        six.reraise(ValueError, err)
-
-    return iterator_ops.Iterator(
-        gen_dataset_ops.one_shot_iterator(
-            dataset_factory=_make_dataset, **flat_structure(self)),
-        None, self.output_types, self.output_shapes, self.output_classes)
 
   @abc.abstractproperty
   def output_classes(self):
@@ -297,7 +203,8 @@ class DatasetV2(object):
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization. If `tensors`
     contains one or more large NumPy arrays, consider the alternative described
-    in [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    in [this
+    guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors.
@@ -316,7 +223,8 @@ class DatasetV2(object):
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization. If `tensors`
     contains one or more large NumPy arrays, consider the alternative described
-    in [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    in [this guide](
+    https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors, each having the same size in the
@@ -376,17 +284,19 @@ class DatasetV2(object):
 
     ```python
     import itertools
+    tf.enable_eager_execution()
 
     def gen():
       for i in itertools.count(1):
         yield (i, [1] * i)
 
-    ds = Dataset.from_generator(
+    ds = tf.data.Dataset.from_generator(
         gen, (tf.int64, tf.int64), (tf.TensorShape([]), tf.TensorShape([None])))
-    value = ds.make_one_shot_iterator().get_next()
 
-    sess.run(value)  # (1, array([1]))
-    sess.run(value)  # (2, array([1, 1]))
+    for value in ds.take(2):
+      print value
+    # (1, array([1]))
+    # (2, array([1, 1]))
     ```
 
     NOTE: The current implementation of `Dataset.from_generator()` uses
@@ -1343,6 +1253,110 @@ class DatasetV1(DatasetV2):
   def __init__(self):
     pass
 
+  @deprecation.deprecated(
+      None, "Use `for ... in dataset:` to iterate over a dataset. If using "
+      "`tf.estimator`, return the `Dataset` object directly from your input "
+      "function. As a last resort, you can use "
+      "`tf.compat.v1.data.make_one_shot_iterator(dataset)`.")
+  def make_one_shot_iterator(self):
+    """Creates an `Iterator` for enumerating the elements of this dataset.
+
+    Note: The returned iterator will be initialized automatically.
+    A "one-shot" iterator does not currently support re-initialization.
+
+    Returns:
+      An `Iterator` over the elements of this dataset.
+    """
+    if context.executing_eagerly():
+      dataset = self._apply_options()
+      return iterator_ops.EagerIterator(dataset)
+
+    graph_level_seed, op_level_seed = core_random_seed.get_seed(None)
+
+    # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
+    # a 0-argument function.
+    @function.Defun(capture_by_value=True)
+    def _make_dataset():
+      """Factory function for a dataset."""
+      # NOTE(mrry): `Defun` does not capture the graph-level seed from the
+      # enclosing graph, so if a graph-level seed is present we set the local
+      # graph seed based on a combination of the graph- and op-level seeds.
+      if graph_level_seed is not None:
+        assert op_level_seed is not None
+        core_random_seed.set_random_seed(
+            (graph_level_seed + 87654321 * op_level_seed) % (2 ** 63 - 1))
+
+      dataset = self._apply_options()
+      return dataset._as_variant_tensor()  # pylint: disable=protected-access
+
+    try:
+      _make_dataset.add_to_graph(ops.get_default_graph())
+    except ValueError as err:
+      if "Cannot capture a stateful node" in str(err):
+        raise ValueError(
+            "Failed to create a one-shot iterator for a dataset. "
+            "`Dataset.make_one_shot_iterator()` does not support datasets that "
+            "capture stateful objects, such as a `Variable` or `LookupTable`. "
+            "In these cases, use `Dataset.make_initializable_iterator()`. "
+            "(Original error: %s)" % err)
+      else:
+        six.reraise(ValueError, err)
+
+    return iterator_ops.Iterator(
+        gen_dataset_ops.one_shot_iterator(
+            dataset_factory=_make_dataset, **flat_structure(self)),
+        None, self.output_types, self.output_shapes, self.output_classes)
+
+  @deprecation.deprecated(
+      None, "Use `for ... in dataset:` to iterate over a dataset. If using "
+      "`tf.estimator`, return the `Dataset` object directly from your input "
+      "function. As a last resort, you can use "
+      "`tf.compat.v1.data.make_initializable_iterator(dataset)`.")
+  def make_initializable_iterator(self, shared_name=None):
+    """Creates an `Iterator` for enumerating the elements of this dataset.
+
+    Note: The returned iterator will be in an uninitialized state,
+    and you must run the `iterator.initializer` operation before using it:
+
+    ```python
+    dataset = ...
+    iterator = dataset.make_initializable_iterator()
+    # ...
+    sess.run(iterator.initializer)
+    ```
+
+    Args:
+      shared_name: (Optional.) If non-empty, the returned iterator will be
+        shared under the given name across multiple sessions that share the
+        same devices (e.g. when using a remote server).
+
+    Returns:
+      An `Iterator` over the elements of this dataset.
+
+    Raises:
+      RuntimeError: If eager execution is enabled.
+    """
+    if context.executing_eagerly():
+      raise RuntimeError(
+          "dataset.make_initializable_iterator is not supported when eager "
+          "execution is enabled.")
+    dataset = self._apply_options()
+    if shared_name is None:
+      shared_name = ""
+    if compat.forward_compatible(2018, 8, 3):
+      iterator_resource = gen_dataset_ops.iterator_v2(
+          container="", shared_name=shared_name, **flat_structure(self))
+    else:
+      iterator_resource = gen_dataset_ops.iterator(
+          container="", shared_name=shared_name, **flat_structure(self))
+    with ops.colocate_with(iterator_resource):
+      initializer = gen_dataset_ops.make_iterator(
+          dataset._as_variant_tensor(),  # pylint: disable=protected-access
+          iterator_resource)
+    return iterator_ops.Iterator(iterator_resource, initializer,
+                                 dataset.output_types, dataset.output_shapes,
+                                 dataset.output_classes)
+
   @staticmethod
   @functools.wraps(DatasetV2.from_tensors)
   def from_tensors(tensors):
@@ -1554,14 +1568,60 @@ class DatasetV1Adapter(DatasetV1):
   def output_types(self):
     return self._dataset.output_types
 
-  def make_initializable_iterator(self, shared_name=None):
-    return self._dataset.make_initializable_iterator(shared_name)
-
   def __iter__(self):
     return iter(self._dataset)
 
-  def make_one_shot_iterator(self):
-    return self._dataset.make_one_shot_iterator()
+
+@tf_export(v1=["data.make_one_shot_iterator"])
+def make_one_shot_iterator(dataset):
+  """Creates a `tf.data.Iterator` for enumerating the elements of a dataset.
+
+  Note: The returned iterator will be initialized automatically.
+  A "one-shot" iterator does not support re-initialization.
+
+  Args:
+    dataset: A `tf.data.Dataset`.
+
+  Returns:
+    A `tf.data.Iterator` over the elements of this dataset.
+  """
+  try:
+    # Call the defined `make_one_shot_iterator()` if there is one, because some
+    # datasets (e.g. for prefetching) override its behavior.
+    return dataset.make_one_shot_iterator()
+  except AttributeError:
+    return DatasetV1Adapter(dataset).make_one_shot_iterator()
+
+
+@tf_export(v1=["data.make_initializable_iterator"])
+def make_initializable_iterator(dataset):
+  """Creates a `tf.data.Iterator` for enumerating the elements of a dataset.
+
+  Note: The returned iterator will be in an uninitialized state,
+  and you must run the `iterator.initializer` operation before using it:
+
+  ```python
+  dataset = ...
+  iterator = dataset.make_initializable_iterator()
+  # ...
+  sess.run(iterator.initializer)
+  ```
+
+  Args:
+    dataset: A `tf.data.Dataset`.
+
+  Returns:
+    A `tf.data.Iterator` over the elements of `dataset`.
+
+  Raises:
+    RuntimeError: If eager execution is enabled.
+  """
+  try:
+    # Call the defined `make_one_shot_iterator()` if there is one, because some
+    # datasets (e.g. for prefetching) override its behavior.
+    return dataset.make_initializable_iterator()
+  except AttributeError:
+    return DatasetV1Adapter(dataset).make_initializable_iterator()
 
 
 @tf_export("data.Options")
@@ -1888,6 +1948,9 @@ class DatasetStructure(structure_lib.Structure):
   def _to_legacy_output_classes(self):
     return self
 
+  def _batch(self, batch_size):
+    raise NotImplementedError("Batching for `tf.data.Dataset` objects.")
+
 
 # pylint: disable=protected-access
 structure_lib.Structure._register_custom_converter(DatasetV2,
@@ -2028,8 +2091,10 @@ class StructuredFunctionWrapper(object):
     return self._function
 
 
-def flat_structure(dataset):
+def flat_structure(dataset=None, structure=None):
   """Helper for setting `output_shapes` and `output_types` attrs of Dataset ops.
+
+  Either `dataset` or `structure` must be passed to this function.
 
   Most Dataset op constructors expect `output_shapes` and `output_types`
   arguments that represent the flattened structure of an element. This helper
@@ -2038,15 +2103,17 @@ def flat_structure(dataset):
   `**flat_structure(self)` to the op constructor.
 
   Args:
-    dataset: A `tf.data.Dataset`.
+    dataset: (Optional.) A `tf.data.Dataset`.
+    structure: (Optional.) A `Structure`.
 
   Returns:
     A dictionary of keyword arguments that can be passed to many Dataset op
     constructors.
   """
   # pylint: disable=protected-access
-  structure = structure_lib.Structure._from_legacy_structure(
-      dataset.output_types, dataset.output_shapes, dataset.output_classes)
+  if structure is None:
+    structure = structure_lib.Structure._from_legacy_structure(
+        dataset.output_types, dataset.output_shapes, dataset.output_classes)
   return {
       "output_shapes": structure._flat_shapes,
       "output_types": structure._flat_types,
@@ -2421,37 +2488,37 @@ class BatchDataset(UnaryDataset):
     self._drop_remainder = ops.convert_to_tensor(
         drop_remainder, dtype=dtypes.bool, name="drop_remainder")
 
-  def _as_variant_tensor(self):
-    # TODO(jsimsa): Switch to using v2 only any time after 6/30/2018.
-    if smart_cond.smart_constant_value(self._drop_remainder) is False:
-      return gen_dataset_ops.batch_dataset(
-          self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          batch_size=self._batch_size,
-          **flat_structure(self))
+    # pylint: disable=protected-access
+    input_structure = structure_lib.Structure._from_legacy_structure(
+        input_dataset.output_types, input_dataset.output_shapes,
+        input_dataset.output_classes)
+    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
+    if constant_drop_remainder:
+      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
+      # or `False` (explicitly retaining the remainder).
+      self._output_structure = input_structure._batch(
+          tensor_util.constant_value(self._batch_size))
     else:
-      return gen_dataset_ops.batch_dataset_v2(
-          self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          batch_size=self._batch_size,
-          drop_remainder=self._drop_remainder,
-          **flat_structure(self))
+      self._output_structure = input_structure._batch(None)
+
+  def _as_variant_tensor(self):
+    return gen_dataset_ops.batch_dataset_v2(
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        batch_size=self._batch_size,
+        drop_remainder=self._drop_remainder,
+        **flat_structure(structure=self._output_structure))
 
   @property
   def output_classes(self):
-    return self._input_dataset.output_classes
+    return self._output_structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
   def output_shapes(self):
-    input_shapes = self._input_dataset.output_shapes
-    return nest.pack_sequence_as(input_shapes, [
-        tensor_shape.vector(
-            tensor_util.constant_value(self._batch_size) if smart_cond.
-            smart_constant_value(self._drop_remainder) else None).concatenate(s)
-        for s in nest.flatten(self._input_dataset.output_shapes)
-    ])
+    return self._output_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
   def output_types(self):
-    return self._input_dataset.output_types
+    return self._output_structure._to_legacy_output_types()  # pylint: disable=protected-access
 
 
 def _is_padded_shape_compatible_with(padded_shape, input_component_shape):
@@ -2677,34 +2744,29 @@ class MapDataset(UnaryDataset):
     super(MapDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
-
-    wrapped_func = StructuredFunctionWrapper(
+    self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
-    self._output_classes = wrapped_func.output_classes
-    self._output_shapes = wrapped_func.output_shapes
-    self._output_types = wrapped_func.output_types
-    self._map_func = wrapped_func.function
 
   def _as_variant_tensor(self):
     input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
     return gen_dataset_ops.map_dataset(
         input_t,
-        self._map_func.captured_inputs,
-        f=self._map_func,
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
         use_inter_op_parallelism=self._use_inter_op_parallelism,
-        **flat_structure(self))
+        **flat_structure(structure=self._map_func.output_structure))
 
   @property
   def output_classes(self):
-    return self._output_classes
+    return self._map_func.output_classes
 
   @property
   def output_shapes(self):
-    return self._output_shapes
+    return self._map_func.output_shapes
 
   @property
   def output_types(self):
-    return self._output_types
+    return self._map_func.output_types
 
   def _transformation_name(self):
     return "Dataset.map()"
@@ -2726,16 +2788,15 @@ class ParallelMapDataset(MapDataset):
         num_parallel_calls, dtype=dtypes.int32, name="num_parallel_calls")
 
   def _as_variant_tensor(self):
-    input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
     # pylint: disable=protected-access
+    input_t = self._input_dataset._as_variant_tensor()
     return gen_dataset_ops.parallel_map_dataset(
         input_t,
-        self._map_func.captured_inputs,
-        f=self._map_func,
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
         num_parallel_calls=self._num_parallel_calls,
         use_inter_op_parallelism=self._use_inter_op_parallelism,
-        **flat_structure(self))
-    # pylint: enable=protected-access
+        **flat_structure(structure=self._map_func.output_structure))
 
 
 class FlatMapDataset(UnaryDataset):
@@ -2746,35 +2807,30 @@ class FlatMapDataset(UnaryDataset):
     super(FlatMapDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
 
-    wrapped_func = StructuredFunctionWrapper(
+    self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
-    if not isinstance(wrapped_func.output_structure, DatasetStructure):
+    if not isinstance(self._map_func.output_structure, DatasetStructure):
       raise TypeError("`map_func` must return a `Dataset` object.")
-    # pylint: disable=protected-access
-    element_structure = wrapped_func.output_structure._element_structure
-    self._output_classes = element_structure._to_legacy_output_classes()
-    self._output_types = element_structure._to_legacy_output_types()
-    self._output_shapes = element_structure._to_legacy_output_shapes()
-    self._map_func = wrapped_func.function
+    self._output_structure = self._map_func.output_structure._element_structure  # pylint: disable=protected-access
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.flat_map_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._map_func.captured_inputs,
-        f=self._map_func,
-        **flat_structure(self))
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
+        **flat_structure(structure=self._output_structure))
 
   @property
   def output_classes(self):
-    return self._output_classes
+    return self._output_structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
   def output_shapes(self):
-    return self._output_shapes
+    return self._output_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
   def output_types(self):
-    return self._output_types
+    return self._output_structure._to_legacy_output_types()  # pylint: disable=protected-access
 
   def _transformation_name(self):
     return "Dataset.flat_map()"
@@ -2793,13 +2849,14 @@ class InterleaveDataset(FlatMapDataset):
         block_length, dtype=dtypes.int64, name="block_length")
 
   def _as_variant_tensor(self):
+    # pylint: disable=protected-access
     return gen_dataset_ops.interleave_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._map_func.captured_inputs,  # pylint: disable=protected-access
+        self._input_dataset._as_variant_tensor(),
+        self._map_func.function.captured_inputs,
         self._cycle_length,
         self._block_length,
-        f=self._map_func,  # pylint: disable=protected-access
-        **flat_structure(self))
+        f=self._map_func.function,
+        **flat_structure(structure=self._output_structure))
 
   def _transformation_name(self):
     return "Dataset.interleave()"
@@ -2822,14 +2879,15 @@ class ParallelInterleaveDataset(FlatMapDataset):
         num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
 
   def _as_variant_tensor(self):
+    # pylint: disable=protected-access
     return gen_dataset_ops.parallel_interleave_dataset_v2(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._map_func.captured_inputs,  # pylint: disable=protected-access
+        self._input_dataset._as_variant_tensor(),
+        self._map_func.function.captured_inputs,
         self._cycle_length,
         self._block_length,
         self._num_parallel_calls,
-        f=self._map_func,  # pylint: disable=protected-access
-        **flat_structure(self))
+        f=self._map_func.function,
+        **flat_structure(structure=self._output_structure))
 
   def _transformation_name(self):
     return "Dataset.interleave()"
@@ -2992,7 +3050,7 @@ class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
     self._counter_prefix = counter_prefix
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.set_stats_aggregator_dataset(
+    return ged_ops.experimental_set_stats_aggregator_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._stats_aggregator._resource,  # pylint: disable=protected-access
         self._prefix,

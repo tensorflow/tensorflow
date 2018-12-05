@@ -37,7 +37,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
 
   def checkResults(self, dataset, shapes, values):
     self.assertEqual(shapes, dataset.output_shapes)
-    get_next = dataset.make_one_shot_iterator().get_next()
+    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
     with self.cached_session() as sess:
       for expected in values:
         got = self.evaluate(get_next)
@@ -130,7 +130,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
           grouping.group_by_reducer(lambda x: x, reducer))
       self.assertEqual([None], dataset.output_shapes[0].as_list())
       self.assertIs(None, dataset.output_shapes[1].ndims)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       get_next = iterator.get_next()
       with self.cached_session() as sess:
         x, y = self.evaluate(get_next)
@@ -194,7 +194,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.zip(
         (dataset_ops.Dataset.range(10), dataset_ops.Dataset.range(10))).apply(
             grouping.group_by_reducer(lambda x, y: np.int64(0), reducer))
-    get_next = dataset.make_one_shot_iterator().get_next()
+    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
     with self.cached_session() as sess:
       x, y = self.evaluate(get_next)
       self.assertAllEqual(x, np.asarray([x for x in range(10)]))

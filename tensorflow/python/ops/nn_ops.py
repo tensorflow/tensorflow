@@ -2365,7 +2365,7 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
 @tf_export(v1=["nn.softmax_cross_entropy_with_logits_v2"])
 @deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def softmax_cross_entropy_with_logits_v2_helper(
-    labels, logits, axis=-1, name=None, dim=None):
+    labels, logits, axis=None, name=None, dim=None):
   """Computes softmax cross entropy between `logits` and `labels`.
 
   Measures the probability error in discrete classification tasks in which the
@@ -2419,6 +2419,8 @@ def softmax_cross_entropy_with_logits_v2_helper(
   # results.
   axis = deprecated_argument_lookup("axis", axis, "dim", dim)
   del dim
+  if axis is None:
+    axis = -1
 
   with ops.name_scope(name, "softmax_cross_entropy_with_logits",
                       [logits, labels]) as name:

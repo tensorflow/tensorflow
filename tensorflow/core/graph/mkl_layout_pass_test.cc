@@ -455,6 +455,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_ConvBpropInput_FilterFwd) {
             "E:3->G:4;F->G;F:control->DMT/_3:control;G->Z;X->Y:1;X->Z:1");
 }
 
+#ifdef ENABLE_TRANSPOSE_OPTIMIZATION
 TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Positive) {
   InitGraph(
       "node { name: 'Input0' op: 'Input'}"
@@ -763,6 +764,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Negative) {
       "Transpose0:control->DMT/"
       "_1:control;Transpose1->Relu;Transpose1:control->DMT/_2:control");
 }
+#endif  // ENABLE_TRANSPOSE_OPTIMIZATION
 
 /////////////////////////////////////////////////////////////////////
 //  Unit tests related to rewriting node to Mkl node

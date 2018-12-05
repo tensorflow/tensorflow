@@ -116,13 +116,13 @@ class MapVectorizationBenchmark(test.Benchmark):
     num_elems = int(np.sum([np.prod(x) for x in input_size]))
     name_template = "{}__batch_size_{}_input_element_size_{}_{}"
     unoptimized = input_dataset.map(map_fn).batch(batch_size)
-    unoptimized_op = unoptimized.make_one_shot_iterator().get_next()
+    unoptimized_op = dataset_ops.make_one_shot_iterator(unoptimized).get_next()
 
     optimized = input_dataset.map(map_fn).batch(batch_size)
     options = dataset_ops.Options()
     options.experimental_map_vectorization = True
     optimized = optimized.with_options(options)
-    optimized_op = optimized.make_one_shot_iterator().get_next()
+    optimized_op = dataset_ops.make_one_shot_iterator(optimized).get_next()
 
     unoptimized_time = self._run(
         unoptimized_op,

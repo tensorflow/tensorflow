@@ -47,11 +47,8 @@ else (systemlib_ABSEIL_CPP)
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
       set(abseil_cpp_STATIC_LIBRARIES
           ${abseil_cpp_BUILD}/absl/base/Release/absl_base.lib
-          ${abseil_cpp_BUILD}/absl/base/Release/absl_spinlock_wait.lib
           ${abseil_cpp_BUILD}/absl/base/Release/absl_dynamic_annotations.lib
-          ${abseil_cpp_BUILD}/absl/base/Release/absl_malloc_internal.lib
-          ${abseil_cpp_BUILD}/absl/base/Release/absl_throw_delegate.lib
-          ${abseil_cpp_BUILD}/absl/numeric/Release/absl_int128.lib
+          ${abseil_cpp_BUILD}/absl/base/Release/absl_internal_malloc_internal.lib
           ${abseil_cpp_BUILD}/absl/strings/Release/absl_strings.lib
           ${abseil_cpp_BUILD}/absl/strings/Release/str_format_internal.lib
           ${abseil_cpp_BUILD}/absl/types/Release/absl_bad_optional_access.lib)

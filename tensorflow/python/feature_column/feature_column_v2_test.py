@@ -31,7 +31,6 @@ from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import constant_op
@@ -50,6 +49,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import rmsprop
+from tensorflow_estimator.python.estimator.inputs import numpy_io
 
 
 def _initialized_session(config=None):

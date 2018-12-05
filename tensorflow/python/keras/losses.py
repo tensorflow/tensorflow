@@ -269,13 +269,14 @@ class MeanSquaredLogarithmicError(Loss):
     return mean_squared_logarithmic_error(y_true, y_pred)
 
 
-class BinaryCrossEntropy(Loss):
+@tf_export('keras.losses.BinaryCrossentropy')
+class BinaryCrossentropy(Loss):
   """Computes the binary cross entropy loss between the labels and predictions.
 
   Usage:
 
   ```python
-  bce = tf.keras.losses.BinaryCrossEntropy()
+  bce = tf.keras.losses.BinaryCrossentropy()
   loss = bce([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Loss: ', loss.numpy())  # Loss: 12.007
   ```
@@ -284,7 +285,7 @@ class BinaryCrossEntropy(Loss):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.losses.BinaryCrossEntropy())
+  model.compile('sgd', loss=tf.keras.losses.BinaryCrossentropy())
   ````
 
   Args:
@@ -301,12 +302,12 @@ class BinaryCrossEntropy(Loss):
                label_smoothing=0,
                reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
                name=None):
-    super(BinaryCrossEntropy, self).__init__(reduction=reduction, name=name)
+    super(BinaryCrossentropy, self).__init__(reduction=reduction, name=name)
     self.from_logits = from_logits
     self.label_smoothing = label_smoothing
 
   def call(self, y_true, y_pred):
-    """Invokes the `BinaryCrossEntropy` instance.
+    """Invokes the `BinaryCrossentropy` instance.
 
     Args:
       y_true: Ground truth values.
@@ -324,13 +325,14 @@ class BinaryCrossEntropy(Loss):
     return binary_crossentropy(y_true, y_pred, from_logits=self.from_logits)
 
 
-class CategoricalCrossEntropy(Loss):
+@tf_export('keras.losses.CategoricalCrossentropy')
+class CategoricalCrossentropy(Loss):
   """Computes categorical cross entropy loss between the `y_true` and `y_pred`.
 
   Usage:
 
   ```python
-  cce = tf.keras.losses.CategoricalCrossEntropy()
+  cce = tf.keras.losses.CategoricalCrossentropy()
   loss = cce(
     [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
     [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]])
@@ -341,7 +343,7 @@ class CategoricalCrossEntropy(Loss):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.losses.CategoricalCrossEntropy())
+  model.compile('sgd', loss=tf.keras.losses.CategoricalCrossentropy())
   ````
 
   Args:
@@ -359,13 +361,13 @@ class CategoricalCrossEntropy(Loss):
                label_smoothing=0,
                reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
                name=None):
-    super(CategoricalCrossEntropy, self).__init__(
+    super(CategoricalCrossentropy, self).__init__(
         reduction=reduction, name=name)
     self.from_logits = from_logits
     self.label_smoothing = label_smoothing
 
   def call(self, y_true, y_pred):
-    """Invokes the `CategoricalCrossEntropy` instance.
+    """Invokes the `CategoricalCrossentropy` instance.
 
     Args:
       y_true: Ground truth values.

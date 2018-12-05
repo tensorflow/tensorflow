@@ -1372,7 +1372,7 @@ class FinalOpsHookTest(test.TestCase):
   def test_final_ops_triggers_out_of_range_error(self):
     with ops.Graph().as_default():
       dataset = dataset_ops.Dataset.range(1)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       read_ops = iterator.get_next()
       final_ops = read_ops
 
