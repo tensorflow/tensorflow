@@ -2696,6 +2696,7 @@ class _UnaryMapValueDispatcher(dispatch.OpDispatcher):
     if args:
       x, args = args[0], args[1:]
     else:
+      kwargs = kwargs.copy()
       x = kwargs.pop(self._x, None)
     if isinstance(x, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(

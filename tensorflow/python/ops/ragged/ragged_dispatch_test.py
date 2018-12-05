@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged.elementwise_ops."""
+"""Tests for RaggedTensor operator dispatch."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,106 +21,108 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import googletest
 
-# Constants listing various op types to test.  Each elementwise operation
+# Constants listing various op types to test.  Each operation
 # should be included in at least one list below, or tested separately if
 # necessary (e.g., because it expects additional arguments).
 UNARY_FLOAT_OPS = [
-    ragged.abs,
-    ragged.acos,
-    ragged.acosh,
-    ragged.angle,
-    ragged.asin,
-    ragged.asinh,
-    ragged.atan,
-    ragged.atanh,
-    ragged.ceil,
-    ragged.conj,
-    ragged.cos,
-    ragged.cosh,
-    ragged.digamma,
-    ragged.erf,
-    ragged.erfc,
-    ragged.exp,
-    ragged.expm1,
-    ragged.floor,
-    ragged.imag,
-    ragged.is_finite,
-    ragged.is_inf,
-    ragged.is_nan,
-    ragged.lgamma,
-    ragged.log,
-    ragged.log1p,
-    ragged.log_sigmoid,
-    ragged.negative,
-    ragged.real,
-    ragged.reciprocal,
-    ragged.rint,
-    ragged.round,
-    ragged.rsqrt,
-    ragged.sign,
-    ragged.sin,
-    ragged.sinh,
-    ragged.sqrt,
-    ragged.square,
-    ragged.tan,
-    ragged.as_string,
-    ragged.identity,
-    ragged.ones_like,
-    ragged.zeros_like,
+    math_ops.abs,
+    math_ops.acos,
+    math_ops.acosh,
+    math_ops.angle,
+    math_ops.asin,
+    math_ops.asinh,
+    math_ops.atan,
+    math_ops.atanh,
+    math_ops.ceil,
+    math_ops.conj,
+    math_ops.cos,
+    math_ops.cosh,
+    math_ops.digamma,
+    math_ops.erf,
+    math_ops.erfc,
+    math_ops.exp,
+    math_ops.expm1,
+    math_ops.floor,
+    math_ops.imag,
+    math_ops.is_finite,
+    math_ops.is_inf,
+    math_ops.is_nan,
+    math_ops.lgamma,
+    math_ops.log,
+    math_ops.log1p,
+    math_ops.log_sigmoid,
+    math_ops.negative,
+    math_ops.real,
+    math_ops.reciprocal,
+    math_ops.rint,
+    math_ops.round,
+    math_ops.rsqrt,
+    math_ops.sign,
+    math_ops.sin,
+    math_ops.sinh,
+    math_ops.sqrt,
+    math_ops.square,
+    math_ops.tan,
+    array_ops.identity,
+    array_ops.ones_like,
+    array_ops.zeros_like,
 ]
 UNARY_BOOL_OPS = [
-    ragged.logical_not,
+    math_ops.logical_not,
 ]
 UNARY_STRING_OPS = [
-    ragged.decode_base64,
-    ragged.encode_base64,
-    ragged.string_strip,
-    ragged.decode_compressed,
+    string_ops.decode_base64,
+    string_ops.encode_base64,
+    string_ops.string_strip,
+    parsing_ops.decode_compressed,
 ]
 BINARY_FLOAT_OPS = [
-    ragged.add,
-    ragged.atan2,
-    ragged.complex,
-    ragged.div,
-    ragged.div_no_nan,
-    ragged.divide,
-    ragged.equal,
-    ragged.floordiv,
-    ragged.floormod,
-    ragged.greater,
-    ragged.greater_equal,
-    ragged.less,
-    ragged.less_equal,
-    ragged.maximum,
-    ragged.minimum,
-    ragged.multiply,
-    ragged.not_equal,
-    ragged.pow,
-    ragged.realdiv,
-    ragged.squared_difference,
-    ragged.subtract,
-    ragged.truediv,
+    math_ops.add,
+    math_ops.atan2,
+    math_ops.complex,
+    math_ops.div_no_nan,
+    math_ops.divide,
+    math_ops.equal,
+    math_ops.floordiv,
+    math_ops.floormod,
+    math_ops.greater,
+    math_ops.greater_equal,
+    math_ops.less,
+    math_ops.less_equal,
+    math_ops.maximum,
+    math_ops.minimum,
+    math_ops.multiply,
+    math_ops.not_equal,
+    math_ops.pow,
+    math_ops.realdiv,
+    math_ops.squared_difference,
+    math_ops.subtract,
+    math_ops.truediv,
 ]
 BINARY_BOOL_OPS = [
-    ragged.logical_and,
-    ragged.logical_or,
-    ragged.logical_xor,
+    math_ops.logical_and,
+    math_ops.logical_or,
+    math_ops.logical_xor,
 ]
 UNARY_INT_OPS = [
-    ragged.unicode_script,
+    string_ops.unicode_script,
 ]
 BINARY_INT_OPS = [
-    ragged.truncatediv,
-    ragged.truncatemod,
+    math_ops.truncatediv,
+    math_ops.truncatemod,
 ]
 
 
@@ -171,50 +173,49 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       [{'x': ragged.constant_value([['abcd', 'efgh'], ['aabbccdd']]), 'op': op}
        for op in UNARY_STRING_OPS] +
       [
-          {'op': ragged.clip_by_value,
+          {'op': clip_ops.clip_by_value,
            'x': ragged.constant_value([[-2.0, 3.0], [-3.0]]),
            'clip_value_min': 0.1, 'clip_value_max': 4.0},
-          {'op': ragged.cast,
+          {'op': math_ops.cast,
            'x': ragged.constant_value([[-2.0, 3.0], [-3.0]]),
            'dtype': dtypes.int32},
-          {'op': ragged.saturate_cast,
+          {'op': math_ops.saturate_cast,
            'x': ragged.constant_value([[-2.0, 3.0], [-3.0]]),
            'dtype': dtypes.int32},
-          {'op': ragged.string_to_hash_bucket,
+          {'op': string_ops.string_to_hash_bucket,
            'x': ragged.constant_value([['abcd', 'efgh'], ['aabbccdd']]),
            'num_buckets': 1000},
-          {'op': ragged.string_to_hash_bucket_fast,
+          {'op': string_ops.string_to_hash_bucket_fast,
            'x': ragged.constant_value([['abcd', 'efgh'], ['aabbccdd']]),
            'num_buckets': 1000},
-          {'op': ragged.string_to_hash_bucket_strong,
+          {'op': string_ops.string_to_hash_bucket_strong,
            'x': ragged.constant_value([['abcd', 'efgh'], ['aabbccdd']]),
            'num_buckets': 1000,
            'key': [1231, 12512]},
-          {'op': ragged.string_to_number,
+          {'op': string_ops.string_to_number,
            'x': ragged.constant_value([['-2.0', '3.0'], ['-3.0']])},
-          {'op': ragged.regex_full_match,
+          {'op': string_ops.regex_full_match,
            'x': ragged.constant_value([['hello', '123'], ['1+1']]),
            'pattern': r'\w+'},
-          {'op': ragged.regex_replace,
+          {'op': string_ops.regex_replace,
            'x': ragged.constant_value([['hello', '123'], ['1+1']]),
            'pattern': r'\d',
            'rewrite': '#'},
-          {'op': ragged.substr,
+          {'op': string_ops.substr,
            'x': ragged.constant_value([['hello', '123'], ['1+1']]),
            'pos': 2, 'len': 3},
-          {'op': ragged.check_numerics,
+          {'op': array_ops.check_numerics,
            'x': ragged.constant_value([[-2.0, 3.0], [-3.0]]),
            'message': 'check-numerics'},
       ]
       )  # pyformat: disable
-  def testUnaryOp(self, x, op=ragged.abs, **extra_args):
+  def testUnaryElementwiseOp(self, x, op=math_ops.abs, **extra_args):
     x = ragged.convert_to_tensor_or_ragged_tensor(x)
     result = op(x, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
     dense_x = x.inner_values if isinstance(x, ragged.RaggedTensor) else x
-    expected_flat_values = array_ops.reshape(
-        op.__wrapped__(dense_x, **extra_args), [-1])
+    expected_flat_values = array_ops.reshape(op(dense_x, **extra_args), [-1])
 
     with self.test_session():
       # Check that the result has the expected shape.
@@ -285,12 +286,17 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
           #=====================================================================
           {'x': ragged.constant_value([[[1, 2], [3], [4]], [[], [5, 7, 8]]]),
            'y': ragged.constant_value([[[3, 8], [2], [5]], [[], [1, 9, 8]]]),
-           'use_kwargs': True},
+           'use_kwargs': ('x', 'y')},
           {'x': ragged.constant_value([[[1, 2]], [[3, 4], [5, 6], [7, 8]]],
                                       ragged_rank=1),
            'y': ragged.constant_value([[[9, 3]], [[5, 2], [3, 4], [7, 6]]],
                                       ragged_rank=1),
-           'use_kwargs': True},
+           'use_kwargs': ('x', 'y')},
+          {'x': ragged.constant_value([[[1, 2]], [[3, 4], [5, 6], [7, 8]]],
+                                      ragged_rank=1),
+           'y': ragged.constant_value([[[9, 3]], [[5, 2], [3, 4], [7, 6]]],
+                                      ragged_rank=1),
+           'use_kwargs': ('x',)},
       ] +
       #=========================================================================
       # Test each unary op.
@@ -306,16 +312,16 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       [{'x': ragged.constant_value([[True, True], [False]]),
         'y': ragged.constant_value([[False, True], [False]]),
         'op': op}
-       for op in BINARY_BOOL_OPS] +
-      [
-      ]
+       for op in BINARY_BOOL_OPS]
       )  # pyformat: disable
-  def testBinaryOp(self, x, y, op=ragged.add, **extra_args):
-    use_kwargs = extra_args.pop('use_kwargs', False)
+  def testBinaryElementwiseOp(self, x, y, op=math_ops.add, **extra_args):
+    use_kwargs = extra_args.pop('use_kwargs', ())
     x = ragged.convert_to_tensor_or_ragged_tensor(x)
     y = ragged.convert_to_tensor_or_ragged_tensor(y)
-    if use_kwargs:
+    if 'x' in use_kwargs and 'y' in use_kwargs:
       result = op(x=x, y=y, **extra_args)
+    elif 'y' in use_kwargs:
+      result = op(x, y=y, **extra_args)
     else:
       result = op(x, y, **extra_args)
 
@@ -323,7 +329,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     dense_x = x.inner_values if isinstance(x, ragged.RaggedTensor) else x
     dense_y = y.inner_values if isinstance(y, ragged.RaggedTensor) else y
     expected_flat_values = array_ops.reshape(
-        op.__wrapped__(dense_x, dense_y, **extra_args), [-1])
+        op(dense_x, dense_y, **extra_args), [-1])
 
     with self.test_session():
       # Check that the result has the expected shape.
@@ -358,16 +364,17 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
                       ragged.constant_value([[[2, 9], [12]], [[8]]])),
            'use_kwargs': True},
       ] + [
-          {'op': ragged.add_n,
+          {'op': math_ops.add_n,
            'inputs': (ragged.constant_value([[1, 3], [-3]]),
                       ragged.constant_value([[4, 7], [88]]),
                       ragged.constant_value([[2, 9], [12]]))},
-          {'op': ragged.string_join,
+          {'op': string_ops.string_join,
            'inputs': (ragged.constant_value([['a', 'b'], ['c']]),
                       ragged.constant_value([['foo', 'bar'], ['baz']]),
                       ragged.constant_value([['2', '9'], ['12']]))},
       ])  # pyformat: disable
-  def testListValuedOp(self, inputs, op=ragged.add_n, **extra_args):
+  def testListValuedElementwiseOp(self, inputs, op=math_ops.add_n,
+                                  **extra_args):
     use_kwargs = extra_args.pop('use_kwargs', False)
     inputs = [ragged.convert_to_tensor_or_ragged_tensor(x) for x in inputs]
     if use_kwargs:
@@ -381,7 +388,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
         for x in inputs
     ]
     expected_flat_values = array_ops.reshape(
-        op.__wrapped__(dense_inputs, **extra_args), [-1])
+        op(dense_inputs, **extra_args), [-1])
 
     with self.test_session():
       # Check that the result has the expected shape.
@@ -395,13 +402,13 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       self.assertAllEqual(expected_flat_values, result_flat_values)
 
   @test_util.run_deprecated_v1
-  def testUnknownRankError(self):
+  def testElementwiseOpUnknownRankError(self):
     x = ragged.constant([[1, 2], [3]])
     y = ragged.from_row_splits(
         array_ops.placeholder_with_default([1, 2, 3], shape=None), x.row_splits)
-    with self.assertRaisesRegexp(
-        ValueError, r'Unable to broadcast: unknown rank'):
-      ragged.add(x, y)
+    with self.assertRaisesRegexp(ValueError,
+                                 r'Unable to broadcast: unknown rank'):
+      math_ops.add(x, y)
 
   @parameterized.parameters([
       dict(
@@ -417,26 +424,31 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
           y=ragged.constant_value([[1]]),
           expected=[[[2]]]),
   ])
-  def testBroadcastAdd(self, x, y, expected):
+  def testElementwiseOpBroadcast(self, x, y, expected):
     x = ragged.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
     y = ragged.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
     result = x + y
     with self.cached_session():
       self.assertEqual(result.eval().tolist(), expected)
 
-  def testShapeMismatch(self):
+  def testElementwiseOpShapeMismatch(self):
     x = ragged.constant([[1, 2, 3], [4, 5]])
     y = ragged.constant([[1, 2, 3], [4, 5, 6]])
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  'Incompatible shapes'):
       with self.cached_session():
-        ragged.add(x, y).eval()
+        math_ops.add(x, y).eval()
 
-  def testDocstring(self):
-    self.assertRegexpMatches(
-        ragged.add.__doc__,
-        'Ragged version of the elementwise operation `tf.math.add`')
-    self.assertEqual(ragged.add.__name__, 'add')
+  def testBinaryOpSparseAndRagged(self):
+    x = ragged.constant([[1, 2, 3], [4, 5]])
+    y = sparse_tensor.SparseTensor([[0, 0], [0, 1], [2, 0]], [1, 2, 3], [3, 2])
+    with self.assertRaises(TypeError):
+      with self.cached_session():
+        math_ops.add(x, y).eval()
+
+    with self.assertRaises(TypeError):
+      with self.cached_session():
+        math_ops.add_n([x, y]).eval()
 
 
 if __name__ == '__main__':

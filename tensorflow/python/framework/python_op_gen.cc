@@ -634,7 +634,9 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
 bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& eager_not_allowed_error) {
-  strings::StrAppend(&result_, "@_dispatch.add_dispatch_list\n");
+  if (api_def_.visibility() == ApiDef::VISIBLE) {
+    strings::StrAppend(&result_, "@_dispatch.add_dispatch_list\n");
+  }
   AddExport();
   AddDefLine(function_name_, parameters);
   AddDocStringDescription();
