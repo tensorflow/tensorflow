@@ -1913,6 +1913,10 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
   const int input_rank = input_dims.size();
   // Get axis to expand on.
   TRT_ShapedWeights weights = inputs.at(1).weights();
+  if (weights.count() != 1) {
+    return tensorflow::errors::InvalidArgument(
+        "ExpandDims axis must be a scalar, at ", node_def.name());
+  }
   const int* weights_ptr =
       static_cast<int*>(const_cast<void*>(weights.GetValues()));
   int axis = weights_ptr[0];
