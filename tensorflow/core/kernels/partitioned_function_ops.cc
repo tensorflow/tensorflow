@@ -184,12 +184,6 @@ class PartitionedCallOp : public AsyncOpKernel {
             OptimizationPassRegistry::Global()->RunGrouping(
                 OptimizationPassRegistry::POST_PLACEMENT, optimization_options),
             done);
-        OP_REQUIRES_OK_ASYNC(
-            ctx,
-            OptimizationPassRegistry::Global()->RunGrouping(
-                OptimizationPassRegistry::POST_REWRITE_FOR_EXEC,
-                optimization_options),
-            done);
 
         Device* cpu_device;
         OP_REQUIRES_OK_ASYNC(
@@ -201,6 +195,13 @@ class PartitionedCallOp : public AsyncOpKernel {
                              OptimizeGraph(ctx, fbody->ret_nodes, overlay_lib,
                                            device_set, cpu_device, &graph),
                              done);
+
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            OptimizationPassRegistry::Global()->RunGrouping(
+                OptimizationPassRegistry::POST_REWRITE_FOR_EXEC,
+                optimization_options),
+            done);
 
         std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
         OP_REQUIRES_OK_ASYNC(
