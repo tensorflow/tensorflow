@@ -60,6 +60,14 @@ inline auto formatv(StringRef fmt, Ts &&... vals) -> formatv_object<decltype(
       std::make_tuple(detail::build_format_adapter(std::forward<Ts>(vals))...));
 }
 
+// Returns whether the record has a value of the given name that can be returned
+// via getValueAsString.
+static inline bool hasStringAttribute(const Record &record,
+                                      StringRef fieldName) {
+  auto valueInit = record.getValueInit(fieldName);
+  return isa<CodeInit>(valueInit) || isa<StringInit>(valueInit);
+}
+
 namespace {
 // Simple RAII helper for defining ifdef-undef-endif scopes.
 class IfDefScope {
@@ -179,6 +187,14 @@ void OpEmitter::emitAttrGetters() {
     }
 
     // Emit normal emitter.
+    if (!hasStringAttribute(attr, "storageType")) {
+      // Handle the base case where there is no storage type specified.
+      os << "  Attribute " << val.getName()
+         << "() const {\n    return getAttr(\"" << val.getName()
+         << "\");\n  }\n";
+      continue;
+    }
+
     os << "  " << attr.getValueAsString("returnType").trim() << ' '
        << val.getName() << "() const {\n";
 
@@ -192,13 +208,11 @@ void OpEmitter::emitAttrGetters() {
 }
 
 void OpEmitter::emitBuilder() {
-  // If a custom builder is given then print that out instead.
-  auto valueInit = def.getValueInit("builder");
-  CodeInit *codeInit = dyn_cast<CodeInit>(valueInit);
-  if (!codeInit)
+  if (!hasStringAttribute(def, "builder"))
     return;
 
-  auto builder = codeInit->getValue();
+  // If a custom builder is given then print that out instead.
+  auto builder = def.getValueAsString("builder");
   if (!builder.empty()) {
     os << builder << '\n';
     return;
@@ -215,14 +229,10 @@ void OpEmitter::emitCanonicalizationPatterns() {
 }
 
 void OpEmitter::emitParser() {
-  auto valueInit = def.getValueInit("parser");
-  CodeInit *codeInit = dyn_cast<CodeInit>(valueInit);
-  if (!codeInit)
+  if (!hasStringAttribute(def, "parser"))
     return;
-
-  auto parser = codeInit->getValue();
   os << "  static bool parse(OpAsmParser *parser, OperationState *result) {"
-     << "\n    " << parser << "\n  }\n";
+     << "\n    " << def.getValueAsString("parser") << "\n  }\n";
 }
 
 void OpEmitter::emitPrinter() {
@@ -255,6 +265,13 @@ void OpEmitter::emitVerifier() {
         continue;
 
     auto name = attr.first->getName();
+    if (!hasStringAttribute(*attr.second, "storageType")) {
+      os << "    if (!this->getAttr(\"" << name
+         << "\")) return emitOpError(\"requires attribute '" << name
+         << "'\");\n";
+      continue;
+    }
+
     os << "    if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
        << attr.second->getValueAsString("storageType").trim() << ">("
        << ")) return emitOpError(\"requires "
