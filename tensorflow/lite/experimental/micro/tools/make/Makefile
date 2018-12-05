@@ -77,9 +77,7 @@ tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor_test.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/no_30ms_sample_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/yes_30ms_sample_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/no_power_spectrum_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/yes_power_spectrum_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/yes_waveform.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/yes_features_data.cc
+tensorflow/lite/experimental/micro/examples/micro_speech/yes_power_spectrum_data.cc
 
 PREPROCESSOR_REFERENCE_TEST_SRCS = \
 $(PREPROCESSOR_TEST_SRCS) \
