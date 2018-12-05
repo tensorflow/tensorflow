@@ -316,10 +316,15 @@ private:
 // not be of the same dimensionality, but need to have the same elemental type.
 // The operands include the source and destination memref's each followed by its
 // indices, size of the data transfer in terms of the number of elements (of the
-// elemental type of the memref), and a tag memref with its indices. The tag
+// elemental type of the memref), a tag memref with its indices, and optionally
+// at the end, a stride and a number_of_elements_per_stride arguments. The tag
 // location is used by a DmaWaitOp to check for completion. The indices of the
 // source memref, destination memref, and the tag memref have the same
-// restrictions as any load/store in MLFunctions.
+// restrictions as any load/store in MLFunctions. The optional stride arguments
+// should be of 'index' type, and specify a stride for the slower memory space
+// (memory space with a lower memory space id), tranferring chunks of
+// number_of_elements_per_stride every stride until %num_elements are
+// transferred. Either both or no stride arguments should be specified.
 //
 // For example, a DmaStartOp operation that transfers 256 elements of a memref
 // '%src' in memory space 0 at indices [%i, %j] to memref '%dst' in memory space
@@ -333,6 +338,15 @@ private:
 //     memref<2 x 1024 x f32>, (d0) -> (d0), 1>,
 //     memref<1 x i32>, (d0) -> (d0), 2>
 //
+//   If %stride and %num_elt_per_stride are specified, the DMA is expected to
+//   transfer %num_elt_per_stride elements every %stride elements apart from
+//   memory space 0 until %num_elements are transferred.
+//
+//   dma_start %src[%i, %j], %dst[%k, %l], %num_elements, %tag[%idx], %stride,
+//             %num_elt_per_stride :
+//
+// TODO(mlir-team): add additional operands to allow source and destination
+// striding, and multiple stride levels.
 // TODO(andydavis) Consider replacing src/dst memref indices with view memrefs.
 class DmaStartOp
     : public Op<DmaStartOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
@@ -341,7 +355,8 @@ public:
                     SSAValue *srcMemRef, ArrayRef<SSAValue *> srcIndices,
                     SSAValue *destMemRef, ArrayRef<SSAValue *> destIndices,
                     SSAValue *numElements, SSAValue *tagMemRef,
-                    ArrayRef<SSAValue *> tagIndices);
+                    ArrayRef<SSAValue *> tagIndices, SSAValue *stride = nullptr,
+                    SSAValue *elementsPerStride = nullptr);
 
   // Returns the source MemRefType for this DMA operation.
   const SSAValue *getSrcMemRef() const { return getOperand(0); }
@@ -388,12 +403,19 @@ public:
   const SSAValue *getTagMemRef() const {
     return getOperand(1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1);
   }
+  // Returns the rank (number of indices) of the tag MemRefType.
+  unsigned getTagMemRefRank() const {
+    return getTagMemRef()->getType().cast<MemRefType>().getRank();
+  }
+
   // Returns the tag memref index for this DMA operation.
   llvm::iterator_range<Operation::const_operand_iterator>
   getTagIndices() const {
-    return {getOperation()->operand_begin() + 1 + getSrcMemRefRank() + 1 +
-                getDstMemRefRank() + 1 + 1,
-            getOperation()->operand_end()};
+    unsigned tagIndexStartPos =
+        1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1 + 1;
+    return {getOperation()->operand_begin() + tagIndexStartPos,
+            getOperation()->operand_begin() + tagIndexStartPos +
+                getTagMemRefRank()};
   }
 
   /// Returns true if this is a DMA from a faster memory space to a slower one.
@@ -418,8 +440,33 @@ public:
   static StringRef getOperationName() { return "dma_start"; }
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
+  bool verify() const;
+
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
+
+  bool isStrided() const {
+    return getNumOperands() != 1 + getSrcMemRefRank() + 1 + getDstMemRefRank() +
+                                   1 + 1 + getTagMemRefRank();
+  }
+
+  SSAValue *getStride() {
+    if (!isStrided())
+      return nullptr;
+    return getOperand(getNumOperands() - 1 - 1);
+  }
+  const SSAValue *getStride() const {
+    return const_cast<DmaStartOp *>(this)->getStride();
+  }
+
+  SSAValue *getNumElementsPerStride() {
+    if (!isStrided())
+      return nullptr;
+    return getOperand(getNumOperands() - 1);
+  }
+  const SSAValue *getNumElementsPerStride() const {
+    return const_cast<DmaStartOp *>(this)->getNumElementsPerStride();
+  }
 
 protected:
   friend class ::mlir::Operation;

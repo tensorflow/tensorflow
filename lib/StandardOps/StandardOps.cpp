@@ -686,7 +686,8 @@ void DmaStartOp::build(Builder *builder, OperationState *result,
                        SSAValue *srcMemRef, ArrayRef<SSAValue *> srcIndices,
                        SSAValue *destMemRef, ArrayRef<SSAValue *> destIndices,
                        SSAValue *numElements, SSAValue *tagMemRef,
-                       ArrayRef<SSAValue *> tagIndices) {
+                       ArrayRef<SSAValue *> tagIndices, SSAValue *stride,
+                       SSAValue *elementsPerStride) {
   result->addOperands(srcMemRef);
   result->addOperands(srcIndices);
   result->addOperands(destMemRef);
@@ -694,6 +695,10 @@ void DmaStartOp::build(Builder *builder, OperationState *result,
   result->addOperands(numElements);
   result->addOperands(tagMemRef);
   result->addOperands(tagIndices);
+  if (stride) {
+    result->addOperands(stride);
+    result->addOperands(elementsPerStride);
+  }
 }
 
 void DmaStartOp::print(OpAsmPrinter *p) const {
@@ -705,6 +710,10 @@ void DmaStartOp::print(OpAsmPrinter *p) const {
   *p << ", " << *getTagMemRef() << '[';
   p->printOperands(getTagIndices());
   *p << ']';
+  if (isStrided()) {
+    *p << ", " << *getStride();
+    *p << ", " << *getNumElementsPerStride();
+  }
   p->printOptionalAttrDict(getAttrs());
   *p << " : " << getSrcMemRef()->getType();
   *p << ", " << getDstMemRef()->getType();
@@ -728,6 +737,7 @@ bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType numElementsInfo;
   OpAsmParser::OperandType tagMemrefInfo;
   SmallVector<OpAsmParser::OperandType, 4> tagIndexInfos;
+  SmallVector<OpAsmParser::OperandType, 2> strideInfo;
 
   SmallVector<Type, 3> types;
   auto indexType = parser->getBuilder().getIndexType();
@@ -745,8 +755,20 @@ bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
       parser->parseComma() || parser->parseOperand(numElementsInfo) ||
       parser->parseComma() || parser->parseOperand(tagMemrefInfo) ||
       parser->parseOperandList(tagIndexInfos, -1,
-                               OpAsmParser::Delimiter::Square) ||
-      parser->parseColonTypeList(types))
+                               OpAsmParser::Delimiter::Square))
+    return true;
+
+  // Parse optional stride and elements per stride.
+  if (parser->parseTrailingOperandList(strideInfo)) {
+    return true;
+  }
+  if (!strideInfo.empty() && strideInfo.size() != 2) {
+    return parser->emitError(parser->getNameLoc(),
+                             "expected two stride related operands");
+  }
+  bool isStrided = strideInfo.size() == 2;
+
+  if (parser->parseColonTypeList(types))
     return true;
 
   if (types.size() != 3)
@@ -763,6 +785,12 @@ bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
       parser->resolveOperands(tagIndexInfos, indexType, result->operands))
     return true;
 
+  if (isStrided) {
+    if (parser->resolveOperand(strideInfo[0], indexType, result->operands) ||
+        parser->resolveOperand(strideInfo[1], indexType, result->operands))
+      return true;
+  }
+
   // Check that source/destination index list size matches associated rank.
   if (srcIndexInfos.size() != types[0].cast<MemRefType>().getRank() ||
       dstIndexInfos.size() != types[1].cast<MemRefType>().getRank())
@@ -773,6 +801,21 @@ bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc(),
                              "tag memref rank not equal to indices count");
 
+  return false;
+}
+
+bool DmaStartOp::verify() const {
+  // DMAs from different memory spaces supported.
+  if (getSrcMemorySpace() == getDstMemorySpace()) {
+    return emitOpError("DMA should be between different memory spaces");
+  }
+
+  if (getNumOperands() != getTagMemRefRank() + getSrcMemRefRank() +
+                              getDstMemRefRank() + 3 + 1 &&
+      getNumOperands() != getTagMemRefRank() + getSrcMemRefRank() +
+                              getDstMemRefRank() + 3 + 1 + 2) {
+    return emitOpError("incorrect number of operands");
+  }
   return false;
 }
 

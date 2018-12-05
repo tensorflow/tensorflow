@@ -293,6 +293,14 @@ public:
                                 int requiredOperandCount = -1,
                                 Delimiter delimiter = Delimiter::None) = 0;
 
+  /// Parse zero or more trailing SSA comma-separated trailing operand
+  /// references with a specified surrounding delimiter, and an optional
+  /// required operand count. A leading comma is expected before the operands.
+  virtual bool
+  parseTrailingOperandList(SmallVectorImpl<OperandType> &result,
+                           int requiredOperandCount = -1,
+                           Delimiter delimiter = Delimiter::None) = 0;
+
   //===--------------------------------------------------------------------===//
   // Methods for interacting with the parser
   //===--------------------------------------------------------------------===//

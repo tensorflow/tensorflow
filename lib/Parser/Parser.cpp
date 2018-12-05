@@ -2304,6 +2304,19 @@ public:
     return false;
   }
 
+  bool parseTrailingOperandList(SmallVectorImpl<OperandType> &result,
+                                int requiredOperandCount,
+                                Delimiter delimiter) override {
+    if (parser.getToken().is(Token::comma)) {
+      parseComma();
+      return parseOperandList(result, requiredOperandCount, delimiter);
+    }
+    if (requiredOperandCount != -1)
+      return emitError(parser.getToken().getLoc(),
+                       "expected " + Twine(requiredOperandCount) + " operands");
+    return false;
+  }
+
   /// Parse a keyword followed by a type.
   bool parseKeywordType(const char *keyword, Type &result) override {
     if (parser.getTokenSpelling() != keyword)
