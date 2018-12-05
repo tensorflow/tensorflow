@@ -4696,7 +4696,10 @@ def deserialize_feature_column(config,
         'Expected FeatureColumn class, instead found: {}'.format(cls))
 
   # Always deserialize the FeatureColumn, in order to get the name.
-  new_instance = cls._from_config(cls_config, columns_by_name=columns_by_name)  # pylint: disable=protected-access
+  new_instance = cls._from_config(  # pylint: disable=protected-access
+      cls_config,
+      custom_objects=custom_objects,
+      columns_by_name=columns_by_name)
 
   # If the name already exists, re-use the column from columns_by_name,
   # (new_instance remains unused).

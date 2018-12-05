@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -47,7 +47,6 @@ class StatsAggregator(object):
   options = dataset_ops.Options()
   options.experimental_stats = tf.data.experimental.StatsOptions(aggregator)
   dataset = dataset.with_options(options)
-  iterator = dataset.make_one_shot_iterator()
   ```
 
   To get a protocol buffer summary of the currently aggregated statistics,
@@ -69,7 +68,7 @@ class StatsAggregator(object):
 
   def __init__(self):
     """Creates a `StatsAggregator`."""
-    self._resource = gen_dataset_ops.stats_aggregator_handle()
+    self._resource = ged_ops.experimental_stats_aggregator_handle()
 
   # TODO(b/116314787): Update this/add support for V2 summary API.
   def get_summary(self):
@@ -81,4 +80,4 @@ class StatsAggregator(object):
     Returns:
       A scalar string `tf.Tensor` that summarizes the aggregated statistics.
     """
-    return gen_dataset_ops.stats_aggregator_summary(self._resource)
+    return ged_ops.experimental_stats_aggregator_summary(self._resource)

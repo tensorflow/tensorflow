@@ -729,7 +729,7 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
     dummy_x_shape[0] *= tpu_assignment.num_towers
     dummy_y_shape = dataset.output_shapes[1].as_list()
     dummy_y_shape[0] *= tpu_assignment.num_towers
-    self._iterator = dataset.make_initializable_iterator()
+    self._iterator = dataset_ops.make_initializable_iterator(dataset)
     K.get_session().run(self._iterator.initializer)
 
     self._get_next_ops = []

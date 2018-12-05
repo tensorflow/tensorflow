@@ -36,8 +36,8 @@ class FromSparseTensorSlicesTest(test_base.DatasetTestBase):
   def testSkipEagerFromSparseTensorSlices(self):
     """Test a dataset based on slices of a `tf.SparseTensor`."""
     st = array_ops.sparse_placeholder(dtypes.float64)
-    iterator = (dataset_ops.Dataset.from_sparse_tensor_slices(st)
-                .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_sparse_tensor_slices(st))
     init_op = iterator.initializer
     get_next = sparse_tensor.SparseTensor(*iterator.get_next())
 

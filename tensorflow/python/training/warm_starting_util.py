@@ -360,7 +360,7 @@ def _get_grouped_variables(vars_to_warm_start):
   return grouped_variables
 
 
-@tf_export("train.warm_start")
+@tf_export(v1=["train.warm_start"])
 def warm_start(ckpt_to_initialize_from,
                vars_to_warm_start=".*",
                var_name_to_vocab_info=None,

@@ -1177,7 +1177,7 @@ class MklConvOp : public OpKernel {
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
   const int kDilationH = 0, kDilationW = 1;
 
-  // Helper function to compare fused_ops attributes strings
+  // Helper function to compare fused_ops attribute strings
   bool CompareFusedOps(const std::vector<string>& fused_ops,
                        const std::vector<string>& expected) {
     return fused_ops == expected;

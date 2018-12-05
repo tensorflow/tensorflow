@@ -152,8 +152,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
-    # TODO(b/120222989) remove autograph=False.
-    @def_function.function(autograph=False)
+    @def_function.function()
     def pairs_mul(pair_a, pair_b):
       return pair(matmul(pair_a.a, pair_b.a), matmul(pair_a.b, pair_b.b))
 
@@ -1302,7 +1301,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
 
-  @test_util.run_deprecated_v1
   def testInputSignatureForFunctionWithNonTensorInputsNotAllowed(self):
 
     def foo(a, training=True):
@@ -1311,10 +1309,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       else:
         return -1.0 * a
 
-    signature = [tensor_spec.TensorSpec([], dtypes.float32)] * 2
+    signature = [
+        tensor_spec.TensorSpec([], dtypes.float32),
+        tensor_spec.TensorSpec([], dtypes.bool),
+    ]
     defined = def_function.function(foo, input_signature=signature)
     a = constant_op.constant(1.0)
-    with self.assertRaises(TypeError):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'When input_signature is provided, all inputs to '
+        'the Python function must be Tensors.'):
       defined(a, training=True)
 
   def testInputSignatureWithKeywordPositionalArgs(self):

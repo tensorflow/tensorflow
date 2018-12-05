@@ -2962,6 +2962,7 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
 
   DumpGraph("After running MklLayoutRewritePass(NodeMerge)", &**g);
 
+#ifdef ENABLE_TRANSPOSE_OPTIMIZATION
   order.clear();
   GetReversePostOrder(**g, &order);  // This will give us topological sort.
   for (Node* n : order) {
@@ -2982,8 +2983,8 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
       }
     }
   }
-
   DumpGraph("After running MklLayoutRewritePass(NodeFusion)", &**g);
+#endif  // ENABLE_TRANSPOSE_OPTIMIZATION
 
   order.clear();
   GetReversePostOrder(**g, &order);  // This will give us topological sort.

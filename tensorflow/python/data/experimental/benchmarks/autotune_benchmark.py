@@ -39,7 +39,7 @@ class AutotuneBenchmark(test.Benchmark):
                                                                1))).repeat()
     dataset = dataset.map(
         math_ops.matmul, num_parallel_calls=optimization.AUTOTUNE)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
     deltas = []
@@ -76,7 +76,7 @@ class AutotuneBenchmark(test.Benchmark):
     options = dataset_ops.Options()
     options.experimental_numa_aware = numa_aware
     dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
     deltas = []
@@ -108,7 +108,7 @@ class AutotuneBenchmark(test.Benchmark):
         lambda _: dataset,
         cycle_length=10,
         num_parallel_calls=optimization.AUTOTUNE)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
     deltas = []
@@ -161,7 +161,7 @@ class AutotuneBenchmark(test.Benchmark):
         cycle_length=2)
 
     dataset = dataset.map(f3, num_parallel_calls=optimization.AUTOTUNE)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
     deltas = []

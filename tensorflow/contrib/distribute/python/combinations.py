@@ -192,7 +192,7 @@ def _augment_with_special_arguments(test_method):
         kwargs_to_pass[arg] = kwargs[arg]
 
     if mode == "eager":
-      with ops.Graph().as_default(), context.eager_mode():
+      with context.eager_mode():
         if distribution:
           kwargs_to_pass["distribution"] = distribution.strategy
         test_method(**kwargs_to_pass)

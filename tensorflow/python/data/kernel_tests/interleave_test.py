@@ -116,7 +116,7 @@ def _make_coordinated_sloppy_dataset(input_values, cycle_length, block_length,
   dataset = dataset_ops.Dataset.from_tensor_slices(input_values).repeat(
       2).interleave(interleave_fn, cycle_length, block_length,
                     num_parallel_calls).with_options(options)
-  iterator = dataset.make_one_shot_iterator()
+  iterator = dataset_ops.make_one_shot_iterator(dataset)
   get_next = iterator.get_next()
   return get_next, coordination_events
 

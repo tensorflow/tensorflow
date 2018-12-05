@@ -53,13 +53,60 @@ class ReconstructionOpsTest(test.TestCase):
                             "100000000000000"]
 
   def test_all_ones(self):
-    signal = constant_op.constant(np.ones((3, 5)), dtype=dtypes.int64)
+    signal = array_ops.ones([3, 5])
     reconstruction = reconstruction_ops.overlap_and_add(signal, 2)
 
-    with self.session(use_gpu=True) as sess:
+    self.assertEqual(reconstruction.shape.as_list(), [9])
+
+    with self.session(use_gpu=True):
       output = self.evaluate(reconstruction)
 
       expected_output = np.array([1, 1, 2, 2, 3, 2, 2, 1, 1])
+
+      self.assertAllClose(output, expected_output)
+
+  def test_unknown_shapes(self):
+    signal = array_ops.placeholder(dtype=dtypes.int32, shape=[None, None, None])
+    frame_step = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    reconstruction = reconstruction_ops.overlap_and_add(signal, frame_step)
+
+    self.assertEqual(reconstruction.shape.as_list(), [None, None])
+
+    with self.session(use_gpu=True) as sess:
+      output = sess.run(reconstruction,
+                        feed_dict={signal: np.ones([4, 3, 5]), frame_step: 2})
+
+      expected_output = np.array([[1, 1, 2, 2, 3, 2, 2, 1, 1]] * 4)
+
+      self.assertAllClose(output, expected_output)
+
+  def test_unknown_rank(self):
+    signal = array_ops.placeholder(dtype=dtypes.int32, shape=None)
+    frame_step = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    reconstruction = reconstruction_ops.overlap_and_add(signal, frame_step)
+
+    self.assertEqual(reconstruction.shape, None)
+
+    with self.session(use_gpu=True) as sess:
+      output = sess.run(reconstruction,
+                        feed_dict={signal: np.ones([4, 3, 5]), frame_step: 2})
+
+      expected_output = np.array([[1, 1, 2, 2, 3, 2, 2, 1, 1]] * 4)
+
+      self.assertAllClose(output, expected_output)
+
+  def test_fast_path(self):
+    signal = array_ops.placeholder(dtype=dtypes.int32, shape=[3, 5])
+    frame_step = 5
+    reconstruction = reconstruction_ops.overlap_and_add(signal, frame_step)
+
+    self.assertEqual(reconstruction.name, "overlap_and_add/fast_path:0")
+
+    with self.session(use_gpu=True) as sess:
+      output = sess.run(reconstruction,
+                        feed_dict={signal: np.ones([3, 5])})
+
+      expected_output = np.ones([15])
 
       self.assertAllClose(output, expected_output)
 
@@ -100,7 +147,7 @@ class ReconstructionOpsTest(test.TestCase):
                                   dtype=dtypes.int64)
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
-    with self.session(use_gpu=True) as sess:
+    with self.session(use_gpu=True):
       output = self.evaluate(reconstruction)
       string_output = [np.base_repr(x, self.bases[0]) for x in output]
 
@@ -110,7 +157,7 @@ class ReconstructionOpsTest(test.TestCase):
     signal = constant_op.constant(self.powers, dtype=dtypes.int64)
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
-    with self.session(use_gpu=True) as sess:
+    with self.session(use_gpu=True):
       output = self.evaluate(reconstruction)
 
       accumulator = True
@@ -126,7 +173,7 @@ class ReconstructionOpsTest(test.TestCase):
     signal = constant_op.constant(input_matrix, dtype=dtypes.float32)
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
-    with self.session(use_gpu=True) as sess:
+    with self.session(use_gpu=True):
       output = self.evaluate(reconstruction)
 
       string_output = [np.base_repr(int(x), self.bases[0]) for x in

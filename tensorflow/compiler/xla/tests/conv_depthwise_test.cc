@@ -136,7 +136,7 @@ string BuildHloTextDepthwiseConvolution2D(
   if (spec.activation_dims[1] == 1 && spec.kernel_dims[1] == 2) {
     return absl::StrFormat(
         R"(
-    HloModule TensorFlowDepthwiseConv, is_scheduled=true
+    HloModule TensorFlowDepthwiseConv
 
     ENTRY main {
       activation = %s[%s]{%s} parameter(0)
@@ -161,7 +161,7 @@ string BuildHloTextDepthwiseConvolution2D(
   } else if (spec.stride == -1) {
     return absl::StrFormat(
         R"(
-      HloModule TensorFlowDepthwiseConv, is_scheduled=true
+      HloModule TensorFlowDepthwiseConv
 
       ENTRY main {
         activation = %s[%s]{%s} parameter(0)
@@ -185,7 +185,7 @@ string BuildHloTextDepthwiseConvolution2D(
   } else {
     return absl::StrFormat(
         R"(
-    HloModule TensorFlowDepthwiseConv, is_scheduled=true
+    HloModule TensorFlowDepthwiseConv
 
     ENTRY main {
       activation = %s[%s]{%s} parameter(0)
@@ -215,13 +215,13 @@ XLA_TEST_P(DepthwiseConvolution2DTest, DoIt) {
   const string hlo_text =
       BuildHloTextDepthwiseConvolution2D(spec, use_bfloat16);
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      hlo_text, ErrorSpec{0.01, 0.01}, [](HloModule* module) -> Status {
-        BFloat16MixedPrecisionRemoval remover;
-        TF_RETURN_IF_ERROR(remover.Run(module).status());
-        Despecializer despecializer;
-        return despecializer.Run(module).status();
-      }));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01},
+                            [](HloModule* module) -> Status {
+                              BFloat16MixedPrecisionRemoval remover;
+                              TF_RETURN_IF_ERROR(remover.Run(module).status());
+                              Despecializer despecializer;
+                              return despecializer.Run(module).status();
+                            }));
 }
 
 INSTANTIATE_TEST_CASE_P(

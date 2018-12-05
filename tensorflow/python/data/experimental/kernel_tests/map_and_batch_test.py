@@ -78,7 +78,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
 
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -147,7 +147,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
     if drop_remainder:
       self.assertEqual([4, 1], iterator.output_shapes.as_list())
@@ -177,7 +177,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
 
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     self.assertEqual([None, 1], iterator.output_shapes.as_list())
     next_element = iterator.get_next()
     with self.cached_session() as sess:
@@ -199,7 +199,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
     elements = []
     for _ in range(100):
@@ -229,7 +229,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
     elements = []
     for _ in range(100):
@@ -262,7 +262,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
 
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -296,7 +296,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
 
     init_op = iterator.initializer
     with self.cached_session() as sess:
@@ -325,7 +325,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
 
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -358,7 +358,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -398,7 +398,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -449,7 +449,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
 
-    get_next = dataset.make_one_shot_iterator().get_next()
+    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
     with self.cached_session() as sess:
       for _ in range(10):
@@ -466,7 +466,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testShortCircuit(self, structure, map_fn, num_parallel_calls):
     dataset = self.structuredDataset(structure).repeat().apply(
         batching.map_and_batch(map_fn, batch_size=10))
-    get_next = dataset.make_one_shot_iterator().get_next()
+    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
     with self.cached_session() as sess:
       if isinstance(structure, tuple):
@@ -482,7 +482,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     captured_t = array_ops.placeholder(dtypes.int64, shape=[])
     dataset = self.structuredDataset(None).repeat().apply(
         batching.map_and_batch(lambda x: captured_t, batch_size=10))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -509,7 +509,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
     with self.cached_session() as sess:
       for i in range(10):

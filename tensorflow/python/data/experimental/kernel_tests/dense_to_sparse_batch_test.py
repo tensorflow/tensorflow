@@ -34,11 +34,10 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
   @test_util.run_deprecated_v1
   def testDenseToSparseBatchDataset(self):
     components = np.random.randint(12, size=(100,)).astype(np.int32)
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: array_ops.fill([x], x)).apply(
-            batching.dense_to_sparse_batch(4, [12]))
-        .make_initializable_iterator())
+            batching.dense_to_sparse_batch(4, [12])))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -63,11 +62,10 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
   @test_util.run_deprecated_v1
   def testDenseToSparseBatchDatasetWithUnknownShape(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: array_ops.fill([x, x], x)).apply(
-            batching.dense_to_sparse_batch(
-                4, [5, None])).make_initializable_iterator())
+            batching.dense_to_sparse_batch(4, [5, None])))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -98,16 +96,16 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
   def testDenseToSparseBatchDatasetWithInvalidShape(self):
     input_tensor = array_ops.constant([[1]])
     with self.assertRaisesRegexp(ValueError, "Dimension -2 must be >= 0"):
-      dataset_ops.Dataset.from_tensors(input_tensor).apply(
-          batching.dense_to_sparse_batch(4, [-2])).make_initializable_iterator()
+      dataset_ops.make_initializable_iterator(
+          dataset_ops.Dataset.from_tensors(input_tensor).apply(
+              batching.dense_to_sparse_batch(4, [-2])))
 
   @test_util.run_deprecated_v1
   def testDenseToSparseBatchDatasetShapeErrors(self):
     input_tensor = array_ops.placeholder(dtypes.int32)
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensors(input_tensor).apply(
-            batching.dense_to_sparse_batch(4, [12]))
-        .make_initializable_iterator())
+            batching.dense_to_sparse_batch(4, [12])))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 

@@ -29,6 +29,9 @@ tf_export(
         "saved_model.ASSETS_DIRECTORY", "saved_model.constants.ASSETS_DIRECTORY"
     ]).export_constant(__name__, "ASSETS_DIRECTORY")
 
+# Subdirectory name containing unmanaged files from higher-level APIs.
+EXTRA_ASSETS_DIRECTORY = "assets.extra"
+
 # CollectionDef key containing SavedModel assets.
 ASSETS_KEY = "saved_model_assets"
 tf_export(

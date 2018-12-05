@@ -524,7 +524,13 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // can't perform non-differentiable rewrites.
       if (differentiable_functions.find(func_name) !=
           differentiable_functions.end()) {
-        func_item.allowed_optimizations.non_differentiable_rewrites = false;
+        func_item.allowed_optimizations().non_differentiable_rewrites = false;
+      }
+
+      // Function item is allowed to use all devices from the main graph.
+      Status added_devices = func_item.AddDevices(item);
+      if (!added_devices.ok()) {
+        VLOG(3) << added_devices.error_message();
       }
 
       // Optimize function body graph.

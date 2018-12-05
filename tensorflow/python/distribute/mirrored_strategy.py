@@ -520,7 +520,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     def _real_mirrored_creator(devices, *args, **kwargs):  # pylint: disable=g-missing-docstring
       index = {}
       for i, d in enumerate(devices):
-        with ops.device(d):
+        with ops.init_scope(), ops.device(d):
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = index[devices[0]].name.split(":")[0]

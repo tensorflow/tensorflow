@@ -563,7 +563,7 @@ class TrainingTest(test.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
     dataset = dataset.repeat(10)
     dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     model.fit(iterator, epochs=1, steps_per_epoch=2)
 
     if context.executing_eagerly():
@@ -628,6 +628,69 @@ class TrainingTest(test.TestCase):
     model.fit([input_a_np, input_b_np], [output_d_np, output_e_np],
               epochs=1,
               batch_size=5)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_static_batch_in_input_layer(self):
+
+    class Counter(keras.callbacks.Callback):
+
+      def __init__(self):
+        self.batches = 0
+
+      def on_batch_end(self, batch, logs=None):
+        self.batches += 1
+
+    x, y = np.ones((64, 10), 'float32'), np.ones((64, 1), 'float32')
+
+    for batch_size, expected_batches in [(None, 2), (4, 16)]:
+      inputs = keras.Input(batch_size=batch_size, shape=(10,))
+      outputs = keras.layers.Dense(1, activation='sigmoid')(inputs)
+      model = keras.Model(inputs, outputs)
+
+      model.compile(keras.optimizer_v2.adam.Adam(0.001), 'binary_crossentropy')
+      counter = Counter()
+      model.fit(x, y, callbacks=[counter])
+      self.assertEqual(counter.batches, expected_batches)
+
+      model = keras.Sequential(
+          [keras.layers.Dense(1, batch_input_shape=(batch_size, 10))])
+      model.compile(keras.optimizer_v2.adam.Adam(0.001), 'binary_crossentropy')
+      counter = Counter()
+      model.fit(x, y, callbacks=[counter])
+      self.assertEqual(counter.batches, expected_batches)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_static_batch_in_input_layer_consistency_checks(self):
+    x, y = np.ones((64, 10), 'float32'), np.ones((64, 1), 'float32')
+
+    inputs = keras.Input(batch_size=2, shape=(10,))
+    outputs = keras.layers.Dense(1, activation='sigmoid')(inputs)
+    model = keras.Model(inputs, outputs)
+    model.compile(keras.optimizer_v2.adam.Adam(0.001), 'binary_crossentropy')
+    with self.assertRaisesRegexp(ValueError,
+                                 'incompatible with the specified batch size'):
+      model.fit(x, y, batch_size=4)
+
+    data = dataset_ops.DatasetV2.from_tensor_slices((x, y))
+    data = data.batch(4, drop_remainder=True)
+    with self.assertRaisesRegexp(ValueError,
+                                 'incompatible with the specified batch size'):
+      model.fit(data, steps_per_epoch=16)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_compatible_batch_size_functional_model(self):
+
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        return array_ops.concat(inputs, axis=0)
+
+    input1 = keras.Input(batch_size=2, shape=(10,))
+    input2 = keras.Input(batch_size=3, shape=(10,))
+    outputs = MyLayer()([input1, input2])
+    with self.assertRaisesRegexp(ValueError,
+                                 'specified batch sizes of the Input Layers'):
+      keras.Model([input1, input2], outputs)
 
 
 class TestExceptionsAndWarnings(test.TestCase):

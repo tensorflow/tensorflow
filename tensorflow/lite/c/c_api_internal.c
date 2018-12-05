@@ -59,7 +59,7 @@ void TfLiteIntArrayPrint(const char* s, TfLiteIntArray* a) {
   printf("]\n");
 }
 
-TfLiteIntArray* TfLiteIntArrayCopy(TfLiteIntArray* src) {
+TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src) {
   if (!src) return NULL;
   TfLiteIntArray* ret = TfLiteIntArrayCreate(src->size);
   if (ret) {
