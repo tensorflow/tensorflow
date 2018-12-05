@@ -82,27 +82,29 @@ class ListFilesTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.list_files(
         path.join(self.tmp_dir, '*'), shuffle=True, seed=37)
 
-    full_filenames = [compat.as_bytes(path.join(self.tmp_dir, filename))
-                      for filename in filenames]
+    expected_filenames = [
+        compat.as_bytes(path.join(self.tmp_dir, filename))
+        for filename in filenames
+    ]
 
-    all_produced_filenames = []
+    all_actual_filenames = []
     for _ in range(3):
-      produced_filenames = []
+      actual_filenames = []
       next_element = self.getNext(dataset, requires_initialization=True)
       try:
         while True:
-          produced_filenames.append(self.evaluate(next_element()))
+          actual_filenames.append(self.evaluate(next_element()))
       except errors.OutOfRangeError:
         pass
-      all_produced_filenames.append(produced_filenames)
+      all_actual_filenames.append(actual_filenames)
 
     # Each run should produce the same set of filenames, which may be
-    # different from the order of `full_filenames`.
-    self.assertItemsEqual(full_filenames, all_produced_filenames[0])
+    # different from the order of `expected_filenames`.
+    self.assertItemsEqual(expected_filenames, all_actual_filenames[0])
     # However, the different runs should produce filenames in the same order
     # as each other.
-    self.assertEqual(all_produced_filenames[0], all_produced_filenames[1])
-    self.assertEqual(all_produced_filenames[0], all_produced_filenames[2])
+    self.assertEqual(all_actual_filenames[0], all_actual_filenames[1])
+    self.assertEqual(all_actual_filenames[0], all_actual_filenames[2])
 
   # TODO(b/117581999): eager mode assertion fail wrapped, debug.
   def tesSkipEagerEmptyDirectoryInitializer(self):
@@ -169,16 +171,17 @@ class ListFilesTest(test_base.DatasetTestBase):
         path.join(self.tmp_dir, '*'), shuffle=False).repeat(2)
     next_element = self.getNext(dataset)
 
-    full_filenames = []
-    produced_filenames = []
+    expected_filenames = []
+    actual_filenames = []
     for filename in filenames * 2:
-      full_filenames.append(compat.as_bytes(path.join(self.tmp_dir, filename)))
-      produced_filenames.append(compat.as_bytes(self.evaluate(next_element())))
+      expected_filenames.append(
+          compat.as_bytes(path.join(self.tmp_dir, filename)))
+      actual_filenames.append(compat.as_bytes(self.evaluate(next_element())))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
-    self.assertItemsEqual(full_filenames, produced_filenames)
-    self.assertEqual(produced_filenames[:len(filenames)],
-                     produced_filenames[len(filenames):])
+    self.assertItemsEqual(expected_filenames, actual_filenames)
+    self.assertEqual(actual_filenames[:len(filenames)],
+                     actual_filenames[len(filenames):])
 
   def testMultiplePatternsAsList(self):
     filenames = ['a.txt', 'b.py', 'c.py', 'd.pyc']
