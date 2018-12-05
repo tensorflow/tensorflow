@@ -1,0 +1,33 @@
+Bootstrap: docker
+From: intelaipg/intel-optimized-tensorflow:latest-mkl
+
+%help
+    This Singularity definition file is built based of intel optimized tensorflow image.
+    This file uses the latest available tag in official docker hub.
+    Ex: intelaipg/intel-optimized-tensorflow:latest-mkl.
+
+    To use specific version replace `latest-mkl` with your own tag.
+
+    Use below command to build your singularity container.
+
+    sudo singularity build <mysingularity_name>.sif Singularty-mkl
+
+%post -c /bin/bash
+    apt-get update && apt-get install git -y
+    echo "Post installation of intel optimized tensorflow!"
+    echo "TensorFlow: $(pip show tensorflow --disable-pip-version-check | grep "^Version:" | awk '{print $NF}')"
+
+%environment
+    # Set to 1, to see MKL verbose
+    export MKLDNN_VERBOSE=0
+
+    # KMP Settings
+    export KMP_AFFINITY=granularity=fine,compact,1,0
+    export KMP_BLOCKTIME=0
+    export KMP_SETTINGS=0
+
+%test
+    echo "MKL shared libs: $(ldd $(pip show tensorflow | grep Location | cut -d ":" -f2)/tensorflow/libtensorflow_framework.so | grep libmklml)"
+
+%labels
+    Maintainer "Karthik Vadla <karthik.vadla@intel.com>"
