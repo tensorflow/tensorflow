@@ -1108,7 +1108,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     if (alpha <= 1) {
       return true;
     }
-    VLOG(1) << "LeakyReluRewrite: The model sets alpha is not less than 1 "
+    VLOG(1) << "LeakyReluRewrite: The model sets alpha is greater than 1 "
             << "which case is not optimized by Intel MKL, thus using Eigen op"
             << "for LeakyRelu ";
 
