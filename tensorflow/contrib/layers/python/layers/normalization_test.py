@@ -221,11 +221,11 @@ class GroupNormTest(test.TestCase):
       normalization.group_norm(inputs, channels_axis=-1,
                                reduction_axes=[-3, -2])
 
-  def testParamsShapeNotFullyDefinedOtherAxes(self):
-    inputs = array_ops.placeholder(dtypes.float32, shape=(None, 3, 4, None, 32))
+  def testParamsShapeNotFullyDefinedBatchAndSequenceAxes(self):
+    inputs = array_ops.placeholder(dtypes.float32, shape=(None, None, 4, 5, 32))
     actual_inputs = np.ones(shape=(2, 3, 4, 5, 32))
     output_op = normalization.group_norm(inputs, channels_axis=-1,
-                                         reduction_axes=[-4, -3])
+                                         reduction_axes=[-3, -2])
 
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
