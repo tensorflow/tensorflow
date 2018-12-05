@@ -154,6 +154,14 @@ class FuncGraph(ops.Graph):
     # pylint: enable=protected-access
 
   @property
+  def output_types(self):
+    return [t.dtype for t in self.outputs]
+
+  @property
+  def output_shapes(self):
+    return [t.shape for t in self.outputs]
+
+  @property
   def variables(self):
     """A list of variables accessed by this FuncGraph.
 

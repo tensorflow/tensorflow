@@ -831,11 +831,11 @@ class ControlFlowTest(test.TestCase):
       with ops.device("/cpu:1"):
         grad = gradients_impl.gradients(z, x)[0]
 
-      self.assertEqual(sess.run(grad, {pred: True, x: 1.0, y: 2.0}), 4.0)
-      self.assertEqual(sess.run(grad, {pred: False, x: 1.0, y: 2.0}), 0.0)
-
       with ops.device("/cpu:0"):
         grad_grad = gradients_impl.gradients(grad, x)[0]
+
+      self.assertEqual(sess.run(grad, {pred: True, x: 1.0, y: 2.0}), 4.0)
+      self.assertEqual(sess.run(grad, {pred: False, x: 1.0, y: 2.0}), 0.0)
 
       # v1 control flow gets None second derivative for some reason.
       if not control_flow_ops.ENABLE_COND_V2:
@@ -1817,14 +1817,14 @@ class ControlFlowTest(test.TestCase):
       with ops.device("/cpu:1"):
         grad = gradients_impl.gradients(z, x_init)[0]
 
+      with ops.device("/cpu:0"):
+        grad_grad = gradients_impl.gradients(grad, x_init)[0]
+
       self.assertEqual(sess.run(grad, {pred: True}), 8.0)
       self.assertEqual(sess.run(grad, {pred: False}), 0.0)
 
       if not control_flow_ops.ENABLE_WHILE_V2:
         return
-
-      with ops.device("/cpu:0"):
-        grad_grad = gradients_impl.gradients(grad, x_init)[0]
 
       self.assertEqual(sess.run(grad_grad, {pred: True}), 0.0)
       self.assertEqual(sess.run(grad_grad, {pred: False}), 0.0)
@@ -2305,6 +2305,49 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(i_val, 3)
       self.assertAllClose(x_val, 1.0)
 
+  def testNestedResourceAccess(self):
+    var = resource_variable_ops.ResourceVariable(constant_op.constant(3.0))
+
+    @eager_function.defun
+    def test_fn():
+      x = constant_op.constant(0.0)
+      r = control_flow_ops.while_loop(
+          # Outer loop condition
+          lambda i, y: i < 2,
+          # Outer loop body
+          lambda i, y: (i + 1, y + control_flow_ops.cond(
+              constant_op.constant(True),
+              # True branch
+              lambda: control_flow_ops.while_loop(
+                  # Inner loop condition
+                  lambda j, z: j < 3,
+                  # Inner loop body
+                  lambda j, z: (j + 1, z + math_ops.square(var)),
+                  # Inner initial loop value
+                  [0, y])[1],
+              # False branch
+              lambda: (0.0))),
+          # Outer initial loop value
+          [0, x])[1]
+
+      grad = gradients_impl.gradients(r, x)[0]
+      return r, grad
+
+    self.evaluate(variables.global_variables_initializer())
+    r, grad = self.evaluate(test_fn())
+    # 2 * 3 * 3^2
+    self.assertEqual(r, 81.0)
+    # v1 control flow gets the wrong answer!!!
+    # Gradient computation:
+    #   f(x) = x + 3^2
+    #   inner_loop(x) = f(f(f(x))) = x + 3*3^2 = x + 27
+    #   g(x) = x + inner_loop(x) = 2x + 27
+    #   outer_loop(x) = g(g(x)) = 4x + 81
+    #   outer_loop'(x) = 4
+    # Note that v1 control flow gets 4.0 as well if the cond is removed.
+    if control_flow_ops.ENABLE_WHILE_V2 and control_flow_ops.ENABLE_COND_V2:
+      self.assertEqual(grad, 4.0)
+
   def testWhile_NestedInput(self):
     with self.cached_session() as sess:
       named = collections.namedtuple("named", ("a", "b"))
@@ -2651,9 +2694,10 @@ class ControlFlowTest(test.TestCase):
           [i0.get_shape(), tensor_shape.TensorShape([None, 2])])
       s = math_ops.reduce_sum(h)
 
-      self.evaluate(variables.global_variables_initializer())
       optimizer = gradient_descent.GradientDescentOptimizer(0.01)
       op = optimizer.minimize(s)
+
+      self.evaluate(variables.global_variables_initializer())
       self.evaluate(op)
       self.assertAllClose([[0.98000002, 1.98000002]], self.evaluate(x))
 
@@ -2817,6 +2861,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(32.0, self.evaluate(r))
 
   @test_util.run_deprecated_v1
+  @test_util.disable_control_flow_v2("b/118712257")
   def testWhileGrad_StopGradInside(self):
     with self.cached_session():
       x = constant_op.constant(3.0, name="x")
@@ -2837,6 +2882,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(156.0, self.evaluate(r))
 
   @test_util.run_deprecated_v1
+  @test_util.disable_control_flow_v2("b/118712257")
   def testWhileGrad_StopGradInsideNoShape(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
@@ -3384,10 +3430,9 @@ class ControlFlowTest(test.TestCase):
           [constant_op.constant(0), x],
           [tensor_shape.unknown_shape(),
            tensor_shape.unknown_shape()])
+      grad = gradients_impl.gradients(r, x)[0]
       self.assertEqual(r[1].eval(), 65536.0)
-
-      r = gradients_impl.gradients(r, x)[0]
-      self.assertEqual(r.eval(), 524288.0)
+      self.assertEqual(grad.eval(), 524288.0)
       # while_v2 does not have stacks.
       if not control_flow_ops.ENABLE_WHILE_V2:
         self.assertEqual(
