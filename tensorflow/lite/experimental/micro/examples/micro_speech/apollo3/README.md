@@ -1,7 +1,3 @@
-# TODO
-
-* preprocessor_cmsis_test_bin
-
 # Description of Apollo3 Makefile targets
 
 * **pushbutton_cmsis_speech_test_bin**: 
