@@ -56,6 +56,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -112,6 +113,7 @@ def _summarize_eager(tensor, summarize=None):
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
 @tf_export("debugging.Assert", "Assert")
+@tf_should_use.should_use_result
 def Assert(condition, data, summarize=None, name=None):
   """Asserts that the given condition is true.
 

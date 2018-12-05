@@ -24,7 +24,6 @@ import numpy as np
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.client import session
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1015,18 +1014,6 @@ class AssertTest(test_util.TensorFlowTestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(c)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testAssertInFunction(self):
-
-    @def_function.function
-    def whiny(value):
-      control_flow_ops.Assert(value, ["Raised false"])
-      return constant_op.constant(5)
-
-    with self.assertRaises(errors.InvalidArgumentError):
-      self.evaluate(whiny(False))
-
-    self.assertAllEqual(whiny(True), 5)
 
 if __name__ == "__main__":
   googletest.main()
