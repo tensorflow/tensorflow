@@ -83,7 +83,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
       expected_output,
       expected_keys,
   ):
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    get_next = self.getNext(dataset)
 
     for expected_features in self._next_expected_batch(
         expected_output,
@@ -91,8 +91,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         batch_size,
         num_epochs,
     ):
-      nxt = iterator.get_next()
-      actual_features = self.evaluate(nxt)
+      actual_features = self.evaluate(get_next())
 
       if label_name is not None:
         expected_labels = expected_features.pop(label_name)
@@ -104,8 +103,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         self.assertAllEqual(expected_features[k], actual_features[k])
 
     with self.assertRaises(errors.OutOfRangeError):
-      nxt = iterator.get_next()
-      self.evaluate(nxt)
+      self.evaluate(get_next())
 
   def _test_dataset(self,
                     inputs,
@@ -603,11 +601,11 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           shuffle_seed=5,
           num_epochs=2,
       )
-      outputs1 = dataset_ops.make_one_shot_iterator(dataset1).get_next()
-      outputs2 = dataset_ops.make_one_shot_iterator(dataset2).get_next()
+      next1 = self.getNext(dataset1)
+      next2 = self.getNext(dataset2)
       for _ in range(total_records // batch_size):
-        batch1 = nest.flatten(self.evaluate(outputs1))
-        batch2 = nest.flatten(self.evaluate(outputs2))
+        batch1 = nest.flatten(self.evaluate(next1()))
+        batch2 = nest.flatten(self.evaluate(next2()))
         for i in range(len(batch1)):
           self.assertAllEqual(batch1[i], batch2[i])
 
@@ -632,12 +630,12 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           shuffle_seed=6,
           num_epochs=2,
       )
-      outputs1 = dataset_ops.make_one_shot_iterator(dataset1).get_next()
-      outputs2 = dataset_ops.make_one_shot_iterator(dataset2).get_next()
+      next1 = self.getNext(dataset1)
+      next2 = self.getNext(dataset2)
       all_equal = False
       for _ in range(total_records // batch_size):
-        batch1 = nest.flatten(self.evaluate(outputs1))
-        batch2 = nest.flatten(self.evaluate(outputs2))
+        batch1 = nest.flatten(self.evaluate(next1()))
+        batch2 = nest.flatten(self.evaluate(next2()))
         for i in range(len(batch1)):
           all_equal = all_equal and np.array_equal(batch1[i], batch2[i])
       self.assertFalse(all_equal)
