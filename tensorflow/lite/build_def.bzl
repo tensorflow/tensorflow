@@ -457,6 +457,7 @@ def gen_model_coverage_test(model_name, data, failure_type, tags):
         native.py_test(
             name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
             srcs = ["model_coverage_test.py"],
+            size = "large",
             main = "model_coverage_test.py",
             args = [
                 "--model_name=%s" % model_name,
@@ -467,7 +468,6 @@ def gen_model_coverage_test(model_name, data, failure_type, tags):
             tags = [
                 "no_oss",
                 "no_windows",
-                "notap",
             ] + tags,
             deps = [
                 "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
