@@ -63,6 +63,15 @@ def get_v2_names(symbol):
   return list(names_v2)
 
 
+def get_symbol_for_name(root, name):
+  name_parts = name.split(".")
+  symbol = root
+  # Iterate starting with second item since 1st item is "tf.".
+  for part in name_parts[1:]:
+    symbol = getattr(symbol, part)
+  return symbol
+
+
 def get_func_and_args_from_str(call_str):
   """Parse call string to get function and argument names.
 
@@ -245,6 +254,41 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     visitor.do_not_descend_map["tf"].append("contrib")
     visitor.private_map["tf.compat"] = ["v1", "v2"]
     traverse.traverse(tf.compat.v1, visitor)
+
+  def testReorderFileNeedsUpdate(self):
+    reordered_function_names = (
+        tf_upgrade_v2.TFAPIChangeSpec().reordered_function_names)
+    function_reorders = (
+        tf_upgrade_v2.TFAPIChangeSpec().function_reorders)
+
+    added_names_message = """Some function names in
+self.reordered_function_names are not in reorders_v2.py.
+Please run the following commands to update reorders_v2.py:
+bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
+bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+"""
+    removed_names_message = """%s in self.reorders_v2 does not match
+any name in self.reordered_function_names.
+Please run the following commands to update reorders_v2.py:
+bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
+bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+"""
+    self.assertTrue(
+        reordered_function_names.issubset(function_reorders),
+        added_names_message)
+    # function_reorders should contain reordered_function_names
+    # and their TensorFlow V1 aliases.
+    for name in function_reorders:
+      # get other names for this function
+      attr = get_symbol_for_name(tf.compat.v1, name)
+      _, attr = tf_decorator.unwrap(attr)
+      v1_names = get_v1_names(attr)
+      self.assertTrue(v1_names)
+      v1_names = ["tf.%s" % n for n in v1_names]
+      # check if any other name is in
+      self.assertTrue(
+          any(n in reordered_function_names for n in v1_names),
+          removed_names_message % name)
 
   def testRenameConstant(self):
     text = "tf.MONOLITHIC_BUILD\n"
