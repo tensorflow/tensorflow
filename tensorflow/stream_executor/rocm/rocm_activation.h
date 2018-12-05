@@ -24,10 +24,10 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_ACTIVATION_H_
 
 #include "tensorflow/stream_executor/platform/port.h"
+#include "tensorflow/stream_executor/stream_executor.h"
+#include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
-
-class StreamExecutor;
 
 namespace rocm {
 

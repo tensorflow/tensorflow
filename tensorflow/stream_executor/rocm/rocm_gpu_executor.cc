@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/rocm/rocm_gpu_executor.h"
 #include <unistd.h>
+
+#include "absl/strings/string_view.h" 
+#include "absl/strings/str_cat.h" 
 #include "tensorflow/stream_executor/dso_loader.h"
 #include "tensorflow/stream_executor/kernel_cache_config.h"
-#include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
@@ -28,7 +30,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -125,15 +126,15 @@ port::Status ROCMExecutor::Init(int device_ordinal,
   return ROCMDriver::GetAMDGPUISAVersion(&version_, device_);
 }
 
-bool ROCMExecutor::FindOnDiskForISAVersion(port::StringPiece filename,
-                                           port::StringPiece canonical_suffix,
+bool ROCMExecutor::FindOnDiskForISAVersion(absl::string_view filename,
+                                           absl::string_view canonical_suffix,
                                            string *found_filename) const {
   if (version_ == 0) {
     return false;
   }
 
   string cc_specific =
-      port::StrCat(filename, ".cc", version_, canonical_suffix);
+      absl::StrCat(filename, ".cc", version_, canonical_suffix);
   if (port::FileExists(cc_specific).ok()) {
     VLOG(2) << "found AMDGPU ISA version-specific file, using that: "
             << cc_specific;
@@ -735,29 +736,6 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
   return 1;
 }
 
-// Set of device-specific parameters that cannot be
-// queried from the driver API.  These values instead are baked into a
-// lookup table indexed by AMDGPU ISA version.
-struct UnqueryableDeviceParams {
-  int version;
-  uint64 blocks_per_core_limit;
-  uint64 registers_per_core_limit;
-  uint64 registers_per_thread_limit;
-  uint64 warp_alloc_granularity;
-  uint64 register_alloc_granularity;
-  uint64 shared_memory_alloc_granularity;
-};
-
-static const UnqueryableDeviceParams kAllUnqueryableDeviceParams[] = {{
-    803,        // AMDGPU ISA version (803)
-    16,         // blocks_per_core_limit
-    64 * 1024,  // registers_per_core_limit
-    255,        // registers_per_thread_limit
-    4,          // warp_alloc_granularity
-    256,        // register_alloc_granularity
-    256         // shared_memory_alloc_granularity
-}};
-
 DeviceDescription *ROCMExecutor::PopulateDeviceDescription() const {
   internal::DeviceDescriptionBuilder builder;
 
@@ -820,21 +798,8 @@ DeviceDescription *ROCMExecutor::PopulateDeviceDescription() const {
     builder.set_name(device_name);
   }
 
-  for (size_t i = 0; i < TF_ARRAYSIZE(kAllUnqueryableDeviceParams); i++) {
-    const auto &params = kAllUnqueryableDeviceParams[i];
-    if (params.version == version_) {
-      builder.set_blocks_per_core_limit(params.blocks_per_core_limit);
-      builder.set_registers_per_core_limit(params.registers_per_core_limit);
-      builder.set_registers_per_thread_limit(params.registers_per_thread_limit);
-      builder.set_warp_alloc_granularity(params.warp_alloc_granularity);
-      builder.set_register_alloc_granularity(params.register_alloc_granularity);
-      builder.set_shared_memory_alloc_granularity(
-          params.shared_memory_alloc_granularity);
-    }
-  }
-
   builder.set_platform_version(
-      port::StrCat("AMDGPU ISA version: gfx", version_));
+      absl::StrCat("AMDGPU ISA version: gfx", version_));
 
   // TODO(leary) should be a way to query this from the driver, but this is
   // unlikely to change for us any time soon.
@@ -854,6 +819,7 @@ DeviceDescription *ROCMExecutor::PopulateDeviceDescription() const {
       ROCMDriver::GetMaxRegistersPerBlock(device_).ValueOrDie());
   builder.set_threads_per_warp(
       ROCMDriver::GetThreadsPerWarp(device_).ValueOrDie());
+  builder.set_registers_per_core_limit(64 * 1024);
 
   auto built = builder.Build();
   return built.release();

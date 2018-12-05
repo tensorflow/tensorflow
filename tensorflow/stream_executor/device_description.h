@@ -134,8 +134,8 @@ class DeviceDescription {
   bool cuda_compute_capability(int *major, int *minor) const;
 
   // Returns the AMDGPU ISA version if we're running on the ROCm platform.
-  // If the information is not available, the version will be zero, and the
-  // return value will be false.
+  // If the information is not available, the version will not be modified, 
+  // and the return value will be false.
   bool rocm_amdgpu_isa_version(int *version) const;
 
   // Returns the maximum amount of shared memory present on a single core

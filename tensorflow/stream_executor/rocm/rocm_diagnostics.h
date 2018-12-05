@@ -28,14 +28,8 @@ namespace rocm {
 // e.g. DriverVersion{346, 3, 4}
 using DriverVersion = std::tuple<int, int, int>;
 
-// Converts a parsed driver version to string form.
-string DriverVersionToString(DriverVersion version);
-
 // Converts a parsed driver version or status value to natural string form.
 string DriverVersionStatusToString(port::StatusOr<DriverVersion> version);
-
-// Converts a string of a form like "331.79" to a DriverVersion{331, 79}.
-port::StatusOr<DriverVersion> StringToDriverVersion(const string &value);
 
 class Diagnostician {
  public:
