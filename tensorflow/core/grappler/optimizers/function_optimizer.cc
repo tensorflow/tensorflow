@@ -1665,7 +1665,7 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
       gtl::FlatSet<string> add_ctrl_inputs;
 
       // Remove all invalidated control inputs.
-      for (int idx = 0; idx < node.input_size(); ++idx) {
+      for (int idx = 0; idx < node.input_size(); /* see below */) {
         // TODO(ezhulenev): Use non-allocating TensorId after migrating
         // `control_overrides()` to absl::flat_hash_set.
         SafeTensorId input_tensor = ParseTensorName(node.input(idx));
@@ -1685,6 +1685,10 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
           for (const string& override : overrides->second) {
             add_ctrl_inputs.insert(AsControlDependency(override));
           }
+        } else {
+          // Go to the next input only if the current one was not invalidated,
+          // otherwise we need to check the swapped input as well.
+          ++idx;
         }
       }
 
