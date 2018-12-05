@@ -54,11 +54,11 @@ namespace label_image {
 std::vector<uint8_t> in;
 uint8_t* frame_data;
 
-  // Used to store the memory-mapped buffers we use for capture.
-  struct CameraBuffer {
-    void* start;
-    size_t length;
-  };
+// Used to store the memory-mapped buffers we use for capture.
+struct CameraBuffer {
+  void* start;
+  size_t length;
+};
 
 TfLiteStatus SendCameraCommand(int fh, int request, void* arg) {
   int r;
@@ -68,9 +68,9 @@ TfLiteStatus SendCameraCommand(int fh, int request, void* arg) {
   if (r == -1) {
     LOG(ERROR) << "SendCameraCommand error " << errno << " (" << strerror(errno)
                << ")";
-//    return errors::Unknown("SendCameraCommand error ", errno,
-//                                       strerror(errno));
-      return kTfLiteError;
+    //    return errors::Unknown("SendCameraCommand error ", errno,
+    //                                       strerror(errno));
+    return kTfLiteError;
   }
   return kTfLiteOk;
 }
@@ -80,8 +80,8 @@ TfLiteStatus OpenCamera(int* camera_handle) {
   int fd = v4l2_open(dev_name, O_RDWR | O_NONBLOCK, 0);
   if (fd < 0) {
     LOG(ERROR) << "Cannot open camera device";
-//    return tensorflow::errors::NotFound("V4L2 camera device not found");
-      return kTfLiteError;
+    //    return tensorflow::errors::NotFound("V4L2 camera device not found");
+    return kTfLiteError;
   }
   *camera_handle = fd;
   return kTfLiteOk;
@@ -92,7 +92,8 @@ TfLiteStatus CloseCamera(int camera_handle) {
   return kTfLiteOk;
 }
 
-TfLiteStatus SetCameraFormat(int camera_handle, int wanted_width, int wanted_height) {
+TfLiteStatus SetCameraFormat(int camera_handle, int wanted_width,
+                             int wanted_height) {
   struct v4l2_format fmt;
   memset(&fmt, 0, sizeof(fmt));
   fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -108,7 +109,8 @@ TfLiteStatus SetCameraFormat(int camera_handle, int wanted_width, int wanted_hei
   }
   if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_RGB24) {
     LOG(ERROR) << "Libv4l didn't accept RGB24 format. Can't proceed.";
-//    return tensorflow::errors::Unknown("Libv4l didn't accept RGB24 format");
+    //    return tensorflow::errors::Unknown("Libv4l didn't accept RGB24
+    //    format");
     return kTfLiteError;
   }
   if ((fmt.fmt.pix.width != wanted_width) ||
@@ -120,7 +122,7 @@ TfLiteStatus SetCameraFormat(int camera_handle, int wanted_width, int wanted_hei
 }
 
 TfLiteStatus StartCameraCapture(int camera_handle, int buffer_count,
-                          CameraBuffer** buffers) {
+                                CameraBuffer** buffers) {
   struct v4l2_requestbuffers req;
   memset(&req, 0, sizeof(req));
   req.count = buffer_count;
@@ -153,7 +155,8 @@ TfLiteStatus StartCameraCapture(int camera_handle, int buffer_count,
 
     if (MAP_FAILED == (*buffers)[n_buffers].start) {
       LOG(ERROR) << "Memory-mapping buffer failed";
-//      return tensorflow::errors::Unknown("Memory-mapping buffer failed");
+      //      return tensorflow::errors::Unknown("Memory-mapping buffer
+      //      failed");
       return kTfLiteError;
     }
   }
@@ -183,7 +186,7 @@ TfLiteStatus StartCameraCapture(int camera_handle, int buffer_count,
 }
 
 TfLiteStatus EndCameraCapture(int camera_handle, CameraBuffer* buffers,
-                        int buffer_count) {
+                              int buffer_count) {
   enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   TfLiteStatus stream_off_status =
       SendCameraCommand(camera_handle, VIDIOC_STREAMOFF, &type);
@@ -197,8 +200,8 @@ TfLiteStatus EndCameraCapture(int camera_handle, CameraBuffer* buffers,
 }
 
 TfLiteStatus CaptureNextFrame(int camera_handle, CameraBuffer* buffers,
-                        uint8_t** frame, int* frame_size,
-                        v4l2_buffer* buf) {
+                              uint8_t** frame, int* frame_size,
+                              v4l2_buffer* buf) {
   int r;
   do {
     fd_set fds;
@@ -211,8 +214,8 @@ TfLiteStatus CaptureNextFrame(int camera_handle, CameraBuffer* buffers,
   } while ((r == -1 && (errno = EINTR)));
   if (r == -1) {
     LOG(ERROR) << "select() failed while waiting for the camera with " << errno;
-//    return tensorflow::errors::Unknown(
-//        "CaptureCameraFrame: select() failed with", errno);
+    //    return tensorflow::errors::Unknown(
+    //        "CaptureCameraFrame: select() failed with", errno);
     return kTfLiteError;
   }
 
@@ -332,7 +335,7 @@ void RunInference(Settings* s) {
     interpreter->SetNumThreads(s->number_of_threads);
   }
 
-// Start to handel camera.
+  // Start to handel camera.
 
   int video_width = 640;
   int video_height = 480;
@@ -357,131 +360,135 @@ void RunInference(Settings* s) {
     exit(-1);
   }
 
-    const int how_many_buffers = 2;
-    CameraBuffer* buffers;
-    TfLiteStatus start_capture_status =
-        StartCameraCapture(camera_handle, how_many_buffers, &buffers);
-    if (kTfLiteError == start_capture_status) {
-      LOG(ERROR) << "StartCameraCapture failed with " << start_capture_status;
+  const int how_many_buffers = 2;
+  CameraBuffer* buffers;
+  TfLiteStatus start_capture_status =
+      StartCameraCapture(camera_handle, how_many_buffers, &buffers);
+  if (kTfLiteError == start_capture_status) {
+    LOG(ERROR) << "StartCameraCapture failed with " << start_capture_status;
+    exit(-1);
+  }
+
+  for (int i = 0; i < 100; i++) {
+    LOG(INFO) << "The " << i << "th frame \n";
+    // Captur a frame.
+    //{
+    //      uint8_t* frame_data;
+    int frame_data_size;
+    v4l2_buffer buf;
+    TfLiteStatus capture_next_status = CaptureNextFrame(
+        camera_handle, buffers, &frame_data, &frame_data_size, &buf);
+    if (kTfLiteError == capture_next_status) {
+      LOG(ERROR) << "CaptureNextFrame failed with " << capture_next_status;
       exit(-1);
     }
 
- for (int i = 0; i < 100; i++){
-   LOG(INFO) << "The " << i << "th frame \n";
-// Captur a frame.
-//{
-//      uint8_t* frame_data;
-      int frame_data_size;
-      v4l2_buffer buf;
-      TfLiteStatus capture_next_status = CaptureNextFrame(
-          camera_handle, buffers, &frame_data, &frame_data_size, &buf);
-      if (kTfLiteError == capture_next_status) {
-        LOG(ERROR) << "CaptureNextFrame failed with " << capture_next_status;
-        exit(-1);
-      }
+    TfLiteStatus release_frame_status = ReleaseFrame(camera_handle, &buf);
+    if (kTfLiteOk != release_frame_status) {
+      LOG(ERROR) << "ReleaseFrame failed with " << release_frame_status;
+      exit(-1);
+    }
 
-      TfLiteStatus release_frame_status = ReleaseFrame(camera_handle, &buf);
-      if (kTfLiteOk != release_frame_status) {
-        LOG(ERROR) << "ReleaseFrame failed with " << release_frame_status;
-        exit(-1);
-      }
+    LOG(INFO) << "Going to tensor processing -- \n";
 
-  LOG(INFO) << "Going to tensor processing -- \n";
+    int input = interpreter->inputs()[0];
+    if (s->verbose) LOG(INFO) << "input: " << input << "\n";
+    const std::vector<int> inputs = interpreter->inputs();
+    const std::vector<int> outputs = interpreter->outputs();
 
-  int input = interpreter->inputs()[0];
-  if (s->verbose) LOG(INFO) << "input: " << input << "\n";
-  const std::vector<int> inputs = interpreter->inputs();
-  const std::vector<int> outputs = interpreter->outputs();
+    if (s->verbose) {
+      LOG(INFO) << "number of inputs: " << inputs.size() << "\n";
+      LOG(INFO) << "number of outputs: " << outputs.size() << "\n";
+    }
 
-  if (s->verbose) {
-    LOG(INFO) << "number of inputs: " << inputs.size() << "\n";
-    LOG(INFO) << "number of outputs: " << outputs.size() << "\n";
-  }
+    if (interpreter->AllocateTensors() != kTfLiteOk) {
+      LOG(FATAL) << "Failed to allocate tensors!";
+    }
 
-  if (interpreter->AllocateTensors() != kTfLiteOk) {
-    LOG(FATAL) << "Failed to allocate tensors!";
-  }
+    if (s->verbose) PrintInterpreterState(interpreter.get());
 
-  if (s->verbose) PrintInterpreterState(interpreter.get());
+    // get input dimension from the input tensor metadata
+    // assuming one input only
+    TfLiteIntArray* dims = interpreter->tensor(input)->dims;
+    int wanted_height = dims->data[1];
+    int wanted_width = dims->data[2];
+    int wanted_channels = dims->data[3];
 
-  // get input dimension from the input tensor metadata
-  // assuming one input only
-  TfLiteIntArray* dims = interpreter->tensor(input)->dims;
-  int wanted_height = dims->data[1];
-  int wanted_width = dims->data[2];
-  int wanted_channels = dims->data[3];
-
-  switch (interpreter->tensor(input)->type) {
-    case kTfLiteFloat32:
-      s->input_floating = true;
-      resize<float>(interpreter->typed_tensor<float>(input), in.data(),
-                    video_height, video_width, video_channels, wanted_height,
-                    wanted_width, wanted_channels, s);
-      break;
-    case kTfLiteUInt8:
-      LOG(INFO) << "Entering kTfLiteUInt8:" << wanted_height << " ," << wanted_width << " ," << wanted_channels << " \n";
-//      resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in.data(),
-      resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), frame_data,
-                            video_height, video_width, video_channels, wanted_height,
+    switch (interpreter->tensor(input)->type) {
+      case kTfLiteFloat32:
+        s->input_floating = true;
+        resize<float>(interpreter->typed_tensor<float>(input), in.data(),
+                      video_height, video_width, video_channels, wanted_height,
                       wanted_width, wanted_channels, s);
-      LOG(INFO) << "resize is done \n";
-      break;
-    default:
-      LOG(FATAL) << "cannot handle input type "
-                 << interpreter->tensor(input)->type << " yet";
-      exit(-1);
-  }
-
-  profiling::Profiler* profiler = new profiling::Profiler();
-  interpreter->SetProfiler(profiler);
-
-  struct timeval start_time, stop_time;
-  gettimeofday(&start_time, nullptr);
-  for (int i = 0; i < s->loop_count; i++) {
-    if (interpreter->Invoke() != kTfLiteOk) {
-      LOG(FATAL) << "Failed to invoke tflite!\n";
+        break;
+      case kTfLiteUInt8:
+        LOG(INFO) << "Entering kTfLiteUInt8:" << wanted_height << " ,"
+                  << wanted_width << " ," << wanted_channels << " \n";
+        //      resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input),
+        //      in.data(),
+        resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), frame_data,
+                        video_height, video_width, video_channels,
+                        wanted_height, wanted_width, wanted_channels, s);
+        LOG(INFO) << "resize is done \n";
+        break;
+      default:
+        LOG(FATAL) << "cannot handle input type "
+                   << interpreter->tensor(input)->type << " yet";
+        exit(-1);
     }
-  }
-  gettimeofday(&stop_time, nullptr);
-  LOG(INFO) << "invoked \n";
-  LOG(INFO) << "average time: "
-            << (get_us(stop_time) - get_us(start_time)) / (s->loop_count * 1000)
-            << " ms \n";
-  if (s->profiling) {
-    profiler->StopProfiling();
-    auto profile_events = profiler->GetProfileEvents();
-    for (int i = 0; i < profile_events.size(); i++) {
-      auto op_index = profile_events[i]->event_metadata;
-      const auto node_and_registration =
-          interpreter->node_and_registration(op_index);
-      const TfLiteRegistration registration = node_and_registration->second;
-      PrintProfilingInfo(profile_events[i], op_index, registration);
+
+    profiling::Profiler* profiler = new profiling::Profiler();
+    interpreter->SetProfiler(profiler);
+
+    struct timeval start_time, stop_time;
+    gettimeofday(&start_time, nullptr);
+    for (int i = 0; i < s->loop_count; i++) {
+      if (interpreter->Invoke() != kTfLiteOk) {
+        LOG(FATAL) << "Failed to invoke tflite!\n";
+      }
     }
-  }
+    gettimeofday(&stop_time, nullptr);
+    LOG(INFO) << "invoked \n";
+    LOG(INFO) << "average time: "
+              << (get_us(stop_time) - get_us(start_time)) /
+                     (s->loop_count * 1000)
+              << " ms \n";
+    if (s->profiling) {
+      profiler->StopProfiling();
+      auto profile_events = profiler->GetProfileEvents();
+      for (int i = 0; i < profile_events.size(); i++) {
+        auto op_index = profile_events[i]->event_metadata;
+        const auto node_and_registration =
+            interpreter->node_and_registration(op_index);
+        const TfLiteRegistration registration = node_and_registration->second;
+        PrintProfilingInfo(profile_events[i], op_index, registration);
+      }
+    }
 
-  const float threshold = 0.001f;
+    const float threshold = 0.001f;
 
-  std::vector<std::pair<float, int>> top_results;
+    std::vector<std::pair<float, int>> top_results;
 
-  int output = interpreter->outputs()[0];
-  TfLiteIntArray* output_dims = interpreter->tensor(output)->dims;
-  // assume output dims to be something like (1, 1, ... ,size)
-  auto output_size = output_dims->data[output_dims->size - 1];
-  switch (interpreter->tensor(output)->type) {
-    case kTfLiteFloat32:
-      get_top_n<float>(interpreter->typed_output_tensor<float>(0), output_size,
-                       s->number_of_results, threshold, &top_results, true);
-      break;
-    case kTfLiteUInt8:
-      get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
+    int output = interpreter->outputs()[0];
+    TfLiteIntArray* output_dims = interpreter->tensor(output)->dims;
+    // assume output dims to be something like (1, 1, ... ,size)
+    auto output_size = output_dims->data[output_dims->size - 1];
+    switch (interpreter->tensor(output)->type) {
+      case kTfLiteFloat32:
+        get_top_n<float>(interpreter->typed_output_tensor<float>(0),
                          output_size, s->number_of_results, threshold,
-                         &top_results, false);
-      break;
-    default:
-      LOG(FATAL) << "cannot handle output type "
-                 << interpreter->tensor(input)->type << " yet";
-      exit(-1);
-  }
+                         &top_results, true);
+        break;
+      case kTfLiteUInt8:
+        get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
+                           output_size, s->number_of_results, threshold,
+                           &top_results, false);
+        break;
+      default:
+        LOG(FATAL) << "cannot handle output type "
+                   << interpreter->tensor(input)->type << " yet";
+        exit(-1);
+    }
 
     std::vector<string> labels;
     size_t label_count;
@@ -494,20 +501,20 @@ void RunInference(Settings* s) {
       const int index = result.second;
       LOG(INFO) << confidence << ": " << index << " " << labels[index] << "\n";
     }
- } // End: 1 frame processing.
+  }  // End: 1 frame processing.
 
-    TfLiteStatus end_capture_status =
-        EndCameraCapture(camera_handle, buffers, how_many_buffers);
-    if (kTfLiteOk != end_capture_status) {
-      LOG(ERROR) << "EndCameraCapture failed with " << end_capture_status;
-      exit(-1);
-    }
+  TfLiteStatus end_capture_status =
+      EndCameraCapture(camera_handle, buffers, how_many_buffers);
+  if (kTfLiteOk != end_capture_status) {
+    LOG(ERROR) << "EndCameraCapture failed with " << end_capture_status;
+    exit(-1);
+  }
 
-    TfLiteStatus close_status = CloseCamera(camera_handle);
-    if (kTfLiteError == close_status) {
-      LOG(ERROR) << "CloseCamera failed with " << open_status;
-      exit(-1);
-    }
+  TfLiteStatus close_status = CloseCamera(camera_handle);
+  if (kTfLiteError == close_status) {
+    LOG(ERROR) << "CloseCamera failed with " << open_status;
+    exit(-1);
+  }
 }
 
 void display_usage() {
