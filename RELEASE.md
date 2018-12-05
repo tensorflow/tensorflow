@@ -1,12 +1,12 @@
 # Release 1.12.0
 
 ## Major Features and Improvements
-
-*   Keras models can now be directly exported to the SavedModel
-    format(`tf.contrib.saved_model.save_keras_model()`) and used with Tensorflow
-    Serving.
-*   Keras models now support evaluating with a `tf.data.Dataset`.
-*   TensorFlow binaries are built with XLA support linked in by default.
+* Keras models can now be directly exported to the SavedModel
+  format(`tf.contrib.saved_model.save_keras_model()`) and used with
+  Tensorflow Serving.
+* Keras models now support evaluating with a `tf.data.Dataset`.
+* TensorFlow binaries are built with XLA support linked in by default.
+* Ignite Dataset added to contrib/ignite that allows to work with Apache Ignite.
 
 ## Bug Fixes and Other Changes
 
