@@ -252,8 +252,9 @@ int TRTEngineOp::GetEngineBatch(OpKernelContext* ctx) {
       cached_engine_batches_.push_back(num_batch);
       VLOG(1) << "Running with batch size " << num_batch;
     } else {
-      string msg = StrCat("Engine buffer is full. buffer limit=",
-                          max_cached_engines_, ", current entries=");
+      string msg =
+          StrCat("Engine buffer is full. buffer limit=", max_cached_engines_,
+                 ", current entries=");
       for (auto i : cached_engine_batches_) StrAppend(&msg, i, ",");
       StrAppend(&msg, " requested batch=", num_batch);
       LOG(WARNING) << msg;

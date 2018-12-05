@@ -460,8 +460,7 @@ tensorflow::Status SegmentGraph(
   std::vector<const SimpleNode*> order;
   order.reserve(graph->num_node_ids());
   StableDFS(*graph, /*reverse=*/false, {graph->source_node()},
-            /*enter=*/nullptr,
-            [&order](const SimpleNode* n) {
+            /*enter=*/nullptr, [&order](const SimpleNode* n) {
               order.push_back(n);
               return true;
             });
@@ -570,7 +569,7 @@ tensorflow::Status SegmentGraph(
     std::set<const tensorflow::Node*>& segment_nodes = itr.second;
     VLOG(1) << "Segment original size: " << segment_nodes.size();
     while (true) {
-      std::deque<const tensorflow::Node *> in_nodes_que, out_nodes_que;
+      std::deque<const tensorflow::Node*> in_nodes_que, out_nodes_que;
       // Find an input node that is not eligible and add it to the queue.
       // Nodes that has no incoming edges should not be treated as "input",
       // as there are really no inputs to them. Similar for output nodes.
@@ -616,7 +615,8 @@ tensorflow::Status SegmentGraph(
       // their outputs. In this way, for common cases the number of removed
       // nodes should be minimum.
       auto remove_nodes = [&segment_nodes](
-          bool is_input_nodes, std::deque<const tensorflow::Node*>* que) {
+                              bool is_input_nodes,
+                              std::deque<const tensorflow::Node*>* que) {
         // Run a BFS on the queue to find all the input/output nodes.
         std::set<const tensorflow::Node*> visited;
         std::set<const tensorflow::Node*> logged(que->begin(), que->end());

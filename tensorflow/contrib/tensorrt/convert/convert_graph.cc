@@ -892,8 +892,9 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   TrtCandidateSelector candidate_selector(*params.graph_properties,
                                           params.precision_mode);
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
-      &graph, std::bind(&TrtCandidateSelector::IsTensorRTCandidate,
-                        &candidate_selector, std::placeholders::_1),
+      &graph,
+      std::bind(&TrtCandidateSelector::IsTensorRTCandidate, &candidate_selector,
+                std::placeholders::_1),
       // Input validation is already done by TrtCandidateSelector, so we don't
       // need to check the input edges.
       [](const Edge* edge) { return true; }, OutputEdgeValidator(),

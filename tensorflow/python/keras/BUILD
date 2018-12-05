@@ -548,19 +548,6 @@ cuda_py_test(
     shard_count = 4,
 )
 
-cuda_py_test(
-    name = "unified_lstm_test",
-    size = "medium",
-    srcs = ["layers/unified_lstm_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
-    shard_count = 4,
-)
-
 py_test(
     name = "serialization_test",
     size = "small",
@@ -634,17 +621,6 @@ py_test(
         ":keras",
         "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_test(
-    name = "tf_utils_test",
-    size = "small",
-    srcs = ["utils/tf_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -802,19 +778,6 @@ py_test(
     size = "medium",
     srcs = ["engine/training_dataset_test.py"],
     shard_count = 4,
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_test(
-    name = "training_dataset_test",
-    size = "medium",
-    srcs = ["engine/training_dataset_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
