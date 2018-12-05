@@ -1094,7 +1094,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // To compute LeakyRelu MKL DNN uses (feature), if feature > 0
   // otherwise it uses (feature * alpha)
   // while Tensorflow uses max(feature, feature * alpha) to compute LeakyRelu.
-  // These two algorithm are not consistent when alpha > 1
+  // These two algorithms are not consistent when alpha > 1,
   // so only LeakyRelu is written to MKL OP when alpha < 1
   static bool LeakyReluRewrite(const Node* n) {
     DCHECK(n);
