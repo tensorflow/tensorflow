@@ -1906,10 +1906,8 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  // Add batch dim back for tensors.
-  if (input_tensor.is_tensor()) {
-    input_dims.insert(input_dims.begin(), -1);
-  }
+  // Add batch dim back.
+  input_dims.insert(input_dims.begin(), -1);
   const int input_rank = input_dims.size();
   // Get axis to expand on.
   TRT_ShapedWeights weights = inputs.at(1).weights();
@@ -1929,7 +1927,7 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
   }
   // Convert negative axis to corresponding positive axis.
   if (axis < 0) axis += input_rank + 1;
-  if (input_tensor.is_tensor() && axis == 0) {
+  if (axis == 0) {
     return tensorflow::errors::Unimplemented(
         "Modifying batch dimension is not supported for ExpandDims, at ",
         node_def.name());
@@ -1939,9 +1937,8 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
   // ExpandDims: Insert new dim of size 1.
   input_dims.insert(input_dims.begin() + axis, 1);
   // Reshape tensor.
-  const bool ignore_first_dim = input_tensor.is_tensor();
   nvinfer1::Dims new_dims =
-      TensorShapeArrayToTrtDims(input_dims, ignore_first_dim);
+      TensorShapeArrayToTrtDims(input_dims, /*ignore_first_dim=*/true);
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, &output_tensor));
@@ -1965,10 +1962,8 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  // Add batch dim back temporarily.
-  if (input_tensor.is_tensor()) {
-    input_dims.insert(input_dims.begin(), -1);
-  }
+  // Add batch dim back.
+  input_dims.insert(input_dims.begin(), -1);
   const int input_rank = input_dims.size();
   // Mark axes to remove by setting them to 0.
   TFAttrs attrs(node_def);
@@ -1988,7 +1983,7 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
     // Convert negative axis to corresponding positive axis.
     if (axis < 0) axis += input_rank;
     // Don't squeeze batch dim.
-    if (input_tensor.is_tensor() && axis == 0) {
+    if (axis == 0) {
       return tensorflow::errors::Unimplemented(
           "Cannot squeeze batch dimension, at ", node_def.name());
     }
@@ -2007,9 +2002,8 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
   input_dims.erase(std::remove(input_dims.begin(), input_dims.end(), 0),
                    input_dims.end());
   // Reshape tensor.
-  const bool ignore_first_dim = input_tensor.is_tensor();
   nvinfer1::Dims new_dims =
-      TensorShapeArrayToTrtDims(input_dims, ignore_first_dim);
+      TensorShapeArrayToTrtDims(input_dims, /*ignore_first_dim=*/true);
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, &output_tensor));
