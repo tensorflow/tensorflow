@@ -603,7 +603,7 @@ cc_library(
     deps = [
         "//third_party/eigen3",
     ] + select({
-        ":mkldnn_contraction_kernel": ["//third_party/intel_mkl_dnn:mkldnn_single_threaded"],
+        ":mkldnn_contraction_kernel": ["@mkl_dnn//:mkldnn_single_threaded"],
         "//conditions:default": [],
     }),
 )
