@@ -158,6 +158,16 @@ public final class Session implements AutoCloseable {
     }
 
     /**
+     * Use {@code t} instead of the Tensor referred to by executing the operation referred to by
+     * {@code operand}.
+     */
+    public <T> Runner feed(Operand<T> operand, Tensor<T> t) {
+      inputs.add(operand.asOutput());
+      inputTensors.add(t);
+      return this;
+    }
+
+    /**
      * Make {@link #run()} return the output of {@code operation}.
      *
      * @param operation Is either the string name of the operation, in which case this method is a

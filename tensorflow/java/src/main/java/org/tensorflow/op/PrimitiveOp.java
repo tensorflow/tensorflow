@@ -24,6 +24,13 @@ import org.tensorflow.Operation;
  * PrimitiveOp}. Custom operations working with only one primitive may also derive from this class.
  */
 public abstract class PrimitiveOp implements Op {
+  
+  /**
+   * Returns the underlying {@link Operation}
+   */
+  public Operation op() {
+    return operation;
+  }
 
   @Override
   public final int hashCode() {
@@ -48,10 +55,6 @@ public abstract class PrimitiveOp implements Op {
     return String.format("<%s '%s'>", operation.type(), operation.name());
   }
 
-  /**
-   * Underlying operation. It is deliberately not exposed by a getter method to avoid any name
-   * conflict with generated methods of the subclasses.
-   */
   protected final Operation operation;
 
   /**
