@@ -100,7 +100,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
     RecordStop(ctx);
     result->notification.WaitForNotification();
     RecordStart(ctx);
-    return ProcessResult(result, out_tensors, end_of_sequence);
+    return ProcessResult(ctx, result, out_tensors, end_of_sequence);
   }
 
  protected:
@@ -211,6 +211,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
           strings::StrCat(prefix_end_, "::active_parallel_calls"),
           static_cast<float>(num_calls_));
     }
+    RecordBufferEnqueue(ctx.get(), result->return_values);
     result->notification.Notify();
     cond_var_->notify_all();
   }
@@ -239,11 +240,13 @@ class ParallelMapIterator : public DatasetBaseIterator {
                                    &result->return_values, std::move(done));
   }
 
-  Status ProcessResult(const std::shared_ptr<InvocationResult>& result,
+  Status ProcessResult(IteratorContext* ctx,
+                       const std::shared_ptr<InvocationResult>& result,
                        std::vector<Tensor>* out_tensors, bool* end_of_sequence)
       LOCKS_EXCLUDED(*mu_) {
     if (!result->end_of_input && result->status.ok()) {
       *out_tensors = std::move(result->return_values);
+      RecordBufferDequeue(ctx, *out_tensors);
       *end_of_sequence = false;
       return Status::OK();
     }

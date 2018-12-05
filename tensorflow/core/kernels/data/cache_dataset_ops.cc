@@ -822,6 +822,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
             cache_->Complete();
             return Status::OK();
           }
+          RecordBufferEnqueue(ctx, *out_tensors);
           cache_->emplace_back(*out_tensors);
           return Status::OK();
         }
@@ -858,6 +859,35 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
           CHECK(cache);
         }
 
+        Status Initialize(IteratorContext* ctx) override {
+          // The memory allocated for the cache is owned by the parent
+          // dataset but performance modeling uses the iterator abstraction and
+          // thus we record the memory allocated for the cache here. The caveat
+          // is that this is incorrect if there are concurrent instances of this
+          // iterator.
+          for (size_t i = 0; i < cache_->size(); ++i) {
+            RecordBufferEnqueue(ctx, cache_->at(i));
+          }
+          return Status::OK();
+        }
+
+        Status GetNextInternal(IteratorContext* ctx,
+                               std::vector<Tensor>* out_tensors,
+                               bool* end_of_sequence) override {
+          mutex_lock l(mu_);
+          if (index_ < cache_->size()) {
+            const std::vector<Tensor>& cache_tensors = cache_->at(index_);
+            out_tensors->insert(out_tensors->begin(), cache_tensors.begin(),
+                                cache_tensors.end());
+            index_++;
+            *end_of_sequence = false;
+            return Status::OK();
+          } else {
+            *end_of_sequence = true;
+            return Status::OK();
+          }
+        }
+
        protected:
         std::shared_ptr<model::Node> CreateNode(
             IteratorContext* ctx, model::Node::Args args) const override {
@@ -880,23 +910,6 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
             index_ = static_cast<size_t>(temp);
           }
           return Status::OK();
-        }
-
-        Status GetNextInternal(IteratorContext* ctx,
-                               std::vector<Tensor>* out_tensors,
-                               bool* end_of_sequence) override {
-          mutex_lock l(mu_);
-          if (index_ < cache_->size()) {
-            const std::vector<Tensor>& cache_tensors = cache_->at(index_);
-            out_tensors->insert(out_tensors->begin(), cache_tensors.begin(),
-                                cache_tensors.end());
-            index_++;
-            *end_of_sequence = false;
-            return Status::OK();
-          } else {
-            *end_of_sequence = true;
-            return Status::OK();
-          }
         }
 
        private:
