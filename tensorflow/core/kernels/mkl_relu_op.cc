@@ -1393,7 +1393,7 @@ class MklLeakyReluGradOp : public MklReluGradOpBase<Device, T, eltwise_relu> {
     T* out_o = diff_src_tensor->flat<T>().data();
     T* user_i = const_cast<T*>(src_tensor.flat<T>().data());
     T* user_g = const_cast<T*>(diff_dst_tensor.flat<T>().data());
-    out_o[0] = user_i[0] > 0 ? user_g[0] : user_g[0] * this->alpha_;
+    out_o[0] = user_i[0] >= 0 ? user_g[0] : user_g[0] * this->alpha_;
     return;
   }
 };
