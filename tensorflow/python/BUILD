@@ -145,6 +145,7 @@ py_library(
         "//tensorflow/lite/python:lite",
         "//tensorflow/python/compat",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/feature_column:feature_column_py",
