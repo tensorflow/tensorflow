@@ -147,6 +147,14 @@ TEST(TestKernel, TestInputAndOutputCount) {
     EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s));
     TF_GetInput(ctx, 3, &input, s);
     EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s));
+
+    // Copy the input tensor to output.
+    TF_SetOutput(ctx, 0, input, s);
+    EXPECT_EQ(TF_OK, TF_GetCode(s));
+
+    TF_SetOutput(ctx, 24, input, s);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s));
+
     TF_DeleteStatus(s);
     if (input != nullptr) {
       TF_DeleteTensor(input);
@@ -188,6 +196,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
     ASSERT_EQ(2, num_inputs);
     ASSERT_EQ(1, num_outputs);
+    ASSERT_EQ(123, ctx.mutable_output(0)->scalar<tensorflow::uint8>()());
   }
 }
 
