@@ -2127,10 +2127,10 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
           node_def.name());
     }
   }
-  // Unsupported options.
+  // Unsupported mask options.
   for (string attr : {"ellipsis_mask", "new_axis_mask", "shrink_axis_mask"}) {
-    int ellipsis_mask = attrs.get<int>(attr);
-    if (ellipsis_mask != 0) {
+    int attr_val = attrs.get<int>(attr);
+    if (attr_val != 0) {
       return tensorflow::errors::Unimplemented(
           attr, " is not implemented for StridedSlice, at ", node_def.name());
     }
