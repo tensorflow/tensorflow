@@ -221,6 +221,18 @@ class GroupNormTest(test.TestCase):
       normalization.group_norm(inputs, channels_axis=-1,
                                reduction_axes=[-3, -2])
 
+  def testParamsShapeNotFullyDefinedBatchAxes(self):
+    inputs = array_ops.placeholder(dtypes.float32, shape=(None, 3, 4, 32))
+    actual_inputs = np.ones(shape=(2, 3, 4, 32))
+    output_op = normalization.group_norm(inputs, channels_axis=-1,
+                                         reduction_axes=[-3, -2])
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      outputs = sess.run(output_op, feed_dict={inputs: actual_inputs})
+      # Make sure that there are no NaNs
+      self.assertFalse(np.isnan(outputs).any())
+
   def testParamsShapeNotFullyDefinedBatchAndSequenceAxes(self):
     inputs = array_ops.placeholder(dtypes.float32, shape=(None, None, 4, 5, 32))
     actual_inputs = np.ones(shape=(2, 3, 4, 5, 32))
