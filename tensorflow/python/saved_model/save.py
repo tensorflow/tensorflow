@@ -551,7 +551,8 @@ def _write_object_proto(obj, proto, filename_map):
     proto.user_object.SetInParent()
 
 
-@tf_export("saved_model.save", v1=["saved_model.experimental.save"])
+@tf_export("saved_model.save",
+           v1=["saved_model.save", "saved_model.experimental.save"])
 def save(obj, export_dir, signatures=None):
   # pylint: disable=line-too-long
   """Exports the Checkpointable object `obj` to [SavedModel format](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md).
