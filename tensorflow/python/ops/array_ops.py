@@ -56,6 +56,7 @@ _BaseSlice = slice
 
 
 @tf_export("identity")
+@dispatch.add_dispatch_support
 def identity(input, name=None):  # pylint: disable=redefined-builtin
   r"""Return a tensor with the same shape and contents as input.
 
@@ -139,6 +140,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
 
 
 @tf_export("expand_dims", v1=[])
+@dispatch.add_dispatch_support
 def expand_dims_v2(input, axis, name=None):
   """Inserts a dimension of 1 into a tensor's shape.
 
@@ -941,6 +943,7 @@ def parallel_stack(values, name="parallel_stack"):
 
 
 @tf_export("stack")
+@dispatch.add_dispatch_support
 def stack(values, axis=0, name="stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
@@ -1151,6 +1154,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
 
 
 @tf_export("concat")
+@dispatch.add_dispatch_support
 def concat(values, axis, name="concat"):
   """Concatenates tensors along one dimension.
 
@@ -1328,6 +1332,7 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
 
 
 @tf_export("boolean_mask", v1=[])
+@dispatch.add_dispatch_support
 def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
   """Apply boolean mask to tensor.
 
@@ -1810,6 +1815,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
 
 
 @tf_export(v1=["zeros_like"])
+@dispatch.add_dispatch_support
 def zeros_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to zero.
 
@@ -1840,6 +1846,7 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
 
 
 @tf_export("zeros_like", v1=[])
+@dispatch.add_dispatch_support
 def zeros_like_v2(
     input,  # pylint: disable=redefined-builtin
     dtype=None,
@@ -1899,6 +1906,7 @@ def zeros_like_impl(tensor, dtype, name, optimize=True):
 
 
 @tf_export(v1=["ones_like"])
+@dispatch.add_dispatch_support
 def ones_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to 1.
 
@@ -1929,6 +1937,7 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
 
 
 @tf_export("ones_like", v1=[])
+@dispatch.add_dispatch_support
 def ones_like_v2(
     input,  # pylint: disable=redefined-builtin
     dtype=None,
@@ -3115,6 +3124,7 @@ def squeeze_v2(input, axis=None, name=None):
 
 
 @tf_export("where")
+@dispatch.add_dispatch_support
 def where(condition, x=None, y=None, name=None):
   """Return the elements, either from `x` or `y`, depending on the `condition`.
 
@@ -3234,6 +3244,7 @@ def gather(params, indices, validate_indices=None, name=None, axis=0):
 
 
 @tf_export("gather", v1=[])
+@dispatch.add_dispatch_support
 def gather_v2(params, indices, validate_indices=None, axis=0, name=None):
   return gather(params, indices, validate_indices=validate_indices, name=name,
                 axis=axis)

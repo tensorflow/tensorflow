@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -55,7 +56,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ),
       # [d1, (d2)] -> [d1, (d2)]
       dict(
-          fn=lambda x: x+1,
+          fn=lambda x: x + np.int64(1),
           elems=[[1, 2, 3], [4, 5], [6, 7]],
           expected_output=[[2, 3, 4], [5, 6], [7, 8]],
           dtype=dtypes.int64,
@@ -64,7 +65,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ),
       # [d1, (d2), d3] -> [d1, (d2), d3]
       dict(
-          fn=lambda x: x+1,
+          fn=lambda x: x + np.int64(1),
           elems=[[[1, 2], [3, 4]], [], [[5, 6], [7, 8], [9, 0]]],
           elems_ragged_rank=1,
           expected_ragged_rank=1,
@@ -131,7 +132,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ),
       # [d1, (d2), (d3), (d4a), (d5)] ->  [d1, (d2), (d3), (d4b), (d5)]
       dict(
-          fn=lambda x: ragged.add(x, 1),
+          fn=lambda x: x + np.int64(1),
           elems=[[[[[1, 2, 3]], [[4], [5]]]], [[[[6, 7]]], [[[8], []]]]],
           expected_output=[[[[[2, 3, 4]], [[5], [6]]]],
                            [[[[7, 8]]], [[[9], []]]]],
@@ -196,8 +197,8 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     def _increment(f):
       return {
-          'batman': ragged.add(f['batman'], 1),
-          'robin': ragged.add(f['robin'], 1),
+          'batman': f['batman'] + 1,
+          'robin': f['robin'] + 1,
       }
 
     output = ragged.map_fn(

@@ -166,15 +166,14 @@ def dispatch_for_types(op, *types):
 
 def add_dispatch_list(target):
   """Decorator that adds a dispatch_list attribute to an op."""
-  assert not hasattr(target, DISPATCH_ATTR)
+  if hasattr(target, DISPATCH_ATTR):
+    raise AssertionError("%s already has a dispatch list" % target)
   setattr(target, DISPATCH_ATTR, [])
   return target
 
 
 def add_dispatch_support(target):
   """Decorator that adds a dispatch handling wrapper to an op."""
-  add_dispatch_list(target)
-
   def wrapper(*args, **kwargs):
     """Call target, and fall back on dispatchers if there is a TypeError."""
     try:
@@ -188,5 +187,5 @@ def add_dispatch_support(target):
       else:
         raise
 
-  setattr(wrapper, DISPATCH_ATTR, [])
+  add_dispatch_list(wrapper)
   return tf_decorator.make_decorator(target, wrapper)

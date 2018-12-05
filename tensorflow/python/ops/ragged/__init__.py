@@ -1,76 +1,53 @@
 """Ragged Tensors.
 
-This package defines the [`RaggedTensor`](ragged/RaggedTensor.md) class, which
+This package defines the `tf.RaggedTensor` class, which
 represents tensors with non-uniform shapes.  In particular, each `RaggedTensor`
 has one or more *ragged dimensions*, which are dimensions whose slices may have
 different lengths.  For example, the inner (column) dimension of
 `rt=[[3, 1, 4, 1], [], [5, 9, 2], [6], []]` is ragged, since the column slices
 (`rt[0, :]`, ..., `rt[4, :]`) have different lengths.  For a more detailed
-description of ragged tensors, see the [`RaggedTensor`](ragged/RaggedTensor.md)
+description of ragged tensors, see the `tf.RaggedTensor`
 class documentation.
 
-## RaggedTensor Operations
+## `RaggedTensor` Operations
 
-This package also defines a collection of operations for manipulating
-ragged tensors.
+### `RaggedTensor` Factory ops
 
-### RaggedTensor Versions of Standard Tensor Operations
+* `tf.ragged.constant`
+* `tf.ragged.from_row_splits`
+* `tf.ragged.from_row_splits`
+* `tf.ragged.from_row_lengths`
+* `tf.ragged.from_row_starts`
+* `tf.ragged.from_row_limits`
+* `tf.ragged.from_value_rowids`
+* `tf.ragged.from_nested_row_splits`
+* `tf.ragged.from_nested_value_rowids`
 
-Many of the operations defined by this package are analogous to
-[`Tensor`](https://www.tensorflow.org/api_docs/python/tf/Tensor)
-operations, but they accept `RaggedTensor`s as input and can return
-`RaggedTensor`s as output.  For example, `ragged.add` performs elementwise
-addition just like `tf.add`, but can be used on `RaggedTensor`s.
+### `RaggedTensor` Conversion ops
 
-These `RaggedTensor` versions of the standard `Tensor` operations can also be
-used with standard `Tensors`; and for the most part, they will return the same
-value that the standard `Tensor` operation would return.  However, there are
-a few notable exceptions:
+* `tf.ragged.from_tensor`
+* `tf.ragged.to_tensor`
+* `tf.ragged.from_sparse`
+* `tf.ragged.to_sparse`
+* `tf.ragged.from_variant`
+* `tf.ragged.to_variant`
+* `tf.ragged.convert_to_tensor_or_ragged_tensor`
 
-* For [`ragged.stack(...)`](ragged/stack.md) and
-  [`ragged.concat(...)`](ragged/concat.md), the input tensors are not required
-  to have matching shapes.  In the returned tensor, all dimensions up to the
-  `axis` dimension will be ragged.
+### `RaggedTensor` Shape ops
 
-### Ragged-Tensor Specific Operations
+* `tf.ragged.row_splits`
+* `tf.ragged.row_lengths`
+* `tf.ragged.row_starts`
+* `tf.ragged.row_limits`
+* `tf.ragged.value_rowids`
+* `tf.ragged.nrows`
+* `tf.ragged.nested_row_splits`
+* `tf.ragged.row_splits_to_segment_ids`
+* `tf.ragged.segment_ids_to_row_splits`
+* `tf.ragged.bounding_shape`
 
-The following operations are specific to ragged tensors:
-
-* **Factory ops**:
-  [`constant(...)`](ragged/constant.md),
-  [`from_row_splits(...)`](ragged/from_row_splits.md),
-  [`from_row_lengths(...)`](ragged/from_row_lengths.md),
-  [`from_row_starts(...)`](ragged/from_row_starts.md),
-  [`from_row_limits(...)`](ragged/from_row_limits.md),
-  [`from_value_rowids(...)`](ragged/from_value_rowids.md),
-  [`from_nested_row_splits(...)`](ragged/from_nested_row_splits.md),
-  [`from_nested_value_rowids(...)`](ragged/from_nested_value_rowids.md).
-
-* **Conversion ops**:
-  [`from_tensor(...)`](ragged/from_tensor.md),
-  [`to_tensor(...)`](ragged/to_tensor.md),
-  [`from_sparse(...)`](ragged/from_sparse.md),
-  [`to_sparse(...)`](ragged/to_sparse.md),
-  [`from_variant(...)`](ragged/from_variant.md),
-  [`to_variant(...)`](ragged/to_variant.md),
-  [`convert_to_tensor_or_ragged_tensor(...)`](
-  ragged/convert_to_tensor_or_ragged_tensor.md).
-
-* **Shape ops**:
-  [`row_splits(...)`](ragged/row_splits.md),
-  [`row_lengths(...)`](ragged/row_lengths.md),
-  [`row_starts(...)`](ragged/row_starts.md),
-  [`row_limits(...)`](ragged/row_limits.md),
-  [`value_rowids(...)`](ragged/value_rowids.md),
-  [`nrows(...)`](ragged/nrows.md),
-  [`nested_row_splits(...)`](ragged/nested_row_splits.md),
-  [`row_splits_to_segment_ids(...)`](ragged/row_splits_to_segment_ids.md),
-  [`segment_ids_to_row_splits(...)`](ragged/segment_ids_to_row_splits.md),
-  [`bounding_shape(...)`](ragged/bounding_shape.md).
-
-* **Functional ops**:
-  [`map_inner_values(...)`](ragged/map_inner_values.md),
-  [`make_elementwise_op(...)`](ragged/make_elementwise_op.md).
+### Functional ops
+* `tf.ragged.map_inner_values`
 
 
 <!-- Ragged Classes & related helper functions -->
@@ -140,21 +117,17 @@ The following operations are specific to ragged tensors:
 @@map_inner_values
 @@map_fn
 
-<!-- Elementwise Ops -->
-@@make_elementwise_op
-
 <!-- Shape & broadcasting -->
 @@RaggedTensorDynamicShape
 @@broadcast_to
 @@broadcast_dynamic_shape
-
-<!-- Symbols from  ragged_elementwise_ops._symbols_to_export are whitelisted -->
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.ops.ragged import ragged_dispatch
 from tensorflow.python.ops.ragged import ragged_operators
 from tensorflow.python.ops.ragged import ragged_string_ops
 
@@ -178,11 +151,6 @@ from tensorflow.python.ops.ragged.ragged_conversion_ops import from_sparse
 from tensorflow.python.ops.ragged.ragged_conversion_ops import from_tensor
 from tensorflow.python.ops.ragged.ragged_conversion_ops import to_sparse
 from tensorflow.python.ops.ragged.ragged_conversion_ops import to_tensor
-
-# pylint: disable=protected-access, wildcard-import
-from tensorflow.python.ops.ragged.ragged_elementwise_ops import *
-from tensorflow.python.ops.ragged.ragged_elementwise_ops import _symbols_to_export as _elementwise_ops
-# pylint: enable=protected-access, wildcard-import
 
 from tensorflow.python.ops.ragged.ragged_factory_ops import constant
 from tensorflow.python.ops.ragged.ragged_factory_ops import constant_value
@@ -231,6 +199,10 @@ from tensorflow.python.ops.ragged.segment_id_ops import segment_ids_to_row_split
 
 from tensorflow.python.util import all_util as _all_util
 
+
+# Register OpDispatchers that override standard TF ops to work w/ RaggedTensors.
+__doc__ += ragged_dispatch.register_dispatchers()  # pylint: disable=redefined-builtin
+
 # Any symbol that is not referenced (with "@@name") in the module docstring
-# above, or included in the "_elementwise_ops" whitelist, will be removed.
-_all_util.remove_undocumented(__name__, _elementwise_ops)
+# above will be removed.
+_all_util.remove_undocumented(__name__)
