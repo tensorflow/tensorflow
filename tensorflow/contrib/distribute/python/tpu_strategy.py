@@ -28,6 +28,8 @@ from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.contrib.tpu.python.tpu import training_loop
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -43,10 +45,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-
-
-_TPU_INITIALIZE_SYSTEM_COLLECTION = "TPU_STRATEGY_INITIALIZE"
 
 
 def get_tpu_system_metadata(tpu_cluster_resolver):
@@ -145,6 +145,9 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
 class TPUExtended(distribute_lib.DistributionStrategyExtended):
   """Implementation of TPUStrategy."""
 
+  # Track what TPU devices have been initialized.
+  _initialized_devices = []
+
   def __init__(self, container_strategy, tpu_cluster_resolver, steps_per_run,
                num_cores=None):
     super(TPUExtended, self).__init__(container_strategy)
@@ -166,8 +169,33 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
     self.steps_per_run = steps_per_run
-
     self._require_static_shapes = True
+
+    # Initialize the TPU devices.
+    self._initialize_tpu()
+
+  def _initialize_tpu(self):
+    """Initialize the TPU devices in a separate session and graph.
+
+    We keep track of all the TPU devices that we're initialized as we should
+    only be running TPU initialize once for the entire process.
+    """
+    master = self._tpu_cluster_resolver.master()
+    # Verify TPU has not already been initialized in this process.
+    if master in TPUExtended._initialized_devices:
+      logging.info("TPU master %s has already been initialized." % master)
+      return
+
+    logging.info("Initializing the TPU system.")
+    session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    self._configure(session_config)
+    with ops.Graph().as_default():
+      with session_lib.Session(config=session_config, target=master) as sess:
+        sess.run([tpu.initialize_system()])
+    logging.info("Finized initializing TPU system.")
+
+    # Update Strategy state to make sure we can track device initialization.
+    TPUExtended._initialized_devices.append(master)
 
   def _get_enqueue_op_per_host(self, host_id, multi_worker_iterator,
                                input_shapes, iterations):
@@ -380,22 +408,14 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
       raise NotImplementedError("Eager mode not supported in TPUStrategy.")
     else:
-      # TODO(jhseu): We need this hack because DistributionStrategies must be
-      # pickleable for copy.deepcopy(). Remove when initialize_system goes away.
-      graph = ops.get_default_graph()
-      tpu_init = graph.get_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION)
-      if tpu_init:
-        return tpu_init
-      graph.add_to_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION,
-                              tpu.initialize_system())
-      return graph.get_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION)
+      return []
 
   def _finalize(self):
     if context.executing_eagerly():
       # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
       raise NotImplementedError("Eager mode not supported in TPUStrategy.")
     else:
-      return [tpu.shutdown_system()]
+      return []
 
   def _get_devices_from(self, colocate_with=None):
     # TODO(jhseu): Change this when we support model parallelism.
