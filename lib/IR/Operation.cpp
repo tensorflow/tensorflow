@@ -447,16 +447,10 @@ static Type getTensorOrVectorElementType(Type type) {
   return type;
 }
 
-// Checks if the given type is an integer or an index type.  Following LLVM's
-// convention, returns true if the check fails and false otherwise.
-static inline bool checkIntegerLikeType(Type type) {
-  return !(type.isa<IntegerType>() || type.isa<IndexType>());
-}
-
 bool OpTrait::impl::verifyOperandsAreIntegerLike(const Operation *op) {
   for (auto *operand : op->getOperands()) {
     auto type = getTensorOrVectorElementType(operand->getType());
-    if (checkIntegerLikeType(type))
+    if (!type.isIntOrIndex())
       return op->emitOpError("requires an integer or index type");
   }
   return false;
@@ -507,10 +501,8 @@ bool OpTrait::impl::verifyAtLeastNResults(const Operation *op,
 /// the same dimension specifications. The element type does not matter.
 static bool verifyShapeMatch(Type type1, Type type2) {
   // Check scalar cases
-  if (type1.isa<IntegerType>() || type1.isa<FloatType>() ||
-      type1.isa<IndexType>())
-    return !(type2.isa<IntegerType>() || type2.isa<FloatType>() ||
-             type2.isa<IndexType>());
+  if (type1.isIntOrIndexOrFloat())
+    return !type2.isIntOrIndexOrFloat();
 
   // Check unranked tensor cases
   if (type1.isa<UnrankedTensorType>() || type2.isa<UnrankedTensorType>())
@@ -642,7 +634,7 @@ bool OpTrait::impl::verifyResultsAreFloatLike(const Operation *op) {
 bool OpTrait::impl::verifyResultsAreIntegerLike(const Operation *op) {
   for (auto *result : op->getResults()) {
     auto type = getTensorOrVectorElementType(result->getType());
-    if (checkIntegerLikeType(type))
+    if (!type.isIntOrIndex())
       return op->emitOpError("requires an integer or index type");
   }
   return false;

@@ -139,6 +139,11 @@ public:
   /// element type's bitwidth.
   unsigned getBitWidth() const;
 
+  /// Return true if this is an integer or index type.
+  bool isIntOrIndex() const;
+  /// Return true if this is an integer, index, or float type.
+  bool isIntOrIndexOrFloat() const;
+
   // Convenience factories.
   static IndexType getIndex(MLIRContext *ctx);
   static IntegerType getInteger(unsigned width, MLIRContext *ctx);
@@ -217,6 +222,14 @@ inline bool Type::isInteger(unsigned width) const {
   if (auto intTy = dyn_cast<IntegerType>())
     return intTy.getWidth() == width;
   return false;
+}
+
+inline bool Type::isIntOrIndex() const {
+  return isa<IndexType>() || isa<IntegerType>();
+}
+
+inline bool Type::isIntOrIndexOrFloat() const {
+  return isa<IndexType>() || isa<IntegerType>() || isa<FloatType>();
 }
 
 class FloatType : public Type {
@@ -390,9 +403,7 @@ public:
 
   /// Returns true of the given type can be used as an element of a vector type.
   /// In particular, vectors can consist of integer or float primitives.
-  static bool isValidElementType(Type t) {
-    return t.isa<IntegerType>() || t.isa<FloatType>() || t.isa<IndexType>();
-  }
+  static bool isValidElementType(Type t) { return t.isIntOrIndexOrFloat(); }
 
   ArrayRef<int> getShape() const;
 

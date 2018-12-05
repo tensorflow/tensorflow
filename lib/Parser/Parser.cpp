@@ -839,7 +839,7 @@ Attribute Parser::parseAttribute(Type type) {
         type = builder.getIntegerType(64);
       }
     }
-    if (!type.isa<IntegerType>() && !type.isa<IndexType>())
+    if (!type.isIntOrIndex())
       return (emitError("integer value not valid for specified type"), nullptr);
     int width = type.isIndex() ? 64 : type.getBitWidth();
     return builder.getIntegerAttr(type, APInt(width, val.getValue()));
@@ -861,7 +861,7 @@ Attribute Parser::parseAttribute(Type type) {
           type = builder.getIntegerType(64);
         }
       }
-      if (!type.isa<IntegerType>() && !type.isa<IndexType>())
+      if (!type.isIntOrIndex())
         return (emitError("integer value not valid for type"), nullptr);
       int width = type.isIndex() ? 64 : type.getBitWidth();
       return builder.getIntegerAttr(type, -APInt(width, val.getValue()));
