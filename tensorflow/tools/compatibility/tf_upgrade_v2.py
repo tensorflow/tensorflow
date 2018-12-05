@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
+from tensorflow.tools.compatibility import reorders_v2
 
 
 class TFAPIChangeSpec(ast_edits.APIChangeSpec):
@@ -483,187 +484,80 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Variables that should be changed to functions.
     self.change_to_function = {}
 
+    # pylint: disable=line-too-long
+    # This list should just contain names of functions that had
+    # their arguments reordered. After adding a function name to the list
+    # run the following to update reorders_v2.py:
+    # bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
+    # bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+    # pylint: enable=line-too-long
+    self.reordered_function_names = {
+        "tf.io.serialize_sparse",
+        "tf.io.serialize_many_sparse",
+        "tf.argmax",
+        "tf.argmin",
+        "tf.batch_to_space",
+        "tf.boolean_mask",
+        "tf.convert_to_tensor",
+        "tf.nn.moments",
+        "tf.nn.convolution",
+        "tf.nn.crelu",
+        "tf.nn.weighted_moments",
+        "tf.nn.pool",
+        "tf.nn.separable_conv2d",
+        "tf.nn.depthwise_conv2d",
+        "tf.multinomial",
+        "tf.random.multinomial",
+        "tf.pad",
+        "tf.quantize_v2",
+        "tf.feature_column.categorical_column_with_vocabulary_file",
+        "tf.shape",
+        "tf.size",
+        "tf.random.poisson",
+        "tf.sparse.add",
+        "tf.sparse_add",
+        "tf.sparse.concat",
+        "tf.sparse_concat",
+        "tf.sparse.segment_mean",
+        "tf.sparse.segment_sqrt_n",
+        "tf.sparse.segment_sum",
+        "tf.sparse_matmul",
+        "tf.io.decode_csv",
+        "tf.strings.substr",
+        "tf.strings.reduce_join",
+        "tf.strings.length",
+        "tf.transpose",
+        "tf.tuple",
+        "tf.parse_example",
+        "tf.parse_single_example",
+        "tf.io.parse_example",
+        "tf.io.parse_single_example",
+        "tf.while_loop",
+        "tf.reduce_all",
+        "tf.math.reduce_all",
+        "tf.reduce_any",
+        "tf.math.reduce_any",
+        "tf.reduce_min",
+        "tf.math.reduce_min",
+        "tf.reduce_max",
+        "tf.math.reduce_max",
+        "tf.reduce_sum",
+        "tf.math.reduce_sum",
+        "tf.reduce_mean",
+        "tf.math.reduce_mean",
+        "tf.reduce_prod",
+        "tf.math.reduce_prod",
+        "tf.reduce_logsumexp",
+        "tf.math.reduce_logsumexp",
+        "tf.reduce_join",
+        "tf.confusion_matrix",
+        "tf.math.confusion_matrix",
+    }
+
     # Functions that were reordered should be changed to the new keyword args
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
-    # IMPORTANT: order here should correspond to OLD argument order.
-    # We just prepend "arg_name=" to all arguments in function calls.
-    self.function_reorders = {
-        "tf.io.serialize_sparse": ["sp_input", "name", "out_type"],
-        "tf.io.serialize_many_sparse": ["sp_input", "name", "out_type"],
-        "tf.argmax": ["input", "axis", "name", "axis", "output_type"],
-        "tf.argmin": ["input", "axis", "name", "axis", "output_type"],
-        "tf.batch_to_space": ["input", "crops", "block_size", "name"],
-        "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
-        "tf.convert_to_tensor": ["value", "dtype", "name", "preferred_dtype"],
-        "tf.nn.moments": ["x", "axes", "shift", "keepdims", "name"],
-        "tf.nn.convolution": [
-            "input", "filter", "padding", "strides", "dilation_rate", "name",
-            "data_format"
-        ],
-        "tf.nn.crelu": ["features", "name", "axis"],
-        "tf.nn.weighted_moments": [
-            "x", "axes", "frequency_weights", "name", "keep_dims"
-        ],
-        "tf.nn.pool": [
-            "input", "window_shape", "pooling_type", "padding", "dilation_rate",
-            "strides", "name", "data_format"
-        ],
-        "tf.nn.separable_conv2d": [
-            "input", "depthwise_filter", "pointwise_filter", "strides",
-            "padding", "rate", "name", "data_format"
-        ],
-        "tf.nn.depthwise_conv2d": [
-            "input", "filter", "strides", "padding", "rate", "name",
-            "data_format"
-        ],
-        "tf.multinomial": [
-            "logits", "num_samples", "seed", "name", "output_dtype"
-        ],
-        "tf.random.multinomial": [
-            "logits", "num_samples", "seed", "name", "output_dtype"
-        ],
-        "tf.pad": ["tensor", "paddings", "mode", "name", "constant_values"],
-        "tf.quantize_v2": [
-            "input", "min_range", "max_range", "T", "mode", "name", "round_mode"
-        ],
-        "tf.feature_column.categorical_column_with_vocabulary_file": [
-            "key", "vocabulary_file", "vocabulary_size", "num_oov_buckets",
-            "default_value", "dtype"
-        ],
-        "tf.shape": ["input", "name", "out_type"],
-        "tf.size": ["input", "name", "out_type"],
-        "tf.random.poisson": ["lam", "shape", "dtype", "seed", "name"],
-        "tf.sparse.add": ["a", "b", "thresh"],
-        "tf.sparse_add": ["a", "b", "thresh"],
-        "tf.sparse.concat": [
-            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
-        ],
-        "tf.sparse_concat": [
-            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
-        ],
-        "tf.sparse.segment_mean": [
-            "data", "indices", "segment_ids", "name", "num_segments"
-        ],
-        "tf.sparse.segment_sqrt_n": [
-            "data", "indices", "segment_ids", "name", "num_segments"
-        ],
-        "tf.sparse.segment_sum": [
-            "data", "indices", "segment_ids", "name", "num_segments"
-        ],
-        "tf.sparse_matmul": [
-            "a", "b", "transpose_a", "transpose_b", "a_is_sparse",
-            "b_is_sparse", "name"
-        ],
-        "tf.io.decode_csv": [
-            "records",
-            "record_defaults",
-            "field_delim",
-            "use_quote_delim",
-            "name",
-            "na_value",
-            "select_cols",
-        ],
-        "tf.strings.substr": ["input", "pos", "len", "name", "unit"],
-        "tf.strings.reduce_join": [
-            "input", "axis", "keep_dims", "separator", "name",
-            "reduction_indices"
-        ],
-        "tf.strings.length": ["input", "name", "unit"],
-        "tf.transpose": ["a", "perm", "name", "conjugate"],
-        "tf.tuple": ["tensors", "name", "control_inputs"],
-        "tf.parse_example": [
-            "serialized", "features", "name", "example_names"
-        ],
-        "tf.parse_single_example": [
-            "serialized", "features", "name", "example_names"
-        ],
-        "tf.io.parse_example": [
-            "serialized", "features", "name", "example_names"
-        ],
-        "tf.io.parse_single_example": [
-            "serialized", "features", "name", "example_names"
-        ],
-        "tf.while_loop": [
-            "cond", "body", "loop_vars", "shape_invariants",
-            "parallel_iterations", "back_prop", "swap_memory", "name",
-            "maximum_iterations", "return_same_structure"
-        ],
-        "tf.reduce_all": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_all": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_any": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_any": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_min": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_min": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_max": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_max": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_sum": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_sum": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_mean": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_mean": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_prod": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_prod": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_logsumexp": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_logsumexp": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_join": [
-            "input", "axis", "keep_dims", "separator", "name",
-            "reduction_indices"
-        ],
-        "tf.confusion_matrix": [
-            "labels", "predictions", "num_classes", "dtype", "name", "weights"
-        ],
-        "tf.math.confusion_matrix": [
-            "labels", "predictions", "num_classes", "dtype", "name", "weights"
-        ]
-    }
+    self.function_reorders = reorders_v2.reorders
 
     # Specially handled functions.
     self.function_handle = {
