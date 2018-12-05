@@ -534,6 +534,25 @@ class DatasetContext {
   Params params_;
 };
 
+// Returns the number of bytes allocated for the given tensor.
+int64 GetAllocatedBytes(const std::vector<Tensor>& element);
+
+// Validates and extracts a `DatasetBase` object from `tensor`.
+//
+// `tensor` must have been written by a call to SetVariantTensorToDataset().
+//
+// The retrieved pointer is a borrowed reference to the dataset, which is owned
+// by the tensor. The consumer must either acquire its own reference to the
+// dataset by calling `(*out_dataset)->Ref()`, or ensure that `tensor` is not
+// destroyed or mutated while the retrieved pointer is in use.
+Status GetDatasetFromVariantTensor(const Tensor& tensor,
+                                   DatasetBase** out_dataset);
+
+// Stores a `DatasetBase` object in `tensor`.
+//
+// The ownership of `dataset` is transferred to `tensor`.
+Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
+
 // Represents a (potentially infinite) range of outputs, where each
 // output is a tuple of tensors.
 class DatasetBase : public core::RefCounted {
@@ -587,11 +606,14 @@ class DatasetBase : public core::RefCounted {
   // in the outputs of this dataset.
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
-  // A human-readable debug string for this dataset.
-  virtual string DebugString() const = 0;
+  // Returns the number of bytes allocated for tensors of this dataset.
+  virtual int64 AllocatedBytes() const { return 0; }
 
   // Returns the cardinality of this dataset.
   virtual int64 Cardinality() const { return kUnknownCardinality; }
+
+  // A human-readable debug string for this dataset.
+  virtual string DebugString() const = 0;
 
   // Serializes the dataset and writes it to the `writer`.
   virtual Status Save(SerializationContext* ctx,
@@ -692,6 +714,24 @@ class DatasetBaseIterator : public IteratorBase {
   std::shared_ptr<model::Node> CreateNode(
       IteratorContext* ctx, model::Node::Args args) const override {
     return model::MakeUnknownNode(std::move(args));
+  }
+
+  // When performance modeling is enabled, this method records the fact that
+  // this iterator has dequeued a element from an internal buffer.
+  void RecordBufferDequeue(IteratorContext* ctx,
+                           const std::vector<Tensor>& element) {
+    if (node_) {
+      node_->add_buffered_bytes(-GetAllocatedBytes(element));
+    }
+  }
+
+  // When performance modeling is enabled, this method records the fact that
+  // this iterator has enqueued a element in an internal buffer.
+  void RecordBufferEnqueue(IteratorContext* ctx,
+                           const std::vector<Tensor>& element) {
+    if (node_) {
+      node_->add_buffered_bytes(GetAllocatedBytes(element));
+    }
   }
 
   // When performance modeling is enabled, this method records the fact that
@@ -825,22 +865,6 @@ class BinaryDatasetOpKernel : public DatasetOpKernel {
                            DatasetBase* another_input,
                            DatasetBase** output) = 0;
 };
-
-// Validates and extracts a `DatasetBase` object from `tensor`.
-//
-// `tensor` must have been written by a call to SetVariantTensorToDataset().
-//
-// The retrieved pointer is a borrowed reference to the dataset, which is owned
-// by the tensor. The consumer must either acquire its own reference to the
-// dataset by calling `(*out_dataset)->Ref()`, or ensure that `tensor` is not
-// destroyed or mutated while the retrieved pointer is in use.
-Status GetDatasetFromVariantTensor(const Tensor& tensor,
-                                   DatasetBase** out_dataset);
-
-// Stores a `DatasetBase` object in `tensor`.
-//
-// The ownership of `dataset` is transferred to `tensor`.
-Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
 
 // A simple background worker that executes closures asynchronously and without
 // blocking.
