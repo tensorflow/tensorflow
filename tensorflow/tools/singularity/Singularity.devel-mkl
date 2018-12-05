@@ -1,0 +1,164 @@
+Bootstrap: debootstrap
+OSVersion: bionic
+MirrorURL: http://us.archive.ubuntu.com/ubuntu/
+
+%help
+    This Singularity definition contains Intel(R) Optimizations for
+    TensorFlow including development tools
+
+    Use below commands:
+
+    *Build singularity container* - This will build immutable container (Production recommended)
+    sudo singularity build <mysingularity_name>.sif Singularity.devel-mkl
+
+    *To build development container* - Where you can install stuff as needed while using
+    sudo singularity build --sandbox <mysingularity_name>/ Singularity.devel-mkl
+
+    *Shell into singularity container*
+    sudo singularity shell --contain --writable <mysingularity_name>/
+
+    --writable option must be provided to install any packages.
+    You cannot use --writable option with immutable containers
+
+    *Exec into singularity container*- To run any command from host inside container
+    sudo singularity exec --contain <mysingularity_name>/ env
+
+%post -c /bin/bash
+
+    TF_BUILD_VERSION=v1.12.0
+    PYTHON="python"
+    WHL_DIR="/tmp/pip"
+    PIP="pip"
+    BAZEL_VERSION=0.18.1
+
+    apt-get update && apt-get install -y --no-install-recommends --fix-missing software-properties-common
+    add-apt-repository universe
+
+    apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+    ${PYTHON} \
+    ${PYTHON}-dev \
+    ${PYTHON}-pip \
+    ${PYTHON}-setuptools \
+    ${PYTHON}-wheel \
+    build-essential \
+    curl \
+    git \
+    libcurl3-dev \
+    libfreetype6-dev \
+    libhdf5-serial-dev \
+    libpng-dev \
+    libssl-dev \
+    libzmq3-dev \
+    openjdk-8-jdk \
+    openjdk-8-jre-headless \
+    pkg-config \
+    rsync \
+    unzip \
+    zip \
+    zlib1g-dev \
+    && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+    ${PIP} --no-cache-dir install \
+    Pillow \
+    h5py \
+    ipykernel \
+    jupyter \
+    keras_applications \
+    keras_preprocessing \
+    matplotlib \
+    mock \
+    numpy \
+    pandas \
+    scipy \
+    sklearn \
+    && \
+    ${PYTHON} -m ipykernel.kernelspec
+
+    # Set up Bazel.
+
+    # Running bazel inside a `docker build` command causes trouble, cf:
+    #   https://github.com/bazelbuild/bazel/issues/134
+    # The easiest solution is to set up a bazelrc file forcing --batch.
+    echo "startup --batch" >>/etc/bazel.bazelrc
+    # Similarly, we need to workaround sandboxing issues:
+    #   https://github.com/bazelbuild/bazel/issues/418
+    echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
+        >>/etc/bazel.bazelrc
+
+    # Install the most recent bazel release.
+    cd /
+    mkdir /bazel && \
+    cd /bazel && \
+    curl -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36" -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+    curl -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36" -fSsL -o /bazel/LICENSE.txt https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE && \
+    chmod +x bazel-*.sh && \
+    ./bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+    cd / && \
+    rm -f /bazel/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
+
+    # Download and build TensorFlow.
+    mkdir -p /tensorflow
+    cd /tensorflow
+
+    # Download and build TensorFlow.
+    # Enable checking out both tags and branches
+    export TAG_PREFIX="v" && \
+    echo ${TF_BUILD_VERSION} | grep -q ^${TAG_PREFIX}; \
+    if [ $? -eq 0 ]; then \
+        git clone --depth=1 https://github.com/tensorflow/tensorflow.git . && \
+        git fetch --tags && \
+        git checkout ${TF_BUILD_VERSION}; \
+    else \
+        git clone --depth=1 --branch=${TF_BUILD_VERSION} https://github.com/tensorflow/tensorflow.git . ; \
+    fi
+
+    yes "" | ${PYTHON} configure.py
+    cp .bazelrc /root/.bazelrc
+
+    CI_BUILD_PYTHON=${PYTHON}
+
+    # Set bazel build parameters in .bazelrc in parameterized_docker_build.sh
+    # Use --copt=-march values to get optimized builds appropriate for the hardware
+    #   platform of your choice.
+    # For ivy-bridge or sandy-bridge
+    # --copt=-march="avx" \
+    # For haswell, broadwell, or skylake
+    # --copt=-march="avx2" \
+    cp .bazelrc /root/.mkl.bazelrc
+    echo "import /root/.mkl.bazelrc" >>/root/.bazelrc
+
+    tensorflow/tools/ci_build/builds/configured CPU \
+    bazel build --config=mkl -c opt \
+    tensorflow/tools/pip_package:build_pip_package && \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package "${WHL_DIR}" && \
+    ${PIP} --no-cache-dir install --upgrade "${WHL_DIR}"/tensorflow-*.whl && \
+    rm -rf /root/.cache
+    # Clean up Bazel cache when done.
+
+    cd /root
+
+%environment
+    # Set to 1 to see verbose MKL output
+    MKLDNN_VERBOSE=0
+
+    # KMP Settings
+    KMP_AFFINITY=granularity=fine,compact,1,0
+    KMP_BLOCKTIME=0
+    KMP_SETTINGS=0
+
+    export MKLDNN_VERBOSE KMP_AFFINITY KMP_BLOCKTIME KMP_SETTINGS
+
+%runscript
+    echo "This is a Singularity image containing Intel optimized TensorFlow"
+    echo "GCC: $(gcc --version)"
+    echo "TensorFlow: $(pip show tensorflow --disable-pip-version-check |
+    grep "^Version:" | awk '{print $NF}')"
+
+%test
+    echo "MKL shared libs: $(ldd $(pip show tensorflow | grep Location | cut -d ":" -f2)/tensorflow/libtensorflow_framework.so | grep libmklml)"
+    python -c "import tensorflow as tf; print(tf.pywrap_tensorflow.IsMklEnabled())"
+
+%labels
+    Maintainer "Karthik Vadla <karthik.vadla@intel.com>"

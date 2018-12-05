@@ -1,0 +1,138 @@
+Bootstrap: debootstrap
+OSVersion: bionic
+MirrorURL: http://us.archive.ubuntu.com/ubuntu/
+
+%help
+    This Singularity definition contains Intel(R) Optimizations for
+    TensorFlow.
+
+    Download whl from the following URL and save in the same directory as this file.
+    https://pypi.org/project/intel-tensorflow/1.12.0/#files
+
+    NOTE: Please update TF_WHL with wheel name, otherwise build will fail.
+
+    Use below commands:
+
+    *Build singularity container* - This will build immutable container (Production recommended)
+    sudo singularity build <mysingularity_name>.sif Singularity.mkl
+
+    *To build development container* - Where you can install stuff as needed while using
+    sudo singularity build --sandbox <mysingularity_name>/ Singularity.mkl
+
+    *Shell into singularity container*
+    sudo singularity shell --contain --writable <mysingularity_name>/
+
+    --writable option must be provided to install any packages.
+    You cannot use --writable option with immutable containers
+
+    *Exec into singularity container*- To run any command from host inside container
+    sudo singularity exec --contain <mysingularity_name>/ env
+
+    *Run singularity container in background and access notebook* - This will run %starscript section commands
+    sudo singularity instance start <mysingularity_name>/ demotest
+
+    *Check running instances* - This should list demotest instance started above
+    sudo singularity instance list
+
+    *Get the token to access notebook locally* - copy the listed token
+    sudo singularity exec instance://demotest jupyter notebook list
+
+    If you are running singularity instance in remote machine.
+    Execute below command to establish tunnel to forward traffic from remote machine to localhost
+    Ex: ssh -L 8888:localhost:8888 <remote_machine_name>
+
+    Access the given url from your localhost and enter the access token
+    Ex: localhost:8888
+
+%setup
+    mkdir -p ${SINGULARITY_ROOTFS}/root/.jupyter/
+    cp jupyter_notebook_config.py ${SINGULARITY_ROOTFS}/root/.jupyter/
+
+%files
+    # Download whl from the following URL and save in the same directory as this file.
+    # https://pypi.org/project/intel-tensorflow/1.12.0/#files
+    # Uncomment the following line before building the container. Please use different whl file name as needed.
+    # intel_tensorflow-1.12.0-cp27-cp27mu-manylinux1_x86_64.whl /
+
+    # Copy sample notebooks.
+    notebooks /notebooks
+
+    # Jupyter has issues with being run directly:
+    #   https://github.com/ipython/ipython/issues/7062
+    # We just add a little wrapper script.
+    run_jupyter.sh /
+
+%post -c /bin/bash
+
+    # Uncomment below line and update previously downloaded tensorflow wheel name(if different)
+    # TF_WHL="intel_tensorflow-1.12.0-cp27-cp27mu-manylinux1_x86_64.whl"
+
+    PYTHON="python"
+    PIP="pip"
+
+    apt-get update && apt-get install -y --no-install-recommends --fix-missing software-properties-common
+    add-apt-repository universe
+
+    apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+    ${PYTHON} \
+    ${PYTHON}-dev \
+    ${PYTHON}-pip \
+    ${PYTHON}-setuptools \
+    ${PYTHON}-wheel \
+    build-essential \
+    curl \
+    libfreetype6-dev \
+    libhdf5-serial-dev \
+    libpng-dev \
+    libzmq3-dev \
+    pkg-config \
+    rsync \
+    unzip \
+    && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+    ${PIP} --no-cache-dir install \
+    Pillow \
+    h5py \
+    ipykernel \
+    jupyter \
+    keras_applications \
+    keras_preprocessing \
+    matplotlib \
+    numpy \
+    pandas \
+    scipy \
+    sklearn \
+    && \
+    ${PYTHON} -m ipykernel.kernelspec
+
+    ${PIP} install --no-cache-dir --force-reinstall /${TF_WHL} && \
+    rm -rf /${TF_WHL}
+
+    cd /notebooks
+
+%environment
+    # Set to 1 to see verbose MKL output
+    MKLDNN_VERBOSE=0
+
+    # KMP Settings
+    KMP_AFFINITY=granularity=fine,compact,1,0
+    KMP_BLOCKTIME=0
+    KMP_SETTINGS=0
+
+    export MKLDNN_VERBOSE KMP_AFFINITY KMP_BLOCKTIME KMP_SETTINGS
+
+%startscript
+    # commands to be executed when the container runs as a service
+    echo "Starting notebook..."
+    echo "Open browser to localhost:8888"
+    cd /notebooks
+    bash /run_jupyter.sh --allow-root --ip=0.0.0.0 --port=8888 --no-browser
+
+%test
+    echo "MKL shared libs: $(ldd $(pip show tensorflow | grep Location | cut -d ":" -f2)/tensorflow/libtensorflow_framework.so | grep libmklml)"
+    python -c "import tensorflow as tf; print(tf.pywrap_tensorflow.IsMklEnabled())"
+
+%labels
+    Maintainer "Karthik Vadla <karthik.vadla@intel.com>"
