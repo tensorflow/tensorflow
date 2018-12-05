@@ -1091,9 +1091,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return do_rewrite;
   }
 
-  // To compute LeakyRelu MKL DNN uses (feature), if feature > 0
-  // otherwise it uses (feature * alpha)
-  // while Tensorflow uses max(feature, feature * alpha) to compute LeakyRelu.
+  // MKL-DNN's LeakyRelu(feature) = feature          (if feature > 0), or
+  //                                feature * alpha  (otherwise),
+  // while TensorFlow's LeakyRelu(feature) = max(feature, feature * alpha).
   // These two algorithms are not consistent when alpha > 1,
   // so we only rewrite LeakyRelu to MKL OP when alpha <= 1.
   static bool LeakyReluRewrite(const Node* n) {
@@ -1105,7 +1105,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // If the alpha of LeakyRelu is less than 1, rewrite the node.
     // Otherwise eigen node is used instead.
-    if (alpha < 1) {
+    if (alpha <= 1) {
       return true;
     }
     VLOG(1) << "LeakyReluRewrite: The model sets alpha is not less than 1 "
