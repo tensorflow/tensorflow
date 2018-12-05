@@ -391,6 +391,33 @@ class StructureTest(test.TestCase, parameterized.TestCase):
     self.assertIs(float32_t, actual_float32_t)
     self.assertIs(string_t, actual_string_t)
 
+  @parameterized.named_parameters(
+      ("Tensor", structure.TensorStructure(dtypes.float32, []), 32,
+       structure.TensorStructure(dtypes.float32, [32])),
+      ("TensorUnknown", structure.TensorStructure(dtypes.float32, []), None,
+       structure.TensorStructure(dtypes.float32, [None])),
+      ("SparseTensor", structure.SparseTensorStructure(dtypes.float32, [None]),
+       32, structure.SparseTensorStructure(dtypes.float32, [32, None])),
+      ("SparseTensorUnknown",
+       structure.SparseTensorStructure(dtypes.float32, [4]), None,
+       structure.SparseTensorStructure(dtypes.float32, [None, 4])),
+      ("Nest", structure.NestedStructure({
+          "a": structure.TensorStructure(dtypes.float32, []),
+          "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
+                structure.TensorStructure(dtypes.string, []))}), 128,
+       structure.NestedStructure({
+           "a": structure.TensorStructure(dtypes.float32, [128]),
+           "b": (structure.SparseTensorStructure(dtypes.int32, [128, 2, 2]),
+                 structure.TensorStructure(dtypes.string, [128]))})),
+  )
+  def testBatch(self, element_structure, batch_size,
+                expected_batched_structure):
+    batched_structure = element_structure._batch(batch_size)
+    self.assertTrue(
+        batched_structure.is_compatible_with(expected_batched_structure))
+    self.assertTrue(
+        expected_batched_structure.is_compatible_with(batched_structure))
+
 
 if __name__ == "__main__":
   test.main()

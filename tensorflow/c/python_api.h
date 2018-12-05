@@ -34,6 +34,7 @@ void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
 
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device);
 
+// Updates 'dst' to consume 'new_src'.
 void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
                 TF_Status* status);
 
@@ -65,6 +66,13 @@ std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output);
 // because I couldn't get SWIG to work otherwise.
 void SetHandleShapeAndType(TF_Graph* graph, TF_Output output, const void* proto,
                            size_t proto_len, TF_Status* status);
+
+// This method is used to add a new input edge to 'dst', which must be a While
+// op. The While op's "T" attribute must have already been updated to include
+// the new edge. This is used to construct tf.while_loop gradients.
+void AddWhileInputHack(TF_Graph* graph, TF_Output new_src, TF_Operation* dst,
+                       TF_Status* status);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_PYTHON_API_H_

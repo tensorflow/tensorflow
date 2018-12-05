@@ -13,13 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 set(tf_op_lib_names
-    "audio_ops"
     "array_ops"
+    "audio_ops"
     "batch_ops"
     "bitwise_ops"
     "boosted_trees_ops"
     "candidate_sampling_ops"
     "checkpoint_ops"
+    "collective_ops"
     "control_flow_ops"
     "ctc_ops"
     "cudnn_rnn_ops"
@@ -27,13 +28,14 @@ set(tf_op_lib_names
     "dataset_ops"
     "decode_proto_ops"
     "encode_proto_ops"
+    "function_ops"
     "functional_ops"
     "image_ops"
     "io_ops"
     "linalg_ops"
     "list_ops"
-    "lookup_ops"
     "logging_ops"
+    "lookup_ops"
     "manip_ops"
     "math_ops"
     "nn_ops"
@@ -43,10 +45,11 @@ set(tf_op_lib_names
     "remote_fused_graph_ops"
     "resource_variable_ops"
     "rpc_ops"
+    "scoped_allocator_ops"
     "script_ops"
     "sdca_ops"
-    "set_ops"
     "sendrecv_ops"
+    "set_ops"
     "sparse_ops"
     "spectral_ops"
     "state_ops"
@@ -54,6 +57,7 @@ set(tf_op_lib_names
     "string_ops"
     "summary_ops"
     "training_ops"
+    "word2vec_ops"
 )
 
 foreach(tf_op_lib_name ${tf_op_lib_names})

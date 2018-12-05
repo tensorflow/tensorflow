@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import matching_files
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
@@ -59,7 +60,7 @@ class MatchingFilesBenchmark(test.Benchmark):
     for _ in range(iters):
       with ops.Graph().as_default():
         dataset = matching_files.MatchingFilesDataset(patterns)
-        next_element = dataset.make_one_shot_iterator().get_next()
+        next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
         with session.Session() as sess:
           sub_deltas = []

@@ -137,10 +137,10 @@ class TrainingTest(test.TestCase):
     x = keras.backend.zeros(shape=(10, 3))
     y = keras.backend.zeros(shape=(10, 4))
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).repeat(10).batch(5)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     validation_dataset = dataset_ops.Dataset.from_tensor_slices(
         (x, y)).repeat(10).batch(5)
-    validation_iterator = validation_dataset.make_one_shot_iterator()
+    validation_iterator = dataset_ops.make_one_shot_iterator(validation_dataset)
 
     with self.assertRaisesRegexp(
         ValueError, r'specify .* `steps_per_epoch`'):
@@ -230,7 +230,7 @@ class CorrectnessTest(test.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     history = model.fit(iterator, epochs=1, steps_per_epoch=10)
     self.assertAlmostEqual(history.history['loss'][-1], 0.6173, 4)
 

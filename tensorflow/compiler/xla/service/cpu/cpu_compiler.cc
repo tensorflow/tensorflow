@@ -250,7 +250,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
-  pipeline.AddPass<HloGetDimensionSizeRewriter>();
   pipeline.AddPass<MapInliner>();
 
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
@@ -270,6 +269,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true);
+    pipeline.AddPass<HloGetDimensionSizeRewriter>();
     AlgebraicSimplifierOptions options(
         [](const Shape&, const Shape&) { return false; });
     options.set_enable_dot_strength_reduction(false);

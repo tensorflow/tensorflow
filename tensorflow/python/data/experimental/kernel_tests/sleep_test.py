@@ -36,7 +36,7 @@ class SleepTest(test_base.DatasetTestBase):
     sleep_microseconds = 100
     dataset = dataset_ops.Dataset.range(10).apply(
         sleep.sleep(sleep_microseconds))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:

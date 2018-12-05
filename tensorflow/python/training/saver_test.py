@@ -2364,7 +2364,7 @@ class MetaGraphTest(test.TestCase):
   def testPreserveDatasetAndFunctions(self):
     with ops_lib.Graph().as_default() as g:
       dataset = dataset_ops.Dataset.range(10).map(lambda x: x * x)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       next_element = iterator.get_next()
       _ = array_ops.identity(next_element, name="output")
 
