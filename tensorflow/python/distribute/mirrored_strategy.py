@@ -472,7 +472,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     assert len(set(devices)) == len(devices), (
         "No duplicates allowed in `devices` argument.")
     # TODO(josh11b): Require at least 2 devices?
-    self._devices = [device_util.resolve(d) for d in devices]
+    self._devices = tuple(device_util.resolve(d) for d in devices)
     self._canonical_device_set = set(self._devices)
     self._device_index = values.PerReplica(
         {d: i for i, d in enumerate(devices)})
@@ -488,7 +488,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     assert len(set(devices)) == len(devices), (
         "No duplicates allowed in `devices` argument.")
     # TODO(josh11b): Require at least 2 devices?
-    self._devices = [device_util.resolve(d) for d in devices]
+    self._devices = tuple(device_util.resolve(d) for d in devices)
     self._canonical_device_set = set(self._devices)
     self._device_index = values.PerReplica(
         {d: i for i, d in enumerate(devices)})
@@ -727,7 +727,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     return values.update_regroup(self, updates, group)
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
-    assert isinstance(colocate_with, list)
+    assert isinstance(colocate_with, tuple)
     # TODO(josh11b): In eager mode, use one thread per device.
     updates = {}
     for d in colocate_with:
@@ -748,9 +748,9 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     if isinstance(val, values.DistributedValues):
       # Return in a deterministic order.
       if set(val.devices) == self._canonical_device_set:
-        return [val.get(device=d) for d in self._devices]
-      return [val.get(device=d) for d in sorted(val.devices)]
-    return [val]
+        return tuple(val.get(device=d) for d in self._devices)
+      return tuple(val.get(device=d) for d in sorted(val.devices))
+    return (val,)
 
   def value_container(self, val):
     return values.value_container(val)
@@ -761,12 +761,11 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
   @property
   def worker_devices(self):
-    # Make a copy to prevent users from accidentally mutating our copy.
-    return list(self._devices)
+    return self._devices
 
   @property
   def parameter_devices(self):
-    return list(self._devices)
+    return self._devices
 
   @property
   def experimental_between_graph(self):
@@ -786,7 +785,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
   def non_slot_devices(self, var_list):
     del var_list
-    return list(self._devices)
+    return tuple(self._devices)
 
   def _get_devices_from(self, colocate_with=None):
     if colocate_with is None:

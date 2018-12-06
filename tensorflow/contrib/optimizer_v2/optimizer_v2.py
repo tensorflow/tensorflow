@@ -997,10 +997,10 @@ class OptimizerV2(optimizer_v1.Optimizer):
       with ops.control_dependencies([update_ops]):
         finish_updates = distribution.extended.update_non_slot(
             non_slot_devices, finish, group=False)
-      # We said grouped=False, which means finish_updates is always a list.
-      # It will be [None] when finish() returns None.
-      if finish_updates == [None]:
-        finish_updates = [update_ops]
+      # We said group=False, which means finish_updates is always a tuple.
+      # It will be (None,) when finish() returns None.
+      if finish_updates == (None,):
+        finish_updates = (update_ops,)
 
       # Update `global_step` (if any).
       if global_step is None:

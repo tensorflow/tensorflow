@@ -162,7 +162,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
                   if "device:TPU:" in d.name}
     self._device_index = values.PerReplica(device_map)
     self._host_device = self.get_host_cpu_device(0)
-    self._tpu_devices = sorted(device_map.keys())
+    self._tpu_devices = tuple(sorted(device_map.keys()))
     # Only create variables for the number of replicas we're running.
     self._tpu_devices = self._tpu_devices[:self._num_replicas_in_sync]
 
@@ -507,13 +507,13 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
   def _unwrap(self, val):
     if isinstance(val, values.DistributedValues):
       # Return in a deterministic order.
-      return [val.get(device=d) for d in sorted(val.devices)]
+      return tuple(val.get(device=d) for d in sorted(val.devices))
     elif isinstance(val, list):
       # TODO(josh11b): We need to remove this case; per device values should
       # be represented using a PerReplica wrapper instead of a list with
       # one entry per device.
-      return val
-    return [val]
+      return tuple(val)
+    return (val,)
 
   def value_container(self, value):
     return value
@@ -619,4 +619,4 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
     distribute_lib.require_replica_context(self)
     ds = self._distribution_strategy
     replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
-    return [ds.extended.worker_devices[replica_id]]
+    return (ds.extended.worker_devices[replica_id],)
