@@ -1584,9 +1584,9 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     for (const Edge* e : filter_node->out_edges()) {
       if ((e->dst()->type_string() == csinfo_.mkl_conv2d ||
            e->dst()->type_string() == csinfo_.mkl_pad_with_conv2d ||
-           e->dst()->type_string() == csinfo_.mkl_conv2d_with_bias || 
+           e->dst()->type_string() == csinfo_.mkl_conv2d_with_bias ||
            e->dst()->type_string() == csinfo_.mkl_fused_conv2d) &&
-           e->dst_input() == kConv2DFilterInputSlotIdx
+          e->dst_input() == kConv2DFilterInputSlotIdx
           /* filter is 2nd input of Conv2D and _MklConv2D. */) {
         if (conv2d_node != nullptr) {
           VLOG(1) << "MklLayoutRewritePass: unusual case of same filter"

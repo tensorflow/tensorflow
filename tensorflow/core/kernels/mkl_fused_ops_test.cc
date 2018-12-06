@@ -339,8 +339,8 @@ class FusedPadConvOpTest : public OpsTestBase {
     // Compare output to expected results
     const Tensor& first = *GetOutput(0);
     const Tensor& second = *GetOutput(2);
-    ConvMklToTF conv_comp;
-    conv_comp.ConvertAndCompare<T>(dtype, first, second, expected);
+    ConvMklToTF<T> conv_comp;
+    conv_comp.ConvertAndCompare(dtype, first, second, expected);
   }
 };
 
