@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+#include <set>
 
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -63,7 +64,7 @@ class PlatformUtil {
   //
   // If the platform has no visible devices, a not-found error is returned.
   static StatusOr<std::vector<se::StreamExecutor*>> GetStreamExecutors(
-      se::Platform* platform);
+      se::Platform* platform, std::set<int> allowed_devices = {-1});
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(PlatformUtil);

@@ -24,6 +24,7 @@ limitations under the License.
 
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
+#include <set>
 
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
@@ -123,6 +124,8 @@ class XlaDevice : public LocalDevice {
     // If padded_shape_fn is empty, a default implementation that returns
     // the logical on-device shape without padding is used.
     PaddedShapeFn padded_shape_fn;
+    // Set of allowed devices. -1 is all devices
+    std::set<int> allowed_devices = {-1};
   };
 
   // Creates a new XLA Device.
@@ -164,6 +167,7 @@ class XlaDevice : public LocalDevice {
   void SetRequiresSyncOnCompletion(bool sync_on_completion) LOCKS_EXCLUDED(mu_);
 
   bool RequiresSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
+
 
   // A simple RAII handle. On construction the device's
   // outstanding_asynchronous_operations_ field is incremented; on destruction
@@ -256,6 +260,9 @@ class XlaDevice : public LocalDevice {
   // completion.
   int64 outstanding_asynchronous_operations_ GUARDED_BY(mu_) = 0;
   condition_variable outstanding_asynchronous_operations_cv_;
+
+  // Set of allowed gpu devices at the time of construction.
+  std::set<int> allowed_devices_ = {-1};
 };
 
 // Builds OpKernel registrations on 'device' for the JIT operators

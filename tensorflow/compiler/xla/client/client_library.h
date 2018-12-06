@@ -25,6 +25,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <vector>
+#include <set>
 
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -45,7 +46,8 @@ class LocalClientOptions {
  public:
   LocalClientOptions(se::Platform* platform = nullptr,
                      int number_of_replicas = 1,
-                     int intra_op_parallelism_threads = -1);
+                     int intra_op_parallelism_threads = -1,
+                     std::set<int> device_set = {-1});
 
   // Set the platform backing the service, or nullptr for the default platform.
   LocalClientOptions& set_platform(se::Platform* platform);
@@ -60,10 +62,16 @@ class LocalClientOptions {
   LocalClientOptions& set_intra_op_parallelism_threads(int num_threads);
   int intra_op_parallelism_threads() const;
 
+  // Sets the allowed_devices set for creation of stream executors.
+  LocalClientOptions& set_allowed_devices(const std::set<int> device_set);
+
+  std::set<int> get_allowed_devices() const;
+
  private:
   se::Platform* platform_;
   int number_of_replicas_;
   int intra_op_parallelism_threads_;
+  std::set<int> allowed_devices_;
 };
 
 class ClientLibrary {
@@ -73,8 +81,10 @@ class ClientLibrary {
   //
   //   platform : The platform the underlying XLA service should target. If
   //     null then default platform is used.
+  //   device_set: Set of device IDs for which the stream executor will be created
+  //   for, for the given platform.
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
-      se::Platform* platform = nullptr);
+      se::Platform* platform = nullptr, const std::set<int> device_set = {-1});
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       const LocalClientOptions& options);
 
