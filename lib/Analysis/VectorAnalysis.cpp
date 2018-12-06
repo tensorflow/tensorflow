@@ -79,7 +79,7 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(ArrayRef<int> superShape,
 Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
                                                     VectorType subVectorType) {
   assert(superVectorType.getElementType() == subVectorType.getElementType() &&
-         "NYI: vector types must be of the same elemental type");
+         "vector types must be of the same elemental type");
   return shapeRatio(superVectorType.getShape(), subVectorType.getShape());
 }
 
@@ -197,9 +197,10 @@ bool mlir::matcher::operatesOnStrictSuperVectors(const OperationStmt &opStmt,
     superVectorType = write->getVectorType();
     mustDivide = true;
   } else if (opStmt.getNumResults() == 0) {
-    assert(opStmt.isa<ReturnOp>() &&
-           "NYI: assuming only return statements can have 0 results at this "
-           "point");
+    if (!opStmt.isa<ReturnOp>()) {
+      opStmt.emitError("NYI: assuming only return statements can have 0 "
+                       " results at this point");
+    }
     return false;
   } else if (opStmt.getNumResults() == 1) {
     if (auto v = opStmt.getResult(0)->getType().dyn_cast<VectorType>()) {
@@ -211,7 +212,7 @@ bool mlir::matcher::operatesOnStrictSuperVectors(const OperationStmt &opStmt,
   } else {
     // Not a vector_transfer and has more than 1 result, fail hard for now to
     // wake us up when something changes.
-    assert(false && "NYI: statement has more than 1 result");
+    opStmt.emitError("NYI: statement has more than 1 result");
     return false;
   }
 
@@ -220,7 +221,7 @@ bool mlir::matcher::operatesOnStrictSuperVectors(const OperationStmt &opStmt,
 
   // Sanity check.
   assert((ratio.hasValue() || !mustDivide) &&
-         "NYI: vector_transfer instruction in which super-vector size is not an"
+         "vector_transfer instruction in which super-vector size is not an"
          " integer multiple of sub-vector size");
 
   // This catches cases that are not strictly necessary to have multiplicity but
