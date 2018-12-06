@@ -1889,6 +1889,22 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "lu_op_test",
+    size = "small",
+    srcs = ["lu_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/ops/linalg",
+    ],
+)
+
+cuda_py_test(
     name = "manip_ops_test",
     size = "small",
     srcs = ["manip_ops_test.py"],
