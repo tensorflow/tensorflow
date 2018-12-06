@@ -21,6 +21,7 @@ from __future__ import print_function
 import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -29,7 +30,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import saver
 from tensorflow.python.util.tf_export import tf_export
 
