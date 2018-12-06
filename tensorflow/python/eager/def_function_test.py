@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -27,6 +28,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
@@ -106,6 +108,23 @@ class DefFunctionTest(test.TestCase):
 
     self.assertAllEqual(fn(constant_op.constant(1.0)), 2.0)
 
+  def testFunctionInitializationFunction(self):
+
+    state = []
+
+    @def_function.function
+    def fn(x):
+      if not state:
+        state.append(variables.Variable(2.0))
+      return state[0] * x
+
+    init_fn = fn.get_initialization_function(constant_op.constant(1.0))
+    self.assertEqual(len(state), 1)
+    self.assertFalse(
+        resource_variable_ops.var_is_initialized_op(state[0].handle))
+    init_fn()
+    self.assertEqual(state[0].numpy(), 2.0)
+
   def testVariableInitializerNotConstant(self):
 
     state = []
@@ -131,9 +150,9 @@ class DefFunctionTest(test.TestCase):
 
       result = fn(3.0)
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual(sess.run(state[0]), 2.0)
-      self.assertAllEqual(sess.run(result), 6.0)
+      self.assertAllEqual(self.evaluate(result), 6.0)
 
   def testLegacyGraphModeVariablesNonTrivialInitializer(self):
     with ops.Graph().as_default(), self.test_session() as sess:
@@ -150,9 +169,9 @@ class DefFunctionTest(test.TestCase):
 
       result = fn(3.0)
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual(sess.run(state[0]), 6.0)
-      self.assertAllEqual(sess.run(result), 18.0)
+      self.assertAllEqual(self.evaluate(result), 18.0)
 
   def testLegacyGraphModeInputDependentInitializerFails(self):
     with ops.Graph().as_default():
@@ -189,11 +208,36 @@ class DefFunctionTest(test.TestCase):
     m1 = MyModel()
     self.assertAllEqual(m1.apply(3.0), 6.0)
 
+  def test_functools_partial(self):
+    self.assertAllClose(
+        3.,
+        def_function.function(functools.partial(lambda x, y: x + y, 1.))(
+            constant_op.constant(2.)))
+
+  def test_unspecified_default_argument(self):
+    wrapped = def_function.function(
+        lambda x, y=2: x + y,
+        input_signature=[tensor_spec.TensorSpec((), dtypes.int32)])
+    self.assertEqual(3, wrapped(constant_op.constant(1)).numpy())
+
   def test_optimizer(self):
     x = constant_op.constant([[3., 4.]])
     y = constant_op.constant([2.])
     model = _ModelWithOptimizer()
     model(x, y)
+
+  def test_concrete_function_from_signature(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    def compute(x):
+      return 2. * x
+
+    concrete = compute.get_concrete_function()
+    self.assertAllClose(1., concrete(constant_op.constant(0.5)))
+    concrete = compute.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32))
+    self.assertAllClose(4., concrete(constant_op.constant(2.)))
 
 
 if __name__ == '__main__':

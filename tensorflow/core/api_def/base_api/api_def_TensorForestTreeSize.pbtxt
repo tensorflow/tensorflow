@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "TensorForestTreeSize"
+  visibility: HIDDEN
+  in_arg {
+    name: "tree_handle"
+    description: <<END
+Handle to the tree resource.
+END
+  }
+  out_arg {
+    name: "tree_size"
+    description: <<END
+The size of the tree.
+END
+  }
+  summary: "Get the number of nodes in a tree"
+}

@@ -1,11 +1,12 @@
-package(default_visibility = [
-    "//visibility:public",
-])
+package(
+    default_visibility = ["//visibility:public"],
+)
 
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts", "gen_selected_ops")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 exports_files(glob([
     "testdata/*.bin",
@@ -27,23 +28,30 @@ config_setting(
     },
 )
 
-# Enables inclusion of TensorFlow kernels via the TF Lite Flex delegate.
+# Enables inclusion of select TensorFlow kernels via the TF Lite Flex delegate.
 # WARNING: This build flag is experimental and subject to change.
 config_setting(
-    name = "with_tflite_flex",
-    define_values = {"with_tflite_flex": "true"},
+    name = "with_select_tf_ops",
+    define_values = {"with_select_tf_ops": "true"},
     visibility = ["//visibility:public"],
 )
+
+TFLITE_DEFAULT_COPTS = if_not_windows([
+    "-Wall",
+    "-Wno-comment",
+])
 
 cc_library(
     name = "schema_fbs_version",
     hdrs = ["version.h"],
+    copts = TFLITE_DEFAULT_COPTS,
 )
 
 cc_library(
     name = "arena_planner",
     srcs = ["arena_planner.cc"],
     hdrs = ["arena_planner.h"],
+    copts = TFLITE_DEFAULT_COPTS,
     deps = [
         ":graph_info",
         ":memory_planner",
@@ -57,12 +65,10 @@ cc_test(
     size = "small",
     srcs = ["arena_planner_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
         ":arena_planner",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
@@ -74,18 +80,21 @@ cc_test(
 cc_library(
     name = "context",
     hdrs = ["context.h"],
+    copts = TFLITE_DEFAULT_COPTS,
     deps = ["//tensorflow/lite/c:c_api_internal"],
 )
 
 cc_library(
     name = "graph_info",
     hdrs = ["graph_info.h"],
+    copts = TFLITE_DEFAULT_COPTS,
     deps = ["//tensorflow/lite/c:c_api_internal"],
 )
 
 cc_library(
     name = "memory_planner",
     hdrs = ["memory_planner.h"],
+    copts = TFLITE_DEFAULT_COPTS,
     deps = ["//tensorflow/lite/c:c_api_internal"],
 )
 
@@ -93,6 +102,7 @@ cc_library(
     name = "simple_memory_arena",
     srcs = ["simple_memory_arena.cc"],
     hdrs = ["simple_memory_arena.h"],
+    copts = TFLITE_DEFAULT_COPTS,
     deps = ["//tensorflow/lite/c:c_api_internal"],
 )
 
@@ -109,9 +119,9 @@ cc_library(
     hdrs = [
         "builtin_op_data.h",
         "builtin_ops.h",
-        "context.h",
         "context_util.h",
     ],
+    deps = ["//tensorflow/lite/c:c_api_internal"],
 )
 
 exports_files(["builtin_ops.h"])
@@ -121,9 +131,7 @@ cc_library(
     hdrs = [
         "string.h",
     ],
-    deps = [
-        "//tensorflow/core:lib_platform",
-    ],
+    copts = TFLITE_DEFAULT_COPTS,
 )
 
 # TODO(ahentz): investigate dependency on gemm_support requiring usage of tf_copts.
@@ -131,6 +139,7 @@ cc_library(
     name = "framework",
     srcs = [
         "allocation.cc",
+        "core/subgraph.cc",
         "graph_info.cc",
         "interpreter.cc",
         "model.cc",
@@ -155,6 +164,7 @@ cc_library(
         "allocation.h",
         "context.h",
         "context_util.h",
+        "core/subgraph.h",
         "error_reporter.h",
         "graph_info.h",
         "interpreter.h",
@@ -165,7 +175,7 @@ cc_library(
         "optional_debug_tools.h",
         "stderr_reporter.h",
     ],
-    copts = tflite_copts(),
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     linkopts = [
     ] + select({
         "//tensorflow:android": [
@@ -183,14 +193,14 @@ cc_library(
         ":string",
         ":util",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:api",
         "//tensorflow/lite/kernels:eigen_support",
         "//tensorflow/lite/kernels:gemm_support",
         "//tensorflow/lite/nnapi:nnapi_lib",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
-        ":with_tflite_flex": [
+        ":with_select_tf_ops": [
             "//tensorflow/lite/delegates/flex:delegate",
         ],
         "//conditions:default": [],
@@ -201,9 +211,10 @@ cc_library(
     name = "string_util",
     srcs = ["string_util.cc"],
     hdrs = ["string_util.h"],
+    copts = TFLITE_DEFAULT_COPTS,
     deps = [
-        ":framework",
         ":string",
+        "//tensorflow/lite/c:c_api_internal",
     ],
 )
 
@@ -214,6 +225,7 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -243,10 +255,8 @@ cc_test(
     name = "graph_info_test",
     size = "small",
     srcs = ["graph_info_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":framework",
-        ":string_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -295,7 +305,12 @@ tf_cc_test(
     data = [
         "testdata/multi_add_flex.bin",
     ],
-    tags = ["no_windows"],  # TODO(b/116667551): No weak symbols with MSVC.
+    tags = [
+        "no_gpu",  # GPU + flex is not officially supported.
+        "no_windows",  # TODO(b/116667551): No weak symbols with MSVC.
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":framework",
         "//tensorflow/lite/core/api",
@@ -311,7 +326,6 @@ cc_test(
     name = "mutable_op_resolver_test",
     size = "small",
     srcs = ["mutable_op_resolver_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":framework",
         "//tensorflow/lite/testing:util",
@@ -323,6 +337,7 @@ cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
+    copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
     ],
@@ -332,27 +347,9 @@ cc_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":util",
-        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/c:c_api_internal",
         "@com_google_googletest//:gtest",
     ],
 )
-
-# Test the serialization of a model with optional tensors.
-
-# Model tests
-
-#cc_library(
-#    name = "models_test_utils",
-#    testonly = 1,
-#    hdrs = ["models/test_utils.h"],
-#    deps = select({
-#        "//tensorflow:android": [],
-#        "//conditions:default": [
-#            "@com_google_absl//absl/strings",
-#            "//tensorflow/core:test",
-#        ],
-#    }),
-#)

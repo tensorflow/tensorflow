@@ -175,7 +175,7 @@ def f1_score(labels, predictions, weights=None, num_thresholds=200,
       return best_f1
 
     best_f1 = distribution_strategy_context.get_replica_context().merge_call(
-        f1_across_replicas, values)
+        f1_across_replicas, args=(values,))
 
     update_op = compute_best_f1_score(tp=update_ops['tp'], fp=update_ops['fp'],
                                       fn=update_ops['fn'], name='update')

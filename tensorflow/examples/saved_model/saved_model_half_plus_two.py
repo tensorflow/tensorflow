@@ -160,7 +160,7 @@ def _generate_saved_model_for_half_plus_two(export_dir,
 
       x2 = tf.identity(tf_example["x2"], name="x2")
       y3 = tf.add(tf.multiply(a, x2), c)
-      y2 = tf.identity(y3, name="y3")
+      y3 = tf.identity(y3, name="y3")
 
     # Create an assets file that can be saved and restored as part of the
     # SavedModel.

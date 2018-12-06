@@ -18,7 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/legacy_flags/xla_ops_common_flags.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -286,8 +286,10 @@ static Status CompileToLocalExecutable(
   // rather than a one-element tuple.
   compile_options.always_return_tuple = false;
 
-  return cache->Compile(options, function, constant_args, *variables, ctx,
-                        compile_options,
+  std::vector<XlaCompiler::Argument> args;
+  TF_RETURN_IF_ERROR(XlaComputationLaunchContext::BuildXlaCompilerArguments(
+      constant_args, *variables, ctx, &args));
+  return cache->Compile(options, function, args, compile_options,
                         lazy ? XlaCompilationCache::CompileMode::kLazy
                              : XlaCompilationCache::CompileMode::kStrict,
                         kernel, executable);
@@ -416,7 +418,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     cannot_compile_cluster = cannot_compile_cluster_;
   }
 
-  if (legacy_flags::GetXlaOpsCommonFlags().tf_xla_always_defer_compilation ||
+  if (GetXlaOpsCommonFlags().tf_xla_always_defer_compilation ||
       cannot_compile_cluster) {
     executable = nullptr;
   } else {

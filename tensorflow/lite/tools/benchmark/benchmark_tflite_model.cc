@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/logging.h"
 
 #ifdef GEMMLOWP_PROFILING
-#include "third_party/gemmlowp/profiling/profiler.h"
+#include "gemmlowp/profiling/profiler.h"
 #endif
 
 #ifdef TFLITE_CUSTOM_OPS_HEADER
@@ -181,7 +181,18 @@ bool PopulateInputLayerInfo(
   return true;
 }
 
-BenchmarkParams GetDefaultParams() {
+std::vector<int> TfLiteIntArrayToVector(const TfLiteIntArray* int_array) {
+  std::vector<int> values;
+  values.reserve(int_array->size);
+  for (size_t i = 0; i < int_array->size; i++) {
+    values.push_back(int_array->data[i]);
+  }
+  return values;
+}
+
+}  // namespace
+
+BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   BenchmarkParams default_params = BenchmarkModel::DefaultParams();
   default_params.AddParam("graph", BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("input_layer",
@@ -192,10 +203,8 @@ BenchmarkParams GetDefaultParams() {
   return default_params;
 }
 
-}  // namespace
-
 BenchmarkTfLiteModel::BenchmarkTfLiteModel()
-    : BenchmarkTfLiteModel(GetDefaultParams()) {}
+    : BenchmarkTfLiteModel(DefaultParams()) {}
 
 BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
     : BenchmarkModel(std::move(params)) {
@@ -250,12 +259,10 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
 void BenchmarkTfLiteModel::PrepareInputsAndOutputs() {
   auto interpreter_inputs = interpreter->inputs();
   // Set the values of the input tensors.
-  for (int j = 0; j < inputs.size(); ++j) {
-    const InputLayerInfo& input = inputs[j];
+  for (int j = 0; j < interpreter_inputs.size(); ++j) {
     int i = interpreter_inputs[j];
     TfLiteTensor* t = interpreter->tensor(i);
-    std::vector<int> sizes = input.shape;
-
+    std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
     // TODO(ahentz): below we ignore the O-th dimension (number of batches).
     if (t->type == kTfLiteFloat32) {
       FillRandomValue<float>(
@@ -279,7 +286,7 @@ void BenchmarkTfLiteModel::PrepareInputsAndOutputs() {
       FillRandomString(&buffer, sizes, []() {
         return "we're have some friends over saturday to hang out in the yard";
       });
-      buffer.WriteToTensor(interpreter->tensor(i));
+      buffer.WriteToTensor(interpreter->tensor(i), /*new_shape=*/nullptr);
     } else {
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
                         << " of type " << t->type;
@@ -319,6 +326,7 @@ void BenchmarkTfLiteModel::Init() {
   bool use_nnapi = params_.Get<bool>("use_nnapi");
 
   interpreter->UseNNAPI(use_nnapi);
+  ApplyDelegates();
 
   auto interpreter_inputs = interpreter->inputs();
 

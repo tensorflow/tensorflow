@@ -46,6 +46,28 @@ if six.PY2:
   SPECIAL_BUILTINS['xrange'] = xrange
 
 
+def islambda(f):
+  if not tf_inspect.isfunction(f):
+    return False
+  if not hasattr(f, '__name__'):
+    return False
+  return f.__name__ == '<lambda>'
+
+
+def isnamedtuple(f):
+  """Returns True if the argument is a namedtuple-like."""
+  if not (tf_inspect.isclass(f) and issubclass(f, tuple)):
+    return False
+  if not hasattr(f, '_fields'):
+    return False
+  fields = getattr(f, '_fields')
+  if not isinstance(fields, tuple):
+    return False
+  if not all(isinstance(f, str) for f in fields):
+    return False
+  return True
+
+
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
   if f in SPECIAL_BUILTINS.values():
@@ -186,7 +208,7 @@ def getmethodclass(m):
 
   # Instance method and class methods: should be bound to a non-null "self".
   if hasattr(m, '__self__'):
-    if m.__self__:
+    if m.__self__ is not None:
       # A fallback allowing methods to be actually bound to a type different
       # than __self__. This is useful when a strong reference from the method
       # to the object is not desired, for example when caching is involved.

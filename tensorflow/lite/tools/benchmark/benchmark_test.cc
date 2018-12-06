@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
 #include "tensorflow/lite/tools/benchmark/command_line_flags.h"
@@ -33,6 +34,7 @@ namespace {
 BenchmarkParams CreateParams() {
   BenchmarkParams params;
   params.AddParam("num_runs", BenchmarkParam::Create<int32_t>(2));
+  params.AddParam("min_secs", BenchmarkParam::Create<float>(1.0f));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
@@ -42,14 +44,55 @@ BenchmarkParams CreateParams() {
   params.AddParam("input_layer", BenchmarkParam::Create<std::string>(""));
   params.AddParam("input_layer_shape", BenchmarkParam::Create<std::string>(""));
   params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
+  params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
   return params;
 }
+
+class TestBenchmark : public BenchmarkTfLiteModel {
+ public:
+  explicit TestBenchmark(BenchmarkParams params)
+      : BenchmarkTfLiteModel(std::move(params)) {}
+  const tflite::Interpreter* GetInterpreter() { return interpreter.get(); }
+
+  void Prepare() { PrepareInputsAndOutputs(); }
+};
 
 TEST(BenchmarkTest, DoesntCrash) {
   ASSERT_THAT(g_model_path, testing::NotNull());
 
   BenchmarkTfLiteModel benchmark(CreateParams());
   benchmark.Run();
+}
+
+TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
+  ASSERT_THAT(g_model_path, testing::NotNull());
+
+  TestBenchmark benchmark(CreateParams());
+  benchmark.Init();
+  benchmark.Prepare();
+
+  auto interpreter = benchmark.GetInterpreter();
+  auto inputs = interpreter->inputs();
+  ASSERT_GE(inputs.size(), 1);
+  auto input_tensor = interpreter->tensor(inputs[0]);
+
+  std::vector<uint8_t> input_bytes;
+  input_bytes.reserve(input_tensor->bytes);
+  for (size_t i = 0; i < input_tensor->bytes; i++) {
+    input_bytes.push_back(input_tensor->data.b[i]);
+  }
+  benchmark.Prepare();
+
+  // Expect data is not the same.
+  EXPECT_EQ(input_bytes.size(), input_tensor->bytes);
+  bool is_same = true;
+  for (size_t i = 0; i < input_tensor->bytes; i++) {
+    if (input_bytes[i] != input_tensor->data.b[i]) {
+      is_same = false;
+      break;
+    }
+  }
+  EXPECT_FALSE(is_same);
 }
 
 }  // namespace

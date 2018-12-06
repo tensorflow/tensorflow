@@ -391,17 +391,6 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   return ShapeUtil::MakeShape(element_type, new_dimensions);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferAfterAllShape(
-    absl::Span<const Shape* const> arg_shapes) {
-  for (const Shape* arg_shape : arg_shapes) {
-    if (arg_shape->element_type() != TOKEN) {
-      return InvalidArgument(
-          "Operands of token instructions must be TOKEN types.");
-    }
-  }
-  return ShapeUtil::MakeTokenShape();
-}
-
 /* static */ StatusOr<Shape> ShapeInference::InferConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
   auto old_element_type = operand_shape.element_type();
@@ -1029,7 +1018,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   switch (opcode) {
     case HloOpcode::kTuple: {
       Shape result = ShapeUtil::MakeTupleShape({});
-      result.mutable_tuple_shapes()->Reserve(operand_shapes.size());
+      result.mutable_tuple_shapes()->reserve(operand_shapes.size());
       for (const Shape* shape : operand_shapes) {
         ShapeUtil::AppendShapeToTuple(*shape, &result);
       }
@@ -2031,6 +2020,25 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return operand_shape;
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferGetDimensionSizeShape(
+    const Shape& shape, int64 dimension) {
+  if (dimension < 0 || dimension >= ShapeUtil::Rank(shape)) {
+    return InvalidArgument("GetDimensionSize dimension out of bounds: %d.",
+                           dimension);
+  }
+
+  // TODO(b/119580730): Remove this restriction when very large dimension size
+  // is needed.
+  if (shape.dimensions(dimension) > std::numeric_limits<uint32>::max()) {
+    return InvalidArgument(
+        "GetDimensionSize's input shape is %s, the %dth dimension exceeds the "
+        "UINT_MAX limit.",
+        ShapeUtil::HumanString(shape), dimension);
+  }
+
+  return ShapeUtil::MakeShape(U32, {});
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferSliceShape(
     const Shape& arg, absl::Span<const int64> starts,
     absl::Span<const int64> limits, absl::Span<const int64> strides) {
@@ -2831,6 +2839,15 @@ Status ValidateScatterDimensionNumbers(
           "%d), got: %d.",
           operand_shape.dimensions_size(), inserted_dim);
     }
+  }
+
+  // Validate window size.
+  auto window_size = dim_numbers.update_window_dims_size() +
+                     dim_numbers.inserted_window_dims_size();
+  if (window_size != ShapeUtil::Rank(operand_shape)) {
+    return InvalidArgument(
+        "Scatter op has window of size %d; doesn't match operand of rank %d.",
+        window_size, ShapeUtil::Rank(operand_shape));
   }
 
   // Validate scatter_dims_to_operand_dims in ScatterDimensionNumbers.

@@ -44,13 +44,11 @@ class CopyToDeviceNode : public EagerNode {
     TensorHandle* temp = nullptr;
     TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &temp));
     const Tensor* tensor = nullptr;
-    Device* device = nullptr;
-    Device* op_device = nullptr;
-    Status status = temp->TensorAndDevice(&tensor, &device, &op_device);
+    Status status = temp->Tensor(&tensor);
     // `temp` is a ready handle. So the following call should return OK.
     TF_DCHECK_OK(status) << status.error_message();
     DCHECK(tensor);
-    dst_->SetTensorAndDevice(*tensor, device, op_device);
+    dst_->SetTensor(*tensor);
     temp->Unref();
     return Status::OK();
   }

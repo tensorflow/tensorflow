@@ -18,14 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import os
+from absl.testing import parameterized
 
-from tensorflow.contrib.distribute.python import mirrored_strategy
+from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import multi_worker_test_base
-from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.estimator import model_fn as model_fn_lib
@@ -35,10 +37,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
-from tensorflow.python.training import device_util
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.util import nest
 
@@ -190,10 +192,10 @@ def _make_mirrored():
 
 class RegroupAndSelectDeviceTest(test.TestCase):
 
-  def _is_per_device(self, result, expected, klass=values.PerDevice):
+  def _is_per_replica(self, result, expected, klass=values.PerReplica):
     self.assertIsInstance(result, klass)
     # We canonicalize the devices to match the device strings returned
-    # by PerDevice, which also does device string canonicalization.
+    # by PerReplica, which also does device string canonicalization.
     devices = [device_util.canonicalize(_device_str(i))
                for i in range(len(expected))]
     self.assertEqual(set(devices), set(result.devices))
@@ -206,18 +208,18 @@ class RegroupAndSelectDeviceTest(test.TestCase):
                              _device_str(1): _nested_value("2")})
     self.assertIsInstance(result, tuple)
     self.assertEqual(3, len(result))
-    self._is_per_device(result[0], ["a1", "a2"])
-    self._is_per_device(result[2], ["h1", "h2"])
+    self._is_per_replica(result[0], ["a1", "a2"])
+    self._is_per_replica(result[2], ["h1", "h2"])
 
     self.assertIsInstance(result[1], list)
     self.assertEqual(3, len(result[1]))
-    self._is_per_device(result[1][0], ["b1", "b2"])
-    self._is_per_device(result[1][2], ["g1", "g2"])
+    self._is_per_replica(result[1][0], ["b1", "b2"])
+    self._is_per_replica(result[1][2], ["g1", "g2"])
 
     self.assertIsInstance(result[1][1], dict)
     self.assertEqual(set(["c", "e"]), set(result[1][1].keys()))
-    self._is_per_device(result[1][1]["c"], ["d1", "d2"])
-    self._is_per_device(result[1][1]["e"], ["f1", "f2"])
+    self._is_per_replica(result[1][1]["c"], ["d1", "d2"])
+    self._is_per_replica(result[1][1]["e"], ["f1", "f2"])
 
     # Also test that we can undo the merge using select_device()
     self.assertEqual(_nested_value("1"),
@@ -238,18 +240,18 @@ class RegroupAndSelectDeviceTest(test.TestCase):
                             values.Mirrored)
     self.assertIsInstance(result, tuple)
     self.assertEqual(3, len(result))
-    self._is_per_device(result[0], ["a1", "a2"], values.Mirrored)
-    self._is_per_device(result[2], ["h1", "h2"], values.Mirrored)
+    self._is_per_replica(result[0], ["a1", "a2"], values.Mirrored)
+    self._is_per_replica(result[2], ["h1", "h2"], values.Mirrored)
 
     self.assertIsInstance(result[1], list)
     self.assertEqual(3, len(result[1]))
-    self._is_per_device(result[1][0], ["b1", "b2"], values.Mirrored)
-    self._is_per_device(result[1][2], ["g1", "g2"], values.Mirrored)
+    self._is_per_replica(result[1][0], ["b1", "b2"], values.Mirrored)
+    self._is_per_replica(result[1][2], ["g1", "g2"], values.Mirrored)
 
     self.assertIsInstance(result[1][1], dict)
     self.assertEqual(set(["c", "e"]), set(result[1][1].keys()))
-    self._is_per_device(result[1][1]["c"], ["d1", "d2"], values.Mirrored)
-    self._is_per_device(result[1][1]["e"], ["f1", "f2"], values.Mirrored)
+    self._is_per_replica(result[1][1]["c"], ["d1", "d2"], values.Mirrored)
+    self._is_per_replica(result[1][1]["e"], ["f1", "f2"], values.Mirrored)
 
     # Also test that we can undo the merge using select_device()
     self.assertEqual(_nested_value("1"),
@@ -275,7 +277,7 @@ class RegroupAndSelectDeviceTest(test.TestCase):
                              _device_str(1): ("b", foo)})
     self.assertIsInstance(result, tuple)
     self.assertEqual(2, len(result))
-    self._is_per_device(result[0], ["a", "b"])
+    self._is_per_replica(result[0], ["a", "b"])
     self.assertIs(foo, result[1])
 
     # Test select_device(), should undo the merge done by regroup().
@@ -325,68 +327,45 @@ class RegroupAndSelectDeviceTest(test.TestCase):
 
       self.assertTrue(
           isinstance(merged_estimator_spec, model_fn_lib.EstimatorSpec))
-      self.assertEquals(model_fn_lib.ModeKeys.TRAIN, merged_estimator_spec.mode)
+      self.assertEqual(model_fn_lib.ModeKeys.TRAIN, merged_estimator_spec.mode)
       for device_id in range(3):
         d = _device_str(device_id)
-        self.assertEquals(created_estimator_specs[device_id].loss,
-                          merged_estimator_spec.loss.get(d))
-        self.assertEquals(created_estimator_specs[device_id].train_op,
-                          merged_estimator_spec.train_op.get(d))
+        self.assertEqual(created_estimator_specs[device_id].loss,
+                         merged_estimator_spec.loss.get(d))
+        self.assertEqual(created_estimator_specs[device_id].train_op,
+                         merged_estimator_spec.train_op.get(d))
         # Scaffold is populated by `EstimatorSpec.__new__`.
-        self.assertEquals(created_estimator_specs[device_id].scaffold,
-                          merged_estimator_spec.scaffold.get(d))
+        self.assertEqual(created_estimator_specs[device_id].scaffold,
+                         merged_estimator_spec.scaffold.get(d))
         # Also test that we can undo the merge using select_device()
-        self.assertEquals(created_estimator_specs[device_id],
-                          values.select_device(_device_str(device_id),
-                                               merged_estimator_spec))
+        self.assertEqual(created_estimator_specs[device_id],
+                         values.select_device(_device_str(device_id),
+                                              merged_estimator_spec))
 
 
-class PerDeviceDatasetTest(test.TestCase):
+class PerReplicaDatasetTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
-  def _test_iterator_no_prefetch(self, devices, dataset, expected_values):
-    per_device_dataset = values.PerDeviceDataset(
-        dataset, devices, prefetch_on_device=False)
+  def _test_iterator(self, devices, dataset, expected_values):
+    per_replica_dataset = values.PerReplicaDataset(dataset, devices)
     if context.executing_eagerly():
-      iterator = per_device_dataset.make_one_shot_iterator()
+      iterator = per_replica_dataset.make_one_shot_iterator()
     else:
-      iterator = per_device_dataset.make_initializable_iterator()
+      iterator = per_replica_dataset.make_initializable_iterator()
       self.evaluate([iterator.initializer])
 
     for expected_value in expected_values:
       next_element = iterator.get_next()
-      actual = self.evaluate([
-          values.select_device(d, next_element) for d in devices])
-      self.assertEqual(expected_value, actual)
+      computed_value = self.evaluate(
+          [values.select_device(d, next_element) for d in devices])
+      self.assertEqual(expected_value, computed_value)
 
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
       self.evaluate([
           values.select_device(d, next_element) for d in devices])
-
-  def _test_iterator_with_prefetch(self, devices, dataset, expected_values):
-    if not context.executing_eagerly():
-      per_device_dataset = values.PerDeviceDataset(
-          dataset, devices, prefetch_on_device=True)
-      iterator = per_device_dataset.make_initializable_iterator()
-      self.evaluate([iterator.initializer])
-
-      for expected_value in expected_values:
-        next_element = iterator.get_next()
-        computed_value = self.evaluate(
-            [values.select_device(d, next_element) for d in devices])
-        self.assertEqual(expected_value, computed_value)
-
-      with self.assertRaises(errors.OutOfRangeError):
-        next_element = iterator.get_next()
-        self.evaluate([
-            values.select_device(d, next_element) for d in devices])
-
-  def _test_iterator(self, devices, dataset, expected_values):
-    self._test_iterator_no_prefetch(devices, dataset, expected_values)
-    self._test_iterator_with_prefetch(devices, dataset, expected_values)
 
   @test_util.run_in_graph_and_eager_modes
   def testOneDevice(self):
@@ -442,9 +421,8 @@ class PerDeviceDatasetTest(test.TestCase):
       dataset = dataset_ops.Dataset.from_tensor_slices(
           random_ops.random_uniform((10,)))
 
-      per_device_dataset = values.PerDeviceDataset(
-          dataset, devices, prefetch_on_device=False)
-      iterator = per_device_dataset.make_initializable_iterator()
+      per_replica_dataset = values.PerReplicaDataset(dataset, devices)
+      iterator = per_replica_dataset.make_initializable_iterator()
 
       self.evaluate(iterator.initializer)
       next_element = iterator.get_next()
@@ -463,7 +441,7 @@ class PerDeviceDatasetTest(test.TestCase):
 
 class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
 
-  def _test_iterator(self, iterator, devices, expected_values):
+  def _test_iterator(self, sess, iterator, devices, expected_values):
     next_element = iterator.get_next()
     for device in devices:
       v = values.select_device(device, next_element)
@@ -472,73 +450,79 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
         self.assertTrue(element.device in device)
 
     for expected_value in expected_values:
-      actual = self.evaluate(
+      actual = sess.run(
           [values.select_device(d, next_element) for d in devices])
       self.assertEqual(expected_value, actual)
 
     with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate([values.select_device(d, next_element) for d in devices])
+      sess.run([values.select_device(d, next_element) for d in devices])
 
-  def _test_dataset(self, dataset_fn, worker_device_map, devices,
-                    expected_values):
+  def _test_dataset(self, dataset_fn, worker_devices, devices,
+                    expected_values, auto_shard=True):
     multi_worker_dataset = values.MultiWorkerDataset(
-        dataset_fn, worker_device_map, prefetch_on_device=False)
-    multi_worker_iterator = multi_worker_dataset.make_one_shot_iterator()
-    self._test_iterator(multi_worker_iterator, devices, expected_values)
+        dataset_fn, worker_devices, auto_shard=auto_shard)
+    multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
+    with self.cached_session() as sess:
+      sess.run(multi_worker_iterator.initializer)
+      self._test_iterator(sess, multi_worker_iterator, devices, expected_values)
 
   def _cpu_devices(self):
-    worker_device_map = collections.OrderedDict(
-        [("/job:worker/replica:0/task:0",
-          ["/job:worker/replica:0/task:0/device:CPU:0"]),
-         ("/job:worker/replica:0/task:1",
-          ["/job:worker/replica:0/task:1/device:CPU:0"])])
+    worker_devices = [
+        ("/job:worker/replica:0/task:0",
+         ["/job:worker/replica:0/task:0/device:CPU:0"]),
+        ("/job:worker/replica:0/task:1",
+         ["/job:worker/replica:0/task:1/device:CPU:0"])]
     devices = [
         "/job:worker/replica:0/task:0/device:CPU:0",
         "/job:worker/replica:0/task:1/device:CPU:0"
     ]
-    return worker_device_map, devices
+    return worker_devices, devices
 
   def _cpu_and_one_gpu_devices(self):
-    # The worker_device_map doesn't have to be a OrderDict object, this is just
-    # to simplify the testing so that we can pass expected values as a list
-    # instead of a dict.
-    worker_device_map = collections.OrderedDict(
-        [("/job:worker/replica:0/task:0", [
+    worker_devices = [
+        ("/job:worker/replica:0/task:0", [
             "/job:worker/replica:0/task:0/device:GPU:0",
             "/job:worker/replica:0/task:0/device:CPU:0"
-        ]), ("/job:worker/replica:0/task:1", [
+        ]),
+        ("/job:worker/replica:0/task:1", [
             "/job:worker/replica:0/task:1/device:GPU:0",
             "/job:worker/replica:0/task:1/device:CPU:0"
-        ])])
+        ])
+    ]
     devices = [
         "/job:worker/replica:0/task:0/device:GPU:0",
         "/job:worker/replica:0/task:0/device:CPU:0",
         "/job:worker/replica:0/task:1/device:GPU:0",
         "/job:worker/replica:0/task:1/device:CPU:0"
     ]
-    return worker_device_map, devices
+    return worker_devices, devices
 
   def testDataDistributionOneDevicePerWorker(self):
-    self.skipTest("Temporarily disabled.")
-    worker_device_map, devices = self._cpu_devices()
+    worker_devices, devices = self._cpu_devices()
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
-      self._test_dataset(dataset_fn, worker_device_map, devices,
+      self._test_dataset(dataset_fn, worker_devices, devices,
                          [[0, 1], [2, 3], [4, 5], [6, 7]])
 
+  def testDataDistributionNoAutoShard(self):
+    worker_devices, devices = self._cpu_devices()
+    with context.graph_mode():
+      dataset_fn = lambda: dataset_ops.Dataset.range(4)
+      self._test_dataset(dataset_fn, worker_devices, devices,
+                         [[0, 0], [1, 1], [2, 2], [3, 3]],
+                         auto_shard=False)
+
   def testDataDistributionTwoDevicePerWorker(self):
-    self.skipTest("Temporarily disabled.")
     if context.num_gpus() < 1:
       self.skipTest("A GPU is not available for this test.")
-    worker_device_map, devices = self._cpu_and_one_gpu_devices()
+    worker_devices, devices = self._cpu_and_one_gpu_devices()
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
-      self._test_dataset(dataset_fn, worker_device_map, devices,
+      self._test_dataset(dataset_fn, worker_devices, devices,
                          [[0, 2, 1, 3], [4, 6, 5, 7]])
 
   def testTupleDataset(self):
-    self.skipTest("Temporarily disabled.")
-    worker_device_map, devices = self._cpu_devices()
+    worker_devices, devices = self._cpu_devices()
 
     with context.graph_mode():
 
@@ -550,47 +534,221 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
       expected_values = [
           [(i, i**2), (i + 1, (i + 1)**2)] for i in range(0, 8, 2)
       ]
-      self._test_dataset(dataset_fn, worker_device_map, devices,
+      self._test_dataset(dataset_fn, worker_devices, devices,
                          expected_values)
 
   def testInitializableIterator(self):
-    self.skipTest("Temporarily disabled.")
-    worker_device_map, devices = self._cpu_devices()
-    with context.graph_mode():
+    worker_devices, devices = self._cpu_devices()
+    with context.graph_mode(), self.cached_session() as sess:
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
       multi_worker_dataset = values.MultiWorkerDataset(
-          dataset_fn, worker_device_map, prefetch_on_device=False)
+          dataset_fn, worker_devices, auto_shard=True)
       multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
 
-      self.evaluate(multi_worker_iterator.initializer)
-      self._test_iterator(multi_worker_iterator, devices,
+      sess.run(multi_worker_iterator.initializer)
+      self._test_iterator(sess, multi_worker_iterator, devices,
                           [[0, 1], [2, 3], [4, 5], [6, 7]])
 
       # After re-initializing the iterator, should be able to iterate again.
-      self.evaluate(multi_worker_iterator.initializer)
-      self._test_iterator(multi_worker_iterator, devices,
+      sess.run(multi_worker_iterator.initializer)
+      self._test_iterator(sess, multi_worker_iterator, devices,
                           [[0, 1], [2, 3], [4, 5], [6, 7]])
 
   def testValueErrorForIterator(self):
-    self.skipTest("Temporarily disabled.")
     # Incompatiable arguments.
     with self.assertRaises(ValueError):
       values.MultiWorkerDataIterator({"w1": None}, {"w1": "d1", "w2": "d2"})
 
     # Test duplicated devices under same worker.
-    worker_device_map, _ = self._cpu_devices()
-    worker_device_map["/job:worker/replica:0/task:0"].append(
-        "/job:worker/replica:0/task:0/device:CPU:0")
+    worker_devices, _ = self._cpu_devices()
+    worker_devices[0][1].append("/job:worker/replica:0/task:0/device:CPU:0")
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
       multi_worker_dataset = values.MultiWorkerDataset(
-          dataset_fn, worker_device_map, prefetch_on_device=False)
+          dataset_fn, worker_devices, auto_shard=True)
       multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
       with self.assertRaises(ValueError):
         multi_worker_iterator.get_next()
 
 
-class MirroredVariableTest(test.TestCase):
+class InputIteratorTestBase(test.TestCase):
+
+  def _test_iterator(self, input_type, dataset_fn, worker_device_pairs,
+                     expected_values, sess=None, split_batch_by=None):
+    devices = nest.flatten([ds for _, ds in worker_device_pairs])
+
+    if input_type == "input_fn":
+      input_contexts = [
+          distribute_lib.InputContext() for _ in worker_device_pairs]
+      input_fn = lambda _: dataset_fn()
+      iterator = values.InputFunctionIterator(input_fn, worker_device_pairs,
+                                              input_contexts)
+    else:
+      iterator = values.DatasetIterator(dataset_fn(), worker_device_pairs,
+                                        split_batch_by)
+
+    evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
+
+    evaluate(control_flow_ops.group(iterator.initialize()))
+
+    for expected_value in expected_values:
+      next_element = iterator.get_next()
+      computed_value = evaluate(
+          [values.select_device(d, next_element) for d in devices])
+      self.assertAllEqual(expected_value, computed_value)
+
+    with self.assertRaises(errors.OutOfRangeError):
+      next_element = iterator.get_next()
+      evaluate([values.select_device(d, next_element) for d in devices])
+
+    # After re-initializing the iterator, should be able to iterate again.
+    evaluate(control_flow_ops.group(iterator.initialize()))
+
+    for expected_value in expected_values:
+      next_element = iterator.get_next()
+      computed_value = evaluate(
+          [values.select_device(d, next_element) for d in devices])
+      self.assertAllEqual(expected_value, computed_value)
+
+
+class InputIteratorSingleWorkerTest(InputIteratorTestBase,
+                                    parameterized.TestCase):
+
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["input_fn", "dataset"]))
+  def testOneDeviceCPU(self, input_type):
+    worker_device_pairs = [("", ["/device:CPU:0"])]
+    dataset_fn = lambda: dataset_ops.Dataset.range(10)
+
+    expected_values = [[i] for i in range(10)]
+
+    self._test_iterator(input_type, dataset_fn, worker_device_pairs,
+                        expected_values)
+
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["input_fn", "dataset"],
+      required_gpus=1))
+  def testTwoDevicesOneGPUOneCPU(self, input_type):
+    worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
+    dataset_fn = lambda: dataset_ops.Dataset.range(10)
+
+    expected_values = [[i, i+1] for i in range(0, 10, 2)]
+
+    self._test_iterator(input_type, dataset_fn, worker_device_pairs,
+                        expected_values)
+
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["input_fn", "dataset"],
+      required_gpus=1))
+  def testTupleDataset(self, input_type):
+    worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
+    def dataset_fn():
+      dataset1 = dataset_ops.Dataset.range(10)
+      dataset2 = dataset_ops.Dataset.range(10).map(lambda x: x**2)
+      return dataset_ops.Dataset.zip((dataset1, dataset2))
+
+    expected_values = [[(i, i**2), (i+1, (i+1)**2)] for i in range(0, 10, 2)]
+
+    self._test_iterator(input_type, dataset_fn, worker_device_pairs,
+                        expected_values)
+
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["input_fn", "dataset"],
+      required_gpus=1))
+  def testUnevenDatasetBatches(self, input_type):
+    worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
+    dataset_fn = lambda: dataset_ops.Dataset.range(11)
+
+    expected_values = [[i, i+1] for i in range(0, 10, 2)]
+    self._test_iterator(input_type, dataset_fn, worker_device_pairs,
+                        expected_values)
+
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["dataset"],
+      split_batch_by=[None, 2],
+      required_gpus=1))
+  def testBatchSplitting(self, input_type, split_batch_by):
+    worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
+    batch_size = 10
+    dataset_fn = lambda: dataset_ops.Dataset.range(100).batch(batch_size)
+
+    updated_batch_size = (
+        batch_size // split_batch_by if split_batch_by else batch_size)
+    expected_values = [[range(i, i+updated_batch_size),
+                        range(i+updated_batch_size, i+2*updated_batch_size)]
+                       for i in range(0, 100, updated_batch_size*2)]
+
+    self._test_iterator(input_type, dataset_fn, worker_device_pairs,
+                        expected_values, sess=None,
+                        split_batch_by=split_batch_by)
+
+
+class InputIteratorMultiWorkerTest(
+    multi_worker_test_base.MultiWorkerTestBase, InputIteratorTestBase,
+    parameterized.TestCase):
+
+  def _cpu_devices(self):
+    return [
+        ("/job:worker/replica:0/task:0",
+         ["/job:worker/replica:0/task:0/device:CPU:0"]),
+        ("/job:worker/replica:0/task:1",
+         ["/job:worker/replica:0/task:1/device:CPU:0"])]
+
+  def _cpu_and_one_gpu_devices(self):
+    return [
+        ("/job:worker/replica:0/task:0", [
+            "/job:worker/replica:0/task:0/device:GPU:0",
+            "/job:worker/replica:0/task:0/device:CPU:0"
+        ]),
+        ("/job:worker/replica:0/task:1", [
+            "/job:worker/replica:0/task:1/device:GPU:0",
+            "/job:worker/replica:0/task:1/device:CPU:0"
+        ])
+    ]
+
+  @combinations.generate(combinations.combine(
+      mode=["graph"],
+      input_type=["input_fn", "dataset"]))
+  def testOneDevicePerWorker(self, input_type):
+    worker_devices = self._cpu_devices()
+    with context.graph_mode(), self.cached_session() as sess:
+      dataset_fn = lambda: dataset_ops.Dataset.range(4)
+      self._test_iterator(input_type, dataset_fn, worker_devices,
+                          [[0, 0], [1, 1], [2, 2], [3, 3]], sess)
+
+  @combinations.generate(combinations.combine(
+      mode=["graph"],
+      input_type=["input_fn", "dataset"],
+      required_gpus=1))
+  def testTwoDevicesPerWorker(self, input_type):
+    worker_devices = self._cpu_and_one_gpu_devices()
+    with context.graph_mode(), self.cached_session() as sess:
+      dataset_fn = lambda: dataset_ops.Dataset.range(4)
+      self._test_iterator(input_type, dataset_fn, worker_devices,
+                          [[0, 1, 0, 1], [2, 3, 2, 3]], sess)
+
+  @combinations.generate(combinations.combine(
+      mode=["graph"],
+      input_type=["input_fn", "dataset"]))
+  def testTupleDataset(self, input_type):
+    worker_devices = self._cpu_devices()
+    with context.graph_mode(), self.cached_session() as sess:
+      def dataset_fn():
+        dataset1 = dataset_ops.Dataset.range(4)
+        dataset2 = dataset_ops.Dataset.range(4).map(lambda x: x**2)
+        return dataset_ops.Dataset.zip((dataset1, dataset2))
+
+      expected_values = [[(i, i**2), (i, i**2)] for i in range(0, 4)]
+      self._test_iterator(input_type, dataset_fn, worker_devices,
+                          expected_values, sess)
+
+
+class MirroredVariableTest(test.TestCase, parameterized.TestCase):
 
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
@@ -602,9 +760,9 @@ class MirroredVariableTest(test.TestCase):
 
     v, _, mirrored = _make_mirrored()
 
-    self.assertEquals(v[0].name, mirrored.name)
-    self.assertEquals(v[0].dtype, mirrored.dtype)
-    self.assertEquals(v[0].shape, mirrored.shape)
+    self.assertEqual(v[0].name, mirrored.name)
+    self.assertEqual(v[0].dtype, mirrored.dtype)
+    self.assertEqual(v[0].shape, mirrored.shape)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testVariableOnAnotherDevice(self):
@@ -614,9 +772,9 @@ class MirroredVariableTest(test.TestCase):
     mirrored = values.MirroredVariable(index, v,
                                        variable_scope.VariableAggregation.MEAN)
 
-    self.assertEquals(v.name, mirrored.name)
-    self.assertEquals(v.dtype, mirrored.dtype)
-    self.assertEquals(v.shape, mirrored.shape)
+    self.assertEqual(v.name, mirrored.name)
+    self.assertEqual(v.dtype, mirrored.dtype)
+    self.assertEqual(v.shape, mirrored.shape)
 
   def _assign_mirrored(self, devices, v, new):
     for d, var, n in zip(devices, v, new):
@@ -736,14 +894,13 @@ class MirroredVariableTest(test.TestCase):
     save_path = self._save_normal()
     self._restore_mirrored(save_path)
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testFetchAMirroredVariable(self):
-    if context.num_gpus() < 1 or context.executing_eagerly():
-      self.skipTest("A GPU is not available for this test or it's eager mode.")
-
-    with self.session(
-        graph=ops.Graph()) as sess, mirrored_strategy.MirroredStrategy(
-            ["/device:GPU:0"]).scope():
+  @combinations.generate(combinations.combine(
+      distribution=[
+          combinations.mirrored_strategy_with_one_gpu,
+          combinations.core_mirrored_strategy_with_one_gpu],
+      mode=["graph"]))
+  def testFetchAMirroredVariable(self, distribution):
+    with self.session(graph=ops.Graph()) as sess, distribution.scope():
       with ops.device("/device:GPU:0"):
         v = variable_scope.get_variable(
             name="v", initializer=1., use_resource=True)
@@ -769,7 +926,7 @@ def _make_replica_local(method):
   return v, replica_local
 
 
-class ReplicaLocalVariableTest(test.TestCase):
+class ReplicaLocalVariablePropertiesTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
@@ -778,15 +935,14 @@ class ReplicaLocalVariableTest(test.TestCase):
   def testProperties(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
-
     v, replica_local = _make_replica_local(
         variable_scope.VariableAggregation.SUM)
 
-    self.assertEquals(v[0].name, replica_local.name)
-    self.assertEquals(v[0].dtype, replica_local.dtype)
-    self.assertEquals(v[0].shape, replica_local.shape)
-    self.assertEquals(variable_scope.VariableAggregation.SUM,
-                      replica_local.aggregation)
+    self.assertEqual(v[0].name, replica_local.name)
+    self.assertEqual(v[0].dtype, replica_local.dtype)
+    self.assertEqual(v[0].shape, replica_local.shape)
+    self.assertEqual(variable_scope.VariableAggregation.SUM,
+                     replica_local.aggregation)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testVariableOnAnotherDevice(self):
@@ -796,11 +952,32 @@ class ReplicaLocalVariableTest(test.TestCase):
     replica_local = values.ReplicaLocalVariable(
         index, v, variable_scope.VariableAggregation.MEAN)
 
-    self.assertEquals(v.name, replica_local.name)
-    self.assertEquals(v.dtype, replica_local.dtype)
-    self.assertEquals(v.shape, replica_local.shape)
-    self.assertEquals(variable_scope.VariableAggregation.MEAN,
-                      replica_local.aggregation)
+    self.assertEqual(v.name, replica_local.name)
+    self.assertEqual(v.dtype, replica_local.dtype)
+    self.assertEqual(v.shape, replica_local.shape)
+    self.assertEqual(variable_scope.VariableAggregation.MEAN,
+                     replica_local.aggregation)
+
+  def testTensorConversion(self):
+    with context.graph_mode():
+      _, replica_local = _make_replica_local(
+          variable_scope.VariableAggregation.SUM)
+      converted = ops.internal_convert_to_tensor(replica_local, as_ref=False)
+      self.assertIsInstance(converted, ops.Tensor)
+      self.assertEqual(converted.dtype, replica_local.dtype)
+
+      converted = ops.internal_convert_to_tensor(replica_local, as_ref=True)
+      # Resources variable are converted to tensors as well when as_ref is True.
+      self.assertIsInstance(converted, ops.Tensor)
+      self.assertEqual(converted.dtype, replica_local.dtype)
+
+
+@combinations.generate(combinations.combine(
+    distribution=[
+        combinations.mirrored_strategy_with_gpu_and_cpu,
+        combinations.core_mirrored_strategy_with_gpu_and_cpu],
+    mode=["graph", "eager"]))
+class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
 
   def _assign_replica_local(self, devices, v, new):
     for d, var, n in zip(devices, v, new):
@@ -817,22 +994,15 @@ class ReplicaLocalVariableTest(test.TestCase):
     save_path, _ = self._save_return_saver(sess, var)
     return save_path
 
-  def _dist_scope(self):
-    return mirrored_strategy.MirroredStrategy(_devices).scope()
-
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveAndRestoreReplicaLocalSumOneGraph(self):
-    if context.num_gpus() < 1 and context.executing_eagerly():
-      self.skipTest("A GPU is not available for this test in eager mode.")
-
-    with self.cached_session(config=self.config) as sess:
+  def testSaveAndRestoreReplicaLocalSumOneGraph(self, distribution):
+    with self.cached_session() as sess:
       v, replica_local = _make_replica_local(
           variable_scope.VariableAggregation.SUM)
 
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [3., 4.])
 
-      with self._dist_scope():
+      with distribution.scope():
         # Saves the current value of v[0] + v[1], 7.
         save_path, saver = self._save_return_saver(sess, replica_local)
 
@@ -844,19 +1014,18 @@ class ReplicaLocalVariableTest(test.TestCase):
         saver.restore(sess, save_path)
         self.assertEqual([3.5, 3.5], self.evaluate([v[0], v[1]]))
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveAndRestoreReplicaLocalMeanOneGraph(self):
+  def testSaveAndRestoreReplicaLocalMeanOneGraph(self, distribution):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    with self.cached_session(config=self.config) as sess:
+    with self.cached_session() as sess:
       v, replica_local = _make_replica_local(
           variable_scope.VariableAggregation.MEAN)
 
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [3., 4.])
 
-      with self._dist_scope():
+      with distribution.scope():
         # Saves the current value of (v[0] + v[1])/2, 3.5.
         save_path, saver = self._save_return_saver(sess, replica_local)
 
@@ -867,7 +1036,7 @@ class ReplicaLocalVariableTest(test.TestCase):
         saver.restore(sess, save_path)
         self.assertEqual([3.5, 3.5], self.evaluate([v[0], v[1]]))
 
-  def _save_replica_local_mean(self):
+  def _save_replica_local_mean(self, distribution):
     """Save variables with mirroring, returns save_path."""
     with self.session(graph=ops.Graph()) as sess:
       v, replica_local = _make_replica_local(
@@ -876,7 +1045,7 @@ class ReplicaLocalVariableTest(test.TestCase):
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [3., 4.])
 
-      with self._dist_scope():
+      with distribution.scope():
         # Saves the current value of (v[0] + v[1])/2, 3.5
         save_path = self._save(sess, replica_local)
 
@@ -884,7 +1053,7 @@ class ReplicaLocalVariableTest(test.TestCase):
         self._assign_replica_local(_devices, v, [5., 6.])
     return save_path
 
-  def _save_replica_local_sum(self):
+  def _save_replica_local_sum(self, distribution):
     """Save variables with mirroring, returns save_path."""
     with self.session(graph=ops.Graph()) as sess:
       v, replica_local = _make_replica_local("sum")
@@ -892,7 +1061,7 @@ class ReplicaLocalVariableTest(test.TestCase):
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [1.5, 2.])
 
-      with self._dist_scope():
+      with distribution.scope():
         # Saves the current value of v[0] + v[1], 3.5
         save_path = self._save(sess, replica_local)
 
@@ -930,7 +1099,7 @@ class ReplicaLocalVariableTest(test.TestCase):
       saver.restore(sess, save_path)
       self.assertEqual(3.5, self.evaluate(var))
 
-  def _restore_replica_local_mean(self, save_path):
+  def _restore_replica_local_mean(self, save_path, distribution):
     """Restore to variables with mirroring in a fresh graph."""
     with self.session(graph=ops.Graph()) as sess:
       v, replica_local = _make_replica_local(
@@ -939,13 +1108,13 @@ class ReplicaLocalVariableTest(test.TestCase):
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [7., 8.])
 
-      with self._dist_scope():
+      with distribution.scope():
         # Restores the saved value of 3.5 to both variables.
         saver = saver_lib.Saver(var_list=[replica_local])
         saver.restore(sess, save_path)
         self.assertEqual([3.5, 3.5], self.evaluate([v[0], v[1]]))
 
-  def _restore_replica_local_sum(self, save_path):
+  def _restore_replica_local_sum(self, save_path, distribution):
     """Restore to variables with mirroring in a fresh graph."""
     with self.session(graph=ops.Graph()) as sess:
       v, replica_local = _make_replica_local(
@@ -954,72 +1123,35 @@ class ReplicaLocalVariableTest(test.TestCase):
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [7., 8.])
 
-      with self._dist_scope():
+      with distribution.scope():
         # Restores the saved value of 3.5 to both variables.
         saver = saver_lib.Saver(var_list=[replica_local])
         saver.restore(sess, save_path)
         self.assertEqual([1.75, 1.75], self.evaluate([v[0], v[1]]))
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveReplicaLocalRestoreReplicaLocalMean(self):
-    if context.num_gpus() < 1 and context.executing_eagerly():
-      self.skipTest("A GPU is not available for this test in eager mode.")
+  def testSaveReplicaLocalRestoreReplicaLocalMean(self, distribution):
+    save_path = self._save_replica_local_mean(distribution)
+    self._restore_replica_local_mean(save_path, distribution)
 
-    save_path = self._save_replica_local_mean()
-    self._restore_replica_local_mean(save_path)
+  def testSaveReplicaLocalRestoreReplicaLocalSum(self, distribution):
+    save_path = self._save_replica_local_sum(distribution)
+    self._restore_replica_local_sum(save_path, distribution)
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveReplicaLocalRestoreReplicaLocalSum(self):
-    if context.num_gpus() < 1 and context.executing_eagerly():
-      self.skipTest("A GPU is not available for this test in eager mode.")
-
-    save_path = self._save_replica_local_sum()
-    self._restore_replica_local_sum(save_path)
-
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveReplicaLocalMeanRestoreNormal(self):
-    if context.num_gpus() < 1 and context.executing_eagerly():
-      self.skipTest("A GPU is not available for this test in eager mode.")
-
-    save_path = self._save_replica_local_mean()
+  def testSaveReplicaLocalMeanRestoreNormal(self, distribution):
+    save_path = self._save_replica_local_mean(distribution)
     self._restore_normal(save_path)
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveReplicaLocalSumRestoreNormal(self):
-    if context.num_gpus() < 1 and context.executing_eagerly():
-      self.skipTest("A GPU is not available for this test in eager mode.")
-
-    save_path = self._save_replica_local_sum()
+  def testSaveReplicaLocalSumRestoreNormal(self, distribution):
+    save_path = self._save_replica_local_sum(distribution)
     self._restore_normal(save_path)
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveNormalRestoreReplicaLocalMean(self):
-    if context.num_gpus() < 1 and context.executing_eagerly():
-      self.skipTest("A GPU is not available for this test in eager mode.")
-
+  def testSaveNormalRestoreReplicaLocalMean(self, distribution):
     save_path = self._save_normal()
-    self._restore_replica_local_mean(save_path)
+    self._restore_replica_local_mean(save_path, distribution)
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveNormalRestoreReplicaLocalSum(self):
-    if context.num_gpus() < 1 and context.executing_eagerly():
-      self.skipTest("A GPU is not available for this test in eager mode.")
-
+  def testSaveNormalRestoreReplicaLocalSum(self, distribution):
     save_path = self._save_normal()
-    self._restore_replica_local_sum(save_path)
-
-  def testTensorConversion(self):
-    with context.graph_mode():
-      _, replica_local = _make_replica_local(
-          variable_scope.VariableAggregation.SUM)
-      converted = ops.internal_convert_to_tensor(replica_local, as_ref=False)
-      self.assertIsInstance(converted, ops.Tensor)
-      self.assertEqual(converted.dtype, replica_local.dtype)
-
-      converted = ops.internal_convert_to_tensor(replica_local, as_ref=True)
-      # Resources variable are converted to tensors as well when as_ref is True.
-      self.assertIsInstance(converted, ops.Tensor)
-      self.assertEqual(converted.dtype, replica_local.dtype)
+    self._restore_replica_local_sum(save_path, distribution)
 
 
 if __name__ == "__main__":

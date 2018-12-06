@@ -29,7 +29,7 @@ namespace {
 class WhileTransformerTest : public HloTestBase {
  protected:
   WhileTransformerTest()
-      : module_(CreateNewModule()),
+      : module_(CreateNewVerifiedModule()),
         induction_variable_shape_(ShapeUtil::MakeShape(S32, {})),
         data_shape_(ShapeUtil::MakeShape(F32, {8})),
         condition_result_shape_(ShapeUtil::MakeShape(PRED, {})) {}

@@ -160,11 +160,66 @@ class ConversionTest(test.TestCase):
                      program_ctx.dependency_cache[TestSubclass][-2].name)
 
   def test_entity_to_graph_lambda(self):
-    f = lambda a: a
+    b = 2
+    f = lambda x: b * x if x > 0 else -x
 
-    with self.assertRaises(NotImplementedError):
-      program_ctx = self._simple_program_ctx()
+    program_ctx = self._simple_program_ctx()
+    nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node, _ = nodes
+    self.assertIsInstance(fn_node, gast.Assign)
+    self.assertIsInstance(fn_node.value, gast.Lambda)
+    self.assertEqual('tf__lambda', name)
+    self.assertIs(ns['b'], b)
+
+  def test_entity_to_graph_multiple_lambdas(self):
+    a, b = 1, 2
+    f, _ = (lambda x: a * x, lambda y: b * y)
+
+    program_ctx = self._simple_program_ctx()
+    nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node, _ = nodes
+    self.assertIsInstance(fn_node, gast.Assign)
+    self.assertIsInstance(fn_node.value, gast.Lambda)
+    self.assertEqual('tf__lambda', name)
+    self.assertIs(ns['a'], a)
+
+  def test_entity_to_graph_multiple_lambdas_ambiguous_definitions(self):
+    a, b = 1, 2
+    f, _ = (lambda x: a * x, lambda x: b * x)
+
+    program_ctx = self._simple_program_ctx()
+    with self.assertRaises(ValueError):
       conversion.entity_to_graph(f, program_ctx, None, None)
+
+  def test_entity_to_graph_lambda_code_with_garbage(self):
+    # pylint:disable=g-long-lambda
+    f = (  # intentional wrap
+        lambda x: (x  # intentional wrap
+                   + 1),)[0]
+    # pylint:enable=g-long-lambda
+
+    program_ctx = self._simple_program_ctx()
+    nodes, name, _ = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node, _ = nodes
+    self.assertIsInstance(fn_node, gast.Assign)
+    self.assertIsInstance(fn_node.value, gast.Lambda)
+    self.assertEqual('tf__lambda', name)
+
+  def test_entity_to_graph_nested_functions(self):
+    b = 2
+
+    def f(x):
+      def g(x):
+        return b * x
+      return g(x)
+
+    program_ctx = self._simple_program_ctx()
+    nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node, _ = nodes
+    self.assertIsInstance(fn_node, gast.FunctionDef)
+    self.assertEqual(fn_node.name, 'tf__f')
+    self.assertEqual('tf__f', name)
+    self.assertIs(ns['b'], b)
 
   def test_ag_module_cached(self):
     def callee():

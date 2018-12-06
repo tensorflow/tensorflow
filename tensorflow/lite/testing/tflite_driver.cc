@@ -16,8 +16,10 @@ limitations under the License.
 
 #include <iostream>
 
+#include "absl/strings/escaping.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
+#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/split.h"
 
 namespace tflite {
@@ -75,6 +77,13 @@ class TfLiteDriver::Expectation {
     SetTensorData(values, &data_);
   }
 
+  template <>
+  void SetData<string>(const string& csv_values) {
+    string s = absl::HexStringToBytes(csv_values);
+    data_.raw = new char[s.size()];
+    memcpy(data_.raw, s.data(), s.size());
+  }
+
   bool Check(bool verbose, const TfLiteTensor& tensor) {
     switch (tensor.type) {
       case kTfLiteFloat32:
@@ -87,6 +96,8 @@ class TfLiteDriver::Expectation {
         return TypedCheck<uint8_t>(verbose, tensor);
       case kTfLiteBool:
         return TypedCheck<bool>(verbose, tensor);
+      case kTfLiteString:
+        return TypedCheck<string>(verbose, tensor);
       default:
         fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
         return false;
@@ -105,6 +116,7 @@ class TfLiteDriver::Expectation {
     if (tensor_size != num_elements_) {
       std::cerr << "Expected a tensor with " << num_elements_
                 << " elements, got " << tensor_size << std::endl;
+      std::cerr << "while checking tensor " << tensor.name << std::endl;
       return false;
     }
 
@@ -132,6 +144,46 @@ class TfLiteDriver::Expectation {
     return good_output;
   }
 
+  template <>
+  bool TypedCheck<string>(bool verbose, const TfLiteTensor& tensor) {
+    if (tensor.data.raw == nullptr) {
+      if (verbose) {
+        std::cerr << "  got empty string" << std::endl;
+      }
+      return false;
+    }
+    int expected_num_strings = GetStringCount(data_.raw);
+    int returned_num_strings = GetStringCount(tensor.data.raw);
+    if (expected_num_strings != returned_num_strings) {
+      if (verbose) {
+        std::cerr << "  string count differ: got " << returned_num_strings
+                  << ", but expected " << expected_num_strings << std::endl;
+      }
+      return false;
+    }
+    for (int i = 0; i < returned_num_strings; ++i) {
+      auto expected_ref = GetString(data_.raw, i);
+      auto returned_ref = GetString(tensor.data.raw, i);
+      if (expected_ref.len != returned_ref.len) {
+        if (verbose) {
+          std::cerr << "  index " << i << ": got string of size "
+                    << returned_ref.len << ", but expected size "
+                    << expected_ref.len << std::endl;
+        }
+        return false;
+      }
+      if (strncmp(expected_ref.str, returned_ref.str, returned_ref.len) != 0) {
+        if (verbose) {
+          std::cerr << "  index " << i << ": strings are different"
+                    << std::endl;
+        }
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   TfLitePtrUnion data_;
   size_t num_elements_;
 };
@@ -143,7 +195,12 @@ TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name)
   }
 }
 
-TfLiteDriver::~TfLiteDriver() {}
+TfLiteDriver::~TfLiteDriver() {
+  for (auto t : tensors_to_deallocate_) {
+    DeallocateStringTensor(t.second);
+  }
+  interpreter_.reset();
+}
 
 void TfLiteDriver::AllocateTensors() {
   if (must_allocate_tensors_) {
@@ -232,9 +289,19 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
       SetTensorData(values, &tensor->data);
       break;
     }
+    case kTfLiteString: {
+      string s = absl::HexStringToBytes(csv_values);
+
+      DeallocateStringTensor(tensors_to_deallocate_[id]);
+      AllocateStringTensor(id, s.size(), tensor);
+      memcpy(tensor->data.raw, s.data(), s.size());
+
+      break;
+    }
     default:
-      fprintf(stderr, "Unsupported type %d in SetInput\n", tensor->type);
-      Invalidate("Unsupported tensor data type");
+      Invalidate(absl::StrCat("Unsupported tensor type ",
+                              TfLiteTypeGetName(tensor->type),
+                              " in TfLiteDriver::SetInput"));
       return;
   }
 }
@@ -243,8 +310,7 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
   if (!IsValid()) return;
   auto* tensor = interpreter_->tensor(id);
   if (expected_output_.count(id) != 0) {
-    fprintf(stderr, "Overridden expectation for tensor %d\n", id);
-    Invalidate("Overridden expectation");
+    Invalidate(absl::StrCat("Overridden expectation for tensor '", id, "'"));
   }
   expected_output_[id].reset(new Expectation);
   switch (tensor->type) {
@@ -263,9 +329,13 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
     case kTfLiteBool:
       expected_output_[id]->SetData<bool>(csv_values);
       break;
+    case kTfLiteString:
+      expected_output_[id]->SetData<string>(csv_values);
+      break;
     default:
-      fprintf(stderr, "Unsupported type %d in SetExpectation\n", tensor->type);
-      Invalidate("Unsupported tensor data type");
+      Invalidate(absl::StrCat("Unsupported tensor type ",
+                              TfLiteTypeGetName(tensor->type),
+                              " in TfLiteDriver::SetExpectation"));
       return;
   }
 }

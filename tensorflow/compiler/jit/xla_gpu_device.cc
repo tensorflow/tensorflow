@@ -16,7 +16,10 @@ limitations under the License.
 // Registers the XLA_GPU device, which is an XlaDevice instantiation that runs
 // operators using XLA via the XLA "CUDA" (GPU) backend.
 
+#include <set>
 #include "absl/memory/memory.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
@@ -29,12 +32,12 @@ namespace tensorflow {
 class XlaGpuDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override;
+                       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
-Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
-                                          const string& name_prefix,
-                                          std::vector<Device*>* devices) {
+Status XlaGpuDeviceFactory::CreateDevices(
+    const SessionOptions& session_options, const string& name_prefix,
+    std::vector<std::unique_ptr<Device>>* devices) {
   XlaOpRegistry::DeviceRegistration registration;
   registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
   registration.autoclustering_policy =
@@ -52,25 +55,53 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
     return Status::OK();
   }
+  string allowed_gpus =
+      session_options.config.gpu_options().visible_device_list();
+  std::set<int> gpu_ids;
+  int num_visible_devices = platform.ValueOrDie()->VisibleDeviceCount();
+  if (allowed_gpus.empty()) {
+    for (int i = 0; i < num_visible_devices; ++i) {
+      gpu_ids.insert(i);
+    }
+  } else {
+    // For loop below is copied from gpu/gpu_device.cc. It validates
+    // the visible_device_list and populates gpu_ids set.
+    const std::vector<string> visible_devices =
+        absl::StrSplit(allowed_gpus, ',');
+    for (const string& platform_gpu_id_str : visible_devices) {
+      int32 platform_gpu_id;
+      if (!absl::SimpleAtoi(platform_gpu_id_str, &platform_gpu_id)) {
+        return errors::InvalidArgument(
+            "Could not parse entry in 'visible_device_list': '",
+            platform_gpu_id_str, "'. visible_device_list = ", allowed_gpus);
+      }
+      if (platform_gpu_id < 0 || platform_gpu_id >= num_visible_devices) {
+        return errors::InvalidArgument(
+            "'visible_device_list' listed an invalid GPU id '", platform_gpu_id,
+            "' but visible device count is ", num_visible_devices);
+      }
+      gpu_ids.insert(platform_gpu_id);
+    }
+  }
+  for (int i : gpu_ids) {
+    XlaDevice::Options options;
+    options.platform = platform.ValueOrDie();
+    options.device_name_prefix = name_prefix;
+    options.device_name = DEVICE_XLA_GPU;
+    options.device_ordinal = i;
+    options.compilation_device_name = DEVICE_GPU_XLA_JIT;
+    options.use_multiple_streams = true;
+    auto device = absl::make_unique<XlaDevice>(session_options, options);
 
-  XlaDevice::Options options;
-  options.platform = platform.ValueOrDie();
-  options.device_name_prefix = name_prefix;
-  options.device_name = DEVICE_XLA_GPU;
-  options.device_ordinal = 0;
-  options.compilation_device_name = DEVICE_GPU_XLA_JIT;
-  options.use_multiple_streams = false;
-  auto device = absl::make_unique<XlaDevice>(session_options, options);
+    Status status = device->UseGpuDeviceInfo();
+    if (!status.ok()) {
+      errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
+                              " device number ", i);
+      return status;
+    }
 
-  // TODO(b/78468222): Uncomment after fixing this bug
-  // status = device->UseGpuDeviceInfo();
-  // if (!status.ok()) {
-  //  errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
-  //                          " device");
-  //  return status;
-  // }
-
-  devices->push_back(device.release());
+    devices->push_back(std::move(device));
+  }
   return Status::OK();
 }
 

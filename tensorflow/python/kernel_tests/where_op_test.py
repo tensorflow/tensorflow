@@ -27,6 +27,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -41,11 +42,11 @@ class WhereOpTest(test.TestCase):
       ans = fn(x)
       self.assertEqual([None, x.ndim], ans.get_shape().as_list())
       if expected_err_re is None:
-        tf_ans = ans.eval()
+        tf_ans = self.evaluate(ans)
         self.assertAllClose(tf_ans, truth, atol=1e-10)
       else:
         with self.assertRaisesOpError(expected_err_re):
-          ans.eval()
+          self.evaluate(ans)
 
   def _testWrongNumbers(self, fn=array_ops.where):
     with self.session(use_gpu=True):
@@ -109,48 +110,63 @@ class WhereOpTest(test.TestCase):
   def testWrongNumbers(self):
     self._testWrongNumbers()
 
+  @test_util.run_deprecated_v1
   def testBasicVec(self):
     self._testBasicVec()
 
+  @test_util.run_deprecated_v1
   def testRandomVec(self):
     self._testRandomVec()
 
+  @test_util.run_deprecated_v1
   def testBasicMat(self):
     self._testBasicMat()
 
+  @test_util.run_deprecated_v1
   def testBasic3Tensor(self):
     self._testBasic3Tensor()
 
+  @test_util.run_deprecated_v1
   def testRandomBool(self):
     self._testRandom(np.bool)
 
+  @test_util.run_deprecated_v1
   def testRandomInt32(self):
     self._testRandom(np.int32)
 
+  @test_util.run_deprecated_v1
   def testRandomInt64(self):
     self._testRandom(np.int64)
 
+  @test_util.run_deprecated_v1
   def testRandomFloat(self):
     self._testRandom(np.float32)
 
+  @test_util.run_deprecated_v1
   def testRandomDouble(self):
     self._testRandom(np.float64)
 
+  @test_util.run_deprecated_v1
   def testRandomComplex64(self):
     self._testRandom(np.complex64)
 
+  @test_util.run_deprecated_v1
   def testRandomComplex128(self):
     self._testRandom(np.complex128)
 
+  @test_util.run_deprecated_v1
   def testRandomUint8(self):
     self._testRandom(np.uint8)
 
+  @test_util.run_deprecated_v1
   def testRandomInt8(self):
     self._testRandom(np.int8)
 
+  @test_util.run_deprecated_v1
   def testRandomInt16(self):
     self._testRandom(np.int16)
 
+  @test_util.run_deprecated_v1
   def testThreeArgument(self):
     self._testThreeArgument()
 
@@ -239,6 +255,7 @@ class WhereOpTest(test.TestCase):
       tf_val = self.evaluate(array_ops.where_v2(pred, x, y))
     self.assertAllClose(tf_val, np_val)
 
+  @test_util.run_deprecated_v1
   def testBatchSelect(self):
     x = np.array([[-2, 3, -1] * 64, [1, -3, -3] * 64] * 8192)  # [16384, 192]
     c_mat = np.array([[False] * 192, [True] * 192] * 8192)  # [16384, 192]

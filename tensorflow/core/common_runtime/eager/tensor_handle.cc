@@ -79,16 +79,6 @@ Status TensorHandle::Tensor(const tensorflow::Tensor** t) {
   return Status::OK();
 }
 
-Status TensorHandle::Device(tensorflow::Device** d) {
-  *d = device_;
-  return Status::OK();
-}
-
-Status TensorHandle::OpDevice(tensorflow::Device** d) {
-  *d = op_device_;
-  return Status::OK();
-}
-
 Status TensorHandle::TensorAndDevice(const tensorflow::Tensor** tensor,
                                      tensorflow::Device** device,
                                      tensorflow::Device** op_device) {
@@ -174,17 +164,12 @@ Status TensorHandle::RemoteAddress(int64* op_id, int32* output_num) {
   return Status::OK();
 }
 
-void TensorHandle::SetTensorAndDevice(const tensorflow::Tensor& tensor,
-                                      tensorflow::Device* device,
-                                      tensorflow::Device* op_device) {
+void TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
   mutex_lock l(ctx_mutex_);
-  DCHECK(node_id_ > 0 && !is_ready_)
-      << "SetTensorAndDevice should be only called  "
-      << "on non-ready handles.";
+  DCHECK(node_id_ > 0 && !is_ready_) << "SetTensor should be only called  "
+                                     << "on non-ready handles.";
   is_ready_ = true;
   tensor_ = tensor;
-  device_ = device;
-  op_device_ = op_device;
 }
 
 Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,

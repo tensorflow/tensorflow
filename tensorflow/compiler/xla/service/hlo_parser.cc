@@ -47,11 +47,11 @@ const double kF16max = 65504;
 
 // Creates and returns a schedule created using the order of the instructions in
 // the HloComputation::instructions() vectors in the module.
-HloSchedule ScheduleFromInstructionOrder(const HloModule* module) {
+HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
   HloSchedule schedule(module);
-  for (const HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations()) {
     if (!computation->IsFusionComputation()) {
-      for (const HloInstruction* instruction : computation->instructions()) {
+      for (HloInstruction* instruction : computation->instructions()) {
         schedule.GetOrCreateSequence(computation).push_back(instruction);
       }
     }
@@ -108,7 +108,7 @@ class HloParser {
   bool ParseInstructionList(HloComputation** computation,
                             const string& computation_name);
   bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
-  bool ParseInstruciontRhs(HloComputation::Builder* builder, const string& name,
+  bool ParseInstructionRhs(HloComputation::Builder* builder, const string& name,
                            LocTy name_loc);
   bool ParseControlPredecessors(HloInstruction* instruction);
   bool ParseLiteral(Literal* literal, const Shape& shape);
@@ -608,10 +608,10 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     *root_name = name;
   }
 
-  return ParseInstruciontRhs(builder, name, name_loc);
+  return ParseInstructionRhs(builder, name, name_loc);
 }
 
-bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
+bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
                                     const string& name, LocTy name_loc) {
   Shape shape;
   HloOpcode opcode;
@@ -848,6 +848,15 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
         instruction =
             builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
       }
+      break;
+    }
+    case HloOpcode::kAddDependency: {
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateAddDependency(operands[0], operands[1]));
       break;
     }
     case HloOpcode::kSort: {
@@ -1547,6 +1556,18 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
+    case HloOpcode::kGetDimensionSize:
+      optional<std::vector<tensorflow::int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateGetDimensionSize(
+              shape, operands[0], (*dimensions)[0]));
+      break;
   }
 
   instruction->SetAndSanitizeName(name);
@@ -2708,7 +2729,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
 
   // The str is expected to have 3 items, lhs, rhs, out, and it must look like
   // lhs_rhs->out, that is, the first separator is "_" and the second is "->".
-  std::vector<string> split1 = absl::StrSplit(str, "_");
+  std::vector<string> split1 = absl::StrSplit(str, '_');
   if (split1.size() != 2) {
     LOG(FATAL) << "expects 3 items: lhs, rhs, and output dims, but sees "
                << str;
@@ -3389,7 +3410,7 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
     // e.g.
     //
     //  f32[10] fusion(...), calls={...}
-    if (!ParseInstruciontRhs(&builder, module->name(), lexer_.GetLoc())) {
+    if (!ParseInstructionRhs(&builder, module->name(), lexer_.GetLoc())) {
       return false;
     }
   } else {

@@ -978,6 +978,26 @@ class Split
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class SplitV
+    : public BuiltinOperator<TensorFlowSplitVOperator, ::tflite::SplitVOptions,
+                             ::tflite::BuiltinOptions_SplitVOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateSplitVOptions(*builder, op.num_split);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->num_split = options.num_splits();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class StridedSlice
     : public BuiltinOperator<StridedSliceOperator,
                              ::tflite::StridedSliceOptions,
@@ -1218,6 +1238,66 @@ class Unpack : public BuiltinOperator<UnpackOperator, ::tflite::UnpackOptions,
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class LeakyRelu
+    : public BuiltinOperator<LeakyReluOperator, ::tflite::LeakyReluOptions,
+                             ::tflite::BuiltinOptions_LeakyReluOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateLeakyReluOptions(*builder, op.alpha);
+  }
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->alpha = options.alpha();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
+class SquaredDifference
+    : public BuiltinOperator<
+          SquaredDifferenceOperator, ::tflite::SquaredDifferenceOptions,
+          ::tflite::BuiltinOptions_SquaredDifferenceOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateSquaredDifferenceOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
+class MirrorPad
+    : public BuiltinOperator<MirrorPadOperator, ::tflite::MirrorPadOptions,
+                             ::tflite::BuiltinOptions_MirrorPadOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateMirrorPadOptions(
+        *builder, op.mode == MirrorPadMode::kReflect
+                      ? ::tflite::MirrorPadMode::MirrorPadMode_REFLECT
+                      : ::tflite::MirrorPadMode::MirrorPadMode_SYMMETRIC);
+  }
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->mode = options.mode() == ::tflite::MirrorPadMode::MirrorPadMode_REFLECT
+                   ? MirrorPadMode::kReflect
+                   : MirrorPadMode::kSymmetric;
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
     const string& tensorflow_node_def) {
   auto fbb = absl::make_unique<flexbuffers::Builder>();
@@ -1447,6 +1527,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                     OperatorType::kMaxPool));
   ops.push_back(
       MakeUnique<Mul>(::tflite::BuiltinOperator_MUL, OperatorType::kMul));
+
   ops.push_back(
       MakeUnique<Pad>(::tflite::BuiltinOperator_PAD, OperatorType::kPad));
   ops.push_back(
@@ -1483,6 +1564,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                     OperatorType::kSqueeze));
   ops.push_back(
       MakeUnique<Split>(::tflite::BuiltinOperator_SPLIT, OperatorType::kSplit));
+  ops.push_back(MakeUnique<SplitV>(::tflite::BuiltinOperator_SPLIT_V,
+                                   OperatorType::kSplitV));
   ops.push_back(MakeUnique<StridedSlice>(
       ::tflite::BuiltinOperator_STRIDED_SLICE, OperatorType::kStridedSlice));
   ops.push_back(MakeUnique<TopK_V2>(::tflite::BuiltinOperator_TOPK_V2,
@@ -1516,6 +1599,13 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                    OperatorType::kOneHot));
   ops.push_back(MakeUnique<Unpack>(::tflite::BuiltinOperator_UNPACK,
                                    OperatorType::kUnpack));
+  ops.push_back(MakeUnique<LeakyRelu>(::tflite::BuiltinOperator_LEAKY_RELU,
+                                      OperatorType::kLeakyRelu));
+  ops.push_back(MakeUnique<SquaredDifference>(
+      ::tflite::BuiltinOperator_SQUARED_DIFFERENCE,
+      OperatorType::kSquaredDifference));
+  ops.push_back(MakeUnique<MirrorPad>(::tflite::BuiltinOperator_MIRROR_PAD,
+                                      OperatorType::kMirrorPad));
 
   // Custom Operators.
   ops.push_back(
@@ -1526,11 +1616,11 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                                   OperatorType::kUnsupported,
                                                   enable_select_tf_ops));
 
-  // There operators are supported by Toco, but not by TF Lite, and has no
-  // attributes.
-  ops.push_back(
-      MakeUnique<SimpleOperator<AddNOperator>>("ADDN", OperatorType::kAddN));
-  // Simple Operators.
+  // SimpleOperator was designed to export CUSTOM TF Lite ops, but has since
+  // been modified to also export builtins. As TOCO evolved we added warnings
+  // when custom ops are exported but SimpleOperator bypasses thoses. To
+  // prevent user confusion we are settling on using SimpleOperator only for
+  // builtins.
   ops.push_back(MakeUnique<SimpleOperator<DequantizeOperator>>(
       "DEQUANTIZE", OperatorType::kDequantize));
   ops.push_back(
@@ -1600,7 +1690,10 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "SQUARE", OperatorType::kSquare));
   ops.push_back(MakeUnique<SimpleOperator<TensorFlowZerosLikeOperator>>(
       "ZEROS_LIKE", OperatorType::kZerosLike));
-
+  ops.push_back(
+      MakeUnique<SimpleOperator<AbsOperator>>("ABS", OperatorType::kAbs));
+  ops.push_back(
+      MakeUnique<SimpleOperator<FillOperator>>("FILL", OperatorType::kFill));
   return ops;
 }
 }  // namespace

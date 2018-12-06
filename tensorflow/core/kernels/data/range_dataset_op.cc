@@ -73,6 +73,14 @@ class RangeDatasetOp : public DatasetOpKernel {
                              step_, ")::Dataset");
     }
 
+    int64 Cardinality() const override {
+      if (step_ > 0) {
+        return std::max(0LL, (stop_ - start_ - 1) / step_ + 1);
+      } else {
+        return std::max(0LL, (start_ - stop_ - 1) / -step_ + 1);
+      }
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

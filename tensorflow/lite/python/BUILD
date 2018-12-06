@@ -89,6 +89,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/lite/toco:toco_flags_proto_py",
+        "//tensorflow/python:dtypes",
     ],
 )
 
@@ -103,6 +104,7 @@ py_library(
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/python:tensorflow_wrap_toco",
         "//tensorflow/lite/toco/python:toco_from_protos",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
     ],
 )

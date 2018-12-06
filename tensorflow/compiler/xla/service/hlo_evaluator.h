@@ -144,6 +144,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Operations that are type-agnostic or always return a specific type, such as
   // HandleIsFinite where boolean is always returned.
   //
+  Status HandleBitcast(HloInstruction* bitcast) override;
+
   Status HandleParameter(HloInstruction* parameter) override;
 
   Status HandleConstant(HloInstruction* constant) override;
@@ -180,7 +182,9 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
-  Status HandleAfterAll(HloInstruction* token) override;
+  Status HandleAfterAll(HloInstruction* after_all) override;
+
+  Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   Status HandleSort(HloInstruction* sort) override;
 
@@ -221,16 +225,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       const Literal& operand_literal) {
     const auto shape = instruction->shape();
     const auto* operand = instruction->operand(0);
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
-    // removed.
-    if (!ShapeUtil::SameDimensions(shape, operand->shape())) {
-      return Unimplemented(
-          "Implicit broadcasting is currently unsupported in HLO evaluator "
-          "Shape Mismatch: %s vs %s",
-          ShapeUtil::HumanString(shape),
-          ShapeUtil::HumanString(operand->shape()));
-    }
+    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
 
     Literal result(shape);
     TF_RETURN_IF_ERROR(

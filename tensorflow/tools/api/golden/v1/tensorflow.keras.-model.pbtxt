@@ -42,6 +42,14 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "metrics"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "metrics_names"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "name"
     mtype: "<type \'property\'>"
   }
@@ -70,6 +78,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "run_eagerly"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "state_updates"
     mtype: "<type \'property\'>"
   }
@@ -90,10 +102,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "uses_learning_phase"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "variables"
     mtype: "<type \'property\'>"
   }
@@ -110,12 +118,16 @@ tf_class {
     argspec: "args=[\'self\', \'losses\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "add_metric"
+    argspec: "args=[\'self\', \'value\', \'aggregation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "add_update"
     argspec: "args=[\'self\', \'updates\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "add_variable"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "add_weight"
@@ -230,6 +242,10 @@ tf_class {
     argspec: "args=[\'self\', \'x\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "reset_metrics"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "reset_states"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
@@ -251,7 +267,7 @@ tf_class {
   }
   member_method {
     name: "test_on_batch"
-    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'reset_metrics\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
   }
   member_method {
     name: "to_json"
@@ -263,6 +279,6 @@ tf_class {
   }
   member_method {
     name: "train_on_batch"
-    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\', \'reset_metrics\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\'], "
   }
 }

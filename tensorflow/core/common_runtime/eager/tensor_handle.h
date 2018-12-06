@@ -102,9 +102,9 @@ class TensorHandle : public core::RefCounted {
 
   Status Tensor(const tensorflow::Tensor** t);
 
-  Status Device(tensorflow::Device** d);
+  tensorflow::Device* device() const { return device_; }
 
-  Status OpDevice(tensorflow::Device** d);
+  tensorflow::Device* op_device() const { return op_device_; }
 
   Status TensorAndDevice(const tensorflow::Tensor** tensor,
                          tensorflow::Device** device,
@@ -121,9 +121,7 @@ class TensorHandle : public core::RefCounted {
 
   // Note that this can be called at most once, and only on non-ready handles,
   // and makes them ready.
-  void SetTensorAndDevice(const tensorflow::Tensor& tensor,
-                          tensorflow::Device* device,
-                          tensorflow::Device* op_device);
+  void SetTensor(const tensorflow::Tensor& tensor);
 
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                       TensorHandle** output);
@@ -173,11 +171,11 @@ class TensorHandle : public core::RefCounted {
   //
   // TODO(ashankar): Reference count TFE_Context to ensure that 'device_' of a
   // TFE_TensorHandle does not outlive the TFE_Context from which it came?
-  tensorflow::Device* device_;
+  tensorflow::Device* const device_;
 
   // Device in which the op producing this tensor was executed. Equals to
   // device_ for constant tensors.
-  tensorflow::Device* op_device_;
+  tensorflow::Device* const op_device_;
 
   // IDs required when this class is representing a remote tensor handle.
   const int64 remote_op_id_;

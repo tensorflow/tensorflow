@@ -80,7 +80,6 @@ class SubclassedKerasModel(keras.Model):
 
   def __init__(self, initializer="ones"):
     super(SubclassedKerasModel, self).__init__()
-    self._can_use_graph_functions = True
     self.layer_a = keras.layers.Dense(
         64, kernel_initializer=initializer, bias_initializer="zeros")
     self.layer_b = keras.layers.Dense(
@@ -223,6 +222,18 @@ class MicroBenchmarks(test.Benchmark):
       return
     self._benchmark_create_tensor(
         np.array([[3]], dtype=np.int32), dtypes.int32.as_datatype_enum, GPU)
+
+  def benchmark_index_tensor_with_literal(self):
+    func = lambda: constant_op.constant([3.0])[0]
+    self._run(func, 30000)
+
+  def benchmark_index_tensor_with_tensor(self):
+    func = lambda idx=constant_op.constant(0): constant_op.constant([3.0])[idx]
+    self._run(func, 30000)
+
+  def benchmark_index_tensor_with_np_array(self):
+    func = lambda idx=np.array(0): constant_op.constant([3.0])[idx]
+    self._run(func, 30000)
 
   def _benchmark_np_multiply(self, m, num_iters):
     a = m.cpu().numpy()
@@ -721,38 +732,38 @@ class MicroBenchmarks(test.Benchmark):
     assert np.equal(func(), make_keras_model()(data)).all()
     self._run(func, 30000)
 
-  def _benchmark_keras_model_fit(self, model):
+  def _benchmark_keras_model_fit(self, model, run_eagerly=False):
     data = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
     labels = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
     dataset = dataset_ops.Dataset.from_tensors((data, labels)).repeat()
     model.compile(
         gradient_descent.GradientDescentOptimizer(learning_rate=0.001),
-        loss="mse")
+        loss="mse", run_eagerly=run_eagerly)
     func = lambda: model.fit(dataset, epochs=1, steps_per_epoch=1000, verbose=0)
     # First call is more expensive (creates variables etc.), discount that.
     model.fit(dataset, epochs=1, steps_per_epoch=1, verbose=0)
 
     self._run(func, 1)
 
-  def _benchmark_keras_model_evaluate(self, model):
+  def _benchmark_keras_model_evaluate(self, model, run_eagerly=False):
     data = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
     labels = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
     dataset = dataset_ops.Dataset.from_tensors((data, labels)).repeat()
     model.compile(
         gradient_descent.GradientDescentOptimizer(learning_rate=0.001),
-        loss="mse")
+        loss="mse", run_eagerly=run_eagerly)
     func = lambda: model.evaluate(dataset, steps=1000, verbose=0)
     # First call is more expensive (creates variables etc.), discount that.
     model.evaluate(dataset, steps=1, verbose=0)
 
     self._run(func, 1)
 
-  def _benchmark_keras_model_predict(self, model):
+  def _benchmark_keras_model_predict(self, model, run_eagerly=False):
     data = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
     dataset = dataset_ops.Dataset.from_tensors(tuple([data])).repeat()
     model.compile(
         gradient_descent.GradientDescentOptimizer(learning_rate=0.001),
-        loss="mse")
+        loss="mse", run_eagerly=run_eagerly)
     func = lambda: model.predict(dataset, steps=1000, verbose=0)
     # First call is more expensive (creates variables etc.), discount that.
     model.predict(dataset, steps=1, verbose=0)
@@ -768,10 +779,9 @@ class MicroBenchmarks(test.Benchmark):
       model = SubclassedKerasModel(initializer="glorot_uniform")
       self._benchmark_keras_model_fit(model)
 
-  def benchmark_keras_model_subclassed_fit_disable_defun(self):
+  def benchmark_keras_model_subclassed_fit_run_model_eagerly(self):
     model = SubclassedKerasModel(initializer="glorot_uniform")
-    model._can_use_graph_functions = False
-    self._benchmark_keras_model_fit(model)
+    self._benchmark_keras_model_fit(model, run_eagerly=True)
 
   def benchmark_keras_model_functional_fit(self):
     model = make_keras_model(initializer="glorot_uniform")
@@ -782,10 +792,9 @@ class MicroBenchmarks(test.Benchmark):
       model = make_keras_model(initializer="glorot_uniform")
       self._benchmark_keras_model_fit(model)
 
-  def benchmark_keras_model_functional_fit_disable_defun(self):
+  def benchmark_keras_model_functional_fit_run_model_eagerly(self):
     model = make_keras_model(initializer="glorot_uniform")
-    model._can_use_graph_functions = False
-    self._benchmark_keras_model_fit(model)
+    self._benchmark_keras_model_fit(model, run_eagerly=True)
 
   def benchmark_keras_model_sequential_fit(self):
     model = make_sequential_keras_model(initializer="glorot_uniform")
@@ -796,64 +805,57 @@ class MicroBenchmarks(test.Benchmark):
       model = make_sequential_keras_model(initializer="glorot_uniform")
       self._benchmark_keras_model_fit(model)
 
-  def benchmark_keras_model_sequential_fit_disable_defun(self):
+  def benchmark_keras_model_sequential_fit_run_model_eagerly(self):
     model = make_sequential_keras_model(initializer="glorot_uniform")
-    model._can_use_graph_functions = False
-    self._benchmark_keras_model_fit(model)
+    self._benchmark_keras_model_fit(model, run_eagerly=True)
 
   def benchmark_keras_model_subclassed_evaluate(self):
     model = SubclassedKerasModel(initializer="glorot_uniform")
     self._benchmark_keras_model_evaluate(model)
 
-  def benchmark_keras_model_subclassed_evaluate_disable_defun(self):
+  def benchmark_keras_model_subclassed_evaluate_run_model_eagerly(self):
     model = SubclassedKerasModel(initializer="glorot_uniform")
-    model._can_use_graph_functions = False
-    self._benchmark_keras_model_evaluate(model)
+    self._benchmark_keras_model_evaluate(model, run_eagerly=True)
 
   def benchmark_keras_model_functional_evaluate(self):
     model = make_keras_model(initializer="glorot_uniform")
     self._benchmark_keras_model_evaluate(model)
 
-  def benchmark_keras_model_functional_evaluate_disable_defun(self):
+  def benchmark_keras_model_functional_evaluate_run_model_eagerly(self):
     model = make_keras_model(initializer="glorot_uniform")
-    model._can_use_graph_functions = False
-    self._benchmark_keras_model_evaluate(model)
+    self._benchmark_keras_model_evaluate(model, run_eagerly=True)
 
   def benchmark_keras_model_sequential_evaluate(self):
     model = make_sequential_keras_model(initializer="glorot_uniform")
     self._benchmark_keras_model_evaluate(model)
 
-  def benchmark_keras_model_sequential_evaluate_disable_defun(self):
+  def benchmark_keras_model_sequential_evaluate_run_model_eagerly(self):
     model = make_sequential_keras_model(initializer="glorot_uniform")
-    model._can_use_graph_functions = False
-    self._benchmark_keras_model_evaluate(model)
+    self._benchmark_keras_model_evaluate(model, run_eagerly=True)
 
   def benchmark_keras_model_subclassed_predict(self):
     model = SubclassedKerasModel(initializer="glorot_uniform")
     self._benchmark_keras_model_predict(model)
 
-  def benchmark_keras_model_subclassed_predict_disable_defun(self):
+  def benchmark_keras_model_subclassed_predict_run_model_eagerly(self):
     model = SubclassedKerasModel(initializer="glorot_uniform")
-    model._can_use_graph_functions = False
-    self._benchmark_keras_model_predict(model)
+    self._benchmark_keras_model_predict(model, run_eagerly=True)
 
   def benchmark_keras_model_functional_predict(self):
     model = make_keras_model(initializer="glorot_uniform")
     self._benchmark_keras_model_predict(model)
 
-  def benchmark_keras_model_functional_predict_disable_defun(self):
+  def benchmark_keras_model_functional_predict_run_model_eagerly(self):
     model = make_keras_model(initializer="glorot_uniform")
-    model._can_use_graph_functions = False
-    self._benchmark_keras_model_predict(model)
+    self._benchmark_keras_model_predict(model, run_eagerly=True)
 
   def benchmark_keras_model_sequential_predict(self):
     model = make_sequential_keras_model(initializer="glorot_uniform")
     self._benchmark_keras_model_predict(model)
 
-  def benchmark_keras_model_sequential_predict_disable_defun(self):
+  def benchmark_keras_model_sequential_predict_run_model_eagerly(self):
     model = make_sequential_keras_model(initializer="glorot_uniform")
-    model._can_use_graph_functions = False
-    self._benchmark_keras_model_predict(model)
+    self._benchmark_keras_model_predict(model, run_eagerly=True)
 
   def benchmarkScan(self):
     elems = math_ops.range(1600)

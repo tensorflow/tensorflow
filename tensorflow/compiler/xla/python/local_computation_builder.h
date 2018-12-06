@@ -39,6 +39,12 @@ namespace swig {
 // returned.
 Status InitializeReplicaCount(int replica_count);
 
+// Initializes the platform name that XLA will be initialized with (when
+// first obtaining a handle to the local XLA service). If this is called after
+// the handle to the local XLA service has been established, then an error is
+// returned.
+Status InitializePlatformName(const string& platform_name);
+
 // Returns the replica count that is currently set, regardless of whether the
 // local XLA service has been instantiated yet or not.
 int GetReplicaCount();
@@ -65,7 +71,8 @@ StatusOr<Literal> TransferFromOutfeedLocalReplica(const Shape& shape,
 class LocalShapedBuffer {
  public:
   static StatusOr<LocalShapedBuffer*> FromLiteral(
-      const Literal& argument, const absl::optional<Shape>& shape_with_layout);
+      const Literal& argument, const absl::optional<Shape>& shape_with_layout,
+      int replica_number);
 
   LocalShapedBuffer(ScopedShapedBuffer shaped_buffer);
   StatusOr<Literal> ToLiteral() const;
@@ -168,6 +175,12 @@ class CompiledLocalComputation {
 
   StatusOr<LocalShapedBuffer*> Execute(
       absl::Span<LocalShapedBuffer* const> argument_handles);
+
+  // Execute on many replicas. Takes a sequence of argument lists (one argument
+  // list per replica) and returns a tuple of results (one result per replica).
+  // The number of argument lists must be equal to the replica count.
+  StatusOr<LocalShapedBufferTuple*> ExecutePerReplica(
+      absl::Span<const std::vector<LocalShapedBuffer*> > argument_handles);
 
  private:
   std::unique_ptr<LocalExecutable> executable_;
@@ -276,7 +289,8 @@ class LocalComputationBuilder {
   LocalOp Broadcast(const LocalOp& operand,
                     absl::Span<const int64> broadcast_sizes);
 
-  LocalOp BroadcastInDim(const LocalOp& operand, const Shape& shape,
+  LocalOp BroadcastInDim(const LocalOp& operand,
+                         absl::Span<const int64> out_dim_sizes,
                          absl::Span<const int64> broadcast_dimensions);
 
   LocalOp Pad(const LocalOp& operand, const LocalOp& padding_value,

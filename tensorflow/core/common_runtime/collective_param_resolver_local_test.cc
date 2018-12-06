@@ -37,8 +37,9 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     string task_name = "/job:localhost/replica:0/task:0";
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", NUM_DEVS});
-    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices_));
-    device_mgr_.reset(new DeviceMgr(devices_));
+    std::vector<std::unique_ptr<Device>> devices;
+    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
+    device_mgr_.reset(new DeviceMgr(std::move(devices)));
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
     prl_.reset(new CollectiveParamResolverLocal(device_mgr_.get(), drl_.get(),
                                                 task_name));
@@ -73,7 +74,6 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     }
   }
 
-  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<DeviceResolverLocal> drl_;
   std::unique_ptr<CollectiveParamResolverLocal> prl_;
@@ -200,28 +200,35 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
   }
 }
 
+void InitializeCollectiveParamsForBroadcast(int instance_key, int device_idx,
+                                            bool is_source,
+                                            CollectiveParams* cp) {
+  cp->group.group_key = 1;
+  cp->group.group_size = 3;
+  cp->group.device_type = DeviceType("CPU");
+  cp->group.num_tasks = 1;
+  cp->instance.instance_key = instance_key;
+  cp->instance.type = BROADCAST_COLLECTIVE;
+  cp->instance.data_type = DataType(DT_FLOAT);
+  cp->instance.shape = TensorShape({5});
+  cp->instance.device_names.push_back(strings::StrCat(
+      "/job:localhost/replica:0/task:0/device:CPU:", device_idx));
+  cp->instance.impl_details.subdiv_offsets.push_back(0);
+  cp->is_source = is_source;
+}
+
 TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
+  constexpr int kInstanceKey = 5;
   CollectiveParams cps[NUM_DEVS];
   Status statuses[NUM_DEVS];
   Notification note[NUM_DEVS];
   for (int i = 0; i < NUM_DEVS; ++i) {
     CollectiveParams* cp = &cps[i];
-    cp->group.group_key = 1;
-    cp->group.group_size = 3;
-    cp->group.device_type = DeviceType("CPU");
-    cp->group.num_tasks = 1;
-    cp->instance.instance_key = 3;
-    cp->instance.type = BROADCAST_COLLECTIVE;
-    cp->instance.data_type = DataType(DT_FLOAT);
-    cp->instance.shape = TensorShape({5});
-    cp->instance.device_names.push_back(
-        strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i));
-    cp->instance.impl_details.subdiv_offsets.push_back(0);
-    cp->is_source = (i == 1);
+    InitializeCollectiveParamsForBroadcast(kInstanceKey, i, i == 1, cp);
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
       prl_->CompleteParamsAsync(cp->instance.device_names[0], cp,
                                 nullptr /*CancellationManager*/,
-                                [this, &statuses, &note, i](const Status& s) {
+                                [&statuses, &note, i](const Status& s) {
                                   statuses[i] = s;
                                   note[i].Notify();
                                 });
@@ -242,6 +249,40 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
     EXPECT_EQ(cps[i].is_source, (i == 1));
     EXPECT_EQ(cps[i].default_rank, i);
     EXPECT_TRUE(cps[i].instance.same_num_devices_per_task);
+  }
+}
+
+// If we don't mark any participant in a broadcast as the source, we essentially
+// create a collective group with only broadcast recvs.  In that case, we should
+// get an internal error from param resolution.
+TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcastForgotSender) {
+  constexpr int kInstanceKey = 8;
+  CollectiveParams cps[NUM_DEVS];
+  Status statuses[NUM_DEVS];
+  Notification note[NUM_DEVS];
+  for (int i = 0; i < NUM_DEVS; ++i) {
+    CollectiveParams* cp = &cps[i];
+    InitializeCollectiveParamsForBroadcast(kInstanceKey, i, false, cp);
+    Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
+      prl_->CompleteParamsAsync(cp->instance.device_names[0], cp,
+                                nullptr /*CancellationManager*/,
+                                [&statuses, &note, i](const Status& s) {
+                                  statuses[i] = s;
+                                  note[i].Notify();
+                                });
+    });
+  }
+  for (int i = 0; i < NUM_DEVS; ++i) {
+    note[i].WaitForNotification();
+  }
+  for (int i = 0; i < NUM_DEVS; ++i) {
+    EXPECT_EQ(statuses[i].code(), error::INTERNAL);
+    EXPECT_EQ(statuses[i].error_message(),
+              strings::StrCat(
+                  "Instance ", kInstanceKey,
+                  " found no source for broadcast.  This could mean that there"
+                  " were group_size=",
+                  NUM_DEVS, " BcastRecvs but no BcastSend."));
   }
 }
 

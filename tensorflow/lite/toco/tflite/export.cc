@@ -126,7 +126,6 @@ OperatorKey::OperatorKey(
     type_ = builtin_ops.at(name);
     return;
   }
-
   // The logic below is all for custom ops or Flex ops.
   is_custom_op_ = true;
   type_ = BuiltinOperator_CUSTOM;
@@ -332,6 +331,11 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     std::set<int32_t>* variable_tensor_indices, const ExportParams& params) {
   variable_tensor_indices->clear();
 
+  auto is_tflite_builtin = [](const BaseOperator* op) {
+    const auto& tflite_builtins = GetBuiltinOpsMap();
+    return (op && tflite_builtins.find(op->name()) != tflite_builtins.end());
+  };
+
   // The operators are in execution order, so we just follow tf.mini order.
   std::vector<Offset<Operator>> op_vector;
   for (const auto& op : model.operators) {
@@ -360,7 +364,19 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     auto options = Options::Custom(0);
 
     std::vector<bool> mutating_input_variables;
-    if (tflite_op) {
+
+    // It is conceivable that an op is exportable via Serialize() but does not
+    // have a corresponding TFLITE builtin. In that case, when flex mode is
+    // enabled we should export it as a flex op, not as a native.
+    bool export_as_flex_op = !is_tflite_builtin(tflite_op) &&
+                             key.is_flex_op() &&
+                             !op->tensorflow_node_def.empty();
+    if (export_as_flex_op) {
+      auto fbb = WriteFlexOpOptions(op->tensorflow_node_def);
+      if (fbb) {
+        options = Options::Custom(builder->CreateVector(fbb->GetBuffer()));
+      }
+    } else if (tflite_op) {
       options = tflite_op->Serialize(*op, builder);
       mutating_input_variables = tflite_op->GetMutatingInputVariables(*op);
 
@@ -373,12 +389,13 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
           variable_tensor_indices->insert(variable_tensor_index);
         }
       }
-    } else if (key.is_flex_op() && !op->tensorflow_node_def.empty()) {
-      auto fbb = WriteFlexOpOptions(op->tensorflow_node_def);
-      if (fbb) {
-        options = Options::Custom(builder->CreateVector(fbb->GetBuffer()));
-      }
+    } else {
+      // We don't know much about this op. It doesn't have a serializer and
+      // it is not supposed to be exported as a flex op. We will treat it as
+      // a regular custom op: we will still create an operator for it, but it
+      // will not have any 'options'.
     }
+
     // The only supported CustomOptionFormat is FLEXBUFFERS now.
     op_vector.push_back(CreateOperator(
         *builder, op_index, builder->CreateVector(inputs),

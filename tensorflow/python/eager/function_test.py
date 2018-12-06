@@ -29,7 +29,6 @@ import numpy
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -48,7 +47,6 @@ from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -102,10 +100,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       _ = x * y
       return x + y
 
-    # The default config allows everything.
-    rewrites = rewriter_config_pb2.RewriterConfig()
+    # The default config allows all rewrites.
+    config_proto = config_pb2.ConfigProto()
 
-    with context.function_rewriter_config(rewrites):
+    with context.function_config_proto(config_proto):
       t = constant_op.constant(1.0)
       self.assertAllEqual(add(t, t).numpy(), 2.0)
 
@@ -149,31 +147,22 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     out = a_times_b(pair({'a': t}, {'b': t}))
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
-  def testGraphModeWithGradients(self):
-    v = resource_variable_ops.ResourceVariable(1.0, name='v')
+  def testNestedOutputsGraphMode(self):
+    matmul = def_function.function(math_ops.matmul)
 
-    @def_function.function
-    def step():
-      def inner():
-        return v * v
+    pair = collections.namedtuple('pair', ['a', 'b'])
 
-      return backprop.implicit_grad(inner)()[0][0]
+    @def_function.function()
+    def pairs_mul(pair_a, pair_b):
+      return pair(matmul(pair_a.a, pair_b.a), matmul(pair_a.b, pair_b.b))
 
-    self.assertAllEqual(step(), 2.0)
+    a = constant_op.constant([[1.0, 2.0], [1.0, 2.0]])
+    b = constant_op.constant([[3.0, 4.0], [3.0, 4.0]])
 
-  def testGraphGradientVariable(self):
-    with ops.Graph().as_default(), self.cached_session():
-      v = variables.Variable(1.0)
-
-      @def_function.function
-      def f():
-        return 2.0 * v
-
-      node = f()
-      grads, = gradients_impl.gradients(node, v)
-      v.initializer.run()
-      self.assertAllEqual(grads.eval(), 2.0)
-      self.assertEqual(grads.shape, v.shape)
+    out = pairs_mul(pair(a, b), pair(b, a))
+    expected = pair(math_ops.matmul(a, b).numpy(),
+                    math_ops.matmul(b, a).numpy())
+    self.assertAllClose(out, expected)
 
   def testGraphEagerIsolation(self):
 
@@ -190,7 +179,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testBasicGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
 
-    @function.defun
+    @def_function.function
     def sq(a):
       return matmul(a, a)
 
@@ -204,7 +193,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputSpecGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
 
-    @function.defun
+    @def_function.function
     def sq(a):
       return matmul(a, a)
 
@@ -223,7 +212,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testNestedInputSpecGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
 
-    @function.defun
+    @def_function.function
     def sq(mats):
       ((a, b),) = mats
       return matmul(a, b)
@@ -314,40 +303,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     random_seed.set_random_seed(1)
     self.assertAllEqual(f(), x)
 
-  def testSymGradGatherNd(self):
-    with ops.Graph().as_default(), self.cached_session() as sess:
-
-      @def_function.function
-      def f(x):
-        return array_ops.gather_nd(x, [[0]])
-
-      c = constant_op.constant([[2.]])
-      f_c = f(c)
-      g, = gradients_impl.gradients(f_c, c)
-      self.assertAllEqual(sess.run(g).values, [[1.0]])
-
-  def testNoSymGradNestedDefun(self):
-
-    @def_function.function
-    def outer():
-
-      @def_function.function
-      def f(x):
-        return array_ops.gather_nd(x, [[0]])
-
-      c = constant_op.constant([[2.]])
-      f_c = f(c)
-      g, = gradients_impl.gradients(f_c, c)
-      self.assertIsInstance(g, ops.IndexedSlices)
-
-    outer()
-
   def testNestedInputsGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
-    @function.defun
+    @def_function.function
     def a_times_b(inputs):
       return matmul(inputs.a['a'], inputs.b['b'])
 
@@ -362,7 +323,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testNestedOutputGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
 
-    @function.defun
+    @def_function.function
     def sq(a):
       return (matmul(a, a), {'b': constant_op.constant(1.0)})
 
@@ -378,23 +339,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(a, math_ops.matmul(t, t).numpy())
     self.assertAllEqual(b['b'].numpy(), 1.0)
 
-  def testGraphFunctionWithGradients(self):
-    v = resource_variable_ops.ResourceVariable(1.0, name='v')
-
-    @function.defun
-    def step():
-      def inner():
-        return v * v
-
-      return backprop.implicit_grad(inner)()[0][0]
-
-    step_op = step.get_concrete_function()
-    self.assertEqual(step_op.output_dtypes, dtypes.float32)
-    self.assertEqual(step_op.output_shapes, tensor_shape.TensorShape([]))
-    self.assertAllEqual(step_op(), 2.0)
-
   def testGraphFunctionNoneOutput(self):
-    @function.defun
+    @def_function.function
     def fn(unused_a, unused_b):
       return None
 
@@ -403,34 +349,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(fn_op.output_dtypes, None)
     self.assertEqual(fn_op.output_shapes, None)
     self.assertAllEqual(fn_op(x, x), None)
-
-  @test_util.run_in_graph_and_eager_modes()
-  def testDefunCondGradient(self):
-
-    @def_function.function
-    def f(x):
-      return control_flow_ops.cond(x > 0.5, lambda: 2 * x, lambda: 3 * x)
-
-    with backprop.GradientTape() as t:
-      x = constant_op.constant(1.0)
-      t.watch(x)
-      y = f(x)
-    self.assertAllEqual(self.evaluate(t.gradient(y, x)), 2.0)
-
-  @test_util.run_in_graph_and_eager_modes()
-  def testGraphLoopGradient(self):
-
-    @def_function.function
-    def f(x):
-      return control_flow_ops.while_loop(lambda _, i: i < 2,
-                                         lambda x, i: (2*x, i + 1),
-                                         [x, 0])[0]
-
-    with backprop.GradientTape() as t:
-      x = constant_op.constant(1.0)
-      t.watch(x)
-      y = f(x)
-    self.assertAllEqual(self.evaluate(t.gradient(y, x)), 4.0)
 
   def testDefunNumpyArraysConvertedToTensors(self):
 
@@ -625,27 +543,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(
         self.v, resource_variable_ops.ResourceVariable)
 
-  def testDefunDifferentiable(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
-
-    @def_function.function
-    def f():
-      return v * v
-
-    self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
-
-  def testDefunCanBeDifferentiatedTwice(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
-
-    @def_function.function
-    def f():
-      return v * v
-
-    self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
-    # Ensure that v is watched again.
-    self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
-
-  def testRunMetadata(self):
+  def disabled_testRunMetadata(self):
 
     @def_function.function
     def f(x):
@@ -683,23 +581,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       variables.global_variables_initializer().run()
       call = def_function.function(o.call)
       op = call()
-      self.assertAllEqual(sess.run(op), 2.0)
-
-  def testSymbolicGradientVariableNoneNotZerosLike(self):
-    with ops.Graph().as_default():
-      v = variables.Variable(1.0)
-
-      @def_function.function
-      def f(x, v):
-        v.read_value()
-        return x * x
-
-      x = constant_op.constant(1.0)
-      l = f(x, v)
-      _, dv = gradients_impl.gradients(l, [x, v])
-      with self.cached_session():
-        v.initializer.run()
-        self.assertEqual(dv, None)
+      self.assertAllEqual(self.evaluate(op), 2.0)
 
   def testGraphModeManyFunctions(self):
     with ops.Graph().as_default(), self.cached_session():
@@ -742,42 +624,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(8, g(constant_op.constant(2)))
 
-  def testDefunCallBackprop(self):
-
-    @def_function.function
-    def f(x):
-      return math_ops.add(x, x)
-
-    @def_function.function
-    def g(x):
-      return backprop.gradients_function(f, [0])(x)[0]
-
-    self.assertAllEqual(2, g(constant_op.constant(2.)))
-
-  def testGraphModeEagerGradError(self):
-    with context.graph_mode():
-      def f():
-        x = variable_scope.get_variable(
-            'v', initializer=constant_op.constant(1.0))
-        return x * constant_op.constant(2.0)
-
-      with self.assertRaisesRegexp(ValueError,
-                                   'No trainable variables were accessed'):
-        backprop.implicit_val_and_grad(f)()
-
-  def testDefunCallBackpropUsingSameObjectForMultipleArguments(self):
-
-    @def_function.function
-    def g(x):
-      return backprop.gradients_function(math_ops.multiply, [0, 1])(x, x)
-
-    def np_g(x):
-      return [d.numpy() for d in g(x)]
-
-    x = constant_op.constant(1.)
-    self.assertAllEqual([1., 1.], np_g(x))
-    self.assertAllEqual([1., 1.], np_g(1.))
-
   def testCallShape(self):
 
     @def_function.function
@@ -808,37 +654,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     g(three)
 
-  def testGradientTensorConversionWithDefun(self):
-    three = resource_variable_ops.ResourceVariable(3.0, name='v')
-
-    @def_function.function
-    def f(x):
-      return math_ops.add(x, three)
-
-    def g(x):
-      return f(x)
-
-    g = backprop.implicit_grad(g)(constant_op.constant(1.0))[0][0]
-    self.assertAllEqual(g, 1.0)
-
-  def testGradient(self):
-    matmul = def_function.function(math_ops.matmul)
-
-    def sq(x):
-      return matmul(x, x, transpose_a=True)
-
-    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-    grad_t, = backprop.gradients_function(sq, [0])(t)
-    self.assertAllEqual(grad_t, [[6, 6], [14, 14]])
-
-  def testGradientInFunction(self):
-
-    @def_function.function
-    def f(x):
-      return backprop.gradients_function(lambda y: y * y, [0])(x)[0]
-
-    self.assertAllEqual(f(constant_op.constant(1.0)), 2.0)
-
   def testGatherResourceWithDefun(self):
     with ops.device('cpu:0'):
       v = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
@@ -848,24 +663,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined = def_function.function(sum_gather)
     self.assertAllEqual(sum_gather(), defined())
-
-  def testGradientOfGatherWithDefun(self):
-    v = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
-
-    def sum_gather():
-      return math_ops.reduce_sum(array_ops.gather(v, [1, 2]))
-
-    grad_fn = backprop.implicit_grad(sum_gather)
-    gradient = grad_fn()
-    defun_grad_fn = backprop.implicit_grad(def_function.function(sum_gather))
-    defun_gradient = defun_grad_fn()
-    self.assertEqual(len(gradient), len(defun_gradient))
-
-    gradient = gradient[0][0]
-    defun_gradient = defun_gradient[0][0]
-    self.assertAllEqual(gradient.values, defun_gradient.values)
-    self.assertAllEqual(gradient.indices, defun_gradient.indices)
-    self.assertAllEqual(gradient.dense_shape, defun_gradient.dense_shape)
 
   def testReturningIndexedSlicesWithDefun(self):
 
@@ -968,7 +765,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       v_gpu = resource_variable_ops.ResourceVariable(
           [0.0, 1.0, 2.0], name='gpu')
 
-    @function.defun
+    @def_function.function
     def resource_apply_adam():
       training_ops.resource_apply_adam(
           v_cpu.handle,
@@ -1012,440 +809,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     shape = constant_op.constant([2, 1]).gpu()
     reshape(value, shape)  # No error is raised
 
-  def testDifferentiableFunctionNoneOutputs(self):
-
-    @def_function.function
-    def my_function(x):
-      return x, None
-
-    def wrapper(x):
-      return my_function(x)[0]
-
-    g = backprop.gradients_function(wrapper, [0])(constant_op.constant(0.0))
-    self.assertAllEqual(g[0], 1.)
-
-    @def_function.function
-    def foo(a):
-      return None, a * a
-
-    x = constant_op.constant(5.0)
-    with backprop.GradientTape() as tp:
-      tp.watch(x)
-      none, r = foo(x)
-    g = tp.gradient(r, x)
-
-    self.assertIs(none, None)
-    self.assertAllEqual(r, 25.0)
-    self.assertAllEqual(g, 2 * 5.0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testNestedDifferentiableFunction(self):
-    @function.defun
-    def inner_fn(a, b):
-      return a * math_ops.add(a, b)
-
-    @function.defun
-    def outer_fn(x):
-      return inner_fn(x, 1.0)
-
-    x = constant_op.constant(5.0)
-    with backprop.GradientTape() as tp:
-      tp.watch(x)
-      result = outer_fn(x)
-    grad = tp.gradient(result, x)
-
-    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testDeeplyNestedDifferentiableFunction(self):
-    @function.defun
-    def inner_inner_fn(a, b):
-      return math_ops.add(a, b)
-
-    @function.defun
-    def inner_fn(a, b):
-      return inner_inner_fn(a, b)
-
-    @function.defun
-    def middle_fn(a, b):
-      return a * inner_fn(a, b)
-
-    @function.defun
-    def outer_fn(x):
-      return middle_fn(x, 1.0)
-
-    x = constant_op.constant(5.0)
-    with backprop.GradientTape() as tp:
-      tp.watch(x)
-      result = outer_fn(x)
-    grad = tp.gradient(result, x)
-
-    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testDeeplyNestedDifferentiableFunctionWithMultipleGradCalls(self):
-    @function.defun
-    def inner_fn(a, b):
-      return math_ops.add(a, b)
-
-    @function.defun
-    def middle_fn(a, b):
-      return math_ops.mul(a, inner_fn(a, b))
-
-    @function.defun
-    def outer_fn(x):
-      return middle_fn(x, 3.0)
-
-    x = constant_op.constant(5.0)
-    self.assertAllEqual(outer_fn(x), 5.0 * (5.0 + 3.0))
-
-    with backprop.GradientTape() as tp:
-      tp.watch(x)
-      result = outer_fn(x)
-    grad = tp.gradient(result, x)
-
-    self.assertAllEqual(grad, 2 * 5.0 + 3.0)
-    self.assertAllEqual(outer_fn(x), 5.0 * (5.0 + 3.0))
-    self.assertAllEqual(middle_fn(3.0, x), 3.0 * (3.0 + 5.0))
-
-    with backprop.GradientTape() as tp:
-      tp.watch(x)
-      result = outer_fn(x)
-    grad = tp.gradient(result, x)
-
-    self.assertAllEqual(grad, 2 * 5.0 + 3.0)
-
-    y = constant_op.constant(4.0)
-    with backprop.GradientTape() as tp:
-      tp.watch(y)
-      result = outer_fn(y)
-    grad = tp.gradient(result, y)
-
-    self.assertAllEqual(grad, 2 * 4.0 + 3.0)
-
-    with backprop.GradientTape() as tp:
-      tp.watch(y)
-      result = inner_fn(y, y)
-    grad = tp.gradient(result, y)
-
-    self.assertAllEqual(grad, 2.0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testDeeplyNestedDifferentiableFunctionGradientTapeInDefun(self):
-    @function.defun
-    def inner_inner_fn(a, b):
-      return math_ops.add(a, b)
-
-    @function.defun
-    def inner_fn(a, b):
-      return inner_inner_fn(a, b)
-
-    @function.defun
-    def middle_fn(a, b):
-      return a * inner_fn(a, b)
-
-    @function.defun
-    def outer_fn(x):
-      with backprop.GradientTape() as tp:
-        tp.watch(x)
-        result = middle_fn(x, 1.0)
-      grad = tp.gradient(result, x)
-      return grad
-
-    x = constant_op.constant(5.0)
-    grad = outer_fn(x)
-    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testDeeplyNestedDifferentiableFunctionGradientTapeInNestedDefun(self):
-    @function.defun
-    def inner_inner_fn(a, b):
-      return math_ops.add(a, b)
-
-    @function.defun
-    def inner_fn(a, b):
-      return inner_inner_fn(a, b)
-
-    @function.defun
-    def middle_fn(a, b):
-      return a * inner_fn(a, b)
-
-    @function.defun
-    def almost_outer_fn(x):
-      with backprop.GradientTape() as tp:
-        tp.watch(x)
-        result = middle_fn(x, 1.0)
-      grad = tp.gradient(result, x)
-      return grad
-
-    @function.defun
-    def outer_fn(x):
-      return almost_outer_fn(x)
-
-    x = constant_op.constant(5.0)
-    grad = outer_fn(x)
-    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testDeeplyNestedDifferentiableFunctionGradientTapeInMultNestedDefun(self):
-    @function.defun
-    def inner_inner_fn(a, b):
-      return math_ops.add(a, b)
-
-    @function.defun
-    def inner_fn(a, b):
-      return inner_inner_fn(a, b)
-
-    @function.defun
-    def middle_fn(a, b):
-      return a * inner_fn(a, b)
-
-    @function.defun
-    def almost_outer_fn(x):
-      with backprop.GradientTape() as tp:
-        tp.watch(x)
-        result = middle_fn(x, 1.0)
-      grad = tp.gradient(result, x)
-      return grad
-
-    @function.defun
-    def outer_fn(x):
-      return almost_outer_fn(x)
-
-    @function.defun
-    def outer_outer_fn(x):
-      return outer_fn(x)
-
-    x = constant_op.constant(5.0)
-    grad = outer_outer_fn(x)
-    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testDeeplyNestedDifferentiableFunctionTFGradientInDefun(self):
-    @function.defun
-    def inner_inner_fn(a, b):
-      return math_ops.add(a, b)
-
-    @function.defun
-    def inner_fn(a, b):
-      return inner_inner_fn(a, b)
-
-    @function.defun
-    def middle_fn(a, b):
-      return a * inner_fn(a, b)
-
-    @function.defun
-    def outer_fn(x):
-      result = middle_fn(x, 1.0)
-      return gradients_impl.gradients(result, [x])[0]
-
-    x = constant_op.constant(5.0)
-    grad = outer_fn(x)
-    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testDeeplyNestedDifferentiableFunctionTFGradientInNestedDefun(self):
-    @function.defun
-    def inner_inner_fn(a, b):
-      return math_ops.add(a, b)
-
-    @function.defun
-    def inner_fn(a, b):
-      return inner_inner_fn(a, b)
-
-    @function.defun
-    def middle_fn(a, b):
-      return a * inner_fn(a, b)
-
-    @function.defun
-    def almost_outer_fn(x):
-      result = middle_fn(x, 1.0)
-      return gradients_impl.gradients(result, [x])[0]
-
-    @function.defun
-    def outer_fn(x):
-      return almost_outer_fn(x)
-
-    x = constant_op.constant(5.0)
-    grad = outer_fn(x)
-    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testDeeplyNestedDifferentiableFunctionTFGradientInMultNestedDefun(self):
-    @function.defun
-    def inner_inner_fn(a, b):
-      return math_ops.add(a, b)
-
-    @function.defun
-    def inner_fn(a, b):
-      return inner_inner_fn(a, b)
-
-    @function.defun
-    def middle_fn(a, b):
-      return a * inner_fn(a, b)
-
-    @function.defun
-    def almost_outer_fn(x):
-      result = middle_fn(x, 1.0)
-      return gradients_impl.gradients(result, [x])[0]
-
-    @function.defun
-    def outer_fn(x):
-      return almost_outer_fn(x)
-
-    @function.defun
-    def outer_outer_fn(x):
-      return outer_fn(x)
-
-    x = constant_op.constant(5.0)
-    grad = outer_outer_fn(x)
-    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
-
-  def testDeeplyNestedDifferentiableFunctionWithVariable(self):
-    var = variables.Variable(constant_op.constant(1.0))
-
-    @def_function.function
-    def inner_fn(a, b):
-      return math_ops.add(a, b)
-
-    @def_function.function
-    def middle_fn(a, b):
-      return a * inner_fn(a, b)
-
-    @def_function.function
-    def outer_fn(x):
-      return middle_fn(x, var)
-
-    x = constant_op.constant(5.0)
-    with backprop.GradientTape() as tp:
-      tp.watch(x)
-      result = outer_fn(x)
-    grad = tp.gradient(result, x)
-
-    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
-
-  def testDeeplyNestedDifferentiableFunctionWithVariableMultipleGradCalls(self):
-    v = variables.Variable(constant_op.constant(3.0))
-
-    @def_function.function
-    def inner_fn(a, b):
-      return math_ops.add(a, b)
-
-    @def_function.function
-    def middle_fn(a, b):
-      return math_ops.mul(a, inner_fn(a, b))
-
-    @def_function.function
-    def outer_fn(x):
-      return middle_fn(x, v)
-
-    x = constant_op.constant(5.0)
-    self.assertAllEqual(outer_fn(x), 5.0 * (5.0 + 3.0))
-
-    with backprop.GradientTape() as tp:
-      tp.watch(x)
-      result = outer_fn(x)
-    grad = tp.gradient(result, x)
-
-    self.assertAllEqual(grad, 2 * 5.0 + 3.0)
-    self.assertAllEqual(outer_fn(x), 5.0 * (5.0 + 3.0))
-    self.assertAllEqual(middle_fn(v, x), 3.0 * (3.0 + 5.0))
-
-    with backprop.GradientTape() as tp:
-      tp.watch(x)
-      result = outer_fn(x)
-    grad = tp.gradient(result, x)
-
-    self.assertAllEqual(grad, 2 * 5.0 + 3.0)
-
-    y = constant_op.constant(4.0)
-    with backprop.GradientTape() as tp:
-      tp.watch(y)
-      result = outer_fn(y)
-    grad = tp.gradient(result, y)
-
-    self.assertAllEqual(grad, 2 * 4.0 + 3.0)
-
-    v.assign(constant_op.constant(1.5))
-    with backprop.GradientTape() as tp:
-      tp.watch(y)
-      result = outer_fn(y)
-    grad = tp.gradient(result, y)
-
-    self.assertAllEqual(grad, 2 * 4.0 + 1.5)
-
-    with backprop.GradientTape() as tp:
-      tp.watch(y)
-      result = inner_fn(y, v)
-    grad = tp.gradient(result, y)
-
-    self.assertAllEqual(grad, 1.0)
-
-  def testDeeplyNestedDifferentiableFunctionWithVariableMultipleTFGrads(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(3.0)
-      v.initializer.run()
-
-      @def_function.function
-      def inner_fn(a, b):
-        return math_ops.add(a, b)
-
-      @def_function.function
-      def middle_fn(a, b):
-        return math_ops.mul(a, inner_fn(a, b))
-
-      @def_function.function
-      def outer_fn(x):
-        return middle_fn(x, v)
-
-      x = constant_op.constant(5.0)
-      self.assertAllEqual(outer_fn(x).eval(), 5.0 * (5.0 + 3.0))
-
-      grad, = gradients_impl.gradients(outer_fn(x), x)
-
-      self.assertAllEqual(grad, 2 * 5.0 + 3.0)
-      self.assertAllEqual(outer_fn(x), 5.0 * (5.0 + 3.0))
-      self.assertAllEqual(middle_fn(v, x), 3.0 * (3.0 + 5.0))
-
-      grad, = gradients_impl.gradients(outer_fn(x), x)
-
-      self.assertAllEqual(grad, 2 * 5.0 + 3.0)
-
-      y = constant_op.constant(4.0)
-      grad, = gradients_impl.gradients(outer_fn(y), y)
-      self.assertAllEqual(grad, 2 * 4.0 + 3.0)
-
-      self.evaluate(v.assign(constant_op.constant(1.5)))
-      grad, = gradients_impl.gradients(outer_fn(y), y)
-
-      self.assertAllEqual(grad, 2 * 4.0 + 1.5)
-
-      grad, = gradients_impl.gradients(inner_fn(y, v), y)
-      self.assertAllEqual(grad, 1.0)
-
-  def testNestedDifferentiableFunctionNoneOutputs(self):
-    @def_function.function
-    def foo(a, b):
-      return None, a * math_ops.add(a, b), None, 2*a
-
-    @def_function.function
-    def bar(x):
-      return foo(x, 1.0)
-
-    x = constant_op.constant(5.0)
-    with backprop.GradientTape(persistent=True) as tp:
-      tp.watch(x)
-      none1, r1, none2, r2 = bar(x)
-    g1 = tp.gradient(r1, x)
-    g2 = tp.gradient(r2, x)
-
-    self.assertAllEqual(r1, 30.0)
-    self.assertAllEqual(r2, 10.0)
-    self.assertIs(none1, None)
-    self.assertIs(none2, None)
-    self.assertAllEqual(g1, 2 * 5.0 + 1.0)
-    self.assertAllEqual(g2, 2.0)
-
   def testNoneOutput(self):
 
     @def_function.function
@@ -1461,7 +824,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def add(a, b):
       return math_ops.add(a, b)
 
-    @function.defun
+    @def_function.function
     def add_one(x):
       return add(x, 1)
 
@@ -1570,7 +933,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
 
-    self.assertAllEqual([[[[4.0]]]], self.evaluate(y))
+    self.assertAllClose([[[[4.0]]]], self.evaluate(y))
 
     # Remove reference cycles in model
     test_util.dismantle_polymorphic_function(model)
@@ -1675,7 +1038,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with ops.device('gpu:0'):
       y = constant_op.constant(1.0)
 
-    @function.defun
+    @def_function.function
     def foo():
       return test_ops.device_placement_op()
 
@@ -1925,8 +1288,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
-    with self.assertRaisesRegexp(ValueError,
-                                 'Structure of Python function inputs.*'):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Arguments and signature arguments do not match.*'):
       defined(array_ops.ones([2]), array_ops.ones([2]))
     with self.assertRaisesRegexp(ValueError,
                                  'Structure of Python function inputs.*'):
@@ -1945,10 +1309,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       else:
         return -1.0 * a
 
-    signature = [tensor_spec.TensorSpec([], dtypes.float32)] * 2
+    signature = [
+        tensor_spec.TensorSpec([], dtypes.float32),
+        tensor_spec.TensorSpec([], dtypes.bool),
+    ]
     defined = def_function.function(foo, input_signature=signature)
     a = constant_op.constant(1.0)
-    with self.assertRaises(TypeError):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'When input_signature is provided, all inputs to '
+        'the Python function must be Tensors.'):
       defined(a, training=True)
 
   def testInputSignatureWithKeywordPositionalArgs(self):
@@ -2038,33 +1408,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(five, 2.0)
     self.assertAllEqual(six, 2.0)
     self.assertAllEqual(seven, 2.0)
-
-  def testGradientWithKeywordArguments(self):
-    matmul = def_function.function(math_ops.matmul)
-
-    def sq(x):
-      return matmul(a=x, b=x, transpose_a=True)
-
-    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-    grad_t, = backprop.gradients_function(sq, [0])(t)
-    self.assertAllEqual(grad_t, [[6, 6], [14, 14]])
-
-    with backprop.GradientTape(persistent=True) as tape:
-      tape.watch(t)
-      one = matmul(t, b=t, transpose_a=True)
-      two = matmul(b=t, a=t, transpose_a=True)
-      three = matmul(a=t, b=t, transpose_a=True)
-
-    for output in [one, two, three]:
-      self.assertAllEqual(tape.gradient(output, t), [[6, 6], [14, 14]])
-
-  def testGradientInFunctionWithKeywordArguments(self):
-
-    @def_function.function
-    def f(x):
-      return backprop.gradients_function(lambda y: y * y, [0])(x)[0]
-
-    self.assertAllEqual(f(x=constant_op.constant(1.0)), 2.0)
 
   def testDefuningInstanceMethod(self):
 
@@ -2339,33 +1682,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # pylint: disable=protected-access
         self.assertEqual(len(graph._functions), 3)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testBackwardNone(self):
-    model = variables.Variable(1.0, name='model')
-    count = variables.Variable(0)
-
-    @function.defun
-    def forward_pass(value):
-      count.assign_add(1)
-      residuals = value - model
-      loss = 0.5 * math_ops.reduce_mean(math_ops.pow(residuals, 2))
-      # Note: count is an integer, so its doutput will be None
-      return loss, count
-
-    def reduce_fn(x):
-      if context.executing_eagerly():
-        with backprop.GradientTape() as t:
-          loss, count = forward_pass(x)
-        return t.gradient(loss, model), count
-      loss, count = forward_pass(x)
-      grad_only = gradients_impl.gradients(loss, model)
-      return grad_only, count
-
-    g, _ = reduce_fn(constant_op.constant([7.0]))
-
-    self.evaluate(variables.global_variables_initializer())
-    self.assertAllEqual(nest.flatten(self.evaluate(g)), [-6.0])
-
   def testCallingFunctionWithDifferentVariables(self):
 
     @function.defun
@@ -2403,8 +1719,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                                  'be Tensors;.*'):
       graph_function('Not a Tensor.')
 
-  # TODO(scottzhu): Revive the test once the grappler plugin is updated.
-  def disabled_testSwapImplementationWithGrapplerPlugin(self):
+  def testSwapImplementationWithGrapplerPlugin(self):
     rewrites = rewriter_config_pb2.RewriterConfig()
     # function_optimizer has to be turn off, otherwise it will delete the
     # registered function if it does not get called.
@@ -2441,7 +1756,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       function.register(cpu_boost, x)
       y = gpu_boost(x)
-      y_value = sess.run(y)
+      y_value = self.evaluate(y)
 
       if test.is_gpu_available():
         self.assertEqual(y_value, 5.0)
@@ -2721,293 +2036,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(
             5,
             add_five(constant_op.constant(0, dtype=dtypes.int32)).numpy())
-
-
-
-@parameterized.named_parameters(
-    dict(testcase_name='Defun', function_decorator=function.defun),
-    dict(testcase_name='DefFunction', function_decorator=def_function.function))
-class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
-  """Tests for recognizable export signatures from concrete functions."""
-
-  def testBasic(self, function_decorator):
-    @function_decorator
-    def fn(a, b):
-      return a + b, a * b
-    # Call the function to make def_function happy
-    fn(array_ops.ones([]), array_ops.ones([]))
-
-    fn_op = fn.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32))
-    self.assertEqual(
-        ['a', 'b'],
-        [inp.op.name for inp in fn_op.inputs])
-    self.assertEqual(
-        [b'a', b'b'],
-        [inp.op.get_attr('_user_specified_name') for inp in fn_op.inputs])
-    self.assertEqual(2, len(fn_op.graph.structured_outputs))
-    self.assertAllClose(
-        [3., 2.],
-        fn_op(constant_op.constant(1.), constant_op.constant(2.)))
-    self.assertAllClose(
-        [3., 2.],
-        fn_op(a=constant_op.constant(1.), b=constant_op.constant(2.)))
-
-  def testVariable(self, function_decorator):
-    @function_decorator
-    def fn(a, b):
-      return a + b, a * b
-    # Call the function to make def_function happy
-    fn(array_ops.ones([]), array_ops.ones([]))
-
-    fn_op = fn.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
-        variables.Variable(1.))
-    self.assertEqual(
-        ['a', 'b'],
-        [inp.op.name for inp in fn_op.inputs])
-    self.assertEqual(
-        [b'a', b'b'],
-        [inp.op.get_attr('_user_specified_name') for inp in fn_op.inputs])
-    self.assertEqual(2, len(fn_op.graph.structured_outputs))
-
-  def testDictReturned(self, function_decorator):
-    @function_decorator
-    def fn(x, z=(1., 2.), y=3.):
-      z1, z2 = z
-      return {'alpha': x + y + z1, 'beta': x * y + z2}
-    # Call the function to make def_function happy
-    fn(array_ops.ones([]))
-
-    fn_op = fn.get_concrete_function(
-        x=tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
-        y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32))
-    self.assertEqual(
-        ['x', 'y'],
-        [inp.op.name for inp in fn_op.inputs])
-    self.assertEqual(
-        [b'x', b'y'],
-        [inp.op.get_attr('_user_specified_name') for inp in fn_op.inputs])
-    self.assertEqual({'alpha', 'beta'},
-                     set(fn_op.graph.structured_outputs.keys()))
-
-    with self.assertRaisesRegexp(ValueError, "two arguments named 'z'"):
-      fn.get_concrete_function(
-          z=(tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
-             tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)),
-          y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32,
-                                   name='custom'),
-          x=4.)
-    fn_op2 = fn.get_concrete_function(
-        z=(tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32,
-                                  name='z_first'),
-           tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32,
-                                  name='z_second')),
-        y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='custom'),
-        x=4.)
-    self.assertEqual(
-        ['z_first', 'z_second', 'custom'],
-        [inp.op.name for inp in fn_op2.inputs])
-    self.assertEqual(
-        [b'z_first', b'z_second', b'custom'],
-        [inp.op.get_attr('_user_specified_name') for inp in fn_op2.inputs])
-
-    fn_op3 = fn.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='custom'),
-        z=(tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32,
-                                  name='z1'),
-           tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='z2')),
-        y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32))
-    self.assertEqual(
-        ['custom', 'z1', 'z2', 'y'],
-        [inp.op.name for inp in fn_op3.inputs])
-    self.assertEqual(
-        [b'custom', b'z1', b'z2', b'y'],
-        [inp.op.get_attr('_user_specified_name') for inp in fn_op3.inputs])
-
-  def testMethod(self, function_decorator):
-    class HasMethod(object):
-
-      @function_decorator
-      def method(self, x):
-        return x
-
-    has_method = HasMethod()
-    # Call the function to make def_function happy
-    HasMethod.method(has_method, array_ops.ones([]))
-    class_op = HasMethod.method.get_concrete_function(
-        has_method, tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32))
-    self.assertEqual(
-        ['x'],
-        [inp.op.name for inp in class_op.inputs])
-    self.assertEqual(
-        [b'x'],
-        [inp.op.get_attr('_user_specified_name') for inp in class_op.inputs])
-    # Call the function to make def_function happy
-    has_method.method(array_ops.ones([]))
-    method_op = has_method.method.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32))
-    self.assertEqual(
-        ['x'],
-        [inp.op.name for inp in method_op.inputs])
-    self.assertEqual(
-        [b'x'],
-        [inp.op.get_attr('_user_specified_name') for inp in method_op.inputs])
-    # TODO(allenl): It should be possible to override names when exporting. Do
-    # TensorSpec names need to go in cache keys? Or maybe get_concrete_function
-    # should always retrace?
-    self.skipTest('Not working')
-    method_op = has_method.method.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='y'))
-    self.assertEqual(
-        ['y'],
-        [inp.op.name for inp in method_op.inputs])
-    self.assertEqual(
-        [b'y'],
-        [inp.op.get_attr('_user_specified_name') for inp in method_op.inputs])
-
-  def testMethodSignature(self, function_decorator):
-
-    class HasMethod(object):
-
-      @function_decorator(
-          input_signature=(tensor_spec.TensorSpec(
-              shape=None, dtype=dtypes.float64, name='y'),))
-      def method(self, x):
-        hash(self)  # No weak proxies passed as `self`
-        return x
-
-    has_method = HasMethod()
-    # Call the function to make def_function happy
-    has_method.method(array_ops.ones([], dtype=dtypes.float64))
-    method_op = has_method.method.get_concrete_function()
-    self.assertEqual(
-        ['y'],
-        [inp.op.name for inp in method_op.inputs])
-    self.assertEqual(
-        [b'y'],
-        [inp.op.get_attr('_user_specified_name') for inp in method_op.inputs])
-    method_op2 = has_method.method.get_concrete_function()
-    self.assertEqual(
-        ['y'],
-        [inp.op.name for inp in method_op2.inputs])
-    self.assertEqual(
-        [b'y'],
-        [inp.op.get_attr('_user_specified_name') for inp in method_op2.inputs])
-
-  def testVariadic(self, function_decorator):
-    @function_decorator
-    def variadic_fn(x, *args, **kwargs):
-      return x + math_ops.add_n(list(args) + list(kwargs.values()))
-
-    # Call the function to make def_function happy
-    variadic_fn(array_ops.ones([]), array_ops.ones([]))
-    variadic_op = variadic_fn.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
-        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32,
-                               name='second_variadic'),
-        z=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
-        zz=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='cust'))
-    self.assertEqual(
-        ['x', 'y', 'args', 'second_variadic', 'z', 'cust'],
-        [inp.op.name for inp in variadic_op.inputs])
-    self.assertEqual(
-        [b'x', b'y', b'args', b'second_variadic', b'z', b'cust'],
-        [inp.op.get_attr('_user_specified_name')
-         for inp in variadic_op.inputs])
-
-  def testVariadicInputSignature(self, function_decorator):
-    @function_decorator(
-        input_signature=(
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),
-            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
-            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='z'),
-        ))
-    def variadic_fn(x, *args):
-      return x + math_ops.add_n(list(args))
-
-    # Call the function to make def_function happy
-    variadic_fn(array_ops.ones([]), array_ops.ones([]),
-                array_ops.ones([]), array_ops.ones([]))
-    variadic_op = variadic_fn.get_concrete_function()
-    self.assertIn(b'variadic_fn', variadic_op.name)
-    self.assertEqual(
-        ['x', 'y', 'args', 'z'],
-        [inp.op.name for inp in variadic_op.inputs])
-    self.assertEqual(
-        [b'x', b'y', b'args', b'z'],
-        [inp.op.get_attr('_user_specified_name')
-         for inp in variadic_op.inputs])
-
-
-class DefunCollectionTest(test.TestCase, parameterized.TestCase):
-
-  @parameterized.named_parameters(
-      dict(testcase_name='Defun', function_decorator=function.defun),
-      dict(
-          testcase_name='DefFunction',
-          function_decorator=def_function.function))
-  def testCollectionValueAccess(self, function_decorator):
-    """Read values from graph collections inside of defun."""
-    with ops.Graph().as_default() as g:
-      with self.session(graph=g):
-        x = 2
-        y = 5
-        ops.add_to_collection('x', x)
-        ops.add_to_collection('y', y)
-
-        @function_decorator
-        def fn():
-          x_const = constant_op.constant(ops.get_collection('x')[0])
-          y_const = constant_op.constant(ops.get_collection('y')[0])
-          z = math_ops.add(x_const, y_const)
-          ops.add_to_collection('z', 7)
-          return z
-
-        self.assertEqual(7, int(self.evaluate(fn())))
-        self.assertEquals(ops.get_collection('x'), [2])
-        self.assertEquals(ops.get_collection('y'), [5])
-        self.assertEquals(ops.get_collection('z'), [])
-
-  @parameterized.named_parameters(
-      dict(testcase_name='Defun', function_decorator=function.defun),
-      dict(
-          testcase_name='DefFunction',
-          function_decorator=def_function.function))
-  def testCollectionVariableValueAccess(self, function_decorator):
-    """Read variable value from graph collections inside of defun."""
-    with ops.Graph().as_default() as g:
-      with self.session(graph=g):
-        v = resource_variable_ops.ResourceVariable(1.0)
-
-        @function_decorator
-        def f():
-          return v.read_value()
-
-        self.evaluate(variables.global_variables_initializer())
-        self.assertEqual(1.0, float(self.evaluate(f())))
-        self.assertEquals(
-            len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)), 1)
-
-  def testCollectionVariableValueWrite(self):
-    """Write variable value inside defun."""
-    with ops.Graph().as_default() as g:
-      with self.session(graph=g):
-
-        @function.defun
-        def f():
-          v = resource_variable_ops.ResourceVariable(2.0)
-          return v
-
-        _ = f.get_concrete_function()
-        self.evaluate(variables.global_variables_initializer())
-        self.assertEqual(2.0, float(self.evaluate(f())))
-        self.assertEquals(
-            len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)), 1)
 
 
 if __name__ == '__main__':

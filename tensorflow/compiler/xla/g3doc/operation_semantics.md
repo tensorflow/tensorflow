@@ -13,6 +13,22 @@ arbitrary-dimensional array. For convenience, special cases have more specific
 and familiar names; for example a *vector* is a 1-dimensional array and a
 *matrix* is a 2-dimensional array.
 
+## AfterAll
+
+See also
+[`XlaBuilder::AfterAll`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+AfterAll takes a variadic number of tokens and produces a single token. Tokens
+are primitive types which can be threaded between side-effecting operations to
+enforce ordering. `AfterAll` can be used as a join of tokens for ordering a
+operation after a set operations.
+
+<b> `AfterAll(operands)` </b>
+
+Arguments  | Type    | Semantics
+---------- | ------- | -------------------------
+`operands` | `XlaOp` | variadic number of tokens
+
 ## AllToAll
 
 See also
@@ -401,6 +417,33 @@ then v12 == f32[8x3] {{10, 11, 12},
                       {45, 46, 47}};
 
 ```
+
+## CollectivePermute
+
+See also
+[`XlaBuilder::CollectivePermute`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+CollectivePermute is a collective operation that sends and receives data cross
+replicas.
+
+<b> `CollectivePermute(operand, source_target_pairs)` </b>
+
+| Arguments             | Type                    | Semantics                  |
+| --------------------- | ----------------------- | -------------------------- |
+| `operand`             | `XlaOp`                 | n dimensional input array  |
+| `source_target_pairs` | `<int64, int64>` vector | A list of                  |
+:                       :                         : (source_replica_id,        :
+:                       :                         : target_replica_id) pairs.  :
+:                       :                         : For each pair, the operand :
+:                       :                         : is sent from source        :
+:                       :                         : replica to target replica. :
+
+Note that there are the following restrictions on the `source_target_pair`:
+
+-   Any two pairs should not have the same target replica id, and they should
+    not have the same source replica id.
+-   If a replica id is not a target in any pair, then the output on that replica
+    is a tensor consists of 0(s) with the same shape as the input.
 
 ## Concatenate
 
@@ -1339,6 +1382,22 @@ the semantics for `tf.gather_nd`.
 index `X` in the gather indices array picks an entire row and the result is the
 concatenation of all these rows.
 
+## GetDimensionSize
+
+See also
+[`XlaBuilder::GetDimensionSize`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Returns the size of the given dimension of the operand. The operand must be
+array shaped.
+
+<b> `GetDimensionSize(operand, dimension)` </b>
+
+| Arguments   | Type    | Semantics                                           |
+| ----------- | ------- | --------------------------------------------------- |
+| `operand`   | `XlaOp` | n dimensional input array                           |
+| `dimension` | `int64` | A value in the interval `[0, n)` that specifies the |
+:             :         : dimension                                           :
+
 ## GetTupleElement
 
 See also
@@ -1407,10 +1466,11 @@ Builds a constant literal on device rather than a potentially large host
 transfer. Creates a rank 1 array of values starting at zero and incrementing by
 one.
 
-Arguments | Type            | Semantics
---------- | --------------- | ------------------------------------
-`type`    | `PrimitiveType` | type U
-`size`    | `int64`         | The number of elements in the array.
+Arguments        | Type            | Semantics
+---------------- | --------------- | ------------------------------------
+`type`           | `PrimitiveType` | type U
+`size`           | `int64`         | The number of elements in the array.
+`iota_dimension` | `int64`         | The dimension to increment along.
 
 ## Map
 
@@ -1764,8 +1824,9 @@ XlaBuilder builder(client_, "reduce_window_2x3");
 auto shape = ShapeUtil::MakeShape(F32, {4, 6});
 auto input = builder.Parameter(0, shape, "input");
 builder.ReduceWindow(
-    input, *max,
+    input,
     /*init_val=*/builder.ConstantLiteral(LiteralUtil::MinValue(F32)),
+    *max,
     /*window_dimensions=*/{2, 3},
     /*window_stride_dimensions=*/{2, 3},
     Padding::kValid);

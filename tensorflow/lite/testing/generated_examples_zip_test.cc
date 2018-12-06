@@ -94,6 +94,17 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/div.*activation=True.*dtype=tf\.int32)", "112968789"},
     {R"(^\/floor_div.*activation=True.*dtype=tf\.int32)", "112968789"},
     {R"(^\/floor_mod.*activation=True.*dtype=tf\.int32)", "112968789"},
+    {R"(^\/floor_mod.*activation=True.*dtype=tf\.int64)", "112968789"},
+
+    {R"(^\/sub.*dtype=tf\.int64)", "119126484"},
+    {R"(^\/div.*dtype=tf\.int64)", "119126484"},
+    {R"(^\/mul.*dtype=tf\.int64)", "119126484"},
+    {R"(^\/add.*dtype=tf\.int64)", "119126484"},
+    {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
+    {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
+
+    // Strided Slice chooses the wrong dimension.
+    {R"(^\/strided_slice_buggy)", "119786029"},
 };
 
 // Allows test data to be unarchived into a temporary directory and makes
@@ -194,7 +205,7 @@ tensorflow::Status ReadManifest(const string& original_file, const string& dir,
   }
   if (!added) {
     string message = "Test had no examples: " + original_file;
-    return tensorflow::Status(tensorflow::error::UNKNOWN, message.c_str());
+    return tensorflow::Status(tensorflow::error::UNKNOWN, message);
   }
   return tensorflow::Status::OK();
 }

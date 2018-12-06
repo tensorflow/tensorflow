@@ -22,9 +22,10 @@ import collections
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -57,11 +58,6 @@ class _ScanDataset(dataset_ops.UnaryDataset):
         self._initial_state,
         [t.dtype for t in nest.flatten(self._initial_state)])
 
-    # Will be populated by calling `tf_scan_func`.
-    self._output_classes = None
-    self._output_shapes = None
-    self._output_types = None
-
     # Iteratively rerun the scan function until reaching a fixed point on
     # `self._state_shapes`.
     need_to_rerun = True
@@ -80,7 +76,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
         raise TypeError("The scan function must return a pair comprising the "
                         "new state and the output value.")
 
-      new_state_classes, self._output_classes = wrapped_func.output_classes
+      new_state_classes, output_classes = wrapped_func.output_classes
 
       # Extract and validate class information from the returned values.
       for new_state_class, state_class in zip(
@@ -93,7 +89,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
               (self._state_classes, new_state_classes))
 
       # Extract and validate type information from the returned values.
-      new_state_types, self._output_types = wrapped_func.output_types
+      new_state_types, output_types = wrapped_func.output_types
       for new_state_type, state_type in zip(
           nest.flatten(new_state_types), nest.flatten(self._state_types)):
         if new_state_type != state_type:
@@ -103,7 +99,10 @@ class _ScanDataset(dataset_ops.UnaryDataset):
               (self._state_types, new_state_types))
 
       # Extract shape information from the returned values.
-      new_state_shapes, self._output_shapes = wrapped_func.output_shapes
+      new_state_shapes, output_shapes = wrapped_func.output_shapes
+
+      self._structure = structure.convert_legacy_structure(
+          output_types, output_shapes, output_classes)
 
       flat_state_shapes = nest.flatten(self._state_shapes)
       flat_new_state_shapes = nest.flatten(new_state_shapes)
@@ -125,29 +124,25 @@ class _ScanDataset(dataset_ops.UnaryDataset):
         self._state_shapes = nest.pack_sequence_as(self._state_shapes,
                                                    weakened_state_shapes)
 
-    self._scan_func = wrapped_func.function
-    self._scan_func.add_to_graph(ops.get_default_graph())
+    self._scan_func = wrapped_func
+    self._scan_func.function.add_to_graph(ops.get_default_graph())
+
+  def _functions(self):
+    return [self._scan_func]
 
   def _as_variant_tensor(self):
     input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
-    return gen_dataset_ops.scan_dataset(
+    return gen_experimental_dataset_ops.experimental_scan_dataset(
         input_t,
         nest.flatten(sparse.serialize_sparse_tensors(self._initial_state)),
-        self._scan_func.captured_inputs,
-        f=self._scan_func,
+        self._scan_func.function.captured_inputs,
+        f=self._scan_func.function,
+        preserve_cardinality=True,
         **dataset_ops.flat_structure(self))
 
   @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
+  def _element_structure(self):
+    return self._structure
 
   def _transformation_name(self):
     return "tf.data.experimental.scan()"

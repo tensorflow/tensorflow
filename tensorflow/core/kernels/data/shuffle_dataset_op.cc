@@ -61,6 +61,8 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     template <class T>
     class Iterator : public DatasetIterator<T> {
@@ -124,6 +126,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
                 ctx, this->prefix(), &input_impl_));
           }
           if (!end_of_input_sequence) {
+            this->RecordBufferEnqueue(ctx, input_element);
             buffer_[slices_.back()->end % this->dataset()->buffer_size_] =
                 std::move(input_element);
             num_elements_++;
@@ -151,6 +154,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
           int64 index =
               (slices_.front()->start + offset) % this->dataset()->buffer_size_;
           *out_tensors = std::move(buffer_[index]);
+          this->RecordBufferDequeue(ctx, *out_tensors);
           std::swap(
               buffer_[index],
               buffer_[slices_.front()->start % this->dataset()->buffer_size_]);

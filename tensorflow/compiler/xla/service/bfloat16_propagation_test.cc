@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -55,11 +55,11 @@ class TestBFloat16Support : public BFloat16Support {
   }
 };
 
-class BFloat16PropagationTest : public HloVerifiedTestBase {
+class BFloat16PropagationTest : public HloTestBase {
  protected:
   BFloat16PropagationTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/true) {}
+      : HloTestBase(/*verifier_layout_sensitive=*/false,
+                    /*allow_mixed_precision_in_hlo_verifier=*/true) {}
 
   // Runs the propagation pass on the given module, and returns whether the
   // module is changed after this pass.
@@ -121,10 +121,10 @@ TEST_F(BFloat16PropagationTest, PropagateThroughSelectButNotAdd) {
   HloInstruction* root = builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(F32, {4, 4}), HloOpcode::kAdd, dot, dot));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), root);
   EXPECT_TRUE(OutputsBF16(xpose));
@@ -134,6 +134,62 @@ TEST_F(BFloat16PropagationTest, PropagateThroughSelectButNotAdd) {
   EXPECT_FALSE(OutputsBF16(a));
   EXPECT_FALSE(OutputsBF16(b));
   EXPECT_FALSE(OutputsBF16(c));
+}
+
+TEST_F(BFloat16PropagationTest, PropagateThroughMaxPoolReduceWindow) {
+  auto module = CreateNewVerifiedModule();
+
+  auto sub_builder = HloComputation::Builder("max");
+  HloInstruction* p0 = sub_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "a"));
+  HloInstruction* p1 = sub_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {}), "b"));
+  sub_builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kMaximum, p0, p1));
+  auto max_computation = module->AddEmbeddedComputation(sub_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
+
+  HloInstruction* a =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  HloInstruction* b =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "b"));
+  HloInstruction* c =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "c"));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, a, b));
+  Window window;
+  WindowDimension dim;
+  dim.set_size(2);
+  dim.set_stride(1);
+  dim.set_padding_high(1);
+  dim.set_window_dilation(1);
+  dim.set_base_dilation(1);
+  *window.add_dimensions() = dim;
+  *window.add_dimensions() = dim;
+  HloInstruction* rw =
+      builder.AddInstruction(HloInstruction::CreateReduceWindow(
+          shape, add,
+          builder.AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::Zero(F32))),
+          window, max_computation));
+  HloInstruction* xpose =
+      builder.AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(F32, {4, 2}), c, {1, 0}));
+  HloInstruction* dot = builder.AddInstruction(
+      CreateDot(ShapeUtil::MakeShape(F32, {4, 4}), xpose, rw));
+  HloInstruction* root = builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {4, 4}), HloOpcode::kAdd, dot, dot));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), root);
+  EXPECT_TRUE(OutputsBF16(add));
+  EXPECT_TRUE(OutputsBF16(xpose));
+  EXPECT_TRUE(OutputsBF16(rw));
 }
 
 // Tests that side-effecting all-reduce should not be changed.
@@ -186,10 +242,10 @@ TEST_F(BFloat16PropagationTest, ConvertConstantLiteral) {
       HloInstruction::CreateConstant(LiteralUtil::CreateFromArray(array_b)));
   HloInstruction* dot = builder.AddInstruction(CreateDot(shape, a, b));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), dot);
   EXPECT_TRUE(OutputsBF16(dot->operand(0)));
@@ -242,10 +298,10 @@ TEST_F(BFloat16PropagationTest, PropagateThroughTuples) {
   HloInstruction* output_tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({dot, add2}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), output_tuple);
   EXPECT_TRUE(OutputsBF16(xpose));
@@ -281,10 +337,10 @@ TEST_F(BFloat16PropagationTest, SameValueReferencedTwice) {
   HloInstruction* dot = builder.AddInstruction(
       CreateDot(ShapeUtil::MakeShape(F32, {4, 4}), lhs, rhs));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), dot);
   EXPECT_TRUE(OutputsBF16(add1));
@@ -310,10 +366,10 @@ TEST_F(BFloat16PropagationTest, DoNotChangeComputationRoot) {
   HloInstruction* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({add, dot}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_FALSE(PropagatePrecision(module));
+  EXPECT_FALSE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), tuple);
   EXPECT_FALSE(OutputsBF16(add));
@@ -321,7 +377,7 @@ TEST_F(BFloat16PropagationTest, DoNotChangeComputationRoot) {
 
 // Tests that BF16 is propagated properly through fused computations.
 TEST_F(BFloat16PropagationTest, PropagateThroughFusion) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
 
@@ -356,7 +412,7 @@ TEST_F(BFloat16PropagationTest, PropagateThroughFusion) {
 
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), fusion1);
   EXPECT_TRUE(OutputsBF16(add));
@@ -369,7 +425,7 @@ TEST_F(BFloat16PropagationTest, PropagateThroughFusion) {
 // Tests that changes to BF16 that cannot be propagated outside a fusion are
 // discarded.
 TEST_F(BFloat16PropagationTest, DiscardFusionInternalBF16Changes) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
 
@@ -393,7 +449,7 @@ TEST_F(BFloat16PropagationTest, DiscardFusionInternalBF16Changes) {
 
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_FALSE(PropagatePrecision(module));
+  EXPECT_FALSE(PropagatePrecision(module.get()));
   EXPECT_EQ(computation->root_instruction(), fusion);
 }
 
@@ -408,7 +464,7 @@ TEST_F(BFloat16PropagationTest, DiscardFusionInternalBF16Changes) {
 //   (BF16, BF16) fusion_computation(F32 a, F32 b)
 //     = tuple(BF16 convert(a), BF16 add(F32 a, F32 b))
 TEST_F(BFloat16PropagationTest, ConvertTupleFusionElementIfUsedByAdd) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
 
@@ -439,7 +495,7 @@ TEST_F(BFloat16PropagationTest, ConvertTupleFusionElementIfUsedByAdd) {
 
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), dot);
   EXPECT_TRUE(OutputsBF16(gte0));
@@ -458,7 +514,7 @@ TEST_F(BFloat16PropagationTest, ConvertTupleFusionElementIfUsedByAdd) {
 // on_true and on_false must match, so that as long as one of them is F32, the
 // other must be F32 as well.
 TEST_F(BFloat16PropagationTest, SelectOverTuples) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
 
@@ -489,7 +545,7 @@ TEST_F(BFloat16PropagationTest, SelectOverTuples) {
 
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), dot);
   EXPECT_FALSE(OutputsBF16(add0));
@@ -502,7 +558,7 @@ TEST_F(BFloat16PropagationTest, SelectOverTuples) {
 // Tests that BF16 is propagated properly through a while computation with
 // non-tuple input/output.
 TEST_F(BFloat16PropagationTest, PropagateThroughSimpleWhile) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
 
@@ -545,7 +601,7 @@ TEST_F(BFloat16PropagationTest, PropagateThroughSimpleWhile) {
   auto dot = builder.AddInstruction(CreateDot(shape, while_hlo, while_hlo));
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), dot);
   EXPECT_TRUE(
@@ -561,7 +617,7 @@ TEST_F(BFloat16PropagationTest, PropagateThroughSimpleWhile) {
 // made to the while body and thus the fusion node inside it.
 TEST_F(BFloat16PropagationTest,
        ConditionPreventsPropagationForFusionInsideWhile) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
 
@@ -610,7 +666,7 @@ TEST_F(BFloat16PropagationTest,
   auto dot = builder.AddInstruction(CreateDot(shape, while_hlo, while_hlo));
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_FALSE(PropagatePrecision(module));
+  EXPECT_FALSE(PropagatePrecision(module.get()));
   EXPECT_EQ(computation->root_instruction(), dot);
   EXPECT_FALSE(OutputsBF16(add));
   EXPECT_FALSE(OutputsBF16(body_fusion));
@@ -622,7 +678,7 @@ TEST_F(BFloat16PropagationTest,
 // Tests that BF16 is propagated properly through while computations with
 // tuple-shaped input/output.
 TEST_F(BFloat16PropagationTest, PropagateThroughTupleWhile) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
 
@@ -690,7 +746,7 @@ TEST_F(BFloat16PropagationTest, PropagateThroughTupleWhile) {
   auto dot = builder.AddInstruction(CreateDot(shape, lhs, rhs));
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), dot);
   EXPECT_TRUE(OutputsBF16(lhs));
@@ -709,7 +765,7 @@ TEST_F(BFloat16PropagationTest, PropagateThroughTupleWhile) {
 // Tests that BF16 is not propagated through multiple whiles that invoke the
 // same computation as long as one while prevents the propagation.
 TEST_F(BFloat16PropagationTest, DoNotPropagateWhilesCallingSameComputation) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
 
@@ -820,7 +876,7 @@ TEST_F(BFloat16PropagationTest, DoNotPropagateWhilesCallingSameComputation) {
   auto dot = builder.AddInstruction(CreateDot(shape, lhs, rhs));
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
   EXPECT_FALSE(OutputsBF16(body_dot));
   EXPECT_FALSE(OutputsBF16(body_rhs));
   EXPECT_FALSE(OutputsBF16(body_lhs));
@@ -859,10 +915,10 @@ TEST_F(BFloat16PropagationTest, NoopConversionRemoved) {
   HloInstruction* add2 = builder.AddInstruction(HloInstruction::CreateBinary(
       bf16_shape, HloOpcode::kAdd, convert0, convert1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), add2);
   EXPECT_EQ(add2->operand(0), add0);
@@ -895,10 +951,10 @@ TEST_F(BFloat16PropagationTest, TupleDomain) {
   HloInstruction* root = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, dot, dot));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
   EXPECT_EQ(computation->root_instruction(), root);
 
   // test BF16 propagated through domain
@@ -941,10 +997,10 @@ TEST_F(BFloat16PropagationTest, TupleDomainNoPropagation) {
   HloInstruction* root = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, dot, dot));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(PropagatePrecision(module));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), root);
   EXPECT_TRUE(OutputsBF16(a_trans));

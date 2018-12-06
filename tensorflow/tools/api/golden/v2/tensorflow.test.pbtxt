@@ -5,40 +5,20 @@ tf_module {
     mtype: "<class \'tensorflow.python.platform.benchmark._BenchmarkRegistrar\'>"
   }
   member {
-    name: "StubOutForTesting"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "TestCase"
     mtype: "<type \'type\'>"
   }
-  member {
-    name: "mock"
-    mtype: "<type \'module\'>"
-  }
   member_method {
     name: "assert_equal_graph_def"
-    argspec: "args=[\'actual\', \'expected\', \'checkpoint_v2\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'actual\', \'expected\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "benchmark_config"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "compute_gradient"
-    argspec: "args=[\'x\', \'x_shape\', \'y\', \'y_shape\', \'x_init_value\', \'delta\', \'init_targets\', \'extra_feed_dict\'], varargs=None, keywords=None, defaults=[\'None\', \'0.001\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "compute_gradient_error"
-    argspec: "args=[\'x\', \'x_shape\', \'y\', \'y_shape\', \'x_init_value\', \'delta\', \'extra_feed_dict\'], varargs=None, keywords=None, defaults=[\'None\', \'0.001\', \'None\'], "
-  }
-  member_method {
     name: "create_local_cluster"
     argspec: "args=[\'num_workers\', \'num_ps\', \'protocol\', \'worker_config\', \'ps_config\'], varargs=None, keywords=None, defaults=[\'grpc\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "get_temp_dir"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "gpu_device_name"
@@ -55,9 +35,5 @@ tf_module {
   member_method {
     name: "main"
     argspec: "args=[\'argv\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "test_src_dir_path"
-    argspec: "args=[\'relative_path\'], varargs=None, keywords=None, defaults=None"
   }
 }

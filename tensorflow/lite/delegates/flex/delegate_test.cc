@@ -22,7 +22,6 @@ namespace tflite {
 namespace flex {
 namespace {
 
-using ::testing::ContainsRegex;
 using ::testing::ElementsAre;
 
 class DelegateTest : public testing::FlexModelTest {
@@ -91,6 +90,25 @@ TEST_F(DelegateTest, NonFloatTypeInference) {
   ASSERT_THAT(GetShape(2), ElementsAre(2, 2));
   ASSERT_THAT(GetTypedValues<int>(2), ElementsAre(5, 5, 5, 5));
   ASSERT_EQ(GetType(2), kTfLiteInt32);
+}
+
+TEST_F(DelegateTest, StringInference) {
+  AddTensors(3, {0, 1}, {2}, kTfLiteString, {2});
+
+  AddTfOp(testing::kAdd, {0, 1}, {2});
+
+  ConfigureDelegate();
+
+  SetShape(0, {2, 2});
+  SetStringValues(0, {"1", "2", "3", "4"});
+  SetShape(1, {2, 2});
+  SetStringValues(1, {"4", "3", "2", "1"});
+
+  ASSERT_TRUE(Invoke());
+
+  ASSERT_THAT(GetShape(2), ElementsAre(2, 2));
+  ASSERT_THAT(GetStringValues(2), ElementsAre("14", "23", "32", "41"));
+  ASSERT_EQ(GetType(2), kTfLiteString);
 }
 
 TEST_F(DelegateTest, MixedGraph) {

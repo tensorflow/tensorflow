@@ -376,27 +376,6 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "resampler_ops_test",
-    size = "small",
-    srcs = ["resampler_ops_test.py"],
-    disabled_backends = [
-        # TODO(b/74459949) Support BatchDot in CPU backend.
-        "cpu",
-        "cpu_ondemand",
-    ],
-    # TODO(b/112295522): figure out how to make OSS build pass.
-    tags = ["no_oss"],
-    deps = [
-        ":xla_test",
-        "//tensorflow/contrib/resampler:resampler_ops",
-        "//tensorflow/contrib/resampler:resampler_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-tf_xla_py_test(
     name = "dynamic_stitch_test",
     size = "small",
     srcs = ["dynamic_stitch_test.py"],
@@ -470,12 +449,11 @@ tf_xla_py_test(
     tags = ["optonly"],
     deps = [
         ":xla_test",
-        "//tensorflow/contrib/signal:signal_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:spectral_ops",
+        "//tensorflow/python/ops/signal",
     ],
 )
 
@@ -714,10 +692,6 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["reduce_ops_test.py"],
     shard_count = 5,
-    tags = [
-        # TODO(b/119059212): Re-enable this test in OSS.
-        "no_oss",
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

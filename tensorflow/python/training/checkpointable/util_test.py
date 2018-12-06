@@ -26,7 +26,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -632,7 +632,7 @@ class CheckpointingTests(test.TestCase):
             checkpoint_directory)
         status = root.restore(save_path=checkpoint_path)
         def train_fn():
-          @function.defun
+          @def_function.function
           def _call_model(x):
             return model(x)
           with backprop.GradientTape() as tape:

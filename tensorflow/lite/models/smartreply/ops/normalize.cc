@@ -92,7 +92,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   tflite::DynamicBuffer buf;
   buf.AddString(result.data(), result.length());
-  buf.WriteToTensor(GetOutput(context, node, 0));
+  buf.WriteToTensorAsVector(GetOutput(context, node, 0));
   return kTfLiteOk;
 }
 

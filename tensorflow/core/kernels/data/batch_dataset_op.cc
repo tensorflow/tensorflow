@@ -95,6 +95,15 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
       return strings::StrCat("BatchDatasetOp(", batch_size_, ")::Dataset");
     }
 
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return n / batch_size_ +
+             (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -174,6 +183,11 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           batch_component_shape.AppendShape(first_element.shape());
           out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
                                     batch_component_shape);
+          if (!out_tensors->back().IsInitialized()) {
+            return errors::ResourceExhausted(
+                "Failed to allocate memory for the batch of component ",
+                component_index);
+          }
           Tensor& batch_component = out_tensors->back();
           // Build the output tuple component by copying one slice
           // from each input element in the batch.

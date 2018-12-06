@@ -21,6 +21,9 @@ from __future__ import print_function
 import os
 import sys
 
+import numpy
+
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -29,13 +32,19 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.layers import merge
+from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import adam
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
@@ -60,26 +69,27 @@ class _ModelWithOptimizer(training.Model):
     return {"loss": loss}
 
 
-class SaveTest(test.TestCase):
+def _import_and_infer(
+    save_dir, inputs,
+    signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY):
+  """Import a SavedModel into a TF 1.x-style graph and run `signature_key`."""
+  graph = ops.Graph()
+  with graph.as_default(), session_lib.Session() as session:
+    model = loader.load(session, [tag_constants.SERVING], save_dir)
+    signature = model.signature_def[signature_key]
+    assert set(inputs.keys()) == set(signature.inputs.keys())
+    feed_dict = {}
+    for arg_name in inputs.keys():
+      feed_dict[graph.get_tensor_by_name(signature.inputs[arg_name].name)] = (
+          inputs[arg_name])
+    output_dict = {}
+    for output_name, output_tensor_info in signature.outputs.items():
+      output_dict[output_name] = graph.get_tensor_by_name(
+          output_tensor_info.name)
+    return session.run(output_dict, feed_dict=feed_dict)
 
-  def _import_and_infer(
-      self, save_dir, inputs,
-      signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY):
-    """Import a SavedModel into a TF 1.x-style graph and run `signature_key`."""
-    graph = ops.Graph()
-    with graph.as_default(), self.session(graph) as session:
-      model = loader.load(session, [], save_dir)
-      signature = model.signature_def[signature_key]
-      self.assertEqual(set(inputs.keys()), set(signature.inputs.keys()))
-      feed_dict = {}
-      for arg_name in inputs.keys():
-        feed_dict[graph.get_tensor_by_name(signature.inputs[arg_name].name)] = (
-            inputs[arg_name])
-      output_dict = {}
-      for output_name, output_tensor_info in signature.outputs.items():
-        output_dict[output_name] = graph.get_tensor_by_name(
-            output_tensor_info.name)
-      return session.run(output_dict, feed_dict=feed_dict)
+
+class SaveTest(test.TestCase):
 
   def test_method_save_signature(self):
     root = tracking.Checkpointable()
@@ -91,7 +101,7 @@ class SaveTest(test.TestCase):
     save.save(root, save_dir, root.f)
     self.assertEqual(
         {"output_0": 2.},
-        self._import_and_infer(save_dir, {"x": 1.}))
+        _import_and_infer(save_dir, {"x": 1.}))
 
   def test_method_save_concrete(self):
     root = tracking.Checkpointable()
@@ -106,7 +116,7 @@ class SaveTest(test.TestCase):
             tensor_spec.TensorSpec(None, dtypes.float32))})
     self.assertEqual(
         {"out": 2.},
-        self._import_and_infer(
+        _import_and_infer(
             save_dir, {"z": 1.}, signature_key="non_default_key"))
 
   def test_non_concrete_error(self):
@@ -142,9 +152,9 @@ class SaveTest(test.TestCase):
       save.save(root, save_dir, to_save)
 
   def test_nested_dict_outputs(self):
-    root = tracking.Checkpointable()
-    root.f = def_function.function(
-        lambda x: {"a": 2. * x, "b": (3. * x, 4. * x)})
+    root = util.Checkpoint(
+        f=def_function.function(
+            lambda x: {"a": 2. * x, "b": (3. * x, 4. * x)}))
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -163,7 +173,7 @@ class SaveTest(test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(root, save_dir, to_save)
     self.assertAllEqual({"output_0": 12.},
-                        self._import_and_infer(save_dir, {"x": 2.}))
+                        _import_and_infer(save_dir, {"x": 2.}))
 
   def test_optimizer(self):
     x = constant_op.constant([[3., 4.]])
@@ -176,7 +186,7 @@ class SaveTest(test.TestCase):
     self.assertNotEqual(first_loss, second_loss)
     self.assertAllClose(
         second_loss,
-        self._import_and_infer(save_dir, {"x": [[3., 4.]], "y": [2.]}))
+        _import_and_infer(save_dir, {"x": [[3., 4.]], "y": [2.]}))
 
   def test_trivial_save_exception(self):
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -191,8 +201,8 @@ class SaveTest(test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(model, save_dir)
     self.assertIn("loss",
-                  self._import_and_infer(save_dir,
-                                         {"x": [[3., 4.]], "y": [2.]}))
+                  _import_and_infer(save_dir,
+                                    {"x": [[3., 4.]], "y": [2.]}))
 
   def test_single_function_default_signature(self):
     model = tracking.Checkpointable()
@@ -201,7 +211,7 @@ class SaveTest(test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(model, save_dir)
     self.assertAllClose({"output_0": 3.},
-                        self._import_and_infer(save_dir, {}))
+                        _import_and_infer(save_dir, {}))
 
   def test_ambiguous_signatures(self):
     model = _ModelWithOptimizer()
@@ -211,6 +221,19 @@ class SaveTest(test.TestCase):
     model.second_function = def_function.function(lambda: 1.)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     with self.assertRaisesRegexp(ValueError, "call.*second_function"):
+      save.save(model, save_dir)
+
+  def test_subclassed_no_signature(self):
+
+    class Subclassed(training.Model):
+
+      def call(self, inputs):
+        return inputs * 2.
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    model = Subclassed()
+    with self.assertRaisesRegexp(
+        ValueError, "no @tf.function-decorated methods"):
       save.save(model, save_dir)
 
   def test_docstring(self):
@@ -227,7 +250,7 @@ class SaveTest(test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(to_save, save_dir)
     self.assertAllClose({"output_0": 7.},
-                        self._import_and_infer(save_dir, {"x": 3.}))
+                        _import_and_infer(save_dir, {"x": 3.}))
 
   def test_default_attr_stripping(self):
 
@@ -246,12 +269,102 @@ class SaveTest(test.TestCase):
     save.save(to_save, save_dir)
     graph = ops.Graph()
     with graph.as_default(), self.session(graph) as session:
-      loader.load(session, [], save_dir)
+      loader.load(session, [tag_constants.SERVING], save_dir)
       func, = graph._functions.values()
       complex_node, = [
           node for node in func.definition.node_def if node.op == "Complex"]
       self.assertNotIn("T", complex_node.attr)
       self.assertNotIn("Tout", complex_node.attr)
+
+  def test_export_functional_keras_model(self):
+    x = input_layer.Input((4,), name="x")
+    y = core.Dense(4, name="out")(x)
+    model = training.Model(x, y)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(model, save_dir)
+    self.assertAllClose(
+        {"out": model(array_ops.ones([1, 4]))},
+        _import_and_infer(save_dir, {"x": [[1., 1., 1., 1.]]}))
+
+  @test_util.run_deprecated_v1
+  def test_export_functional_keras_model_after_fit(self):
+    x = input_layer.Input((1,))
+    y = core.Dense(1, name="y")(x)
+    model = training.Model(x, y)
+    model.compile(optimizer="sgd", loss="mse")
+    model.fit(x=numpy.array([[1.]]),
+              y=numpy.array([2.]), epochs=2)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(model, save_dir)
+    self.assertAllClose(
+        {"y": model(constant_op.constant([[1.], [2.]]))},
+        _import_and_infer(save_dir, {"input_1": [[1.], [2.]]}))
+
+  def test_export_multi_input_functional_keras_model(self):
+    x1 = input_layer.Input((2,), name="x1")
+    x2 = input_layer.Input((2,), name="x2")
+    y1 = core.Dense(4)(merge.Add()([x1, x2]))
+    y2 = core.Dense(4)(merge.Multiply()([x1, x2]))
+    model = training.Model([x1, x2], [y1, y2])
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(model, save_dir)
+    outputs = model([array_ops.ones([1, 2]), 2. * array_ops.ones([1, 2])])
+    self.assertAllClose(
+        {"dense": outputs[0], "dense_1": outputs[1]},
+        _import_and_infer(
+            save_dir,
+            {"x1": [[1., 1.]],
+             "x2": [[2., 2.]]}))
+
+
+class AssetTests(test.TestCase):
+
+  def setUp(self):
+    super(AssetTests, self).setUp()
+    self._vocab_path = os.path.join(self.get_temp_dir(), "vocab.txt")
+    with open(self._vocab_path, "w") as f:
+      f.write("alpha\nbeta\ngamma\n")
+
+  def test_table(self):
+    initializer = lookup_ops.TextFileInitializer(
+        self._vocab_path,
+        key_dtype=dtypes.string,
+        key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+        value_dtype=dtypes.int64,
+        value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+    root = util.Checkpoint(table=lookup_ops.HashTable(
+        initializer, default_value=-1))
+    root.table_user = def_function.function(
+        root.table.lookup,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
+    self.assertEqual(
+        2,
+        self.evaluate(root.table_user(constant_op.constant("gamma"))))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+    file_io.delete_file(self._vocab_path)
+    self.assertAllClose(
+        {"output_0": [2, 0]},
+        _import_and_infer(save_dir, {"keys": ["gamma", "alpha"]}))
+    second_dir = os.path.join(self.get_temp_dir(), "second_dir")
+    # Asset paths should track the location the SavedModel is loaded from.
+    file_io.rename(save_dir, second_dir)
+    self.assertAllClose(
+        {"output_0": [2, 1]},
+        _import_and_infer(second_dir, {"keys": ["gamma", "beta"]}))
+
+  def test_unused_asset(self):
+    root = tracking.Checkpointable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    root.asset = tracking.TrackableAsset(self._vocab_path)
+
+    export_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save(root, export_dir)
+    self.assertAllClose(
+        {"output_0": [0.2]},
+        _import_and_infer(export_dir, {"x": [0.1]}))
 
 
 class MemoryTests(test.TestCase):

@@ -18,7 +18,8 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <string>
-#include <thread>  // (b/114492873): move this include into core/platform
+// TODO(b/114492873): Move this include into core/platform.
+#include <thread>  // NOLINT
 #include <utility>
 #include <vector>
 
@@ -111,6 +112,12 @@ class Node {
   explicit Node(Args args)
       : id_(args.id), name_(args.name), output_(args.output.get()) {}
 
+  // Increments the bytes buffered by the given delta.
+  void add_buffered_bytes(int64 delta) LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    buffered_bytes_ += delta;
+  }
+
   // Adds an input.
   void add_input(std::shared_ptr<Node> node) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
@@ -123,17 +130,23 @@ class Node {
     processing_time_ += delta;
   }
 
+  // Returns the number of bytes stored in this node's buffer.
+  int64 buffered_bytes() const LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    return buffered_bytes_;
+  }
+
   // Returns the unique node ID.
   int64 id() const LOCKS_EXCLUDED(mu_) { return id_; }
-
-  // Returns the node name.
-  const string& name() const { return name_; }
 
   // Returns the node inputs.
   std::list<std::shared_ptr<Node>> inputs() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return inputs_;
   }
+
+  // Returns the node name.
+  const string& name() const { return name_; }
 
   // Returns the number of elements produced by the node.
   int64 num_elements() const LOCKS_EXCLUDED(mu_) {
@@ -142,10 +155,7 @@ class Node {
   }
 
   // Returns the node output.
-  Node* output() const LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock l(mu_);
-    return output_;
-  }
+  Node* output() const { return output_; }
 
   // Returns the aggregate processing time.
   int64 processing_time() const LOCKS_EXCLUDED(mu_) {
@@ -160,19 +170,19 @@ class Node {
   }
 
   // Records that a node thread has started executing.
-  void record_start() LOCKS_EXCLUDED(mu_) {
+  void record_start(int64 time_nanos) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    work_start_[std::this_thread::get_id()] = Env::Default()->NowNanos();
+    work_start_[std::this_thread::get_id()] = time_nanos;
   }
 
   // Records that a node thread has stopped executing.
-  void record_stop() LOCKS_EXCLUDED(mu_) {
+  void record_stop(int64 time_nanos) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     std::thread::id tid = std::this_thread::get_id();
-    auto start_time = gtl::FindOrNull(work_start_, tid);
-    if (start_time) {
-      processing_time_ += Env::Default()->NowNanos() - *start_time;
-      work_start_.erase(tid);
+    auto iter = work_start_.find(tid);
+    if (iter != work_start_.end()) {
+      processing_time_ += time_nanos - iter->second;
+      work_start_.erase(iter);
     } else {
       LOG(WARNING)
           << "Encountered a stop event that was not preceded by a start event.";
@@ -187,7 +197,8 @@ class Node {
 
   // Collects tunable parameters in the subtree rooted in this node.
   void CollectTunableParameters(
-      std::vector<std::shared_ptr<Parameter>>* parameters) LOCKS_EXCLUDED(mu_) {
+      std::vector<std::shared_ptr<Parameter>>* parameters) const
+      LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     for (auto& pair : parameters_) {
       if (pair.second->state->tunable) {
@@ -221,6 +232,7 @@ class Node {
       LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     std::shared_ptr<Node> result = Clone(output);
+    result->buffered_bytes_ = buffered_bytes_;
     result->processing_time_ = processing_time_;
     result->num_elements_ = num_elements_;
     result->parameters_ = parameters_;
@@ -276,6 +288,7 @@ class Node {
   mutable mutex mu_;
   const int64 id_;
   const string name_;
+  int64 buffered_bytes_ GUARDED_BY(mu_) = 0;
   int64 processing_time_ GUARDED_BY(mu_) = 0;
   int64 num_elements_ GUARDED_BY(mu_) = 0;
   std::map<std::thread::id, int64> work_start_ GUARDED_BY(mu_);
@@ -284,7 +297,7 @@ class Node {
 
   // The reference to the output node is not owned so that that deletion of a
   // node results in recursive deletion of the subtree rooted in the node.
-  Node* output_ GUARDED_BY(mu_);
+  Node* const output_;
 };
 
 // InterleaveMany is used to model datasets whose inputs are used to create
@@ -334,8 +347,8 @@ class Model {
   Model() = default;
 
   // Adds a node with the given name and given output.
-  void AddNode(Node::Factory factory, const string& name,
-               const string& output_name) LOCKS_EXCLUDED(mu_);
+  std::shared_ptr<Node> AddNode(Node::Factory factory, const string& name,
+                                const string& output_name) LOCKS_EXCLUDED(mu_);
 
   // Increments the processing time for the given node..
   void AddProcessingTime(const string& name, int64 delta) LOCKS_EXCLUDED(mu_);

@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/util/port.h"
 
 namespace tensorflow {
 
@@ -46,42 +47,51 @@ const StringPiece kColocationGroupPrefixStringPiece(kColocationGroupPrefix);
 // returned list is sorted by preferred type (higher numeric type is preferred).
 std::vector<Device*> FilterSupportedDevices(
     const std::vector<Device*>& devices,
-    const DeviceTypeVector& supported_device_types,
+    const PrioritizedDeviceTypeVector& supported_device_types,
     const Device* default_device) {
   Device* filtered_default_device = nullptr;
-  std::vector<Device*> filtered_devices;
-  for (const DeviceType& d : supported_device_types) {
+  std::vector<std::pair<Device*, int32>> prioritized_filtered_devices;
+  for (const auto& supported_device_type : supported_device_types) {
     for (Device* device : devices) {
-      if (DeviceType(device->attributes().device_type()) == d) {
+      if (DeviceType(device->attributes().device_type()) ==
+          supported_device_type.first) {
         if (device == default_device) {
           filtered_default_device = device;
         } else {
-          filtered_devices.emplace_back(device);
+          prioritized_filtered_devices.emplace_back(
+              device, supported_device_type.second);
         }
       }
     }
   }
 
-  auto device_sort = [](const Device* a, const Device* b) {
-    auto a_priority = DeviceSet::DeviceTypeOrder(DeviceType(a->device_type()));
-    auto b_priority = DeviceSet::DeviceTypeOrder(DeviceType(b->device_type()));
+  auto device_sort = [](const std::pair<Device*, int32>& a,
+                        const std::pair<Device*, int32>& b) {
+    if (a.second != b.second) {
+      return a.second > b.second;
+    }
+
+    auto a_priority =
+        DeviceSet::DeviceTypeOrder(DeviceType(a.first->device_type()));
+    auto b_priority =
+        DeviceSet::DeviceTypeOrder(DeviceType(b.first->device_type()));
     // First sort by prioritized device type (higher is preferred) and
     // then by device name (lexicographically).
     if (a_priority != b_priority) {
       return a_priority > b_priority;
     }
-    return StringPiece(a->name()) < StringPiece(b->name());
+    return StringPiece(a.first->name()) < StringPiece(b.first->name());
   };
-  std::vector<Device*>::iterator sort_start;
+  std::sort(prioritized_filtered_devices.begin(),
+            prioritized_filtered_devices.end(), device_sort);
+
+  std::vector<Device*> filtered_devices;
   if (filtered_default_device != nullptr) {
-    // Put the default device first outside of the normal ordering.
     filtered_devices.emplace_back(filtered_default_device);
-    std::iter_swap(filtered_devices.begin(), std::prev(filtered_devices.end()));
-    sort_start = std::next(filtered_devices.begin());
-  } else {
-    sort_start = filtered_devices.begin();
   }
-  std::sort(sort_start, filtered_devices.end(), device_sort);
+  for (const auto& prioritized_filtered_device : prioritized_filtered_devices) {
+    filtered_devices.push_back(prioritized_filtered_device.first);
+  }
   return filtered_devices;
 }
 
@@ -378,11 +388,20 @@ class ColocationGraph {
             }
             std::sort(device_names.begin(), device_names.end());
 
+            string gpu_msg = "";
+            if (!IsGoogleCudaEnabled() &&
+                str_util::Lowercase(specified_device_name.type) == "gpu") {
+              gpu_msg =
+                  " The requested device appears to be a GPU, but CUDA is not "
+                  "enabled.";
+            }
+
             return errors::InvalidArgument(
-                "Operation was explicitly assigned to ",
-                node->requested_device(), " but available devices are [ ",
+                errors::FormatNodeNameForError(node->name()),
+                "was explicitly assigned to ", node->requested_device(),
+                " but available devices are [ ",
                 str_util::Join(device_names, ", "), " ]. Make sure ",
-                "the device specification refers to a valid device.");
+                "the device specification refers to a valid device.", gpu_msg);
           } else if (specified_device_name.has_type) {
             return errors::InvalidArgument(
                 "Could not satisfy explicit device specification '",
@@ -462,7 +481,7 @@ class ColocationGraph {
     // The intersection of all device types supported by this node,
     // and those of all of its children, in priority order
     // of the preferred device.
-    DeviceTypeVector supported_device_types;
+    PrioritizedDeviceTypeVector supported_device_types;
 
     // The merged form of the device requested for this node, with
     // those of all of its children.
@@ -501,8 +520,8 @@ class ColocationGraph {
       const string& op_type = node->type_string();
       string devices_registered;
       for (const auto& device_type : members_[id].supported_device_types) {
-        strings::StrAppend(&devices_registered, DeviceTypeString(device_type),
-                           " ");
+        strings::StrAppend(&devices_registered,
+                           DeviceTypeString(device_type.first), " ");
       }
 
       type_to_devices[op_type] = std::move(devices_registered);
@@ -555,8 +574,9 @@ class ColocationGraph {
                                 "' does not match any device");
       }
 
-      for (const DeviceType& d : member->supported_device_types) {
-        if (DeviceType(assigned_device->attributes().device_type()) == d) {
+      for (const auto& d : member->supported_device_types) {
+        if (DeviceType(assigned_device->attributes().device_type()) ==
+            d.first) {
           return Status::OK();
         }
       }
@@ -613,24 +633,102 @@ class ColocationGraph {
     return Status::OK();
   }
 
+  static bool HasPriorities(const PrioritizedDeviceTypeVector& device_types) {
+    for (const auto& prioritized_device_type : device_types) {
+      if (prioritized_device_type.second != 0) return true;
+    }
+    return false;
+  }
+
+  static bool ArePrioritiesSame(const PrioritizedDeviceTypeVector& a_types,
+                                const PrioritizedDeviceTypeVector& b_types) {
+    if (a_types.size() != b_types.size()) {
+      return false;
+    }
+    for (int i = 0; i < a_types.size(); ++i) {
+      if (a_types[i].first != b_types[i].first) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   // Updates target to contain the intersection of the device types in
   // "target" and "other".
-  static void MergeSupportedDevices(DeviceTypeVector* target,
-                                    const DeviceTypeVector& other) {
-    DeviceTypeVector temp = *target;
+  static void MergeSupportedDevices(PrioritizedDeviceTypeVector* target,
+                                    const PrioritizedDeviceTypeVector& other) {
+    PrioritizedDeviceTypeVector temp = *target;
     target->clear();
 
-    // Iterate in priority order.
-    for (const DeviceType& device_type : temp) {
+    // Generate intersection with priorities.
+    PrioritizedDeviceTypeVector target_intersection;
+    PrioritizedDeviceTypeVector other_intersection;
+    for (const auto& prioritized_device_type : temp) {
       bool found = false;
-      for (const DeviceType& other_device_type : other) {
-        if (device_type == other_device_type) {
+      for (const auto& other_prioritized_device_type : other) {
+        if (prioritized_device_type.first ==
+            other_prioritized_device_type.first) {
           found = true;
+          other_intersection.push_back(other_prioritized_device_type);
           break;
         }
       }
       if (found) {
-        target->push_back(device_type);
+        target_intersection.push_back(prioritized_device_type);
+      }
+    }
+
+    // Sort the devices by priority order.
+    auto device_sort = [](const std::pair<DeviceType, int32>& a,
+                          const std::pair<DeviceType, int32>& b) {
+      // First look at set priorities.
+      if (a.second != b.second) {
+        return a.second > b.second;
+      }
+      // Then fallback to default priorities.
+      auto a_priority = DeviceSet::DeviceTypeOrder(a.first);
+      auto b_priority = DeviceSet::DeviceTypeOrder(b.first);
+      if (a_priority != b_priority) {
+        return a_priority > b_priority;
+      }
+      // Finally just look at the Device type strings.
+      return a.first.type_string() < b.first.type_string();
+    };
+
+    std::sort(target_intersection.begin(), target_intersection.end(),
+              device_sort);
+    std::sort(other_intersection.begin(), other_intersection.end(),
+              device_sort);
+
+    bool is_target_prioritized = HasPriorities(target_intersection);
+    bool is_other_prioritized = HasPriorities(other_intersection);
+    // If neither are prioritized then we just return the original i.e. target
+    // prioritization.
+    if (!is_target_prioritized && !is_other_prioritized) {
+      *target = target_intersection;
+    }
+    // If only one is prioritized, then we respect priorities of that in the
+    // intersection.
+    if (is_target_prioritized && !is_other_prioritized) {
+      *target = target_intersection;
+    }
+    if (!is_target_prioritized && is_other_prioritized) {
+      *target = other_intersection;
+    }
+    // If both have priorities and agree then we go with that. If the
+    // prioritization order is different, then we just fallback to the default
+    // i.e. what the DeviceTypeOrder suggests. In that case, we also set the
+    // merged priorities to 0, so that downstream merges work correctly as well.
+    if (is_target_prioritized && is_other_prioritized) {
+      bool priorities_agree =
+          ArePrioritiesSame(target_intersection, other_intersection);
+      if (priorities_agree) {
+        *target = target_intersection;
+      } else {
+        for (const auto& prioritized_device : target_intersection) {
+          target->push_back(std::make_pair(prioritized_device.first, 0));
+        }
+        std::sort(target->begin(), target->end(), device_sort);
       }
     }
   }
@@ -904,7 +1002,7 @@ Status Placer::Run() {
     int assigned_device = -1;
 
     // Heuristic A application.
-    if (IsGeneratorNode(node)) {
+    if (IsGeneratorNode(node) && !node->out_edges().empty()) {
       const Node* output = (*node->out_edges().begin())->dst();
       int output_device_name = output->assigned_device_name_index();
 

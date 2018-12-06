@@ -18,11 +18,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util import deprecation
 
 
@@ -40,8 +39,13 @@ class _SlideDataset(dataset_ops.UnaryDataset):
     self._window_shift = ops.convert_to_tensor(
         window_shift, dtype=dtypes.int64, name="window_shift")
 
+    input_structure = structure.convert_legacy_structure(
+        input_dataset.output_types, input_dataset.output_shapes,
+        input_dataset.output_classes)
+    self._structure = input_structure._batch(None)  # pylint: disable=protected-access
+
   def _as_variant_tensor(self):
-    return gen_dataset_ops.slide_dataset(
+    return ged_ops.experimental_sliding_window_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         window_size=self._window_size,
         window_shift=self._window_shift,
@@ -49,20 +53,8 @@ class _SlideDataset(dataset_ops.UnaryDataset):
         **dataset_ops.flat_structure(self))
 
   @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    input_shapes = self._input_dataset.output_shapes
-    return nest.pack_sequence_as(input_shapes, [
-        tensor_shape.vector(None).concatenate(s)
-        for s in nest.flatten(self._input_dataset.output_shapes)
-    ])
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
+  def _element_structure(self):
+    return self._structure
 
 
 @deprecation.deprecated_args(

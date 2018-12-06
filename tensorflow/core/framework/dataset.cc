@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
+#include <unordered_map>
 
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 namespace data {
@@ -203,9 +206,23 @@ bool GraphDefBuilderWrapper::HasAttr(const string& name,
   return HasAttr(op_def, attr_name);
 }
 
+int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
+  int64 allocated_bytes = 0;
+  DatasetBase* dataset;
+  for (auto& tensor : element) {
+    if (tensor.dtype() == DT_VARIANT &&
+        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+      allocated_bytes += dataset->AllocatedBytes();
+    } else {
+      allocated_bytes += tensor.AllocatedBytes();
+    }
+  }
+  return allocated_bytes;
+}
+
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                    DatasetBase** out_dataset) {
-  if (!(tensor.dtype() == DT_VARIANT ||
+  if (!(tensor.dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(tensor.shape()))) {
     return errors::InvalidArgument(
         "Dataset tensor must be a scalar of dtype DT_VARIANT.");

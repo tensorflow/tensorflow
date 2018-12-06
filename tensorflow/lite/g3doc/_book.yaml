@@ -3,11 +3,11 @@ upper_tabs:
 - include: /_upper_tabs_left.yaml
 - include: /api_docs/_upper_tabs_api.yaml
 # Dropdown menu
-- name: Ecosystem
-  path: /ecosystem
+- name: Resources
+  path: /resources
   is_default: true
   menu:
-  - include: /ecosystem/_menu_toc.yaml
+  - include: /resources/_menu_toc.yaml
   lower_tabs:
     # Subsite tabs
     other:
@@ -82,3 +82,5 @@ upper_tabs:
       contents:
       - title: API
         path: /api_docs/python/tf/lite
+
+- include: /_upper_tabs_right.yaml

@@ -33,10 +33,13 @@ from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_make_quant
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_make_stats_summary as make_stats_summary
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_predict as predict
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_quantile_stream_resource_add_summaries as quantile_add_summaries
+from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_quantile_stream_resource_deserialize as quantile_resource_deserialize
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_quantile_stream_resource_flush as quantile_flush
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_quantile_stream_resource_get_bucket_boundaries as get_bucket_boundaries
+from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_quantile_stream_resource_handle_op as quantile_resource_handle_op
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_training_predict as training_predict
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_update_ensemble as update_ensemble
+from tensorflow.python.ops.gen_boosted_trees_ops import is_boosted_trees_quantile_stream_resource_initialized as is_quantile_resource_initialized
 # pylint: enable=unused-import
 
 from tensorflow.python.training import saver
@@ -56,6 +59,69 @@ class PruningMode(object):
     else:
       raise ValueError('pruning_mode mode must be one of: {}'.format(', '.join(
           sorted(cls._map))))
+
+
+class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
+  """SaveableObject implementation for QuantileAccumulator.
+
+     The bucket boundaries are serialized and deserialized from checkpointing.
+  """
+
+  def __init__(self,
+               epsilon,
+               num_streams,
+               num_quantiles,
+               name=None,
+               max_elements=None):
+    with ops.name_scope(name, 'QuantileAccumulator') as name:
+      self._eps = epsilon
+      self._num_streams = num_streams
+      self._num_quantiles = num_quantiles
+      self._resource_handle = quantile_resource_handle_op(
+          container='', shared_name=name, name=name)
+      self._create_op = create_quantile_stream_resource(self._resource_handle,
+                                                        epsilon, num_streams)
+      is_initialized_op = is_quantile_resource_initialized(
+          self._resource_handle)
+      resources.register_resource(self._resource_handle, self._create_op,
+                                  is_initialized_op)
+      self._make_saveable(name)
+
+  def _make_saveable(self, name):
+    bucket_boundaries = get_bucket_boundaries(self._resource_handle,
+                                              self._num_streams)
+    slice_spec = ''
+    specs = []
+    for i in range(self._num_streams):
+      specs.append(
+          saver.BaseSaverBuilder.SaveSpec(
+              bucket_boundaries[i], slice_spec,
+              name + '_bucket_boundaries_' + str(i)))
+    super(QuantileAccumulator, self).__init__(self._resource_handle, specs,
+                                              name)
+    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self)
+
+  def restore(self, restored_tensors, unused_tensor_shapes):
+    bucket_boundaries = restored_tensors
+    with ops.control_dependencies([self._create_op]):
+      return quantile_resource_deserialize(
+          self._resource_handle, bucket_boundaries=bucket_boundaries)
+
+  def add_summaries(self, float_columns, example_weights):
+    summaries = make_quantile_summaries(float_columns, example_weights,
+                                        self._eps)
+    summary_op = quantile_add_summaries(self._resource_handle, summaries)
+    return summary_op
+
+  def flush(self):
+    return quantile_flush(self._resource_handle, self._num_quantiles)
+
+  def get_bucket_boundaries(self):
+    return get_bucket_boundaries(self._resource_handle, self._num_streams)
+
+  @property
+  def resource(self):
+    return self._resource_handle
 
 
 class _TreeEnsembleSavable(saver.BaseSaverBuilder.SaveableObject):

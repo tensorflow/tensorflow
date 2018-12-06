@@ -214,6 +214,11 @@ bool IsFloorDiv(const NodeDef& node) { return node.op() == "FloorDiv"; }
 
 bool IsFloorMod(const NodeDef& node) { return node.op() == "FloorMod"; }
 
+bool IsFusedBatchNorm(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "FusedBatchNorm" || op == "FusedBatchNormV2";
+}
+
 bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
   return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2";
@@ -247,6 +252,10 @@ bool IsIgamma(const NodeDef& node) { return node.op() == "Igamma"; }
 bool IsIgammac(const NodeDef& node) { return node.op() == "Igammac"; }
 
 bool IsImag(const NodeDef& node) { return node.op() == "Imag"; }
+
+bool IsImmutableConst(const NodeDef& node) {
+  return node.op() == "ImmutableConst";
+}
 
 bool IsInvGrad(const NodeDef& node) { return node.op() == "InvGrad"; }
 
@@ -358,6 +367,8 @@ bool IsReduction(const NodeDef& node) {
   return op == "Sum" || op == "Prod" || op == "Min" || op == "Max" ||
          op == "Mean" || op == "Any" || op == "All";
 }
+
+bool IsRelu(const NodeDef& node) { return node.op() == "Relu"; }
 
 bool IsReluGrad(const NodeDef& node) { return node.op() == "ReluGrad"; }
 
@@ -540,14 +551,15 @@ bool MaybeHasRefInput(const NodeDef& node) {
   return false;
 }
 
-bool IsFreeOfSideEffect(const NodeDef& node) {
+bool IsFreeOfSideEffect(const NodeDef& node,
+                        const OpRegistryInterface* op_registry) {
   // Placeholders must be preserved to keep the graph feedable.
   if (IsPlaceholder(node)) {
     return false;
   }
   const OpDef* op_def = nullptr;
   const string& op_name = node.op();
-  Status status = OpRegistry::Global()->LookUpOpDef(op_name, &op_def);
+  Status status = op_registry->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     return false;
   }
@@ -564,7 +576,15 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
   if (node.op().find("Queue") != string::npos) {
     return false;
   }
+  // Sending a tensor via a network is a side effect.
+  if (IsSend(node)) {
+    return false;
+  }
   return !ModifiesInputsInPlace(node);
+}
+
+bool IsFreeOfSideEffect(const NodeDef& node) {
+  return IsFreeOfSideEffect(node, OpRegistry::Global());
 }
 
 bool ModifiesInputsInPlace(const NodeDef& node) {

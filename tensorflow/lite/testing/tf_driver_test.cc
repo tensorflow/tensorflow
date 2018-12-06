@@ -16,12 +16,76 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/escaping.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace testing {
 namespace {
 
 using ::testing::ElementsAre;
+
+class TestDriver : public TfDriver {
+ public:
+  // No need for a full TfDriver. We just want to test the read/write methods.
+  TestDriver() : TfDriver({}, {}, {}, {}) {}
+  string WriteAndReadBack(tensorflow::DataType type,
+                          const std::vector<int64_t>& shape,
+                          const string& values) {
+    tensorflow::Tensor t = {
+        type,
+        tensorflow::TensorShape{tensorflow::gtl::ArraySlice<tensorflow::int64>{
+            reinterpret_cast<const tensorflow::int64*>(shape.data()),
+            shape.size()}}};
+    SetInput(values, &t);
+    return ReadOutput(t);
+  }
+};
+
+TEST(TfDriverTest, ReadingAndWrintingValues) {
+  TestDriver driver;
+  ASSERT_EQ(driver.WriteAndReadBack(tensorflow::DT_FLOAT, {1, 2, 2},
+                                    "0.10,0.20,0.30,0.40"),
+            "0.100000001,0.200000003,0.300000012,0.400000006");
+  ASSERT_EQ(driver.WriteAndReadBack(tensorflow::DT_INT32, {1, 2, 2},
+                                    "10,40,100,-100"),
+            "10,40,100,-100");
+  ASSERT_EQ(driver.WriteAndReadBack(tensorflow::DT_UINT8, {1, 2, 2},
+                                    "48,49,121, 122"),
+            "0,1,y,z");
+}
+
+TEST(TfDriverTest, ReadingAndWrintingValuesStrings) {
+  TestDriver driver;
+
+  auto set_buffer = [](const std::vector<string>& values, string* buffer) {
+    DynamicBuffer dynamic_buffer;
+    for (const string& s : values) {
+      dynamic_buffer.AddString(s.data(), s.size());
+    }
+
+    char* char_b = nullptr;
+    int size = dynamic_buffer.WriteToBuffer(&char_b);
+    *buffer = absl::BytesToHexString(absl::string_view(char_b, size));
+    free(char_b);
+  };
+
+  string buffer;
+
+  set_buffer({"", "", "", ""}, &buffer);
+  ASSERT_EQ(driver.WriteAndReadBack(tensorflow::DT_STRING, {1, 2, 2}, buffer),
+            buffer);
+
+  // Note that if we pass the empty string we get the "empty" buffer (where all
+  // the strings are empty).
+  ASSERT_EQ(driver.WriteAndReadBack(tensorflow::DT_STRING, {1, 2, 2}, ""),
+            buffer);
+
+  set_buffer({"AB", "ABC", "X", "YZ"}, &buffer);
+
+  ASSERT_EQ(driver.WriteAndReadBack(tensorflow::DT_STRING, {1, 2, 2}, buffer),
+            buffer);
+}
 
 TEST(TfDriverTest, SimpleTest) {
   std::unique_ptr<TfDriver> runner(
@@ -47,8 +111,10 @@ TEST(TfDriverTest, SimpleTest) {
   runner->ResetTensor(2);
   runner->Invoke();
 
-  ASSERT_EQ(runner->ReadOutput(0), "0.101,0.202,0.303,0.404");
-  ASSERT_EQ(runner->ReadOutput(1), "0.011,0.022,0.033,0.044");
+  ASSERT_EQ(runner->ReadOutput(0),
+            "0.101000004,0.202000007,0.303000003,0.404000014");
+  ASSERT_EQ(runner->ReadOutput(1),
+            "0.0109999999,0.0219999999,0.0329999998,0.0439999998");
 }
 
 }  // namespace

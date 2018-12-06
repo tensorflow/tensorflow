@@ -2466,20 +2466,21 @@ TEST_F(OpTest, Pack) {
   });
 }
 
-// TODO(b/31741898): crashes on GPU.
 TEST_F(OpTest, Pad) {
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> t_dims = RandomDims();
 
-    // TODO(b/31741996): re-enable DT_INT64 when bug is fixed.
-    // DataType tpaddings = Choose<DataType>({DT_INT32, DT_INT64});
-    DataType tpaddings = DT_INT32;
+    DataType tpaddings = Choose<DataType>({DT_INT32, DT_INT64});
     std::vector<int64> paddings_vec;
-    std::uniform_int_distribution<int> distribution(0, 7);
     for (int i = 0; i < t_dims.size(); ++i) {
-      paddings_vec.push_back(distribution(generator()));
-      paddings_vec.push_back(distribution(generator()));
+      std::uniform_int_distribution<int> pad_distribution(0, t_dims[i]);
+      int pad_size = pad_distribution(generator());
+      std::uniform_int_distribution<int> lower_distribution(0, pad_size);
+      int low_pad_size = lower_distribution(generator());
+      paddings_vec.push_back(low_pad_size);
+      paddings_vec.push_back(pad_size - low_pad_size);
+      t_dims[i] -= pad_size;
     }
     Tensor paddings;
     CHECK(
@@ -3381,10 +3382,10 @@ int main(int argc, char** argv) {
   }
   // XLA devices register kernels at construction time; create all known devices
   // to make sure the kernels are registered.
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<tensorflow::Device>> devices;
   TF_CHECK_OK(tensorflow::DeviceFactory::AddDevices(
       tensorflow::SessionOptions(), "", &devices));
-  tensorflow::DeviceMgr device_mgr(devices);
+  tensorflow::DeviceMgr device_mgr(std::move(devices));
 
   tensorflow::Device* ignored;
   TF_QCHECK_OK(

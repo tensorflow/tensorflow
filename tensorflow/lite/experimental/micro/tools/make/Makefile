@@ -62,11 +62,18 @@ tensorflow/lite/experimental/micro/examples/micro_speech/yes_features_data.cc
 # Test binary for the microcontroller speech model.
 PREPROCESSOR_TEST_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor_test.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/no_30ms_sample_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/yes_30ms_sample_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/no_power_spectrum_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/yes_power_spectrum_data.cc
+
+PREPROCESSOR_REFERENCE_TEST_SRCS = \
+$(PREPROCESSOR_TEST_SRCS) \
+tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.cc
+
+PREPROCESSOR_FIXED_TEST_SRCS += \
+$(PREPROCESSOR_TEST_SRCS) \
+tensorflow/lite/experimental/micro/examples/micro_speech/fixed_point/preprocessor.cc
 
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*test.cc) \
@@ -91,7 +98,8 @@ include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
 
 ALL_SRCS := \
 	$(MICRO_SPEECH_TEST_SRCS) \
-	$(PREPROCESSOR_TEST_SRCS) \
+	$(PREPROCESSOR_REFERENCE_TEST_SRCS) \
+	$(PREPROCESSOR_FIXED_TEST_SRCS) \
 	$(MICROLITE_CC_SRCS) \
 	$(MICROLITE_TEST_SRCS)
 
@@ -104,7 +112,8 @@ LIBDIR := $(GENDIR)lib/
 MICROLITE_LIB_PATH := $(LIBDIR)$(MICROLITE_LIB_NAME)
 
 MICRO_SPEECH_TEST_BINARY := $(BINDIR)micro_speech_test
-PREPROCESSOR_TEST_BINARY := $(BINDIR)preprocessor_test
+PREPROCESSOR_REFERENCE_TEST_BINARY := $(BINDIR)preprocessor_reference_test
+PREPROCESSOR_FIXED_TEST_BINARY := $(BINDIR)preprocessor_fixed_test
 
 CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
 CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}gcc
@@ -113,8 +122,11 @@ AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}ar
 MICRO_SPEECH_TEST_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICRO_SPEECH_TEST_SRCS))))
 
-PREPROCESSOR_TEST_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(PREPROCESSOR_TEST_SRCS))))
+PREPROCESSOR_REFERENCE_TEST_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(PREPROCESSOR_REFERENCE_TEST_SRCS))))
+
+PREPROCESSOR_FIXED_TEST_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(PREPROCESSOR_FIXED_TEST_SRCS))))
 
 MICROLITE_LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICROLITE_CC_SRCS))))
@@ -158,18 +170,29 @@ micro_speech_test_bin: $(MICRO_SPEECH_TEST_BINARY).bin
 test_micro_speech: $(MICRO_SPEECH_TEST_BINARY)
 	$(TEST_SCRIPT) $(MICRO_SPEECH_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
 
-$(PREPROCESSOR_TEST_BINARY): $(PREPROCESSOR_TEST_OBJS) $(MICROLITE_LIB_PATH)
+$(PREPROCESSOR_REFERENCE_TEST_BINARY): $(PREPROCESSOR_REFERENCE_TEST_OBJS) $(MICROLITE_LIB_PATH)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-	-o $(PREPROCESSOR_TEST_BINARY) $(PREPROCESSOR_TEST_OBJS) \
+	-o $(PREPROCESSOR_REFERENCE_TEST_BINARY) $(PREPROCESSOR_REFERENCE_TEST_OBJS) \
 	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
 
-preprocessor_test: $(PREPROCESSOR_TEST_BINARY)
-preprocessor_test_bin: $(PREPROCESSOR_TEST_BINARY).bin
+preprocessor_reference_test: $(PREPROCESSOR_REFERENCE_TEST_BINARY)
+preprocessor_reference_test_bin: $(PREPROCESSOR_REFERENCE_TEST_BINARY).bin
 
-test_preprocessor: $(PREPROCESSOR_TEST_BINARY)
-	$(TEST_SCRIPT) $(PREPROCESSOR_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
+test_preprocessor_reference: $(PREPROCESSOR_REFERENCE_TEST_BINARY)
+	$(TEST_SCRIPT) $(PREPROCESSOR_REFERENCE_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
 
+$(PREPROCESSOR_FIXED_TEST_BINARY): $(PREPROCESSOR_FIXED_TEST_OBJS) $(MICROLITE_LIB_PATH)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+	-o $(PREPROCESSOR_FIXED_TEST_BINARY) $(PREPROCESSOR_FIXED_TEST_OBJS) \
+	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
+
+preprocessor_fixed_test: $(PREPROCESSOR_FIXED_TEST_BINARY)
+preprocessor_fixed_test_bin: $(PREPROCESSOR_FIXED_TEST_BINARY).bin
+
+test_preprocessor_fixed: $(PREPROCESSOR_FIXED_TEST_BINARY)
+	$(TEST_SCRIPT) $(PREPROCESSOR_FIXED_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
 
 $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 	@mkdir -p $(dir $@)

@@ -49,6 +49,18 @@ class TfLiteDriver : public TestRunner {
   string ReadOutput(int id) override { return "no-op"; }
 
  private:
+  void DeallocateStringTensor(TfLiteTensor* t) {
+    if (t) {
+      free(t->data.raw);
+      t->data.raw = nullptr;
+    }
+  }
+  void AllocateStringTensor(int id, size_t num_bytes, TfLiteTensor* t) {
+    t->data.raw = reinterpret_cast<char*>(malloc(num_bytes));
+    t->bytes = num_bytes;
+    tensors_to_deallocate_[id] = t;
+  }
+
   void ResetLSTMStateTensors();
 
   class Expectation;
@@ -59,6 +71,7 @@ class TfLiteDriver : public TestRunner {
   std::unique_ptr<Interpreter> interpreter_;
   std::map<int, std::unique_ptr<Expectation>> expected_output_;
   bool must_allocate_tensors_ = true;
+  std::map<int, TfLiteTensor*> tensors_to_deallocate_;
 };
 
 }  // namespace testing

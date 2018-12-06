@@ -61,6 +61,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_UINT8:
       *type = kTfLiteUInt8;
       break;
+    case TensorType_INT8:
+      *type = kTfLiteInt8;
+      break;
     case TensorType_INT64:
       *type = kTfLiteInt64;
       break;
@@ -503,6 +506,14 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_SPLIT_V: {
+      auto* params = allocator->AllocatePOD<TfLiteSplitParams>();
+      if (auto* schema_params = op->builtin_options_as_SplitVOptions()) {
+        params->num_splits = schema_params->num_splits();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_SQUEEZE: {
       auto* params = allocator->AllocatePOD<TfLiteSqueezeParams>();
       if (auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
@@ -617,8 +628,31 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_LEAKY_RELU: {
+      TfLiteLeakyReluParams* params =
+          allocator->AllocatePOD<TfLiteLeakyReluParams>();
+      if (auto* leaky_relu_params = op->builtin_options_as_LeakyReluOptions()) {
+        params->alpha = leaky_relu_params->alpha();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_MIRROR_PAD: {
+      TfLiteMirrorPaddingParams* params =
+          allocator->AllocatePOD<TfLiteMirrorPaddingParams>();
+      auto* mirror_pad_params = op->builtin_options_as_MirrorPadOptions();
+      if (mirror_pad_params != nullptr) {
+        params->mode =
+            mirror_pad_params->mode() == tflite::MirrorPadMode_REFLECT
+                ? TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingReflect
+                : TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingSymmetric;
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
 
     // Below are the ops with no builtin_data strcture.
+    case BuiltinOperator_ABS:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
     // ok for now, since there is no call implementation either.
@@ -668,6 +702,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_FILL:
     case BuiltinOperator_FLOOR_MOD:
     case BuiltinOperator_RANGE:
+    case BuiltinOperator_SQUARED_DIFFERENCE:
       break;
   }
   return kTfLiteOk;

@@ -20,13 +20,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 
 namespace {
 
-class HloReachabilityTest : public HloVerifiedTestBase {};
+class HloReachabilityTest : public HloTestBase {};
 
 TEST_F(HloReachabilityTest, Reachability) {
   // Construct and test a reachability graph of the following form:
@@ -48,7 +48,8 @@ TEST_F(HloReachabilityTest, Reachability) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   auto e = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
-  builder.Build();
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
 
   HloReachabilityMap reachability({a, b, c, d, e});
   reachability.SetReachable(a, a);

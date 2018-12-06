@@ -27,6 +27,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import queue_runner
 from tensorflow.python.training import session_manager
@@ -43,6 +44,9 @@ from tensorflow.python.util.tf_export import tf_export
 @tf_export(v1=["train.SyncReplicasOptimizer"])
 class SyncReplicasOptimizer(optimizer.Optimizer):
   """Class to synchronize, aggregate gradients and pass them to the optimizer.
+
+  This class is deprecated. For synchrononous training, please use [Distribution
+  Strategies](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute).
 
   In a typical asynchronous training environment, it's common to have some
   stale gradients. For example, with a N-replica asynchronous training,
@@ -142,9 +146,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
   @deprecation.deprecated(
       None,
-      "The `SyncReplicaOptimizer` is deprecated. For synchrononous training, "
-      "please use [Distribution Strategies](https://github.com/tensorflow/"
-      "tensorflow/tree/master/tensorflow/contrib/distribute).",
+      "The `SyncReplicaOptimizer` class is deprecated. For synchrononous "
+      "training, please use [Distribution Strategies](https://github.com/"
+      "tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute).",
       warn_once=True)
   def __init__(self,
                opt,
@@ -256,7 +260,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     # local_anchor op will be placed on this worker task by default.
     local_anchor = control_flow_ops.no_op()
     # Colocating local_step variable prevents it being placed on the PS.
-    with ops.colocate_with(local_anchor):
+    distribution_strategy = (
+        distribution_strategy_context.get_distribution_strategy())
+    with distribution_strategy.colocate_vars_with(local_anchor):
       self._local_step = variable_scope.variable(
           initial_value=0,
           trainable=False,

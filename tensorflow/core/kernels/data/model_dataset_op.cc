@@ -60,6 +60,8 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "ModelDatasetOp::Dataset"; }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -95,10 +97,12 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(EnsureOptimizeThreadStarted(ctx));
         IteratorContext::Params params(ctx);
-        params.model = model_;
+        {
+          mutex_lock l(mu_);
+          TF_RETURN_IF_ERROR(EnsureOptimizeThreadStarted(ctx));
+          params.model = model_;
+        }
         return input_impl_->GetNext(IteratorContext(std::move(params)),
                                     out_tensors, end_of_sequence);
       }
@@ -171,7 +175,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       std::shared_ptr<model::Model> model_;
       std::unique_ptr<Thread> optimize_thread_ GUARDED_BY(mu_);
       bool cancelled_ GUARDED_BY(mu_) = false;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_;
     };
 
     const DatasetBase* input_;

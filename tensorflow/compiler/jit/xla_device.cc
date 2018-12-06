@@ -218,6 +218,9 @@ XlaDevice::XlaDevice(const SessionOptions& session_options,
 XlaDevice::~XlaDevice() {
   VLOG(1) << "Destroying XLA device " << jit_device_name_ << " " << this;
   mutex_lock lock(mu_);
+  while (outstanding_asynchronous_operations_ > 0) {
+    outstanding_asynchronous_operations_cv_.wait(lock);
+  }
   if (device_context_) {
     device_context_->Unref();
   }
@@ -384,6 +387,7 @@ void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
 
 Status XlaDevice::Sync() {
   VLOG(1) << "XlaDevice::Sync";
+  tracing::ScopedActivity activity("XlaDevice::Sync", /*is_expensive=*/true);
   std::shared_ptr<se::Stream> stream;
   {
     mutex_lock lock(mu_);
@@ -391,11 +395,44 @@ Status XlaDevice::Sync() {
   }
   if (!stream) return Status::OK();
 
-  if (!stream->parent()->SynchronizeAllActivity() || !stream->ok()) {
+  Status status = stream->BlockHostUntilDone();
+  {
+    mutex_lock lock(mu_);
+    while (outstanding_asynchronous_operations_ > 0) {
+      outstanding_asynchronous_operations_cv_.wait(lock);
+    }
+  }
+  TF_RETURN_IF_ERROR(status);
+  if (!stream->ok()) {
     return errors::Internal("XlaDevice::Sync() failed.");
   }
   VLOG(1) << "XlaDevice::Sync completed";
   return Status::OK();
+}
+
+void XlaDevice::Sync(const DoneCallback& done) {
+  VLOG(1) << "XlaDevice::Sync (asynchronous)";
+  std::shared_ptr<se::Stream> stream;
+  {
+    mutex_lock lock(mu_);
+    stream = stream_;
+  }
+  if (!stream) {
+    done(Status::OK());
+    return;
+  }
+
+  stream->ThenEnqueueOnBackgroundThread(
+      [this, stream, done](se::StreamExecutor*) {
+        tracing::ScopedActivity activity("XlaDevice::Sync::Callback",
+                                         /*is_expensive=*/true);
+        mutex_lock lock(mu_);
+        while (outstanding_asynchronous_operations_ > 0) {
+          outstanding_asynchronous_operations_cv_.wait(lock);
+        }
+        done(stream->ok() ? Status::OK()
+                          : errors::Internal("XlaDevice::Sync() failed."));
+      });
 }
 
 Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
@@ -441,12 +478,55 @@ bool XlaDevice::RequiresSyncOnCompletion() const {
   return sync_on_completion_;
 }
 
+XlaDevice::AsynchronousOperationHandle::AsynchronousOperationHandle(
+    XlaDevice* device)
+    : device_(device) {
+  mutex_lock lock(device_->mu_);
+  ++device_->outstanding_asynchronous_operations_;
+}
+
+XlaDevice::AsynchronousOperationHandle::~AsynchronousOperationHandle() {
+  if (device_) {
+    mutex_lock lock(device_->mu_);
+    --device_->outstanding_asynchronous_operations_;
+    device_->outstanding_asynchronous_operations_cv_.notify_all();
+  }
+}
+
+XlaDevice::AsynchronousOperationHandle::AsynchronousOperationHandle(
+    const XlaDevice::AsynchronousOperationHandle& other)
+    : device_(other.device_) {
+  mutex_lock lock(device_->mu_);
+  ++device_->outstanding_asynchronous_operations_;
+}
+
+XlaDevice::AsynchronousOperationHandle::AsynchronousOperationHandle(
+    XlaDevice::AsynchronousOperationHandle&& other)
+    : device_(other.device_) {
+  other.device_ = nullptr;
+}
+
+XlaDevice::AsynchronousOperationHandle& XlaDevice::AsynchronousOperationHandle::
+operator=(const XlaDevice::AsynchronousOperationHandle& other) {
+  device_ = other.device_;
+  mutex_lock lock(device_->mu_);
+  ++device_->outstanding_asynchronous_operations_;
+  return *this;
+}
+
+XlaDevice::AsynchronousOperationHandle& XlaDevice::AsynchronousOperationHandle::
+operator=(XlaDevice::AsynchronousOperationHandle&& other) {
+  device_ = other.device_;
+  other.device_ = nullptr;
+  return *this;
+}
+
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device) {
   // Any op assigned to the device that isn't rewritten by the graph rewriter
   // gets executed by a n XlaCompileOnDemandOp, which compiles it and executes
   // it just-in-time.
-  kernel_factory::OpKernelRegistrar::Factory factory =
+  OpKernel* (*factory)(OpKernelConstruction*) =
       [](OpKernelConstruction* context) -> OpKernel* {
     return new XlaCompileOnDemandOp(context);
   };

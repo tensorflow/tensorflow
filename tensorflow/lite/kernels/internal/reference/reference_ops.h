@@ -100,6 +100,98 @@ gemmlowp::FixedPoint<tRawType, tIntegerBits> SaturatingSub(
 
 namespace reference_ops {
 
+// Return true for broadcast case, false otherwise.
+inline bool ProcessBroadcastShapes(const RuntimeShape& shape0,
+                                   const RuntimeShape& shape1,
+                                   tflite::ArithmeticParams* params) {
+  const int dims_count =
+      std::max(shape0.DimensionsCount(), shape1.DimensionsCount());
+
+  params->broadcast_category = BroadcastableOpCategory::kGenericBroadcast;
+  RuntimeShape scalar_shape(dims_count, 1);
+
+  auto extended_shape0 = RuntimeShape::ExtendedShape(dims_count, shape0);
+  auto extended_shape1 = RuntimeShape::ExtendedShape(dims_count, shape1);
+
+  // Check for "exact" match, implicitly accepting any scalar shapes.
+  if (extended_shape0 == extended_shape1) {
+    params->broadcast_category = BroadcastableOpCategory::kNonBroadcast;
+    return false;
+  }
+
+  for (int i = dims_count - 1; i >= 0; --i) {
+    if (extended_shape0.Dims(i) == extended_shape1.Dims(i)) {
+      continue;
+    } else if (extended_shape0.Dims(i) == 1) {
+      params->broadcast_category =
+          BroadcastableOpCategory::kFirstInputBroadcastsFast;
+      break;
+    } else if (extended_shape1.Dims(i) == 1) {
+      params->broadcast_category =
+          BroadcastableOpCategory::kSecondInputBroadcastsFast;
+      break;
+    } else {
+      params->broadcast_category = BroadcastableOpCategory::kGenericBroadcast;
+      break;
+    }
+  }
+
+  if (params->broadcast_category !=
+          BroadcastableOpCategory::kFirstInputBroadcastsFast &&
+      params->broadcast_category !=
+          BroadcastableOpCategory::kSecondInputBroadcastsFast) {
+    return false;
+  }
+
+  // From this point it is assumed contractually that corresponding dimensions
+  // in shape0 and shape1 are either (a) equal or (b) one or other equals 1.
+  const bool swap_inputs = params->broadcast_category ==
+                           BroadcastableOpCategory::kSecondInputBroadcastsFast;
+  const RuntimeShape* shape_a =
+      swap_inputs ? &extended_shape1 : &extended_shape0;
+  const RuntimeShape* shape_b =
+      swap_inputs ? &extended_shape0 : &extended_shape1;
+
+  int i = dims_count - 1;
+  params->broadcast_shape[0] = 1;
+  params->broadcast_shape[1] = 1;
+  params->broadcast_shape[2] = 1;
+  params->broadcast_shape[3] = 1;
+  params->broadcast_shape[4] = 1;
+  // y_0 is greedy: include dims if both or neither equal 1: in other words,
+  // test for equality rather than (shape_a->Dims(i) != 1).
+  while (i >= 0 && shape_a->Dims(i) == shape_b->Dims(i)) {
+    params->broadcast_shape[4] *= shape_b->Dims(i);
+    --i;
+  }
+  // Here either input_a or input_b has dim of 1 (if i >= 0).  If it is input_b
+  // that has the unit dimension, the next two loops are not entered.
+  while (i >= 0 && shape_a->Dims(i) == 1) {
+    params->broadcast_shape[3] *= shape_b->Dims(i);
+    --i;
+  }
+  while (i >= 0 && shape_a->Dims(i) == shape_b->Dims(i)) {
+    params->broadcast_shape[2] *= shape_a->Dims(i);
+    --i;
+  }
+  // Here either input_a or input_b has dim of 1 (if i >= 0).
+  while (i >= 0 && shape_b->Dims(i) == 1) {
+    params->broadcast_shape[1] *= shape_a->Dims(i);
+    --i;
+  }
+  while (i >= 0 && shape_a->Dims(i) == shape_b->Dims(i)) {
+    params->broadcast_shape[0] *= shape_b->Dims(i);
+    --i;
+  }
+
+  // Rarer case is when the broadcast dimensions cannot be handled by a fivefold
+  // loop.
+  if (i >= 0) {
+    params->broadcast_category = BroadcastableOpCategory::kGenericBroadcast;
+  }
+  return true;
+}
+
 template <typename T>
 int CountLeadingZeros(T integer_input) {
   static_assert(std::is_unsigned<T>::value,
@@ -463,6 +555,19 @@ inline void ReluX(const tflite::ActivationParams& params,
     const uint8 clamped =
         val > max_value ? max_value : val < min_value ? min_value : val;
     output_data[i] = clamped;
+  }
+}
+
+inline void LeakyRelu(const tflite::LeakyReluParams& params,
+                      const RuntimeShape& input_shape, const float* input_data,
+                      const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("LeakyRelu (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const float val = input_data[i];
+    // Note that this implementation matches that of TensorFlow, and corresponds
+    // to the traditional LeakyRelu equation only for alpha <= 1.
+    output_data[i] = std::max(val, val * params.alpha);
   }
 }
 
@@ -2631,7 +2736,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   using FixedPointScaledDiff =
       gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
@@ -2936,10 +3040,10 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
-template <typename T>
+template <typename T, typename CoordsT = int32>
 inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
-                   const RuntimeShape& coords_shape, const int32* coords_data,
+                   const RuntimeShape& coords_shape, const CoordsT* coords_data,
                    const RuntimeShape& output_shape, T* output_data) {
   int axis = op_params.axis;
   if (axis < 0) {
@@ -3559,8 +3663,10 @@ inline void Mean(const tflite::MeanParams& op_params,
                  const RuntimeShape& unextended_output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Mean");
 
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  // Current implementation only supports dimension equals 4 and simultaneous
+  // reduction over width and height.
+  TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_CHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input_shape =
       RuntimeShape::ExtendedShape(4, unextended_input_shape);
   const RuntimeShape output_shape =
@@ -3574,8 +3680,6 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
 
-  // The current implementation only supports simultaneous reduction over
-  // width and height.
   TFLITE_DCHECK_EQ(op_params.axis_count, 2);
   TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
                 (op_params.axis[0] == 2 && op_params.axis[1] == 1));
@@ -4459,6 +4563,63 @@ inline void ResizeNearestNeighbor(
       }
     }
     input_ptr += batch_offset;
+  }
+}
+
+inline void BroadcastPrelu4DSlow(const PreluParams& params,
+                                 const RuntimeShape& input_shape,
+                                 const uint8* input_data,
+                                 const RuntimeShape& alpha_shape,
+                                 const uint8* alpha_data,
+                                 const RuntimeShape& output_shape,
+                                 uint8* output_data) {
+  TFLITE_DCHECK_LE(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(alpha_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 4);
+  const RuntimeShape extended_output_shape =
+      RuntimeShape::ExtendedShape(4, output_shape);
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input_shape, alpha_shape, &desc1, &desc2);
+
+  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
+    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
+      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
+        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
+          int output_index = Offset(extended_output_shape, b, y, x, c);
+          int input_index = SubscriptToIndex(desc1, b, y, x, c);
+          const int32 input_value =
+              params.input_offset + input_data[input_index];
+          if (input_value >= 0) {
+            output_data[output_index] = input_data[input_index];
+          } else {
+            auto alpha_index = SubscriptToIndex(desc2, b, y, x, c);
+            const int32 alpha_value =
+                params.alpha_offset + alpha_data[alpha_index];
+            const int32 unclamped_output =
+                params.output_offset +
+                MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                    input_value * alpha_value, params.output_multiplier,
+                    params.output_shift);
+            const int32 quantized_min = std::numeric_limits<uint8_t>::min();
+            const int32 quantized_max = std::numeric_limits<uint8_t>::max();
+            const int32 clamped_output = std::min(
+                quantized_max, std::max(quantized_min, unclamped_output));
+            output_data[output_index] = static_cast<uint8>(clamped_output);
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+void Fill(const RuntimeShape& value_shape, const T* value_data,
+          const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_DCHECK_EQ(value_shape.DimensionsCount(), 0);
+  const int flat_size = output_shape.FlatSize();
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = *value_data;
   }
 }
 

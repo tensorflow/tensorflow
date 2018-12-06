@@ -31,6 +31,7 @@ import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.contrib.tpu.python.tpu import tensor_tracer
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import error_handling
 from tensorflow.contrib.tpu.python.tpu import session_support
@@ -44,6 +45,7 @@ from tensorflow.contrib.training.python.training import hparam
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest as data_nest
 from tensorflow.python.estimator import estimator as estimator_lib
@@ -106,6 +108,15 @@ ops.register_proto_function(
     proto_type=variable_pb2.VariableDef,
     to_proto=resource_variable_ops._to_proto_fn,  # pylint: disable=protected-access
     from_proto=resource_variable_ops._from_proto_fn)  # pylint: disable=protected-access
+
+
+def _is_iterable(obj):
+  """A Python 2 and 3 compatible util to check whether `obj` is iterable."""
+  try:
+    iter(obj)
+    return True
+  except TypeError:
+    return False
 
 
 def _create_global_step(graph):
@@ -288,9 +299,9 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
       host_calls['host_call'] = host_call
     _OutfeedHostCall.validate(host_calls)
 
-    training_hooks = list(training_hooks or [])
-    evaluation_hooks = list(evaluation_hooks or [])
-    prediction_hooks = list(prediction_hooks or [])
+    training_hooks = tuple(training_hooks or [])
+    evaluation_hooks = tuple(evaluation_hooks or [])
+    prediction_hooks = tuple(prediction_hooks or [])
 
     for hook in training_hooks + evaluation_hooks + prediction_hooks:
       if not isinstance(hook, session_run_hook.SessionRunHook):
@@ -325,7 +336,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
     hooks = None
     if self.host_call is not None:
       hooks = [_OutfeedHostCallHook(host_call_ret['host_call'])]
-    hooks = list(hooks or [])
+    hooks = tuple(hooks or [])
     scaffold = self.scaffold_fn() if self.scaffold_fn else None
     return model_fn_lib.EstimatorSpec(
         mode=self.mode,
@@ -402,12 +413,15 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
                enqueue_ops,
                dequeue_ops,
                run_infeed_loop_on_coordinator=True,
-               rendezvous=None):
+               rendezvous=None,
+               master=None,
+               session_config=None):
     self._master_job = ctx.master_job
     self._enqueue_ops = enqueue_ops
     self._dequeue_ops = dequeue_ops
     self._rendezvous = rendezvous
-
+    self._master = master
+    self._session_config = session_config
     self._run_infeed_loop_on_coordinator = run_infeed_loop_on_coordinator
     self._initial_infeed_sleep_secs = (
         ctx.config.tpu_config.initial_infeed_sleep_secs)
@@ -419,11 +433,10 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
   def begin(self):
     logging.info('TPU job name %s', self._master_job)
     self._iterations_per_loop_var = _create_or_get_iterations_per_loop()
+    self._init_ops = []
     if self._should_initialize_tpu:
-      self._init_ops = [tpu.initialize_system(job=self._master_job)]
       self._finalize_ops = [tpu.shutdown_system(job=self._master_job)]
     else:
-      self._init_ops = []
       self._finalize_ops = []
 
     summary_writer_init_ops = contrib_summary.summary_writer_initializer_op()
@@ -465,11 +478,17 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     return _OpQueueContext(name=name, target=target, args=args)
 
   def after_create_session(self, session, coord):
-    logging.info('Init TPU system')
-    start = time.time()
+    if self._should_initialize_tpu:
+      logging.info('Init TPU system')
+      start = time.time()
+      with ops.Graph().as_default():
+        with tf_session.Session(
+            self._master, config=self._session_config) as sess:
+          sess.run(tpu.initialize_system(job=self._master_job))
+      logging.info('Initialized TPU in %d seconds', time.time() - start)
+
     session.run(self._init_ops,
                 options=config_pb2.RunOptions(timeout_in_ms=5 * 60 * 1000))
-    logging.info('Initialized TPU in %d seconds', time.time() - start)
 
     self._infeed_controller = self._create_infeed_controller(
         name='InfeedController', target=self._run_infeed, args=(session,))
@@ -1317,9 +1336,15 @@ class _ModelFnWrapper(object):
 
       captured_training_hooks.capture(estimator_spec.training_hooks)
 
+      tracing_ops = []
+      if tensor_tracer.TensorTracer.is_enabled():
+        tt = tensor_tracer.TensorTracer()
+        loss, tracing_ops = tt.trace_tpu(ops.get_default_graph(), loss,
+                                         self._ctx.num_replicas)
+
       # We must run train_op to update the variables prior to running the
       # outfeed.
-      with ops.control_dependencies([train_op]):
+      with ops.control_dependencies([train_op]+tracing_ops):
         host_call_outfeed_ops = []
         if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
             and estimator_spec.host_call is not None):
@@ -2153,7 +2178,6 @@ class TPUEstimator(estimator_lib.Estimator):
                                builder,
                                input_receiver_fn_map,
                                checkpoint_path,
-                               strip_default_attrs,
                                save_variables=True,
                                mode=model_fn_lib.ModeKeys.PREDICT,
                                export_tags=None,
@@ -2168,7 +2192,6 @@ class TPUEstimator(estimator_lib.Estimator):
         builder,
         input_receiver_fn_map,
         checkpoint_path,
-        strip_default_attrs,
         save_variables,
         mode=mode,
         export_tags=export_tags,
@@ -2185,7 +2208,6 @@ class TPUEstimator(estimator_lib.Estimator):
           builder,
           input_receiver_fn_map,
           checkpoint_path,
-          strip_default_attrs,
           save_variables=False,
           mode=mode,
           export_tags=export_tags,
@@ -2250,8 +2272,7 @@ class TPUEstimator(estimator_lib.Estimator):
         # Only fetching `tpu_tensors_on_cpu` does not trigger
         # TPU computation and blocks, so we add the control dependency here.
         control_inputs = (
-            tpu_tensors_on_cpu if isinstance(tpu_tensors_on_cpu,
-                                             (list, tuple)) else
+            tpu_tensors_on_cpu if _is_iterable(tpu_tensors_on_cpu) else
             (tpu_tensors_on_cpu,))
         with ops.control_dependencies(control_inputs):
           new_tensors.append(array_ops.identity(t))
@@ -2549,6 +2570,8 @@ class TPUEstimator(estimator_lib.Estimator):
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator),
                   rendezvous=self._rendezvous[mode],
+                  master=self._config.master,
+                  session_config=self._session_config,
               ),
               InstallSignalHandlerHook()
           ])
@@ -2651,8 +2674,10 @@ class TPUEstimator(estimator_lib.Estimator):
                   eval_update_ops + host_ops,
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator),
-                  rendezvous=self._rendezvous[mode]),
-          ] + input_hooks
+                  rendezvous=self._rendezvous[mode],
+                  master=self._config.evaluation_master,
+                  session_config=self._session_config,
+              )] + input_hooks
 
           if eval_hooks:
             hooks.extend(eval_hooks)
@@ -2768,7 +2793,7 @@ def _export_output_to_tensors(export_output):
   elif isinstance(export_output, export_output_lib.RegressionOutput):
     return [export_output.value]
   elif isinstance(export_output, export_output_lib.PredictOutput):
-    return export_output.outputs.values()
+    return list(export_output.outputs.values())
   else:
     raise ValueError(
         '`export_output` must be have type `ClassificationOutput`, '
@@ -3044,7 +3069,7 @@ class _Inputs(object):
   @staticmethod
   def from_input_fn(return_values):
     """Returns an `_Inputs` instance according to `input_fn` return value."""
-    if isinstance(return_values, dataset_ops.Dataset):
+    if isinstance(return_values, dataset_ops.DatasetV2):
       dataset = return_values
       return _Inputs(dataset=dataset)
 
@@ -3069,7 +3094,7 @@ class _Inputs(object):
 
     The initializer must be run before calling `features_and_labels`.
     """
-    self._iterator = self._dataset.make_initializable_iterator()
+    self._iterator = dataset_ops.make_initializable_iterator(self._dataset)
     return self._iterator.initializer
 
   def features_and_labels(self):

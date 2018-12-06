@@ -1152,9 +1152,8 @@ class PFor(object):
           continue
 
         converted_inputs = [self._conversion_map[inp] for inp in y_op.inputs]
-        some_input_converted = any(
-            [self._was_converted(x) for x in y_op.inputs])
-        some_input_stacked = any([x.is_stacked for x in converted_inputs])
+        some_input_converted = any(self._was_converted(x) for x in y_op.inputs)
+        some_input_stacked = any(x.is_stacked for x in converted_inputs)
 
         converted_control_ops = set()
         some_control_input_converted = False
@@ -1198,7 +1197,7 @@ class PFor(object):
           # All inputs are unstacked or uncoverted but some control inputs are
           # converted.
           # TODO(rachelim): Handle the case where some inputs are sparsely
-          # stacked (i.e. any([x.is_sparse_stacked for x in converted_inputs]))
+          # stacked (i.e. any(x.is_sparse_stacked for x in converted_inputs))
           new_op = _create_op(y_op.type, [x.t for x in converted_inputs],
                               [x.dtype for x in y_op.outputs],
                               y_op.node_def.attr)
@@ -1303,7 +1302,11 @@ def _inputs_with_flattening(pfor_input, input_indices):
 @RegisterPForWithArgs("Conv2D", dims=[0])
 @RegisterPForWithArgs("AvgPool", dims=[0])
 @RegisterPForWithArgs("MaxPool", dims=[0])
+@RegisterPForWithArgs("MaxPool3D", dims=[0])
+@RegisterPForWithArgs("MaxPool3DGrad", dims=[0, 1, 2])
 @RegisterPForWithArgs("MaxPoolGrad", dims=[0, 1, 2])
+@RegisterPForWithArgs("MaxPool3DGradGrad", dims=[0, 1, 2])
+@RegisterPForWithArgs("MaxPoolGradGrad", dims=[0, 1, 2])
 @RegisterPForWithArgs("SoftmaxCrossEntropyWithLogits", dims=[0, 1])
 def _convert_flatten_batch(pfor_input, op_type, dims):
   del op_type
@@ -1532,6 +1535,7 @@ def _convert_conv2d_backprop_filter(pfor_input):
 
 @RegisterPForWithArgs("Identity", array_ops.identity)
 @RegisterPForWithArgs("StopGradient", array_ops.stop_gradient)
+@RegisterPForWithArgs("MatrixDiagPart", array_ops.matrix_diag_part)
 def _convert_identity(pfor_input, op_type, op_func):
   del op_type
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)

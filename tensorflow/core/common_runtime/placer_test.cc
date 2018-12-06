@@ -92,7 +92,7 @@ class FakeDevice : public Device {
 class DummyFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override {
+                       std::vector<std::unique_ptr<Device>>* devices) override {
     return Status::OK();
   }
 };
@@ -163,6 +163,13 @@ REGISTER_KERNEL_BUILDER(Name("TestDeviceEnforce").Device("FakeGPU"), DummyOp);
 
 REGISTER_KERNEL_BUILDER(Name("Shape").Device("FakeCPU"), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("Shape").Device("FakeGPU"), DummyOp);
+
+// Op that has kernels with device priorities specified.
+REGISTER_OP("TestDatasetOp").Input("a: float").Output("b: float");
+REGISTER_KERNEL_BUILDER(Name("TestDatasetOp").Device("FakeCPU").Priority(2),
+                        DummyOp);
+REGISTER_KERNEL_BUILDER(Name("TestDatasetOp").Device("FakeGPU").Priority(1),
+                        DummyOp);
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -283,6 +290,251 @@ TEST_F(PlacerTest, TestNoConstraints) {
   EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
   EXPECT_DEVICE_TYPE(g, "n1", "FakeGPU");
   EXPECT_DEVICE_TYPE(g, "n2", "FakeGPU");
+}
+
+// Test that a graph with no constraints but using kernels that have a specified
+// device priority will successfully assign nodes to the device with higher
+// priority
+TEST_F(PlacerTest, TestNoConstraintsWithPrioritizedKernels) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
+    ops::UnaryOp("TestDatasetOp", ops::NodeOut(input, 0),
+                 b.opts().WithName("n1"));
+    ops::UnaryOp("TestDatasetOp", ops::NodeOut(input, 1),
+                 b.opts().WithName("n2"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
+  EXPECT_DEVICE_TYPE(g, "n1", "FakeCPU");
+  EXPECT_DEVICE_TYPE(g, "n2", "FakeCPU");
+}
+
+TEST_F(PlacerTest, TestGPUInputIntoPrioritizedKernel) {
+  Graph g(OpRegistry::Global());
+  {
+    // Scope for temp variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestGPUOutput", b.opts().WithName("in"));
+    ops::UnaryOp("TestDatasetOp", ops::NodeOut(input, 0),
+                 b.opts().WithName("n1"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "in", "FakeGPU");
+  EXPECT_DEVICE_TYPE(g, "n1", "FakeCPU");
+}
+
+// Tests that a GPU kernel colocated with prioritized kernel respects it.
+TEST_F(PlacerTest, TestGPUInputColocatedWithPrioritizedKernel) {
+  Graph g(OpRegistry::Global());
+  {
+    // Scope for temp variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestGPUOutput", b.opts().WithName("in"));
+    // We colocate n1 with in.
+    ops::UnaryOp("TestDatasetOp", ops::NodeOut(input, 0),
+                 b.opts().WithName("n1").WithAttr("_class", {"loc:@in"}));
+    // We don't colocate n2 with in.
+    ops::UnaryOp("TestDatasetOp", ops::NodeOut(input, 0),
+                 b.opts().WithName("n2"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "in", "FakeGPU");
+  EXPECT_DEVICE_TYPE(g, "n1", "FakeGPU");
+  EXPECT_DEVICE_TYPE(g, "n2", "FakeCPU");
+}
+
+REGISTER_OP("CreateDatasetCPU").Output("o: resource");
+REGISTER_KERNEL_BUILDER(Name("CreateDatasetCPU").Device("FakeCPU"), DummyOp);
+
+REGISTER_OP("CreateDatasetSP").Output("o: resource");
+REGISTER_KERNEL_BUILDER(Name("CreateDatasetSP").Device("FakeCPU").Priority(2),
+                        DummyOp);
+REGISTER_KERNEL_BUILDER(Name("CreateDatasetSP").Device("FakeGPU").Priority(1),
+                        DummyOp);
+
+REGISTER_OP("CreateDatasetRP").Output("o: resource");
+REGISTER_KERNEL_BUILDER(Name("CreateDatasetRP").Device("FakeCPU").Priority(1),
+                        DummyOp);
+REGISTER_KERNEL_BUILDER(Name("CreateDatasetRP").Device("FakeGPU").Priority(2),
+                        DummyOp);
+
+REGISTER_OP("CreateDatasetNP").Output("o: resource");
+REGISTER_KERNEL_BUILDER(Name("CreateDatasetNP").Device("FakeCPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("CreateDatasetNP").Device("FakeGPU"), DummyOp);
+
+REGISTER_OP("IteratorNP").Input("i: resource").Output("o: float");
+REGISTER_KERNEL_BUILDER(Name("IteratorNP").Device("FakeCPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorNP").Device("FakeGPU"), DummyOp);
+
+REGISTER_OP("IteratorSP").Input("i: resource").Output("o: float");
+REGISTER_KERNEL_BUILDER(Name("IteratorSP").Device("FakeCPU").Priority(2),
+                        DummyOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorSP").Device("FakeGPU").Priority(1),
+                        DummyOp);
+
+REGISTER_OP("IteratorRP").Input("i: resource").Output("o: float");
+REGISTER_KERNEL_BUILDER(Name("IteratorRP").Device("FakeCPU").Priority(1),
+                        DummyOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorRP").Device("FakeGPU").Priority(2),
+                        DummyOp);
+
+REGISTER_OP("IteratorGPU").Input("i: resource").Output("o: float");
+REGISTER_KERNEL_BUILDER(Name("IteratorGPU").Device("FakeGPU"), DummyOp);
+
+// Test reference edges with one node having prioritized kernels and the other
+// has no preference. We should respect priority here.
+TEST_F(PlacerTest, TestDSWithPriority) {
+  Graph g(OpRegistry::Global());
+  {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* ds = ops::SourceOp("CreateDatasetSP", b.opts().WithName("ds"));
+    ops::UnaryOp("IteratorNP", ops::NodeOut(ds, 0), b.opts().WithName("it"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "ds", "FakeCPU");
+  EXPECT_DEVICE_TYPE(g, "it", "FakeCPU");
+}
+
+// Test reference edges with one node having kernels with regular priority and
+// the other has no preference. We should respect priority here.
+TEST_F(PlacerTest, TestDSWithGPUPriority) {
+  Graph g(OpRegistry::Global());
+  {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* ds = ops::SourceOp("CreateDatasetRP", b.opts().WithName("ds"));
+    ops::UnaryOp("IteratorNP", ops::NodeOut(ds, 0), b.opts().WithName("it"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "ds", "FakeGPU");
+  EXPECT_DEVICE_TYPE(g, "it", "FakeGPU");
+}
+
+// Test reference edges with one node having prioritized kernels and the other
+// has no preference. We should respect priority here.
+TEST_F(PlacerTest, TestITWithPriority) {
+  Graph g(OpRegistry::Global());
+  {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* ds = ops::SourceOp("CreateDatasetNP", b.opts().WithName("ds"));
+    ops::UnaryOp("IteratorSP", ops::NodeOut(ds, 0), b.opts().WithName("it"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "ds", "FakeCPU");
+  EXPECT_DEVICE_TYPE(g, "it", "FakeCPU");
+}
+
+// Test reference edges with one node having kernels with regular priority and
+// the other has no preference. We should respect priority here.
+TEST_F(PlacerTest, TestITWithGPUPriority) {
+  Graph g(OpRegistry::Global());
+  {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* ds = ops::SourceOp("CreateDatasetNP", b.opts().WithName("ds"));
+    ops::UnaryOp("IteratorRP", ops::NodeOut(ds, 0), b.opts().WithName("it"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "ds", "FakeGPU");
+  EXPECT_DEVICE_TYPE(g, "it", "FakeGPU");
+}
+
+// Test reference edges with one node having prioritized kernels and other node
+// can only be placed on GPU. We should respect the constraint then.
+TEST_F(PlacerTest, TestITGPU) {
+  Graph g(OpRegistry::Global());
+  {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* ds = ops::SourceOp("CreateDatasetSP", b.opts().WithName("ds"));
+    ops::UnaryOp("IteratorGPU", ops::NodeOut(ds, 0), b.opts().WithName("it"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "ds", "FakeGPU");
+  EXPECT_DEVICE_TYPE(g, "it", "FakeGPU");
+}
+
+// Test reference edges with one node having prioritized kernels and other node
+// can only be placed on CPU. We should respect the constraint then.
+TEST_F(PlacerTest, TestSimpleIteratorOnlyGPU) {
+  Graph g(OpRegistry::Global());
+  {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* ds = ops::SourceOp("CreateDatasetCPU", b.opts().WithName("ds"));
+    ops::UnaryOp("IteratorRP", ops::NodeOut(ds, 0), b.opts().WithName("it"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "ds", "FakeCPU");
+  EXPECT_DEVICE_TYPE(g, "it", "FakeCPU");
+}
+
+// Test constraints with agreeing priorities.
+TEST_F(PlacerTest, TestAgreeingPriorities) {
+  Graph g(OpRegistry::Global());
+  {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* ds = ops::SourceOp("CreateDatasetSP", b.opts().WithName("ds"));
+    ops::UnaryOp("IteratorSP", ops::NodeOut(ds, 0), b.opts().WithName("it"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "ds", "FakeCPU");
+  EXPECT_DEVICE_TYPE(g, "it", "FakeCPU");
+}
+
+// Test constraints with agreeing regular priorities.
+TEST_F(PlacerTest, TestAgreeingRegularPriorities) {
+  Graph g(OpRegistry::Global());
+  {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* ds = ops::SourceOp("CreateDatasetRP", b.opts().WithName("ds"));
+    ops::UnaryOp("IteratorRP", ops::NodeOut(ds, 0), b.opts().WithName("it"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "ds", "FakeGPU");
+  EXPECT_DEVICE_TYPE(g, "it", "FakeGPU");
+}
+
+// Test constraints with different priorities. In this case, we should bail
+// and just revert to default.
+TEST_F(PlacerTest, TestConflictingPriorities) {
+  Graph g(OpRegistry::Global());
+  {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* ds = ops::SourceOp("CreateDatasetSP", b.opts().WithName("ds"));
+    ops::UnaryOp("IteratorRP", ops::NodeOut(ds, 0), b.opts().WithName("it"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "ds", "FakeGPU");
+  EXPECT_DEVICE_TYPE(g, "it", "FakeGPU");
+}
+
+// Test constraints with different priorities. In this case, we should bail
+// and just revert to default.
+TEST_F(PlacerTest, TestConflictingPrioritiesReversed) {
+  Graph g(OpRegistry::Global());
+  {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* ds = ops::SourceOp("CreateDatasetRP", b.opts().WithName("ds"));
+    ops::UnaryOp("IteratorSP", ops::NodeOut(ds, 0), b.opts().WithName("it"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "ds", "FakeGPU");
+  EXPECT_DEVICE_TYPE(g, "it", "FakeGPU");
 }
 
 // Test that a graph with device type and reference constraints on
@@ -1199,9 +1451,32 @@ TEST_F(PlacerTest, TestNonExistentDevice) {
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   LOG(WARNING) << s.error_message();
   EXPECT_TRUE(str_util::StrContains(
-      s.error_message(),
-      "was explicitly assigned to /job:foo/replica:17 but available devices"));
+      s.error_message(), "was explicitly assigned to /job:foo/replica:17"));
+  EXPECT_TRUE(
+      str_util::StrContains(s.error_message(), "but available devices"));
 }
+
+#if !GOOGLE_CUDA
+// Test that we inform the user if they appear to be explicitly placing nodes
+// on a GPU when CUDA is not available
+TEST_F(PlacerTest, TestUseGpuWithNoCuda) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("VariableGPU",
+                  b.opts().WithName("var").WithDevice("/device:gpu:0"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  SessionOptions options;
+  Status s = Place(&g, &options);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  LOG(WARNING) << s.error_message();
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "The requested device appears to be a GPU, but CUDA is not enabled."));
+}
+#endif
 
 TEST_F(PlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {
   Graph g(OpRegistry::Global());

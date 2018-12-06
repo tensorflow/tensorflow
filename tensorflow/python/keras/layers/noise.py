@@ -55,7 +55,6 @@ class GaussianNoise(Layer):
     super(GaussianNoise, self).__init__(**kwargs)
     self.supports_masking = True
     self.stddev = stddev
-    self._can_use_graph_functions = True
 
   def call(self, inputs, training=None):
 
@@ -100,7 +99,6 @@ class GaussianDropout(Layer):
     super(GaussianDropout, self).__init__(**kwargs)
     self.supports_masking = True
     self.rate = rate
-    self._can_use_graph_functions = True
 
   def call(self, inputs, training=None):
     if 0 < self.rate < 1:
@@ -155,7 +153,6 @@ class AlphaDropout(Layer):
     self.noise_shape = noise_shape
     self.seed = seed
     self.supports_masking = True
-    self._can_use_graph_functions = True
 
   def _get_noise_shape(self, inputs):
     return self.noise_shape if self.noise_shape else array_ops.shape(inputs)

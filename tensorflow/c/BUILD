@@ -60,6 +60,7 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
             "//tensorflow/core:op_gen_lib",
+            "//tensorflow/core/distributed_runtime:server_lib",
         ],
     }),
 )
@@ -95,6 +96,7 @@ tf_cuda_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
+            "//tensorflow/core/distributed_runtime:server_lib",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
@@ -119,7 +121,8 @@ tf_cuda_library(
         ":c_api",
         ":c_api_internal",
         "//tensorflow/c/eager:c_api",
-        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
+        "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/contrib/tpu:all_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -172,6 +175,32 @@ tf_cuda_library(
     ],
 )
 
+tf_cuda_library(
+    name = "kernels",
+    srcs = [
+        "kernels.cc",
+    ],
+    hdrs = [
+        "kernels.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = select({
+        "//tensorflow:android": [
+            ":c_api",
+            ":c_api_internal",
+            ":tf_status_helper",
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            ":c_api",
+            ":c_api_internal",
+            ":tf_status_helper",
+            "//tensorflow/core:framework",
+        ],
+    }),
+)
+
 # -----------------------------------------------------------------------------
 # Tests
 
@@ -207,7 +236,10 @@ tf_cuda_cc_test(
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = ["noasan"],
+    tags = [
+        "no_oss",  # http://b/119522529
+        "noasan",
+    ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
@@ -218,6 +250,7 @@ tf_cuda_cc_test(
         "//tensorflow/cc:grad_ops",
         "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/cc/saved_model:tag_constants",
+        "//tensorflow/compiler/jit",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
@@ -235,7 +268,7 @@ tf_cuda_cc_test(
 
 tf_cc_test(
     name = "c_api_experimental_test",
-    size = "small",
+    size = "medium",
     srcs = ["c_api_experimental_test.cc"],
     data = ["testdata/tf_record"],
     linkopts = select({
@@ -246,8 +279,11 @@ tf_cc_test(
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
+        ":c_api",
         ":c_api_experimental",
         ":c_test_util",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -296,6 +332,30 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
+)
+
+tf_cuda_cc_test(
+    name = "kernels_test",
+    size = "small",
+    srcs = ["kernels_test.cc"],
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    tags = ["noasan"],
+    # We must ensure that the dependencies can be dynamically linked since
+    # the shared library must be able to use core:framework.
+    # linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":c_api",
+        ":kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 # -----------------------------------------------------------------------------

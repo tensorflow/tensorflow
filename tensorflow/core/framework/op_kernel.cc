@@ -39,9 +39,11 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/platform_strings.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -254,6 +256,9 @@ Status OpKernelConstruction::allocate_persistent(
 }
 
 // OpKernelContext -----------------------------------------------------------
+
+const int OpKernelContext::Params::kNeverForward;
+const int OpKernelContext::Params::kNoReservation;
 
 OpKernelContext::OpKernelContext(Params* params)
     : OpKernelContext(
@@ -921,11 +926,12 @@ void OpKernelContext::clear_recorded_memory() {
 
 struct KernelRegistration {
   KernelRegistration(const KernelDef& d, StringPiece c,
-                     kernel_factory::OpKernelRegistrar::Factory f)
-      : def(d), kernel_class_name(c), factory(f) {}
+                     std::unique_ptr<kernel_factory::OpKernelFactory> f)
+      : def(d), kernel_class_name(c), factory(std::move(f)) {}
+
   const KernelDef def;
   const string kernel_class_name;
-  const kernel_factory::OpKernelRegistrar::Factory factory;
+  std::unique_ptr<kernel_factory::OpKernelFactory> factory;
 };
 
 // This maps from 'op_type' + DeviceType to the set of KernelDefs and
@@ -941,6 +947,44 @@ static const char kKernelLibPattern[] = "libtfkernel*.dylib";
 static const char kKernelLibPattern[] = "libtfkernel*.so";
 #endif
 
+#define FEATURE(x) \
+  { x, #x }
+
+// Returns Status::OK if the dynamic library at the given path is safe to
+// load with some level of confidence.
+static Status IsProbablySafeToLoad(const string& path) {
+  // A map of platform string to required CPU feature.
+  using port::CPUFeature;
+  static const auto* feature_map =
+      new std::map<string, std::pair<CPUFeature, string>>{
+          {"__AVX512VL__=1", FEATURE(CPUFeature::AVX512VL)},
+      };
+
+  std::vector<std::string> platform_strings;
+  int result = GetPlatformStrings(path, &platform_strings);
+  if (result) {
+    return Status(error::Code::UNKNOWN, strerror(result));
+  }
+  if (platform_strings.empty()) {
+    return Status(error::Code::FAILED_PRECONDITION,
+                  "Didn't find any platform strings");
+  }
+  std::vector<std::string> missing_features;
+  for (const auto& platform_string : platform_strings) {
+    const auto& entry = feature_map->find(platform_string);
+    if (entry != feature_map->end() &&
+        !port::TestCPUFeature(entry->second.first)) {
+      missing_features.emplace_back(entry->second.second);
+    }
+  }
+  if (!missing_features.empty()) {
+    string errmsg = "Missing CPU features: ";
+    errmsg.append(str_util::Join(missing_features, ", "));
+    return Status(errors::Code::FAILED_PRECONDITION, errmsg);
+  }
+  return Status::OK();
+}
+
 void LoadDynamicKernelsInternal() {
   Env* env = Env::Default();
   string bazel_kernel_dir = io::JoinPath(env->GetRunfilesDir(),
@@ -951,12 +995,18 @@ void LoadDynamicKernelsInternal() {
   Status s_kernel_dir = env->GetChildren(bazel_kernel_dir, &files);
   if (s_kernel_dir.ok()) {
     string dll_spec = io::JoinPath(bazel_kernel_dir, kKernelLibPattern);
-    for (const auto&  file : files) {
-      string fullpath =  io::JoinPath(bazel_kernel_dir, file);
+    for (const auto& file : files) {
+      string fullpath = io::JoinPath(bazel_kernel_dir, file);
       if (env->MatchPath(fullpath, dll_spec)) {
-        // TODO(gunan): Store the handles to the opened files.
-        void* unused_filehandle;
-        TF_CHECK_OK(env->LoadLibrary(fullpath.c_str(), &unused_filehandle));
+        Status s = IsProbablySafeToLoad(fullpath);
+        if (s.ok()) {
+          // TODO(gunan): Store the handles to the opened files.
+          void* unused_filehandle;
+          TF_CHECK_OK(env->LoadLibrary(fullpath.c_str(), &unused_filehandle));
+        } else {
+          LOG(WARNING) << "Not loading plugin library " << fullpath << ": "
+                       << s.error_message();
+        }
       }
     }
   }
@@ -992,7 +1042,7 @@ namespace kernel_factory {
 
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      StringPiece kernel_class_name,
-                                     Factory factory) {
+                                     std::unique_ptr<OpKernelFactory> factory) {
   // See comments in register_kernel::Name in header for info on _no_register.
   if (kernel_def->op() != "_no_register") {
     const string key =
@@ -1007,8 +1057,8 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
     // program flakily. Until we get rid of static initializers in kernel
     // registration mechanism, we have this workaround here.
     reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry())
-        ->insert(std::make_pair(
-            key, KernelRegistration(*kernel_def, kernel_class_name, factory)));
+        ->emplace(key, KernelRegistration(*kernel_def, kernel_class_name,
+                                          std::move(factory)));
   }
   delete kernel_def;
 }
@@ -1077,7 +1127,8 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
         FormatNodeDefForError(node_def));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
-          &s, " (OpKernel was found, but attributes didn't match)");
+          &s, " (OpKernel was found, but attributes didn't match) ",
+          "Requested Attributes: ", SummarizeAttrs(node_def));
     }
     errors::AppendToMessage(
         &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
@@ -1090,7 +1141,7 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
 
 Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
-    DeviceTypeVector* device_types) {
+    PrioritizedDeviceTypeVector* prioritized_device_types) {
   // TODO(zhifengc): Changes the callers (SimplePlacer and
   // DynamicPlacer) to consider the possibility that 'def' is call to
   // a user-defined function and only calls this
@@ -1103,12 +1154,21 @@ Status SupportedDeviceTypesForNode(
       bool was_attr_mismatch;
       TF_RETURN_IF_ERROR(
           FindKernelRegistration(device_type, def, &reg, &was_attr_mismatch));
-      if (reg != nullptr) device_types->push_back(device_type);
+      if (reg != nullptr) {
+        int32 priority = reg->def.priority();
+        prioritized_device_types->emplace_back(device_type, priority);
+      }
     }
+    std::sort(prioritized_device_types->begin(),
+              prioritized_device_types->end(),
+              [](const std::pair<DeviceType, int32>& a,
+                 const std::pair<DeviceType, int32>& b) {
+                return a.second > b.second;
+              });
   } else {
     // Assumes that all device types support this node.
     for (const DeviceType& device_type : prioritized_types) {
-      device_types->push_back(device_type);
+      prioritized_device_types->push_back(std::make_pair(device_type, 0));
     }
   }
   return Status::OK();
@@ -1203,7 +1263,8 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                               FormatNodeDefForError(node_def)));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
-          &s, " (OpKernel was found, but attributes didn't match)");
+          &s, " (OpKernel was found, but attributes didn't match) ",
+          "Requested Attributes: ", SummarizeAttrs(node_def));
     }
     errors::AppendToMessage(
         &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
@@ -1232,7 +1293,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
   OpKernelConstruction context(
       device_type, device, allocator, &node_def, op_def, flib, inputs,
       input_memory_types, outputs, output_memory_types, graph_def_version, &s);
-  *kernel = (*registration->factory)(&context);
+  *kernel = registration->factory->Create(&context);
   if (!s.ok()) {
     delete *kernel;
     *kernel = nullptr;

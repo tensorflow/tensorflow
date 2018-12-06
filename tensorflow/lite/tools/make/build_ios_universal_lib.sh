@@ -17,13 +17,24 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR/../../../../.."
+cd "$SCRIPT_DIR/../../../.."
 
+profiling_args=
+
+while getopts "p" opt; do
+  case $opt in
+    p) profiling_args='-DGEMMLOWP_PROFILING,-DTFLITE_PROFILING_ENABLED';;
+    *) printf "if you want to enable profiling: pass in [-p]\n"
+      exit 2;;
+  esac
+done
+
+shift $(($OPTIND - 1))
 # Build library for supported architectures and packs them in a fat binary.
 make_library() {
     for arch in x86_64 armv7 armv7s arm64
     do
-        make -f tensorflow/lite/tools/make/Makefile TARGET=ios TARGET_ARCH=${arch} \
+        make -f tensorflow/lite/tools/make/Makefile TARGET=ios TARGET_ARCH=${arch} EXTRA_CXXFLAGS=$profiling_args \
         -j 8
     done
     mkdir -p tensorflow/lite/tools/make/gen/lib

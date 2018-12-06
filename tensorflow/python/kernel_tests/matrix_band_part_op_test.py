@@ -62,7 +62,7 @@ def _GetMatrixBandPartTest(dtype_, batch_shape_, shape_):
                 batch_mat,
                 constant_op.constant(lower, index_dtype),
                 constant_op.constant(upper, index_dtype))
-            self.assertAllEqual(band_np, band.eval())
+            self.assertAllEqual(band_np, self.evaluate(band))
 
   return Test
 

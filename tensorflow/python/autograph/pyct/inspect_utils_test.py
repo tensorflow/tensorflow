@@ -18,7 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from functools import wraps
+import collections
+import functools
 import imp
 import types
 import weakref
@@ -27,6 +28,7 @@ import six
 
 from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
 
@@ -45,7 +47,7 @@ def wrapping_decorator():
     def replacement(*_):
       return None
 
-    @wraps(f)
+    @functools.wraps(f)
     def wrapper(*args, **kwargs):
       return replacement(*args, **kwargs)
     return wrapper
@@ -93,6 +95,38 @@ def free_factory():
 
 
 class InspectUtilsTest(test.TestCase):
+
+  def test_islambda(self):
+    def test_fn():
+      pass
+
+    self.assertTrue(inspect_utils.islambda(lambda x: x))
+    self.assertFalse(inspect_utils.islambda(test_fn))
+
+  def test_isnamedtuple(self):
+    nt = collections.namedtuple('TestNamedTuple', ['a', 'b'])
+
+    class NotANamedTuple(tuple):
+      pass
+
+    self.assertTrue(inspect_utils.isnamedtuple(nt))
+    self.assertFalse(inspect_utils.isnamedtuple(NotANamedTuple))
+
+  def test_isnamedtuple_confounder(self):
+    """This test highlights false positives when detecting named tuples."""
+
+    class NamedTupleLike(tuple):
+      _fields = ('a', 'b')
+
+    self.assertTrue(inspect_utils.isnamedtuple(NamedTupleLike))
+
+  def test_isnamedtuple_subclass(self):
+    """This test highlights false positives when detecting named tuples."""
+
+    class NamedTupleSubclass(collections.namedtuple('Test', ['a', 'b'])):
+      pass
+
+    self.assertTrue(inspect_utils.isnamedtuple(NamedTupleSubclass))
 
   def test_getnamespace_globals(self):
     ns = inspect_utils.getnamespace(factory)
@@ -277,6 +311,11 @@ class InspectUtilsTest(test.TestCase):
 
     bound_method = types.MethodType(test_fn, WeakrefWrapper())
     self.assertEqual(inspect_utils.getmethodclass(bound_method), test_obj)
+
+  def test_getmethodclass_no_bool_conversion(self):
+
+    tensor = constant_op.constant([1])
+    self.assertEqual(inspect_utils.getmethodclass(tensor.get_shape), tensor)
 
   def test_getdefiningclass(self):
     class Superclass(object):

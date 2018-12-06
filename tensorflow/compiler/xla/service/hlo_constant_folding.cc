@@ -52,8 +52,10 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
           computation->root_instruction() != instruction) {
         continue;
       }
-      // Skip Constant, Parameter, and AfterAll operation.
-      // TODO(b/64407269): Enable Tuple once the timeout issue is resolved.
+      // Skip Constant, Parameter, Tuple, AfterAll operation.
+      // Tuple constants are not directly supported by any backends, hence
+      // folding Tuple is not useful and would in fact be expanded back into
+      // kTuple by Algebraic Simplifier.
       // TODO(b/110532604): Enable AfterAll once AfterAll requires at least one
       // operand in which case constant folding will be impossible and this
       // special case is not necessary.
@@ -63,6 +65,7 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
           instruction->opcode() == HloOpcode::kAfterAll) {
         continue;
       }
+
       // Skip instructions with non-constant operands.
       if (!hlo_query::AllOperandsAreConstants(*instruction)) {
         continue;

@@ -1237,7 +1237,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
 //           * def has all attrs specified (e.g. using AddDefaultsToNodeDef()).
 Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
-    DeviceTypeVector* device_types);
+    PrioritizedDeviceTypeVector* device_types);
 
 // Returns a message with a description of the kernels registered for op
 // `op_name`.
@@ -1346,22 +1346,55 @@ KernelList GetRegisteredKernelsForOp(StringPiece op_name);
 
 namespace kernel_factory {
 
+// OpKernelFactory is responsible for creating OpKernels when TensorFlow needs
+// them. You register factories with the TensorFlow core by constructing an
+// OpKernelRegistrar and passing the factory as a constructor parameter.
+class OpKernelFactory {
+ public:
+  virtual OpKernel* Create(OpKernelConstruction* context) = 0;
+  virtual ~OpKernelFactory() = default;
+};
+
 class OpKernelRegistrar {
  public:
-  typedef OpKernel* (*Factory)(OpKernelConstruction*);
-
+  // Registers the given kernel factory with TensorFlow. TF will call the
+  // factory Create() method when it determines that a kernel matching the given
+  // KernelDef is required.
   OpKernelRegistrar(const KernelDef* kernel_def, StringPiece kernel_class_name,
-                    Factory factory) {
+                    std::unique_ptr<OpKernelFactory> factory) {
     // Perform the check in the header to allow compile-time optimization
     // to a no-op, allowing the linker to remove the kernel symbols.
     if (kernel_def != nullptr) {
-      InitInternal(kernel_def, kernel_class_name, factory);
+      InitInternal(kernel_def, kernel_class_name, std::move(factory));
+    }
+  }
+
+  // Registers the given factory function with TensorFlow. This is equivalent
+  // to registering a factory whose Create function invokes `create_fn`.
+  OpKernelRegistrar(const KernelDef* kernel_def, StringPiece kernel_class_name,
+                    OpKernel* (*create_fn)(OpKernelConstruction*)) {
+    // Perform the check in the header to allow compile-time optimization
+    // to a no-op, allowing the linker to remove the kernel symbols.
+    if (kernel_def != nullptr) {
+      struct PtrOpKernelFactory : public OpKernelFactory {
+        explicit PtrOpKernelFactory(
+            OpKernel* (*create_func)(OpKernelConstruction*))
+            : create_func_(create_func) {}
+
+        OpKernel* Create(OpKernelConstruction* context) override {
+          return (*create_func_)(context);
+        }
+
+        OpKernel* (*create_func_)(OpKernelConstruction*);
+      };
+      InitInternal(kernel_def, kernel_class_name,
+                   absl::make_unique<PtrOpKernelFactory>(create_fn));
     }
   }
 
  private:
   void InitInternal(const KernelDef* kernel_def, StringPiece kernel_class_name,
-                    Factory factory);
+                    std::unique_ptr<OpKernelFactory> factory);
 };
 
 }  // namespace kernel_factory

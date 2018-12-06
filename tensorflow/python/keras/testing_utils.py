@@ -18,11 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
+
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
 
@@ -149,7 +153,15 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     np.testing.assert_allclose(output, actual_output, rtol=1e-3)
 
   # test training mode (e.g. useful for dropout tests)
-  model.compile(RMSPropOptimizer(0.01), 'mse', weighted_metrics=['acc'])
+  # Rebuild the model to avoid the graph being reused between predict() and
+  # train(). This was causing some error for layer with Defun as it body.
+  # See b/120160788 for more details. This should be mitigated after 2.0.
+  model = keras.models.Model(x, layer(x))
+  if _thread_local_data.run_eagerly is not None:
+    model.compile(RMSPropOptimizer(0.01), 'mse', weighted_metrics=['acc'],
+                  run_eagerly=should_run_eagerly())
+  else:
+    model.compile(RMSPropOptimizer(0.01), 'mse', weighted_metrics=['acc'])
   model.train_on_batch(input_data, actual_output)
 
   # test as first layer in Sequential API
@@ -190,6 +202,74 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   return actual_output
 
 
+_thread_local_data = threading.local()
+_thread_local_data.model_type = None
+_thread_local_data.run_eagerly = None
+
+
+@tf_contextlib.contextmanager
+def model_type_scope(value):
+  """Provides a scope within which the model type to test is equal to `value`.
+
+  The model type gets restored to its original value upon exiting the scope.
+
+  Arguments:
+     value: model type value
+
+  Yields:
+    The provided value.
+  """
+  previous_value = _thread_local_data.model_type
+  try:
+    _thread_local_data.model_type = value
+    yield value
+  finally:
+    # Restore model type to initial value.
+    _thread_local_data.model_type = previous_value
+
+
+@tf_contextlib.contextmanager
+def run_eagerly_scope(value):
+  """Provides a scope within which we compile models to run eagerly or not.
+
+  The boolean gets restored to its original value upon exiting the scope.
+
+  Arguments:
+     value: Bool specifying if we should run models eagerly in the active test.
+     Should be True or False.
+
+  Yields:
+    The provided value.
+  """
+  previous_value = _thread_local_data.run_eagerly
+  try:
+    _thread_local_data.run_eagerly = value
+    yield value
+  finally:
+    # Restore model type to initial value.
+    _thread_local_data.run_eagerly = previous_value
+
+
+def should_run_eagerly():
+  """Returns whether the models we are testing should be run eagerly."""
+  if _thread_local_data.run_eagerly is None:
+    raise ValueError('Cannot call `should_run_eagerly()` outside of a '
+                     '`run_eagerly_scope()` or `run_all_keras_modes` '
+                     'decorator.')
+
+  return _thread_local_data.run_eagerly and context.executing_eagerly()
+
+
+def get_model_type():
+  """Gets the model type that should be tested."""
+  if _thread_local_data.model_type is None:
+    raise ValueError('Cannot call `get_model_type()` outside of a '
+                     '`model_type_scope()` or `run_with_all_model_types` '
+                     'decorator.')
+
+  return _thread_local_data.model_type
+
+
 def get_small_sequential_mlp(num_hidden, num_classes, input_dim=None):
   model = keras.models.Sequential()
   if input_dim:
@@ -208,3 +288,337 @@ def get_small_functional_mlp(num_hidden, num_classes, input_dim):
   activation = 'sigmoid' if num_classes == 1 else 'softmax'
   outputs = keras.layers.Dense(num_classes, activation=activation)(outputs)
   return keras.Model(inputs, outputs)
+
+
+class _SmallSubclassMLP(keras.Model):
+  """A subclass model based small MLP."""
+
+  def __init__(self, num_hidden, num_classes):
+    super(_SmallSubclassMLP, self).__init__()
+    self.layer_a = keras.layers.Dense(num_hidden, activation='relu')
+    activation = 'sigmoid' if num_classes == 1 else 'softmax'
+    self.layer_b = keras.layers.Dense(num_classes, activation=activation)
+
+  def call(self, inputs, **kwargs):
+    x = self.layer_a(inputs)
+    return self.layer_b(x)
+
+
+class _SmallSubclassMLPCustomBuild(keras.Model):
+  """A subclass model small MLP that uses a custom build method."""
+
+  def __init__(self, num_hidden, num_classes):
+    super(_SmallSubclassMLPCustomBuild, self).__init__()
+    self.layer_a = None
+    self.layer_b = None
+    self.num_hidden = num_hidden
+    self.num_classes = num_classes
+
+  def build(self, input_shape):
+    self.layer_a = keras.layers.Dense(self.num_hidden, activation='relu')
+    activation = 'sigmoid' if self.num_classes == 1 else 'softmax'
+    self.layer_b = keras.layers.Dense(self.num_classes, activation=activation)
+
+  def call(self, inputs, **kwargs):
+    x = self.layer_a(inputs)
+    return self.layer_b(x)
+
+
+def get_small_subclass_mlp(num_hidden, num_classes):
+  return _SmallSubclassMLP(num_hidden, num_classes)
+
+
+def get_small_subclass_mlp_with_custom_build(num_hidden, num_classes):
+  return _SmallSubclassMLPCustomBuild(num_hidden, num_classes)
+
+
+def get_small_mlp(num_hidden, num_classes, input_dim):
+  """Get a small mlp of the model type specified by `get_model_type`."""
+  model_type = get_model_type()
+  if model_type == 'subclass':
+    return get_small_subclass_mlp(num_hidden, num_classes)
+  if model_type == 'subclass_custom_build':
+    return get_small_subclass_mlp_with_custom_build(num_hidden, num_classes)
+  if model_type == 'sequential':
+    return get_small_sequential_mlp(num_hidden, num_classes, input_dim)
+  if model_type == 'functional':
+    return get_small_functional_mlp(num_hidden, num_classes, input_dim)
+  raise ValueError('Unknown model type {}'.format(model_type))
+
+
+class _SubclassModel(keras.Model):
+  """A Keras subclass model."""
+
+  def __init__(self, layers):
+    super(_SubclassModel, self).__init__()
+    self.all_layers = layers
+
+  def call(self, inputs, **kwargs):
+    x = inputs
+    for layer in self.all_layers:
+      x = layer(x)
+    return x
+
+
+class _SubclassModelCustomBuild(keras.Model):
+  """A Keras subclass model that uses a custom build method."""
+
+  def __init__(self, layer_generating_func):
+    super(_SubclassModelCustomBuild, self).__init__()
+    self.all_layers = None
+    self._layer_generating_func = layer_generating_func
+
+  def build(self, input_shape):
+    layers = []
+    for layer in self._layer_generating_func():
+      layers.append(layer)
+    self.all_layers = layers
+
+  def call(self, inputs, **kwargs):
+    x = inputs
+    for layer in self.all_layers:
+      x = layer(x)
+    return x
+
+
+def get_model_from_layers(layers, input_shape=None):
+  """Builds a model from a sequence of layers."""
+  model_type = get_model_type()
+  if model_type == 'subclass':
+    return _SubclassModel(layers)
+
+  if model_type == 'subclass_custom_build':
+    layer_generating_func = lambda: layers
+    return _SubclassModelCustomBuild(layer_generating_func)
+
+  if model_type == 'sequential':
+    model = keras.models.Sequential()
+    if input_shape:
+      model.add(keras.layers.InputLayer(input_shape=input_shape))
+    for layer in layers:
+      model.add(layer)
+    return model
+
+  if model_type == 'functional':
+    if not input_shape:
+      raise ValueError('Cannot create a functional model from layers with no '
+                       'input shape.')
+    inputs = keras.Input(shape=input_shape)
+    outputs = inputs
+    for layer in layers:
+      outputs = layer(outputs)
+    return keras.Model(inputs, outputs)
+
+  raise ValueError('Unknown model type {}'.format(model_type))
+
+
+class _MultiIOSubclassModel(keras.Model):
+  """Multi IO Keras subclass model."""
+
+  def __init__(self, branch_a, branch_b, shared_input_branch=None,
+               shared_output_branch=None):
+    super(_MultiIOSubclassModel, self).__init__()
+    self._shared_input_branch = shared_input_branch
+    self._branch_a = branch_a
+    self._branch_b = branch_b
+    self._shared_output_branch = shared_output_branch
+
+  def call(self, inputs, **kwargs):
+    if self._shared_input_branch:
+      for layer in self._shared_input_branch:
+        inputs = layer(inputs)
+      a = inputs
+      b = inputs
+    else:
+      a, b = inputs
+
+    for layer in self._branch_a:
+      a = layer(a)
+    for layer in self._branch_b:
+      b = layer(b)
+    outs = [a, b]
+
+    if self._shared_output_branch:
+      for layer in self._shared_output_branch:
+        outs = layer(outs)
+
+    return outs
+
+
+class _MultiIOSubclassModelCustomBuild(keras.Model):
+  """Multi IO Keras subclass model that uses a custom build method."""
+
+  def __init__(self, branch_a_func, branch_b_func,
+               shared_input_branch_func=None,
+               shared_output_branch_func=None):
+    super(_MultiIOSubclassModelCustomBuild, self).__init__()
+    self._shared_input_branch_func = shared_input_branch_func
+    self._branch_a_func = branch_a_func
+    self._branch_b_func = branch_b_func
+    self._shared_output_branch_func = shared_output_branch_func
+
+    self._shared_input_branch = None
+    self._branch_a = None
+    self._branch_b = None
+    self._shared_output_branch = None
+
+  def build(self, input_shape):
+    if self._shared_input_branch_func():
+      self._shared_input_branch = self._shared_input_branch_func()
+    self._branch_a = self._branch_a_func()
+    self._branch_b = self._branch_b_func()
+
+    if self._shared_output_branch_func():
+      self._shared_output_branch = self._shared_output_branch_func()
+
+  def call(self, inputs, **kwargs):
+    if self._shared_input_branch:
+      for layer in self._shared_input_branch:
+        inputs = layer(inputs)
+      a = inputs
+      b = inputs
+    else:
+      a, b = inputs
+
+    for layer in self._branch_a:
+      a = layer(a)
+    for layer in self._branch_b:
+      b = layer(b)
+    outs = a, b
+
+    if self._shared_output_branch:
+      for layer in self._shared_output_branch:
+        outs = layer(outs)
+
+    return outs
+
+
+def get_multi_io_model(
+    branch_a,
+    branch_b,
+    shared_input_branch=None,
+    shared_output_branch=None):
+  """Builds a multi-io model that contains two branches.
+
+  The produced model will be of the type specified by `get_model_type`.
+
+  To build a two-input, two-output model:
+    Specify a list of layers for branch a and branch b, but do not specify any
+    shared input branch or shared output branch. The resulting model will apply
+    each branch to a different input, to produce two outputs.
+
+    The first value in branch_a must be the Keras 'Input' layer for branch a,
+    and the first value in branch_b must be the Keras 'Input' layer for
+    branch b.
+
+    example usage:
+    ```
+    branch_a = [Input(shape=(2,), name='a'), Dense(), Dense()]
+    branch_b = [Input(shape=(3,), name='b'), Dense(), Dense()]
+
+    model = get_multi_io_model(branch_a, branch_b)
+    ```
+
+  To build a two-input, one-output model:
+    Specify a list of layers for branch a and branch b, and specify a
+    shared output branch. The resulting model will apply
+    each branch to a different input. It will then apply the shared output
+    branch to a tuple containing the intermediate outputs of each branch,
+    to produce a single output. The first layer in the shared_output_branch
+    must be able to merge a tuple of two tensors.
+
+    The first value in branch_a must be the Keras 'Input' layer for branch a,
+    and the first value in branch_b must be the Keras 'Input' layer for
+    branch b.
+
+    example usage:
+    ```
+    input_branch_a = [Input(shape=(2,), name='a'), Dense(), Dense()]
+    input_branch_b = [Input(shape=(3,), name='b'), Dense(), Dense()]
+    shared_output_branch = [Concatenate(), Dense(), Dense()]
+
+    model = get_multi_io_model(input_branch_a, input_branch_b,
+                               shared_output_branch=shared_output_branch)
+    ```
+  To build a one-input, two-output model:
+    Specify a list of layers for branch a and branch b, and specify a
+    shared input branch. The resulting model will take one input, and apply
+    the shared input branch to it. It will then respectively apply each branch
+    to that intermediate result in parallel, to produce two outputs.
+
+    The first value in the shared_input_branch must be the Keras 'Input' layer
+    for the whole model. Branch a and branch b should not contain any Input
+    layers.
+
+    example usage:
+    ```
+    shared_input_branch = [Input(shape=(2,), name='in'), Dense(), Dense()]
+    output_branch_a = [Dense(), Dense()]
+    output_branch_b = [Dense(), Dense()]
+
+
+    model = get_multi_io_model(output__branch_a, output_branch_b,
+                               shared_input_branch=shared_input_branch)
+    ```
+
+  Args:
+    branch_a: A sequence of layers for branch a of the model.
+    branch_b: A sequence of layers for branch b of the model.
+    shared_input_branch: An optional sequence of layers to apply to a single
+      input, before applying both branches to that intermediate result. If set,
+      the model will take only one input instead of two. Defaults to None.
+    shared_output_branch: An optional sequence of layers to merge the
+      intermediate results produced by branch a and branch b. If set,
+      the model will produce only one output instead of two. Defaults to None.
+
+  Returns:
+    A multi-io model of the type specified by `get_model_type`, specified
+    by the different branches.
+  """
+  # Extract the functional inputs from the layer lists
+  if shared_input_branch:
+    inputs = shared_input_branch[0]
+    shared_input_branch = shared_input_branch[1:]
+  else:
+    inputs = branch_a[0], branch_b[0]
+    branch_a = branch_a[1:]
+    branch_b = branch_b[1:]
+
+  model_type = get_model_type()
+  if model_type == 'subclass':
+    return _MultiIOSubclassModel(branch_a, branch_b, shared_input_branch,
+                                 shared_output_branch)
+
+  if model_type == 'subclass_custom_build':
+    return _MultiIOSubclassModelCustomBuild((lambda: branch_a),
+                                            (lambda: branch_b),
+                                            (lambda: shared_input_branch),
+                                            (lambda: shared_output_branch))
+
+  if model_type == 'sequential':
+    raise ValueError('Cannot use `get_multi_io_model` to construct '
+                     'sequential models')
+
+  if model_type == 'functional':
+    if shared_input_branch:
+      a_and_b = inputs
+      for layer in shared_input_branch:
+        a_and_b = layer(a_and_b)
+      a = a_and_b
+      b = a_and_b
+    else:
+      a, b = inputs
+
+    for layer in branch_a:
+      a = layer(a)
+    for layer in branch_b:
+      b = layer(b)
+    outputs = a, b
+
+    if shared_output_branch:
+      for layer in shared_output_branch:
+        outputs = layer(outputs)
+
+    return keras.Model(inputs, outputs)
+
+  raise ValueError('Unknown model type {}'.format(model_type))

@@ -40,8 +40,8 @@ namespace {
 template <typename T>
 bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
   using RealType = typename Eigen::NumTraits<T>::Real;
-  if (value > static_cast<double>(std::numeric_limits<RealType>::max()) ||
-      value < static_cast<double>(std::numeric_limits<RealType>::min())) {
+  if (value > static_cast<double>(Eigen::NumTraits<RealType>::highest()) ||
+      value < static_cast<double>(Eigen::NumTraits<RealType>::lowest())) {
     return false;
   }
   tensor->flat<T>()(0) = static_cast<T>(value);
@@ -198,6 +198,12 @@ string AsControlDependency(const string& node_name) {
              : strings::StrCat("^", node_name);
 }
 
+bool NodeIsOnCpu(const NodeDef* node) {
+  string task, device;
+  return DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) &&
+         str_util::StartsWith(device, DEVICE_CPU);
+}
+
 int NumOutputs(const NodeDef& node, GraphDef* graph) {
   int num_outputs = 0;
   const OpDef* op_def = nullptr;
@@ -279,11 +285,11 @@ int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map) {
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
-DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name) {
-  if (!node.attr().count(attr_name)) {
+DataType GetDataTypeFromAttr(const NodeDef& node, const string& type_attr) {
+  if (!node.attr().count(type_attr)) {
     return DT_INVALID;
   }
-  const auto& attr = node.attr().at(attr_name);
+  const auto& attr = node.attr().at(type_attr);
   if (attr.value_case() != AttrValue::kType) {
     return DT_INVALID;
   }

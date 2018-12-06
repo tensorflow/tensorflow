@@ -100,17 +100,19 @@ def _clone_functional_model(model, input_tensors=None):
       input_tensors = list(input_tensors)
     input_tensors = generic_utils.to_list(input_tensors)
     input_tensors_ = []
-    for i, x in enumerate(input_tensors):
-      if not K.is_keras_tensor(x):
-        name = model._input_layers[i].name
-        input_tensor = Input(tensor=x, name='input_wrapper_for_' + name)
+    for i in range(len(input_tensors)):
+      input_tensor = input_tensors[i]
+      if not K.is_keras_tensor(input_tensor):
+        original_input_layer = model._input_layers[i]
+        name = original_input_layer.name
+        input_tensor = Input(tensor=input_tensor,
+                             name='input_wrapper_for_' + name)
         input_tensors_.append(input_tensor)
         # Cache newly created input layer.
-        original_input_layer = x._keras_history[0]
         newly_created_input_layer = input_tensor._keras_history[0]
         layer_map[original_input_layer] = newly_created_input_layer
       else:
-        input_tensors_.append(x)
+        input_tensors_.append(input_tensor)
     input_tensors = input_tensors_
 
   for x, y in zip(model.inputs, input_tensors):
@@ -206,10 +208,20 @@ def _clone_sequential_model(model, input_tensors=None):
   def clone(layer):
     return layer.__class__.from_config(layer.get_config())
 
-  layers = [clone(layer) for layer in model.layers]
+  # Use model._layers to ensure that all layers are cloned. The model's layers
+  # property will exclude the initial InputLayer (if it exists) in the model,
+  # resulting in a different Sequential model structure.
   if input_tensors is None:
+    layers = [clone(layer) for layer in model._layers]
     return Sequential(layers=layers, name=model.name)
   else:
+    # If input tensors are provided, the original model's InputLayer is
+    # overwritten with a different InputLayer.
+    layers = [
+        clone(layer)
+        for layer in model._layers
+        if not isinstance(layer, InputLayer)
+    ]
     if len(generic_utils.to_list(input_tensors)) != 1:
       raise ValueError('To clone a `Sequential` model, we expect '
                        ' at most one tensor '
@@ -297,8 +309,9 @@ def _in_place_subclassed_model_reset(model):
       attributes_cache[name] = value
       assert value in model._layers
     elif isinstance(
-        value, (list, tuple)) and name not in ('layers', '_layers',
-                                               'stateful_metric_functions'):
+        value,
+        (list, tuple)) and name not in ('layers', '_layers', 'metrics',
+                                        '_compile_stateful_metric_functions'):
       # Handle case: list/tuple of layers (also tracked by the Network API).
       if value and all(isinstance(val, Layer) for val in value):
         raise ValueError('We do not support the use of list-of-layers '
@@ -338,9 +351,6 @@ def _in_place_subclassed_model_reset(model):
           'targets',
           '_feed_targets',
           'sample_weight_modes',
-          'weighted_metrics',
-          'metrics_names',
-          'metrics_tensors',
           'total_loss',
           'sample_weights',
           '_feed_sample_weights',
@@ -452,7 +462,7 @@ def clone_and_build_model(
 
     if all([isinstance(clone, Sequential),
             not clone._is_graph_network,
-            model.built]):
+            getattr(model, '_build_input_shape', None) is not None]):
       # Set model inputs to build the model and add input/output properties.
       # TODO(kathywu): Add multiple placeholders to handle edge case where
       # sequential model has multiple inputs.
@@ -488,10 +498,11 @@ def clone_and_build_model(
     clone.compile(
         optimizer,
         model.loss,
-        metrics=metrics_module.clone_metrics(model.metrics),
+        metrics=metrics_module.clone_metrics(model._compile_metrics),
         loss_weights=model.loss_weights,
         sample_weight_mode=model.sample_weight_mode,
-        weighted_metrics=metrics_module.clone_metrics(model.weighted_metrics),
+        weighted_metrics=metrics_module.clone_metrics(
+            model._compile_weighted_metrics),
         target_tensors=target_tensors)
 
   return clone

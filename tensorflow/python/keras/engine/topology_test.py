@@ -42,6 +42,7 @@ except ImportError:
 
 class TopologyConstructionTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_get_updates(self):
 
     class MyLayer(keras.layers.Layer):
@@ -115,6 +116,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(layer.get_updates_for(x1)), 2)
     self.assertEqual(len(layer.get_updates_for(None)), 0)
 
+  @test_util.run_deprecated_v1
   def test_get_losses(self):
 
     class MyLayer(keras.layers.Layer):
@@ -268,6 +270,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(test_layer.input_shape, [(None, 32), (None, 32)])
     self.assertEqual(test_layer.output_shape, (None, 32))
 
+  @test_util.run_deprecated_v1
   def testBasicNetwork(self):
     # minimum viable network
     x = input_layer_lib.Input(shape=(32,))
@@ -341,62 +344,25 @@ class TopologyConstructionTest(test.TestCase):
     self.assertListEqual(model.trainable_weights, [])
     self.assertListEqual(model.non_trainable_weights, weights)
 
-  def test_learning_phase(self):
-    with self.cached_session():
-      a = keras.layers.Input(shape=(32,), name='input_a')
-      b = keras.layers.Input(shape=(32,), name='input_b')
-
-      a_2 = keras.layers.Dense(16, name='dense_1')(a)
-      dp = keras.layers.Dropout(0.5, name='dropout')
-      b_2 = dp(b)
-
-      self.assertFalse(a_2._uses_learning_phase)
-      self.assertTrue(b_2._uses_learning_phase)
-
-      # test merge
-      m = keras.layers.concatenate([a_2, b_2])
-      self.assertTrue(m._uses_learning_phase)
-
-      # Test recursion
-      model = keras.models.Model([a, b], [a_2, b_2])
-      self.assertTrue(model.uses_learning_phase)
-
-      c = keras.layers.Input(shape=(32,), name='input_c')
-      d = keras.layers.Input(shape=(32,), name='input_d')
-
-      c_2, b_2 = model([c, d])
-      self.assertTrue(c_2._uses_learning_phase)
-      self.assertTrue(b_2._uses_learning_phase)
-
-      # try actually running graph
-      fn = keras.backend.function(
-          model.inputs + [keras.backend.learning_phase()], model.outputs)
-      input_a_np = np.random.random((10, 32))
-      input_b_np = np.random.random((10, 32))
-      fn_outputs_no_dp = fn([input_a_np, input_b_np, 0])
-      fn_outputs_dp = fn([input_a_np, input_b_np, 1])
-      # output a: nothing changes
-      self.assertEqual(fn_outputs_no_dp[0].sum(), fn_outputs_dp[0].sum())
-      # output b: dropout applied
-      self.assertNotEqual(fn_outputs_no_dp[1].sum(), fn_outputs_dp[1].sum())
-
+  @test_util.run_deprecated_v1
   def test_layer_call_arguments(self):
     # Test the ability to pass and serialize arguments to `call`.
     inp = keras.layers.Input(shape=(2,))
     x = keras.layers.Dense(3)(inp)
     x = keras.layers.Dropout(0.5)(x, training=True)
     model = keras.models.Model(inp, x)
-    self.assertFalse(model.uses_learning_phase)
+    # Would be `dropout/cond/Merge` by default
+    self.assertTrue(model.output.op.name.endswith('dropout/mul'))
 
     # Test that argument is kept when applying the model
     inp2 = keras.layers.Input(shape=(2,))
     out2 = model(inp2)
-    self.assertFalse(out2._uses_learning_phase)
+    self.assertTrue(out2.op.name.endswith('dropout/mul'))
 
     # Test that argument is kept after loading a model
     config = model.get_config()
     model = keras.models.Model.from_config(config)
-    self.assertFalse(model.uses_learning_phase)
+    self.assertTrue(model.output.op.name.endswith('dropout/mul'))
 
   def test_node_construction(self):
     # test basics
@@ -529,6 +495,7 @@ class TopologyConstructionTest(test.TestCase):
       fn_outputs = fn([input_a_np, input_b_np])
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
 
+  @test_util.run_deprecated_v1
   def test_recursion(self):
     with self.cached_session():
       a = keras.layers.Input(shape=(32,), name='input_a')
@@ -713,6 +680,7 @@ class TopologyConstructionTest(test.TestCase):
     with self.assertRaises(Exception):
       keras.models.Model([j, k], [m, n, 0])
 
+  @test_util.run_deprecated_v1
   def test_raw_tf_compatibility(self):
     # test calling layers/models on TF tensors
     a = keras.layers.Input(shape=(32,), name='input_a')
@@ -757,6 +725,7 @@ class TopologyConstructionTest(test.TestCase):
     model = keras.models.Model(a, b)
     self.assertEqual(model.output_mask.get_shape().as_list(), [None, 10])
 
+  @test_util.run_deprecated_v1
   def testMaskingSingleInput(self):
 
     class MaskedLayer(keras.layers.Layer):
@@ -794,6 +763,7 @@ class TopologyConstructionTest(test.TestCase):
       y_2 = network(x_2)
       self.assertEqual(y_2.get_shape().as_list(), [None, 32])
 
+  @test_util.run_deprecated_v1
   def test_activity_regularization_with_model_composition(self):
 
     def reg(x):
@@ -863,6 +833,7 @@ class TopologyConstructionTest(test.TestCase):
       output_val_2 = m2.predict(x_val)
       self.assertAllClose(output_val, output_val_2, atol=1e-6)
 
+  @test_util.run_deprecated_v1
   def test_explicit_training_argument(self):
     with self.cached_session():
       a = keras.layers.Input(shape=(2,))
@@ -1183,6 +1154,7 @@ class DefaultShapeInferenceBehaviorTest(test.TestCase):
 
 class GraphUtilsTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testGetReachableFromInputs(self):
 
     with self.cached_session():

@@ -29,15 +29,17 @@ _NUMPY_RANDOM_SEED = 42
 class RangeBenchmark(test.Benchmark):
   """Benchmarks for `tf.data.Dataset.range()`."""
 
-  def benchmarkRange(self):
-    num_elements = 50000000
+  def _benchmarkRangeHelper(self, modeling_enabled):
+    num_elements = 10000000 if modeling_enabled else 50000000
+    options = dataset_ops.Options()
+    options.experimental_autotune = modeling_enabled
 
     # Use `Dataset.skip()` and `Dataset.take()` to perform the iteration in
     # C++, and focus on the minimal overheads (excluding Python invocation
     # costs).
     dataset = dataset_ops.Dataset.range(num_elements).skip(
-        num_elements - 1).take(1)
-    iterator = dataset.make_initializable_iterator()
+        num_elements - 1).take(1).with_options(options)
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     with session.Session() as sess:
@@ -52,10 +54,15 @@ class RangeBenchmark(test.Benchmark):
       end = time.time()
 
       time_per_element = (end - start) / num_elements
-      print("Average time per element: %f nanoseconds" % (
-          time_per_element * 1e9))
+      print("Average time per element (%s modeling): %f nanoseconds" % (
+          "with" if modeling_enabled else "without", time_per_element * 1e9))
       self.report_benchmark(iters=num_elements, wall_time=time_per_element,
-                            name="benchmark_tf_data_dataset_range")
+                            name="benchmark_tf_data_dataset_range%s"
+                            % ("_with_modeling" if modeling_enabled else ""))
+
+  def benchmarkRange(self):
+    for modeling_enabled in [False, True]:
+      self._benchmarkRangeHelper(modeling_enabled)
 
 
 if __name__ == "__main__":

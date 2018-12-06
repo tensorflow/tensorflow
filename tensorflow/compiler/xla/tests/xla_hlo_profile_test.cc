@@ -91,8 +91,8 @@ Status ParseOneProfileOutputLine(
   string match_usecs = "([0-9.]+) usec";
   string match_flops = "([^ ]*)";
   string match_trops = "([^ ]*)";
-  string match_bytes_per_sec = "([0-9.TGMKi]+)B/s";
-  string match_bytes_per_cycle = "([0-9.TGMKi]+)B/cycle";
+  string match_bytes_per_sec = "([0-9.TGMKi]*)(?:B/s)?";
+  string match_bytes_per_cycle = "([0-9.TGMKi]*)(?:B/cycle)?";
 
   // The underlined part is what we're trying to match with match_opcode:
   //
@@ -157,10 +157,12 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
       stream_ptr.get(), Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
 
+  ExecutableBuildOptions build_options;
+  build_options.mutable_debug_options()->set_xla_hlo_profile(true);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
       client->Compile(computation, {&lhs_arg_shape, &rhs_arg_shape},
-                      ExecutableBuildOptions().set_hlo_profile(true)));
+                      build_options));
 
   Executable* executable = local_executable->executable();
   HloExecutionProfile hlo_execution_profile(
@@ -208,7 +210,7 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
   string profile_output;
   ExecuteAndFetchProfile(&profile_output, client, computation, lhs_shape,
                          rhs_shape);
-
+  VLOG(4) << "Profile Output:\n" << profile_output;
   std::vector<string> profile_output_lines =
       absl::StrSplit(profile_output, '\n');
 
@@ -307,6 +309,7 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
   string profile_output;
   ExecuteAndFetchProfile(&profile_output, client, computation, matrix_shape,
                          matrix_shape);
+  SCOPED_TRACE(profile_output);
 
   std::vector<string> profile_output_lines =
       absl::StrSplit(profile_output, '\n');
@@ -318,14 +321,13 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
 
   ASSERT_NE(while_body_profile_start, profile_output_lines.cend());
 
-  auto while_body_profile_end = std::find_if(
-      while_body_profile_start, profile_output_lines.end(),
-      [](absl::string_view s) {
-        return absl::StartsWith(s, "********** microseconds report **********");
-      });
+  auto while_body_profile_end =
+      std::find_if(while_body_profile_start, profile_output_lines.end(),
+                   [](absl::string_view s) {
+                     return absl::StartsWith(s, "********** microseconds ");
+                   });
 
-  // We emit a blank line before the "********** microseconds report **********"
-  // line.
+  // We emit a blank line before the "microseconds report" line.
   while_body_profile_end--;
 
   ASSERT_NE(while_body_profile_end, profile_output_lines.end());
@@ -380,7 +382,7 @@ static std::pair<int, char**> AddXlaHloProfileFlag(int argc, char** argv) {
 
 GTEST_API_ int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::AppendDebugOptionsFlags(&flag_list);
   std::tie(argc, argv) = AddXlaHloProfileFlag(argc, argv);
 
   auto usage = tensorflow::Flags::Usage(argv[0], flag_list);

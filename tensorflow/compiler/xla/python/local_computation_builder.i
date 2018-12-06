@@ -363,6 +363,37 @@ tensorflow::ImportNumpy();
   $1 = temps;
 }
 
+%typemap(in) absl::Span<const std::vector<xla::swig::LocalShapedBuffer*> >
+    (std::vector<std::vector<LocalShapedBuffer*> > temps) {
+  if (!PySequence_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
+    SWIG_fail;
+  }
+  const int size = PySequence_Size($input);
+  temps.reserve(size);
+  for (int i = 0; i < size; ++i) {
+    PyObject* o = PySequence_GetItem($input, i);
+    std::vector<LocalShapedBuffer*> vec;
+    const int vec_size = PySequence_Size(o);
+    vec.reserve(vec_size);
+    for (int j = 0; j < vec_size; ++j) {
+      PyObject* vec_elt = PySequence_GetItem(o, j);
+      LocalShapedBuffer* lsbp;
+      if ((SWIG_ConvertPtr(vec_elt, (void**) &lsbp, $descriptor(xla::swig::LocalShapedBuffer*),
+                           SWIG_POINTER_EXCEPTION)) == -1) {
+        Py_DECREF(vec_elt);
+        Py_DECREF(o);
+        SWIG_fail;
+      }
+      vec.push_back(lsbp);
+      Py_DECREF(vec_elt);
+    }
+    temps.push_back(vec);
+    Py_DECREF(o);
+  }
+  $1 = temps;
+}
+
 %typemap(in) absl::Span<xla::swig::XrtAllocation* const>
     (std::vector<XrtAllocation*> temps) {
   if (!PySequence_Check($input)) {
@@ -921,22 +952,22 @@ tensorflow::ImportNumpy();
     $1 = NULL;
   } else {
     if (!HandleStringAttribute($input, "generate_hlo_graph", [&](string s) {
-      build_options.set_generate_hlo_graph(std::move(s));
+      build_options.mutable_debug_options()->set_xla_generate_hlo_graph(std::move(s));
     })) {
       return nullptr;
     }
     if (!HandleStringAttribute($input, "dump_optimized_hlo_proto_to", [&](string s) {
-      build_options.set_dump_optimized_hlo_proto_to(std::move(s));
+      build_options.mutable_debug_options()->set_xla_dump_optimized_hlo_proto_to(std::move(s));
     })) {
       return nullptr;
     }
     if (!HandleStringAttribute($input, "dump_unoptimized_hlo_proto_to", [&](string s) {
-      build_options.set_dump_unoptimized_hlo_proto_to(std::move(s));
+      build_options.mutable_debug_options()->set_xla_dump_unoptimized_hlo_proto_to(std::move(s));
     })) {
       return nullptr;
     }
     if (!HandleStringAttribute($input, "dump_per_pass_hlo_proto_to", [&](string s) {
-      build_options.set_dump_per_pass_hlo_proto_to(std::move(s));
+      build_options.mutable_debug_options()->set_xla_dump_per_pass_hlo_proto_to(std::move(s));
     })) {
       return nullptr;
     }
@@ -950,7 +981,7 @@ tensorflow::ImportNumpy();
         PyErr_SetString(PyExc_TypeError, "ExecutableBuildOptions.hlo_profile must be a bool or None.");
         SWIG_fail;
       }
-      build_options.set_hlo_profile(o == Py_True);
+      build_options.mutable_debug_options()->set_xla_hlo_profile(o == Py_True);
     }
     Py_DECREF(o);
 
@@ -977,6 +1008,7 @@ tensorflow::ImportNumpy();
 %unignore xla;
 %unignore xla::swig;
 %unignore xla::swig::InitializeReplicaCount;
+%unignore xla::swig::InitializePlatformName;
 %unignore xla::swig::GetReplicaCount;
 %unignore xla::swig::TransferToInfeedLocal;
 %unignore xla::swig::TransferToInfeedLocalReplica;
@@ -991,11 +1023,13 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::XrtAllocation;
 %unignore xla::swig::XrtAllocation::FromLiteral;
 %unignore xla::swig::XrtAllocation::ToLiteral;
+%unignore xla::swig::XrtAllocation::shape;
 %unignore xla::swig::XrtAllocationTuple;
 %unignore xla::swig::XrtAllocationTuple::Release;
 %unignore xla::swig::XrtAllocationTuple::size;
 %unignore xla::swig::CompiledLocalComputation;
 %unignore xla::swig::CompiledLocalComputation::Execute;
+%unignore xla::swig::CompiledLocalComputation::ExecutePerReplica;
 %unignore xla::swig::CompiledXrtComputation;
 %unignore xla::swig::CompiledXrtComputation::Execute;
 %unignore xla::swig::LocalComputation;

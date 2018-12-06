@@ -24,17 +24,17 @@ import abc
 
 import six
 
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
-from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops import gradients
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer as optimizer_v1
@@ -115,7 +115,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   """
 
-  def __init__(self, name):
+  def __init__(self, name, **kwargs):
     """Create a new Optimizer.
 
     This must be called by the constructors of subclasses.
@@ -129,6 +129,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Args:
       name: A non-empty string.  The name to use for accumulators created
         for the optimizer.
+      **kwargs: keyword arguments. Allowed to be {`decay`}
 
     Raises:
       ValueError: If name is malformed.
@@ -141,6 +142,12 @@ class OptimizerV2(optimizer_v1.Optimizer):
     # dict: {variable name : {slot name : variable}}
     self._slots = {}
     self._weights = []
+
+    decay = kwargs.pop("decay", 0.0)
+    if decay < 0.:
+      raise ValueError("decay cannot be less than 0: {}".format(decay))
+    self._initial_decay = decay
+
     self._prepared = False
 
   def minimize(self,
@@ -297,6 +304,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
       grads_and_vars = zip(reduced_grads, var_list)
 
     with ops.init_scope():
+      self._prepare()
       self._create_slots(var_list)
     update_ops = []
 
@@ -318,15 +326,20 @@ class OptimizerV2(optimizer_v1.Optimizer):
         return update_op
 
     with ops.name_scope(name, self._name) as name:
-      self._prepare()
       for grad, var in grads_and_vars:
         scope_name = ("" if ops.executing_eagerly_outside_functions() else
                       "_" + var.op.name)
-        with ops.name_scope("update" + scope_name), ops.colocate_with(var):
+        with ops.name_scope("update" + scope_name):
           update_ops.append(update_grad_to_var(grad, var))
-      with ops.colocate_with(self._iterations):
-        update_ops.append(self._iterations.assign_add(1))
-      return control_flow_ops.group(*update_ops)
+      # control dependencies does not work in per replica mode, please change
+      # this once b/118841692 is fixed.
+      # with ops.control_dependencies(update_ops):
+      #   apply_updates = self._iterations.assign_add(1).op
+      apply_updates = merge_update_step(update_ops, self.iterations)
+      return apply_updates
+
+  def get_updates(self, loss, params):
+    return [self.minimize(loss, params)]
 
   def _set_hyper(self, name, value):
     """set hyper `name` to value. value can be callable, tensor, numeric."""
@@ -340,23 +353,50 @@ class OptimizerV2(optimizer_v1.Optimizer):
       else:
         backend.set_value(self._hyper[name], value)
 
-  def _get_hyper(self, name):
+  def _get_hyper(self, name, dtype=None):
     value = self._hyper[name]
-    return self._call_if_callable(value)
+    if callable(value):
+      value = value()
+    if dtype:
+      return math_ops.cast(value, dtype)
+    else:
+      return value
+
+  def __getattribute__(self, name):
+    """Overridden to support hyperparameter access."""
+    try:
+      return super(OptimizerV2, self).__getattribute__(name)
+    except AttributeError as e:
+      # Needed to avoid infinite recursion with __setattr__.
+      if name == "_hyper":
+        raise e
+      # Backwards compatibility with Keras optimizers.
+      if name == "lr":
+        name = "learning_rate"
+      if name in self._hyper:
+        return self._hyper[name]
+      raise e
 
   def __setattr__(self, name, value):
     """Override setattr to support dynamic hyperparameter setting."""
+    # Backwards compatibility with Keras optimizers.
+    if name == "lr":
+      name = "learning_rate"
     if hasattr(self, "_hyper") and name in self._hyper:
       self._set_hyper(name, value)
     else:
       super(OptimizerV2, self).__setattr__(name, value)
 
-  def add_slot(self, var, slot_name):
+  def add_slot(self, var, slot_name, initializer="zeros"):
     var_key = _var_key(var)
     slot_dict = self._slots.setdefault(var_key, {})
     if slot_name not in slot_dict:
       slot_key = _get_slot_key_from_var(var, slot_name)
-      weight = self.add_weight(name=slot_key, shape=var.shape, dtype=var.dtype)
+      weight = self.add_weight(
+          name=slot_key,
+          shape=var.shape,
+          dtype=var.dtype,
+          initializer=initializer)
       slot_dict[slot_name] = weight
       self._weights.append(weight)
 
@@ -372,8 +412,10 @@ class OptimizerV2(optimizer_v1.Optimizer):
       self._iterations = self.add_weight(
           "iter",
           shape=[],
+          dtype=dtypes.int64,
           trainable=False,
-          aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+          aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+      self._weights.append(self._iterations)
     for name, value in self._hyper.items():
       if isinstance(value, ops.Tensor) or callable(value):
         pass
@@ -383,14 +425,23 @@ class OptimizerV2(optimizer_v1.Optimizer):
             shape=[],
             trainable=False,
             initializer=value,
-            aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
     self._prepared = True
 
   @property
-  def iteration(self):
+  def iterations(self):
     if not self._prepared:
       self._prepare()
     return self._iterations
+
+  def _decayed_lr(self, var_dtype):
+    """Get decayed learning rate as a Tensor with dtype=var_dtype."""
+    lr_t = self._get_hyper("learning_rate", var_dtype)
+    if self._initial_decay > 0.:
+      local_step = math_ops.cast(self.iterations, var_dtype)
+      decay_t = self._get_hyper("decay", var_dtype)
+      lr_t = lr_t / (1. + decay_t * local_step)
+    return lr_t
 
   @abc.abstractmethod
   def get_config(self):
@@ -423,6 +474,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Returns:
         An optimizer instance.
     """
+    if "lr" in config:
+      config["learning_rate"] = config.pop("lr")
     return cls(**config)
 
   def _serialize_hyperparameter(self, hyperparameter_name):
@@ -430,9 +483,13 @@ class OptimizerV2(optimizer_v1.Optimizer):
     value = self._get_hyper(hyperparameter_name)
     if callable(value):
       return value()
-    if isinstance(value, (ops.Tensor, variables.Variable)):
+    if isinstance(value, (ops.Tensor, tf_variables.Variable)):
       return backend.get_value(value)
     return value
+
+  def variables(self):
+    """Returns variables of this Optimizer based on the order created."""
+    return self._weights
 
   @property
   def weights(self):
@@ -470,15 +527,15 @@ class OptimizerV2(optimizer_v1.Optimizer):
                  dtype=None,
                  initializer="zeros",
                  trainable=None,
-                 synchronization=variables.VariableSynchronization.AUTO,
-                 aggregation=variables.VariableAggregation.NONE):
+                 synchronization=tf_variables.VariableSynchronization.AUTO,
+                 aggregation=tf_variables.VariableAggregation.NONE):
 
     if dtype is None:
       dtype = dtypes.float32
     if isinstance(initializer, six.string_types) or callable(initializer):
       initializer = initializers.get(initializer)
 
-    if synchronization == variables.VariableSynchronization.ON_READ:
+    if synchronization == tf_variables.VariableSynchronization.ON_READ:
       if trainable:
         raise ValueError(
             "Synchronization value can be set to "
@@ -494,7 +551,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     variable = self._add_variable_with_custom_getter(
         name=name,
         shape=shape,
-        getter=base_layer.make_variable,
+        getter=base_layer_utils.make_variable,
         overwrite=True,
         initializer=initializer,
         dtype=dtype,
@@ -502,6 +559,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
         use_resource=True,
         synchronization=synchronization,
         aggregation=aggregation)
+    backend.track_variable(variable)
 
     return variable
 
@@ -521,7 +579,7 @@ def _filter_grads(grads_and_vars):
   filtered = tuple(filtered)
   if not filtered:
     raise ValueError("No gradients provided for any variable: %s." %
-                     ([v.name for _, v in filtered],))
+                     ([v.name for _, v in grads_and_vars],))
   if vars_with_empty_grads:
     logging.warning(
         ("Gradients does not exist for variables %s when minimizing the loss."),
@@ -529,16 +587,31 @@ def _filter_grads(grads_and_vars):
   return filtered
 
 
+def merge_update_step(update_ops, local_step):
+  """Merge local step counter update from different replicas."""
+
+  def merge_update_step_fn(strategy, update_ops, local_step):
+    merged_ops = []
+    for update_op in update_ops:
+      merged_ops.append(strategy.group(update_op))
+    with ops.control_dependencies(merged_ops):
+      incre_op = local_step.assign_add(1).op
+    return incre_op
+
+  return distribution_strategy_context.get_replica_context().merge_call(
+      merge_update_step_fn, args=(update_ops, local_step))
+
+
 def merge_grads(grads_and_vars):
   """Merge gradients from different replicas."""
 
   def merge_grad_fn(strategy, grads_and_vars):
     reduced_grads = strategy.batch_reduce(
-        variable_scope.VariableAggregation.MEAN, grads_and_vars)
+        ds_reduce_util.ReduceOp.MEAN, grads_and_vars)
     return reduced_grads
 
-  return distribution_strategy_context.get_tower_context().merge_call(
-      merge_grad_fn, grads_and_vars)
+  return distribution_strategy_context.get_replica_context().merge_call(
+      merge_grad_fn, args=(grads_and_vars,))
 
 
 def _var_key(var):

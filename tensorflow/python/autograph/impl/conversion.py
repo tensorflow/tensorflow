@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import imp
 
 import gast
@@ -45,6 +46,7 @@ from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors
 from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import inspect_utils
@@ -71,12 +73,31 @@ def is_whitelisted_for_graph(o):
   Returns:
     Boolean
   """
-  m = tf_inspect.getmodule(o)
+  # TODO(b/120224672): Fix this.
+  if isinstance(o, functools.partial):
+    # tf_inspect.getmodule(functools.partial(...)) otherwise returns None since
+    # functools.partial objects do not have a __module__ attribute.
+    m = functools
+  else:
+    m = tf_inspect.getmodule(o)
   for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
     if m.__name__.startswith(prefix):
       return True
+
   if hasattr(o, 'autograph_info__'):
     return True
+
+  if inspect_utils.isnamedtuple(o):
+    # Due to the way they're constructed, namedtuple types cannot be converted
+    # because they don't expose source code. But we assume they are safe for
+    # graph mode since they are just containers.
+    if tf_inspect.isclass(o) and len(o.__bases__) > 1:
+      logging.log_first_n(
+          logging.level_warning(),
+          'Entity {} looks like a namedtuple subclass. If it has any custom'
+          ' methods, they will not be converted by AutoGraph.'.format(o), 1)
+    return True
+
   return False
 
 
@@ -114,15 +135,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   if tf_inspect.isclass(o):
     node, name, ns = class_to_graph(o, program_ctx)
   elif tf_inspect.isfunction(o):
-    # TODO(mdan): This is not a reliable mechanism.
-    # The most reliable way is to check the source code, the AST will contain
-    # a Lambda node instead of a FunctionDef
-    if o.__name__ == '<lambda>':
-      raise NotImplementedError(
-          'lambda functions are not yet supported; declare the function'
-          ' using def instead: %s' % o)
-    else:
-      node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
+    node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   elif tf_inspect.ismethod(o):
     node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   # TODO(mdan,yashkatariya): Remove when object conversion is implemented.
@@ -272,6 +285,7 @@ def _add_self_references(namespace, autograph_module):
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
+    ag_internal.__dict__.update(special_functions.__dict__)
     ag_internal.__dict__.update(operators.__dict__)
 
   _add_reserved_symbol(namespace, 'ag__', ag_internal)
@@ -286,6 +300,27 @@ def function_to_graph(f,
 
   node, source = parser.parse_entity(f)
   node = node.body[0]
+
+  # In general, the output of inspect.getsource is inexact because it uses
+  # regex matching to adjust the exact location around the line number that
+  # CPython records. This is particularly problematic for lambda functions,
+  # where the entire containing lines are returned.
+  nodes = ast_util.find_matching_definitions(node, f)
+  if len(nodes) != 1:
+    if f.__name__ == '<lambda>':
+      raise ValueError(
+          'Unable to identify source code of lambda function {}. It was'
+          ' defined on this line: {}, which must contain a single lambda with'
+          ' matching signature. To avoid ambiguity, define each lambda'
+          ' in a separate expression.'.format(f, source))
+    else:
+      raise ValueError(
+          'Unable to identify source code of function {}. The source code'
+          ' reported by Python did not include exactly one matching signature:'
+          '\n{}\n. This is an extremely rare occurrence. Please report it to'
+          ' the TensorFlow team.'.format(f, source))
+  node, = nodes
+
   # TODO(znado): Place inside standard_analysis.
   origin_info.resolve(node, source, f)
   namespace = inspect_utils.getnamespace(f)
@@ -302,13 +337,20 @@ def function_to_graph(f,
   context = converter.EntityContext(namer, entity_info, program_ctx)
   node = node_to_graph(node, context)
 
-  # TODO(mdan): This somewhat duplicates the call rename logic in call_trees.py
-  new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
-  if not did_rename:
-    new_name = f.__name__
-    if node.name != f.__name__:
-      raise NotImplementedError('Strange corner case. Send us offending code!')
-  node.name = new_name
+  if isinstance(node, gast.Lambda):
+    new_name = namer.new_symbol('tf__lambda', ())
+    node = gast.Assign(
+        targets=[gast.Name(new_name, gast.Store(), None)], value=node)
+
+  else:
+    # TODO(mdan): This somewhat duplicates the renaming logic in call_trees.py
+    new_name, did_rename = namer.compiled_function_name(f.__name__, f,
+                                                        owner_type)
+    if did_rename:
+      node.name = new_name
+    else:
+      new_name = f.__name__
+      assert node.name == new_name
 
   program_ctx.update_name_map(namer)
   # TODO(mdan): Use this at compilation.
@@ -358,6 +400,9 @@ def node_to_graph(node, context):
   node = converter.apply_(node, context, logical_expressions)
   if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
     node = converter.apply_(node, context, side_effect_guards)
-  node = converter.apply_(node, context, function_scopes)
-  node = converter.apply_(node, context, error_handlers)
+  # TODO(mdan): If function scopes ever does more, the toggle will need moving.
+  if context.program.options.uses(converter.Feature.NAME_SCOPES):
+    node = converter.apply_(node, context, function_scopes)
+  if context.program.options.uses(converter.Feature.ERROR_REWRITING):
+    node = converter.apply_(node, context, error_handlers)
   return node

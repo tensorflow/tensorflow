@@ -49,7 +49,10 @@ from tensorflow.python.util import tf_inspect
 # TODO(mdan): This should behave like to_graph (e.g. convert statically).
 # TODO(znado): Make an alias so can write Verbosity directly without needing
 # to write converter.
-def convert(recursive=False, verbose=converter.Verbosity.VERBOSE):
+def convert(
+    recursive=False,
+    verbose=converter.Verbosity.BRIEF,
+    optional_features=converter.Feature.ALL):
   """Decorator that compiles a function to use TensorFlow ops.
 
   The decorator is dynamic - it recompiles the target whenever the decorated
@@ -61,6 +64,9 @@ def convert(recursive=False, verbose=converter.Verbosity.VERBOSE):
     recursive: bool, whether to recursively convert any functions or classes
       that the converted function may use.
     verbose: converter.Verbosity, the level of verbosity.
+    optional_features: converted.Feature, allows toggling optional or
+      experimental features. When set to None, only the core features are
+      enabled.
 
   Returns:
     Callable, a decorator that converts the given function into an equivalent
@@ -78,7 +84,7 @@ def convert(recursive=False, verbose=converter.Verbosity.VERBOSE):
               recursive=recursive,
               verbose=verbose,
               force_conversion=True,
-              optional_features=converter.Feature.ALL,
+              optional_features=optional_features,
           ), *args, **kwargs)
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
@@ -171,13 +177,22 @@ def converted_call(f, owner, options, *args, **kwargs):
 
     f = getattr(owner, f)
 
+  if inspect_utils.isbuiltin(f):
+    return py_builtins.overload_of(f)(*args, **kwargs)
+
   # TODO(mdan): This needs cleanup.
   # In particular, we may want to avoid renaming functions altogether.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
-    return f(*args, **kwargs)
 
-  if inspect_utils.isbuiltin(f):
-    return py_builtins.overload_of(f)(*args, **kwargs)
+    # Args typically include `self`, as required by the conversion process.
+    # When conversion is skipped, `self` is not necessary, because the
+    # original bound method is being executed. This code removes it.
+    if tf_inspect.ismethod(f) and args:
+      f_class = inspect_utils.getmethodclass(f)
+      if args[0] is f_class:
+        args = args[1:]
+
+    return f(*args, **kwargs)
 
   # internal_convert_user_code is for example turned off when issuing a dynamic
   # call conversion from generated code while in nonrecursive mode. In that
@@ -186,13 +201,24 @@ def converted_call(f, owner, options, *args, **kwargs):
   if not options.internal_convert_user_code:
     return f(*args, **kwargs)
 
+  # Unwrap functools.partial objects
+  # TODO(allenl, mdan): Consider sharing unwrapping logic with tf_inspect.
+  while isinstance(f, functools.partial):
+    args = f.args + args
+    new_kwargs = {}
+    if f.keywords is not None:
+      new_kwargs.update(f.keywords)
+    new_kwargs.update(kwargs)
+    kwargs = new_kwargs
+    f = f.func
+
   if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
     # Regular functions
     target_entity = f
     arg_map_target = f
     f_class = inspect_utils.getmethodclass(f)
 
-    # TODO(mdan): This may be more elegantly handled using __get__?
+    # TODO(b/119246461): This may be more elegantly handled using __get__?
     if f_class is not None:
       # If this is a method call, it may or may not include self.
       #
@@ -205,10 +231,13 @@ def converted_call(f, owner, options, *args, **kwargs):
       if owner is not None and (not args or args[0] is not owner):
         effective_args = (owner,) + args
       else:
-        # Always override the self arg, because it might be different from
-        # what the method was bound to - see inspect_utils.getmethodclass.
-        assert args, 'Bound function call without self argument?'
-        effective_args = (f_class,) + args[1:]
+        # When the owner is not specified, use the result of
+        # inspect_utils.getmethodclass.
+        # TODO(b/119246461): Make sure an owner is always specified.
+        if not args or args[0] is not f_class:
+          effective_args = (f_class,) + args
+        else:
+          effective_args = (f_class,) + args[1:]
       partial_types = (f_class,)
     else:
       effective_args = args

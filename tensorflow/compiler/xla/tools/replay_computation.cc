@@ -47,8 +47,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -82,13 +82,17 @@ struct Options {
 std::unique_ptr<LocalExecutable> CompileExecutable(const HloSnapshot& module,
                                                    LocalClient* client) {
   XlaComputation computation(module.hlo().hlo_module());
-  std::vector<const Shape*> argument_layouts;
-  for (const auto& param :
+  std::vector<Shape> argument_layouts;
+  argument_layouts.reserve(
+      computation.proto().host_program_shape().parameters_size());
+  std::vector<const Shape*> argument_layout_ptrs;
+  for (const ShapeProto& param :
        computation.proto().host_program_shape().parameters()) {
-    argument_layouts.push_back(&param);
+    argument_layouts.push_back(Shape(param));
+    argument_layout_ptrs.push_back(&argument_layouts.back());
   }
   return client
-      ->Compile(computation, argument_layouts, ExecutableBuildOptions())
+      ->Compile(computation, argument_layout_ptrs, ExecutableBuildOptions())
       .ValueOrDie();
 }
 
@@ -149,7 +153,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
               << "--generate_fake_infeed only works if the model has 0 or 1 "
                  "infeed ops, but this one has >= 2.";
           provide_infeed = true;
-          infeed_shape = instruction.shape();
+          infeed_shape = Shape(instruction.shape());
           LOG(INFO) << "Generating fake infeed shape for inferred shape: "
                     << ShapeUtil::HumanString(infeed_shape);
         }
@@ -191,8 +195,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
 
   // Run the computation num_runs times, and return the result from the last
   // execution.
-  const bool xla_hlo_profile =
-      legacy_flags::GetDebugOptionsFromFlags().xla_hlo_profile();
+  const bool xla_hlo_profile = GetDebugOptionsFromFlags().xla_hlo_profile();
   StreamExecutorMemoryAllocator allocator(
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
@@ -316,9 +319,10 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
       if (snapshot.has_result()) {
         Literal literal =
             Literal::CreateFromProto(snapshot.result()).ConsumeValueOrDie();
-        fprintf(stdout, "was %s:%s\n",
-                ShapeUtil::HumanString(snapshot.result().shape()).c_str(),
-                literal.ToString().c_str());
+        fprintf(
+            stdout, "was %s:%s\n",
+            ShapeUtil::HumanString(Shape(snapshot.result().shape())).c_str(),
+            literal.ToString().c_str());
       }
     }
   }

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/stderr_reporter.h"
@@ -57,6 +58,10 @@ constexpr TfLiteType typeToTfLiteType<unsigned char>() {
   return kTfLiteUInt8;
 }
 template <>
+constexpr TfLiteType typeToTfLiteType<int8_t>() {
+  return kTfLiteInt8;
+}
+template <>
 constexpr TfLiteType typeToTfLiteType<bool>() {
   return kTfLiteBool;
 }
@@ -68,9 +73,6 @@ template <>
 constexpr TfLiteType typeToTfLiteType<string>() {
   return kTfLiteString;
 }
-
-// Forward declare since NNAPIDelegate uses Interpreter.
-class NNAPIDelegate;
 
 // An interpreter for a graph of nodes that input and output from tensors.
 // Each node of the graph processes a set of input tensors and produces a
@@ -100,12 +102,6 @@ class NNAPIDelegate;
 // foo.Invoke();
 //
 
-struct TfLiteIntArrayDeleter {
-  void operator()(TfLiteIntArray* a) {
-    if (a) TfLiteIntArrayFree(a);
-  }
-};
-
 class Interpreter {
  public:
   // Instantiate an interpreter. All errors associated with reading and
@@ -117,6 +113,7 @@ class Interpreter {
 
   ~Interpreter();
 
+  // Interpreters are not copyable as they have non-trivial memory semantics.
   Interpreter(const Interpreter&) = delete;
   Interpreter& operator=(const Interpreter&) = delete;
 
@@ -197,34 +194,40 @@ class Interpreter {
   // Functions to access tensor data
 
   // Read only access to list of inputs.
-  const std::vector<int>& inputs() const { return inputs_; }
+  const std::vector<int>& inputs() const { return primary_subgraph().inputs(); }
 
   // Return the name of a given input. The given index must be between 0 and
   // inputs().size().
   const char* GetInputName(int index) const {
-    return context_.tensors[inputs_[index]].name;
+    return context_->tensors[inputs()[index]].name;
   }
 
   // Read only access to list of outputs.
-  const std::vector<int>& outputs() const { return outputs_; }
+  const std::vector<int>& outputs() const {
+    return primary_subgraph().outputs();
+  }
 
   // Read only access to list of variable tensors.
-  const std::vector<int>& variables() const { return variables_; }
+  const std::vector<int>& variables() const {
+    return primary_subgraph().variables();
+  }
 
   // Return the name of a given output. The given index must be between 0 and
   // outputs().size().
   const char* GetOutputName(int index) const {
-    return context_.tensors[outputs_[index]].name;
+    return context_->tensors[outputs()[index]].name;
   }
 
   // Return the number of tensors in the model.
-  size_t tensors_size() const { return context_.tensors_size; }
+  size_t tensors_size() const { return context_->tensors_size; }
 
   // Return the number of ops in the model.
-  size_t nodes_size() const { return nodes_and_registration_.size(); }
+  size_t nodes_size() const { return primary_subgraph().nodes_size(); }
 
   // WARNING: Experimental interface, subject to change
-  const std::vector<int>& execution_plan() const { return execution_plan_; }
+  const std::vector<int>& execution_plan() const {
+    return primary_subgraph().execution_plan();
+  }
 
   // WARNING: Experimental interface, subject to change
   // Overrides execution plan. This bounds checks indices sent in.
@@ -234,27 +237,18 @@ class Interpreter {
   // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
   // read/write access to structure
   TfLiteTensor* tensor(int tensor_index) {
-    if (tensor_index < 0 ||
-        static_cast<size_t>(tensor_index) >= context_.tensors_size)
-      return nullptr;
-    return &context_.tensors[tensor_index];
+    return primary_subgraph().tensor(tensor_index);
   }
 
   // Get an immutable tensor data structure.
   const TfLiteTensor* tensor(int tensor_index) const {
-    if (tensor_index < 0 ||
-        static_cast<size_t>(tensor_index) >= context_.tensors_size)
-      return nullptr;
-    return &context_.tensors[tensor_index];
+    return primary_subgraph().tensor(tensor_index);
   }
 
   // Get a pointer to an operation and registration data structure if in bounds.
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
       int node_index) const {
-    if (node_index < 0 ||
-        static_cast<size_t>(node_index) >= nodes_and_registration_.size())
-      return nullptr;
-    return &nodes_and_registration_[node_index];
+    return primary_subgraph().node_and_registration(node_index);
   }
 
   // Perform a checked cast to the appropriate tensor type (mutable pointer
@@ -285,28 +279,28 @@ class Interpreter {
   // index must be between 0 and inputs().size().
   template <class T>
   T* typed_input_tensor(int index) {
-    return typed_tensor<T>(inputs_[index]);
+    return typed_tensor<T>(inputs()[index]);
   }
 
   // Return an immutable pointer into the data of a given input tensor. The
   // given index must be between 0 and inputs().size().
   template <class T>
   const T* typed_input_tensor(int index) const {
-    return typed_tensor<T>(inputs_[index]);
+    return typed_tensor<T>(inputs()[index]);
   }
 
   // Return a mutable pointer into the data of a given output tensor. The given
   // index must be between 0 and outputs().size().
   template <class T>
   T* typed_output_tensor(int index) {
-    return typed_tensor<T>(outputs_[index]);
+    return typed_tensor<T>(outputs()[index]);
   }
 
   // Return an immutable pointer into the data of a given output tensor. The
   // given index must be between 0 and outputs().size().
   template <class T>
   const T* typed_output_tensor(int index) const {
-    return typed_tensor<T>(outputs_[index]);
+    return typed_tensor<T>(outputs()[index]);
   }
 
   // Change the dimensionality of a given tensor. Note, this is only acceptable
@@ -321,7 +315,6 @@ class Interpreter {
   // Update allocations for all tensors. This will redim dependent tensors using
   // the input tensor dimensionality as given. This is relatively expensive.
   // If you know that your sizes are not changing, you need not call this.
-
   // Returns status of success or failure.
   TfLiteStatus AllocateTensors();
 
@@ -342,14 +335,12 @@ class Interpreter {
   // Allow float16 precision for FP32 calculation when possible.
   // default: not allow.
   // WARNING: This is an experimental API and subject to change.
-  void SetAllowFp16PrecisionForFp32(bool allow) {
-    context_.allow_fp32_relax_to_fp16 = allow;
-  }
+  void SetAllowFp16PrecisionForFp32(bool allow);
 
   // Get the half precision flag.
   // WARNING: This is an experimental API and subject to change.
   bool GetAllowFp16PrecisionForFp32() const {
-    return context_.allow_fp32_relax_to_fp16;
+    return context_->allow_fp32_relax_to_fp16;
   }
 
   // Owning handle to a TfLiteDelegate instance.
@@ -366,18 +357,7 @@ class Interpreter {
   // it might require to copy the data from delegate buffer to raw memory.
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
-    TfLiteTensor* t = tensor(tensor_index);
-    TF_LITE_ENSURE(&context_, t != nullptr);
-    if (t->data_is_stale) {
-      TF_LITE_ENSURE(&context_, t->delegate != nullptr);
-      TF_LITE_ENSURE(&context_, t->buffer_handle != kTfLiteNullBufferHandle);
-      // This can be null if the delegate doesn't use its own buffer.
-      TF_LITE_ENSURE(&context_, t->delegate->CopyFromBufferHandle != nullptr);
-      t->delegate->CopyFromBufferHandle(
-          &context_, t->delegate, t->buffer_handle, t->data.raw, t->bytes);
-      t->data_is_stale = false;
-    }
-    return kTfLiteOk;
+    return primary_subgraph().EnsureTensorDataIsReadable(tensor_index);
   }
 
   // Set the delegate buffer handle to a tensor. It can be called in the
@@ -400,9 +380,9 @@ class Interpreter {
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
 
-  void SetProfiler(profiling::Profiler* profiler) { profiler_ = profiler; }
+  void SetProfiler(profiling::Profiler* profiler);
 
-  profiling::Profiler* GetProfiler() { return profiler_; }
+  profiling::Profiler* GetProfiler();
 
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;
@@ -435,142 +415,47 @@ class Interpreter {
   const char* OpProfilingString(const TfLiteRegistration& op_reg,
                                 const TfLiteNode* node) const {
     if (op_reg.profiling_string == nullptr) return nullptr;
-    return op_reg.profiling_string(&context_, node);
+    return op_reg.profiling_string(context_, node);
   }
 
   // Set the value of an external context.
   void SetExternalContext(TfLiteExternalContextType type,
                           TfLiteExternalContext* ctx);
 
+  // Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
+  // entries. The value pointed to by `first_new_subgraph_index` will be set to
+  // the index of the first new subgraph if `first_new_subgraph_index` is
+  // non-null.
+  // WARNING: This is an experimental API and subject to change.
+  void AddSubgraphs(int subgraphs_to_add,
+                    int* first_new_subgraph_index = nullptr);
+
+  // Return the number of subgraphs in the model.
+  // WARNING: This is an experimental API and subject to change.
+  size_t subgraphs_size() const { return subgraphs_.size(); }
+
+  // Get a pointer to a subgraph if in bounds.
+  // WARNING: This is an experimental API and subject to change.
+  Subgraph* subgraph(int subgraph_index) {
+    if (subgraph_index < 0 ||
+        static_cast<size_t>(subgraph_index) >= subgraphs_size())
+      return nullptr;
+    return &*subgraphs_[subgraph_index];
+  }
+
+  // WARNING: Experimental interface, subject to change
+  Subgraph& primary_subgraph() {
+    return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
+  }
+
+  // WARNING: Experimental interface, subject to change
+  const Subgraph& primary_subgraph() const {
+    return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
+  }
+
  private:
   friend class InterpreterBuilder;
   friend class InterpreterTest;
-
-  // Prevent 'context_' from accessing functions that are only available to
-  // delegated kernels.
-  void SwitchToKernelContext();
-
-  // Add delegate-only functions to 'context_'.
-  void SwitchToDelegateContext();
-
-  // Give 'op_reg' a chance to initialize itself using the contents of
-  // 'buffer'.
-  void* OpInit(const TfLiteRegistration& op_reg, const char* buffer,
-               size_t length) {
-    if (op_reg.init == nullptr) return nullptr;
-    return op_reg.init(&context_, buffer, length);
-  }
-
-  // Let 'op_reg' release any memory it might have allocated via 'OpInit'.
-  void OpFree(const TfLiteRegistration& op_reg, void* buffer) {
-    if (op_reg.free == nullptr) return;
-    if (buffer) {
-      op_reg.free(&context_, buffer);
-    }
-  }
-
-  // Prepare the given 'node' for execution.
-  TfLiteStatus OpPrepare(const TfLiteRegistration& op_reg, TfLiteNode* node) {
-    if (op_reg.prepare == nullptr) return kTfLiteOk;
-    return op_reg.prepare(&context_, node);
-  }
-
-  // Invoke the operator represented by 'node'.
-  TfLiteStatus OpInvoke(const TfLiteRegistration& op_reg, TfLiteNode* node) {
-    if (op_reg.invoke == nullptr) return kTfLiteError;
-    return op_reg.invoke(&context_, node);
-  }
-
-  // Call OpPrepare() for as many ops as possible, allocating memory for their
-  // tensors. If an op containing dynamic tensors is found, preparation will be
-  // postponed until this function is called again. This allows the interpreter
-  // to wait until Invoke() to resolve the sizes of dynamic tensors.
-  TfLiteStatus PrepareOpsAndTensors();
-
-  // Call OpPrepare() for all ops starting at 'first_node'. Stop when a
-  // dynamic tensors is found or all ops have been prepared. Fill
-  // 'last_node_prepared' with the id of the op containing dynamic tensors, or
-  // the last in the graph.
-  TfLiteStatus PrepareOpsStartingAt(int first_execution_plan_index,
-                                    int* last_execution_plan_index_prepared);
-
-  // Tensors needed by the interpreter. Use `AddTensors` to add more blank
-  // tensor entries. Note, `tensors_.data()` needs to be synchronized to the
-  // `context_` whenever this std::vector is reallocated. Currently this
-  // only happens in `AddTensors()`.
-  std::vector<TfLiteTensor> tensors_;
-
-  // Check if an array of tensor indices are valid with respect to the Tensor
-  // array.
-  // NOTE: this changes consistent_ to be false if indices are out of bounds.
-  TfLiteStatus CheckTensorIndices(const char* label, const int* indices,
-                                  int length);
-
-  // Compute the number of bytes required to represent a tensor with dimensions
-  // specified by the array dims (of length dims_size). Returns the status code
-  // and bytes.
-  TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
-                             size_t* bytes);
-
-  // Request an tensor be resized implementation. If the given tensor is of
-  // type kTfLiteDynamic it will also be allocated new memory.
-  TfLiteStatus ResizeTensorImpl(TfLiteTensor* tensor, TfLiteIntArray* new_size);
-
-  // Report a detailed error string (will be printed to stderr).
-  // TODO(aselle): allow user of class to provide alternative destinations.
-  void ReportErrorImpl(const char* format, va_list args);
-
-  // Entry point for C node plugin API to request an tensor be resized.
-  static TfLiteStatus ResizeTensor(TfLiteContext* context, TfLiteTensor* tensor,
-                                   TfLiteIntArray* new_size);
-  // Entry point for C node plugin API to report an error.
-  static void ReportError(TfLiteContext* context, const char* format, ...);
-
-  // Entry point for C node plugin API to add new tensors.
-  static TfLiteStatus AddTensors(TfLiteContext* context, int tensors_to_add,
-                                 int* first_new_tensor_index);
-
-  // WARNING: This is an experimental API and subject to change.
-  // Entry point for C API ReplaceSubgraphsWithDelegateKernels
-  static TfLiteStatus ReplaceSubgraphsWithDelegateKernels(
-      TfLiteContext* context, TfLiteRegistration registration,
-      const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate);
-
-  // Update the execution graph to replace some of the nodes with stub
-  // nodes. Specifically any node index that has `nodes[index]==1` will be
-  // slated for replacement with a delegate kernel specified by registration.
-  // Ownership of 'nodes_to_replace' and 'delegate' remains with the caller.
-  // WARNING: This is an experimental interface that is subject to change.
-  TfLiteStatus ReplaceSubgraphsWithDelegateKernels(
-      TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
-      TfLiteDelegate* delegate);
-
-  // WARNING: This is an experimental interface that is subject to change.
-  // Gets the internal pointer to a TensorFlow lite node by node_index.
-  TfLiteStatus GetNodeAndRegistration(int node_index, TfLiteNode** node,
-                                      TfLiteRegistration** registration);
-
-  // WARNING: This is an experimental interface that is subject to change.
-  // Entry point for C node plugin API to get a node by index.
-  static TfLiteStatus GetNodeAndRegistration(struct TfLiteContext*,
-                                             int node_index, TfLiteNode** node,
-                                             TfLiteRegistration** registration);
-
-  // WARNING: This is an experimental interface that is subject to change.
-  // Gets an TfLiteIntArray* representing the execution plan. The interpreter
-  // owns this memory and it is only guaranteed to exist during the invocation
-  // of the delegate prepare.
-  TfLiteStatus GetExecutionPlan(TfLiteIntArray** execution_plan);
-
-  // WARNING: This is an experimental interface that is subject to change.
-  // Entry point for C node plugin API to get the execution plan.
-  static TfLiteStatus GetExecutionPlan(struct TfLiteContext* context,
-                                       TfLiteIntArray** execution_plan);
-
-  // Retrieve an existing external context by type.
-  TfLiteExternalContext* GetExternalContext(TfLiteExternalContextType type);
-  static TfLiteExternalContext* GetExternalContext(
-      struct TfLiteContext* context, TfLiteExternalContextType type);
 
   // Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -587,84 +472,14 @@ class Interpreter {
     return ModifyGraphWithDelegate(owned_delegates_.back().get());
   }
 
-  // Ensures that `tensors_` has at least `kTensorsCapacityHeadroom` extra
-  // capacity. Calling this function may invalidate existing pointers to
-  // tensors. After calling this function, adding `kTensorsCapacityHeadroom`
-  // more tensors won't invalidate the pointer to existing tensors.
-  void EnsureTensorsVectorCapacity() {
-    const size_t required_capacity = tensors_size() + kTensorsCapacityHeadroom;
-    if (required_capacity > tensors_.capacity()) {
-      tensors_.reserve(required_capacity);
-      context_.tensors = tensors_.data();
-    }
-  }
-
-  // The state of the Interpreter.
-  enum State {
-    // The interpreter isn't ready to be invoked.
-    // `AllocateTensor` need to be called to enter an invokable state.
-    kStateUninvokable = 0,
-    // The interpreter is ready to be invoked.
-    kStateInvokable,
-    // The interpreter is ready to be invoked, and graph can't be further
-    // modified. The interpreter will enter this state when calling
-    // `ModifyGraphWithDelegate` with `allow_dynamic_tensors=false`.
-    kStateInvokableAndImmutable,
-  };
-  State state_ = kStateUninvokable;
-
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
-  TfLiteContext context_;
-
-  // Node inputs/outputs are stored in TfLiteNode and TfLiteRegistration stores
-  // function pointers to actual implementation.
-  std::vector<std::pair<TfLiteNode, TfLiteRegistration>>
-      nodes_and_registration_;
-
-  // Whether the model is consistent. That is to say if the inputs and outputs
-  // of every node and the global inputs and outputs are valid indexes into
-  // the tensor array.
-  bool consistent_ = true;
-
-  // Array of indices representing the tensors that are inputs to the
-  // interpreter.
-  std::vector<int> inputs_;
-
-  // Array of indices representing the tensors that are outputs to the
-  // interpreter.
-  std::vector<int> outputs_;
-
-  // Array of indices representing the tensors that are variable tensors.
-  std::vector<int> variables_;
+  // This is the primary subgraph context.
+  TfLiteContext* context_;
 
   // The error reporter delegate that tflite will forward queries errors to.
   ErrorReporter* error_reporter_;
-
-  // Index of the next node to prepare.
-  // During Invoke(), Interpreter will allocate input tensors first, which are
-  // known to be fixed size. Then it will allocate outputs from nodes as many
-  // as possible. When there is a node that produces dynamic sized tensor.
-  // Interpreter will stop allocating tensors, set the value of next allocate
-  // node id, and execute the node to generate the output tensor before continue
-  // to allocate successors. This process repeats until all nodes are executed.
-  // NOTE: this relies on the order of nodes that is in topological order.
-  int next_execution_plan_index_to_prepare_;
-
-  // WARNING: This is an experimental interface that is subject to change.
-  // This is a list of node indices (to index into nodes_and_registration).
-  // This represents a valid topological sort (dependency ordered) execution
-  // plan. In particular, it is valid for this ordering to contain only a
-  // subset of the node indices.
-  std::vector<int> execution_plan_;
-
-  // In the future, we'd like a TfLiteIntArray compatible representation.
-  // TODO(aselle): replace execution_plan_ with this.
-  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> plan_cache_;
-
-  // Whether to delegate to NN API
-  std::unique_ptr<NNAPIDelegate> nnapi_delegate_;
 
   // List of delegates that have been installed and are owned by this
   // interpreter instance. Useful if client delegate ownership is burdensome.
@@ -672,20 +487,13 @@ class Interpreter {
   // TODO(b/116667551): Use TfLiteExternalContext for storing state.
   std::vector<TfLiteDelegatePtr> owned_delegates_;
 
-  std::unique_ptr<MemoryPlanner> memory_planner_;
-
   bool allow_buffer_handle_output_ = false;
-
-  // Tracking bit for whether a tensor was resized in the course of an op
-  // invocation. This is a useful hint to ensure that dynamic tensor outputs
-  // trigger downstream reallocation after op invocation.
-  bool tensor_resized_since_op_invoke_ = false;
-
-  // Profiler for this interpreter instance.
-  profiling::Profiler* profiler_ = nullptr;
 
   // List of active external contexts.
   TfLiteExternalContext* external_contexts_[kTfLiteMaxExternalContexts];
+
+  // Subgraphs
+  std::vector<std::unique_ptr<Subgraph>> subgraphs_;
 };
 
 }  // namespace tflite

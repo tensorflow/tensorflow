@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
-#include "tensorflow/core/grappler/optimizers/graph_rewriter.h"
 #include "tensorflow/core/grappler/optimizers/static_schedule.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
@@ -1307,13 +1306,12 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
 
 Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
-  *optimized_graph = item.graph;
+  GrapplerItem optimized_item(item);
 
   RecomputationRewritingPass(optimization_level_,
-                             recomputation_targets_name_scope_, optimized_graph,
-                             item);
+                             recomputation_targets_name_scope_,
+                             &optimized_item.graph, item);
 
-  GrapplerItem optimized_item(item, optimized_graph);
   std::unordered_set<string> skip_list;
   // Bound the number of rewrite passes to avoid long processing times on graphs
   // that simply won't fit in memory.

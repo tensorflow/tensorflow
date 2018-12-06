@@ -19,12 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import weakref
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
+from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -32,65 +32,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import tf_decorator
-
-
-def _graph_inputs(op):
-  return [x.op for x in op.inputs] + list(op.control_inputs)
-
-
-def _lift_to_graph(init_tensor, graph):
-  """Copies the tensor and all its inputs recursively to the outer graph."""
-  # Check that the initializer does not depend on any placeholders.
-  visited_ops = set([])
-  ops_to_visit = [init_tensor.op]
-  op_outputs = collections.defaultdict(set)
-  while ops_to_visit:
-    op = ops_to_visit.pop()
-    if op in visited_ops:
-      continue
-    visited_ops.add(op)
-    # TODO(apassos) distinguish arg placeholders, capture placeholders,
-    # and placeholders the user might directly use to initialize
-    # variables.
-    if op.type == "Placeholder":
-      raise ValueError(
-          "Unable to lift tensor", init_tensor,
-          "because it depends transitively on placeholder ", op)
-    for inp in _graph_inputs(op):
-      op_outputs[inp].add(op)
-      if inp not in visited_ops:
-        ops_to_visit.append(inp)
-  # Topologically sort the nodes we've extracted. Now we know how many of their
-  # outputs are part of this subgraph.
-  ops_to_copy = []
-  marked_ops = set([])
-  ops_to_visit = [init_tensor.op]
-  while ops_to_visit:
-    op = ops_to_visit.pop()
-    if op in marked_ops:
-      continue
-    marked_ops.add(op)
-    ops_to_copy.append(op)
-    for inp in _graph_inputs(op):
-      if all(x in marked_ops for x in op_outputs[inp]):
-        ops_to_visit.append(inp)
-  assert len(ops_to_copy) == len(visited_ops)
-  # ops_to_copy now holds a reverse topologically sorted list of ops which
-  # ends in the initializer. We copy those to the outermost graph and
-  # build the initialization op there.
-  with graph.as_default():
-    op_map = {}
-    for op in reversed(ops_to_copy):
-      copied_inputs = [op_map[x] for x in op.inputs]
-      copied_control_inputs = [op_map[x] for x in op.control_inputs]
-      with ops.control_dependencies(copied_control_inputs):
-        copied_op = graph.create_op(
-            op.type, copied_inputs, [x.dtype for x in op.outputs],
-            attrs=op.node_def.attr)
-      op_map[op] = copied_op
-      for i, o in enumerate(op.outputs):
-        op_map[o] = copied_op.outputs[i]
-    return op_map[init_tensor]
+from tensorflow.python.util.tf_export import tf_export
 
 
 class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
@@ -110,6 +52,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                name=None,
                dtype=None,
                constraint=None,
+               add_initializers_to=None,
                **unused_kwargs):
     """Creates a variable.
 
@@ -140,6 +83,9 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      add_initializers_to: if not None and not in legacy graph mode, the
+        initializer tensor will be added to this map instead of adding the
+        assignment to the function.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -206,7 +152,8 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       if self._in_graph_mode:
         with ops.init_scope():
           outer_graph = ops.get_default_graph()
-        lifted_initializer = _lift_to_graph(initial_value, outer_graph)
+        lifted_initializer = lift_to_graph.lift_to_graph(
+            initial_value, outer_graph)[initial_value]
         with ops.init_scope():
           self._initial_value = lifted_initializer
           with ops.name_scope("IsInitialized"):
@@ -224,21 +171,24 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             self._graph_element = value
           ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, self)
       else:
-        def assign_fn():
-          with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
-            resource_variable_ops.assign_variable_op(
-                self._handle,
-                initial_value,
-                name=n)
-            # Returning values to keep tf.cond happy.
-          return ops.convert_to_tensor(1)
-        def not_assign_fn():
-          return ops.convert_to_tensor(0)
-        # Note: this cond is always guaranteed to run because we're inside a
-        # defun which will insert automatic control dependencies.
-        control_flow_ops.cond(
-            resource_variable_ops.var_is_initialized_op(self._handle),
-            not_assign_fn, assign_fn)
+        if add_initializers_to is not None:
+          add_initializers_to[self] = initial_value
+        else:
+          def assign_fn():
+            with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
+              resource_variable_ops.assign_variable_op(
+                  self._handle,
+                  initial_value,
+                  name=n)
+              # Returning values to keep tf.cond happy.
+            return ops.convert_to_tensor(1)
+          def not_assign_fn():
+            return ops.convert_to_tensor(0)
+          # Note: this cond is always guaranteed to run because we're inside a
+          # defun which will insert automatic control dependencies.
+          control_flow_ops.cond(
+              resource_variable_ops.var_is_initialized_op(self._handle),
+              not_assign_fn, assign_fn)
 
     # After the handle has been created, set up a way to clean it up when
     # executing eagerly. We'll hold the only reference to the deleter, so that
@@ -264,7 +214,7 @@ class PolymorphicFunction(object):
                python_function,
                name,
                input_signature=None,
-               autograph=False,
+               autograph=True,
                experimental_autograph_options=None):
     """Initializes a polymorphic function.
 
@@ -298,26 +248,26 @@ class PolymorphicFunction(object):
   def _defun_with_scope(self, scope):
     """Creates a defun wrapped inside a variable creator scope."""
 
-    fn = self._python_function
-
     def wrapped_fn(*args, **kwds):
       with variable_scope.variable_creator_scope(scope):
-        return fn(*args, **kwds)
+        # __wrapped__ allows AutoGraph to swap in a converted function.
+        return wrapped_fn.__wrapped__(*args, **kwds)
 
     # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
-        tf_decorator.make_decorator(fn, wrapped_fn),
+        tf_decorator.make_decorator(self._python_function, wrapped_fn),
         input_signature=self._input_signature,
-        experimental_autograph=self._autograph)
+        autograph=self._autograph)
 
-  def _initialize(self, args, kwds):
+  def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call."""
 
     self._created_variables = []
 
     def variable_capturing_scope(unused_next_creator, **kwds):
       """Creates UnliftedInitializerVariables and saves references to them."""
-      v = UnliftedInitializerVariable(**kwds)
+      v = UnliftedInitializerVariable(
+          add_initializers_to=add_initializers_to, **kwds)
       self._created_variables.append(weakref.ref(v))
       return v
 
@@ -336,7 +286,12 @@ class PolymorphicFunction(object):
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
-    return self._stateful_fn._canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
+    if self._input_signature is None or args or kwds:
+      return self._stateful_fn._canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
+    # If an input signature is defined, we may need to fetch a concrete function
+    # without any inputs specified. In this case args and kwds should be ignored
+    # but running _canonicalize_function_inputs would raise an exception.
+    return (), {}
 
   def __call__(self, *args, **kwds):
     """Calls the graph function."""
@@ -386,6 +341,42 @@ class PolymorphicFunction(object):
   def python_function(self):
     """The python function wrapped in this tf.function."""
     return self._python_function
+
+  def get_initialization_function(self, *args, **kwargs):
+    """Returns a `Function` object which initializes this function's variables.
+
+    Requires that this function hasn't been accessed yet through either calling
+    it or calling get_concrete_function. Fails if we cannot build an initializer
+    function which does not depend on the concrete values of the inputs to this
+    function.
+
+    Args:
+      *args: arguments to the underlying python callable.
+      **kwargs: keyword arguments to the python callable.
+
+    Returns:
+      A `Function` object which initializes the variables of this function.
+
+    Raises:
+      RuntimeError: if called after the variables have been initialized.
+    """
+    if self._stateful_fn is not None:
+      raise RuntimeError(
+          "get_initialization_function cannot be called after the function "
+          "has been used")
+    # Here we trace the function, collect the initializers, and attempt to
+    # extract them and run them eagerly. Fail only if we cannot do so.
+    initializer_map = {}
+    self._initialize(args, kwargs, add_initializers_to=initializer_map)
+
+    # Note: using defun here avoids an infinite recursion.
+    @function_lib.defun
+    def initialize_variables():
+      for v, init in initializer_map.items():
+        v.assign(lift_to_graph.lift_to_graph(
+            init, ops.get_default_graph())[init])
+
+    return initialize_variables.get_concrete_function()
 
   def get_concrete_function(self, *args, **kwargs):
     """Returns a `Function` object specialized to inputs and execution context.
@@ -463,14 +454,10 @@ class PolymorphicFunction(object):
     Raises:
       ValueError: if this object has not yet been called on concrete values.
     """
-    # TODO(apassos) figure out how to handle this case (what should we return
-    # here?)
+    assert context.executing_eagerly()
     if self._stateful_fn is None:
-      raise ValueError(
-          "Call this function with concrete values before asking for a"
-          " concrete function. Calling the function will ensure that, in"
-          " case this function creates variables, that those are properly"
-          " initialized.")
+      self.get_initialization_function(*args, **kwargs)()
+
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
       # defunned version which is guaranteed to never create variables.
@@ -512,11 +499,207 @@ class PolymorphicFunction(object):
     return self._descriptor_cache[instance]
 
 
+# In TensorFlow 1.x, exported as tf.contrib.eager.function
+@tf_export("function", v1=[])
 def function(func=None,
              input_signature=None,
-             autograph=False,
+             autograph=True,
              experimental_autograph_options=None):
-  """Defines a function as per the "functions, not sessions" document."""
+  """Creates a callable TensorFlow graph from a Python function.
+
+  `function` constructs a callable that executes a TensorFlow graph
+  (`tf.Graph`) created by tracing the TensorFlow operations in `func`.
+  This allows the TensorFlow runtime to apply optimizations and exploit
+  parallelism in the computation defined by `func`.
+
+  _Example Usage_
+
+  ```python
+  def f(x, y):
+    return tf.reduce_mean(tf.multiply(x ** 2, 3) + y)
+
+  g = tf.function(f)
+
+  x = tf.constant([[2.0, 3.0]])
+  y = tf.constant([[3.0, -2.0]])
+
+  # `f` and `g` will return the same value, but `g` will be executed as a
+  # TensorFlow graph.
+  assert f(x, y).numpy() == g(x, y).numpy()
+
+  # Tensors and tf.Variables used by the Python function are captured in the
+  # traced graph.
+  @tf.function
+  def h():
+    return f(x, y)
+
+  assert (h().numpy() == f(x, y).numpy()).all()
+  ```
+
+  _Referencing `tf.Variable`s_
+
+  The Python function `func` may reference stateful objects (such as
+  `tf.Variable`).
+  These are captured as implicit inputs to the callable returned by `function`.
+  For example:
+
+  ```python
+  c = tf.Variable(0)
+
+  @tf.function
+  def f(x):
+    c.assign_add(1)
+    return x + tf.to_float(c)
+
+  assert int(c) == 0
+  assert f(1.0) == 2.0
+  assert int(c) == 1
+  assert f(1.0) == 3.0
+  assert int(c) == 2
+  ```
+
+  `function` can be applied to methods of an object. For example:
+
+  ```python
+  class Dense(object):
+    def __init__(self):
+      self.W = tf.Variable(tf.glorot_uniform_initializer()((10, 10)))
+      self.b = tf.Variable(tf.zeros(10))
+
+    @tf.function
+    def compute(self, x):
+      return tf.matmul(x, self.W) + self.b
+
+  d1 = Dense()
+  d2 = Dense()
+  x = tf.random_uniform((10, 10))
+  # d1 and d2 are using distinct variables
+  assert not (d1.compute(x).numpy() == d2.compute(x).numpy()).all()
+  ```
+
+  _Usage with `tf.keras`_
+
+  The `call` methods of a `tf.keras.Model` subclass can be decorated with
+  `function` in order to apply graph execution optimizations on it.
+  For example:
+
+  ```python
+  class MyModel(tf.keras.Model):
+    def __init__(self, keep_probability=0.2):
+      super(MyModel, self).__init__()
+      self.dense1 = tf.keras.layers.Dense(4)
+      self.dense2 = tf.keras.layers.Dense(5)
+      self.keep_probability = keep_probability
+
+    @tf.function
+    def call(self, inputs, training=True):
+      y = self.dense2(self.dense1(inputs))
+      if training:
+        return tf.nn.dropout(y, self.keep_probability)
+      else:
+        return y
+
+  model = MyModel()
+  model(x, training=True)  # executes a graph, with dropout
+  model(x, training=False) # executes a graph, without dropout
+  ```
+
+  _Input Signatures_
+  `function` instantiates a separate graph for every unique set of input
+  shapes and datatypes. For example, the following code snippet will result
+  in three distinct graphs being traced, as each input has a different
+  shape.
+
+  ```python
+  @tf.function
+  def f(x): return tf.add(x, 1.)
+
+  scalar = tf.constant(1.0)
+  vector = tf.constant([1.0, 1.0])
+  matrix = tf.constant([[3.0]])
+
+  f(scalar)
+  f(vector)
+  f(matrix)
+  ```
+
+  An "input signature" can be optionally provided to `function` to control
+  the graphs traced. The input signature specifies the shape and type of each
+  `Tensor` argument to the function using a `tf.TensorSpec` object. For example,
+  the following code snippet ensures that a single graph is created where the
+  input `Tensor` is required to be a floating point tensor with no restrictions
+  on shape.
+
+  ```python
+  @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
+  def f(x): return tf.add(x, 1.)
+  ```
+
+  When an `input_signature` is specified, the callable will only accept `Tensor`
+  (or NumPy `ndarray`) objects as arguments.
+
+  _Tracing_
+  Note that `function` only traces TensorFlow operations, all the other
+  Python code that `func` executes will shape the _construction_ of the graph.
+  For example, consider the following:
+
+  ```python
+  import numpy as np
+
+  def add_noise():
+    return tf.eye(5) + np.random.randn(5, 5)
+
+  traced = tf.function(add_noise)
+  ```
+
+  `add_noise()` will return a different output every time it is invoked.
+  However, `traced` will return the same value every time it is called, since a
+  particular random value generated by the `np.random.randn` call will be
+  inserted in the traced TensorFlow graph as a constant. In this particular
+  example, replacing `np.random.randn(5, 5)` with `tf.random_normal((5, 5))`
+  will result in the same behavior for `add_noise()` and `traced()`.
+
+  _Python Side-Effects_
+  A corollary of the previous discussion on tracing is the following: If a
+  Python function `func` has Python side-effects, then executing `func` multiple
+  times
+  may not be semantically equivalent to executing `F = tf.function(func)`
+  multiple times; this difference is due to the fact that `function` only
+  captures the subgraph of TensorFlow operations that is constructed when `func`
+  is invoked to trace a graph.
+
+  Args:
+    func: function to be compiled. If `func` is None, returns a decorator that
+      can be invoked with a single argument - `func`. The end result is
+      equivalent to providing all the arguments up front. In other words,
+      `tf.function(input_signature=...)(func)` is equivalent to
+      `tf.function(func, input_signature=...)`. The former can be used to
+      decorate Python functions, for example:
+        @tf.function(input_signature=...)
+        def foo(...): ...
+    input_signature: A possibly nested sequence of `tf.TensorSpec` objects
+      specifying the shapes and dtypes of the Tensors that will be supplied to
+      this function. If `None`, a separate function is instantiated for each
+      inferred input signature.  If input_signature is specified, every input to
+      `func` must be a `Tensor`, and `func` cannot accept `**kwargs`.
+    autograph: Whether autograph should be applied on `func` before tracing a
+      graph. This allows for dynamic control flow (Python if's, loops etc.)
+      in the traced graph. See https://www.tensorflow.org/guide/autograph for
+        more information.
+    experimental_autograph_options: Experimental knobs (in the form of a tuple
+      of tensorflow.autograph.Feature values) to control behavior when
+      autograph=True.
+
+  Returns:
+     If `func` is not None, returns a callable that will execute the compiled
+     function (and return zero or more `tf.Tensor` objects).
+     If `func` is None, returns a decorator that, when invoked with a single
+     `func` argument, returns a callable equivalent to the case above.
+
+  Raises:
+    TypeError: If `input_signature` is neither `None` nor a sequence of
+      `TensorSpec` objects.
+  """
   if input_signature is not None:
     function_lib.validate_signature(input_signature)
 

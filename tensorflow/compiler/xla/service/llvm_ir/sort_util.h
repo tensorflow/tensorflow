@@ -30,14 +30,17 @@ namespace xla {
 namespace llvm_ir {
 // Emits llvm IR to do pairwise comparisons/swaps in the 'dimension_to_sort'
 // dimension of 'keys_array'. All other dimensions are kept as-is. This
-// implements the inner loop of BitonicSort. If 'launch_dimensions' is nullptr,
-// the inner compare loop will not be parallelized.
+// implements the inner loop of BitonicSort. It is assumed that 'xor_masks'
+// contains only powers of 2, or values 2^k - 1 (k > 0). If
+// 'iota_values_parameter_index' is >= 0, it points at a 'values_arrays' operand
+// that is a iota and can be used to make the sorting stable.
 Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
                        const std::vector<IrArray>& values_arrays,
+                       int64 iota_values_parameter_index,
                        absl::string_view name,
                        absl::Span<const int64> xor_masks, llvm::IRBuilder<>* b,
                        const gpu::LaunchDimensions& launch_dimensions,
-                       int64 tile_size);
+                       int64 num_iterations_in_sort_dim, int64 tile_size);
 }  // namespace llvm_ir
 }  // namespace xla
 

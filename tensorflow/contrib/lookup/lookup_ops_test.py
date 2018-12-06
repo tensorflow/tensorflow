@@ -25,6 +25,7 @@ import six
 from tensorflow.contrib import lookup
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import counter
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -2737,7 +2738,7 @@ class MutableHashTableBenchmark(test.Benchmark):
 
   def benchmark_many_repeated_scalar_insert_scalar(self):
     table = self._create_table()
-    c = counter.Counter().make_one_shot_iterator().get_next()
+    c = dataset_ops.make_one_shot_iterator(counter.Counter()).get_next()
     value = variables.Variable(1.0)
     insert = table.insert(c, value)
     size = table.size()
@@ -2758,7 +2759,7 @@ class MutableHashTableBenchmark(test.Benchmark):
 
   def benchmark_many_repeated_batch_32_insert_scalar(self):
     table = self._create_table()
-    c = counter.Counter().make_one_shot_iterator().get_next()
+    c = dataset_ops.make_one_shot_iterator(counter.Counter()).get_next()
     value = variables.Variable([1.0] * 32)
     insert = table.insert(32 * c + list(range(32)), value)
     size = table.size()

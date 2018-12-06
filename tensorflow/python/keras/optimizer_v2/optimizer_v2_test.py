@@ -18,6 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
+
+from absl.testing import parameterized
+import numpy as np
+
+from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -25,15 +32,27 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import backend
+from tensorflow.python.keras import callbacks
+from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import saving
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.training import momentum
 
 
 class OptimizerTest(test.TestCase):
@@ -279,8 +298,8 @@ class OptimizerTest(test.TestCase):
   def testIterationWithoutMinimize(self):
     with self.cached_session():
       sgd = gradient_descent.SGD(3.0)
-      self.evaluate(sgd.iteration.initializer)
-      self.assertEqual(0, self.evaluate(sgd.iteration))
+      self.evaluate(sgd.iterations.initializer)
+      self.assertEqual(0, self.evaluate(sgd.iterations))
 
   @test_util.run_in_graph_and_eager_modes
   def testSerializationWithinDefun(self):
@@ -341,8 +360,8 @@ class OptimizerTest(test.TestCase):
       opt2.set_weights(weights)
       self.evaluate([opt_op_1, opt_op_2])
       self.assertAllClose(self.evaluate(var1), self.evaluate(var2))
-      self.assertEqual(1, self.evaluate(opt1.iteration))
-      self.assertEqual(1, self.evaluate(opt2.iteration))
+      self.assertEqual(1, self.evaluate(opt1.iterations))
+      self.assertEqual(1, self.evaluate(opt2.iterations))
 
       var3 = resource_variable_ops.ResourceVariable([1.0, 2.0, 3.0],
                                                     dtype=dtypes.float32)
@@ -370,7 +389,255 @@ class OptimizerTest(test.TestCase):
       self.assertAllClose(
           self.evaluate([var3, var4]), self.evaluate([var5, var6]))
 
-  def testOptimizerWithFunction(self):
+  @test_util.run_in_graph_and_eager_modes
+  def testGettingHyperParameters(self):
+    opt = adam.Adam(learning_rate=1.0)
+    var = resource_variable_ops.ResourceVariable([1.0, 2.0],
+                                                 dtype=dtypes.float32)
+    loss = lambda: 3 * var
+    opt_op = opt.minimize(loss, [var])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(opt_op)
+
+    lr = self.evaluate(opt.lr)
+    self.assertEqual(1.0, lr)
+
+    opt.lr = 2.0
+    lr = self.evaluate(opt.lr)
+    self.assertEqual(2.0, lr)
+
+    self.evaluate(opt.lr.assign(3.0))
+    lr = self.evaluate(opt.lr)
+    self.assertEqual(3.0, lr)
+
+    with self.assertRaises(AttributeError):
+      opt.not_an_attr += 3
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOptimizerWithKerasModel(self):
+    a = input_layer.Input(shape=(3,), name='input_a')
+    b = input_layer.Input(shape=(3,), name='input_b')
+
+    dense = core.Dense(4, name='dense')
+    c = dense(a)
+    d = dense(b)
+    e = core.Dropout(0.5, name='dropout')(c)
+
+    model = training.Model([a, b], [d, e])
+
+    optimizer = gradient_descent.SGD(learning_rate=0.001)
+    loss = 'mse'
+    model.compile(optimizer, loss, metrics=['mae'])
+
+    input_a_np = np.random.random((10, 3))
+    input_b_np = np.random.random((10, 3))
+
+    output_d_np = np.random.random((10, 4))
+    output_e_np = np.random.random((10, 4))
+
+    model.fit([input_a_np, input_b_np], [output_d_np, output_e_np],
+              epochs=1,
+              batch_size=5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOptimizerWithCallbacks(self):
+    input_np = np.random.random((10, 3))
+    output_np = np.random.random((10, 4))
+    a = input_layer.Input(shape=(3,), name='input_a')
+    model = sequential.Sequential()
+    model.add(core.Dense(4, name='dense'))
+    model.add(core.Dropout(0.5, name='dropout'))
+    model(a)
+    optimizer = gradient_descent.SGD(learning_rate=0.1)
+    model.compile(optimizer, loss='mse', metrics=['mae'])
+    # This does not reduce the LR after the first epoch (due to low delta).
+    cbks = [
+        callbacks.ReduceLROnPlateau(
+            monitor='val_loss', factor=0.1, min_delta=0, patience=1, cooldown=5)
+    ]
+    model.fit(
+        input_np,
+        output_np,
+        batch_size=10,
+        validation_data=(input_np, output_np),
+        callbacks=cbks,
+        epochs=5,
+        verbose=0)
+    self.assertAllClose(
+        float(backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
+
+    # This should reduce the LR after the first epoch (due to high delta).
+    cbks = [
+        callbacks.ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.1,
+            min_delta=10,
+            patience=1,
+            cooldown=5)
+    ]
+    model.fit(
+        input_np,
+        output_np,
+        batch_size=10,
+        validation_data=(input_np, output_np),
+        callbacks=cbks,
+        epochs=5,
+        verbose=2)
+    self.assertAllClose(
+        float(backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
+
+
+class OptimizersCompatibilityTest(test.TestCase, parameterized.TestCase):
+
+  # TODO(tanzheny): remove test_numeric after algorithm for Momentum, Adam and
+  # NAdam has been unified: currently these three algorithms behave differently.
+  @parameterized.named_parameters(
+      ('adadelta', 'adadelta', True, True), ('adagrad', 'adagrad', True, True),
+      ('adam', 'adam', True, True), ('adamax', 'adamax', True, True),
+      ('nadam', 'nadam', True, False), ('momentum', 'momentum', True, True),
+      ('sgd', 'sgd', False, True))
+  def testOptimizersCompatibility(self, opt_str, test_weights, test_numeric):
+    np.random.seed(1331)
+    with self.cached_session():
+      train_samples = 20
+      input_dim = 3
+      num_classes = 2
+      (x, y), _ = testing_utils.get_test_data(
+          train_samples=train_samples,
+          test_samples=10,
+          input_shape=(input_dim,),
+          num_classes=num_classes)
+      y = keras.utils.to_categorical(y)
+
+      num_hidden = 5
+      model = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+
+      old_mode = os.environ.get('TF2_BEHAVIOR', None)
+      # Disable tf2 to create V1 optimizer.
+      disable_tf2()
+      if opt_str == 'momentum':
+        opt_v1 = optimizers.SGD(momentum=0.9)
+      else:
+        opt_v1 = optimizers.get(opt_str)
+
+      # Test compile and fit with v1 optimizer.
+      model.compile(opt_v1, loss='categorical_crossentropy', metrics=[])
+      model.fit(x, y, batch_size=5, epochs=1)
+      model_dir = tempfile.mkdtemp()
+      gfile.MakeDirs(model_dir)
+      file_name = os.path.join(model_dir, 'model.h5')
+      model.save(file_name)
+
+      enable_tf2()
+      # Test load and fit with v2 optimizer.
+      model_2 = saving.load_model(file_name)
+      opt_v2 = model_2.optimizer
+      self.assertIsInstance(opt_v2, optimizer_v2.OptimizerV2)
+      # set_weights is called inside load_model but exception is swallowed,
+      # this call checks the weights can be set correctly.
+      if test_weights:
+        opt_v2.set_weights(opt_v1.get_weights())
+      if test_numeric:
+        hist_1 = model.fit(x, y, batch_size=5, epochs=1, shuffle=False)
+        hist_2 = model_2.fit(x, y, batch_size=5, epochs=1, shuffle=False)
+        self.assertAllClose(model.get_weights(), model_2.get_weights())
+        self.assertAllClose(model.get_weights(), model_2.get_weights())
+        self.assertAllClose(hist_1.history['loss'], hist_2.history['loss'])
+
+      if old_mode is not None:
+        os.environ['TF2_BEHAVIOR'] = old_mode
+
+  def testNumericEquivalenceForNesterovMomentum(self):
+    np.random.seed(1331)
+    with self.cached_session():
+      train_samples = 20
+      input_dim = 3
+      num_classes = 2
+      (x, y), _ = testing_utils.get_test_data(
+          train_samples=train_samples,
+          test_samples=10,
+          input_shape=(input_dim,),
+          num_classes=num_classes)
+      y = keras.utils.to_categorical(y)
+
+      num_hidden = 5
+      model_k_v1 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2.set_weights(model_k_v1.get_weights())
+      model_tf = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_tf.set_weights(model_k_v2.get_weights())
+
+      opt_k_v1 = optimizers.SGD(lr=0.001, momentum=0.9, nesterov=True)
+      opt_k_v2 = gradient_descent.SGD(momentum=0.9, nesterov=True)
+      opt_tf = momentum.MomentumOptimizer(
+          learning_rate=0.001, momentum=0.9, use_nesterov=True)
+
+      model_k_v1.compile(opt_k_v1, loss='categorical_crossentropy', metrics=[])
+      model_k_v2.compile(opt_k_v2, loss='categorical_crossentropy', metrics=[])
+      model_tf.compile(opt_tf, loss='categorical_crossentropy', metrics=[])
+
+      hist_k_v1 = model_k_v1.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+      hist_k_v2 = model_k_v2.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+      hist_tf = model_tf.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+
+      self.assertAllClose(model_k_v1.get_weights(), model_tf.get_weights())
+      self.assertAllClose(model_k_v1.get_weights(), model_k_v2.get_weights())
+      self.assertAllClose(opt_k_v1.get_weights(), opt_k_v2.get_weights())
+      self.assertAllClose(hist_k_v1.history['loss'], hist_tf.history['loss'])
+      self.assertAllClose(hist_k_v1.history['loss'], hist_k_v2.history['loss'])
+
+  def testNumericEquivalenceForAmsgrad(self):
+    np.random.seed(1331)
+    with self.cached_session():
+      train_samples = 20
+      input_dim = 3
+      num_classes = 2
+      (x, y), _ = testing_utils.get_test_data(
+          train_samples=train_samples,
+          test_samples=10,
+          input_shape=(input_dim,),
+          num_classes=num_classes)
+      y = keras.utils.to_categorical(y)
+
+      num_hidden = 5
+      model_k_v1 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2.set_weights(model_k_v1.get_weights())
+
+      opt_k_v1 = optimizers.Adam(amsgrad=True)
+      opt_k_v2 = adam.Adam(amsgrad=True)
+
+      model_k_v1.compile(opt_k_v1, loss='categorical_crossentropy', metrics=[])
+      model_k_v2.compile(opt_k_v2, loss='categorical_crossentropy', metrics=[])
+
+      hist_k_v1 = model_k_v1.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+      hist_k_v2 = model_k_v2.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+
+      self.assertAllClose(model_k_v1.get_weights(), model_k_v2.get_weights())
+      self.assertAllClose(opt_k_v1.get_weights(), opt_k_v2.get_weights())
+      self.assertAllClose(hist_k_v1.history['loss'], hist_k_v2.history['loss'])
+
+
+def disable_tf2():
+  if 'TF2_BEHAVIOR' in os.environ:
+    del os.environ['TF2_BEHAVIOR']
+
+
+def enable_tf2():
+  os.environ['TF2_BEHAVIOR'] = 'enabled'
+
+
+# Note: These tests are kept in a separate class to avoid bugs in some
+# distributions of Python that break AutoGraph which is used by tf.function.
+class OptimizerWithFunctionTest(test.TestCase):
+
+  def testBasic(self):
     with context.eager_mode():
       var = resource_variable_ops.ResourceVariable([1.0, 2.0],
                                                    dtype=dtypes.float32)
@@ -382,10 +649,8 @@ class OptimizerTest(test.TestCase):
         opt.minimize(loss, [var])
         return var
 
-      self.assertAllClose([0., 1.], fn())
-      # This is just to test tf.function. The values needs to be updated
-      # when adam updates beta_1_power.
-      self.assertAllClose([-1.343838, -0.343838], fn())
+      self.assertAllClose([0., 1.], fn(), atol=1e-4)
+      self.assertAllClose([-1, 0.], fn(), atol=1e-4)
 
 
 if __name__ == '__main__':

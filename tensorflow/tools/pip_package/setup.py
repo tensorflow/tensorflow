@@ -87,7 +87,8 @@ if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
       REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.13.0a0, < 1.14.0a0'
-      break
+    if 'tensorflow_estimator' in pkg:
+      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
 
 # weakref.finalize and enum were introduced in Python 3.4
 if sys.version_info < (3, 4):
@@ -106,6 +107,7 @@ CONSOLE_SCRIPTS = [
     # TensorBoard command, pip will inappropriately remove it during install,
     # even though the command is not removed, just moved to a different wheel.
     'tensorboard = tensorboard.main:run_main',
+    'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
 ]
 # pylint: enable=line-too-long
 

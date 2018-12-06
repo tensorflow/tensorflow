@@ -48,7 +48,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   }
 
   void BuildModule(std::unique_ptr<HloComputation> computation) {
-    module_ = CreateNewModule();
+    module_ = CreateNewUnverifiedModule();
     module_->AddEntryComputation(std::move(computation));
   }
 
@@ -262,6 +262,22 @@ TEST_F(TuplePointsToAnalysisTest, GetTupleElement) {
 
   EXPECT_THAT(points_to_set.tuple_sources({}),
               UnorderedElementsAre(inner_tuple));
+}
+
+TEST_F(TuplePointsToAnalysisTest, AddDependency) {
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  auto add_dependency = builder.AddInstruction(
+      HloInstruction::CreateAddDependency(constant, token));
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  auto& points_to_set = points_to_analysis_->GetPointsToSet(add_dependency);
+  EXPECT_EQ(1, points_to_set.size());
+  EXPECT_FALSE(points_to_set.IsAmbiguous());
+  EXPECT_TRUE(points_to_set.IsDistinct());
+  ExpectHasTopLevelBuffers(points_to_set.CreateFlattenedSet(), {constant});
 }
 
 TEST_F(TuplePointsToAnalysisTest, DuplicatedElement) {
@@ -809,7 +825,7 @@ TEST_F(FusionPointsToAnalysisTest, FusionParam0TwoUsers) {
 class PointsToAnalysisTestBase : public HloTestBase {
  protected:
   void BuildModule(std::unique_ptr<HloComputation> computation) {
-    module_ = CreateNewModule();
+    module_ = CreateNewUnverifiedModule();
     computation_ = module_->AddEntryComputation(std::move(computation));
   }
 
@@ -1176,7 +1192,7 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
     return builder.Build();
   };
 
-  module_ = CreateNewModule();
+  module_ = CreateNewUnverifiedModule();
   HloComputation* cond_computation =
       module_->AddEmbeddedComputation(make_cond());
   HloComputation* body_computation =
@@ -1211,7 +1227,7 @@ TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
   auto add = sub_builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, sub_param, ones));
 
-  module_ = CreateNewModule();
+  module_ = CreateNewUnverifiedModule();
   auto sub_computation = module_->AddEmbeddedComputation(sub_builder.Build());
   sub_computation->CreateFusionInstruction({add, ones},
                                            HloInstruction::FusionKind::kLoop);

@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import contextlib
 import copy
+import json
+import os
 import threading
 import numpy as np
 
@@ -271,7 +274,6 @@ class MultiWorkerTestBase(test.TestCase):
 
     return config
 
-
   def _run_client(self, client_fn, task_type, task_id, num_gpus, *args,
                   **kwargs):
     result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
@@ -303,3 +305,101 @@ class MultiWorkerTestBase(test.TestCase):
     for t in threads:
       t.join()
     self.assertEqual(self._result, len(threads))
+
+
+class MockOsEnv(collections.Mapping):
+  """A class that allows per-thread TF_CONFIG."""
+
+  def __init__(self, *args):
+    self._dict = dict()
+    self._thread_local = threading.local()
+    super(MockOsEnv, self).__init__(*args)
+
+  def get(self, key, default=None):
+    if not hasattr(self._thread_local, 'dict'):
+      self._thread_local.dict = dict()
+    if key == 'TF_CONFIG':
+      return dict.get(self._thread_local.dict, key, default)
+    else:
+      return dict.get(self._dict, key, default)
+
+  def __getitem__(self, key):
+    if not hasattr(self._thread_local, 'dict'):
+      self._thread_local.dict = dict()
+    if key == 'TF_CONFIG':
+      return dict.__getitem__(self._thread_local.dict, key)
+    else:
+      return dict.__getitem__(self._dict, key)
+
+  def __setitem__(self, key, val):
+    if not hasattr(self._thread_local, 'dict'):
+      self._thread_local.dict = dict()
+    if key == 'TF_CONFIG':
+      return dict.__setitem__(self._thread_local.dict, key, val)
+    else:
+      return dict.__setitem__(self._dict, key, val)
+
+  def __iter__(self):
+    if not hasattr(self._thread_local, 'dict'):
+      self._thread_local.dict = dict()
+    for x in self._thread_local.dict.items():
+      yield x
+    for x in self._dict.items():
+      yield x
+
+  def __len__(self):
+    if not hasattr(self._thread_local, 'dict'):
+      self._thread_local.dict = dict()
+    return self._thread_local.dict.__len__() + self._dict.__len__()
+
+
+class IndependentWorkerTestBase(test.TestCase):
+  """Testing infra for independent workers."""
+
+  def setUp(self):
+    self._mock_os_env = MockOsEnv()
+    self._mock_context = test.mock.patch.object(os, 'environ',
+                                                self._mock_os_env)
+    super(IndependentWorkerTestBase, self).setUp()
+    self._mock_context.__enter__()
+
+  def tearDown(self):
+    self._mock_context.__exit__(None, None, None)
+    super(IndependentWorkerTestBase, self).tearDown()
+
+  def _task_thread(self, task_fn, tf_config, *args, **kwargs):
+    os.environ['TF_CONFIG'] = json.dumps(tf_config)
+    task_fn(*args, **kwargs)
+
+  def _run_task_in_thread(self, task_fn, cluster_spec, task_type, task_id,
+                          *args, **kwargs):
+    if task_type:
+      tf_config = {
+          'cluster': cluster_spec,
+          'task': {
+              'type': task_type,
+              'index': task_id
+          }
+      }
+    else:
+      tf_config = {
+          'cluster': cluster_spec,
+      }
+    t = threading.Thread(
+        target=self._task_thread,
+        args=(task_fn, tf_config) + args,
+        kwargs=kwargs)
+    t.start()
+    return t
+
+  def run_multiple_tasks_in_threads(self, task_fn, cluster_spec, *args,
+                                    **kwargs):
+    # The task_fn should create std_server by itself.
+    threads = {}
+    for task_type in cluster_spec.keys():
+      threads[task_type] = []
+      for task_id in range(len(cluster_spec[task_type])):
+        t = self._run_task_in_thread(task_fn, cluster_spec, task_type, task_id,
+                                     *args, **kwargs)
+        threads[task_type].append(t)
+    return threads

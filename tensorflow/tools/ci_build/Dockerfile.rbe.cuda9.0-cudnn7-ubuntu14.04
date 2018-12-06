@@ -6,7 +6,7 @@
 # TODO(klimek): Include clang in this image so we can also target clang
 # builds.
 
-FROM ubuntu:14.04
+FROM gcr.io/clang-docker-builder/clang-ubuntu14_04
 LABEL maintainer="Manuel Klimek <klimek@google.com>"
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates apt-transport-https gnupg-curl && \
@@ -70,6 +70,15 @@ RUN ln -s libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 # libnccl is resolved, delete this block.
 RUN ln -s /usr/lib/x86_64-linux-gnu/libnccl.so /usr/lib/libnccl.so \
  && ln -s /usr/lib/x86_64-linux-gnu/libnccl.so /usr/lib/libnccl.so.2
+
+# Install a newer version of libstdc++, as new clang versions do not work
+# with the stock ubuntu 14.04 libstdc++.
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
+    apt-get update && \
+    apt-get install -y libstdc++-7-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/

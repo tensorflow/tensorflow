@@ -141,8 +141,8 @@ cc_library(
     deps = [
         ":graph_optimizer",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
@@ -150,6 +150,8 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:functions",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -175,22 +177,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:grappler_test",
-    ],
-)
-
-cc_library(
-    name = "graph_rewriter",
-    srcs = ["graph_rewriter.cc"],
-    hdrs = [
-        "graph_rewriter.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
     ],
 )
 
@@ -352,10 +338,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
-        ":graph_rewriter",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -399,7 +385,7 @@ cc_library(
     srcs = [
         "gpu_swapping_ops.cc",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -419,7 +405,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
-        ":graph_rewriter",
         ":static_schedule",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -476,7 +461,6 @@ cc_library(
         "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/costs:virtual_placer",
@@ -630,7 +614,6 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:frame",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -708,6 +691,8 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:topological_sort",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -780,7 +765,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:frame",
     ],
@@ -847,6 +831,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -873,11 +858,10 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "@com_google_absl//absl/strings",
     ],
 )
 

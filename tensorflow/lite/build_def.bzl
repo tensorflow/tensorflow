@@ -29,8 +29,11 @@ def tflite_copts():
         ],
         str(Label("//tensorflow:windows")): [
             "/DTF_COMPILE_LIBRARY",
+            "/wd4018",  # -Wno-sign-compare
         ],
-        "//conditions:default": [],
+        "//conditions:default": [
+            "-Wno-sign-compare",
+        ],
     }) + select({
         str(Label("//tensorflow:with_default_optimizations")): [],
         "//conditions:default": ["-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK"],
@@ -218,6 +221,7 @@ def json_to_tflite(name, src, out):
 # generated_test_models_failing().
 def generated_test_models():
     return [
+        "abs",
         "add",
         "arg_min_max",
         "avg_pool",
@@ -233,18 +237,21 @@ def generated_test_models():
         "equal",
         "exp",
         "expand_dims",
+        "fill",
         "floor",
         "floor_div",
         "floor_mod",
         "fully_connected",
         "fused_batch_norm",
         "gather",
+        "gather_with_constant",
         "global_batch_norm",
         "greater",
         "greater_equal",
         "sum",
         "l2norm",
         "l2_pool",
+        "leaky_relu",
         "less",
         "less_equal",
         "local_response_norm",
@@ -258,6 +265,7 @@ def generated_test_models():
         "maximum",
         "mean",
         "minimum",
+        "mirror_pad",
         "mul",
         "neg",
         "not_equal",
@@ -265,6 +273,7 @@ def generated_test_models():
         "pack",
         "pad",
         "padv2",
+        "placeholder_with_default",
         "prelu",
         "pow",
         "range",
@@ -287,17 +296,21 @@ def generated_test_models():
         "space_to_depth",
         "sparse_to_dense",
         "split",
+        "splitv",
         "sqrt",
         "square",
+        "squared_difference",
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
+        "strided_slice_buggy",
         "sub",
         "tile",
         "topk",
         "transpose",
         "transpose_conv",
         "unpack",
+        "unroll_batch_matmul",
         "where",
         "zeros_like",
     ]
@@ -417,7 +430,13 @@ def gen_selected_ops(name, model):
         tools = [tool],
     )
 
-def gen_model_coverage_test(model_name, data, failure_type):
+def flex_dep(target_op_sets):
+    if "SELECT_TF_OPS" in target_op_sets:
+        return ["//tensorflow/lite/delegates/flex:delegate"]
+    else:
+        return []
+
+def gen_model_coverage_test(model_name, data, failure_type, tags):
     """Generates Python test targets for testing TFLite models.
 
     Args:
@@ -427,6 +446,7 @@ def gen_model_coverage_test(model_name, data, failure_type):
       failure_type: List of failure types (none, toco, crash, inference)
         expected for the corresponding combinations of op sets
         ("TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS").
+      tags: List of strings of additional tags.
     """
     i = 0
     for target_op_sets in ["TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS"]:
@@ -437,6 +457,7 @@ def gen_model_coverage_test(model_name, data, failure_type):
         native.py_test(
             name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
             srcs = ["model_coverage_test.py"],
+            size = "large",
             main = "model_coverage_test.py",
             args = [
                 "--model_name=%s" % model_name,
@@ -447,11 +468,10 @@ def gen_model_coverage_test(model_name, data, failure_type):
             tags = [
                 "no_oss",
                 "no_windows",
-                "notap",
-            ],
+            ] + tags,
             deps = [
                 "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/lite/python:lite",
                 "//tensorflow/python:client_testlib",
-            ],
+            ] + flex_dep(target_op_sets),
         )

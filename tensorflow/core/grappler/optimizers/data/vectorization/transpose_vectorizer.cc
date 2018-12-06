@@ -41,20 +41,18 @@ constexpr char kTransposePrefix[] = "vectorized/transpose";
 class TransposeVectorizer : public Vectorizer {
  public:
   Status Vectorize(const Node& node, Graph* outer_scope,
-                   std::vector<WrappedTensor>&& inputs,
-                   std::vector<WrappedTensor>* outputs) override {
-    if (!inputs[0].stacked || inputs[1].stacked) {
-      return errors::InvalidArgument(
-          "Expecting input 0 (`x`) to be stacked and input 1 (`perm`) to "
-          "be unstacked.");
-    }
-
+                   VectorizerInput&& inputs,
+                   VectorizerOutput* outputs) override {
     Status status;
     Scope parent = NewInternalScope(outer_scope, &status, /*refiner=*/nullptr);
     Scope scope = parent.NewSubScope(kTransposePrefix);
 
-    Output tensor = {inputs[0].node, inputs[0].output_index};
-    Output original_perm = {inputs[1].node, inputs[1].output_index};
+    Output tensor, original_perm;
+    TF_RETURN_IF_ERROR(inputs.stacked(0, &tensor));
+    TF_RETURN_IF_ERROR(inputs.unstacked(1, &original_perm));
+    if (original_perm.type() != DT_INT32) {
+      original_perm = ops::Cast(scope, original_perm, DT_INT32);
+    }
 
     // The vectorized permutation is the original permutation with an additional
     // leading 0 and all other values incremented by 1.

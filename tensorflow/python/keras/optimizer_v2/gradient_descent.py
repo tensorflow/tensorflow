@@ -19,18 +19,26 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import training_ops
 
 
 class SGD(optimizer_v2.OptimizerV2):
-  """Stochastic gradient descent optimizer.
+  """Stochastic gradient descent and momentum optimizer.
 
   Computes:
-
   ```
-  variable -= learning_rate * gradient
+  theta(t+1) = theta(t) - learning_rate * gradient
+  gradient is evaluated at theta(t).
+  ```
+
+  or Computes (if `use_nesterov = False`):
+  ```
+  v(t+1) = momentum * v(t) - learning_rate * gradient
+  theta(t+1) = theta(t) + v(t+1)
+  if `nesterov` is False, gradient is evaluated at theta(t).
+  if `nesterov` is True, gradient is evaluated at theta(t) + momentum * v(t),
+    and the variables always store theta + m v instead of theta
   ```
 
   Some of the args below are hyperparameters, where a hyperparameter is
@@ -44,49 +52,94 @@ class SGD(optimizer_v2.OptimizerV2):
   changing these values across different invocations of optimizer functions.
   @end_compatibility
 
-  Arguments:
-      learning_rate: float hyperparameter >= 0. Learning rate.
-      name: Optional name prefix for the operations created when applying
-        gradients.  Defaults to 'SGD'.
+  # References
+      nesterov = True, See [Sutskever et al., 2013](
+        http://jmlr.org/proceedings/papers/v28/sutskever13.pdf).
   """
 
   def __init__(self,
                learning_rate=0.001,
-               momentum=None,
+               momentum=0.0,
                nesterov=False,
-               name="SGD"):
-    super(SGD, self).__init__(name)
-    self._set_hyper("learning_rate", learning_rate)
+               name="SGD",
+               **kwargs):
+    """Construct a new Stochastic Gradient Descent or Momentum optimizer.
 
-  def _apply_dense(self, grad, var):
-    return training_ops.apply_gradient_descent(
-        var,
-        math_ops.cast(self._get_hyper("learning_rate"), var.dtype.base_dtype),
-        grad,
-        use_locking=self._use_locking).op
+    Arguments:
+      learning_rate: float hyperparameter >= 0. Learning rate.
+      momentum: float hyperparameter >= 0 that accelerates SGD in the relevant
+        direction and dampens oscillations.
+      nesterov: boolean. Whether to apply Nesterov momentum.
+      name: Optional name prefix for the operations created when applying
+        gradients.  Defaults to 'SGD'.
+      **kwargs: keyword arguments. Allowed to be {`decay`}
+    """
+    super(SGD, self).__init__(name, **kwargs)
+    self._set_hyper("learning_rate", learning_rate)
+    self._set_hyper("decay", self._initial_decay)
+
+    self._momentum = False
+    if isinstance(momentum, ops.Tensor) or callable(momentum) or momentum > 0:
+      self._momentum = True
+    if isinstance(momentum, (int, float)) and (momentum < 0 or momentum > 1):
+      raise ValueError("`momentum` must be between [0, 1].")
+    self._set_hyper("momentum", momentum)
+
+    self._nesterov = nesterov
+
+  def _create_slots(self, var_list):
+    if self._momentum:
+      for var in var_list:
+        self.add_slot(var, "momentum")
 
   def _resource_apply_dense(self, grad, var):
-    return training_ops.resource_apply_gradient_descent(
-        var.handle,
-        math_ops.cast(self._get_hyper("learning_rate"), var.dtype.base_dtype),
-        grad,
-        use_locking=self._use_locking)
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
+    if self._momentum:
+      momentum_var = self.get_slot(var, "momentum")
+      return training_ops.resource_apply_keras_momentum(
+          var.handle,
+          momentum_var.handle,
+          lr_t,
+          grad,
+          self._get_hyper("momentum", var_dtype),
+          use_locking=self._use_locking,
+          use_nesterov=self._nesterov)
+    else:
+      return training_ops.resource_apply_gradient_descent(
+          var.handle, lr_t, grad, use_locking=self._use_locking)
 
   def _resource_apply_sparse_duplicate_indices(self, grad, var, indices):
-    return resource_variable_ops.resource_scatter_add(
-        var.handle, indices, -grad * math_ops.cast(
-            self._get_hyper("learning_rate"), var.dtype.base_dtype))
+    if self._momentum:
+      return super(SGD, self)._resource_apply_sparse_duplicate_indices(
+          grad, var, indices)
+    else:
+      var_dtype = var.dtype.base_dtype
+      lr_t = self._decayed_lr(var_dtype)
+      return resource_variable_ops.resource_scatter_add(var.handle, indices,
+                                                        -grad * lr_t)
 
-  def _apply_sparse_duplicate_indices(self, grad, var):
-    delta = ops.IndexedSlices(
-        grad.values * math_ops.cast(
-            self._get_hyper("learning_rate"), var.dtype.base_dtype),
-        grad.indices, grad.dense_shape)
-    return var.scatter_sub(delta, use_locking=self._use_locking)
+  def _resource_apply_sparse(self, grad, var, indices):
+    # This method is only needed for momentum optimization.
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
+    momentum_var = self.get_slot(var, "momentum")
+    return training_ops.resource_sparse_apply_keras_momentum(
+        var.handle,
+        momentum_var.handle,
+        lr_t,
+        grad,
+        indices,
+        self._get_hyper("momentum", var_dtype),
+        use_locking=self._use_locking,
+        use_nesterov=self._nesterov)
 
   def get_config(self):
     config = super(SGD, self).get_config()
     config.update({
         "learning_rate": self._serialize_hyperparameter("learning_rate"),
+        "decay": self._serialize_hyperparameter("decay"),
+        "momentum": self._serialize_hyperparameter("momentum"),
+        "nesterov": self._nesterov,
     })
     return config
