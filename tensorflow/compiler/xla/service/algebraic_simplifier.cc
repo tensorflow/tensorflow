@@ -2749,6 +2749,27 @@ Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
   return Status::OK();
 }
 
+static std::vector<int64> DropDegeneratePermDims(const Shape& operand_shape,
+                                                 absl::Span<const int64> perm) {
+  std::vector<int64> dimension_map;
+  int64 i = 0;
+  for (int64 dim_size : operand_shape.dimensions()) {
+    if (dim_size == 1) {
+      dimension_map.push_back(-1);
+    } else {
+      dimension_map.push_back(i++);
+    }
+  }
+  std::vector<int64> new_permutation;
+  for (int64 idx : perm) {
+    int64 mapped_dim = dimension_map[idx];
+    if (mapped_dim != -1) {
+      new_permutation.push_back(mapped_dim);
+    }
+  }
+  return new_permutation;
+}
+
 Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
   auto operand = transpose->mutable_operand(0);
   if (std::is_sorted(transpose->dimensions().begin(),
@@ -2765,9 +2786,23 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
                                            transpose->dimensions())));
   }
 
-  if (ShapeUtil::TrueRank(transpose->shape()) <= 1) {
+  if (ShapeUtil::HasDegenerateDimensions(transpose->shape())) {
+    // Strip degenerate dimensions from transposes to expose optimization
+    // opportunities
+    // on the non-degenerate dimensions.
+    HloInstruction* dropped =
+        computation_->AddInstruction(HloInstruction::CreateReshape(
+            ShapeUtil::DropDegenerateDimensions(operand->shape()), operand));
+    transpose->SetupDerivedInstruction(dropped);
+    HloInstruction* new_transpose =
+        computation_->AddInstruction(HloInstruction::CreateTranspose(
+            ShapeUtil::DropDegenerateDimensions(transpose->shape()), dropped,
+            DropDegeneratePermDims(operand->shape(),
+                                   transpose->dimensions())));
+    transpose->SetupDerivedInstruction(new_transpose);
     return ReplaceWithNewInstruction(
-        transpose, HloInstruction::CreateReshape(transpose->shape(), operand));
+        transpose,
+        HloInstruction::CreateReshape(transpose->shape(), new_transpose));
   }
 
   if (operand->opcode() == HloOpcode::kRng && operand->user_count() == 1) {

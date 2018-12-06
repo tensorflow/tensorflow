@@ -1067,6 +1067,11 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
   return absl::c_linear_search(shape.dimensions(), 1);
 }
 
+/* static */ Shape ShapeUtil::DropDegenerateDimensions(const Shape& shape) {
+  return FilterDimensions(
+      [&](int64 dim) -> bool { return shape.dimensions()[dim] != 1; }, shape);
+}
+
 namespace {
 
 // Helper for ForEachSubshape which visits the subshapes of the given shape in

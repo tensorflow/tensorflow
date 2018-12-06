@@ -2068,6 +2068,29 @@ TEST_F(AlgebraicSimplifierTest, TransposeIsReshape) {
   EXPECT_THAT(root, GmockMatch(m::Parameter()));
 }
 
+TEST_F(AlgebraicSimplifierTest, TransposeReshapeNonTriv) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[20] parameter(0)
+      reshaped = f32[1,2,10] reshape(f32[20] param)
+      transposed = f32[2,10,1] transpose(f32[1,2,10] reshaped), dimensions={1,2,0}
+      ROOT reshaped_again = f32[20] reshape(f32[2,10,1] transposed)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest()));
+
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  XLA_LOG_LINES(tensorflow::INFO, module->ToString());
+  EXPECT_THAT(root, GmockMatch(m::Parameter()));
+}
+
+
 // Test merging reshape and broadcast.
 TEST_F(AlgebraicSimplifierTest, ReshapeAndBroadcastMerged) {
   auto m = CreateNewVerifiedModule();
