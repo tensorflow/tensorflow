@@ -1299,11 +1299,11 @@ class MklConvOp : public OpKernel {
 template <typename Device, typename Tinput, typename Tfilter, typename Tbias,
           typename Toutput, typename Ttemp_output>
 class MklFusedConvOp : public MklConvOp<Device, Tinput, Tfilter, Tbias, Toutput,
-                                        Ttemp_output, false> {
+                                        Ttemp_output, int32, false, false> {
  public:
   explicit MklFusedConvOp(OpKernelConstruction* context)
-      : MklConvOp<Device, Tinput, Tfilter, Tbias, Toutput, Ttemp_output, false>(
-            context) {
+      : MklConvOp<Device, Tinput, Tfilter, Tbias, Toutput, Ttemp_output, int32,
+                  false, false>(context) {
     // Since we came here through the registration of _MklFusedConv2D then get
     // all information from 'fused_ops' and 'num_args'
     std::vector<string> fused_ops;
