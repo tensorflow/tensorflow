@@ -6,6 +6,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 exports_files(glob([
     "testdata/*.bin",
@@ -35,10 +36,10 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-TFLITE_DEFAULT_COPTS = [
+TFLITE_DEFAULT_COPTS = if_not_windows([
     "-Wall",
     "-Wno-comment",
-]
+])
 
 cc_library(
     name = "schema_fbs_version",
