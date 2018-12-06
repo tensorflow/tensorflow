@@ -856,7 +856,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     exp_sampled_softmax_loss = _SoftmaxCrossEntropyWithLogits(
         exp_logits, exp_labels)
 
-    got_sampled_softmax_loss = nn_impl.sampled_softmax_loss(
+    got_sampled_softmax_loss = nn_impl.sampled_softmax_loss_v2(
         weights=constant_op.constant(weights),
         biases=constant_op.constant(biases),
         labels=constant_op.constant(labels, shape=(batch_size, 1)),
@@ -865,8 +865,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
         num_classes=num_classes,
         num_true=1,
         sampled_values=sampled_vals,
-        remove_accidental_hits=False,
-        partition_strategy="div")
+        remove_accidental_hits=False)
 
     self.assertAllClose(exp_sampled_softmax_loss,
                         self.evaluate(got_sampled_softmax_loss), 1e-4)
@@ -874,7 +873,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     # Test with sharded weights and sharded biases.
     weight_shards, bias_shards = self._ShardTestEmbeddings(
         weights, biases, num_shards=3)
-    got_sampled_softmax_loss = nn_impl.sampled_softmax_loss(
+    got_sampled_softmax_loss = nn_impl.sampled_softmax_loss_v2(
         weights=[constant_op.constant(shard) for shard in weight_shards],
         biases=[constant_op.constant(shard) for shard in bias_shards],
         labels=constant_op.constant(labels, shape=(batch_size, 1)),
@@ -883,8 +882,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
         num_classes=num_classes,
         num_true=1,
         sampled_values=sampled_vals,
-        remove_accidental_hits=False,
-        partition_strategy="div")
+        remove_accidental_hits=False)
 
     self.assertAllClose(exp_sampled_softmax_loss,
                         self.evaluate(got_sampled_softmax_loss), 1e-4)
@@ -925,7 +923,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     sampled_vals_bf16 = (sampled, true_exp_bf16, sampled_exp_bf16)
 
     got_sampled_softmax_loss = math_ops.cast(
-        nn_impl.sampled_softmax_loss(
+        nn_impl.sampled_softmax_loss_v2(
             weights=constant_op.constant(weights, dtype=dtypes.bfloat16),
             biases=constant_op.constant(biases, dtype=dtypes.bfloat16),
             labels=constant_op.constant(
@@ -935,8 +933,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
             num_classes=num_classes,
             num_true=1,
             sampled_values=sampled_vals_bf16,
-            remove_accidental_hits=False,
-            partition_strategy="div"), dtypes.float32)
+            remove_accidental_hits=False), dtypes.float32)
 
     self.assertAllClose(exp_sampled_softmax_loss,
                         self.evaluate(got_sampled_softmax_loss), 1e-1)
