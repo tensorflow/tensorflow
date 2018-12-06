@@ -63,6 +63,9 @@ uint64_t getLargestDivisorOfTripCount(const ForStmt &forStmt);
 /// Prerequisites:
 ///   1. `iv` and `index` of the proper type;
 ///   2. at most one reachable AffineApplyOp from index;
+///
+/// Returns false in cases with more than one AffineApplyOp, this is
+/// conservative.
 bool isAccessInvariant(const MLValue &iv, const MLValue &index);
 
 /// Given an induction variable `iv` of type ForStmt and `indices` of type
@@ -71,6 +74,9 @@ bool isAccessInvariant(const MLValue &iv, const MLValue &index);
 /// Prerequisites (inherited from `isAccessInvariant` above):
 ///   1. `iv` and `indices` of the proper type;
 ///   2. at most one reachable AffineApplyOp from index;
+///
+/// Returns false in cases with more than one AffineApplyOp, this is
+/// conservative.
 llvm::DenseSet<const MLValue *, llvm::DenseMapInfo<const MLValue *>>
 getInvariantAccesses(const MLValue &iv,
                      llvm::ArrayRef<const MLValue *> indices);

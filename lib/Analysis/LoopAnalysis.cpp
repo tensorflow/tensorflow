@@ -134,10 +134,12 @@ bool mlir::isAccessInvariant(const MLValue &iv, const MLValue &index) {
     return &index != &iv;
   }
 
-  assert(
-      affineApplyOps.size() == 1 &&
-      "CompositionAffineMapsPass must have been run: there should be at most "
-      "one AffineApplyOp");
+  if (affineApplyOps.size() > 1) {
+    affineApplyOps[0]->emitError(
+        "CompositionAffineMapsPass must have been run: there should be at most "
+        "one AffineApplyOp");
+    return false;
+  }
 
   auto composeOp = affineApplyOps[0]->cast<AffineApplyOp>();
   // We need yet another level of indirection because the `dim` index of the
@@ -182,6 +184,10 @@ mlir::getInvariantAccesses(const MLValue &iv,
 ///   2. the MemRef accessed by `memoryOp` has no layout map or at most an
 ///      identity layout map.
 ///
+/// Currently only supports no layoutMap or identity layoutMap in the MemRef.
+/// Returns false if the MemRef has a non-identity layoutMap or more than
+/// 1 layoutMap. This is conservative.
+///
 // TODO(ntv): check strides.
 template <typename LoadOrStoreOp>
 static bool isContiguousAccess(const MLValue &iv, const LoadOrStoreOp &memoryOp,
@@ -191,12 +197,15 @@ static bool isContiguousAccess(const MLValue &iv, const LoadOrStoreOp &memoryOp,
                 "Must be called on either const LoadOp & or const StoreOp &");
   auto memRefType = memoryOp.getMemRefType();
   auto layoutMap = memRefType.getAffineMaps();
-  (void)layoutMap;
+  // TODO(ntv): remove dependence on Builder once we support non-identity
+  // layout map.
   Builder b(memoryOp.getOperation()->getContext());
-  (void)b;
-  assert(layoutMap.empty() ||
-         (layoutMap.size() == 1 &&
-          layoutMap[0] == b.getMultiDimIdentityMap(layoutMap[0].getNumDims())));
+  if (layoutMap.size() >= 2 ||
+      (layoutMap.size() == 1 &&
+       !(layoutMap[0] ==
+         b.getMultiDimIdentityMap(layoutMap[0].getNumDims())))) {
+    return memoryOp.emitError("NYI: non-trivial layoutMap"), false;
+  }
   assert(fastestVaryingDim < memRefType.getRank());
 
   auto indices = memoryOp.getIndices();
