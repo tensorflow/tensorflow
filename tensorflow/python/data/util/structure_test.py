@@ -352,9 +352,9 @@ class StructureTest(test.TestCase, parameterized.TestCase):
            "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
                  structure.TensorStructure(dtypes.string, []))})),
   )
-  def testFromLegacyStructure(self, output_types, output_shapes, output_classes,
-                              expected_structure):
-    actual_structure = structure.Structure._from_legacy_structure(
+  def testConvertLegacyStructure(self, output_types, output_shapes,
+                                 output_classes, expected_structure):
+    actual_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
     self.assertTrue(expected_structure.is_compatible_with(actual_structure))
     self.assertTrue(actual_structure.is_compatible_with(expected_structure))

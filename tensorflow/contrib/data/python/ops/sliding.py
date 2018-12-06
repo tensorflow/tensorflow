@@ -39,11 +39,10 @@ class _SlideDataset(dataset_ops.UnaryDataset):
     self._window_shift = ops.convert_to_tensor(
         window_shift, dtype=dtypes.int64, name="window_shift")
 
-    # pylint: disable=protected-access
-    input_structure = structure.Structure._from_legacy_structure(
+    input_structure = structure.convert_legacy_structure(
         input_dataset.output_types, input_dataset.output_shapes,
         input_dataset.output_classes)
-    self._output_structure = input_structure._batch(None)
+    self._structure = input_structure._batch(None)  # pylint: disable=protected-access
 
   def _as_variant_tensor(self):
     return ged_ops.experimental_sliding_window_dataset(
@@ -51,19 +50,11 @@ class _SlideDataset(dataset_ops.UnaryDataset):
         window_size=self._window_size,
         window_shift=self._window_shift,
         window_stride=self._window_stride,
-        **dataset_ops.flat_structure(structure=self._output_structure))
+        **dataset_ops.flat_structure(self))
 
   @property
-  def output_classes(self):
-    return self._output_structure._to_legacy_output_classes()  # pylint: disable=protected-access
-
-  @property
-  def output_shapes(self):
-    return self._output_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
-
-  @property
-  def output_types(self):
-    return self._output_structure._to_legacy_output_types()  # pylint: disable=protected-access
+  def _element_structure(self):
+    return self._structure
 
 
 @deprecation.deprecated_args(

@@ -19,8 +19,6 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
@@ -36,16 +34,9 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
   """A `dummy` generator dataset."""
 
   def __init__(self, shard_num, multi_device_iterator_resource, incarnation_id,
-               source_device, target_device, output_shapes, output_types,
-               output_classes):
+               source_device, target_device, element_structure):
     self._target_device = target_device
-    self._output_types = output_types
-    self._output_shapes = output_shapes
-    self._output_classes = output_classes
-    self._flat_output_shapes = nest.flatten(
-        sparse.as_dense_shapes(self._output_shapes, self._output_classes))
-    self._flat_output_types = nest.flatten(
-        sparse.as_dense_types(self._output_types, self._output_classes))
+    self._structure = element_structure
 
     multi_device_iterator_string_handle = (
         gen_dataset_ops.multi_device_iterator_to_string_handle(
@@ -70,17 +61,18 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _next_func(string_handle):
+      # pylint: disable=protected-access
       multi_device_iterator = (
           gen_dataset_ops.multi_device_iterator_from_string_handle(
               string_handle=string_handle,
-              output_types=self._flat_output_types,
-              output_shapes=self._flat_output_shapes))
+              output_types=self._structure._flat_types,
+              output_shapes=self._structure._flat_shapes))
       return gen_dataset_ops.multi_device_iterator_get_next_from_shard(
           multi_device_iterator=multi_device_iterator,
           shard_num=shard_num,
           incarnation_id=incarnation_id,
-          output_types=self._flat_output_types,
-          output_shapes=self._flat_output_shapes)
+          output_types=self._structure._flat_types,
+          output_shapes=self._structure._flat_shapes)
 
     next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access
 
@@ -90,9 +82,8 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
     def _remote_next_func(string_handle):
       return functional_ops.remote_call(
           target=source_device,
-          args=[string_handle] +
-          next_func_concrete.captured_inputs,
-          Tout=self._flat_output_types,
+          args=[string_handle] + next_func_concrete.captured_inputs,
+          Tout=self._structure._flat_types,  # pylint: disable=protected-access
           f=next_func_concrete)
 
     self._next_func = _remote_next_func._get_concrete_function_internal()  # pylint: disable=protected-access
@@ -108,8 +99,7 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
     def _remote_finalize_func(string_handle):
       return functional_ops.remote_call(
           target=source_device,
-          args=[string_handle] +
-          finalize_func_concrete.captured_inputs,
+          args=[string_handle] + finalize_func_concrete.captured_inputs,
           Tout=[dtypes.int64],
           f=finalize_func_concrete)
 
@@ -126,24 +116,15 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
           init_func=self._init_func,
           next_func=self._next_func,
           finalize_func=self._finalize_func,
-          output_types=self._flat_output_types,
-          output_shapes=self._flat_output_shapes)
+          **dataset_ops.flat_structure(self))
 
   def _inputs(self):
     # TODO(b/116506223): Determine which datasets should be used as inputs here.
     return []
 
   @property
-  def output_types(self):
-    return self._output_types
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_classes(self):
-    return self._output_classes
+  def _element_structure(self):
+    return self._structure
 
 
 class MultiDeviceIterator(object):
@@ -183,13 +164,6 @@ class MultiDeviceIterator(object):
     self._source_device = source_device
     self._source_device_tensor = ops.convert_to_tensor(source_device)
 
-    self._flat_output_shapes = nest.flatten(
-        sparse.as_dense_shapes(self._dataset.output_shapes,
-                               self._dataset.output_classes))
-    self._flat_output_types = nest.flatten(
-        sparse.as_dense_types(self._dataset.output_types,
-                              self._dataset.output_classes))
-
     # Create the MultiDeviceIterator.
     with ops.device(self._source_device):
       self._multi_device_iterator_resource = (
@@ -197,8 +171,7 @@ class MultiDeviceIterator(object):
               devices=self._devices,
               shared_name="",
               container="",
-              output_types=self._flat_output_types,
-              output_shapes=self._flat_output_shapes))
+              **dataset_ops.flat_structure(dataset)))
 
       # The incarnation ID is used to ensure consistency between the per-device
       # iterators and the multi-device iterator.
@@ -216,8 +189,7 @@ class MultiDeviceIterator(object):
     for i, device in enumerate(self._devices):
       ds = _PerDeviceGenerator(
           i, self._multi_device_iterator_resource, self._incarnation_id,
-          self._source_device_tensor, device, self._dataset.output_shapes,
-          self._dataset.output_types, self._dataset.output_classes)
+          self._source_device_tensor, device, dataset._element_structure)  # pylint: disable=protected-access
       if prefetch_buffer_size > 0:
         ds = ds.prefetch(prefetch_buffer_size)
       # TODO(jsimsa): Enable auto-tuning when supported for non-CPU devices.

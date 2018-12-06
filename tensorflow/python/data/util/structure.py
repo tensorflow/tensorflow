@@ -191,56 +191,6 @@ class Structure(object):
       return TensorStructure.from_value(tensor)
 
   @staticmethod
-  def _from_legacy_structure(output_types, output_shapes, output_classes):
-    """Returns a `Structure` that represents the given legacy structure.
-
-    This method provides a way to convert from the existing `Dataset` and
-    `Iterator` structure-related properties to a `Structure` object.
-
-    TODO(b/110122868): Remove this method once `Structure` is used throughout
-    `tf.data`.
-
-    Args:
-      output_types: A nested structure of `tf.DType` objects corresponding to
-        each component of a structured value.
-      output_shapes: A nested structure of `tf.TensorShape` objects
-        corresponding to each component a structured value.
-      output_classes: A nested structure of Python `type` objects corresponding
-        to each component of a structured value.
-
-    Returns:
-      A `Structure`.
-
-    Raises:
-      TypeError: If a structure cannot be built the arguments, because one of
-        the component classes in `output_classes` is not supported.
-    """
-    flat_types = nest.flatten(output_types)
-    flat_shapes = nest.flatten(output_shapes)
-    flat_classes = nest.flatten(output_classes)
-    flat_ret = []
-    for flat_type, flat_shape, flat_class in zip(flat_types, flat_shapes,
-                                                 flat_classes):
-      if isinstance(flat_class, Structure):
-        flat_ret.append(flat_class)
-      elif issubclass(flat_class, sparse_tensor_lib.SparseTensor):
-        flat_ret.append(SparseTensorStructure(flat_type, flat_shape))
-      elif issubclass(flat_class, ops.Tensor):
-        flat_ret.append(TensorStructure(flat_type, flat_shape))
-      else:
-        # NOTE(mrry): Since legacy structures produced by iterators only
-        # comprise Tensors, SparseTensors, and nests, we do not need to
-        # support all structure types here.
-        raise TypeError(
-            "Could not build a structure for output class %r" % flat_type)
-
-    ret = nest.pack_sequence_as(output_classes, flat_ret)
-    if isinstance(ret, Structure):
-      return ret
-    else:
-      return NestedStructure(ret)
-
-  @staticmethod
   def _register_custom_converter(type_object, converter_fn):
     """Registers `converter_fn` for converting values of the given type.
 
@@ -263,6 +213,59 @@ class Structure(object):
   @abc.abstractmethod
   def _to_legacy_output_classes(self):
     raise NotImplementedError("Structure._to_legacy_output_classes()")
+
+
+def convert_legacy_structure(output_types, output_shapes, output_classes):
+  """Returns a `Structure` that represents the given legacy structure.
+
+  This method provides a way to convert from the existing `Dataset` and
+  `Iterator` structure-related properties to a `Structure` object. A "legacy"
+  structure is represented by the `tf.data.Dataset.output_types`,
+  `tf.data.Dataset.output_shapes`, and `tf.data.Dataset.output_classes`
+  properties.
+
+  TODO(b/110122868): Remove this function once `Structure` is used throughout
+  `tf.data`.
+
+  Args:
+    output_types: A nested structure of `tf.DType` objects corresponding to
+      each component of a structured value.
+    output_shapes: A nested structure of `tf.TensorShape` objects
+      corresponding to each component a structured value.
+    output_classes: A nested structure of Python `type` objects corresponding
+      to each component of a structured value.
+
+  Returns:
+    A `Structure`.
+
+  Raises:
+    TypeError: If a structure cannot be built from the arguments, because one of
+      the component classes in `output_classes` is not supported.
+  """
+  flat_types = nest.flatten(output_types)
+  flat_shapes = nest.flatten(output_shapes)
+  flat_classes = nest.flatten(output_classes)
+  flat_ret = []
+  for flat_type, flat_shape, flat_class in zip(flat_types, flat_shapes,
+                                               flat_classes):
+    if isinstance(flat_class, Structure):
+      flat_ret.append(flat_class)
+    elif issubclass(flat_class, sparse_tensor_lib.SparseTensor):
+      flat_ret.append(SparseTensorStructure(flat_type, flat_shape))
+    elif issubclass(flat_class, ops.Tensor):
+      flat_ret.append(TensorStructure(flat_type, flat_shape))
+    else:
+      # NOTE(mrry): Since legacy structures produced by iterators only
+      # comprise Tensors, SparseTensors, and nests, we do not need to
+      # support all structure types here.
+      raise TypeError(
+          "Could not build a structure for output class %r" % flat_type)
+
+  ret = nest.pack_sequence_as(output_classes, flat_ret)
+  if isinstance(ret, Structure):
+    return ret
+  else:
+    return NestedStructure(ret)
 
 
 # NOTE(mrry): The following classes make extensive use of non-public methods of

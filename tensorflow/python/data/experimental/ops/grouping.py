@@ -253,50 +253,44 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping defun for key_func."""
-    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+    self._key_func = dataset_ops.StructuredFunctionWrapper(
         key_func, self._transformation_name(), dataset=input_dataset)
-    if not (
-        wrapped_func.output_types == dtypes.int64 and
-        wrapped_func.output_shapes.is_compatible_with(tensor_shape.scalar())):
+    if not self._key_func.output_structure.is_compatible_with(
+        structure.TensorStructure(dtypes.int64, [])):
       raise ValueError(
           "`key_func` must return a single tf.int64 tensor. "
           "Got type=%s and shape=%s"
-          % (wrapped_func.output_types, wrapped_func.output_shapes))
-    self._key_func = wrapped_func
-
+          % (self._key_func.output_types, self._key_func.output_shapes))
   def _make_init_func(self, init_func):
     """Make wrapping defun for init_func."""
-    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+    self._init_func = dataset_ops.StructuredFunctionWrapper(
         init_func,
         self._transformation_name(),
-        input_classes=ops.Tensor,
-        input_shapes=tensor_shape.scalar(),
-        input_types=dtypes.int64)
-    self._init_func = wrapped_func
-    self._state_classes = wrapped_func.output_classes
-    self._state_shapes = wrapped_func.output_shapes
-    self._state_types = wrapped_func.output_types
+        input_structure=structure.TensorStructure(dtypes.int64, []))
 
   def _make_reduce_func(self, reduce_func, input_dataset):
     """Make wrapping defun for reduce_func."""
 
     # Iteratively rerun the reduce function until reaching a fixed point on
-    # `self._state_shapes`.
+    # `self._state_structure`.
+    self._state_structure = self._init_func.output_structure
+    state_types = self._init_func.output_types
+    state_shapes = self._init_func.output_shapes
+    state_classes = self._init_func.output_classes
     need_to_rerun = True
     while need_to_rerun:
 
       wrapped_func = dataset_ops.StructuredFunctionWrapper(
           reduce_func,
           self._transformation_name(),
-          input_classes=(self._state_classes, input_dataset.output_classes),
-          input_shapes=(self._state_shapes, input_dataset.output_shapes),
-          input_types=(self._state_types, input_dataset.output_types),
+          input_structure=structure.NestedStructure(
+              (self._state_structure, input_dataset._element_structure)),  # pylint: disable=protected-access
           add_to_graph=False)
 
       # Extract and validate class information from the returned values.
       for new_state_class, state_class in zip(
           nest.flatten(wrapped_func.output_classes),
-          nest.flatten(self._state_classes)):
+          nest.flatten(state_classes)):
         if not issubclass(new_state_class, state_class):
           raise TypeError(
               "The element classes for the new state must match the initial "
@@ -305,16 +299,15 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
       # Extract and validate type information from the returned values.
       for new_state_type, state_type in zip(
-          nest.flatten(wrapped_func.output_types),
-          nest.flatten(self._state_types)):
+          nest.flatten(wrapped_func.output_types), nest.flatten(state_types)):
         if new_state_type != state_type:
           raise TypeError(
               "The element types for the new state must match the initial "
               "state. Expected %s; got %s." %
-              (self._state_types, wrapped_func.output_types))
+              (self._init_func.output_types, wrapped_func.output_types))
 
       # Extract shape information from the returned values.
-      flat_state_shapes = nest.flatten(self._state_shapes)
+      flat_state_shapes = nest.flatten(state_shapes)
       flat_new_state_shapes = nest.flatten(wrapped_func.output_shapes)
       weakened_state_shapes = [
           original.most_specific_compatible_shape(new)
@@ -331,36 +324,23 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
           break
 
       if need_to_rerun:
-        self._state_shapes = nest.pack_sequence_as(self._state_shapes,
-                                                   weakened_state_shapes)
+        state_shapes = nest.pack_sequence_as(
+            self._init_func.output_shapes, weakened_state_shapes)
+        self._state_structure = structure.convert_legacy_structure(
+            state_types, state_shapes, state_classes)
 
     self._reduce_func = wrapped_func
     self._reduce_func.function.add_to_graph(ops.get_default_graph())
 
   def _make_finalize_func(self, finalize_func):
     """Make wrapping defun for finalize_func."""
-    wrapped_func = dataset_ops.StructuredFunctionWrapper(
-        finalize_func,
-        self._transformation_name(),
-        input_classes=self._state_classes,
-        input_shapes=self._state_shapes,
-        input_types=self._state_types)
-    self._finalize_func = wrapped_func
-    self._output_classes = wrapped_func.output_classes
-    self._output_shapes = wrapped_func.output_shapes
-    self._output_types = wrapped_func.output_types
+    self._finalize_func = dataset_ops.StructuredFunctionWrapper(
+        finalize_func, self._transformation_name(),
+        input_structure=self._state_structure)
 
   @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
+  def _element_structure(self):
+    return self._finalize_func.output_structure
 
   def _functions(self):
     return [
@@ -402,66 +382,46 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
 
     def window_size_func_wrapper(key):
       return ops.convert_to_tensor(window_size_func(key), dtype=dtypes.int64)
-    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+    self._window_size_func = dataset_ops.StructuredFunctionWrapper(
         window_size_func_wrapper,
         self._transformation_name(),
-        input_classes=ops.Tensor,
-        input_shapes=tensor_shape.scalar(),
-        input_types=dtypes.int64)
-    if not (
-        wrapped_func.output_types == dtypes.int64 and
-        wrapped_func.output_shapes.is_compatible_with(tensor_shape.scalar())):
+        input_structure=structure.TensorStructure(dtypes.int64, []))
+    if not self._window_size_func.output_structure.is_compatible_with(
+        structure.TensorStructure(dtypes.int64, [])):
       raise ValueError(
           "`window_size_func` must return a single tf.int64 scalar tensor.")
-    self._window_size_func = wrapped_func
 
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping defun for key_func."""
 
     def key_func_wrapper(*args):
       return ops.convert_to_tensor(key_func(*args), dtype=dtypes.int64)
-    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+    self._key_func = dataset_ops.StructuredFunctionWrapper(
         key_func_wrapper, self._transformation_name(), dataset=input_dataset)
-    if not (
-        wrapped_func.output_types == dtypes.int64 and
-        wrapped_func.output_shapes.is_compatible_with(tensor_shape.scalar())):
+    if not self._key_func.output_structure.is_compatible_with(
+        structure.TensorStructure(dtypes.int64, [])):
       raise ValueError(
           "`key_func` must return a single tf.int64 scalar tensor.")
-    self._key_func = wrapped_func
 
   def _make_reduce_func(self, reduce_func, input_dataset):
     """Make wrapping defun for reduce_func."""
     nested_dataset = dataset_ops.DatasetStructure(
-        structure.Structure._from_legacy_structure(  # pylint: disable=protected-access
-            input_dataset.output_types, input_dataset.output_shapes,
-            input_dataset.output_classes))
-    wrapped_func = dataset_ops.StructuredFunctionWrapper(
-        reduce_func,
-        self._transformation_name(),
-        input_classes=(ops.Tensor, nested_dataset),
-        input_shapes=(tensor_shape.scalar(), nested_dataset),
-        input_types=(dtypes.int64, nested_dataset))
+        input_dataset._element_structure)  # pylint: disable=protected-access
+    input_structure = structure.NestedStructure(
+        (structure.TensorStructure(dtypes.int64, []), nested_dataset))
+    self._reduce_func = dataset_ops.StructuredFunctionWrapper(
+        reduce_func, self._transformation_name(),
+        input_structure=input_structure)
     if not isinstance(
-        wrapped_func.output_structure, dataset_ops.DatasetStructure):
+        self._reduce_func.output_structure, dataset_ops.DatasetStructure):
       raise TypeError("`reduce_func` must return a `Dataset` object.")
     # pylint: disable=protected-access
-    element_structure = wrapped_func.output_structure._element_structure
-    self._output_classes = element_structure._to_legacy_output_classes()
-    self._output_types = element_structure._to_legacy_output_types()
-    self._output_shapes = element_structure._to_legacy_output_shapes()
-    self._reduce_func = wrapped_func
+    self._structure = (
+        self._reduce_func.output_structure._element_structure)
 
   @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
+  def _element_structure(self):
+    return self._structure
 
   def _functions(self):
     return [self._key_func, self._reduce_func, self._window_size_func]
