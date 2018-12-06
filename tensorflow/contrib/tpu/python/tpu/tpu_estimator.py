@@ -530,13 +530,16 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
 class TPUInfeedOutfeedSessionHookForPrediction(TPUInfeedOutfeedSessionHook):
 
-  def __init__(self, ctx, enqueue_ops, dequeue_ops, rendezvous=None):
+  def __init__(self, ctx, enqueue_ops, dequeue_ops, rendezvous=None,
+               master=None, session_config=None):
     super(TPUInfeedOutfeedSessionHookForPrediction, self).__init__(
         ctx,
         enqueue_ops,
         dequeue_ops,
         run_infeed_loop_on_coordinator=False,
-        rendezvous=rendezvous)
+        rendezvous=rendezvous,
+        master=master,
+        session_config=session_config)
 
   def _create_infeed_controller(self, name, target, args):
     return _OpSignalOnceQueueContext(name=name, target=target, args=args)
@@ -2748,7 +2751,9 @@ class TPUEstimator(estimator_lib.Estimator):
         hooks = [
             _StoppingPredictHook(scalar_stopping_signal),
             TPUInfeedOutfeedSessionHookForPrediction(
-                ctx, enqueue_ops, host_ops, rendezvous=self._rendezvous[mode]),
+                ctx, enqueue_ops, host_ops, rendezvous=self._rendezvous[mode],
+                master=self._config.master,
+                session_config=self._session_config),
         ] + input_hooks
 
         if prediction_hooks:
