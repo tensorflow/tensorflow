@@ -812,8 +812,8 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithControlDependencies) {
 
        // Return result of multiplication and a current value of the variable.
        NDef("out_1", "Identity", {"f2"}, {{"T", DT_FLOAT}}, kDevice),
-       NDef("out_2", "ReadVariableOp", {"v", "^f2"}, {{"dtype", DT_FLOAT}},
-            kDevice)},
+       NDef("out_2", "ReadVariableOp", {"v", "^f1", "^f2"},
+            {{"dtype", DT_FLOAT}}, kDevice)},
 
       // Function library.
       {mul_func});
@@ -860,8 +860,8 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithControlDependencies) {
 
        // Return values read directly from inlined nodes.
        NDef("out_1", "Identity", {"f2/mul:0"}, {{"T", DT_FLOAT}}, kDevice),
-       NDef("out_2", "ReadVariableOp", {"v", "^f2/add"}, {{"dtype", DT_FLOAT}},
-            kDevice)},
+       NDef("out_2", "ReadVariableOp", {"v", "^f1/add", "^f2/add"},
+            {{"dtype", DT_FLOAT}}, kDevice)},
 
       // Function library.
       {mul_func});

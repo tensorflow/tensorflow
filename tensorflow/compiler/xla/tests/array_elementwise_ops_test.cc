@@ -350,6 +350,44 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
                              error_spec_);
 }
 
+// TODO(b/119692968): This test runs OOM on the GPU and CPU backend.
+XLA_TEST_F(ArrayElementwiseOpTest,
+           DISABLED_ON_GPU(DISABLED_ON_CPU(DeeplyNestedAddWithSlices))) {
+  XlaBuilder builder(TestName());
+  std::vector<float> values(30, 0.0);
+  auto a_literal = LiteralUtil::CreateR1<float>(values);
+  auto a = Parameter(&builder, 0, a_literal.shape(), "x");
+  auto b_literal = LiteralUtil::CreateR1<float>(values);
+  auto b = Parameter(&builder, 1, b_literal.shape(), "x");
+
+  // Construct a sequence of diamond-shaped gadgets like this:
+  //
+  //      add
+  //    /    \
+  //  slice  slice
+  //     \   /
+  //      add
+  //
+  // Each 'left' slice removes the last element, each 'right' slice removes the
+  // first element. In this way, we index into the add with different
+  // multi-dimensional index arrays, which defeats the caching we use to avoid
+  // exponential compile time.
+  std::function<XlaOp(int64)> generate_recursive =
+      [&](int64 slice_size) -> XlaOp {
+    if (slice_size == values.size()) {
+      return Add(a, b);
+    }
+    XlaOp param = generate_recursive(slice_size + 1);
+    auto slice1 = Slice(param, {0}, {slice_size}, {1});
+    auto slice2 = Slice(param, {1}, {slice_size + 1}, {1});
+    return Add(slice1, slice2);
+  };
+  generate_recursive(1);
+  auto a_data = client_->TransferToServer(a_literal).ConsumeValueOrDie();
+  auto b_data = client_->TransferToServer(b_literal).ConsumeValueOrDie();
+  ComputeAndCompareR1<float>(&builder, {0.0}, {a_data.get(), b_data.get()});
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantF32s) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<float>(&builder, {-2.5f, 3.14f, 2.25f, -10.0f, 6.0f});

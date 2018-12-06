@@ -28,8 +28,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-static std::vector<BaseGPUDevice*> GetGPUDevices() {
-  std::vector<Device*> devices;
+static std::vector<std::unique_ptr<BaseGPUDevice>> GetGPUDevices() {
+  std::vector<std::unique_ptr<Device>> devices;
   SessionOptions session_options;
   session_options.config.mutable_gpu_options()
       ->set_per_process_gpu_memory_fraction(0.1);
@@ -37,12 +37,12 @@ static std::vector<BaseGPUDevice*> GetGPUDevices() {
   Status s = DeviceFactory::GetFactory(DEVICE_GPU)
                  ->AddDevices(session_options, "", &devices);
   TF_CHECK_OK(s);
-  std::vector<BaseGPUDevice*> gpus;
-  for (Device* d : devices) {
-    if (d->device_type() == "GPU") {
-      gpus.push_back(static_cast<BaseGPUDevice*>(d));
-    } else {
-      delete d;
+  std::vector<std::unique_ptr<BaseGPUDevice>> gpus;
+  for (std::unique_ptr<Device>& device : devices) {
+    if (device->device_type() == "GPU") {
+      // If `device_type()` is GPU, this `Device` is guaranteed to be a
+      // `BaseGPUDevice`, which is a subclass of `Device`.
+      gpus.emplace_back(static_cast<BaseGPUDevice*>(device.release()));
     }
   }
   return gpus;
@@ -64,16 +64,14 @@ class NcclManagerTest : public ::testing::Test {
   };
 
   static void SetUpTestCase() {
-    setenv("NCCL_DEBUG", "INFO", 1 /* replace */);
-    devices_ = new std::vector<BaseGPUDevice*>(GetGPUDevices());
-    CHECK(!devices_->empty());
+    setenv("NCCL_DEBUG", "WARN", 1 /* replace */);
+    devices_ = new std::vector<std::unique_ptr<BaseGPUDevice>>(GetGPUDevices());
     LOG(ERROR) << "Running test with " << devices_->size() << " gpus";
   }
 
-  static void TearDownTestCase() {
-    for (auto device : *devices_) delete device;
-    delete devices_;
-  }
+  static int32 NumGPUs() { return static_cast<int32>(devices_->size()); }
+
+  static void TearDownTestCase() { delete devices_; }
 
   TestCase* MakeTestCase(int num_ranks, ncclRedOp_t reduction_op,
                          TensorShape shape, float value_offset) {
@@ -153,7 +151,7 @@ class NcclManagerTest : public ::testing::Test {
       stream->ThenMemcpy(out_cpu.flat<Scalar>().data(), out_gpu_mem,
                          out_cpu.TotalBytes());
       SE_ASSERT_OK(stream->BlockHostUntilDone());
-      test::ExpectTensorNear<Scalar>(test_case->expected, out_cpu, 0.01);
+      test::ExpectClose(test_case->expected, out_cpu);
     }
   }
 
@@ -166,7 +164,7 @@ class NcclManagerTest : public ::testing::Test {
   }
 
   static BaseGPUDevice* GetDevice(size_t rank) {
-    return devices_->at(rank % devices_->size());
+    return devices_->at(rank % devices_->size()).get();
   }
 
  private:
@@ -181,13 +179,14 @@ class NcclManagerTest : public ::testing::Test {
   }
 
  private:
-  static std::vector<BaseGPUDevice*>* devices_;
+  static std::vector<std::unique_ptr<BaseGPUDevice>>* devices_;
   static const DataType data_type_;
   static const Scalar max_;
 };
 
 template <typename Scalar>
-std::vector<BaseGPUDevice*>* NcclManagerTest<Scalar>::devices_ = nullptr;
+std::vector<std::unique_ptr<BaseGPUDevice>>* NcclManagerTest<Scalar>::devices_ =
+    nullptr;
 template <typename Scalar>
 const DataType NcclManagerTest<Scalar>::data_type_ =
     DataTypeToEnum<Scalar>::value;
@@ -195,13 +194,13 @@ template <typename Scalar>
 const Scalar NcclManagerTest<Scalar>::max_ =
     Eigen::NumTraits<Scalar>::highest();
 
-// Instantiate tests for float and half.
-using TypeList = ::testing::Types<float, Eigen::half>;
+// Instantiate tests for float and double.
+using TypeList = ::testing::Types<float, double>;
 TYPED_TEST_CASE(NcclManagerTest, TypeList);
 
 // Test basic sum reduction.
 TYPED_TEST(NcclManagerTest, BasicSumReduction) {
-  const int num_ranks = 3;
+  const int num_ranks = this->NumGPUs();
 
   for (int op = 0; op < 4; ++op) {
     ncclRedOp_t reduction_op = static_cast<ncclRedOp_t>(op);
@@ -230,10 +229,10 @@ TYPED_TEST(NcclManagerTest, BasicSumReduction) {
 // To test the higher settings, increase num_ranks,
 // num_collectives_per_iteration and time_limit_micros.
 TYPED_TEST(NcclManagerTest, MultipleCallers) {
-  const int num_ranks = 1;                      // 2;
-  const int num_collectives_per_iteration = 1;  // 1000;
+  const int num_ranks = this->NumGPUs();
+  const int num_collectives_per_iteration = 10;  // 1000;
   const int num_threads = 3;
-  const int time_limit_micros = 1;  // 60 * 30 * 1000 * 1000;
+  const int time_limit_micros = 100;  // 60 * 30 * 1000 * 1000;
 
   int64 start = Env::Default()->NowMicros();
   srand(Env::Default()->NowMicros());

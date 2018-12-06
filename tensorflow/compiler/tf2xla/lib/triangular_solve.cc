@@ -18,10 +18,11 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/tf2xla/lib/batch_dot.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
+#include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -311,13 +312,13 @@ xla::XlaOp SolveWithInvertedDiagonalBlocks(
         auto a_row =
             MaybeConjugate(SliceInMinorDims(a, start, end), conjugate_a);
         if (left_side) {
-          remainder = b_row - BatchDot(a_row, x, transpose_a, false,
-                                       /*conjugate_x=*/false,
-                                       /*conjugate_y=*/false, precision);
+          remainder =
+              b_row - BatchDot(MaybeTransposeInMinorDims(a_row, transpose_a), x,
+                               precision);
         } else {
-          remainder = b_row - BatchDot(x, a_row, false, transpose_a,
-                                       /*conjugate_x=*/false,
-                                       /*conjugate_y=*/false, precision);
+          remainder =
+              b_row - BatchDot(x, MaybeTransposeInMinorDims(a_row, transpose_a),
+                               precision);
         }
       }
 
@@ -327,13 +328,12 @@ xla::XlaOp SolveWithInvertedDiagonalBlocks(
           xla::ConstantR0WithType(builder, xla::S32, j * block_size);
       std::vector<xla::XlaOp> update_starts = {start_index, zero};
       if (left_side) {
-        x_update =
-            BatchDot(inv_block, remainder, transpose_a, false,
-                     /*conjugate_x=*/false, /*conjugate_y=*/false, precision);
+        x_update = BatchDot(MaybeTransposeInMinorDims(inv_block, transpose_a),
+                            remainder, precision);
       } else {
-        x_update =
-            BatchDot(remainder, inv_block, false, transpose_a,
-                     /*conjugate_x=*/false, /*conjugate_y=*/false, precision);
+        x_update = BatchDot(remainder,
+                            MaybeTransposeInMinorDims(inv_block, transpose_a),
+                            precision);
         std::swap(update_starts[0], update_starts[1]);
       }
       x = DynamicUpdateSliceInMinorDims(x, x_update, /*starts=*/update_starts);

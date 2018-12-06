@@ -172,8 +172,6 @@ def experimental_fit_loop(model,
       callbacks,
       model,
       do_validation=do_validation,
-      val_inputs=None,
-      val_targets=None,
       epochs=epochs,
       steps_per_epoch=steps_per_epoch,
       verbose=verbose)
@@ -582,10 +580,10 @@ def _get_input_from_iterator(iterator, model):
   return x, y, sample_weights
 
 
-def _get_execution_function(model, mode):
-  """Get function to run one step of distributed model execution."""
+def _make_execution_function(model, mode):
+  """Makes function to run one step of distributed model execution."""
   if context.executing_eagerly():
-    return _get_eager_execution_function(model, mode)
+    return _make_eager_execution_function(model, mode)
 
   strategy = model._distribution_strategy
   if not model._grouped_model:
@@ -593,7 +591,7 @@ def _get_execution_function(model, mode):
         model, strategy, make_callback_model=(mode == 'train'))
 
   def _per_device_function(model):
-    f = model._get_execution_function(mode)
+    f = model._make_execution_function(mode)
     return (f.inputs, f.outputs, f.updates_op, f.session_kwargs)
 
   with strategy.scope():
@@ -631,15 +629,15 @@ def _get_execution_function(model, mode):
         **all_session_args)
 
 
-def _get_eager_execution_function(model, mode):
-  """Get function to run one step of distributed model eager execution."""
+def _make_eager_execution_function(model, mode):
+  """Makes function to run one step of distributed model eager execution."""
   strategy = model._distribution_strategy
   if not model._grouped_model:
     clone_model_on_replicas(
         model, strategy, make_callback_model=(mode == 'train'))
 
   def _per_device_function(model):
-    f = model._get_execution_function(mode)
+    f = model._make_execution_function(mode)
     return (f.inputs, f.outputs)
 
   # NOTE(priyag): Try creating a new FuncGraph within DS scope instead of using

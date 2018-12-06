@@ -183,6 +183,20 @@ Status XRTTupleAllocation::ToLiteral(xla::Backend* backend, int device_ordinal,
   return Status::OK();
 }
 
+Status XRTTupleAllocation::WriteLiteral(xla::Backend* backend,
+                                        const xla::Literal& literal) {
+  if (!xla::ShapeUtil::Equal(literal.shape(), on_host_shape())) {
+    return errors::InvalidArgument(
+        "New literal shape not matching the existing one: literal=",
+        xla::ShapeUtil::HumanStringWithLayout(literal.shape()),
+        " device=", xla::ShapeUtil::HumanStringWithLayout(on_host_shape()));
+  }
+  auto transfer_manager = backend->transfer_manager();
+  TF_ASSIGN_OR_RETURN(auto stream, backend->BorrowStream(device_ordinal()));
+  return transfer_manager->TransferLiteralToDevice(stream.get(), literal,
+                                                   ToShapedBuffer());
+}
+
 void XRTTupleAllocation::DiscardAllocation(
     const xla::ShapeIndex& buffer_index) {
   buffers_.element(buffer_index)->DiscardAllocation();

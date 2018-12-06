@@ -531,6 +531,12 @@ class PartitionedCallOp : public AsyncOpKernel {
 
     tensorflow::grappler::GrapplerItem item;
 
+    // Add all available devices so that inlined function can be placed.
+    for (const Device* d : device_set.devices()) {
+      Status added_device = item.AddDevice(d->name());
+      if (!added_device.ok()) VLOG(3) << added_device.error_message();
+    }
+
     // Add fetches so that the graph can be pruned.
     for (Node* node : ret_nodes) {
       item.fetch.push_back(node->name());

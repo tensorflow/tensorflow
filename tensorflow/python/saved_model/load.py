@@ -23,20 +23,54 @@ import os
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import saved_object_graph_pb2
+from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.util import compat
 
 
-def _recreate_object_graph(object_graph_proto):
-  """Recreates Python objects from an ObjectGraph proto."""
-  objects = []
-  for _ in object_graph_proto.nodes:
-    # TODO(allenl): re-create variables and other types
-    objects.append(tracking.Checkpointable())
-  for obj, object_proto in zip(objects, object_graph_proto.nodes):
-    for reference in object_proto.children:
-      setattr(obj, reference.local_name, objects[reference.node_id])
-  return objects[0]
+class _Loader(object):
+  """Helper class to load an object-based SavedModel."""
+
+  def __init__(self, proto, export_dir):
+    self._proto = proto
+    self._export_dir = export_dir
+    self._load_all()
+
+  def _load_all(self):
+    self._nodes = [self._recreate(proto) for proto in self._proto.nodes]
+    # After creating the objects, construct the edges between the objects.
+    for obj, object_proto in zip(self._nodes, self._proto.nodes):
+      for reference in object_proto.children:
+        setattr(obj, reference.local_name, self._nodes[reference.node_id])
+
+  def get(self, node_id):
+    return self._nodes[node_id]
+
+  def _recreate(self, proto):
+    factory = {
+        "user_object": lambda: self._recreate_user_object(proto.user_object),
+        "asset": lambda: self._recreate_asset(proto.asset),
+    }
+    kind = proto.WhichOneof("kind")
+    if kind not in factory:
+      raise ValueError("Unknown SavedObject type: %r" % kind)
+    return factory[kind]()
+
+  def _recreate_user_object(self, proto):
+    del proto
+    return tracking.Checkpointable()
+
+  def _recreate_asset(self, proto):
+    filename = os.path.join(
+        saved_model_utils.get_assets_dir(self._export_dir),
+        proto.relative_filename)
+    return tracking.TrackableAsset(filename)
+
+
+def _load_saved_object_graph_proto(filename):
+  with file_io.FileIO(filename, "rb") as f:
+    contents = f.read()
+    return saved_object_graph_pb2.SavedObjectGraph.FromString(contents)
 
 
 def load(export_dir):
@@ -46,13 +80,9 @@ def load(export_dir):
       compat.as_bytes(constants.EXTRA_ASSETS_DIRECTORY),
       compat.as_bytes("object_graph.pb"))
   if file_io.file_exists(object_graph_filename):
-    # If there is an object graph associated with the SavedModel, we'll create a
-    # root object from that.
-    object_graph_string = file_io.FileIO(object_graph_filename, "rb").read()
-    object_graph_proto = (
-        saved_object_graph_pb2.SavedObjectGraph())
-    object_graph_proto.ParseFromString(object_graph_string)
-    root = _recreate_object_graph(object_graph_proto)
+    proto = _load_saved_object_graph_proto(object_graph_filename)
+    loader = _Loader(proto, export_dir)
+    root = loader.get(0)
   else:
     raise NotImplementedError(
         "Currently only SavedModels exported with `tf.saved_model.save` may be "

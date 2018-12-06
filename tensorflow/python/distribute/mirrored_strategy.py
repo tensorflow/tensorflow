@@ -43,6 +43,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import coordinator
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
@@ -422,6 +423,7 @@ def all_local_devices(num_gpus=None):
           ("/device:CPU:0",))
 
 
+@tf_export("distribute.MirroredStrategy")
 class MirroredStrategy(distribute_lib.DistributionStrategy):
   """Mirrors vars to distribute across multiple devices and machines.
 

@@ -69,7 +69,6 @@ class DatasetV2(object):
 
   A `Dataset` can be used to represent an input pipeline as a
   collection of elements (nested structures of tensors) and a "logical
-
   plan" of transformations that act on those elements.
   """
 
@@ -96,6 +95,37 @@ class DatasetV2(object):
     """Returns a list of the input datasets of the dataset."""
 
     raise NotImplementedError("Dataset._inputs")
+
+  def _has_captured_ref(self):
+    """Whether this dataset uses a function that captures ref variables.
+
+    Returns:
+      A boolean, which if true indicates that the dataset or one of its inputs
+      uses a function that captures ref variables.
+    """
+    if context.executing_eagerly():
+      # RefVariables are not supported in eager mode
+      return False
+
+    def is_tensor_or_parent_ref(tensor):
+      if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
+        return True
+      return any([is_tensor_or_parent_ref(x) for x in tensor.op.inputs])
+
+    for fn in self._functions():
+      if any([is_tensor_or_parent_ref(t) for t in fn.function.captured_inputs]):
+        return True
+
+    return any(
+        [input_dataset._has_captured_ref() for input_dataset in self._inputs()])  # pylint: disable=protected-access
+
+  def _functions(self):
+    """Returns a list of functions associated with this dataset.
+
+    Returns:
+      A list of `StructuredFunctionWrapper` objects.
+    """
+    return []
 
   def options(self):
     """Returns the options for this dataset and its inputs.
@@ -125,7 +155,16 @@ class DatasetV2(object):
             dataset, t_options.max_intra_op_parallelism)
     static_optimizations = options._static_optimizations()  # pylint: disable=protected-access
     if static_optimizations:
-      dataset = _OptimizeDataset(dataset, static_optimizations)
+      if self._has_captured_ref():
+        warnings.warn(
+            "tf.data static optimizations are not compatible with tf.Variable. "
+            "The following optimizations will be disabled: %s. To enable "
+            "optimizations, use resource variables instead by calling "
+            "`tf.enable_resource_variables()` at the start of the program." %
+            ", ".join(static_optimizations))
+      else:
+        dataset = _OptimizeDataset(dataset, static_optimizations)
+
     if options.experimental_autotune is not False:
       dataset = _ModelDataset(dataset)
     if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
@@ -1550,6 +1589,9 @@ class DatasetV1Adapter(DatasetV1):
   def _as_variant_tensor(self):
     return self._dataset._as_variant_tensor()  # pylint: disable=protected-access
 
+  def _has_captured_ref(self):
+    return self._dataset._has_captured_ref()  # pylint: disable=protected-access
+
   def _inputs(self):
     return self._dataset._inputs()  # pylint: disable=protected-access
 
@@ -2756,6 +2798,9 @@ class MapDataset(UnaryDataset):
         use_inter_op_parallelism=self._use_inter_op_parallelism,
         **flat_structure(structure=self._map_func.output_structure))
 
+  def _functions(self):
+    return [self._map_func]
+
   @property
   def output_classes(self):
     return self._map_func.output_classes
@@ -2812,6 +2857,9 @@ class FlatMapDataset(UnaryDataset):
     if not isinstance(self._map_func.output_structure, DatasetStructure):
       raise TypeError("`map_func` must return a `Dataset` object.")
     self._output_structure = self._map_func.output_structure._element_structure  # pylint: disable=protected-access
+
+  def _functions(self):
+    return [self._map_func]
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.flat_map_dataset(
@@ -2906,13 +2954,16 @@ class FilterDataset(UnaryUnchangedStructureDataset):
         wrapped_func.output_types == dtypes.bool and
         wrapped_func.output_shapes.is_compatible_with(tensor_shape.scalar())):
       raise ValueError("`predicate` must return a scalar boolean tensor.")
-    self._predicate = wrapped_func.function
+    self._predicate = wrapped_func
+
+  def _functions(self):
+    return [self._predicate]
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.filter_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        other_arguments=self._predicate.captured_inputs,
-        predicate=self._predicate,
+        other_arguments=self._predicate.function.captured_inputs,
+        predicate=self._predicate.function,
         **flat_structure(self))
 
   def _transformation_name(self):

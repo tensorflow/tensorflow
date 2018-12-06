@@ -120,7 +120,7 @@ KernelMappingScheme::KernelMappingScheme(
     absl::Span<const int64> req_block_sizes, int64 num_threads_y,
     int64 num_threads_x, llvm::IRBuilder<>* b)
     : b_(b),
-      dims_in_elems_(dims_in_elems.begin(), dims_in_elems.end()),
+      dims_in_elems_(dims_in_elems),
       tile_sizes_{1, tile_size_y, tile_size_x},
       num_threads_x_(num_threads_x),
       num_threads_y_(num_threads_y) {

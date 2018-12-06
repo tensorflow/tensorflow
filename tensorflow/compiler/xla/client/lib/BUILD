@@ -110,7 +110,11 @@ cc_library(
     deps = [
         ":arithmetic",
         ":constants",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "@com_google_absl//absl/types:span",
@@ -123,6 +127,7 @@ xla_test(
     tags = ["enable_for_xla_interpreter"],
     deps = [
         ":matrix",
+        ":slicing",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -169,6 +174,38 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
+    ],
+)
+
+cc_library(
+    name = "slicing",
+    srcs = ["slicing.cc"],
+    hdrs = ["slicing.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
+    name = "slicing_test",
+    srcs = ["slicing_test.cc"],
+    tags = ["enable_for_xla_interpreter"],
+    deps = [
+        ":slicing",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 

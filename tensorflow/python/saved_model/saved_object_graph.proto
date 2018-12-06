@@ -18,21 +18,53 @@ package tensorflow;
 // NOTE: This protocol buffer format is experimental and subject to change.
 
 message SavedObjectGraph {
-  message SavedObject {
-    // Objects which this object depends on: named edges in the dependency
-    // graph.
-    repeated CheckpointableObjectGraph.CheckpointableObject.ObjectReference
-        children = 1;
-    // Removed when forking from CheckpointableObjectGraph.
-    reserved "attributes";
-    reserved 2;
-    // Slot variables owned by this object. This describes the three-way
-    // (optimizer, variable, slot variable) relationship; none of the three
-    // depend on the others directly.
-    repeated
-        CheckpointableObjectGraph.CheckpointableObject.SlotVariableReference
-            slot_variables = 3;
-  }
-
+  // List of objects in the SavedModel.
+  //
+  // The position of the object in this list indicates its id.
+  // Nodes[0] is considered the root node.
   repeated SavedObject nodes = 1;
+}
+
+message SavedObject {
+  // Objects which this object depends on: named edges in the dependency
+  // graph.
+  //
+  // Note: only valid if kind == "object".
+  repeated CheckpointableObjectGraph.CheckpointableObject.ObjectReference
+      children = 1;
+
+  // Removed when forking from CheckpointableObjectGraph.
+  reserved "attributes";
+  reserved 2;
+
+  // Slot variables owned by this object. This describes the three-way
+  // (optimizer, variable, slot variable) relationship; none of the three
+  // depend on the others directly.
+  //
+  // Note: only valid if kind == "object".
+  repeated CheckpointableObjectGraph.CheckpointableObject.SlotVariableReference
+      slot_variables = 3;
+
+  oneof kind {
+    SavedUserObject user_object = 4;
+    SavedAsset asset = 5;
+  }
+}
+
+// A SavedUserObject is an object (in the object-oriented language of the
+// TensorFlow program) of some user- or framework-defined class other than
+// those handled specifically by the other kinds of SavedObjects.
+//
+// This object cannot be evaluated as a tensor, and therefore cannot be bound
+// to an input of a function.
+message SavedUserObject {}
+
+// A SavedAsset represents a file in a SavedModel.
+//
+// When bound to a function this object evaluates to a Variable from which the
+// absolute filename can be read. Users should not expect the filename to be
+// maintained.
+message SavedAsset {
+  // Filename relative to the assets directory of the SavedModel.
+  string relative_filename = 1;
 }
