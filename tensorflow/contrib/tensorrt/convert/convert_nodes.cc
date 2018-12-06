@@ -120,11 +120,13 @@ inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
   return trt_dims;
 }
 
-inline nvinfer1::Dims TensorShapeArrayToTrtDims(const std::vector<int>& shape,
-                                                bool ignore_first_dim = false) {
+Status TensorShapeArrayToTrtDims(const std::vector<int>& shape,
+                                 nvinfer1::Dims* out,
+                                 bool ignore_first_dim = false) {
   PartialTensorShape tensor_shape;
-  TensorShapeUtils::MakeShape(shape, &tensor_shape);
-  return TensorShapeToTrtDims(tensor_shape, ignore_first_dim);
+  TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(shape, &tensor_shape));
+  *out = TensorShapeToTrtDims(tensor_shape, ignore_first_dim);
+  return tensorflow::Status::OK();
 }
 
 void GetOutputProperties(const grappler::GraphProperties& graph_properties,
@@ -1937,8 +1939,9 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
   // ExpandDims: Insert new dim of size 1.
   input_dims.insert(input_dims.begin() + axis, 1);
   // Reshape tensor.
-  nvinfer1::Dims new_dims =
-      TensorShapeArrayToTrtDims(input_dims, /*ignore_first_dim=*/true);
+  nvinfer1::Dims new_dims;
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims,
+                                               /*ignore_first_dim=*/true));
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, &output_tensor));
@@ -2002,8 +2005,9 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
   input_dims.erase(std::remove(input_dims.begin(), input_dims.end(), 0),
                    input_dims.end());
   // Reshape tensor.
-  nvinfer1::Dims new_dims =
-      TensorShapeArrayToTrtDims(input_dims, /*ignore_first_dim=*/true);
+  nvinfer1::Dims new_dims;
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims,
+                                               /*ignore_first_dim=*/true));
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, &output_tensor));
