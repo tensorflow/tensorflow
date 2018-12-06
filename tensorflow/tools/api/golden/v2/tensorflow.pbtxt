@@ -217,10 +217,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "metrics"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "name_scope"
     mtype: "<type \'type\'>"
   }

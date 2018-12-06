@@ -33,7 +33,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SensitivityAtSpecificity"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SparseCategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SpecificityAtSensitivity"
     mtype: "<type \'type\'>"
   }
   member {

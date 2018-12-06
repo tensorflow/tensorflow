@@ -1,7 +1,7 @@
-path: "tensorflow.metrics.FalseNegatives"
+path: "tensorflow.keras.metrics.SensitivityAtSpecificity"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.metrics.FalseNegatives\'>"
-  is_instance: "<class \'tensorflow.python.keras.metrics._ConfusionMatrixConditionCount\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.SensitivityAtSpecificity\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.SensitivitySpecificityBase\'>"
   is_instance: "<class \'tensorflow.python.keras.metrics.Metric\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
@@ -84,7 +84,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'thresholds\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'specificity\', \'num_thresholds\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'200\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"
