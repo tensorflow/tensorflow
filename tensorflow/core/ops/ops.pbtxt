@@ -10504,6 +10504,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ExperimentalMapDataset"
@@ -10545,6 +10552,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -10684,6 +10698,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {
@@ -10918,6 +10939,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {
@@ -15854,6 +15882,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "MapDefun"
@@ -19899,6 +19934,13 @@ op {
   }
   attr {
     name: "sloppy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "preserve_cardinality"
     type: "bool"
     default_value {
       b: false
