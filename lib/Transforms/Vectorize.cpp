@@ -622,6 +622,10 @@ static std::vector<MLFunctionMatcher> defaultPatterns() {
       For(isVectorizableLoopPtrFactory(3))};
 }
 
+/// Creates a vectorization pattern from the command line arguments.
+/// Up to 3-D patterns are supported.
+/// If the command line argument requests a pattern of higher order, returns an
+/// empty pattern list which will conservatively result in no vectorization.
 static std::vector<MLFunctionMatcher> makePatterns() {
   using matcher::For;
   if (clFastestVaryingPattern.empty()) {
@@ -639,9 +643,8 @@ static std::vector<MLFunctionMatcher> makePatterns() {
         For(isVectorizableLoopPtrFactory(clFastestVaryingPattern[1]),
             For(isVectorizableLoopPtrFactory(clFastestVaryingPattern[2]))))};
   default:
-    assert(false && "Only up to 3-D fastest varying pattern supported atm");
+    return std::vector<MLFunctionMatcher>();
   }
-  return std::vector<MLFunctionMatcher>();
 }
 
 namespace {
@@ -674,7 +677,8 @@ struct VectorizationStrategy {
 static void vectorizeLoopIfProfitable(ForStmt *loop, unsigned depthInPattern,
                                       unsigned patternDepth,
                                       VectorizationStrategy *strategy) {
-  assert(patternDepth > depthInPattern);
+  assert(patternDepth > depthInPattern &&
+         "patternDepth is greater than depthInPattern");
   if (patternDepth - depthInPattern > strategy->vectorSizes.size()) {
     // Don't vectorize this loop
     return;
@@ -751,7 +755,8 @@ struct VectorizationState {
   // belong to use-def chains starting from loads (e.g storing a constant), we
   // need to handle them in a post-pass.
   DenseSet<OperationStmt *> terminators;
-  // Checks the type of `stmt` (StoreOp atm) and adds it to the terminators set.
+  // Checks that the type of `stmt` is StoreOp and adds it to the terminators
+  // set.
   void registerTerminator(OperationStmt *stmt);
 
 private:
@@ -766,10 +771,10 @@ void VectorizationState::registerReplacement(OperationStmt *key,
   LLVM_DEBUG(key->print(dbgs()));
   LLVM_DEBUG(dbgs() << "  into  ");
   LLVM_DEBUG(value->print(dbgs()));
-  assert(key->getNumResults() == 1);
-  assert(value->getNumResults() == 1);
-  assert(vectorizedSet.count(value) == 0);
-  assert(vectorizationMap.count(key) == 0);
+  assert(key->getNumResults() == 1 && "already registered");
+  assert(value->getNumResults() == 1 && "already registered");
+  assert(vectorizedSet.count(value) == 0 && "already registered");
+  assert(vectorizationMap.count(key) == 0 && "already registered");
   toErase.push_back(key);
   vectorizedSet.insert(value);
   vectorizationMap.insert(std::make_pair(key, value));
@@ -781,9 +786,9 @@ void VectorizationState::registerReplacement(OperationStmt *key,
 }
 
 void VectorizationState::registerTerminator(OperationStmt *stmt) {
+  assert(stmt->isa<StoreOp>() && "terminator must be a StoreOp");
   assert(terminators.count(stmt) == 0 &&
          "terminator was already inserted previously");
-  assert(stmt->isa<StoreOp>() && "NYI: only StoreOp terminators supported");
   terminators.insert(stmt);
 }
 
@@ -798,7 +803,8 @@ void VectorizationState::finishVectorizationPattern() {
 
 void VectorizationState::registerReplacement(const SSAValue *key,
                                              SSAValue *value) {
-  assert(replacementMap.count(cast<MLValue>(key)) == 0);
+  assert(replacementMap.count(cast<MLValue>(key)) == 0 &&
+         "replacement already registered");
   replacementMap.insert(
       std::make_pair(cast<MLValue>(key), cast<MLValue>(value)));
 }
