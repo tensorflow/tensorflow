@@ -52,6 +52,7 @@ namespace detail {
 template <typename KeyT, typename ValueT> struct DenseMapPair;
 }
 template <typename T> struct DenseMapInfo;
+template <typename ValueT, typename ValueInfoT> class DenseSet;
 template <typename KeyT, typename ValueT, typename KeyInfoT, typename BucketT>
 class DenseMap;
 
@@ -72,6 +73,8 @@ using llvm::isa;
 // Containers.
 using llvm::ArrayRef;
 using llvm::DenseMap;
+using llvm::DenseMapInfo;
+using llvm::DenseSet;
 using llvm::MutableArrayRef;
 using llvm::None;
 using llvm::Optional;

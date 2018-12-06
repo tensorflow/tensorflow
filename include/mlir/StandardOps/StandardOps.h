@@ -859,12 +859,19 @@ private:
 ///      vector read exceeds the MemRef bounds. If the value is not specified,
 ///      the access is statically guaranteed to be within bounds;
 ///   2. an attribute of type AffineMap to specify a slice of the original
-///      MemRef access and its transposition into the super-vector shape. The
-///      permutation_map is an unbounded AffineMap that must represent a
-///      permutation from the MemRef dim space projected onto the vector dim
-///      space.
-//
-/// Example:
+///      MemRef access and its transposition into the super-vector shape.
+///      The permutation_map is an unbounded AffineMap that must
+///      represent a permutation from the MemRef dim space projected onto the
+///      vector dim space.
+///      This permutation_map has as many output dimensions as the vector rank.
+///      However, it is not necessarily full rank on the target space to signify
+///      that broadcast operations will be needed along certain vector
+///      dimensions.
+///      In the limit, one may load a 0-D slice of a memref (i.e. a single
+///      value) into a vector, which corresponds to broadcasting that value in
+///      the whole vector (i.e. a non-constant splat).
+///
+/// Example with full rank permutation_map:
 /// ```mlir
 ///   %A = alloc(%size1, %size2, %size3, %size4) : memref<?x?x?x?xf32>
 ///   ...
@@ -879,6 +886,17 @@ private:
 ///        (memref<?x?x?x?xf32>, index, index, index, index, f32) ->
 ///           vector<16x32x64xf32>
 /// ```
+///
+/// Example with partial rank permutation_map:
+/// ```mlir
+///   %c0 = constant 0 : index
+///   %A = alloc(%size1, %size2, %size3, %size4) : memref<?x?x?x?xf32>
+///   ...
+///   // let %i, %j be ssa-values of type index
+///   %v0 = vector_transfer_read %src, %i, %c0, %c0, %c0
+///          {permutation_map: (d0, d1, d2, d3) -> (0, d1, 0)} :
+///        (memref<?x?x?x?xf32>, index, index, index, index) ->
+///          vector<16x32x64xf32>
 class VectorTransferReadOp
     : public Op<VectorTransferReadOp, OpTrait::VariadicOperands,
                 OpTrait::OneResult> {
@@ -898,6 +916,7 @@ public:
   const SSAValue *getMemRef() const {
     return getOperand(Offsets::MemRefOffset);
   }
+  VectorType getVectorType() const { return getResultType(); }
   MemRefType getMemRefType() const {
     return getMemRef()->getType().cast<MemRefType>();
   }

@@ -1374,15 +1374,23 @@ static bool verifyPermutationMap(AffineMap permutationMap,
   SmallVector<bool, 8> seen(permutationMap.getNumInputs(), false);
   for (auto expr : permutationMap.getResults()) {
     auto dim = expr.dyn_cast<AffineDimExpr>();
+    auto zero = expr.dyn_cast<AffineConstantExpr>();
+    if (zero) {
+      if (zero.getValue() != 0) {
+        return emitOpError(
+            "requires a projected permutation_map (at most one dim or the zero "
+            "constant can appear in each result)");
+      }
+      continue;
+    }
     if (!dim) {
-      return emitOpError(
-          "requires a permutation_map that is an actual permutation");
+      return emitOpError("requires a projected permutation_map (at most one "
+                         "dim or the zero constant can appear in each result)");
     }
     if (seen[dim.getPosition()]) {
       return emitOpError(
-          "requires a permutation_map that is a full column-rank "
-          "permutation (i.e. a permutation composed with an "
-          "orthogonal projection)");
+          "requires a permutation_map that is a permutation (found one dim "
+          "used more than once)");
     }
     seen[dim.getPosition()] = true;
   }

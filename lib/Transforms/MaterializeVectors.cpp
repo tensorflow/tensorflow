@@ -82,6 +82,73 @@
 /// operations and builds the slice scoped the innermost loop enclosing the
 /// current vector_transfer_write. These assumptions and the implementation
 /// details are subject to revision in the future.
+///
+/// Example
+/// ========
+/// In the following, the single vector_transfer_write op operates on a
+/// vector<4x4x4xf32>. Let's assume the HW supports vector<4x4xf32>.
+/// Materialization is achieved by instantiating each occurrence of the leading
+/// dimension of vector<4x4x4xf32> into a vector<4x4xf32>.
+/// The program transformation that implements this instantiation is a
+/// multi-loop unroll-and-jam (it can be partial or full depending on the ratio
+/// of super-vector shape to HW-vector shape).
+///
+/// As a simple case, the following:
+/// ```mlir
+///    mlfunc @materialize(%M : index, %N : index, %O : index, %P : index) {
+///      %A = alloc (%M, %N, %O, %P) : memref<?x?x?x?xf32, 0>
+///      %f1 = constant splat<vector<4x4x4xf32>, 1.000000e+00> :
+///      vector<4x4x4xf32> for %i0 = 0 to %M step 4 {
+///        for %i1 = 0 to %N step 4 {
+///          for %i2 = 0 to %O {
+///            for %i3 = 0 to %P step 4 {
+///              vector_transfer_write %f1, %A, %i0, %i1, %i2, %i3
+///                {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d0)} :
+///                 vector<4x4x4xf32>, memref<?x?x?x?xf32, 0>,
+///                 index, index, index, index
+///      }}}}
+///      return
+///    }
+/// ```
+///
+/// is instantiated by unroll-and-jam (just unroll in this case) into:
+///
+/// ```mlir
+///    mlfunc @materialize(%M : index, %N : index, %O : index, %P : index) {
+///      %A = alloc (%M, %N, %O, %P) : memref<?x?x?x?xf32, 0>
+///      %f1 = constant splat<vector<4x4xf32>, 1.000000e+00> : vector<4x4x4xf32>
+///       for %i0 = 0 to %arg0 step 4 {
+///         for %i1 = 0 to %arg1 step 4 {
+///           for %i2 = 0 to %arg2 {
+///             for %i3 = 0 to %arg3 step 4 {
+///               %1 = affine_apply (d0, d1, d2, d3) -> (d0, d1, d2, d3)
+///                    (%i0, %i1, %i2, %i3)
+///               vector_transfer_write f1, %0, %1#0, %1#1, %1#2, %1#3
+///                 {permutation_map: (d0, d1, d2, d3) -> (d1, d0)} :
+///                 vector<4x4xf32>, memref<?x?x?x?xf32>,
+///                 index, index, index, index
+///               %2 = affine_apply (d0, d1, d2, d3) -> (d0, d1, d2, d3 + 1)
+///                    (%i0, %i1, %i2, %i3)
+///               vector_transfer_write {{.*}}, %0, %2#0, %2#1, %2#2, %2#3
+///                 {permutation_map: (d0, d1, d2, d3) -> (d1, d0)} :
+///                 vector<4x4xf32>, memref<?x?x?x?xf32>,
+///                 index, index, index, index
+///               %3 = affine_apply (d0, d1, d2, d3) -> (d0, d1, d2, d3 + 2)
+///                    (%i0, %i1, %i2, %i3)
+///               vector_transfer_write {{.*}}, %0, %3#0, %3#1, %3#2, %3#3
+///                 {permutation_map: (d0, d1, d2, d3) -> (d1, d0)} :
+///                 vector<4x4xf32>, memref<?x?x?x?xf32>,
+///                 index, index, index, index
+///               %4 = affine_apply (d0, d1, d2, d3) -> (d0, d1, d2, d3 + 3)
+///                    (%i0, %i1, %i2, %i3)
+///               vector_transfer_write {{.*}}, %0, %4#0, %4#1, %4#2, %4#3
+///                 {permutation_map: (d0, d1, d2, d3) -> (d1, d0)} :
+///                 vector<4x4xf32>, memref<?x?x?x?xf32>,
+///                 index, index, index, index
+///      }}}}
+///      return
+///    }
+/// ```
 
 using llvm::dbgs;
 using llvm::DenseSet;
@@ -333,6 +400,58 @@ instantiate(MLFuncBuilder *b, OperationStmt *opStmt, VectorType superVectorType,
       materializeAttributes(opStmt, superVectorType, hwVectorType));
 }
 
+/// Computes the permutationMap required for a VectorTransferOp from the memref
+/// to the `hwVectorType`.
+/// This is achieved by returning the projection of the permutationMap along the
+/// dimensions of the super-vector type that remain in the hwVectorType.
+/// In particular, if a dimension is fully instantiated (i.e. unrolled) then it
+/// is projected out in the final result.
+template <typename VectorTransferOpTy>
+static AffineMap projectedPermutationMap(VectorTransferOpTy *transfer,
+                                         VectorType hwVectorType) {
+  static_assert(
+      std::is_same<VectorTransferOpTy, VectorTransferReadOp>::value ||
+          std::is_same<VectorTransferOpTy, VectorTransferWriteOp>::value,
+      "Must be called on a VectorTransferOp");
+  auto superVectorType = transfer->getVectorType();
+  auto optionalRatio = shapeRatio(superVectorType, hwVectorType);
+  assert(optionalRatio &&
+         (optionalRatio->size() == superVectorType.getShape().size()) &&
+         "Shape and ratio not of the same size");
+  unsigned dim = 0;
+  SmallVector<AffineExpr, 4> keep;
+  MLIRContext *context = transfer->getOperation()->getContext();
+  functional::zipApply(
+      [&dim, &keep, context](int shape, int ratio) {
+        assert(shape >= ratio && "shape dim must be greater than ratio dim");
+        if (shape != ratio) {
+          // HW vector is not full instantiated along this dim, keep it.
+          keep.push_back(getAffineDimExpr(dim, context));
+        }
+        ++dim;
+      },
+      superVectorType.getShape(), *optionalRatio);
+  auto projectionMap = AffineMap::get(optionalRatio->size(), 0, keep, {});
+  (void)projectionMap;
+  // No seemingly simple way to compose 2 AffineMap except going through SSA
+  // values... Punting for now and will resolve in the next CL.
+  //
+  // return projectionMap.compose(transfer->getPermutationMap());
+
+  // Still, we may need to drop a few dims to pass verification, so hack this in
+  // for now.
+  auto map = transfer->getPermutationMap();
+  auto exprs = map.getResults();
+  assert(exprs.size() >= keep.size());
+  unsigned diff = exprs.size() - keep.size();
+  SmallVector<AffineExpr, 4> projectedExprs(exprs.begin() + diff, exprs.end());
+  auto res = AffineMap::get(map.getNumInputs(), 0, projectedExprs, {});
+  LLVM_DEBUG(projectionMap.print(dbgs() << "\nProjectionMap: "));
+  LLVM_DEBUG(map.print(dbgs() << "\nOriginal: "));
+  LLVM_DEBUG(res.print(dbgs() << "\nTemporarily hacked projection: "));
+  return res;
+}
+
 /// Creates an instantiated version of `read` for the instance of
 /// `hwVectorInstance` when lowering from a super-vector type to
 /// `hwVectorType`. `hwVectorInstance` represents one particular instance of
@@ -349,8 +468,7 @@ instantiate(MLFuncBuilder *b, VectorTransferReadOp *read,
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
   auto cloned = b->create<VectorTransferReadOp>(
       read->getLoc(), hwVectorType, read->getMemRef(), affineIndices,
-      makePermutationMap(read->getMemRefType(), hwVectorType),
-      read->getPaddingValue());
+      projectedPermutationMap(read, hwVectorType), read->getPaddingValue());
   return cast<OperationStmt>(cloned->getOperation());
 }
 
@@ -371,7 +489,7 @@ instantiate(MLFuncBuilder *b, VectorTransferWriteOp *write,
   auto cloned = b->create<VectorTransferWriteOp>(
       write->getLoc(), substitute(write->getVector(), *substitutionsMap),
       write->getMemRef(), affineIndices,
-      makePermutationMap(write->getMemRefType(), hwVectorType));
+      projectedPermutationMap(write, hwVectorType));
   return cast<OperationStmt>(cloned->getOperation());
 }
 

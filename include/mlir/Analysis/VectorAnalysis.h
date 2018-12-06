@@ -20,9 +20,12 @@
 
 #include "mlir/Support/LLVM.h"
 
+#include "llvm/ADT/DenseMap.h"
+
 namespace mlir {
 
 class AffineMap;
+class ForStmt;
 class MemRefType;
 class OperationStmt;
 class VectorType;
@@ -45,15 +48,74 @@ shapeRatio(ArrayRef<int> superShape, ArrayRef<int> subShape);
 llvm::Optional<llvm::SmallVector<unsigned, 4>>
 shapeRatio(VectorType superVectorType, VectorType subVectorType);
 
-/// Creates a permutation map to be used as an attribute in VectorTransfer ops.
-/// Currently only returns the minor vectorType.rank identity submatrix.
+/// Constructs a permutation map of invariant memref indices to vector
+/// dimension.
 ///
-/// For example, assume memrefType is of rank 5 and vectorType is of rank 3,
-/// returns the affine map:
-///     (d0, d1, d2, d3, d4) -> (d2, d3, d4)
+/// If no index is found to be invariant, 0 is added to the permutation_map and
+/// corresponds to a vector broadcast along that dimension.
 ///
-/// TODO(ntv): support real permutations.
-AffineMap makePermutationMap(MemRefType memrefType, VectorType vectorType);
+/// The implementation uses the knowledge of the mapping of loops to
+/// vector dimension. `loopToVectorDim` carries this information as a map with:
+///   - keys representing "vectorized enclosing loops";
+///   - values representing the corresponding vector dimension.
+/// Note that loopToVectorDim is a whole function map from which only enclosing
+/// loop information is extracted.
+///
+/// Prerequisites: `opStmt` is a vectorizable load or store operation (i.e. at
+/// most one invariant index along each ForStmt of `loopToVectorDim`).
+///
+/// Example 1:
+/// The following MLIR snippet:
+///
+/// ```mlir
+///    for %i3 = 0 to %0 {
+///      for %i4 = 0 to %1 {
+///        for %i5 = 0 to %2 {
+///          %a5 = load %arg0[%i4, %i5, %i3] : memref<?x?x?xf32>
+///    }}}
+/// ```
+///
+/// may vectorize with {permutation_map: (d0, d1, d2) -> (d2, d1)} into:
+///
+/// ```mlir
+///    for %i3 = 0 to %0 step 32 {
+///      for %i4 = 0 to %1 {
+///        for %i5 = 0 to %2 step 256 {
+///          %4 = vector_transfer_read %arg0, %i4, %i5, %i3
+///               {permutation_map: (d0, d1, d2) -> (d2, d1)} :
+///               (memref<?x?x?xf32>, index, index) -> vector<32x256xf32>
+///    }}}
+/// ```
+///
+/// Meaning that vector_transfer_read will be responsible for reading the slice:
+/// `%arg0[%i4, %i5:%15+256, %i3:%i3+32]` into vector<32x256xf32>.
+///
+/// Example 2:
+/// The following MLIR snippet:
+///
+/// ```mlir
+///    %cst0 = constant 0 : index
+///    for %i0 = 0 to %0 {
+///      %a0 = load %arg0[%cst0, %cst0] : memref<?x?xf32>
+///    }
+/// ```
+///
+/// may vectorize with {permutation_map: (d0) -> (0)} into:
+///
+/// ```mlir
+///    for %i0 = 0 to %0 step 128 {
+///      %3 = vector_transfer_read %arg0, %c0_0, %c0_0
+///           {permutation_map: (d0, d1) -> (0)} :
+///           (memref<?x?xf32>, index, index) -> vector<128xf32>
+///    }
+/// ````
+///
+/// Meaning that vector_transfer_read will be responsible of reading the slice
+/// `%arg0[%c0, %c0]` into vector<128xf32> which needs a 1-D vector broadcast.
+///
+AffineMap
+makePermutationMap(OperationStmt *opStmt,
+                   const llvm::DenseMap<ForStmt *, unsigned> &loopToVectorDim);
 
 namespace matcher {
 

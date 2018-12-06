@@ -16,11 +16,16 @@
 // =============================================================================
 
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/Analysis/LoopAnalysis.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
+
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SetVector.h"
 
 ///
 /// Implements Analysis functions specific to vectors which support
@@ -28,6 +33,8 @@
 ///
 
 using namespace mlir;
+
+using llvm::SetVector;
 
 Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(ArrayRef<int> superShape,
                                                     ArrayRef<int> subShape) {
@@ -76,18 +83,98 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
   return shapeRatio(superVectorType.getShape(), subVectorType.getShape());
 }
 
-AffineMap mlir::makePermutationMap(MemRefType memrefType,
-                                   VectorType vectorType) {
-  unsigned memRefRank = memrefType.getRank();
-  unsigned vectorRank = vectorType.getRank();
-  assert(memRefRank >= vectorRank && "Broadcast not supported");
-  unsigned offset = memRefRank - vectorRank;
-  SmallVector<AffineExpr, 4> perm;
-  perm.reserve(memRefRank);
-  for (unsigned i = 0; i < vectorRank; ++i) {
-    perm.push_back(getAffineDimExpr(offset + i, memrefType.getContext()));
+/// Constructs a permutation map from memref indices to vector dimension.
+///
+/// The implementation uses the knowledge of the mapping of enclosing loop to
+/// vector dimension. `enclosingLoopToVectorDim` carries this information as a
+/// map with:
+///   - keys representing "vectorized enclosing loops";
+///   - values representing the corresponding vector dimension.
+/// The algorithm traverses "vectorized enclosing loops" and extracts the
+/// at-most-one MemRef index that is invariant along said loop. This index is
+/// guaranteed to be at most one by construction: otherwise the MemRef is not
+/// vectorizable.
+/// If this invariant index is found, it is added to the permutation_map at the
+/// proper vector dimension.
+/// If no index is found to be invariant, 0 is added to the permutation_map and
+/// corresponds to a vector broadcast along that dimension.
+///
+/// Examples can be found in the documentation of `makePermutationMap`, in the
+/// header file.
+static AffineMap makePermutationMap(
+    MLIRContext *context,
+    llvm::iterator_range<Operation::operand_iterator> indices,
+    const DenseMap<ForStmt *, unsigned> &enclosingLoopToVectorDim) {
+  using functional::makePtrDynCaster;
+  using functional::map;
+  auto unwrappedIndices = map(makePtrDynCaster<SSAValue, MLValue>(), indices);
+  SmallVector<AffineExpr, 4> perm(enclosingLoopToVectorDim.size(),
+                                  getAffineConstantExpr(0, context));
+  for (auto kvp : enclosingLoopToVectorDim) {
+    assert(kvp.second < perm.size());
+    auto invariants = getInvariantAccesses(*kvp.first, unwrappedIndices);
+    unsigned numIndices = unwrappedIndices.size();
+    unsigned countInvariantIndices = 0;
+    for (unsigned dim = 0; dim < numIndices; ++dim) {
+      if (!invariants.count(unwrappedIndices[dim])) {
+        assert(perm[kvp.second] == getAffineConstantExpr(0, context) &&
+               "permutationMap already has an entry along dim");
+        perm[kvp.second] = getAffineDimExpr(dim, context);
+      } else {
+        ++countInvariantIndices;
+      }
+    }
+    assert((countInvariantIndices == numIndices ||
+            countInvariantIndices == numIndices - 1) &&
+           "Vectorization prerequisite violated: at most 1 index may be "
+           "invariant wrt a vectorized loop");
   }
-  return AffineMap::get(memRefRank, 0, perm, {});
+  return AffineMap::get(unwrappedIndices.size(), 0, perm, {});
+}
+
+/// Implementation detail that walks up the parents and records the ones with
+/// the specified type.
+/// TODO(ntv): could also be implemented as a collect parents followed by a
+/// filter and made available outside this file.
+template <typename T> static SetVector<T *> getParentsOfType(Statement *stmt) {
+  SetVector<T *> res;
+  auto *current = stmt;
+  while (auto *parent = current->getParentStmt()) {
+    auto *typedParent = dyn_cast<T>(parent);
+    if (typedParent) {
+      assert(res.count(typedParent) == 0 && "Already inserted");
+      res.insert(typedParent);
+    }
+    current = parent;
+  }
+  return res;
+}
+
+/// Returns the enclosing ForStmt, from closest to farthest.
+static SetVector<ForStmt *> getEnclosingForStmts(Statement *stmt) {
+  return getParentsOfType<ForStmt>(stmt);
+}
+
+AffineMap
+mlir::makePermutationMap(OperationStmt *opStmt,
+                         const DenseMap<ForStmt *, unsigned> &loopToVectorDim) {
+  DenseMap<ForStmt *, unsigned> enclosingLoopToVectorDim;
+  auto enclosingLoops = getEnclosingForStmts(opStmt);
+  for (auto *forStmt : enclosingLoops) {
+    auto it = loopToVectorDim.find(forStmt);
+    if (it != loopToVectorDim.end()) {
+      enclosingLoopToVectorDim.insert(*it);
+    }
+  }
+
+  if (auto load = opStmt->dyn_cast<LoadOp>()) {
+    return ::makePermutationMap(opStmt->getContext(), load->getIndices(),
+                                enclosingLoopToVectorDim);
+  }
+
+  auto store = opStmt->cast<StoreOp>();
+  return ::makePermutationMap(opStmt->getContext(), store->getIndices(),
+                              enclosingLoopToVectorDim);
 }
 
 bool mlir::matcher::operatesOnStrictSuperVectors(const OperationStmt &opStmt,

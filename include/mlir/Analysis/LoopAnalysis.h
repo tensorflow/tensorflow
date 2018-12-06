@@ -22,12 +22,15 @@
 #ifndef MLIR_ANALYSIS_LOOP_ANALYSIS_H
 #define MLIR_ANALYSIS_LOOP_ANALYSIS_H
 
+#include "mlir/Support/LLVM.h"
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 
 namespace mlir {
 
 class AffineExpr;
+class AffineMap;
 class ForStmt;
 class MemRefType;
 class MLValue;
@@ -48,12 +51,29 @@ llvm::Optional<uint64_t> getConstantTripCount(const ForStmt &forStmt);
 /// this method is thus able to determine non-trivial divisors.
 uint64_t getLargestDivisorOfTripCount(const ForStmt &forStmt);
 
-/// Given a MemRef accessed by `indices` and a dimension `dim`, determines
-/// whether indices[dim] is independent of the value `input`.
-// For now we assume no layout map or identity layout map in the MemRef.
-// TODO(ntv): support more than identity layout map.
-bool isAccessInvariant(const MLValue &input, MemRefType memRefType,
-                       llvm::ArrayRef<const MLValue *> indices, unsigned dim);
+/// Given an induction variable `iv` of type ForStmt and an `index` of type
+/// IndexType, returns `true` if `index` is independent of `iv` and false
+/// otherwise.
+/// The determination supports composition with at most one AffineApplyOp.
+/// The at most one AffineApplyOp comes from the fact that composition of
+/// AffineApplyOp need to be canonicalized by construction to avoid writing code
+/// that composes arbitrary numbers of AffineApplyOps everywhere. To achieve
+/// this, at the very least, the compose-affine-apply pass must have been run.
+///
+/// Prerequisites:
+///   1. `iv` and `index` of the proper type;
+///   2. at most one reachable AffineApplyOp from index;
+bool isAccessInvariant(const MLValue &iv, const MLValue &index);
+
+/// Given an induction variable `iv` of type ForStmt and `indices` of type
+/// IndexType, returns the set of `indices` that are independent of `iv`.
+///
+/// Prerequisites (inherited from `isAccessInvariant` above):
+///   1. `iv` and `indices` of the proper type;
+///   2. at most one reachable AffineApplyOp from index;
+llvm::DenseSet<const MLValue *, llvm::DenseMapInfo<const MLValue *>>
+getInvariantAccesses(const MLValue &iv,
+                     llvm::ArrayRef<const MLValue *> indices);
 
 /// Checks whether the loop is structurally vectorizable; i.e.:
 /// 1. the loop has proper dependence semantics (parallel, reduction, etc);

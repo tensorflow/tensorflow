@@ -1,7 +1,7 @@
 // RUN: mlir-opt %s -vectorize -virtual-vector-size 32 -virtual-vector-size 256 --test-fastest-varying=0 --test-fastest-varying=1 | FileCheck %s
 
 // Permutation maps used in vectorization.
-// CHECK: #[[map_proj_d0d1d2_d1d2:map[0-9]+]] = (d0, d1, d2) -> (d1, d2)
+// CHECK-DAG: #[[map_proj_d0d1d2_d2d1:map[0-9]+]] = (d0, d1, d2) -> (d2, d1)
 
 mlfunc @vec2d(%A : memref<?x?x?xf32>) {
    %M = dim %A, 0 : memref<?x?x?xf32>
@@ -19,14 +19,10 @@ mlfunc @vec2d(%A : memref<?x?x?xf32>) {
        }
      }
    }
-   // CHECK: for {{.*}} = 0 to %0 step 32
-   // CHECK:   for  {{.*}} = 0 to %1 {
-   // CHECK:     for {{.*}} = 0 to %2 step 256
-   // For the case: --test-fastest-varying=0 --test-fastest-varying=1:
-   // for %i3 = 0 to %0 step 32 {
-   //   for %i4 = 0 to %1 {
-   //     for %i5 = 0 to %2 step 256 {
-   //       %4 = "vector_transfer_read"(%arg0, %i4, %i5, %i3, %4) : (memref<?x?x?xf32>, index, index) -> vector<32x256xf32>
+   // CHECK: for %i3 = 0 to %0 step 32
+   // CHECK:   for %i4 = 0 to %1 {
+   // CHECK:     for %i5 = 0 to %2 step 256
+   // CHECK:       {{.*}} = vector_transfer_read %arg0, %i4, %i5, %i3 {permutation_map: #[[map_proj_d0d1d2_d2d1]]} : (memref<?x?x?xf32>, index, index, index) -> vector<32x256xf32>
    for %i3 = 0 to %M {
      for %i4 = 0 to %N {
        for %i5 = 0 to %P {
@@ -44,12 +40,12 @@ mlfunc @vec2d_imperfectly_nested(%A : memref<?x?x?xf32>) {
    // CHECK: for %i0 = 0 to %0 step 32 {
    // CHECK:   for %i1 = 0 to %1 step 256 {
    // CHECK:     for %i2 = 0 to %2 {
-   // CHECK:       %3 = vector_transfer_read %arg0, %i2, %i1, %i0 {permutation_map: #[[map_proj_d0d1d2_d1d2]]} : (memref<?x?x?xf32>, index, index, index) -> vector<32x256xf32>
+   // CHECK:       %3 = vector_transfer_read %arg0, %i2, %i1, %i0 {permutation_map: #[[map_proj_d0d1d2_d2d1]]} : (memref<?x?x?xf32>, index, index, index) -> vector<32x256xf32>
    // CHECK:   for %i3 = 0 to %1 {
    // CHECK:     for %i4 = 0 to %2 step 256 {
-   // CHECK:       %4 = vector_transfer_read %arg0, %i3, %i4, %i0 {permutation_map: #[[map_proj_d0d1d2_d1d2]]} : (memref<?x?x?xf32>, index, index, index) -> vector<32x256xf32>
+   // CHECK:       %4 = vector_transfer_read %arg0, %i3, %i4, %i0 {permutation_map: #[[map_proj_d0d1d2_d2d1]]} : (memref<?x?x?xf32>, index, index, index) -> vector<32x256xf32>
    // CHECK:     for %i5 = 0 to %2 step 256 {
-   // CHECK:       %5 = vector_transfer_read %arg0, %i3, %i5, %i0 {permutation_map: #[[map_proj_d0d1d2_d1d2]]} : (memref<?x?x?xf32>, index, index, index) -> vector<32x256xf32>
+   // CHECK:       %5 = vector_transfer_read %arg0, %i3, %i5, %i0 {permutation_map: #[[map_proj_d0d1d2_d2d1]]} : (memref<?x?x?xf32>, index, index, index) -> vector<32x256xf32>
    for %i0 = 0 to %0 {
      for %i1 = 0 to %1 {
        for %i2 = 0 to %2 {

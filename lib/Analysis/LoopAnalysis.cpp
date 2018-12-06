@@ -31,7 +31,10 @@
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/MathExtras.h"
+
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallString.h"
+#include <type_traits>
 
 using namespace mlir;
 
@@ -120,65 +123,91 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
   return tripCountExpr.getLargestKnownDivisor();
 }
 
-bool mlir::isAccessInvariant(const MLValue &input, MemRefType memRefType,
-                             ArrayRef<const MLValue *> indices, unsigned dim) {
-  assert(indices.size() == memRefType.getRank());
-  assert(dim < indices.size());
-  auto layoutMap = memRefType.getAffineMaps();
-  assert(memRefType.getAffineMaps().size() <= 1);
-  // TODO(ntv): remove dependence on Builder once we support non-identity
-  // layout map.
-  Builder b(memRefType.getContext());
-  assert(layoutMap.empty() ||
-         layoutMap[0] == b.getMultiDimIdentityMap(indices.size()));
-  (void)layoutMap;
-
+bool mlir::isAccessInvariant(const MLValue &iv, const MLValue &index) {
+  assert(isa<ForStmt>(iv) && "iv must be a ForStmt");
+  assert(index.getType().isa<IndexType>() && "index must be of IndexType");
   SmallVector<OperationStmt *, 4> affineApplyOps;
-  getReachableAffineApplyOps({const_cast<MLValue *>(indices[dim])},
-                             affineApplyOps);
+  getReachableAffineApplyOps({const_cast<MLValue *>(&index)}, affineApplyOps);
 
   if (affineApplyOps.empty()) {
     // Pointer equality test because of MLValue pointer semantics.
-    return indices[dim] != &input;
+    return &index != &iv;
   }
 
-  assert(affineApplyOps.size() == 1 &&
-         "CompositionAffineMapsPass must have "
-         "been run: there should be at most one AffineApplyOp");
+  assert(
+      affineApplyOps.size() == 1 &&
+      "CompositionAffineMapsPass must have been run: there should be at most "
+      "one AffineApplyOp");
+
   auto composeOp = affineApplyOps[0]->cast<AffineApplyOp>();
   // We need yet another level of indirection because the `dim` index of the
   // access may not correspond to the `dim` index of composeOp.
   unsigned idx = std::numeric_limits<unsigned>::max();
   unsigned numResults = composeOp->getNumResults();
   for (unsigned i = 0; i < numResults; ++i) {
-    if (indices[dim] == composeOp->getResult(i)) {
+    if (&index == composeOp->getResult(i)) {
       idx = i;
       break;
     }
   }
   assert(idx < std::numeric_limits<unsigned>::max());
   return !AffineValueMap(*composeOp)
-              .isFunctionOf(idx, &const_cast<MLValue &>(input));
+              .isFunctionOf(idx, &const_cast<MLValue &>(iv));
 }
 
-/// Determines whether a load or a store has a contiguous access along the
-/// value `input`. Contiguous is defined as either invariant or varying only
-/// along the fastest varying memory dimension.
-// TODO(ntv): allow more advanced notions of contiguity (non-fastest varying,
-// check strides, ...).
-template <typename LoadOrStoreOpPointer>
-static bool isContiguousAccess(const MLValue &input,
-                               LoadOrStoreOpPointer memoryOp,
+llvm::DenseSet<const MLValue *>
+mlir::getInvariantAccesses(const MLValue &iv,
+                           llvm::ArrayRef<const MLValue *> indices) {
+  llvm::DenseSet<const MLValue *> res;
+  for (unsigned idx = 0, n = indices.size(); idx < n; ++idx) {
+    auto *val = indices[idx];
+    if (isAccessInvariant(iv, *val)) {
+      res.insert(val);
+    }
+  }
+  return res;
+}
+
+/// Given:
+///   1. an induction variable `iv` of type ForStmt;
+///   2. a `memoryOp` of type const LoadOp& or const StoreOp&;
+///   3. the index of the `fastestVaryingDim` along which to check;
+/// determines whether `memoryOp`[`fastestVaryingDim`] is a contiguous access
+/// along `iv`.
+/// Contiguous is defined as either invariant or varying only along
+/// `fastestVaryingDim`.
+///
+/// Prerequisites:
+///   1. `iv` of the proper type;
+///   2. the MemRef accessed by `memoryOp` has no layout map or at most an
+///      identity layout map.
+///
+// TODO(ntv): check strides.
+template <typename LoadOrStoreOp>
+static bool isContiguousAccess(const MLValue &iv, const LoadOrStoreOp &memoryOp,
                                unsigned fastestVaryingDim) {
-  using namespace functional;
-  auto indices = map([](const SSAValue *val) { return dyn_cast<MLValue>(val); },
-                     memoryOp->getIndices());
-  auto memRefType = memoryOp->getMemRefType();
-  for (unsigned d = 0, numIndices = indices.size(); d < numIndices; ++d) {
-    if (fastestVaryingDim == (numIndices - 1) - d) {
+  static_assert(std::is_same<LoadOrStoreOp, LoadOp>::value ||
+                    std::is_same<LoadOrStoreOp, StoreOp>::value,
+                "Must be called on either const LoadOp & or const StoreOp &");
+  auto memRefType = memoryOp.getMemRefType();
+  auto layoutMap = memRefType.getAffineMaps();
+  (void)layoutMap;
+  Builder b(memoryOp.getOperation()->getContext());
+  (void)b;
+  assert(layoutMap.empty() ||
+         (layoutMap.size() == 1 &&
+          layoutMap[0] == b.getMultiDimIdentityMap(layoutMap[0].getNumDims())));
+  assert(fastestVaryingDim < memRefType.getRank());
+
+  auto indices = memoryOp.getIndices();
+  // TODO(clattner): should iterator_range have a size method?
+  auto numIndices = indices.end() - indices.begin();
+  unsigned d = 0;
+  for (auto index : indices) {
+    if (fastestVaryingDim == (numIndices - 1) - d++) {
       continue;
     }
-    if (!isAccessInvariant(input, memRefType, indices, d)) {
+    if (!isAccessInvariant(iv, cast<MLValue>(*index))) {
       return false;
     }
   }
@@ -247,8 +276,8 @@ bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
       [fastestVaryingDim](const ForStmt &loop, const OperationStmt &op) {
         auto load = op.dyn_cast<LoadOp>();
         auto store = op.dyn_cast<StoreOp>();
-        return load ? isContiguousAccess(loop, load, fastestVaryingDim)
-                    : isContiguousAccess(loop, store, fastestVaryingDim);
+        return load ? isContiguousAccess(loop, *load, fastestVaryingDim)
+                    : isContiguousAccess(loop, *store, fastestVaryingDim);
       });
   return isVectorizableLoopWithCond(loop, fun);
 }
