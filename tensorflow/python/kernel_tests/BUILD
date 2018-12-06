@@ -272,7 +272,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "ctc_loss_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["ctc_loss_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
