@@ -31,6 +31,7 @@
 namespace mlir {
 
 class AffineExpr;
+class AffineMap;
 class AffineValueMap;
 class ForStmt;
 class MLIRContext;
@@ -42,9 +43,26 @@ class Statement;
 /// Simplify an affine expression through flattening and some amount of
 /// simple analysis. This has complexity linear in the number of nodes in
 /// 'expr'. Returns the simplified expression, which is the same as the input
-//  expression if it can't be simplified.
+///  expression if it can't be simplified.
 AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
                               unsigned numSymbols);
+
+/// Given 2 unbounded AffineMaps `f` and `g`, returns the AffineMap f o g
+/// (i.e. f(g), i.e. f composed with g). This assumes (and enforces) that the
+/// maps are composable, i.e. that the number of AffineDimExpr of `f` matches
+/// the number of results of `g`.
+/// The resulting AffineMap has as many AffineDimExpr as `g` and as many
+/// AffineSymbolExpr as the max of either `f` or `g`.
+/// In particular, this does not try and compress the unused AffineDimExpr and
+/// AffineSymbolExpr. This could be implemented later as a canonicalization if
+/// needed.
+///
+/// Examples:
+/// compose((d0, d1) -> (d0 + 1, d1 - 1),
+///         (d0)[s0] -> (d0 + s0, d0 - s0))
+/// Returns (d0)[s0] -> (d0 + s0 + 1, d0 - s0 - 1)
+///
+AffineMap composeUnboundedMaps(AffineMap f, AffineMap g);
 
 /// Returns the sequence of AffineApplyOp OperationStmts operation in
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',

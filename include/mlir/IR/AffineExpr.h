@@ -44,24 +44,24 @@ class AffineConstantExprStorage;
 
 enum class AffineExprKind {
   Add,
-  // RHS of mul is always a constant or a symbolic expression.
+  /// RHS of mul is always a constant or a symbolic expression.
   Mul,
-  // RHS of mod is always a constant or a symbolic expression.
+  /// RHS of mod is always a constant or a symbolic expression.
   Mod,
-  // RHS of floordiv is always a constant or a symbolic expression.
+  /// RHS of floordiv is always a constant or a symbolic expression.
   FloorDiv,
-  // RHS of ceildiv is always a constant or a symbolic expression.
+  /// RHS of ceildiv is always a constant or a symbolic expression.
   CeilDiv,
 
   /// This is a marker for the last affine binary op. The range of binary
   /// op's is expected to be this element and earlier.
   LAST_AFFINE_BINARY_OP = CeilDiv,
 
-  // Constant integer.
+  /// Constant integer.
   Constant,
-  // Dimensional identifier.
+  /// Dimensional identifier.
   DimId,
-  // Symbolic identifier.
+  /// Symbolic identifier.
   SymbolId,
 };
 
@@ -176,7 +176,7 @@ public:
   int64_t getValue() const;
 };
 
-// Make AffineExpr hashable.
+/// Make AffineExpr hashable.
 inline ::llvm::hash_code hash_value(AffineExpr arg) {
   return ::llvm::hash_value(arg.expr);
 }
@@ -187,10 +187,26 @@ inline AffineExpr operator-(int64_t val, AffineExpr expr) {
   return expr * (-1) + val;
 }
 
-// These free functions allow clients of the API to not use classes in detail.
+/// These free functions allow clients of the API to not use classes in detail.
 AffineExpr getAffineDimExpr(unsigned position, MLIRContext *context);
 AffineExpr getAffineSymbolExpr(unsigned position, MLIRContext *context);
 AffineExpr getAffineConstantExpr(int64_t constant, MLIRContext *context);
+
+/// This auxiliary free function allows conveniently capturing the LHS, RHS and
+/// AffineExprBinaryOp in an AffineBinaryOpExpr.
+/// In particular it is used to elegantly write compositions as such:
+/// ```c++
+/// AffineMap g = /* Some affine map */;
+/// if (auto binExpr = e.template dyn_cast<AffineBinaryOpExpr>()) {
+///   AffineExpr lhs, rhs;
+///   AffineExprBinaryOp binOp;
+///   std::tie(lhs, rhs, binOp) = matchBinaryOpExpr(binExpr);
+///   return binOp(compose(lhs, g), compose(rhs, g));
+/// }
+/// ```
+using AffineExprBinaryOp = std::function<AffineExpr(AffineExpr, AffineExpr)>;
+std::tuple<AffineExpr, AffineExpr, AffineExprBinaryOp>
+matchBinaryOpExpr(AffineBinaryOpExpr e);
 
 raw_ostream &operator<<(raw_ostream &os, AffineExpr &expr);
 

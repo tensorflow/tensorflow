@@ -231,6 +231,39 @@ AffineExpr AffineExpr::operator%(AffineExpr other) const {
   return AffineBinaryOpExprStorage::get(AffineExprKind::Mod, expr, other.expr);
 }
 
+std::tuple<AffineExpr, AffineExpr, AffineExprBinaryOp>
+mlir::matchBinaryOpExpr(AffineBinaryOpExpr e) {
+  switch (e.getKind()) {
+  case AffineExprKind::Add:
+    return std::make_tuple(
+        e.getLHS(), e.getRHS(),
+        [](AffineExpr e1, AffineExpr e2) { return e1 + e2; });
+  case AffineExprKind::Mul:
+    return std::make_tuple(
+        e.getLHS(), e.getRHS(),
+        [](AffineExpr e1, AffineExpr e2) { return e1 * e2; });
+  case AffineExprKind::Mod:
+    return std::make_tuple(
+        e.getLHS(), e.getRHS(),
+        [](AffineExpr e1, AffineExpr e2) { return e1 % e2; });
+  case AffineExprKind::FloorDiv:
+    return std::make_tuple(
+        e.getLHS(), e.getRHS(),
+        [](AffineExpr e1, AffineExpr e2) { return e1.floorDiv(e2); });
+  case AffineExprKind::CeilDiv:
+    return std::make_tuple(
+        e.getLHS(), e.getRHS(),
+        [](AffineExpr e1, AffineExpr e2) { return e1.ceilDiv(e2); });
+  case AffineExprKind::DimId:
+  case AffineExprKind::SymbolId:
+  case AffineExprKind::Constant:
+    assert(false && "Not a binary expr");
+  }
+  return std::make_tuple(
+      AffineExpr(), AffineExpr(),
+      [](AffineExpr e1, AffineExpr e2) { return AffineExpr(); });
+}
+
 raw_ostream &operator<<(raw_ostream &os, AffineExpr &expr) {
   expr.print(os);
   return os;

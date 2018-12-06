@@ -19,9 +19,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/MLFunctionMatcher.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
@@ -57,10 +59,18 @@ static llvm::cl::opt<bool> clTestSlicingAnalysis(
     llvm::cl::desc(
         "Specify to enable testing static slicing and topological sort "
         "functionalities"));
+static llvm::cl::opt<bool> clTestComposeMaps(
+    "compose-maps",
+    llvm::cl::desc(
+        "Specify to enable testing the composition of AffineMap where each "
+        "AffineMap in the composition is specified as the affine_map attribute "
+        "in a constant op."));
 
 namespace {
 
 struct VectorizerTestPass : public FunctionPass {
+  static constexpr auto kTestAffineMapOpName = "test_affine_map";
+  static constexpr auto kTestAffineMapAttrName = "affine_map";
   VectorizerTestPass() : FunctionPass(&VectorizerTestPass::passID) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
@@ -68,6 +78,7 @@ struct VectorizerTestPass : public FunctionPass {
   void testForwardSlicing(MLFunction *f);
   void testBackwardSlicing(MLFunction *f);
   void testSlicing(MLFunction *f);
+  void testComposeMaps(MLFunction *f);
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
   MLFunctionMatcherContext MLContext;
@@ -180,6 +191,33 @@ void VectorizerTestPass::testSlicing(MLFunction *f) {
   }
 }
 
+bool customOpWithAffineMapAttribute(const Statement &stmt) {
+  const auto &opStmt = cast<OperationStmt>(stmt);
+  return opStmt.getName().getStringRef() ==
+         VectorizerTestPass::kTestAffineMapOpName;
+}
+
+void VectorizerTestPass::testComposeMaps(MLFunction *f) {
+  using matcher::Op;
+  auto pattern = Op(customOpWithAffineMapAttribute);
+  auto matches = pattern.match(f);
+  SmallVector<AffineMap, 4> maps;
+  maps.reserve(matches.size());
+  std::reverse(matches.begin(), matches.end());
+  for (auto m : matches) {
+    auto *opStmt = cast<OperationStmt>(m.first);
+    auto map = opStmt->getAttr(VectorizerTestPass::kTestAffineMapAttrName)
+                   .cast<AffineMapAttr>()
+                   .getValue();
+    maps.push_back(map);
+  }
+  AffineMap res;
+  for (auto m : maps) {
+    res = res ? composeUnboundedMaps(res, m) : m;
+  }
+  res.print(outs() << "\nComposed map: ");
+}
+
 PassResult VectorizerTestPass::runOnMLFunction(MLFunction *f) {
   if (!clTestVectorShapeRatio.empty()) {
     testVectorShapeRatio(f);
@@ -192,6 +230,9 @@ PassResult VectorizerTestPass::runOnMLFunction(MLFunction *f) {
   }
   if (clTestSlicingAnalysis) {
     testSlicing(f);
+  }
+  if (clTestComposeMaps) {
+    testComposeMaps(f);
   }
   return PassResult::Success;
 }

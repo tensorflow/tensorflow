@@ -1623,7 +1623,9 @@ bool VectorTransferReadOp::verify() const {
   }
   if (permutationMap.getNumResults() != vectorType.getRank()) {
     return emitOpError("requires a permutation_map with result dims of the "
-                       "same rank as the vector type");
+                       "same rank as the vector type (" +
+                       Twine(permutationMap.getNumResults()) + " vs " +
+                       Twine(vectorType.getRank()));
   }
   return verifyPermutationMap(permutationMap,
                               [this](Twine t) { return emitOpError(t); });
@@ -1791,7 +1793,9 @@ bool VectorTransferWriteOp::verify() const {
   }
   if (permutationMap.getNumResults() != vectorType.getRank()) {
     return emitOpError("requires a permutation_map with result dims of the "
-                       "same rank as the vector type");
+                       "same rank as the vector type (" +
+                       Twine(permutationMap.getNumResults()) + " vs " +
+                       Twine(vectorType.getRank()));
   }
   return verifyPermutationMap(permutationMap,
                               [this](Twine t) { return emitOpError(t); });

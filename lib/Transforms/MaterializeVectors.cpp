@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/MLFunctionMatcher.h"
 #include "mlir/Analysis/SliceAnalysis.h"
@@ -216,6 +217,7 @@ static SmallVector<unsigned, 8> makeStrides(ArrayRef<unsigned> shape) {
   tmp.reserve(shape.size());
   unsigned running = 1;
   for (auto rit = shape.rbegin(), reit = shape.rend(); rit != reit; ++rit) {
+    // TODO(ntv): emitError instead of NYI assert.
     assert(*rit > 0 && "NYI: symbolic or null shape dimension");
     tmp.push_back(running);
     running *= *rit;
@@ -243,18 +245,36 @@ static SmallVector<unsigned, 8> delinearize(unsigned linearIndex,
   return res;
 }
 
-// Since this is used during a traversal of a topologically sorted set, we
-// can just return the original SSAValue if we do not have a substitution.
-// The topological order guarantees there will never be one.
+static OperationStmt *
+instantiate(MLFuncBuilder *b, OperationStmt *opStmt, VectorType hwVectorType,
+            DenseMap<const MLValue *, MLValue *> *substitutionsMap);
+
+/// Not all SSAValue belong to a program slice scoped within the immediately
+/// enclosing loop.
+/// One simple example is constants defined outside the innermost loop scope.
+/// For such cases the substitutionsMap has no entry and we allow an additional
+/// insertion.
+/// For now, this is limited to ConstantOp because we do not vectorize loop
+/// indices and will need to be extended in the future.
 static MLValue *
-substitute(SSAValue *v,
-           const DenseMap<const MLValue *, MLValue *> &substitutionsMap) {
-  auto it = substitutionsMap.find(cast<MLValue>(v));
-  if (it == substitutionsMap.end()) {
-    return cast<MLValue>(v);
+substitute(SSAValue *v, VectorType hwVectorType,
+           DenseMap<const MLValue *, MLValue *> *substitutionsMap) {
+  auto it = substitutionsMap->find(cast<MLValue>(v));
+  if (it == substitutionsMap->end()) {
+    auto *opStmt = cast<OperationStmt>(v->getDefiningOperation());
+    if (opStmt->isa<ConstantOp>()) {
+      MLFuncBuilder b(opStmt);
+      auto *inst = instantiate(&b, opStmt, hwVectorType, substitutionsMap);
+      auto res = substitutionsMap->insert(
+          std::make_pair(cast<MLValue>(v), cast<MLValue>(inst->getResult(0))));
+      assert(res.second && "Insertion failed");
+      return res.first->second;
+    }
+    v->getDefiningOperation()->emitError("Missing substitution");
+    assert(false);
   }
   return it->second;
-};
+}
 
 /// Returns an AffineMap that reindexed the memRefIndices by the
 /// multi-dimensional hwVectorInstance.
@@ -359,16 +379,13 @@ reindexAffineIndices(MLFuncBuilder *b, VectorType hwVectorType,
 }
 
 /// Returns attributes with the following substitutions applied:
-///   - splat of `superVectorType` is replaced by splat of `hwVectorType`.
+///   - constant splat is replaced by constant splat of `hwVectorType`.
 /// TODO(ntv): add more substitutions on a per-need basis.
 static SmallVector<NamedAttribute, 1>
-materializeAttributes(OperationStmt *opStmt, VectorType superVectorType,
-                      VectorType hwVectorType) {
+materializeAttributes(OperationStmt *opStmt, VectorType hwVectorType) {
   SmallVector<NamedAttribute, 1> res;
   for (auto a : opStmt->getAttrs()) {
-    auto splat = a.second.dyn_cast<SplatElementsAttr>();
-    bool splatOfSuperVectorType = splat && (splat.getType() == superVectorType);
-    if (splatOfSuperVectorType) {
+    if (auto splat = a.second.dyn_cast<SplatElementsAttr>()) {
       auto attr = SplatElementsAttr::get(hwVectorType, splat.getValue());
       res.push_back(NamedAttribute(a.first, attr));
     } else {
@@ -384,20 +401,20 @@ materializeAttributes(OperationStmt *opStmt, VectorType superVectorType,
 /// this case the actual instance is irrelevant. Just use the SSA values in
 /// substitutionsMap.
 static OperationStmt *
-instantiate(MLFuncBuilder *b, OperationStmt *opStmt, VectorType superVectorType,
-            VectorType hwVectorType,
+instantiate(MLFuncBuilder *b, OperationStmt *opStmt, VectorType hwVectorType,
             DenseMap<const MLValue *, MLValue *> *substitutionsMap) {
   assert(!opStmt->isa<VectorTransferReadOp>() &&
          "Should call the function specialized for VectorTransferReadOp");
   assert(!opStmt->isa<VectorTransferWriteOp>() &&
          "Should call the function specialized for VectorTransferWriteOp");
-  auto operands =
-      map([substitutionsMap](
-              SSAValue *v) { return substitute(v, *substitutionsMap); },
-          opStmt->getOperands());
-  return b->createOperation(
-      opStmt->getLoc(), opStmt->getName(), operands, {hwVectorType},
-      materializeAttributes(opStmt, superVectorType, hwVectorType));
+  auto operands = map(
+      [hwVectorType, substitutionsMap](SSAValue *v) {
+        return substitute(v, hwVectorType, substitutionsMap);
+      },
+      opStmt->getOperands());
+  auto attrs = materializeAttributes(opStmt, hwVectorType);
+  return b->createOperation(opStmt->getLoc(), opStmt->getName(), operands,
+                            {hwVectorType}, attrs);
 }
 
 /// Computes the permutationMap required for a VectorTransferOp from the memref
@@ -432,24 +449,10 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy *transfer,
       },
       superVectorType.getShape(), *optionalRatio);
   auto projectionMap = AffineMap::get(optionalRatio->size(), 0, keep, {});
-  (void)projectionMap;
-  // No seemingly simple way to compose 2 AffineMap except going through SSA
-  // values... Punting for now and will resolve in the next CL.
-  //
-  // return projectionMap.compose(transfer->getPermutationMap());
-
-  // Still, we may need to drop a few dims to pass verification, so hack this in
-  // for now.
-  auto map = transfer->getPermutationMap();
-  auto exprs = map.getResults();
-  assert(exprs.size() >= keep.size());
-  unsigned diff = exprs.size() - keep.size();
-  SmallVector<AffineExpr, 4> projectedExprs(exprs.begin() + diff, exprs.end());
-  auto res = AffineMap::get(map.getNumInputs(), 0, projectedExprs, {});
-  LLVM_DEBUG(projectionMap.print(dbgs() << "\nProjectionMap: "));
-  LLVM_DEBUG(map.print(dbgs() << "\nOriginal: "));
-  LLVM_DEBUG(res.print(dbgs() << "\nTemporarily hacked projection: "));
-  return res;
+  auto permutationMap = transfer->getPermutationMap();
+  LLVM_DEBUG(projectionMap.print(dbgs() << "\nprojectionMap: "));
+  LLVM_DEBUG(permutationMap.print(dbgs() << "\npermutationMap: "));
+  return composeUnboundedMaps(projectionMap, transfer->getPermutationMap());
 }
 
 /// Creates an instantiated version of `read` for the instance of
@@ -487,7 +490,8 @@ instantiate(MLFuncBuilder *b, VectorTransferWriteOp *write,
   auto affineIndices =
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
   auto cloned = b->create<VectorTransferWriteOp>(
-      write->getLoc(), substitute(write->getVector(), *substitutionsMap),
+      write->getLoc(),
+      substitute(write->getVector(), hwVectorType, substitutionsMap),
       write->getMemRef(), affineIndices,
       projectedPermutationMap(write, hwVectorType));
   return cast<OperationStmt>(cloned->getOperation());
@@ -516,13 +520,11 @@ static bool instantiateMaterialization(Statement *stmt,
                                        MaterializationState *state) {
   LLVM_DEBUG(dbgs() << "\ninstantiate: " << *stmt);
 
-  // Fail hard and wake up when needed.
   if (isa<ForStmt>(stmt)) {
     stmt->emitError("NYI path ForStmt");
     return true;
   }
 
-  // Fail hard and wake up when needed.
   if (isa<IfStmt>(stmt)) {
     stmt->emitError("NYI path IfStmt");
     return true;
@@ -553,8 +555,8 @@ static bool instantiateMaterialization(Statement *stmt,
     stmt->emitError("Op does not return a supervector.");
     return true;
   }
-  auto *clone = instantiate(&b, opStmt, state->superVectorType,
-                            state->hwVectorType, state->substitutionsMap);
+  auto *clone =
+      instantiate(&b, opStmt, state->hwVectorType, state->substitutionsMap);
   state->substitutionsMap->insert(std::make_pair(
       cast<MLValue>(opStmt->getResult(0)), cast<MLValue>(clone->getResult(0))));
   return false;
@@ -597,8 +599,10 @@ static void emitSlice(MaterializationState *state,
     // slice are topologically sorted, we can just clone them in order.
     for (auto *stmt : *slice) {
       auto fail = instantiateMaterialization(stmt, &scopedState);
-      (void)fail;
-      assert(!fail && "Unhandled super-vector materialization failure");
+      if (fail) {
+        stmt->emitError("Unhandled super-vector materialization failure");
+        assert(!fail);
+      }
     }
   }
 
@@ -717,6 +721,7 @@ PassResult MaterializeVectors::runOnMLFunction(MLFunction *f) {
 
   // Call materialization.
   materialize(f, terminators, &state);
+
   return PassResult::Success;
 }
 

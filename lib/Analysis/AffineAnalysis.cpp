@@ -27,6 +27,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "mlir/Support/Functional.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h"
@@ -328,6 +329,46 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
   flattener.operandExprStack.pop_back();
   assert(flattener.operandExprStack.empty());
   return simplifiedExpr;
+}
+
+/// Returns the AffineExpr that results from substituting `exprs[i]` into `e`
+/// for each AffineDimExpr of position i in `e`.
+static AffineExpr substExprs(AffineExpr e, llvm::ArrayRef<AffineExpr> exprs) {
+  if (auto binExpr = e.template dyn_cast<AffineBinaryOpExpr>()) {
+    AffineExpr lhs, rhs;
+    AffineExprBinaryOp binOp;
+    std::tie(lhs, rhs, binOp) = matchBinaryOpExpr(binExpr);
+    return binOp(substExprs(lhs, exprs), substExprs(rhs, exprs));
+  }
+  if (auto dim = e.template dyn_cast<AffineDimExpr>()) {
+    // TODO(ntv): emitError instead of NYI assert.
+    assert(dim.getPosition() < exprs.size() &&
+           "NYI: cannot compose due to dim mismatch");
+    return exprs[dim.getPosition()];
+  }
+  if (auto sym = e.template dyn_cast<AffineSymbolExpr>()) {
+    return sym;
+  }
+  return e.template cast<AffineConstantExpr>();
+}
+
+AffineMap mlir::composeUnboundedMaps(AffineMap f, AffineMap g) {
+  assert(f.getNumDims() == g.getNumResults() &&
+         "Num dims of f must be the same as num results of g for maps to be "
+         "composable");
+  assert(g.getRangeSizes().empty() && "Expected unbounded AffineMap");
+  assert(f.getRangeSizes().empty() && "Expected unbounded AffineMap");
+  auto exprs = functional::map(
+      [g](AffineExpr expr) {
+        auto e = simplifyAffineExpr(substExprs(expr, g.getResults()),
+                                    g.getNumDims(), g.getNumSymbols());
+        return e;
+      },
+      f.getResults());
+  auto composed =
+      AffineMap::get(g.getNumDims(),
+                     std::max(f.getNumSymbols(), g.getNumSymbols()), exprs, {});
+  return composed;
 }
 
 // Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
