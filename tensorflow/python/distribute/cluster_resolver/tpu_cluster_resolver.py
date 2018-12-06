@@ -197,13 +197,14 @@ class TPUClusterResolver(ClusterResolver):
     elif tpu == 'local' or not tpu:
       # Google environment, where the TPU is attached to the host.
       self._environment = 'google'
-    elif tpu.startswith('/bns'):
+    elif tpu.startswith('/bns') or tpu.startswith('uptc://'):
       # Google environment, where we reach the TPU through BNS.
       self._environment = 'google'
 
     # If TPU is in the Google environment or exists locally, we don't use any
     # RPC layer.
-    if tpu.startswith('/bns') or tpu == 'local' or not tpu:
+    if tpu.startswith('/bns') or tpu.startswith(
+        'uptc://') or tpu == 'local' or not tpu:
       self.rpc_layer = None
     else:
       self.rpc_layer = 'grpc'
