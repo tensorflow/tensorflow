@@ -173,6 +173,7 @@ tensorflow/third_party/common.bzl
 tensorflow/third_party/com_google_absl.BUILD
 tensorflow/third_party/pprof.BUILD
 tensorflow/third_party/BUILD
+tensorflow/third_party/tflite_mobilenet_quant.BUILD
 tensorflow/third_party/lmdb.BUILD
 tensorflow/third_party/git/BUILD.tpl
 tensorflow/third_party/git/BUILD
@@ -198,6 +199,7 @@ tensorflow/third_party/nanopb.BUILD
 tensorflow/third_party/gif.BUILD
 tensorflow/third_party/double_conversion.BUILD
 tensorflow/third_party/six.BUILD
+tensorflow/third_party/tflite_mobilenet_float.BUILD
 tensorflow/third_party/repo.bzl
 tensorflow/third_party/codegen.BUILD
 tensorflow/third_party/cub.BUILD
