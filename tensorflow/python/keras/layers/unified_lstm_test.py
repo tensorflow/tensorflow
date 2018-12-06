@@ -157,6 +157,63 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
         self.assertNotEqual(existing_loss, loss_value)
         existing_loss = loss_value
 
+  @parameterized.named_parameters(
+      ('_non_tan_activation', 'relu', 0, False, True, None),
+      ('_use_recurrent_dropout', 'tanh', 0.1, False, True, None),
+      ('_unroll', 'tanh', 0, True, True, None),
+      ('_not_use_bias', 'tanh', 0, False, False, None),
+      ('_use_bias_regularizer', 'tanh', 0, False, True, 'l2')
+  )
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_could_use_defun_backend(self, activation, recurrent_dropout,
+                                   unroll, use_bias, bias_regularizer):
+    layer = UnifiedLSTM(1,
+                        activation=activation,
+                        recurrent_dropout=recurrent_dropout,
+                        unroll=unroll,
+                        use_bias=use_bias,
+                        bias_regularizer=bias_regularizer)
+    self.assertFalse(layer.could_use_cudnn)
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_unified_lstm_output_on_multiple_kernel(self):
+    input_shape = 10
+    rnn_state_size = 8
+    timestep = 4
+    batch = 100
+
+    x_train = np.random.random((batch, timestep, input_shape))
+
+    inputs = keras.layers.Input(
+        shape=[timestep, input_shape], dtype=dtypes.float32)
+    with test_util.device(use_gpu=False):
+      # Note that CuDNN use 'sigmoid' as activation. Force the CPU
+      # implementation to use 'sigmoid' so that it will generate same output as
+      # CuDNN implementation.
+      layer = UnifiedLSTM(rnn_state_size, recurrent_activation='sigmoid')
+      output = layer(inputs)
+      cpu_model = keras.models.Model(inputs, output)
+      weights = cpu_model.get_weights()
+      y_1 = cpu_model.predict(x_train)
+
+    with test_util.device(use_gpu=True):
+      layer = UnifiedLSTM(rnn_state_size, recurrent_activation='sigmoid')
+      output = layer(inputs)
+      gpu_model = keras.models.Model(inputs, output)
+      gpu_model.set_weights(weights)
+      y_2 = gpu_model.predict(x_train)
+
+    with test_util.device(use_gpu=True):
+      layer = keras.layers.LSTM(rnn_state_size, recurrent_activation='sigmoid')
+      output = layer(inputs)
+      canonical_model = keras.models.Model(inputs, output)
+      # Remove the extra cudnn bias since canonical lstm will not use it.
+      canonical_model.set_weights(weights[:3])
+      y_3 = canonical_model.predict(x_train)
+
+    self.assertAllClose(y_1, y_2)
+    self.assertAllClose(y_2, y_3)
+
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_keras_model_with_lstm(self):
     input_shape = 10

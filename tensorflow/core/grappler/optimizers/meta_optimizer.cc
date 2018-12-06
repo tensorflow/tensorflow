@@ -533,6 +533,10 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         VLOG(3) << added_devices.error_message();
       }
 
+      // We can safely inline nested function calls with side-effectful ops into
+      // the function body (see function_optimizer.cc for details).
+      func_item.allowed_optimizations().inline_ops_with_side_effects = true;
+
       // Optimize function body graph.
       GraphDef optimized_func_graph;
       TF_RETURN_IF_ERROR(

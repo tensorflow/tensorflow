@@ -258,6 +258,7 @@ class FunctionOptimizerContext {
       : grappler_item_id_(item.id),
         graph_version_(item.graph.versions().producer()),
         opt_level_(opt_level),
+        allowed_optimizations_(item.allowed_optimizations()),
         function_library_(OpRegistry::Global(), item.graph.library()),
         available_device_names_(item.devices().begin(), item.devices().end()),
         graph_view_(&item.graph) {
@@ -266,6 +267,10 @@ class FunctionOptimizerContext {
   }
 
   const RewriterConfig::Toggle opt_level() const { return opt_level_; }
+
+  const GrapplerItem::AllowedOptimizations& allowed_optimizations() const {
+    return allowed_optimizations_;
+  }
 
   const FunctionLibraryDefinition& function_library() const {
     return function_library_;
@@ -397,6 +402,7 @@ class FunctionOptimizerContext {
   const string grappler_item_id_;
   const int graph_version_;
   const RewriterConfig::Toggle opt_level_;
+  const GrapplerItem::AllowedOptimizations allowed_optimizations_;
   FunctionLibraryDefinition function_library_;
 
   // These fields initialized lazily only if needed.
@@ -1228,12 +1234,6 @@ Status IsInlinableIndirectFunctionCall(const FunctionOptimizerContext& ctx,
                                    SummarizeNodeDef(func_node));
   }
 
-  // TODO(ezhulenev): Enable it by default.
-  if (ctx.opt_level() != RewriterConfig::AGGRESSIVE) {
-    return errors::FailedPrecondition(
-        "Indirect function inlining supported only in aggressive mode");
-  }
-
   if (MarkedNoInline(func)) {
     return errors::FailedPrecondition(
         "Can't inline function marked with '_noinline': ",
@@ -1253,6 +1253,20 @@ Status IsInlinableIndirectFunctionCall(const FunctionOptimizerContext& ctx,
   if (ctx.IsFetchNode(func_node.name())) {
     return errors::FailedPrecondition(
         "Can't inline function in a Grappler item fetch set: ",
+        SummarizeNodeDef(func_node));
+  }
+
+  // We can't inline functions with `Switch` nodes in the function body, because
+  // they might have dead tensors as a function output argument (we need all
+  // intermediate tensors to compute the function gradient). `PartitionedCallOp`
+  // invokes functions with `allow_dead_tensors = true` to reset dead flag,
+  // and return default initialized tensors instead of a dead tensors.
+  // TODO(ezhulenev): Do the liveness analysis and add
+  // `IdentitytWithResurrection` nodes after all potentially dead output
+  // tensors?
+  if (absl::c_any_of(func.node_def(), IsSwitch)) {
+    return errors::FailedPrecondition(
+        "Can't inline function with `Switch` nodes in the function body: ",
         SummarizeNodeDef(func_node));
   }
 
@@ -1339,11 +1353,6 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
 
   const string prefix = strings::StrCat(func_node.name(), "/");
 
-  // Keep track of side-effectful ops inside function body. Each outgoing
-  // control edge from the function call node, must be replaced with control
-  // edges from inlined side-effectful ops.
-  std::vector<string> side_effectful_nodes;
-
   // ------------------------------------------------------------------------ //
   // First we need to assign device placements to all function body nodes.
 
@@ -1427,30 +1436,53 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
     TF_RETURN_IF_ERROR(
         AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &func_body_node));
 
-    // If the function body has a side-effectful op, we double check that the
-    // function call node has an output control edge, otherwise we can't safely
-    // do inlining and guarantee that node will be executed.
-    // TODO(ezhulenev): If we don't have `happens_after` dependencies does it
-    // mean that no one is interested in observing side effects and we can
-    // safely inline it?
+    // After inlining into the optimized graph, NodeDef must have all attributes
+    // defined, which is not required for a node in a FunctionDef.
+    const OpDef* op_def;
+    TF_RETURN_IF_ERROR(
+        ctx->function_library().LookUpOpDef(func_body_node.op(), &op_def));
+    AddDefaultsToNodeDef(*op_def, &func_body_node);
+  }
+
+  // Construct a graph view for the preprocessed function body graph.
+  GraphView placed_graph_view(&placed_graph_def);
+
+  // Keep track of side-effectful ops inside function body. Each outgoing
+  // control edge from the function call node, must be replaced with control
+  // edges from inlined side-effectful ops.
+  std::vector<string> side_effectful_nodes;
+
+  // We have to make sure that all side-effectful nodes inside a function body
+  // will be executed after function inlining.
+  for (NodeDef& func_body_node : *placed_graph_def.mutable_node()) {
     if (!IsFreeOfSideEffect(func_body_node, &ctx->function_library())) {
-      DCHECK(!happens_after.empty());
-      if (happens_after.empty()) {
-        // NOTE: If this happens file a bug to TF.Eager team.
+      int num_fanouts = placed_graph_view.NumFanouts(
+          func_body_node, /*include_controlling_nodes=*/true);
+
+      // If the node doesn't have any outgoing edges and we do not have any
+      // nodes in the `happens_after` set, we can't inline a function and
+      // guarantee that side-effects will be executed. The only exception if we
+      // do function library optimization, and the GrapplerItem was constructed
+      // for the function body, because functions have strict semantics.
+
+      if (num_fanouts == 0 && happens_after.empty() &&
+          !ctx->allowed_optimizations().inline_ops_with_side_effects) {
         return errors::Internal(
-            "Can't inline a function with a stateful op and empty output "
-            "control edge set. Function body node: ",
+            "Can't inline a function with a side-effectful op with empty "
+            "fanouts and empty output control edge set. Function body node: ",
             SummarizeNodeDef(func_body_node));
       }
 
       side_effectful_nodes.push_back(func_body_node.name());
     }
+  }
 
-    // TODO(ezhulenev): Inline nested indirect function calls.
-
-    // Move the node to the optimized graph.
+  // Move all the nodes to the optimized graph after successful preprocessing.
+  for (NodeDef& func_body_node : *placed_graph_def.mutable_node()) {
     optimized_graph->add_node()->Swap(&func_body_node);
   }
+
+  // TODO(ezhulenev): Inline nested indirect function calls.
 
   // Indirect function call is fully inlined into the optimized graph, and we do
   // not copy the original function call node, so we have to setup tensor
@@ -1469,6 +1501,8 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   // call node to all side-effectful ops inside function body.
   ctx->AddControlOverrides(func_node, side_effectful_nodes);
 
+  VLOG(3) << "Successfully inlined indirect function call: "
+          << SummarizeNodeDef(func_node);
   return Status::OK();
 }
 
@@ -1552,8 +1586,7 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
               node, *func, graph_def_version, ctx, optimized_graph));
           continue;
         } else {
-          VLOG(2) << "Can't inline direct function call: "
-                  << inlinable.error_message();
+          VLOG(2) << inlinable.error_message();
         }
       }
 
@@ -1565,8 +1598,7 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
               node, *func, graph_def_version, &ctx, optimized_graph));
           continue;
         } else {
-          VLOG(2) << "Can't inline indirect function call: "
-                  << inlinable.error_message();
+          VLOG(2) << inlinable.error_message();
         }
       }
 
@@ -1633,7 +1665,7 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
       gtl::FlatSet<string> add_ctrl_inputs;
 
       // Remove all invalidated control inputs.
-      for (int idx = 0; idx < node.input_size(); ++idx) {
+      for (int idx = 0; idx < node.input_size(); /* see below */) {
         // TODO(ezhulenev): Use non-allocating TensorId after migrating
         // `control_overrides()` to absl::flat_hash_set.
         SafeTensorId input_tensor = ParseTensorName(node.input(idx));
@@ -1653,6 +1685,10 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
           for (const string& override : overrides->second) {
             add_ctrl_inputs.insert(AsControlDependency(override));
           }
+        } else {
+          // Go to the next input only if the current one was not invalidated,
+          // otherwise we need to check the swapped input as well.
+          ++idx;
         }
       }
 

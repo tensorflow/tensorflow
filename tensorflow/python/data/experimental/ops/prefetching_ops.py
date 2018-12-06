@@ -248,6 +248,9 @@ class _MapOnGpuDataset(dataset_ops.UnaryDataset):
         dataset=input_dataset,
         defun_kwargs={"experimental_ints_on_device": True})
 
+  def _functions(self):
+    return [self._map_func]
+
   def _as_variant_tensor(self):
     input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
     return ged_ops.experimental_map_dataset(

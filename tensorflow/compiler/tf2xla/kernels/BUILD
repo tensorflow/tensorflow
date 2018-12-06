@@ -121,7 +121,6 @@ tf_kernel_library(
         ":while_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla/lib:batch_dot",
         "//tensorflow/compiler/tf2xla/lib:broadcast",
         "//tensorflow/compiler/tf2xla/lib:cholesky",
         "//tensorflow/compiler/tf2xla/lib:qr",

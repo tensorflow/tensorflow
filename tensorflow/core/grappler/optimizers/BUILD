@@ -385,7 +385,7 @@ cc_library(
     srcs = [
         "gpu_swapping_ops.cc",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -461,7 +461,6 @@ cc_library(
         "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/costs:virtual_placer",
@@ -615,7 +614,6 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:frame",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -767,7 +765,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:frame",
     ],

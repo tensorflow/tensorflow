@@ -5375,6 +5375,10 @@ def init_scope():
 
 def executing_eagerly_outside_functions():
   """Returns True if executing eagerly, even if inside a graph function."""
+  # Fastpath for when this is called eagerly (its not necessary to init_scope).
+  if context.executing_eagerly():
+    return True
+
   with init_scope():
     return context.executing_eagerly()
 

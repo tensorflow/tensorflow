@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TESTING_JOIN_H_
 
 #include <cstdlib>
+#include <iomanip>
 #include <sstream>
 
 #include "tensorflow/lite/string.h"
@@ -30,9 +31,9 @@ string Join(T* data, size_t len, const string& delimiter) {
     return "";
   }
   std::stringstream result;
-  result << data[0];
+  result << std::setprecision(9) << data[0];
   for (int i = 1; i < len; i++) {
-    result << delimiter << data[i];
+    result << std::setprecision(9) << delimiter << data[i];
   }
   return result.str();
 }

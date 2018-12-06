@@ -18,13 +18,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/tf2xla/lib/batch_dot.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
+#include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -191,12 +191,8 @@ xla::StatusOr<QRBlockResult> QRBlock(
     auto v_broadcast = xla::Reshape(v, shape);
     // a[:, :] -= tau * np.dot(v[:, np.newaxis],
     //                          np.dot(v[np.newaxis, :], a[:, :]))
-    auto vva =
-        BatchDot(v_broadcast, a, /*transpose_x=*/false, /*transpose_y=*/false,
-                 /*conjugate_x=*/false, /*conjugate_y=*/false, precision);
-    vva =
-        BatchDot(v_broadcast, vva, /*transpose_x=*/true, /*transpose_y=*/false,
-                 /*conjugate_x=*/false, /*conjugate_y=*/false, precision);
+    auto vva = BatchDot(v_broadcast, a, precision);
+    vva = BatchDot(TransposeInMinorDims(v_broadcast), vva, precision);
     a = a - xla::Mul(tau, vva,
                      /*broadcast_dimensions=*/batch_dim_indices);
 
@@ -278,12 +274,9 @@ xla::StatusOr<xla::XlaOp> ComputeWYRepresentation(
     auto beta = DynamicSliceInMinorDims(taus, {j}, {1});
 
     // yv has shape [..., n, 1]
-    auto yv = BatchDot(y, v, /*transpose_x=*/true, /*transpose_y=*/false,
-                       /*conjugate_x=*/false, /*conjugate_y=*/false, precision);
+    auto yv = BatchDot(TransposeInMinorDims(y), v, precision);
     // wyv has shape [..., m, 1]
-    auto wyv =
-        BatchDot(w, yv, /*transpose_x=*/false, /*transpose_y=*/false,
-                 /*conjugate_x=*/false, /*conjugate_y=*/false, precision);
+    auto wyv = BatchDot(w, yv, precision);
 
     auto z = xla::Mul(
         -beta, v + wyv,
@@ -375,23 +368,15 @@ xla::StatusOr<QRDecompositionResult> QRDecomposition(
 
     // a[i:, i+k:] += np.dot(Y, np.dot(W.T, a[i:, i+k:]))
     auto a_panel = SliceInMinorDims(a, {i, i + k}, {m, n});
-    auto a_update =
-        BatchDot(w, a_panel, /*transpose_x=*/true, /*transpose_y=*/false,
-                 /*conjugate_x=*/false, /*conjugate_y=*/false, precision);
-    a_update =
-        BatchDot(y, a_update, /*transpose_x=*/false, /*transpose_y=*/false,
-                 /*conjugate_x=*/false, /*conjugate_y=*/false, precision);
+    auto a_update = BatchDot(TransposeInMinorDims(w), a_panel, precision);
+    a_update = BatchDot(y, a_update, precision);
     a_panel = a_panel + a_update;
     a = UpdateSliceInMinorDims(a, a_panel, {i, i + k});
 
     // q[:, i:] += np.dot(np.dot(q[:, i:], W), Y.T))
     auto q_panel = SliceInMinorDims(q, {0, i}, {m, m});
-    auto q_update =
-        BatchDot(q_panel, w, /*transpose_x=*/false, /*transpose_y=*/false,
-                 /*conjugate_x=*/false, /*conjugate_y=*/false, precision);
-    q_update = BatchDot(q_update, y, /*transpose_x=*/false,
-                        /*transpose_y=*/true, /*conjugate_x=*/false,
-                        /*conjugate_y=*/false, precision);
+    auto q_update = BatchDot(q_panel, w, precision);
+    q_update = BatchDot(q_update, TransposeInMinorDims(y), precision);
     q_panel = q_panel + q_update;
     q = UpdateSliceInMinorDims(q, q_panel, {0, i});
   }

@@ -98,6 +98,15 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
                              window_stride_, drop_remainder_, ")::Dataset");
     }
 
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return n / window_shift_ +
+             (n % window_shift_ == 0 || drop_remainder_ ? 0 : 1);
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

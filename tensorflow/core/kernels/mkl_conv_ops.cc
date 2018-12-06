@@ -846,7 +846,8 @@ REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBias")
 
 // Base class for convolution forward operations
 template <typename Device, typename Tinput, typename Tfilter, typename Tbias,
-          typename Toutput, typename Ttemp_output, bool biasEnabled>
+          typename Toutput, typename Ttemp_output, typename Tpadding,
+          bool biasEnabled, bool padEnabled>
 class MklConvOp : public OpKernel {
  public:
   ~MklConvOp() {}
@@ -922,6 +923,11 @@ class MklConvOp : public OpKernel {
           dilations, strides;
       memory::dims dst_dims_tf_order, dst_dims_mkl_order;
 
+      // If pad with conv2d fusion is enabled
+      if (padEnabled) {
+        PadWithConvFusion(context, padding_left, padding_right);
+      }
+
       // Get shapes of input tensors in MKL-DNN order
       MklDnnConvUtil conv_utl(context, strides_, padding_, data_format_,
                               dilations_);
@@ -930,7 +936,7 @@ class MklConvOp : public OpKernel {
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &src_dims, &filter_dims, &strides,
           &dilations, &dst_dims_tf_order, &dst_dims_mkl_order, &padding_left,
-          &padding_right);
+          &padding_right, padEnabled);
       if (!context->status().ok()) return;
 
       // Check for corner case - if there is nothing to compute, return.
@@ -961,7 +967,12 @@ class MklConvOp : public OpKernel {
       }
 
       bool isConv2D = (strides_.size() == 4);
-
+      // TODO(Intel-tf) Add check to make sure padEnabled is true only for 2D
+      if (!isConv2D) {
+        OP_REQUIRES(
+            context, !padEnabled,
+            errors::InvalidArgument("Pad+Conv fusion only works for 2D"));
+      }
       // Create memory for user data.
       // Describe how the inputs and outputs of Convolution look like. Also
       // specify buffers containing actual input and output data.
@@ -1098,6 +1109,44 @@ class MklConvOp : public OpKernel {
     }
   }
 
+  void PadWithConvFusion(OpKernelContext* context, memory::dims& padding_left,
+                         memory::dims& padding_right) {
+    const Tensor& paddings_tf = MklGetInput(context, 2);
+    OP_REQUIRES(context, paddings_tf.dims() == 2,
+                errors::InvalidArgument("paddings must be 2-dimensional: ",
+                                        paddings_tf.shape().DebugString()));
+    Tpadding* paddings = nullptr;
+    // To get individual pad, need to flatten the tensor
+    paddings = static_cast<Tpadding*>(
+        const_cast<Tpadding*>(paddings_tf.flat<Tpadding>().data()));
+    // For NHWC format:
+    // paddings[0], paddings[1], paddings[6], paddings[7] should be zero
+    // if the paddings_tf is [ [0, 0] [1,2] [3,4] [0,0] ]
+    // paddings = {0, 0, 1, 2, 3, 4, 0, 0} ; flat method is row major
+    // then, values are: top = 1, bottom =2, left=3, right=4
+    // For NCHW format:
+    // paddings[0], paddings[1], paddings[2], paddings[3] should be zero
+    // similar explanation as NHWC format will apply.
+    int64 pad_top, pad_left;
+    int64 pad_bottom, pad_right;
+    string data_format = ToString(data_format_);
+    if (data_format == "NHWC") {
+      pad_top = paddings[2];
+      pad_bottom = paddings[3];
+      pad_left = paddings[4];
+      pad_right = paddings[5];
+    } else if (data_format == "NCHW") {
+      pad_top = paddings[4];
+      pad_bottom = paddings[5];
+      pad_left = paddings[6];
+      pad_right = paddings[7];
+    }
+    // Create padding arrays for MKL DNN convolutions.
+    // MKL-DNN uses asymetric padding.
+    padding_left = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
+    padding_right = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
+  }
+
  protected:
   void FuseBiasAdd(bool fuse_bias_add) { fuse_biasadd_ = fuse_bias_add; }
   void FuseRelu(bool fuse_relu) { fuse_relu_ = fuse_relu; }
@@ -1174,6 +1223,7 @@ class MklConvOp : public OpKernel {
   bool fuse_relu_ = false;
 
   const int kInputIndex_Src = 0, kInputIndex_Filter = 1, kInputIndex_Bias = 2;
+  const int kInputIndex_Pad = 2;
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
   const int kDilationH = 0, kDilationW = 1;
 
@@ -1294,7 +1344,7 @@ template <typename Device, typename Tbias, typename Toutput,
           typename Ttemp_output, bool biasEnabled>
 class MklQuantizedConv2DOp
     : public MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output,
-                       biasEnabled> {
+                       int32, biasEnabled, false> {
  public:
   virtual ~MklQuantizedConv2DOp() {
     if (this->input_bias_ != nullptr) {
@@ -1309,13 +1359,13 @@ class MklQuantizedConv2DOp
   }
 
   explicit MklQuantizedConv2DOp(OpKernelConstruction* context)
-      : MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output,
-                  biasEnabled>(context) {}
+      : MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
+                  biasEnabled, false>(context) {}
 
   void Compute(OpKernelContext* context) override {
     // Compute int32 output tensor
-    MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output,
-              biasEnabled>::Compute(context);
+    MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
+              biasEnabled, false>::Compute(context);
 
     // Compute additional outputs: min/max scalars.
     int bias_index_offset;
@@ -1361,8 +1411,8 @@ class MklQuantizedConv2DOp
  protected:
   void ExtendConvFwdParams(OpKernelContext* context,
                            MklConvFwdParams& params) override {
-    MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output,
-              biasEnabled>::ExtendConvFwdParams(context, params);
+    MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
+              biasEnabled, false>::ExtendConvFwdParams(context, params);
 
     // When the output type is quint8, the output data id requantized
     // into quint8. A post_op "output_scale" is added to do the conversion.
@@ -1573,11 +1623,11 @@ class MklQuantizedConv2DSumReluOp
       }
     }
     // TODO(mdfaijul): Add cleaner code for non-mkl tensor
-    MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output,
-              biasEnabled>::AllocateOutputTensor(context, conv_prim_desc,
-                                                 output_dims_mkl_order,
-                                                 output_tf_format,
-                                                 output_tensor);
+    MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
+              biasEnabled, false>::AllocateOutputTensor(context, conv_prim_desc,
+                                                        output_dims_mkl_order,
+                                                        output_tf_format,
+                                                        output_tensor);
     const Tensor& summand = MklGetInput(context, summand_idx);
     if (summand.dtype() != DT_FLOAT)
       TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
@@ -1846,23 +1896,43 @@ REGISTER_KERNEL_BUILDER(
 #endif  // INTEL_MKL_ML
 
 // Register 2D operations
-#define REGISTER_MKL_CPU_2D(T)                                         \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("_MklConv2D")                                               \
-          .Device(DEVICE_CPU)                                          \
-          .TypeConstraint<float>("T")                                  \
-          .Label(mkl_op_registry::kMklOpLabel),                        \
-      MklConvOp<CPUDevice, float, float, float, float, float, false>); \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("_MklConv2DWithBias")                                       \
-          .Device(DEVICE_CPU)                                          \
-          .TypeConstraint<float>("T")                                  \
-          .Label(mkl_op_registry::kMklOpLabel),                        \
-      MklConvOp<CPUDevice, float, float, float, float, float, true>);  \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")             \
-                              .Device(DEVICE_CPU)                      \
-                              .TypeConstraint<T>("T")                  \
-                              .Label(mkl_op_registry::kMklOpLabel),    \
+#define REGISTER_MKL_CPU_2D(T)                                             \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2D")                               \
+                              .Device(DEVICE_CPU)                          \
+                              .TypeConstraint<T>("T")                      \
+                              .Label(mkl_op_registry::kMklOpLabel),        \
+                          MklConvOp<CPUDevice, float, float, float, float, \
+                                    float, int32, false, false>);          \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBias")                       \
+                              .Device(DEVICE_CPU)                          \
+                              .TypeConstraint<T>("T")                      \
+                              .Label(mkl_op_registry::kMklOpLabel),        \
+                          MklConvOp<CPUDevice, float, float, float, float, \
+                                    float, int32, true, false>);           \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")                 \
+                              .Device(DEVICE_CPU)                          \
+                              .TypeConstraint<T>("T")                      \
+                              .Label(mkl_op_registry::kMklOpLabel),        \
+                          MklDummyOp<CPUDevice, T>);                       \
+  REGISTER_KERNEL_BUILDER(Name("_MklPadWithConv2D")                        \
+                              .Device(DEVICE_CPU)                          \
+                              .TypeConstraint<T>("T")                      \
+                              .TypeConstraint<int32>("Tpaddings")          \
+                              .Label(mkl_op_registry::kMklOpLabel),        \
+                          MklConvOp<CPUDevice, float, float, float, float, \
+                                    float, int32, false, true>);           \
+  REGISTER_KERNEL_BUILDER(Name("_MklPadWithConv2D")                        \
+                              .Device(DEVICE_CPU)                          \
+                              .TypeConstraint<T>("T")                      \
+                              .TypeConstraint<int64>("Tpaddings")          \
+                              .Label(mkl_op_registry::kMklOpLabel),        \
+                          MklConvOp<CPUDevice, float, float, float, float, \
+                                    float, int64, false, true>);           \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyPadWithConv2D")                  \
+                              .Device(DEVICE_CPU)                          \
+                              .TypeConstraint<T>("T")                      \
+                              .TypeConstraint<int32>("Tpaddings")          \
+                              .Label(mkl_op_registry::kMklOpLabel),        \
                           MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D);
@@ -1879,12 +1949,13 @@ TF_CALL_float(REGISTER_MKL_CPU_2D);
 TF_CALL_float(REGISTER_MKL_CPU_2D_FUSED);
 
 // Register 3D operations
-#define REGISTER_MKL_CPU_3D(T)                                      \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv3D")                        \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklConvOp<CPUDevice, T, T, T, T, T, false>);
+#define REGISTER_MKL_CPU_3D(T)                  \
+  REGISTER_KERNEL_BUILDER(                      \
+      Name("_MklConv3D")                        \
+          .Device(DEVICE_CPU)                   \
+          .TypeConstraint<T>("T")               \
+          .Label(mkl_op_registry::kMklOpLabel), \
+      MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false>);
 TF_CALL_float(REGISTER_MKL_CPU_3D);
 
 }  // namespace tensorflow

@@ -1673,6 +1673,9 @@ struct GatherOperator : Operator {
   // ResolveGatherAttributes. An empty axis indicates that the axis has not yet
   // be resolved.
   absl::optional<int> axis;
+
+  // This field is not used by the standard TF Lite export but it is still need
+  // for legacy Gather implementations.
   int input_rank = 0;
 };
 

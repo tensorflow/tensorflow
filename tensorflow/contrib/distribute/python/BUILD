@@ -611,6 +611,7 @@ cuda_py_test(
         "no_oss",  # TODO(b/117919883): Fix python error.
         "no_pip",
         "no_windows_gpu",
+        "noguitar",  # TODO(b/120025010): Re-enable this test on Guitar.
         "notsan",
     ],
 )

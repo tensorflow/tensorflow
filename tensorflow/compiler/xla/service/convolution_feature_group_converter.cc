@@ -205,38 +205,6 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     // If the code generator handles depthwise separable convolutions
     // inherently, then no filter expansion is needed.
     if (!filter_expansion_ && depthwise_separable) {
-      const int64 old_kernel_input_feature_dimension =
-          dim_numbers.kernel_input_feature_dimension();
-      const int64 old_kernel_output_feature_dimension =
-          dim_numbers.kernel_output_feature_dimension();
-
-      // For depthwise convolutions, we want the kernel input feature dimension
-      // to be smaller than the output feature dimension. If that's not the
-      // case, we swap the dimensions.
-      if (old_kernel_input_feature_dimension >
-          old_kernel_output_feature_dimension) {
-        Shape reshaped_filter_shape = filter->shape();
-        auto& dimensions = *reshaped_filter_shape.mutable_dimensions();
-        std::swap(dimensions[old_kernel_input_feature_dimension],
-                  dimensions[old_kernel_output_feature_dimension]);
-
-        auto reshaped_filter =
-            add(HloInstruction::CreateReshape(reshaped_filter_shape, filter));
-
-        dim_numbers.set_kernel_input_feature_dimension(
-            old_kernel_output_feature_dimension);
-
-        dim_numbers.set_kernel_output_feature_dimension(
-            old_kernel_input_feature_dimension);
-
-        auto new_convolution = HloInstruction::CreateConvolve(
-            convolution->shape(), convolution->mutable_operand(0),
-            reshaped_filter, group_count, convolution->window(), dim_numbers,
-            convolution->precision_config());
-
-        TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
-            convolution, std::move(new_convolution)));
-      }
       return Status::OK();
     }
     // We want to repeat 'filter' in the 'input_feature_dim' dimension

@@ -29,26 +29,26 @@ package_group(
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
     "if_android",
+    "if_not_windows",
+    "tf_cc_binary",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
-    "tf_cc_binary",
     "tf_copts",
     "tf_cuda_library",
-    "tf_opts_nortti_if_android",
     "tf_kernel_library",
     "tf_mkl_kernel_library",
-    "cc_header_only_library",
-    "if_not_windows",
+    "tf_opts_nortti_if_android",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library",
     "tf_kernel_tests_linkstatic",
+    "tf_proto_library",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -603,7 +603,7 @@ cc_library(
     deps = [
         "//third_party/eigen3",
     ] + select({
-        ":mkldnn_contraction_kernel": ["//third_party/intel_mkl_dnn:mkldnn_single_threaded"],
+        ":mkldnn_contraction_kernel": ["@mkl_dnn//:mkldnn_single_threaded"],
         "//conditions:default": [],
     }),
 )

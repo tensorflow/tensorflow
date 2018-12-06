@@ -103,6 +103,14 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                              window_shift_, ", ", window_stride_, ")::Dataset");
     }
 
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return n / window_shift_;
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

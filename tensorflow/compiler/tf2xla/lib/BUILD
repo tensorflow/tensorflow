@@ -18,20 +18,6 @@ filegroup(
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 
 cc_library(
-    name = "batch_dot",
-    srcs = ["batch_dot.cc"],
-    hdrs = ["batch_dot.h"],
-    deps = [
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "broadcast",
     srcs = ["broadcast.cc"],
     hdrs = ["broadcast.h"],
@@ -52,7 +38,6 @@ cc_library(
     srcs = ["cholesky.cc"],
     hdrs = ["cholesky.h"],
     deps = [
-        ":batch_dot",
         ":triangular_solve",
         ":util",
         ":while_loop",
@@ -63,6 +48,8 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/core:lib",
     ],
 )
@@ -87,7 +74,6 @@ cc_library(
     srcs = ["qr.cc"],
     hdrs = ["qr.h"],
     deps = [
-        ":batch_dot",
         ":util",
         ":while_loop",
         "//tensorflow/compiler/xla:literal_util",
@@ -100,6 +86,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/core:lib",
     ],
 )
@@ -129,7 +116,6 @@ cc_library(
     srcs = ["triangular_solve.cc"],
     hdrs = ["triangular_solve.h"],
     deps = [
-        ":batch_dot",
         ":util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -140,7 +126,9 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/core:lib",
     ],
 )
@@ -184,29 +172,6 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_test(
-    name = "util_test",
-    srcs = ["util_test.cc"],
-    deps = [
-        ":batch_dot",
-        ":util",
-        "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client:global_data",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
     ],
 )
 

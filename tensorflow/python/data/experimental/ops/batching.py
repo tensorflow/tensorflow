@@ -596,6 +596,9 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
     else:
       self._output_structure = self._map_func.output_structure._batch(None)  # pylint: disable=protected-access
 
+  def _functions(self):
+    return [self._map_func]
+
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
     return ged_ops.experimental_map_and_batch_dataset(
