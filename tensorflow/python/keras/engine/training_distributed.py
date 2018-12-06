@@ -183,6 +183,8 @@ def experimental_fit_loop(model,
 
   callbacks.on_train_begin()
   for epoch in range(initial_epoch, epochs):
+    with current_strategy.scope():
+      _reset_metrics(model, model._grouped_model_train)
     callbacks.on_epoch_begin(epoch)
     epoch_logs = {}
     step_index = 0
@@ -342,7 +344,7 @@ def experimental_test_loop(model,
   # Copy the weights from the original model to each of the replicated models.
   with current_strategy.scope():
     _copy_weights_to_distributed_model(model, model._grouped_model_test)
-
+    _reset_metrics(model, model._grouped_model_test)
   assert steps is not None
   outs = [0.] * len(model.metrics_names)
   for step in range(steps):
@@ -449,7 +451,7 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
   # Copy the weights from the original model to each of the replicated models.
   with current_strategy.scope():
     _copy_weights_to_distributed_model(model, model._grouped_model_predict)
-
+    _reset_metrics(model, model._grouped_model_predict)
   assert steps is not None
   # Since we do not know how many samples we will see, we cannot pre-allocate
   # the returned Numpy arrays. Instead, we store one array per batch seen
@@ -714,3 +716,12 @@ def _per_device_aggregate_batch(batch_outs, model, mode):
       total_batch_outs.append(np.concatenate(nest.flatten(nested_outs)))
     return total_batch_outs
   return batch_outs
+
+
+def _reset_metrics(model, distributed_model=None):
+  if model._distribution_strategy:
+    distributed_model = (
+        distributed_model or
+        model._distribution_strategy.unwrap(model._grouped_model)[0])
+    distributed_model.reset_metrics()
+
