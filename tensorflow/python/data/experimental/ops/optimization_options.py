@@ -35,6 +35,12 @@ class OptimizationOptions(options.OptionsBase):
   dataset = dataset.with_options(options)
   ```
   """
+  apply_default_optimizations = options.create_option(
+      name="apply_default_optimizations",
+      ty=bool,
+      docstring=
+      "Whether to apply default static optimizations. If False, only static "
+      "optimizations that have been explicitly enabled will be applied.")
 
   filter_fusion = options.create_option(
       name="filter_fusion",
@@ -81,3 +87,31 @@ class OptimizationOptions(options.OptionsBase):
       name="shuffle_and_repeat_fusion",
       ty=bool,
       docstring="Whether to fuse shuffle and repeat transformations.")
+
+  def _static_optimizations(self):
+    """Produces the list of enabled static optimizations."""
+    result = []
+    optimizations_to_enable = [
+        "filter_fusion",
+        "hoist_random_uniform",
+        "map_and_batch_fusion",
+        "map_and_filter_fusion",
+        "map_fusion",
+        "map_parallelization",
+        "map_vectorization",
+        "shuffle_and_repeat_fusion",
+    ]
+    for optimization in optimizations_to_enable:
+      if getattr(self, optimization):
+        result.append(optimization)
+
+    if self.apply_default_optimizations is not False:
+      # The following optimizations are turned on by default, unless the
+      # user explicitly disables them.
+      optimizations_to_disable = [
+          "noop_elimination",
+      ]
+      for optimization in optimizations_to_disable:
+        if getattr(self, optimization) is not False:
+          result.append(optimization)
+    return result
