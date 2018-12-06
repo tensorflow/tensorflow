@@ -1,3 +1,6 @@
+
+TfLite_RPI_APPS_DEBUG := false
+
 # Find where we're running from, so we can store generated files here.
 ifeq ($(origin MAKEFILE_DIR), undefined)
 	MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
@@ -65,7 +68,7 @@ tensorflow/contrib/lite/examples/camera/libs/librt.a
 # these settings are for the target compiler.
 CXXFLAGS := -O3 -DNDEBUG
 CCFLAGS := ${CXXFLAGS}
-CXXFLAGS += --std=c++11
+CXXFLAGS += --std=c++11 -DTfLite_RPI_APPS_DEBUG=$(TfLite_RPI_APPS_DEBUG)
 CFLAGS :=
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r

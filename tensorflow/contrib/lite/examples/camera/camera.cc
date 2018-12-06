@@ -48,6 +48,10 @@ limitations under the License.
 
 #define LOG(x) std::cerr
 
+#if TfLite_RPI_APPS_DEBUG
+#define DEBUG(INFO) LOG(INFO)
+#endif
+
 namespace tflite {
 namespace label_image {
 
@@ -370,7 +374,7 @@ void RunInference(Settings* s) {
   }
 
   for (int i = 0; i < 100; i++) {
-    LOG(INFO) << "The " << i << "th frame \n";
+    LOG(INFO) << "The " << i << "th frame ! \n";
     // Captur a frame.
     //{
     //      uint8_t* frame_data;
@@ -389,7 +393,9 @@ void RunInference(Settings* s) {
       exit(-1);
     }
 
-    LOG(INFO) << "Going to tensor processing -- \n";
+#if TfLite_RPI_APPS_DEBUG
+    DEBUG(INFO) << "Going to tensor processing -- \n";
+#endif
 
     int input = interpreter->inputs()[0];
     if (s->verbose) LOG(INFO) << "input: " << input << "\n";
@@ -422,14 +428,20 @@ void RunInference(Settings* s) {
                       wanted_width, wanted_channels, s);
         break;
       case kTfLiteUInt8:
-        LOG(INFO) << "Entering kTfLiteUInt8:" << wanted_height << " ,"
-                  << wanted_width << " ," << wanted_channels << " \n";
-        //      resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input),
-        //      in.data(),
+
+#if TfLite_RPI_APPS_DEBUG
+        DEBUG(INFO) << "Entering kTfLiteUInt8:" << wanted_height << " ,"
+                    << wanted_width << " ," << wanted_channels << " \n";
+#endif
+
         resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), frame_data,
                         video_height, video_width, video_channels,
                         wanted_height, wanted_width, wanted_channels, s);
-        LOG(INFO) << "resize is done \n";
+
+#if TfLite_RPI_APPS_DEBUG
+        DEBUG(INFO) << "resize is done \n";
+#endif
+
         break;
       default:
         LOG(FATAL) << "cannot handle input type "
