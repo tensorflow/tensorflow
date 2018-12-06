@@ -266,7 +266,7 @@ class ShapeUtil {
   }
 
   // Returns the higher-precision element type if a and b are both floating
-  // point types; otherwise, checks that that they have the same element type
+  // point types; otherwise, checks that they have the same element type
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
