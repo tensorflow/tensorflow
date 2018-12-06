@@ -511,7 +511,7 @@ class Metric(Layer):
   ### End: For use by subclasses ###
 
 
-@tf_export('metrics.Mean', 'keras.metrics.Mean')
+@tf_export('keras.metrics.Mean')
 class Mean(Metric):
   """Computes the (weighted) mean of the given values.
 
@@ -528,7 +528,7 @@ class Mean(Metric):
   Usage:
 
   ```python
-  m = tf.metrics.Mean()
+  m = tf.keras.metrics.Mean()
   m.update_state([1, 3, 5, 7])
   print('Final result: ', m.result().numpy())  # Final result: 4.0
   ```
@@ -537,7 +537,7 @@ class Mean(Metric):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.add_metric(metrics_module.Mean(name='mean_1')(outputs))
+  model.add_metric(tf.keras.metrics.Mean(name='mean_1')(outputs))
   model.compile('sgd', loss='mse')
   ```
   """
@@ -651,7 +651,7 @@ class MeanMetricWrapper(Mean):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('metrics.Accuracy', 'keras.metrics.Accuracy')
+@tf_export('keras.metrics.Accuracy')
 class Accuracy(MeanMetricWrapper):
   """Calculates how often predictions matches labels.
 
@@ -670,7 +670,7 @@ class Accuracy(MeanMetricWrapper):
   Usage:
 
   ```python
-  m = tf.metrics.Accuracy()
+  m = tf.keras.metrics.Accuracy()
   m.update_state([1, 2, 3, 4], [0, 2, 3, 4])
   print('Final result: ', m.result().numpy())  # Final result: 0.75
   ```
@@ -679,7 +679,7 @@ class Accuracy(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss='mse', metrics=[tf.metrics.Accuracy()])
+  model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.Accuracy()])
   ```
   """
 
@@ -693,7 +693,7 @@ class Accuracy(MeanMetricWrapper):
     return super(Accuracy, cls).from_config(config)
 
 
-@tf_export('metrics.BinaryAccuracy', 'keras.metrics.BinaryAccuracy')
+@tf_export('keras.metrics.BinaryAccuracy')
 class BinaryAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches labels.
 
@@ -712,7 +712,7 @@ class BinaryAccuracy(MeanMetricWrapper):
   Usage:
 
   ```python
-  m = tf.metrics.BinaryAccuracy()
+  m = tf.keras.metrics.BinaryAccuracy()
   m.update_state([1, 1, 0, 0], [0.98, 1, 0, 0.6])
   print('Final result: ', m.result().numpy())  # Final result: 0.75
   ```
@@ -721,7 +721,7 @@ class BinaryAccuracy(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss='mse', metrics=[tf.metrics.BinaryAccuracy()])
+  model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.BinaryAccuracy()])
   ```
   """
 
@@ -744,8 +744,7 @@ class BinaryAccuracy(MeanMetricWrapper):
     return super(BinaryAccuracy, cls).from_config(config)
 
 
-@tf_export(
-    'metrics.CategoricalAccuracy', 'keras.metrics.CategoricalAccuracy')
+@tf_export('keras.metrics.CategoricalAccuracy')
 class CategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches labels.
 
@@ -768,7 +767,7 @@ class CategoricalAccuracy(MeanMetricWrapper):
   Usage:
 
   ```python
-  m = tf.metrics.CategoricalAccuracy()
+  m = tf.keras.metrics.CategoricalAccuracy()
   m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
   print('Final result: ', m.result().numpy())  # Final result: 0.5
   ```
@@ -777,7 +776,10 @@ class CategoricalAccuracy(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss='mse', metrics=[tf.metrics.CategoricalAccuracy()])
+  model.compile(
+    'sgd',
+    loss='mse',
+    metrics=[tf.keras.metrics.CategoricalAccuracy()])
   ```
   """
 
@@ -798,9 +800,7 @@ class CategoricalAccuracy(MeanMetricWrapper):
     return super(CategoricalAccuracy, cls).from_config(config)
 
 
-@tf_export(
-    'metrics.SparseCategoricalAccuracy',
-    'keras.metrics.SparseCategoricalAccuracy')
+@tf_export('keras.metrics.SparseCategoricalAccuracy')
 class SparseCategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches integer labels.
 
@@ -820,7 +820,7 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   Usage:
 
   ```python
-  m = tf.metrics.SparseCategoricalAccuracy()
+  m = tf.keras.metrics.SparseCategoricalAccuracy()
   m.update_state([[2], [1]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
   print('Final result: ', m.result().numpy())  # Final result: 0.5
   ```
@@ -832,7 +832,7 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   model.compile(
       'sgd',
       loss='mse',
-      metrics=[tf.metrics.SparseCategoricalAccuracy()])
+      metrics=[tf.keras.metrics.SparseCategoricalAccuracy()])
   ```
   """
 
@@ -907,7 +907,7 @@ class _ConfusionMatrixConditionCount(Metric):
       K.set_value(v, np.zeros((num_thresholds,)))
 
 
-@tf_export('metrics.FalsePositives', 'keras.metrics.FalsePositives')
+@tf_export('keras.metrics.FalsePositives')
 class FalsePositives(_ConfusionMatrixConditionCount):
   """Calculates the number of false positives.
 
@@ -925,7 +925,7 @@ class FalsePositives(_ConfusionMatrixConditionCount):
   Usage:
 
   ```python
-  m = tf.metrics.FalsePositives()
+  m = tf.keras.metrics.FalsePositives()
   m.update_state([0, 1, 0, 0], [0, 0, 1, 1])
   print('Final result: ', m.result().numpy())  # Final result: 2
   ```
@@ -934,7 +934,7 @@ class FalsePositives(_ConfusionMatrixConditionCount):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss='mse', metrics=[tf.metrics.FalsePositives()])
+  model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.FalsePositives()])
   ```
   """
 
@@ -957,7 +957,7 @@ class FalsePositives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
-@tf_export('metrics.FalseNegatives', 'keras.metrics.FalseNegatives')
+@tf_export('keras.metrics.FalseNegatives')
 class FalseNegatives(_ConfusionMatrixConditionCount):
   """Calculates the number of false negatives.
 
@@ -975,7 +975,7 @@ class FalseNegatives(_ConfusionMatrixConditionCount):
   Usage:
 
   ```python
-  m = tf.metrics.FalseNegatives()
+  m = tf.keras.metrics.FalseNegatives()
   m.update_state([0, 1, 1, 1], [0, 1, 0, 0])
   print('Final result: ', m.result().numpy())  # Final result: 2
   ```
@@ -984,7 +984,7 @@ class FalseNegatives(_ConfusionMatrixConditionCount):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss='mse', metrics=[tf.metrics.FalseNegatives()])
+  model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.FalseNegatives()])
   ```
   """
 
@@ -1007,7 +1007,7 @@ class FalseNegatives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
-@tf_export('metrics.TrueNegatives', 'keras.metrics.TrueNegatives')
+@tf_export('keras.metrics.TrueNegatives')
 class TrueNegatives(_ConfusionMatrixConditionCount):
   """Calculates the number of true negatives.
 
@@ -1025,7 +1025,7 @@ class TrueNegatives(_ConfusionMatrixConditionCount):
   Usage:
 
   ```python
-  m = tf.metrics.TrueNegatives()
+  m = tf.keras.metrics.TrueNegatives()
   m.update_state([0, 1, 0, 0], [1, 1, 0, 0])
   print('Final result: ', m.result().numpy())  # Final result: 2
   ```
@@ -1034,7 +1034,7 @@ class TrueNegatives(_ConfusionMatrixConditionCount):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss='mse', metrics=[tf.metrics.TrueNegatives()])
+  model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.TrueNegatives()])
   ```
   """
 
@@ -1057,7 +1057,7 @@ class TrueNegatives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
-@tf_export('metrics.TruePositives', 'keras.metrics.TruePositives')
+@tf_export('keras.metrics.TruePositives')
 class TruePositives(_ConfusionMatrixConditionCount):
   """Calculates the number of true positives.
 
@@ -1075,7 +1075,7 @@ class TruePositives(_ConfusionMatrixConditionCount):
   Usage:
 
   ```python
-  m = tf.metrics.TruePositives()
+  m = tf.keras.metrics.TruePositives()
   m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
   print('Final result: ', m.result().numpy())  # Final result: 2
   ```
@@ -1084,7 +1084,7 @@ class TruePositives(_ConfusionMatrixConditionCount):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss='mse', metrics=[tf.metrics.TruePositives()])
+  model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.TruePositives()])
   ```
   """
 
@@ -1107,7 +1107,7 @@ class TruePositives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
-@tf_export('metrics.Precision', 'keras.metrics.Precision')
+@tf_export('keras.metrics.Precision')
 class Precision(Metric):
   """Computes the precision of the predictions with respect to the labels.
 
@@ -1126,7 +1126,7 @@ class Precision(Metric):
   Usage:
 
   ```python
-  m = tf.metrics.Precision()
+  m = tf.keras.metrics.Precision()
   m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
   print('Final result: ', m.result().numpy())  # Final result: 0.66
   ```
@@ -1135,7 +1135,7 @@ class Precision(Metric):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss='mse', metrics=[tf.metrics.Precision()])
+  model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.Precision()])
   ```
   """
 
@@ -1192,7 +1192,7 @@ class Precision(Metric):
       K.set_value(v, np.zeros((num_thresholds,)))
 
 
-@tf_export('metrics.Recall', 'keras.metrics.Recall')
+@tf_export('keras.metrics.Recall')
 class Recall(Metric):
   """Computes the recall of the predictions with respect to the labels.
 
@@ -1211,7 +1211,7 @@ class Recall(Metric):
   Usage:
 
   ```python
-  m = tf.metrics.Recall()
+  m = tf.keras.metrics.Recall()
   m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
   print('Final result: ', m.result().numpy())  # Final result: 0.66
   ```
@@ -1220,7 +1220,7 @@ class Recall(Metric):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss='mse', metrics=[tf.metrics.Recall()])
+  model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.Recall()])
   ```
   """
 
@@ -1341,6 +1341,7 @@ class SensitivitySpecificityBase(Metric):
       K.set_value(v, np.zeros((num_thresholds,)))
 
 
+@tf_export('keras.metrics.SensitivityAtSpecificity')
 class SensitivityAtSpecificity(SensitivitySpecificityBase):
   """Computes the sensitivity at a given specificity.
 
@@ -1363,7 +1364,7 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   Usage:
 
   ```python
-  m = tf.metrics.SensitivityAtSpecificity(0.4, num_thresholds=1)
+  m = tf.keras.metrics.SensitivityAtSpecificity(0.4, num_thresholds=1)
   m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
   print('Final result: ', m.result().numpy())  # Final result: 0.5
   ```
@@ -1375,7 +1376,7 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   model.compile(
       'sgd',
       loss='mse',
-      metrics=[tf.metrics.SensitivityAtSpecificity()])
+      metrics=[tf.keras.metrics.SensitivityAtSpecificity()])
   ```
   """
 
@@ -1409,6 +1410,7 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
                                self.tp[min_index] + self.fn[min_index])
 
 
+@tf_export('keras.metrics.SpecificityAtSensitivity')
 class SpecificityAtSensitivity(SensitivitySpecificityBase):
   """Computes the specificity at a given sensitivity.
 
@@ -1431,7 +1433,7 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   Usage:
 
   ```python
-  m = tf.metrics.SpecificityAtSensitivity(0.8, num_thresholds=1)
+  m = tf.keras.metrics.SpecificityAtSensitivity(0.8, num_thresholds=1)
   m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
   print('Final result: ', m.result().numpy())  # Final result: 1.0
   ```
@@ -1443,7 +1445,7 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   model.compile(
       'sgd',
       loss='mse',
-      metrics=[tf.metrics.SpecificityAtSensitivity()])
+      metrics=[tf.keras.metrics.SpecificityAtSensitivity()])
   ```
   """
 

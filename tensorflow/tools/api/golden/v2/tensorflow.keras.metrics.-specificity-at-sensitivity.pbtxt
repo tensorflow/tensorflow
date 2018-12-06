@@ -1,8 +1,7 @@
-path: "tensorflow.metrics.CategoricalAccuracy"
+path: "tensorflow.keras.metrics.SpecificityAtSensitivity"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.metrics.CategoricalAccuracy\'>"
-  is_instance: "<class \'tensorflow.python.keras.metrics.MeanMetricWrapper\'>"
-  is_instance: "<class \'tensorflow.python.keras.metrics.Mean\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.SpecificityAtSensitivity\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.SensitivitySpecificityBase\'>"
   is_instance: "<class \'tensorflow.python.keras.metrics.Metric\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
@@ -85,7 +84,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'categorical_accuracy\', \'None\'], "
+    argspec: "args=[\'self\', \'sensitivity\', \'num_thresholds\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'200\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"
