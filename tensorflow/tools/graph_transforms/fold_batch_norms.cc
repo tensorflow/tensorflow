@@ -76,11 +76,10 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
         int64 weights_cols;
         if (conv_node.op() == "Conv2D") {
           weights_cols = weights.shape().dim_size(3);
-        }
-        else if (conv_node.op() == "DepthwiseConv2dNative") {
-          weights_cols = weights.shape().dim_size(2) * weights.shape().dim_size(3);
-        }
-        else {
+        } else if (conv_node.op() == "DepthwiseConv2dNative") {
+          weights_cols =
+              weights.shape().dim_size(2) * weights.shape().dim_size(3);
+        } else {
           weights_cols = weights.shape().dim_size(1);
         }
         if ((mul_values.shape().dims() != 1) ||
@@ -96,7 +95,8 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
         auto scaled_weights_vector = scaled_weights.flat<float>();
         for (int64 row = 0; row < weights_vector.dimension(0); ++row) {
           scaled_weights_vector(row) =
-                weights_vector(row) * mul_values.flat<float>()(row % weights_cols);
+              weights_vector(row) *
+              mul_values.flat<float>()(row % weights_cols);
         }
 
         // Construct the new nodes.

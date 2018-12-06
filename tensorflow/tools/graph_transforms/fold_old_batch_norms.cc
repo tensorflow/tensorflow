@@ -32,9 +32,9 @@ Status ErrorIfNotVector(const Tensor& input, const string& input_name,
                         int expected_width) {
   if ((input.shape().dims() != 1) ||
       (input.shape().dim_size(0) != expected_width)) {
-    return errors::InvalidArgument(
-        input_name,
-        " input to batch norm has bad shape: ", input.shape().DebugString());
+    return errors::InvalidArgument(input_name,
+                                   " input to batch norm has bad shape: ",
+                                   input.shape().DebugString());
   }
   return Status::OK();
 }
@@ -119,11 +119,9 @@ Status FuseScaleOffsetToConvWeights(const std::vector<float>& scale_values,
   int64 weights_cols;
   if (conv_node.op() == "Conv2D") {
     weights_cols = weights.shape().dim_size(3);
-  }
-  else if (conv_node.op() == "DepthwiseConv2dNative") {
+  } else if (conv_node.op() == "DepthwiseConv2dNative") {
     weights_cols = weights.shape().dim_size(2) * weights.shape().dim_size(3);
-  }
-  else {
+  } else {
     weights_cols = weights.shape().dim_size(1);
   }
   CHECK_EQ(weights_cols, scale_values.size());
@@ -134,7 +132,7 @@ Status FuseScaleOffsetToConvWeights(const std::vector<float>& scale_values,
   auto scaled_weights_vector = scaled_weights.flat<float>();
   for (int64 row = 0; row < weights_vector.dimension(0); ++row) {
     scaled_weights_vector(row) =
-          weights_vector(row) * scale_values[row % weights_cols];
+        weights_vector(row) * scale_values[row % weights_cols];
   }
   // Figure out the remaining bias to add on.
   Tensor bias_offset(DT_FLOAT, {weights_cols});
@@ -193,7 +191,7 @@ Status FuseBatchNormWithConv(const NodeMatch& match,
 }
 
 Status FuseBatchNormWithBatchToSpace(const NodeMatch& match,
-                             std::vector<NodeDef>* new_nodes) {
+                                     std::vector<NodeDef>* new_nodes) {
   // Calculate the scale and offset values to apply.
   std::vector<float> scale_values;
   std::vector<float> offset_values;
@@ -208,9 +206,8 @@ Status FuseBatchNormWithBatchToSpace(const NodeMatch& match,
   const NodeDef& conv_node = conv_node_match.node;
 
   string biasadd_name = conv_node.name() + "/biasadd";
-  TF_RETURN_IF_ERROR(
-      FuseScaleOffsetToConvWeights(scale_values, offset_values, conv_node_match,
-                                   biasadd_name , new_nodes));
+  TF_RETURN_IF_ERROR(FuseScaleOffsetToConvWeights(
+      scale_values, offset_values, conv_node_match, biasadd_name, new_nodes));
 
   NodeDef new_batch_to_space_node = batch_to_space_node;
   // reuse batch_norm node name

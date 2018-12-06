@@ -138,8 +138,8 @@ class FoldOldBatchNormsTest : public ::testing::Test {
     Output weights_op =
         Const(root.WithOpName("weights_op"), Input::Initializer(weights_data));
 
-    Output conv_op = DepthwiseConv2dNative(root.WithOpName("conv_op"), 
-                            input_op, weights_op, {1, 1, 1, 1}, "VALID");
+    Output conv_op = DepthwiseConv2dNative(root.WithOpName("conv_op"), input_op,
+                                           weights_op, {1, 1, 1, 1}, "VALID");
 
     Tensor mean_data(DT_FLOAT, TensorShape({4}));
     test::FillValues<float>(&mean_data, {10.0f, 20.0f, 30.0f, 40.0f});
@@ -163,7 +163,6 @@ class FoldOldBatchNormsTest : public ::testing::Test {
 
     GraphDef original_graph_def;
     TF_ASSERT_OK(root.ToGraphDef(&original_graph_def));
-
 
     NodeDef batch_norm_node;
     batch_norm_node.set_op("BatchNormWithGlobalNormalization");
@@ -198,7 +197,7 @@ class FoldOldBatchNormsTest : public ::testing::Test {
     for (const NodeDef& node : fused_graph_def.node()) {
       EXPECT_NE("BatchNormWithGlobalNormalization", node.op());
     }
-  }    
+  }
 
   void TestFoldFusedBatchNorms() {
     auto root = tensorflow::Scope::NewRootScope();
@@ -294,8 +293,8 @@ class FoldOldBatchNormsTest : public ::testing::Test {
     Output weights_op =
         Const(root.WithOpName("weights_op"), Input::Initializer(weights_data));
 
-    Output conv_op = DepthwiseConv2dNative(root.WithOpName("conv_op"), 
-                            input_op, weights_op, {1, 1, 1, 1}, "VALID");
+    Output conv_op = DepthwiseConv2dNative(root.WithOpName("conv_op"), input_op,
+                                           weights_op, {1, 1, 1, 1}, "VALID");
 
     Tensor mean_data(DT_FLOAT, TensorShape({4}));
     test::FillValues<float>(&mean_data, {10.0f, 20.0f, 30.0f, 40.0f});
@@ -477,16 +476,17 @@ void TestFoldFusedBatchNormsWithBatchToSpace() {
 
   Tensor block_shape_data(DT_INT32, TensorShape({2}));
   test::FillValues<int32>(&block_shape_data, {1, 2});
-  Output block_shape_op =
-      Const(root.WithOpName("block_shape_op"), Input::Initializer(block_shape_data));
+  Output block_shape_op = Const(root.WithOpName("block_shape_op"),
+                                Input::Initializer(block_shape_data));
 
   Tensor crops_data(DT_INT32, TensorShape({2, 2}));
   test::FillValues<int32>(&crops_data, {0, 0, 0, 1});
   Output crops_op =
       Const(root.WithOpName("crops_op"), Input::Initializer(crops_data));
 
-  Output batch_to_space_op = BatchToSpaceND(root.WithOpName("batch_to_space_op"),
-                                            conv_op, block_shape_op, crops_data);
+  Output batch_to_space_op =
+      BatchToSpaceND(root.WithOpName("batch_to_space_op"), conv_op,
+                     block_shape_op, crops_data);
 
   Tensor mean_data(DT_FLOAT, TensorShape({2}));
   test::FillValues<float>(&mean_data, {10.0f, 20.0f});
@@ -495,8 +495,8 @@ void TestFoldFusedBatchNormsWithBatchToSpace() {
 
   Tensor variance_data(DT_FLOAT, TensorShape({2}));
   test::FillValues<float>(&variance_data, {0.25f, 0.5f});
-  Output variance_op = Const(root.WithOpName("variance_op"),
-                             Input::Initializer(variance_data));
+  Output variance_op =
+      Const(root.WithOpName("variance_op"), Input::Initializer(variance_data));
 
   Tensor beta_data(DT_FLOAT, TensorShape({2}));
   test::FillValues<float>(&beta_data, {0.1f, 0.6f});
@@ -570,7 +570,8 @@ TEST_F(FoldOldBatchNormsTest, TestFoldOldBatchNormsAfterDepthwiseConv2dNative) {
   TestFoldOldBatchNormsAfterDepthwiseConv2dNative();
 }
 
-TEST_F(FoldOldBatchNormsTest, TestFoldFusedBatchNormsAfterDepthwiseConv2dNative) {
+TEST_F(FoldOldBatchNormsTest,
+       TestFoldFusedBatchNormsAfterDepthwiseConv2dNative) {
   TestFoldFusedBatchNormsAfterDepthwiseConv2dNative();
 }
 

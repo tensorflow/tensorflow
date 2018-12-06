@@ -104,10 +104,10 @@ class FoldBatchNormsTest : public ::testing::Test {
     Output weights_op =
         Const(root.WithOpName("weights_op"), Input::Initializer(weights_data));
 
-    Output conv_op = DepthwiseConv2dNative(root.WithOpName("conv_op"), input_op, weights_op,
-                            {1, 1, 1, 1}, "VALID");
+    Output conv_op = DepthwiseConv2dNative(root.WithOpName("conv_op"), input_op,
+                                           weights_op, {1, 1, 1, 1}, "VALID");
 
-    Tensor mul_values_data(DT_FLOAT, TensorShape({4})); 
+    Tensor mul_values_data(DT_FLOAT, TensorShape({4}));
     test::FillValues<float>(&mul_values_data, {2.0f, 3.0f, 4.0f, 5.0f});
     Output mul_values_op = Const(root.WithOpName("mul_values"),
                                  Input::Initializer(mul_values_data));
@@ -136,7 +136,7 @@ class FoldBatchNormsTest : public ::testing::Test {
     for (const NodeDef& node : fused_graph_def.node()) {
       EXPECT_NE("Mul", node.op());
     }
-  }    
+  }
 
   void TestFoldBatchNormsConv2DShared() {
     auto root = tensorflow::Scope::NewRootScope();
