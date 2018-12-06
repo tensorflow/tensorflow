@@ -9,6 +9,9 @@
 // CHECK-DAG: [[map56:#map[0-9]+]] = () -> (56)
 // CHECK-DAG: [[map1Sym:#map[0-9]+]] = ()[s0] -> (s0)
 // CHECK-DAG: [[map1Id:#map[0-9]+]] = (d0) -> (d0)
+// CHECK-DAG: [[multiMap1:#map[0-9]+]] = (d0)[s0] -> (d0, d0 * -1 + s0)
+// CHECK-DAG: [[multiMap2:#map[0-9]+]] = (d0)[s0] -> (s0, d0 + 10)
+// CHECK-DAG: [[multi7Map:#map[0-9]+]] = (d0) -> (d0, d0, d0, d0, d0, d0, d0)
 // Maps produced from individual affine expressions that appear in "if" conditions.
 // CHECK-DAG: [[setMap20:#map[0-9]+]] = (d0) -> (d0 * -1 + 20)
 // CHECK-DAG: [[setMap10:#map[0-9]+]] = (d0) -> (d0 - 10)
@@ -532,5 +535,94 @@ mlfunc @if_for() {
   }
 // CHECK-NEXT: [[outerLoopEnd]]:
 // CHECK-NEXT:   return
+  return
+}
+
+#lbMultiMap = (d0)[s0] -> (d0, s0 - d0)
+#ubMultiMap = (d0)[s0] -> (s0, d0 + 10)
+
+// CHECK-LABEL: cfgfunc @loop_min_max(index) {
+// CHECK-NEXT: bb0(%arg0: index):
+// CHECK-NEXT:   br bb1
+// CHECK-NEXT: bb1:	// pred: bb0
+// CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[map0]]()
+// CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[map42]]()
+// CHECK-NEXT:   br bb2(%{{[0-9]+}} : index)
+// CHECK-NEXT: bb2(%{{[0-9]+}}: index):	// 2 preds: bb1, bb7
+// CHECK-NEXT:   %{{[0-9]+}} = cmpi "slt", %{{[0-9]+}}, %{{[0-9]+}} : index
+// CHECK-NEXT:   cond_br %{{[0-9]+}}, bb3, bb8
+// CHECK-NEXT: bb3:	// pred: bb2
+// CHECK-NEXT:   br bb4
+// CHECK-NEXT: bb4:	// pred: bb3
+// CHECK-NEXT:   %[[lb:[0-9]+]] = affine_apply [[multiMap1]](%{{[0-9]+}})[%arg0]
+// CHECK-NEXT:   %[[lbc:[0-9]+]] = cmpi "sgt", %[[lb]]#0, %[[lb]]#1 : index
+// CHECK-NEXT:   %[[lbv:[0-9]+]] = select %[[lbc]], %[[lb]]#0, %[[lb]]#1 : index
+// CHECK-NEXT:   %[[ub:[0-9]+]] = affine_apply [[multiMap2]](%{{[0-9]+}})[%arg0]
+// CHECK-NEXT:   %[[ubc:[0-9]+]] = cmpi "slt", %[[ub]]#0, %[[ub]]#1 : index
+// CHECK-NEXT:   %[[ubv:[0-9]+]] = select %[[ubc]], %[[ub]]#0, %[[ub]]#1 : index
+// CHECK-NEXT:   br bb5(%[[lbv]] : index)
+// CHECK-NEXT: bb5(%{{[0-9]+}}: index):	// 2 preds: bb4, bb6
+// CHECK-NEXT:   %{{[0-9]+}} = cmpi "slt", %{{[0-9]+}}, %[[ubv]] : index
+// CHECK-NEXT:   cond_br %{{[0-9]+}}, bb6, bb7
+// CHECK-NEXT: bb6:	// pred: bb5
+// CHECK-NEXT:   call @body2(%{{[0-9]+}}, %{{[0-9]+}}) : (index, index) -> ()
+// CHECK-NEXT:   %c1 = constant 1 : index
+// CHECK-NEXT:   %{{[0-9]+}} = addi %{{[0-9]+}}, %c1 : index
+// CHECK-NEXT:   br bb5(%{{[0-9]+}} : index)
+// CHECK-NEXT: bb7:	// pred: bb5
+// CHECK-NEXT:   %c1_0 = constant 1 : index
+// CHECK-NEXT:   %{{[0-9]+}} = addi %{{[0-9]+}}, %c1_0 : index
+// CHECK-NEXT:   br bb2(%{{[0-9]+}} : index)
+// CHECK-NEXT: bb8:	// pred: bb2
+// CHECK-NEXT:   return
+// CHECK-NEXT: }
+mlfunc @loop_min_max(%N : index) {
+  for %i = 0 to 42 {
+    for %j = max #lbMultiMap(%i)[%N] to min #ubMultiMap(%i)[%N] {
+      call @body2(%i, %j) : (index, index) -> ()
+    }
+  }
+  return
+}
+
+#map_7_values = (i) -> (i, i, i, i, i, i, i)
+
+// Check that the "min" (cmpi "slt" + select) reduction sequence is emitted
+// correctly for a an affine map with 7 results.
+
+// CHECK-LABEL: cfgfunc @min_reduction_tree(index) {
+// CHECK-NEXT: bb0(%arg0: index):
+// CHECK-NEXT:   br bb1
+// CHECK-NEXT: bb1:	// pred: bb0
+// CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[map0]]()
+// CHECK-NEXT:   %[[applr:[0-9]+]] = affine_apply [[multi7Map]](%arg0)
+// CHECK-NEXT:   %[[c01:.+]] = cmpi "slt", %[[applr]]#0, %[[applr]]#1 : index
+// CHECK-NEXT:   %[[r01:.+]] = select %[[c01]], %[[applr]]#0, %[[applr]]#1 : index
+// CHECK-NEXT:   %[[c012:.+]] = cmpi "slt", %[[r01]], %[[applr]]#2 : index
+// CHECK-NEXT:   %[[r012:.+]] = select %[[c012]], %[[r01]], %[[applr]]#2 : index
+// CHECK-NEXT:   %[[c0123:.+]] = cmpi "slt", %[[r012]], %[[applr]]#3 : index
+// CHECK-NEXT:   %[[r0123:.+]] = select %[[c0123]], %[[r012]], %[[applr]]#3 : index
+// CHECK-NEXT:   %[[c01234:.+]] = cmpi "slt", %[[r0123]], %[[applr]]#4 : index
+// CHECK-NEXT:   %[[r01234:.+]] = select %[[c01234]], %[[r0123]], %[[applr]]#4 : index
+// CHECK-NEXT:   %[[c012345:.+]] = cmpi "slt", %[[r01234]], %[[applr]]#5 : index
+// CHECK-NEXT:   %[[r012345:.+]] = select %[[c012345]], %[[r01234]], %[[applr]]#5 : index
+// CHECK-NEXT:   %[[c0123456:.+]] = cmpi "slt", %[[r012345]], %[[applr]]#6 : index
+// CHECK-NEXT:   %[[r0123456:.+]] = select %[[c0123456]], %[[r012345]], %[[applr]]#6 : index
+// CHECK-NEXT:   br bb2(%0 : index)
+// CHECK-NEXT: bb2(%{{[0-9]+}}: index):	// 2 preds: bb1, bb3
+// CHECK-NEXT:   %{{[0-9]+}} = cmpi "slt", %{{[0-9]+}}, %[[r0123456]] : index
+// CHECK-NEXT:   cond_br %{{[0-9]+}}, bb3, bb4
+// CHECK-NEXT: bb3:	// pred: bb2
+// CHECK-NEXT:   call @body(%{{[0-9]+}}) : (index) -> ()
+// CHECK-NEXT:   %c1 = constant 1 : index
+// CHECK-NEXT:   %{{[0-9]+}} = addi %{{[0-9]+}}, %c1 : index
+// CHECK-NEXT:   br bb2(%{{[0-9]+}} : index)
+// CHECK-NEXT: bb4:	// pred: bb2
+// CHECK-NEXT:   return
+// CHECK-NEXT: }
+mlfunc @min_reduction_tree(%v : index) {
+  for %i = 0 to min #map_7_values(%v)[] {
+    call @body(%i) : (index) -> ()
+  }
   return
 }

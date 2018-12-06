@@ -54,6 +54,9 @@ public:
 private:
   CFGValue *getConstantIndexValue(int64_t value);
   void visitStmtBlock(StmtBlock *stmtBlock);
+  CFGValue *buildMinMaxReductionSeq(
+      Location loc, CmpIPredicate predicate,
+      llvm::iterator_range<Operation::result_iterator> values);
 
   CFGFunction *cfgFunc;
   CFGFuncBuilder builder;
@@ -121,6 +124,34 @@ CFGValue *FunctionConverter::getConstantIndexValue(int64_t value) {
 void FunctionConverter::visitStmtBlock(StmtBlock *stmtBlock) {
   for (auto &stmt : *stmtBlock)
     this->visit(&stmt);
+}
+
+// Given a range of values, emit the code that reduces them with "min" or "max"
+// depending on the provided comparison predicate.  The predicate defines which
+// comparison to perform, "lt" for "min", "gt" for "max" and is used for the
+// `cmpi` operation followed by the `select` operation:
+//
+//   %cond   = cmpi "predicate" %v0, %v1
+//   %result = select %cond, %v0, %v1
+//
+// Multiple values are scanned in a linear sequence.  This creates a data
+// dependences that wouldn't exist in a tree reduction, but is easier to
+// recognize as a reduction by the subsequent passes.
+CFGValue *FunctionConverter::buildMinMaxReductionSeq(
+    Location loc, CmpIPredicate predicate,
+    llvm::iterator_range<Operation::result_iterator> values) {
+  assert(!llvm::empty(values) && "empty min/max chain");
+
+  auto valueIt = values.begin();
+  CFGValue *value = cast<CFGValue>(*valueIt++);
+  for (; valueIt != values.end(); ++valueIt) {
+    auto cmpOp = builder.create<CmpIOp>(loc, predicate, value, *valueIt);
+    auto selectOp =
+        builder.create<SelectOp>(loc, cmpOp->getResult(), value, *valueIt);
+    value = cast<CFGValue>(selectOp->getResult());
+  }
+
+  return value;
 }
 
 // Convert a "for" loop to a flow of basic blocks.
@@ -235,15 +266,13 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
       functional::map(remapOperands, forStmt->getLowerBoundOperands());
   auto lbAffineApply = builder.create<AffineApplyOp>(
       forStmt->getLoc(), forStmt->getLowerBoundMap(), operands);
-  // TODO(zinenko): support min/max in loop bounds; this requires min/max
-  // operations to be added to StandardOps first.
-  assert(lbAffineApply->getNumOperands() <= 1 && "NYI: min/max bounds");
-  CFGValue *lowerBound = cast<CFGValue>(lbAffineApply->getResult(0));
+  CFGValue *lowerBound = buildMinMaxReductionSeq(
+      forStmt->getLoc(), CmpIPredicate::SGT, lbAffineApply->getResults());
   operands = functional::map(remapOperands, forStmt->getUpperBoundOperands());
   auto ubAffineApply = builder.create<AffineApplyOp>(
       forStmt->getLoc(), forStmt->getUpperBoundMap(), operands);
-  assert(ubAffineApply->getNumOperands() <= 1 && "NYI: min/max bounds");
-  CFGValue *upperBound = cast<CFGValue>(ubAffineApply->getResult(0));
+  CFGValue *upperBound = buildMinMaxReductionSeq(
+      forStmt->getLoc(), CmpIPredicate::SLT, ubAffineApply->getResults());
   builder.create<BranchOp>(builder.getUnknownLoc(), loopConditionBlock,
                            lowerBound);
 
