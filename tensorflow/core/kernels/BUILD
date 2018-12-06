@@ -2755,6 +2755,7 @@ cc_library(
         ":cholesky_grad",
         ":cholesky_op",
         ":determinant_op",
+        ":lu_op",
         ":matrix_exponential_op",
         ":matrix_inverse_op",
         ":matrix_logarithm_op",
@@ -2898,6 +2899,19 @@ tf_kernel_library(
     name = "svd_op",
     prefix = "svd_op",
     deps = LINALG_DEPS,
+)
+
+tf_kernel_library(
+    name = "lu_op",
+    prefix = "lu_op",
+    deps = if_cuda([
+        ":cuda_solvers",
+        ":transpose_functor",
+    ]) + [
+        "//third_party/eigen3",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_library(
