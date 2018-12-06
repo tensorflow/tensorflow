@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/logging.h"
 
 #ifdef GEMMLOWP_PROFILING
-#include "third_party/gemmlowp/profiling/profiler.h"
+#include "gemmlowp/profiling/profiler.h"
 #endif
 
 #ifdef TFLITE_CUSTOM_OPS_HEADER
