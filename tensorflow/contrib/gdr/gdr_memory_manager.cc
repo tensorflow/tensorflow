@@ -30,12 +30,10 @@ limitations under the License.
 #include "tensorflow/contrib/gdr/gdr.pb.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/common_runtime/process_state.h"
-#include "tensorflow/core/lib/random/random.h"
-#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
-#endif  // GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
@@ -248,13 +246,13 @@ Status GdrMemoryManager::Init() {
   ProcessState::singleton()->AddCPUFreeVisitor(free_visitor);
   LOG(INFO) << "Instrumenting CPU allocator(s)";
 
-#if GOOGLE_CUDA
   for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
     GPUProcessState::singleton()->AddCUDAHostAllocVisitor(numa_idx,
                                                           alloc_visitor);
     GPUProcessState::singleton()->AddCUDAHostFreeVisitor(numa_idx,
                                                          free_visitor);
   }
+
   if (IsGDRAvailable()) {
     SubAllocator::Visitor cuda_alloc_visitor = [this](void* ptr, int gpu_id,
                                                       size_t num_bytes) {
@@ -265,7 +263,7 @@ Status GdrMemoryManager::Init() {
                                                      cuda_alloc_visitor);
     LOG(INFO) << "Instrumenting GPU allocator for NUMA " << numa_node_;
   }
-#endif  // GOOGLE_CUDA
+
   return Status::OK();
 }
 
