@@ -28,11 +28,13 @@ from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 _STRUCTURE_CONVERSION_FUNCTION_REGISTRY = {}
 
 
+@tf_export("data.experimental.Structure")
 @six.add_metaclass(abc.ABCMeta)
 class Structure(object):
   """Represents structural information, such as type and shape, about a value.
@@ -376,6 +378,7 @@ class NestedStructure(Structure):
         lambda s: s._batch(batch_size), self._nested_structure))
 
 
+@tf_export("data.experimental.TensorStructure")
 class TensorStructure(Structure):
   """Represents structural information about a `tf.Tensor`."""
 
@@ -439,6 +442,7 @@ class TensorStructure(Structure):
         tensor_shape.TensorShape([batch_size]).concatenate(self._shape))
 
 
+@tf_export("data.experimental.SparseTensorStructure")
 class SparseTensorStructure(Structure):
   """Represents structural information about a `tf.SparseTensor`."""
 

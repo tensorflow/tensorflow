@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -145,6 +146,7 @@ class _OptionalImpl(Optional):
     return self._value_structure
 
 
+@tf_export("data.experimental.OptionalStructure")
 class OptionalStructure(structure.Structure):
   """Represents an optional potentially containing a structured value."""
 
