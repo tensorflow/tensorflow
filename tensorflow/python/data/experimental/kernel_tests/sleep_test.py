@@ -23,6 +23,7 @@ from tensorflow.python.data.experimental.ops import sleep
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 _NUMPY_RANDOM_SEED = 42
@@ -30,22 +31,23 @@ _NUMPY_RANDOM_SEED = 42
 
 class SleepTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testSleep(self):
     sleep_microseconds = 100
     dataset = dataset_ops.Dataset.range(10).apply(
         sleep.sleep(sleep_microseconds))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       start_time = time.time()
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       end_time = time.time()
       self.assertGreater(end_time - start_time, (10 * sleep_microseconds) / 1e6)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
 
 if __name__ == "__main__":

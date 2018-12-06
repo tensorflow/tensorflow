@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -3791,6 +3792,32 @@ TEST_F(ArithmeticOptimizerTest, RemoveStackStridedSliceSameAxis) {
   // stacked[:, 2:, :] == expand_dims(c, 1).
   test::ExpectTensorEqual<float>(tensors_expected[fExpandedC],
                                  tensors[fCSlice2ToOut]);
+}
+
+TEST_F(ArithmeticOptimizerTest, SimplifyAggregationBFloat16) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  Output cast = ops::Cast(s.WithOpName("cast"), x, DT_BFLOAT16);
+  Output add = ops::AddN(s.WithOpName("add"), {cast, cast});
+  Output id = ops::Identity(s.WithOpName("id"), add);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"id"};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlySimplifyAggregation(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  // Extra node created for multiplier.
+  EXPECT_EQ(5, output.node_size());
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<bfloat16>(tensors_expected[0], tensors[0]);
 }
 
 }  // namespace grappler

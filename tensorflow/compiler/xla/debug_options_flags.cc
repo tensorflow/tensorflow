@@ -54,7 +54,7 @@ void SetDebugOptionsDefaults(DebugOptions* flags) {
   // TODO(jlebar): Disable fastmath once doing so is not a performance
   // regression.
   flags->set_xla_cpu_enable_fast_math(true);
-  flags->set_xla_gpu_enable_fast_math(true);
+  flags->set_xla_gpu_enable_fast_min_max(true);
 
   flags->set_xla_force_host_platform_device_count(1);
 }
@@ -160,11 +160,11 @@ void AllocateFlags() {
           "Enable unsafe fast-math optimizations in the CPU compiler; "
           "this may produce faster code at the expense of some accuracy."),
       tensorflow::Flag(
-          "xla_gpu_enable_fast_math",
-          bool_setter_for(&DebugOptions::set_xla_cpu_enable_fast_math),
-          flag_values->xla_cpu_enable_fast_math(),
-          "Enable unsafe fast-math optimizations in the GPU compiler; "
-          "this may produce faster code at the expense of some accuracy."),
+          "xla_gpu_enable_fast_min_max",
+          bool_setter_for(&DebugOptions::set_xla_gpu_enable_fast_min_max),
+          flag_values->xla_gpu_enable_fast_min_max(),
+          "Enable fast floating point min/max lowering that does not propagate "
+          "NaNs."),
       tensorflow::Flag(
           "xla_llvm_enable_alias_scope_metadata",
           bool_setter_for(
@@ -335,7 +335,7 @@ void AllocateFlags() {
           "behavior to help run tests on the host that run models in parallel "
           "across multiple devices."),
   });
-  ParseFlagsFromEnv(*flag_objects);
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
 
 }  // namespace

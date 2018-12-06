@@ -29,6 +29,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
@@ -166,30 +167,39 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
     except ImportError as e:
       tf_logging.warn("Cannot test truncated normal op: %s" % str(e))
 
+  @test_util.run_deprecated_v1
   def testDefaults(self):
     self.validateMoments([10**5], 0.0, 1.0, -2.0, 2.0)
 
+  @test_util.run_deprecated_v1
   def testShifted(self):
     self.validateMoments([10**5], -1.0, 1.0, -2.0, 2.0)
 
+  @test_util.run_deprecated_v1
   def testRightTail(self):
     self.validateMoments([10**5], 0.0, 1.0, 4.0, np.infty)
 
+  @test_util.run_deprecated_v1
   def testLeftTail(self):
     self.validateMoments([10**5], 0.0, 1.0, -np.infty, -4.0)
 
+  @test_util.run_deprecated_v1
   def testLeftTailTwoSidedBounds(self):
     self.validateMoments([10**5], 0.0, 1.0, -6.0, -3.0)
 
+  @test_util.run_deprecated_v1
   def testTwoSidedLeftTailShifted(self):
     self.validateKolmogorovSmirnov([10**5], 6.0, 1.0, -1.0, 1.0)
 
+  @test_util.run_deprecated_v1
   def testRightTailShifted(self):
     self.validateMoments([10**5], -5.0, 1.0, 2.0, np.infty)
 
+  @test_util.run_deprecated_v1
   def testSmallStddev(self):
     self.validateKolmogorovSmirnov([10**5], 0.0, 0.1, 0.05, 0.10)
 
+  @test_util.run_deprecated_v1
   def testSamplingWithSmallStdDevFarFromBound(self):
     sample_op = random_ops.parameterized_truncated_normal(
         shape=(int(1e5),), means=0.8, stddevs=0.05, minvals=-1., maxvals=1.)
@@ -202,6 +212,7 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
       no_neg_samples = np.sum(samples < 0.)
       self.assertEqual(no_neg_samples, 0.)
 
+  @test_util.run_deprecated_v1
   def testSamplingAtRandnSwitchover(self):
     # The randn sampler is used as the bounds are moved farther from the mean,
     # and the probability of accepting a sample increases the farther the

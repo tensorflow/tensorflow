@@ -34,6 +34,7 @@ from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.io_utils import HDF5Matrix
 from tensorflow.python.keras.utils.layer_utils import convert_all_kernels_in_model
 from tensorflow.python.keras.utils.layer_utils import get_source_inputs
+from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.keras.utils.multi_gpu_utils import multi_gpu_model
 from tensorflow.python.keras.utils.np_utils import normalize
 from tensorflow.python.keras.utils.np_utils import to_categorical

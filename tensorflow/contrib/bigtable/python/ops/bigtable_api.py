@@ -222,7 +222,7 @@ class BigtableTable(object):
       A `tf.data.Dataset`. containing `tf.string` Tensors corresponding to all
       of the row keys matching that prefix.
     """
-    return _BigtablePrefixKeyDataset(self, prefix)
+    return dataset_ops.DatasetV1Adapter(_BigtablePrefixKeyDataset(self, prefix))
 
   def sample_keys(self):
     """Retrieves a sampling of row keys from the Bigtable table.
@@ -234,7 +234,7 @@ class BigtableTable(object):
     Returns:
       A `tf.data.Dataset` returning string row keys.
     """
-    return _BigtableSampleKeysDataset(self)
+    return dataset_ops.DatasetV1Adapter(_BigtableSampleKeysDataset(self))
 
   def scan_prefix(self, prefix, probability=None, columns=None, **kwargs):
     """Retrieves row (including values) from the Bigtable service.
@@ -279,7 +279,8 @@ class BigtableTable(object):
     """
     probability = _normalize_probability(probability)
     normalized = _normalize_columns(columns, kwargs)
-    return _BigtableScanDataset(self, prefix, "", "", normalized, probability)
+    return dataset_ops.DatasetV1Adapter(
+        _BigtableScanDataset(self, prefix, "", "", normalized, probability))
 
   def scan_range(self, start, end, probability=None, columns=None, **kwargs):
     """Retrieves rows (including values) from the Bigtable service.
@@ -324,7 +325,8 @@ class BigtableTable(object):
     """
     probability = _normalize_probability(probability)
     normalized = _normalize_columns(columns, kwargs)
-    return _BigtableScanDataset(self, "", start, end, normalized, probability)
+    return dataset_ops.DatasetV1Adapter(
+        _BigtableScanDataset(self, "", start, end, normalized, probability))
 
   def parallel_scan_prefix(self,
                            prefix,
@@ -380,7 +382,8 @@ class BigtableTable(object):
     """
     probability = _normalize_probability(probability)
     normalized = _normalize_columns(columns, kwargs)
-    ds = _BigtableSampleKeyPairsDataset(self, prefix, "", "")
+    ds = dataset_ops.DatasetV1Adapter(
+        _BigtableSampleKeyPairsDataset(self, prefix, "", ""))
     return self._make_parallel_scan_dataset(ds, num_parallel_scans, probability,
                                             normalized)
 
@@ -442,7 +445,8 @@ class BigtableTable(object):
     """
     probability = _normalize_probability(probability)
     normalized = _normalize_columns(columns, kwargs)
-    ds = _BigtableSampleKeyPairsDataset(self, "", start, end)
+    ds = dataset_ops.DatasetV1Adapter(
+        _BigtableSampleKeyPairsDataset(self, "", start, end))
     return self._make_parallel_scan_dataset(ds, num_parallel_scans, probability,
                                             normalized)
 

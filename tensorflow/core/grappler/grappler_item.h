@@ -83,9 +83,42 @@ struct GrapplerItem {
     // Is it allowed to add nodes to the graph that do not have registered
     // gradient function.
     bool non_differentiable_rewrites = true;
+    // By default we are not allowed to inline ops with side effects into the
+    // main graph, because we can't guarantee that after pruning these ops will
+    // be executed. However if we are optimizing a function library (see
+    // meta_optimizer.cc) and a graph was instantiated by a function definition,
+    // we can do that, because functions guarantee that all side effects will be
+    // executed (see function_optimizer.cc for details).
+    bool inline_ops_with_side_effects = false;
   };
 
-  AllowedOptimizations allowed_optimizations;
+  const std::unordered_set<string>& devices() const;
+  // Adds a device to a set of available devices, only if it's a valid fully
+  // defined device name. Returns `Status::OK()` if successfully added a device,
+  // and an error otherwise.
+  Status AddDevice(const string& device);
+  // Adds all valid devices from the other Grappler item to the device set.
+  Status AddDevices(const GrapplerItem& other);
+  // Adds all valid devices from the nodes of the graph to the device set.
+  // Returns `Status::OK()` if all device annotations found in a graph are valid
+  // fully defined device names, and an error otherwise.
+  Status InferDevicesFromGraph();
+  // Clears a set of available devices.
+  void ClearDevices();
+
+  const AllowedOptimizations& allowed_optimizations() const;
+  AllowedOptimizations& allowed_optimizations();
+
+ private:
+  // TODO(ezhulenev) Make GrapplerItem a class and hide all public data members.
+  // TODO(ezhulenev): Migrate all unordered collections to absl.
+
+  // A set of fully defined device names that can be used to place the nodes of
+  // the `graph`.
+  // Example of a fully defined name: "/job:work/replica:1/task:1/device:CPU:0"
+  std::unordered_set<string> devices_;
+
+  AllowedOptimizations allowed_optimizations_;
 };
 
 // Return the transitive fanin of a set of terminal nodes.

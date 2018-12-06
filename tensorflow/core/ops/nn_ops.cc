@@ -327,6 +327,9 @@ REGISTER_OP("_FusedConv2D")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // ---------------------------------------------------------------------- //
     .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
 *NOTE*: Do not invoke this operator directly in Python. Grappler is
@@ -1206,9 +1209,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument("input must have last dimension >= k = ",
-                                   c->Value(k_dim), " but is ",
-                                   c->Value(last_dim));
+    return errors::InvalidArgument(
+        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
+        c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -1262,9 +1265,9 @@ REGISTER_OP("NthElement")
       DimensionHandle last_dim = c->Dim(input, -1);
       if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
           c->Value(last_dim) <= c->Value(n_dim)) {
-        return errors::InvalidArgument("Input must have last dimension > n = ",
-                                       c->Value(n_dim), " but is ",
-                                       c->Value(last_dim));
+        return errors::InvalidArgument(
+            "Input must have last dimension > n = ", c->Value(n_dim),
+            " but is ", c->Value(last_dim));
       }
 
       // Reduce last_dim for output tensor
@@ -2107,7 +2110,6 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-
 REGISTER_OP("_MklAvgPool3DGrad")
     .Input("orig_input_shape: int32")
     .Input("grad: T")
@@ -2190,11 +2192,7 @@ REGISTER_OP("_MklLRN")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-#ifdef INTEL_MKL_ML_ONLY
-    .Output("workspace: T")
-#else
     .Output("workspace: uint8")
-#endif
     .Output("mkl_output: uint8")
     .Output("mkl_workspace: uint8")
     .Attr("depth_radius: int = 5")
@@ -2218,11 +2216,7 @@ REGISTER_OP("_MklLRNGrad")
     .Input("input_grads: T")
     .Input("input_image: T")
     .Input("output_image: T")
-#ifdef INTEL_MKL_ML_ONLY
-    .Input("workspace: T")
-#else
     .Input("workspace: uint8")
-#endif
     .Input("mkl_input_grads: uint8")
     .Input("mkl_input_image: uint8")
     .Input("mkl_output_image: uint8")

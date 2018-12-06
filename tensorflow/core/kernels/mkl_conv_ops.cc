@@ -1067,8 +1067,14 @@ class MklConvOp : public OpKernel {
       Tfilter* filter_data = nullptr;
       if (filter_md.data.format != conv_fwd->GetFilterMemoryFormat()) {
         filter.SetUsrMem(filter_md, &filter_tensor);
-        filter.CheckReorderToOpMem(conv_fwd_pd.get()->weights_primitive_desc(),
-                                   filter.GetTensorBuffer(filter_out_tensor));
+        if (filter_out_tensor == nullptr) {
+          filter.CheckReorderToOpMem(
+              conv_fwd_pd.get()->weights_primitive_desc());
+        } else {
+          filter.CheckReorderToOpMem(
+              conv_fwd_pd.get()->weights_primitive_desc(),
+              filter.GetTensorBuffer(filter_out_tensor));
+        }
         filter_data =
             static_cast<Tfilter*>(filter.GetOpMem().get_data_handle());
       } else {
@@ -1468,7 +1474,7 @@ class MklQuantizedConv2DSumReluOp
             {"sum", {scale_summand / scale_output}});
       else
         params.post_op_params.push_back(
-            {"sum", {2.0 * scale_summand / scale_output}});
+            {"sum", {2.0f * scale_summand / scale_output}});
     } else {
       params.post_op_params.push_back({"sum", {1.0}});
     }

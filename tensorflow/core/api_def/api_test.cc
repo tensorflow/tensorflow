@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
 namespace {
@@ -182,11 +181,14 @@ void TestDeprecationVersionSetCorrectly(
   for (const auto& name_and_api_def : api_defs_map) {
     const auto& name = name_and_api_def.first;
     const auto& api_def = name_and_api_def.second;
-    ASSERT_TRUE(api_def.deprecation_version() == 0 ||
-                api_def.deprecation_message().empty())
-        << "ApiDef that includes deprecation_version > 0 must also specify "
-        << "a deprecation_message. Op " << name
-        << " has deprecation_version > 0 but deprecation_message is not set.";
+    if (api_def.deprecation_version() != 0) {
+      ASSERT_TRUE(api_def.deprecation_version() > 0)
+          << "Found ApiDef with negative deprecation_version";
+      ASSERT_FALSE(api_def.deprecation_message().empty())
+          << "ApiDef that includes deprecation_version > 0 must also specify "
+          << "a deprecation_message. Op " << name
+          << " has deprecation_version > 0 but deprecation_message is not set.";
+    }
   }
 }
 }  // namespace

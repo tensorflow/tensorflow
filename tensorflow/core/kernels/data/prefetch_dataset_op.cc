@@ -56,6 +56,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override { return "PrefetchDatasetOp::Dataset"; }
 
+  int64 Cardinality() const override { return input_->Cardinality(); }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -391,13 +393,14 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 }
 
 namespace {
-REGISTER_KERNEL_BUILDER(Name("PrefetchDataset").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("PrefetchDataset").Device(DEVICE_CPU).Priority(2),
                         PrefetchDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("PrefetchDataset")
                             .Device(DEVICE_GPU)
                             .HostMemory("buffer_size")
                             .HostMemory("input_dataset")
-                            .HostMemory("handle"),
+                            .HostMemory("handle")
+                            .Priority(1),
                         PrefetchDatasetOp);
 }  // namespace
 

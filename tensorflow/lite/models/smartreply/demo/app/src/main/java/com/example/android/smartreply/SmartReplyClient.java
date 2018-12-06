@@ -90,29 +90,26 @@ public class SmartReplyClient implements AutoCloseable {
   }
 
   private MappedByteBuffer loadModelFile() throws IOException {
-    AssetFileDescriptor fileDescriptor = context.getAssets().openFd(MODEL_PATH);
-    FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
-    try {
+    try (AssetFileDescriptor fileDescriptor = context.getAssets().openFd(MODEL_PATH);
+        FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor())) {
       FileChannel fileChannel = inputStream.getChannel();
       long startOffset = fileDescriptor.getStartOffset();
       long declaredLength = fileDescriptor.getDeclaredLength();
       return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
-    } finally {
-      inputStream.close();
     }
   }
 
   private String[] loadBackoffList() throws IOException {
     List<String> labelList = new ArrayList<String>();
-    BufferedReader reader =
-        new BufferedReader(new InputStreamReader(context.getAssets().open(BACKOFF_PATH)));
-    String line;
-    while ((line = reader.readLine()) != null) {
-      if (!line.isEmpty()) {
-        labelList.add(line);
+    try (BufferedReader reader =
+        new BufferedReader(new InputStreamReader(context.getAssets().open(BACKOFF_PATH)))) {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        if (!line.isEmpty()) {
+          labelList.add(line);
+        }
       }
     }
-    reader.close();
     String[] ans = new String[labelList.size()];
     labelList.toArray(ans);
     return ans;

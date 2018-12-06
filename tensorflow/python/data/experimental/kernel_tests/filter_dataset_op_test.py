@@ -47,17 +47,17 @@ class FilterBenchmark(test.Benchmark):
       if optimize_dataset:
         dataset = dataset.apply(optimization.optimize(["filter_fusion"]))
 
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       next_element = iterator.get_next()
 
       with session.Session() as sess:
         for _ in range(10):
-          sess.run(next_element.op)
+          self.evaluate(next_element.op)
         deltas = []
         for _ in range(100):
           start = time.time()
           for _ in range(100):
-            sess.run(next_element.op)
+            self.evaluate(next_element.op)
           end = time.time()
           deltas.append(end - start)
 

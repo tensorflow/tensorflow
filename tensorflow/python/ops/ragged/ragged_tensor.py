@@ -64,7 +64,7 @@ class RaggedTensor(object):
   a 3-D `RaggedTensor` that stores the fixed-size word embedding for each
   word in a sentence, for each sentence in a batch, could be written as
   `[num_sentences, (num_words), embedding_size]`.  The parentheses around
-  `(num_words)` indicate that that dimension is ragged, and that the length
+  `(num_words)` indicate that dimension is ragged, and that the length
   of each element list in that dimension may vary for each item.
 
   ### Component Tensors
@@ -257,6 +257,7 @@ class RaggedTensor(object):
       raise TypeError("Row-partitioning argument must be a Tensor.")
     values.shape.with_rank_at_least(1)
     row_splits.shape.assert_has_rank(1)
+    row_splits.set_shape([None])
 
     self._values = values
     self._row_splits = row_splits

@@ -38,6 +38,7 @@ cuda_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python/compat:compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
@@ -71,15 +72,11 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:session",
         "//tensorflow/python/data/experimental/ops:error_ops",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -150,27 +147,6 @@ py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
-)
-
-cuda_py_test(
-    name = "function_buffering_resource_test",
-    size = "small",
-    srcs = ["function_buffering_resource_test.py"],
-    additional_deps = [
-        "//tensorflow/python/data/experimental/ops:prefetching_ops",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/eager:function",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-    ],
-    tags = ["no_windows_gpu"],
 )
 
 py_test(
@@ -367,6 +343,37 @@ py_test(
         "//tensorflow/python:session",
         "//tensorflow/python/data/experimental/ops:map_defun",
         "//tensorflow/python/data/kernel_tests:test_base",
+    ],
+)
+
+py_test(
+    name = "matching_files_test",
+    size = "small",
+    srcs = ["matching_files_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:matching_files",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "cardinality_test",
+    srcs = ["cardinality_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -617,7 +624,9 @@ py_test(
     size = "medium",
     srcs = ["stats_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":reader_dataset_ops_test_base",
         ":stats_dataset_test_base",

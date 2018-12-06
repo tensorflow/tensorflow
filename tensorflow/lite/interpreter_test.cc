@@ -38,7 +38,7 @@ class InterpreterTest : public ::testing::Test {
   }
 
  protected:
-  TfLiteContext* GetInterpreterContext() { return &interpreter_.context_; }
+  TfLiteContext* GetInterpreterContext() { return interpreter_.context_; }
 
   Interpreter interpreter_;
 };
@@ -566,7 +566,7 @@ TEST(BasicInterpreter, ThreeStepAllocate) {
     DynamicBuffer buf;
     StringRef str_ref = GetString(input, 0);
     buf.AddString(str_ref);
-    buf.WriteToTensor(output);
+    buf.WriteToTensorAsVector(output);
     return kTfLiteOk;
   };
 
@@ -1090,17 +1090,17 @@ class TestDelegate : public ::testing::Test {
         TfLiteIntArrayFree(nodes_to_separate);
         return kTfLiteOk;
       };
-      delegate_.CopyToBufferHandle =
-          [](TfLiteContext* context, TfLiteDelegate* delegate,
-             TfLiteBufferHandle buffer_handle, void* data,
-             size_t size) -> TfLiteStatus {
+      delegate_.CopyToBufferHandle = [](TfLiteContext* context,
+                                        TfLiteDelegate* delegate,
+                                        TfLiteBufferHandle buffer_handle,
+                                        TfLiteTensor* tensor) -> TfLiteStatus {
         // TODO(ycling): Implement tests to test buffer copying logic.
         return kTfLiteOk;
       };
       delegate_.CopyFromBufferHandle =
           [](TfLiteContext* context, TfLiteDelegate* delegate,
-             TfLiteBufferHandle buffer_handle, void* data,
-             size_t size) -> TfLiteStatus {
+             TfLiteBufferHandle buffer_handle,
+             TfLiteTensor* output) -> TfLiteStatus {
         // TODO(ycling): Implement tests to test buffer copying logic.
         return kTfLiteOk;
       };

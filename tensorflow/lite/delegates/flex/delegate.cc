@@ -16,12 +16,14 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 #include "tensorflow/lite/delegates/flex/kernel.h"
 #include "tensorflow/lite/delegates/flex/util.h"
+#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/util.h"
-#include "tensorflow/core/lib/core/status.h"
 
 namespace tflite {
 namespace flex {
@@ -57,8 +59,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 
 TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
                                   TfLiteDelegate* delegate,
-                                  TfLiteBufferHandle buffer_handle, void* data,
-                                  size_t size) {
+                                  TfLiteBufferHandle buffer_handle,
+                                  TfLiteTensor* output) {
   BufferMap* buffer_map =
       reinterpret_cast<DelegateData*>(delegate->data_)->GetBufferMap(context);
 
@@ -68,15 +70,38 @@ TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
   }
 
   tensorflow::Tensor t = buffer_map->GetTensor(buffer_handle);
+
+  if (output->type == kTfLiteString) {
+    if (t.dtype() != tensorflow::DT_STRING) {
+      context->ReportError(context,
+                           "Inconsistent type for TF string tensor index %d.",
+                           buffer_handle);
+      return kTfLiteError;
+    }
+    DynamicBuffer dynamic_buffer;
+
+    auto tf_data = t.flat<string>();
+    for (int i = 0; i < t.NumElements(); ++i) {
+      dynamic_buffer.AddString(tf_data(i).data(), tf_data(i).size());
+    }
+
+    dynamic_buffer.WriteToTensor(output, /*new_shape=*/nullptr);
+    return kTfLiteOk;
+  }
+
   tensorflow::StringPiece t_data = t.tensor_data();
 
-  if (size != t_data.size()) {
-    context->ReportError(
-        context, "Not enough space to store TensorFlow's aligned buffer.");
+  if (output->bytes != t_data.size()) {
+    context->ReportError(context,
+                         absl::StrCat("The given ", output->bytes,
+                                      " bytes are not enough to store "
+                                      "TensorFlow's aligned buffer of size ",
+                                      t_data.size(), " bytes.")
+                             .c_str());
     return kTfLiteError;
   }
 
-  memcpy(data, t_data.data(), t_data.size());
+  memcpy(output->data.raw, t_data.data(), t_data.size());
   return kTfLiteOk;
 }
 
@@ -104,14 +129,13 @@ std::unique_ptr<FlexDelegate> FlexDelegate::Create() {
 }
 
 FlexDelegate::FlexDelegate(std::unique_ptr<flex::DelegateData> delegate_data)
-    : TfLiteDelegate{
-          /*data_=*/delegate_data.get(),
-          /*nullptr,*/ &flex::delegate::Prepare,
-          /*CopyFromBufferHandle=*/&flex::delegate::CopyFromBufferHandle,
-          /*CopyToBufferHandle=*/nullptr,
-          /*FreeBufferHandle=*/nullptr,
-          /*flags=*/kTfLiteDelegateFlagsAllowDynamicTensors},
-      delegate_data_(std::move(delegate_data)) {}
+    : TfLiteDelegate(TfLiteDelegateCreate()),
+      delegate_data_(std::move(delegate_data)) {
+  data_ = delegate_data_.get();
+  Prepare = &flex::delegate::Prepare;
+  CopyFromBufferHandle = &flex::delegate::CopyFromBufferHandle;
+  flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+}
 
 FlexDelegate::~FlexDelegate() {}
 

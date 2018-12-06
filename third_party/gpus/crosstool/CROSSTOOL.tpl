@@ -184,7 +184,8 @@ toolchain {
       action: "c++-link-dynamic-library"
       action: "c++-link-nodeps-dynamic-library"
       flag_group {
-        flag:"-no-canonical-prefixes"
+        flag: "-no-canonical-prefixes"
+        %{extra_no_canonical_prefixes_flags}
       }
     }
   }

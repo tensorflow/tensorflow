@@ -60,6 +60,8 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
       return "IgnoreErrorsDatasetOp::Dataset";
     }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

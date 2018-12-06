@@ -101,7 +101,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   StatusOr<llvm::Function*> EmitComputation(
       HloComputation* computation, const string& function_name_prefix,
       bool is_top_level_computation,
-      const std::vector<const HloInstruction*>* instruction_order);
+      const std::vector<HloInstruction*>* instruction_order);
 
   llvm::IRBuilder<>* b() { return &b_; }
 
@@ -159,7 +159,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleConcatenate(HloInstruction* concatenate) override;
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleScatter(HloInstruction* scatter) override;
-  Status HandleAfterAll(HloInstruction* gen_token) override;
+  Status HandleAfterAll(HloInstruction* after_all) override;
+  Status HandleAddDependency(HloInstruction* add_dependency) override;
   Status HandleRng(HloInstruction* rng) override;
   Status FinishVisit(HloInstruction* root) override;
 
@@ -467,9 +468,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // profiling a computation.
   class ProfilingState {
    public:
-    ProfilingState() : use_rdtscp_(false), prof_counters_(nullptr) {}
-    ProfilingState(bool use_rdtscp, llvm::Value* prof_counters)
-        : use_rdtscp_(use_rdtscp), prof_counters_(prof_counters) {}
+    ProfilingState() : use_rdtscp_(false) {}
+    explicit ProfilingState(bool use_rdtscp) : use_rdtscp_(use_rdtscp) {}
 
     // Record the cycle counter before an HLO executes.
     void RecordCycleStart(llvm::IRBuilder<>* b, HloInstruction* hlo);
@@ -493,9 +493,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     // Should we use the x86-specific rdtscp or the generic readcyclecounter
     // intrinsic?
     bool use_rdtscp_;
-
-    // The argument which corresponds to the profile counter buffer.
-    llvm::Value* prof_counters_;
 
     // The first read cycle counter in the program.
     llvm::Value* first_read_cycle_start_ = nullptr;

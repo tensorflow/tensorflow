@@ -78,6 +78,7 @@ from tensorflow.python.ops import initializers_ns as initializers
 
 # Bring in subpackages.
 from tensorflow.python import data
+from tensorflow.python import distribute
 from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.layers import layers
@@ -86,12 +87,12 @@ from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import ragged
 from tensorflow.python.ops import sets
-from tensorflow.python.ops import spectral_ops as spectral
 from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.losses import losses
-from tensorflow.python.ops import signal
+from tensorflow.python.ops.signal import signal
 from tensorflow.python.profiler import profiler
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
@@ -163,7 +164,7 @@ tf_export('Summary', 'summary.Summary')(Summary)
 tf_export('summary.SummaryDescription')(SummaryDescription)
 tf_export('SummaryMetadata')(SummaryMetadata)
 tf_export('summary.TaggedRunMetadata')(TaggedRunMetadata)
-tf_export('TensorInfo')(TensorInfo)
+tf_export(v1=['TensorInfo'])(TensorInfo)
 # pylint: enable=undefined-variable
 
 # Special dunders that we choose to export:

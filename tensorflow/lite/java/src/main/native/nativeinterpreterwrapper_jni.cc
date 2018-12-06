@@ -78,6 +78,8 @@ int getDataType(TfLiteType data_type) {
       return 3;
     case kTfLiteInt64:
       return 4;
+    case kTfLiteString:
+      return 5;
     default:
       return -1;
   }

@@ -92,7 +92,11 @@ void StringReader(png_structp png_ptr, png_bytep data, png_size_t length) {
   DecodeContext* const ctx =
       absl::bit_cast<DecodeContext*>(png_get_io_ptr(png_ptr));
   if (static_cast<png_size_t>(ctx->data_left) < length) {
-    memset(data, 0, length);
+    // Don't zero out the data buffer as it has been lazily allocated (copy on
+    // write) and zeroing it out here can produce an OOM. Since the buffer is
+    // only used for reading data from the image, this doesn't result in any
+    // data leak, so it is safe to just leave the buffer be as it is and just
+    // exit with error.
     png_error(png_ptr, "More bytes requested to read than available");
   } else {
     memcpy(data, ctx->data, length);

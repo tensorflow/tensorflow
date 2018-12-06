@@ -30,6 +30,7 @@ from tensorflow.python.platform import googletest
 class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
                                  parameterized.TestCase):
 
+  @test_util.run_deprecated_v1
   def testDocStringExamples(self):
     """Example from ragged_to_tensor.__doc__."""
     rt = ragged.constant([[9, 8, 7], [], [6, 5], [4]])
@@ -71,10 +72,33 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
               [[1, 2], [0, 0], [3, 4]],  #
               [[0, 0], [0, 0], [0, 0]],  #
               [[5, 0], [0, 0], [0, 0]],  #
-              [[6, 7], [8, 0], [0, 0]]
-          ]  #
+              [[6, 7], [8, 0], [0, 0]],  #
+          ]
+      },
+      {
+          'rt_input': [[[1, 2], [], [3, 4]], [], [[5]], [[6, 7], [8]]],
+          'default':
+              9,
+          'expected': [
+              [[1, 2], [9, 9], [3, 4]],  #
+              [[9, 9], [9, 9], [9, 9]],  #
+              [[5, 9], [9, 9], [9, 9]],  #
+              [[6, 7], [8, 9], [9, 9]],  #
+          ]
+      },
+      {
+          'rt_input': [[[1], [2], [3]]],
+          'ragged_rank': 1,
+          'default': 0,
+          'expected': [[[1], [2], [3]]],
+      },
+      {
+          'rt_input': [[[[1], [2]], [], [[3]]]],
+          'default': 9,
+          'expected': [[[[1], [2]], [[9], [9]], [[3], [9]]]],
       },
   )
+  @test_util.run_deprecated_v1
   def testRaggedTensorToTensor(self,
                                rt_input,
                                expected,
@@ -96,17 +120,13 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
       {
           'rt_input': [[1, 2, 3]],
           'default': [0],
-          'error': (ValueError, r'Shapes \(1,\) and \(\) are incompatible'),
+          'error': (ValueError, r'Shape \(1,\) must have rank at most 0'),
       },
       {
-          'rt_input': [[[1], [2], [3]]],
-          'default': 0,
-          'error': (ValueError, r'Shapes \(\) and \(1,\) are incompatible'),
-      },
-      {
-          'rt_input': [[[[1], [2]], [], [[3]]]],
-          'default': 0,
-          'error': (ValueError, r'Shapes \(\) and \(1,\) are incompatible'),
+          'rt_input': [[[1, 2], [3, 4]], [[5, 6]]],
+          'ragged_rank': 1,
+          'default': [7, 8, 9],
+          'error': (ValueError, r'Shapes \(3,\) and \(2,\) are incompatible'),
       },
       {
           'rt_input': [[1, 2, 3]],
@@ -114,9 +134,11 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
           'error': (TypeError, "Expected int32, got 'a' of type 'str' instead"),
       },
   )
-  def testError(self, rt_input, default, error):
-    rt = ragged.constant(rt_input)
-    self.assertRaisesRegexp(error[0], error[1], ragged.to_tensor, rt, default)
+  @test_util.run_deprecated_v1
+  def testError(self, rt_input, default, error, ragged_rank=None):
+    rt = ragged.constant(rt_input, ragged_rank=ragged_rank)
+    with self.assertRaisesRegexp(error[0], error[1]):
+      ragged.to_tensor(rt, default)
 
 
 if __name__ == '__main__':

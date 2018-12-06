@@ -906,7 +906,7 @@ class DropoutWrapperTest(test.TestCase):
 
   def testDropoutWrapperKeepNoOutput(self):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
-    keep_none = variable_scope.get_variable("none", initializer=1e-10)
+    keep_none = variable_scope.get_variable("none", initializer=1e-6)
     res = self._testDropoutWrapper(
         input_keep_prob=keep_all,
         output_keep_prob=keep_none,
@@ -922,7 +922,7 @@ class DropoutWrapperTest(test.TestCase):
 
   def testDropoutWrapperKeepNoStateExceptLSTMCellMemory(self):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
-    keep_none = variable_scope.get_variable("none", initializer=1e-10)
+    keep_none = variable_scope.get_variable("none", initializer=1e-6)
     # Even though we dropout state, by default DropoutWrapper never
     # drops out the memory ("c") term of an LSTMStateTuple.
     res = self._testDropoutWrapper(
@@ -943,7 +943,7 @@ class DropoutWrapperTest(test.TestCase):
 
   def testDropoutWrapperKeepNoInput(self):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
-    keep_none = variable_scope.get_variable("none", initializer=1e-10)
+    keep_none = variable_scope.get_variable("none", initializer=1e-6)
     true_full_output = np.array(
         [[[0.751109, 0.751109, 0.751109]], [[0.895509, 0.895509, 0.895509]]],
         dtype=np.float32)

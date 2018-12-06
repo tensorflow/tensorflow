@@ -46,9 +46,9 @@ from tensorflow.python.util.tf_export import tf_export
 if sys.version_info.major == 2:
   import mock                # pylint: disable=g-import-not-at-top,unused-import
 else:
-  from unittest import mock  # pylint: disable=g-import-not-at-top
+  from unittest import mock  # pylint: disable=g-import-not-at-top,g-importing-member
 
-tf_export('test.mock')(mock)
+tf_export(v1=['test.mock'])(mock)
 
 # Import Benchmark class
 Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
