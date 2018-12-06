@@ -779,11 +779,11 @@ static void normalizeConstraintByGCD(FlatAffineConstraints *constraints,
                 : constraints->atIneq(rowIdx, colIdx);
   };
   uint64_t gcd = std::abs(at(0));
-  for (unsigned j = 1; j < constraints->getNumCols(); ++j) {
+  for (unsigned j = 1, e = constraints->getNumCols(); j < e; ++j) {
     gcd = llvm::GreatestCommonDivisor64(gcd, std::abs(at(j)));
   }
   if (gcd > 0 && gcd != 1) {
-    for (unsigned j = 0; j < constraints->getNumCols(); ++j) {
+    for (unsigned j = 0, e = constraints->getNumCols(); j < e; ++j) {
       int64_t v = at(j) / static_cast<int64_t>(gcd);
       isEq ? constraints->atEq(rowIdx, j) = v
            : constraints->atIneq(rowIdx, j) = v;
@@ -989,8 +989,9 @@ void FlatAffineConstraints::GCDTightenInequalities() {
       gcd = llvm::GreatestCommonDivisor64(gcd, std::abs(atIneq(i, j)));
     }
     if (gcd > 0) {
+      int64_t gcdI = static_cast<int64_t>(gcd);
       atIneq(i, numCols - 1) =
-          gcd * mlir::floorDiv(atIneq(i, numCols - 1), gcd);
+          gcdI * mlir::floorDiv(atIneq(i, numCols - 1), gcdI);
     }
   }
 }
@@ -1297,12 +1298,12 @@ Optional<int64_t>
 FlatAffineConstraints::getConstantLowerBound(unsigned pos) const {
   assert(pos < getNumCols() - 1);
   Optional<int64_t> lb = None;
-  for (unsigned r = 0; r < getNumInequalities(); r++) {
+  for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
     if (atIneq(r, pos) <= 0)
       // Not a lower bound.
       continue;
     unsigned c;
-    for (c = 0; c < getNumCols() - 1; c++) {
+    for (c = 0, e = getNumCols() - 1; c < e; c++) {
       if (c != pos && atIneq(r, c) != 0)
         break;
     }
@@ -1457,8 +1458,8 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundDifference(
       // constraints like ii >= i, ii <= ii + 50, 50 being the difference. The
       // minimum among all such constant differences is kept since that's the
       // constant bounding the extent of the pos^th variable.
-      unsigned j;
-      for (j = 0; j < getNumCols() - 1; j++)
+      unsigned j, e;
+      for (j = 0, e = getNumCols() - 1; j < e; j++)
         if (atIneq(ubPos, j) != -atIneq(lbPos, j)) {
           break;
         }
@@ -1475,7 +1476,7 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundDifference(
   if (lb && minDiff.hasValue()) {
     // Set lb to the symbolic lower bound.
     lb->resize(getNumSymbolIds() + 1);
-    for (unsigned c = 0; c < getNumSymbolIds() + 1; c++) {
+    for (unsigned c = 0, e = getNumSymbolIds() + 1; c < e; c++) {
       (*lb)[c] = -atIneq(minLbPosition, getNumDimIds() + c);
     }
   }
@@ -1486,12 +1487,12 @@ Optional<int64_t>
 FlatAffineConstraints::getConstantUpperBound(unsigned pos) const {
   assert(pos < getNumCols() - 1);
   Optional<int64_t> ub = None;
-  for (unsigned r = 0; r < getNumInequalities(); r++) {
+  for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
     // Not a upper bound.
     if (atIneq(r, pos) >= 0)
       continue;
-    unsigned c;
-    for (c = 0; c < getNumCols() - 1; c++) {
+    unsigned c, f;
+    for (c = 0, f = getNumCols() - 1; c < f; c++) {
       if (c != pos && atIneq(r, c) != 0)
         break;
     }
@@ -1512,7 +1513,7 @@ bool FlatAffineConstraints::isHyperRectangular(unsigned pos,
                                                unsigned num) const {
   assert(pos < getNumCols() - 1);
   // Check for two non-zero coefficients in the range [pos, pos + sum).
-  for (unsigned r = 0; r < getNumInequalities(); r++) {
+  for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
     unsigned sum = 0;
     for (unsigned c = pos; c < pos + num; c++) {
       if (atIneq(r, c) != 0)
@@ -1521,7 +1522,7 @@ bool FlatAffineConstraints::isHyperRectangular(unsigned pos,
     if (sum > 1)
       return false;
   }
-  for (unsigned r = 0; r < getNumEqualities(); r++) {
+  for (unsigned r = 0, e = getNumEqualities(); r < e; r++) {
     unsigned sum = 0;
     for (unsigned c = pos; c < pos + num; c++) {
       if (atEq(r, c) != 0)
@@ -1546,13 +1547,13 @@ void FlatAffineConstraints::print(raw_ostream &os) const {
   }
   os << ")\n";
   for (unsigned i = 0, e = getNumEqualities(); i < e; ++i) {
-    for (unsigned j = 0; j < getNumCols(); ++j) {
+    for (unsigned j = 0, f = getNumCols(); j < f; ++j) {
       os << atEq(i, j) << " ";
     }
     os << "= 0\n";
   }
   for (unsigned i = 0, e = getNumInequalities(); i < e; ++i) {
-    for (unsigned j = 0; j < getNumCols(); ++j) {
+    for (unsigned j = 0, f = getNumCols(); j < f; ++j) {
       os << atIneq(i, j) << " ";
     }
     os << ">= 0\n";
@@ -1650,7 +1651,7 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
   GCDTightenInequalities();
 
   // Check if this identifier can be eliminated through a substitution.
-  for (unsigned r = 0; r < getNumEqualities(); r++) {
+  for (unsigned r = 0, e = getNumEqualities(); r < e; r++) {
     if (atEq(r, pos) != 0) {
       // Use Gaussian elimination here (since we have an equality).
       bool ret = gaussianEliminateId(pos);

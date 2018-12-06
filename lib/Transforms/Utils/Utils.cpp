@@ -102,8 +102,8 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
       return false;
 
     auto getMemRefOperandPos = [&]() -> unsigned {
-      unsigned i;
-      for (i = 0; i < opStmt->getNumOperands(); i++) {
+      unsigned i, e;
+      for (i = 0, e = opStmt->getNumOperands(); i < e; i++) {
         if (opStmt->getOperand(i) == oldMemRef)
           break;
       }
@@ -308,7 +308,7 @@ OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
     }
   }
 
-  for (unsigned idx = 0; idx < newOperands.size(); idx++) {
+  for (unsigned idx = 0, e = newOperands.size(); idx < e; idx++) {
     opStmt->setOperand(idx, newOperands[idx]);
   }
 
@@ -401,7 +401,7 @@ bool mlir::constantFoldBounds(ForStmt *forStmt) {
     // Compute the max or min as applicable over the results.
     assert(!foldedResults.empty() && "bounds should have at least one result");
     auto maxOrMin = foldedResults[0].cast<IntegerAttr>().getValue();
-    for (unsigned i = 1; i < foldedResults.size(); i++) {
+    for (unsigned i = 1, e = foldedResults.size(); i < e; i++) {
       auto foldedResult = foldedResults[i].cast<IntegerAttr>().getValue();
       maxOrMin = lower ? llvm::APIntOps::smax(maxOrMin, foldedResult)
                        : llvm::APIntOps::smin(maxOrMin, foldedResult);

@@ -59,7 +59,7 @@ static AffineExpr toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
   }
 
   // Local identifiers.
-  for (unsigned j = numDims + numSymbols; j < eq.size() - 1; j++) {
+  for (unsigned j = numDims + numSymbols, e = eq.size() - 1; j < e; j++) {
     if (eq[j] == 0) {
       continue;
     }
@@ -170,7 +170,7 @@ public:
     auto &lhs = operandExprStack[operandExprStack.size() - 2];
     assert(lhs.size() == rhs.size());
     // Update the LHS in place.
-    for (unsigned i = 0; i < rhs.size(); i++) {
+    for (unsigned i = 0, e = rhs.size(); i < e; i++) {
       lhs[i] += rhs[i];
     }
     // Pop off the RHS.
@@ -189,8 +189,8 @@ public:
     assert(rhsConst != 0 && "RHS constant can't be zero");
 
     // Check if the LHS expression is a multiple of modulo factor.
-    unsigned i;
-    for (i = 0; i < lhs.size(); i++)
+    unsigned i, e;
+    for (i = 0, e = lhs.size(); i < e; i++)
       if (lhs[i] % rhsConst != 0)
         break;
     // If yes, modulo expression here simplifies to zero.
@@ -248,11 +248,11 @@ private:
     // Simplify the floordiv, ceildiv if possible by canceling out the greatest
     // common divisors of the numerator and denominator.
     uint64_t gcd = std::abs(rhsConst);
-    for (unsigned i = 0; i < lhs.size(); i++)
+    for (unsigned i = 0, e = lhs.size(); i < e; i++)
       gcd = llvm::GreatestCommonDivisor64(gcd, std::abs(lhs[i]));
     // Simplify the numerator and the denominator.
     if (gcd != 1) {
-      for (unsigned i = 0; i < lhs.size(); i++)
+      for (unsigned i = 0, e = lhs.size(); i < e; i++)
         lhs[i] = lhs[i] / static_cast<int64_t>(gcd);
     }
     int64_t denominator = rhsConst / gcd;
