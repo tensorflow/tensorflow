@@ -157,7 +157,11 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   # train(). This was causing some error for layer with Defun as it body.
   # See b/120160788 for more details. This should be mitigated after 2.0.
   model = keras.models.Model(x, layer(x))
-  model.compile(RMSPropOptimizer(0.01), 'mse', weighted_metrics=['acc'])
+  if _thread_local_data.run_eagerly is not None:
+    model.compile(RMSPropOptimizer(0.01), 'mse', weighted_metrics=['acc'],
+                  run_eagerly=should_run_eagerly())
+  else:
+    model.compile(RMSPropOptimizer(0.01), 'mse', weighted_metrics=['acc'])
   model.train_on_batch(input_data, actual_output)
 
   # test as first layer in Sequential API
