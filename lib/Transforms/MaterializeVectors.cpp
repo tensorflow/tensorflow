@@ -414,11 +414,11 @@ static bool instantiateMaterialization(Statement *stmt,
   MLFuncBuilder b(stmt);
   auto *opStmt = cast<OperationStmt>(stmt);
   if (auto write = opStmt->dyn_cast<VectorTransferWriteOp>()) {
-    instantiate(&b, &*write, state->hwVectorType, state->hwVectorInstance,
+    instantiate(&b, write, state->hwVectorType, state->hwVectorInstance,
                 state->substitutionsMap);
     return false;
   } else if (auto read = opStmt->dyn_cast<VectorTransferReadOp>()) {
-    auto *clone = instantiate(&b, &*read, state->hwVectorType,
+    auto *clone = instantiate(&b, read, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);
     state->substitutionsMap->insert(std::make_pair(
         cast<MLValue>(read->getResult()), cast<MLValue>(clone->getResult(0))));

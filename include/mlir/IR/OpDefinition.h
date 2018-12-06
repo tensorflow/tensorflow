@@ -70,9 +70,12 @@ public:
 
   operator bool() const { return value.getOperation(); }
 
-  /// OpPointer can always be implicitly converted to Operation*.
-  operator Operation *() const {
-    return const_cast<Operation *>(value.getOperation());
+  /// OpPointer can be implicitly converted to OpType*.
+  /// Return `nullptr` if there is no associated Operation*.
+  operator OpType *() {
+    if (!value.getOperation())
+      return nullptr;
+    return &value;
   }
 
   /// If the OpType operation includes the OneResult trait, then OpPointer can
@@ -103,8 +106,13 @@ public:
   /// Return true if non-null.
   operator bool() const { return value.getOperation(); }
 
-  /// ConstOpPointer can always be implicitly converted to const Operation*.
-  operator const Operation *() const { return value.getOperation(); }
+  /// ConstOpPointer can always be implicitly converted to const OpType*.
+  /// Return `nullptr` if there is no associated Operation*.
+  operator const OpType *() const {
+    if (!value.getOperation())
+      return nullptr;
+    return &value;
+  }
 
   /// If the OpType operation includes the OneResult trait, then OpPointer can
   /// be implicitly converted to an const SSAValue*.  This yields the value of

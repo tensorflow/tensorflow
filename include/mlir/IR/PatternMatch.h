@@ -230,7 +230,7 @@ public:
   template <typename OpTy, typename... Args>
   void replaceOpWithNewOp(Operation *op, Args... args) {
     auto newOp = create<OpTy>(op->getLoc(), args...);
-    replaceOpWithResultsOfAnotherOp(op, newOp, {});
+    replaceOpWithResultsOfAnotherOp(op, newOp->getOperation(), {});
   }
 
   /// Replaces the result op with a new op that is created without verification.
@@ -241,7 +241,8 @@ public:
                           ArrayRef<SSAValue *> valuesToRemoveIfDead,
                           Args... args) {
     auto newOp = create<OpTy>(op->getLoc(), args...);
-    replaceOpWithResultsOfAnotherOp(op, newOp, valuesToRemoveIfDead);
+    replaceOpWithResultsOfAnotherOp(op, newOp->getOperation(),
+                                    valuesToRemoveIfDead);
   }
 
   /// This method is used as the final notification hook for patterns that end
