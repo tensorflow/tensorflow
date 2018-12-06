@@ -149,6 +149,7 @@ from tensorflow.python.keras.layers.recurrent import PeepholeLSTMCell
 from tensorflow.python.keras.layers.recurrent import SimpleRNN
 from tensorflow.python.keras.layers.recurrent import GRU
 from tensorflow.python.keras.layers.recurrent import LSTM
+from tensorflow.python.keras.layers.recurrent import UnifiedLSTM
 
 # Convolutional-recurrent layers.
 from tensorflow.python.keras.layers.convolutional_recurrent import ConvLSTM2D
