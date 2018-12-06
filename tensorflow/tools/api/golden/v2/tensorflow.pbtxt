@@ -37,15 +37,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "SessionLog"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "SparseTensor"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SparseTensorValue"
     mtype: "<type \'type\'>"
   }
   member {
