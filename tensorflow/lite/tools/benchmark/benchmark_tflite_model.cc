@@ -181,6 +181,15 @@ bool PopulateInputLayerInfo(
   return true;
 }
 
+std::vector<int> TfLiteIntArrayToVector(const TfLiteIntArray* int_array) {
+  std::vector<int> values;
+  values.reserve(int_array->size);
+  for (size_t i = 0; i < int_array->size; i++) {
+    values.push_back(int_array->data[i]);
+  }
+  return values;
+}
+
 }  // namespace
 
 BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
@@ -250,12 +259,10 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
 void BenchmarkTfLiteModel::PrepareInputsAndOutputs() {
   auto interpreter_inputs = interpreter->inputs();
   // Set the values of the input tensors.
-  for (int j = 0; j < inputs.size(); ++j) {
-    const InputLayerInfo& input = inputs[j];
+  for (int j = 0; j < interpreter_inputs.size(); ++j) {
     int i = interpreter_inputs[j];
     TfLiteTensor* t = interpreter->tensor(i);
-    std::vector<int> sizes = input.shape;
-
+    std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
     // TODO(ahentz): below we ignore the O-th dimension (number of batches).
     if (t->type == kTfLiteFloat32) {
       FillRandomValue<float>(

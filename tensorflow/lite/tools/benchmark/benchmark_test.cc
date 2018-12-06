@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
 #include "tensorflow/lite/tools/benchmark/command_line_flags.h"
@@ -47,11 +48,51 @@ BenchmarkParams CreateParams() {
   return params;
 }
 
+class TestBenchmark : public BenchmarkTfLiteModel {
+ public:
+  explicit TestBenchmark(BenchmarkParams params)
+      : BenchmarkTfLiteModel(std::move(params)) {}
+  const tflite::Interpreter* GetInterpreter() { return interpreter.get(); }
+
+  void Prepare() { PrepareInputsAndOutputs(); }
+};
+
 TEST(BenchmarkTest, DoesntCrash) {
   ASSERT_THAT(g_model_path, testing::NotNull());
 
   BenchmarkTfLiteModel benchmark(CreateParams());
   benchmark.Run();
+}
+
+TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
+  ASSERT_THAT(g_model_path, testing::NotNull());
+
+  TestBenchmark benchmark(CreateParams());
+  benchmark.Init();
+  benchmark.Prepare();
+
+  auto interpreter = benchmark.GetInterpreter();
+  auto inputs = interpreter->inputs();
+  ASSERT_GE(inputs.size(), 1);
+  auto input_tensor = interpreter->tensor(inputs[0]);
+
+  std::vector<uint8_t> input_bytes;
+  input_bytes.reserve(input_tensor->bytes);
+  for (size_t i = 0; i < input_tensor->bytes; i++) {
+    input_bytes.push_back(input_tensor->data.b[i]);
+  }
+  benchmark.Prepare();
+
+  // Expect data is not the same.
+  EXPECT_EQ(input_bytes.size(), input_tensor->bytes);
+  bool is_same = true;
+  for (size_t i = 0; i < input_tensor->bytes; i++) {
+    if (input_bytes[i] != input_tensor->data.b[i]) {
+      is_same = false;
+      break;
+    }
+  }
+  EXPECT_FALSE(is_same);
 }
 
 }  // namespace
