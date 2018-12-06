@@ -156,9 +156,9 @@ Status CombinedNMSShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 3), 4, &unused));
 
   DimensionHandle d = c->Dim(boxes, 2);
-  auto num_classes = c->Value(c->Dim(scores, 2));
-  if (c->ValueKnown(d)) {
-    if (c->Value(d) != 1 && c->Value(d) != num_classes) {
+  DimensionHandle class_dim = c->Dim(scores, 2);
+  if (c->ValueKnown(d) && c->ValueKnown(class_dim)) {
+    if (c->Value(d) != 1 && c->Value(d) != c->Value(class_dim)) {
        return errors::InvalidArgument("third dimension of boxes must be either "
            "1 or equal to the third dimension of scores");
     }
@@ -185,7 +185,7 @@ Status CombinedNMSShapeFn(InferenceContext* c) {
              "if pad_per_class is set to true ");
     }
     output_size = std::min(c->Value(output_dim),
-        c->Value(size_per_class) * num_classes);
+        c->Value(size_per_class) * c->Value(class_dim));
   }
   c->set_output(0, c->MakeShape({batch_dim, output_size, 4}));
   c->set_output(1, c->MakeShape({batch_dim, output_size}));
