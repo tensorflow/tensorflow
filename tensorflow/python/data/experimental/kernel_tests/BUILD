@@ -545,6 +545,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/kernel_tests:test_base",

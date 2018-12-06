@@ -217,6 +217,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       b->BuildAttrValue(func_, &f);
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+      AttrValue preserve_cardinality_attr;
+      b->BuildAttrValue(preserve_cardinality_, &preserve_cardinality_attr);
 
       TF_RETURN_IF_ERROR(b->AddDataset(
           this,
@@ -226,7 +228,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
            std::make_pair(4, drop_remainder_node)},  // Single tensor inputs.
           {std::make_pair(1, other_arguments)},      // Tensor list inputs.
           {std::make_pair("f", f),
-           std::make_pair("Targuments", other_arguments_types_attr)},  // Attrs
+           std::make_pair("Targuments", other_arguments_types_attr),
+           std::make_pair("preserve_cardinality",
+                          preserve_cardinality_attr)},  // Attrs
           output));
       return Status::OK();
     }

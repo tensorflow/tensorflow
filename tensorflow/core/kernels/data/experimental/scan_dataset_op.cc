@@ -129,12 +129,15 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
       b->BuildAttrValue(state_types_, &state_types);
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+      AttrValue preserve_cardinality_attr;
+      b->BuildAttrValue(preserve_cardinality_, &preserve_cardinality_attr);
       TF_RETURN_IF_ERROR(
           b->AddDataset(this, {{0, input_node}},
                         {{1, initial_state_nodes}, {2, other_arguments}},
                         {{"f", f},
                          {"Tstate", state_types},
-                         {"Targuments", other_arguments_types_attr}},
+                         {"Targuments", other_arguments_types_attr},
+                         {"preserve_cardinality", preserve_cardinality_attr}},
                         output));
       return Status::OK();
     }
