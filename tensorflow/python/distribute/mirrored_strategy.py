@@ -695,6 +695,9 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     return self._cross_device_ops or self._inferred_cross_device_ops
 
   def _reduce_to(self, reduce_op, value, destinations):
+    if (isinstance(value, values.Mirrored) and
+        reduce_op == reduce_util.ReduceOp.MEAN):
+      return value
     assert not isinstance(value, values.Mirrored)
     if not isinstance(value, values.DistributedValues):
       # This function handles reducing values that are not PerReplica or
