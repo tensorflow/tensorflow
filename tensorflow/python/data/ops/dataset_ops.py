@@ -1915,6 +1915,7 @@ class _VariantDataset(DatasetV2):
     return self._structure
 
 
+@tf_export("data.experimental.DatasetStructure")
 class DatasetStructure(structure_lib.Structure):
   """Represents a `Dataset` of structured values."""
 
