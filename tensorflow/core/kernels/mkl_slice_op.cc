@@ -62,8 +62,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 // either Mkl layout or Tensorflow layout.
 // A shared code to validate input shapes and check for identity, which is not
 // dependent on the type of T.
-// We do this to reduce code size by not duplicating all this for all T (float,
-// double, int32, etc.)
+// We do this to reduce code size by not duplicating
+// all this for all T (float, double, int32, etc.)
 static void ValidateMklInputs(OpKernelContext* context, bool* is_identity,
                               gtl::InlinedVector<int64, 4>* begin,
                               gtl::InlinedVector<int64, 4>* size) {
@@ -160,12 +160,13 @@ static void CheckCommonCasesForMklInputs(OpKernelContext* context,
 }
 
 // This structure aggregates multiple inputs to Slice methods.
-// Parameters from & to represents memory pointing to reorder.
-// Parameters begin_dims & size_dims represents offset and length
-// passed to view primitive.
 struct MklSliceParams {
+  // Parameters from & to represents memory pointing to reorder.
   const memory* from;
   const memory* to;
+
+  // Parameters begin_dims & size_dims represents offset and length
+  // passed to view primitive.
   memory::dims begin_dims;
   memory::dims size_dims;
 
@@ -174,7 +175,7 @@ struct MklSliceParams {
       : from(from), to(to), begin_dims(begin_dims), size_dims(size_dims) {}
 };
 
-// This implements the reuse interface of Slice reorders.
+// This implements the shared interface of Slice reorders.
 template <typename T>
 class MklSlicePrimitive : public MklPrimitive {
  public:
@@ -190,6 +191,7 @@ class MklSlicePrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(sliceParams.to->get_data_handle());
     context_.slice_stream->submit(context_.slice_primitives);
 
+    // For safety guard, so that data_handle wouldn't be rewritten.
     context_.src_mem->set_data_handle(DummyData);
     context_.dst_mem->set_data_handle(DummyData);
     return;
@@ -213,6 +215,7 @@ class MklSlicePrimitive : public MklPrimitive {
   engine cpu_engine_ = engine(engine::cpu, 0);
 
   void Setup(const MklSliceParams& sliceParams) {
+    // Just create the memory primitive, fill with dummy.
     context_.src_mem.reset(
         new memory({sliceParams.from->get_primitive_desc().desc(), cpu_engine_},
                    DummyData));
@@ -260,16 +263,16 @@ class MklSlicePrimitiveFactory : public MklPrimitiveFactory<T> {
     FactoryKeyCreator key_creator;
     auto const& from_desc = sliceParams.from->get_primitive_desc().desc().data;
     auto const& to_desc = sliceParams.to->get_primitive_desc().desc().data;
-    const int KIdxFirstStride = 0;
+    const int kIdxFirstStride = 0;
     memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
     memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
     memory::dims from_strides(
-        from_desc.layout_desc.blocking.strides[KIdxFirstStride],
+        from_desc.layout_desc.blocking.strides[kIdxFirstStride],
         &from_desc.layout_desc.blocking
-             .strides[KIdxFirstStride][from_desc.ndims]);
+             .strides[kIdxFirstStride][from_desc.ndims]);
     memory::dims to_strides(
-        to_desc.layout_desc.blocking.strides[KIdxFirstStride],
-        &to_desc.layout_desc.blocking.strides[KIdxFirstStride][to_desc.ndims]);
+        to_desc.layout_desc.blocking.strides[kIdxFirstStride],
+        &to_desc.layout_desc.blocking.strides[kIdxFirstStride][to_desc.ndims]);
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(static_cast<int>(from_desc.format));
     key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
@@ -339,8 +342,8 @@ class MklSliceOp : public OpKernel {
       //
       // 1. create memory primitive descriptor in_mem_pd and memory primitive
       //    in_mem_p for the entire source data. create view primitive
-      //    descriptor
-      //    in_submem_pd based on in_mem_pd, initial offsets, and sub-sizes
+      //    descriptor in_submem_pd based on in_mem_pd, initial offsets,
+      //    and sub-sizes
       // 2. create memory primitive descriptor out_mem_pd and memory primitive
       //    out_mem_p for the output (the logical sizes should match sub-sizes
       //    used in step 1, but the format might be arbitrary)
