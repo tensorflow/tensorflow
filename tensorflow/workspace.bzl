@@ -346,7 +346,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         },
     )
 
-    # The commit sha in the URLs correspond to v3.6.0 of protobuf
     PROTOBUF_URLS = [
         "https://mirror.bazel.build/github.com/google/protobuf/archive/v3.6.1.2.tar.gz",
         "https://github.com/google/protobuf/archive/v3.6.1.2.tar.gz",
