@@ -567,6 +567,54 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testInTopK(self):
+    text = "tf.math.in_top_k(a, b, c, n)"
+    expected_text = (
+        "tf.math.in_top_k(predictions=a, targets=b, k=c, name=n)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testDepthToSpace(self):
+    text = "tf.nn.depth_to_space(input, block_size, name, data_format)"
+    expected_text = (
+        "tf.nn.depth_to_space(input=input, block_size=block_size, "
+        "name=name, data_format=data_format)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testEmbeddingLookup(self):
+    text = ("tf.nn.embedding_lookup(params, ids, partition_strategy, name, "
+            "validate_indices, max_norm)")
+    expected_text = ("tf.nn.embedding_lookup(params=params, ids=ids, "
+                     "partition_strategy=partition_strategy, name=name, "
+                     "validate_indices=validate_indices, max_norm=max_norm)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testEmbeddingLookupSparse(self):
+    text = ("tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, "
+            "partition_strategy, name, combiner, max_norm)")
+    expected_text = ("tf.nn.embedding_lookup_sparse(params=params, "
+                     "sp_ids=sp_ids, sp_weights=sp_weights, "
+                     "partition_strategy=partition_strategy, name=name, "
+                     "combiner=combiner, max_norm=max_norm)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testNnInTopK(self):
+    text = "tf.nn.in_top_k(predictions, targets, k, name)"
+    expected_text = ("tf.nn.in_top_k(predictions=predictions, "
+                     "targets=targets, k=k, name=name)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testSpaceToDepth(self):
+    text = "tf.nn.space_to_depth(input, block_size, name, data_format)"
+    expected_text = ("tf.nn.space_to_depth(input=input, block_size=block_size, "
+                     "name=name, data_format=data_format)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

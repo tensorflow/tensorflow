@@ -552,6 +552,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.reduce_join",
         "tf.confusion_matrix",
         "tf.math.confusion_matrix",
+        "tf.math.in_top_k",
+        "tf.nn.depth_to_space",
+        "tf.nn.embedding_lookup",
+        "tf.nn.embedding_lookup_sparse",
+        "tf.nn.in_top_k",
+        "tf.nn.space_to_depth",
     }
 
     # Functions that were reordered should be changed to the new keyword args
@@ -711,6 +717,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             tf_01s_like_no_optimize_comment,
         "tf.ones_like":
             tf_01s_like_no_optimize_comment,
+        "tf.nn.embedding_lookup":
+            "WARNING: validate_indices argument has been removed.",
+        "tf.sparse.concat":
+            ("WARNING: expand_nonconcat_dim was renamed to "
+             "expand_nonconcat_dims."),
     }
 
     self.symbol_renames = {

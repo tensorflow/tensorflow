@@ -299,7 +299,7 @@ def sparse_concat(axis,
 
 
 @tf_export("sparse.concat", v1=[])
-def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dim=False, name=None):  # pylint: disable=missing-docstring
+def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dims=False, name=None):  # pylint: disable=missing-docstring
   sp_inputs = _convert_to_sparse_tensors(sp_inputs)
 
   if len(sp_inputs) == 1:  # Degenerate case of one tensor.
@@ -309,7 +309,7 @@ def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dim=False, name=None):  #
   vals = [sp_input.values for sp_input in sp_inputs]
   shapes = [sp_input.dense_shape for sp_input in sp_inputs]
 
-  if expand_nonconcat_dim:
+  if expand_nonconcat_dims:
     max_shape = math_ops.reduce_max(
         array_ops.concat(
             [array_ops.reshape(shape, [1, -1]) for shape in shapes], 0), 0)
