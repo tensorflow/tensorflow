@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/lib/triangular_solve.h"
+#include "tensorflow/compiler/xla/client/lib/triangular_solve.h"
 
 #include <memory>
 #include <numeric>
@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
-namespace tensorflow {
+namespace xla {
 namespace {
 
 using TriangularSolveTest = xla::ClientLibraryTestBase;
@@ -330,4 +330,4 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace xla

@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_TRIANGULAR_SOLVE_H_
-#define TENSORFLOW_COMPILER_TF2XLA_LIB_TRIANGULAR_SOLVE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_TRIANGULAR_SOLVE_H_
+#define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_TRIANGULAR_SOLVE_H_
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-namespace tensorflow {
+namespace xla {
 
 // Solves systems of linear equations with lower or upper triangular coefficient
 // matrices by forward- or back-substitution. Broadcasting along leading
@@ -57,11 +57,11 @@ namespace tensorflow {
 //
 // Uses a blocked algorithm if `block_size` is > 1; if block_size == 1 then no
 // blocking is used.
-xla::XlaOp TriangularSolve(
-    xla::XlaOp a, xla::XlaOp b, bool left_side, bool lower, bool transpose_a,
+XlaOp TriangularSolve(
+    XlaOp a, XlaOp b, bool left_side, bool lower, bool transpose_a,
     bool conjugate_a, int64 block_size = 128,
-    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::HIGHEST);
+    PrecisionConfig::Precision precision = PrecisionConfig::HIGHEST);
 
-}  // namespace tensorflow
+}  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_TF2XLA_LIB_TRIANGULAR_SOLVE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_TRIANGULAR_SOLVE_H_
