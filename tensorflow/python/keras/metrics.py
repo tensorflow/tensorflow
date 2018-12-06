@@ -28,6 +28,7 @@ from enum import Enum
 import numpy as np
 import six
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
@@ -60,7 +61,6 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
