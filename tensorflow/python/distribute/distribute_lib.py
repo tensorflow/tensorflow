@@ -565,8 +565,8 @@ class DistributionStrategy(object):
         variable created in `scope`.
 
     Returns:
-      A list of values contained in `value`. If `value` represents a single
-      value, this returns `[value].`
+      A tuple of values contained in `value`. If `value` represents a single
+      value, this returns `(value,).`
     """
     return self._extended._unwrap(value)  # pylint: disable=protected-access
 
@@ -1346,14 +1346,14 @@ class DistributionStrategyExtended(object):
 
   @property
   def worker_devices(self):
-    """Returns the list of devices used to run `call_for_each_replica()` calls.
+    """Returns the tuple of all devices used to for compute replica execution.
     """
     # TODO(josh11b): More docstring
     raise NotImplementedError("must be implemented in descendants")
 
   @property
   def parameter_devices(self):
-    """Returns the list of devices used for variable and `update` placement."""
+    """Returns the tuple of all devices used to place variables."""
     # TODO(josh11b): More docstring
     raise NotImplementedError("must be implemented in descendants")
 
@@ -1513,9 +1513,9 @@ class ReplicaContext(object):
 
   @property
   def devices(self):
-    """The devices this replica is to be executed on, as a list of strings."""
+    """The devices this replica is to be executed on, as a tuple of strings."""
     require_replica_context(self)
-    return [device_util.current()]
+    return (device_util.current(),)
 
   # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
   # all-reduce. It would return a function returning the result of reducing `t`
@@ -1605,7 +1605,7 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
     return array_ops.identity(replica_local_var)
 
   def _unwrap(self, distributed_value):
-    return [distributed_value]
+    return (distributed_value,)
 
   def value_container(self, value):
     return value
