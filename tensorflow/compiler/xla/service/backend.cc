@@ -57,6 +57,15 @@ int BackendOptions::intra_op_parallelism_threads() const {
   return intra_op_parallelism_threads_;
 }
 
+BackendOptions& BackendOptions::set_allowed_devices(std::set<int> device_set) {
+  allowed_devices_ = device_set;
+  return *this;
+}
+
+std::set<int> BackendOptions::get_allowed_devices() const {
+  return allowed_devices_;
+}
+
 // Define this in .cc file to avoid having to include eigen or forward declare
 // these types in the header.
 struct Backend::EigenThreadPoolWrapper {
@@ -77,7 +86,8 @@ struct Backend::EigenThreadPoolWrapper {
   se::Platform* platform = options.platform();
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto stream_executors,
-                      PlatformUtil::GetStreamExecutors(platform));
+                      PlatformUtil::GetStreamExecutors(
+                          platform, options.get_allowed_devices()));
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto computation_placer,
@@ -172,7 +182,7 @@ StatusOr<se::StreamExecutor*> Backend::stream_executor(
         device_ordinal, stream_executors_.back()->device_ordinal());
   }
   for (auto* executor : stream_executors_) {
-    if (executor->device_ordinal() == device_ordinal) {
+    if (executor && executor->device_ordinal() == device_ordinal) {
       return executor;
     }
   }

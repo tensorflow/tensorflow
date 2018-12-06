@@ -205,7 +205,8 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
 }
 
 /* static */ StatusOr<std::vector<se::StreamExecutor*>>
-PlatformUtil::GetStreamExecutors(se::Platform* platform) {
+PlatformUtil::GetStreamExecutors(se::Platform* platform,
+                                 std::set<int> allowed_devices) {
   int device_count = platform->VisibleDeviceCount();
   if (device_count <= 0) {
     return NotFound("no %s devices found", platform->Name());
@@ -226,6 +227,11 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
     tensorflow::thread::ThreadPool thread_pool(
         tensorflow::Env::Default(), "device_initialization", device_count);
     for (int i = 0; i < device_count; ++i) {
+      if (allowed_devices.count(-1) == 0 && allowed_devices.count(i) == 0) {
+        VLOG(1) << "Skipping stream executor for device " << i
+                << " since it is not in the visible device list";
+        continue;
+      }
       thread_pool.Schedule([platform, i, &stream_executors]() {
         VLOG(1) << "Started device init " << i;
         se::StreamExecutorConfig config;

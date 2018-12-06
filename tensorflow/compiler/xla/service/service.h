@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <vector>
+#include <set>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -61,10 +62,16 @@ class ServiceOptions {
   ServiceOptions& set_intra_op_parallelism_threads(int num_threads);
   int intra_op_parallelism_threads() const;
 
+  // Sets the allowed_devices set for creation of stream executors.
+  ServiceOptions& set_allowed_devices(const std::set<int> device_set);
+
+  std::set<int> get_allowed_devices() const;
+
  private:
   se::Platform* platform_ = nullptr;
   int number_of_replicas_ = 1;
   int intra_op_parallelism_threads_ = -1;
+  std::set<int> allowed_devices_ = {-1};
 };
 
 // The XLA service object, which is the same across all platforms. It maintains
