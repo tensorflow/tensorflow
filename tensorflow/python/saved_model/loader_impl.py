@@ -83,6 +83,11 @@ def parse_saved_model(export_dir):
                    constants.SAVED_MODEL_FILENAME_PB))
 
 
+# TODO(b/120594573): Make this symbol also available as private, so that
+# tensorflow_transform and tensorflow_estimator do not break.
+_parse_saved_model = parse_saved_model
+
+
 def _get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
   """Gets the asset tensors, if defined in the meta graph def to load.
 
