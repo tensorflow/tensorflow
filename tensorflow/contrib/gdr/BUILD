@@ -37,7 +37,7 @@ tf_proto_library_cc(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "gdr_memory_manager",
     srcs = ["gdr_memory_manager.cc"],
     hdrs = ["gdr_memory_manager.h"],
