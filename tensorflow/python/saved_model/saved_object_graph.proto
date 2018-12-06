@@ -65,6 +65,9 @@ message SavedUserObject {}
 // absolute filename can be read. Users should not expect the filename to be
 // maintained.
 message SavedAsset {
-  // Filename relative to the assets directory of the SavedModel.
-  string relative_filename = 1;
+  // Index into `MetaGraphDef.asset_file_def[]` that describes the Asset.
+  //
+  // Only the field `AssetFileDef.filename` is used. Other fields, such as
+  // `AssetFileDef.tensor_info`, MUST be ignored.
+  uint32 asset_file_def_index = 1;
 }

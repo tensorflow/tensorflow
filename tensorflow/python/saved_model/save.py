@@ -375,7 +375,9 @@ _AssetInfo = collections.namedtuple(
         # Map from asset variable resource Tensors to their init ops
         "asset_initializers_by_resource",
         # Map from base asset filenames to full paths
-        "asset_filename_map"])
+        "asset_filename_map",
+        # Map from TrackableAsset to index of corresponding AssetFileDef
+        "asset_index"])
 
 
 def _process_asset(trackable_asset, asset_info, resource_map):
@@ -386,21 +388,23 @@ def _process_asset(trackable_asset, asset_info, resource_map):
   path = builder_impl.get_asset_filename_to_add(
       asset_filepath=original_path,
       asset_filename_map=asset_info.asset_filename_map)
-  asset_variable = asset_info.asset_filename_map.get(path, None)
-  if asset_variable is None:
-    asset_path_initializer = array_ops.placeholder(
-        shape=original_variable.shape,
-        dtype=dtypes.string,
-        name="asset_path_initializer")
-    asset_variable = resource_variable_ops.ResourceVariable(
-        asset_path_initializer)
-    asset_info.asset_filename_map[path] = original_path
-    asset_def = meta_graph_pb2.AssetFileDef()
-    asset_def.filename = path
-    asset_def.tensor_info.name = asset_path_initializer.name
-    asset_info.asset_defs.append(asset_def)
-    asset_info.asset_initializers_by_resource[original_variable.handle] = (
-        asset_variable.initializer)
+  # TODO(andresp): Instead of mapping 1-1 between trackable asset
+  # and asset in the graph def consider deduping the assets that
+  # point to the same file.
+  asset_path_initializer = array_ops.placeholder(
+      shape=original_variable.shape,
+      dtype=dtypes.string,
+      name="asset_path_initializer")
+  asset_variable = resource_variable_ops.ResourceVariable(
+      asset_path_initializer)
+  asset_info.asset_filename_map[path] = original_path
+  asset_def = meta_graph_pb2.AssetFileDef()
+  asset_def.filename = path
+  asset_def.tensor_info.name = asset_path_initializer.name
+  asset_info.asset_defs.append(asset_def)
+  asset_info.asset_initializers_by_resource[original_variable.handle] = (
+      asset_variable.initializer)
+  asset_info.asset_index[trackable_asset] = len(asset_info.asset_defs) - 1
   resource_map[original_variable.handle] = asset_variable.handle
 
 
@@ -432,7 +436,8 @@ def _map_resources(accessible_objects):
   asset_info = _AssetInfo(
       asset_defs=[],
       asset_initializers_by_resource={},
-      asset_filename_map={})
+      asset_filename_map={},
+      asset_index={})
   for obj in accessible_objects:
     if isinstance(obj, tracking.TrackableResource):
       new_resource = obj.create_resource()
@@ -441,7 +446,7 @@ def _map_resources(accessible_objects):
       new_variable = resource_variable_ops.copy_to_graph_uninitialized(obj)
       object_map[obj] = new_variable
       resource_map[obj.handle] = new_variable.handle
-    if isinstance(obj, tracking.TrackableAsset):
+    elif isinstance(obj, tracking.TrackableAsset):
       _process_asset(obj, asset_info, resource_map)
   return object_map, resource_map, asset_info
 
@@ -458,9 +463,7 @@ def _fill_meta_graph_def(meta_graph_def, obj, signature_functions,
     object_saver: A CheckpointableSaver to add to the MetaGraph.
 
   Returns:
-    asset_filename_map, a dictionary mapping from asset base names to
-    user-specified full asset paths, which should be copied to the SavedModel's
-    assets/ directory.
+    An _AssetInfo, which contains information to help creating the SavedModel.
   """
   signatures = {}
   # List objects from the eager context to make sure Optimizers give us the
@@ -514,10 +517,10 @@ def _fill_meta_graph_def(meta_graph_def, obj, signature_functions,
   for signature_key, signature in signatures.items():
     meta_graph_def.signature_def[signature_key].CopyFrom(signature)
   meta_graph.strip_graph_default_valued_attrs(meta_graph_def)
-  return asset_info.asset_filename_map
+  return asset_info
 
 
-def _write_object_graph(root, export_dir, asset_filename_map):
+def _write_object_graph(root, export_dir, asset_file_def_index):
   """Save a SavedObjectGraph proto for `root`."""
   # SavedObjectGraph is similar to the CheckpointableObjectGraph proto in the
   # checkpoint. It will eventually go into the SavedModel.
@@ -527,11 +530,8 @@ def _write_object_graph(root, export_dir, asset_filename_map):
   util.fill_object_graph_proto(checkpointable_objects, node_ids, slot_variables,
                                proto)
 
-  # Build map from original filename to relative asset filename.
-  filename_map = {v: k for k, v in asset_filename_map.items()}
-
   for obj, obj_proto in zip(checkpointable_objects, proto.nodes):
-    _write_object_proto(obj, obj_proto, filename_map)
+    _write_object_proto(obj, obj_proto, asset_file_def_index)
 
   extra_asset_dir = os.path.join(
       compat.as_bytes(export_dir),
@@ -542,11 +542,11 @@ def _write_object_graph(root, export_dir, asset_filename_map):
   file_io.write_string_to_file(object_graph_filename, proto.SerializeToString())
 
 
-def _write_object_proto(obj, proto, filename_map):
+def _write_object_proto(obj, proto, asset_file_def_index):
   """Saves an object into SavedObject proto."""
   if isinstance(obj, tracking.TrackableAsset):
     proto.asset.SetInParent()
-    proto.asset.relative_filename = filename_map[obj.asset_path.numpy()]
+    proto.asset.asset_file_def_index = asset_file_def_index[obj]
   else:
     proto.user_object.SetInParent()
 
@@ -716,7 +716,7 @@ def save(obj, export_dir, signatures=None):
   saved_model = saved_model_pb2.SavedModel()
   meta_graph_def = saved_model.meta_graphs.add()
   object_saver = util.CheckpointableSaver(obj)
-  asset_filename_map = _fill_meta_graph_def(
+  asset_info = _fill_meta_graph_def(
       meta_graph_def, obj, signatures, object_saver)
   saved_model.saved_model_schema_version = (
       constants.SAVED_MODEL_SCHEMA_VERSION)
@@ -725,9 +725,10 @@ def save(obj, export_dir, signatures=None):
   # SavedModel proto itself.
   utils_impl.get_or_create_variables_dir(export_dir)
   object_saver.save(utils_impl.get_variables_path(export_dir))
-  builder_impl.copy_assets_to_destination_dir(asset_filename_map, export_dir)
+  builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
+                                              export_dir)
   path = os.path.join(
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
   file_io.write_string_to_file(path, saved_model.SerializeToString())
-  _write_object_graph(obj, export_dir, asset_filename_map)
+  _write_object_graph(obj, export_dir, asset_info.asset_index)
