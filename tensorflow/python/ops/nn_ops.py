@@ -1699,8 +1699,11 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   # still perform softmax on its last dimension.
 
   # In case dim is negative (and is not last dimension -1), add shape.ndims
-  if not isinstance(dim, ops.Tensor) and dim < 0:
-    dim += shape.ndims
+  if not isinstance(dim, ops.Tensor):
+    if dim < 0:
+      dim += shape.ndims
+  else:
+    dim = array_ops.where(math_ops.less(dim, 0), dim + shape.ndims, dim)
 
   # Swap logits' dimension of dim and its last dimension.
   input_rank = array_ops.rank(logits)
