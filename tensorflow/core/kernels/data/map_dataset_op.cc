@@ -168,13 +168,19 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       b->BuildAttrValue(use_inter_op_parallelism_,
                         &use_inter_op_parallelism_attr);
 
+      // Attr: preserve_cardinality
+      AttrValue preserve_cardinality_attr;
+      b->BuildAttrValue(preserve_cardinality_, &preserve_cardinality_attr);
+
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {std::make_pair(0, input_graph_node)},  // Single tensor inputs.
           {std::make_pair(1, other_arguments)},         // Tensor list inputs.
           {std::make_pair("f", f_attr),
            std::make_pair("Targuments", other_arguments_types_attr),
            std::make_pair("use_inter_op_parallelism",
-                          use_inter_op_parallelism_attr)},  // Attrs
+                          use_inter_op_parallelism_attr),
+           std::make_pair("preserve_cardinality",
+                          preserve_cardinality_attr)},  // Attrs
           output));
       return Status::OK();
     }

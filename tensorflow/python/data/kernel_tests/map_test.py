@@ -1045,6 +1045,23 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  @parameterized.named_parameters(
+      ("Map", None),
+      ("ParallelMap", 12),
+  )
+  def testPreserveCardinality(self, num_parallel_calls):
+
+    def py_fn(_):
+      raise StopIteration()
+
+    dataset = dataset_ops.DatasetV2.from_tensors(0).map(
+        lambda x: script_ops.py_func(py_fn, [x], dtypes.int64),
+        num_parallel_calls=num_parallel_calls)
+    get_next = self.getNext(dataset)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(get_next())
+
+
 
 if __name__ == "__main__":
   test.main()

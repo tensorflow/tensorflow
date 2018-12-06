@@ -168,6 +168,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       AttrValue sloppy_attr;
       b->BuildAttrValue(sloppy_, &sloppy_attr);
 
+      // Attr: preserve_cardinality
+      AttrValue preserve_cardinality_attr;
+      b->BuildAttrValue(preserve_cardinality_, &preserve_cardinality_attr);
+
       TF_RETURN_IF_ERROR(b->AddDataset(
           this,
           {std::make_pair(0, input_graph_node),
@@ -177,7 +181,9 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
            std::make_pair("Targuments", other_arguments_types_attr),
            std::make_pair("use_inter_op_parallelism",
                           use_inter_op_parallelism_attr),
-           std::make_pair("sloppy", sloppy_attr)},  // Attrs
+           std::make_pair("sloppy", sloppy_attr),
+           std::make_pair("preserve_cardinality",
+                          preserve_cardinality_attr)},  // Attrs
           output));
       return Status::OK();
     }
