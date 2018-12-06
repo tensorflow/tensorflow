@@ -221,6 +221,11 @@ class SlurmClusterResolver(ClusterResolver):
     """
     return ''
 
-  def num_accelerators_per_worker(self, session_config=None):
-    del session_config  # Unused, since this is set in __init__ manually.
+  def num_accelerators(self,
+                       task_type=None,
+                       task_index=None,
+                       accelerator_type='GPU',
+                       config_proto=None):
+    # Unused, since this is set in __init__ manually.
+    del task_type, task_index, accelerator_type, config_proto
     return self._gpus_per_node

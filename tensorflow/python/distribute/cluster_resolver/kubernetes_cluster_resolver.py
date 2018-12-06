@@ -168,6 +168,15 @@ class KubernetesClusterResolver(ClusterResolver):
     """
     return ''
 
-  def num_accelerators_per_worker(self, session_config=None):
-    local_devices = device_lib.list_local_devices(session_config)
-    return len([d for d in local_devices if d.device_type == 'GPU'])
+  def num_accelerators(self,
+                       task_type=None,
+                       task_index=None,
+                       accelerator_type='GPU',
+                       config_proto=None):
+    # TODO(frankchn): Make querying non-local accelerators work
+    if task_type is not None or task_index is not None:
+      raise NotImplementedError('Querying non-local accelerators is not yet'
+                                'implemented.')
+
+    local_devices = device_lib.list_local_devices(config_proto)
+    return sum(d.device_type == accelerator_type for d in local_devices)

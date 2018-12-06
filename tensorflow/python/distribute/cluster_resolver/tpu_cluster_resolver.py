@@ -387,17 +387,30 @@ class TPUClusterResolver(ClusterResolver):
 
     return server_lib.ClusterSpec(cluster_spec)
 
-  def num_accelerators_per_worker(self, session_config=None):
+  def num_accelerators(self,
+                       task_type=None,
+                       task_index=None,
+                       accelerator_type='TPU',
+                       config_proto=None):
     """Returns the number of TPU cores per worker.
 
     This defaults to 8 for all current TPU configurations, and we do not need
     to query any remote systems for this.
 
     Args:
-      session_config: Unused. Not currently necessary to query anything as this
-        number is 8 for all TPU configurations.
+      task_type: Unused.
+      task_index: Unused.
+      accelerator_type: Unused.
+      config_proto: Unused.
+
+    Raises:
+      RuntimeError: If this is used with a non-TPU accelerator_type.
     """
-    del session_config  # Unused. Not necessary to query anything.
+    # Unused. Not necessary to query anything.
+    del task_type, task_index, config_proto
+
+    if accelerator_type != 'TPU':
+      raise ValueError('This Cluster Resolver is only compatible with TPUs.')
     return 8
 
   @property
