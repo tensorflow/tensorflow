@@ -253,7 +253,7 @@ private:
     // Simplify the numerator and the denominator.
     if (gcd != 1) {
       for (unsigned i = 0; i < lhs.size(); i++)
-        lhs[i] = lhs[i] / gcd;
+        lhs[i] = lhs[i] / static_cast<int64_t>(gcd);
     }
     int64_t denominator = rhsConst / gcd;
     // If the denominator becomes 1, the updated LHS is the result. (The

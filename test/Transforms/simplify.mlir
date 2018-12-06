@@ -22,6 +22,10 @@
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (d0 - (d0 floordiv 8) * 8, (d1 floordiv 8) * 8)
 #map6 = (d0, d1) -> (d0 mod 8, d1 - d1 mod 8)
 
+// Test map with nested floordiv/mod. Simply should scale by GCD.
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> ((d0 * 72 + d1) floordiv 2304, (d0 * 72 + d1 - ((d0 * 9216 + d1 * 128) floordiv 294912) * 2304) floordiv 1152)
+#map7 = (d0, d1) -> ((d0 * 9216 + d1 * 128) floordiv 294912, ((d0 * 9216 + d1 * 128) mod 294912) floordiv 147456)
+
 // CHECK-DAG: [[SET_EMPTY_2D:#set[0-9]+]] = (d0, d1) : (1 == 0)
 // CHECK-DAG: #set1 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, d0 * -1 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
 // CHECK-DAG: #set2 = (d0, d1)[s0, s1] : (1 == 0)
@@ -62,6 +66,7 @@ mlfunc @test() {
       %u  = affine_apply #map4(%n0, %n1)
       %v  = affine_apply #map5(%n0, %n1)
       %t  = affine_apply #map6(%n0, %n1)
+      %s  = affine_apply #map7(%n0, %n1)
     }
   }
   return
