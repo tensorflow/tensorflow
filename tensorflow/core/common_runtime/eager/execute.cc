@@ -284,7 +284,8 @@ Status EagerLocalExecute(EagerOperation* op,
           "Unable to find a FunctionLibraryRuntime corresponding to device ",
           device->name());
     }
-    kernel = new KernelAndDevice(ctx->GetRendezvous(), ctx->LogMemory());
+    kernel = new KernelAndDevice(ctx->GetRendezvous(), ctx->LogMemory(),
+                                 ctx->GetCollectiveExecutorHandle());
     status = KernelAndDevice::Init(ndef, flr, ctx->runner(), kernel);
     if (!status.ok()) {
       delete kernel;
