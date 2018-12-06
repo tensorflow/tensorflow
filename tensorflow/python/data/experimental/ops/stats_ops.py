@@ -20,7 +20,7 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -66,8 +66,10 @@ def bytes_produced_stats(tag):
   """
 
   def _apply_fn(dataset):
-    return _StatsDataset(dataset, gen_dataset_ops.bytes_produced_stats_dataset,
-                         tag)
+    return _StatsDataset(
+        dataset,
+        gen_experimental_dataset_ops.experimental_bytes_produced_stats_dataset,
+        tag)
 
   return _apply_fn
 
@@ -89,12 +91,14 @@ def latency_stats(tag):
   """
 
   def _apply_fn(dataset):
-    return _StatsDataset(dataset, gen_dataset_ops.latency_stats_dataset, tag)
+    return _StatsDataset(
+        dataset,
+        gen_experimental_dataset_ops.experimental_latency_stats_dataset, tag)
 
   return _apply_fn
 
 
-class _StatsDataset(dataset_ops.UnaryDataset):
+class _StatsDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and also records statistics."""
 
   def __init__(self, input_dataset, op_function, tag):
@@ -108,15 +112,3 @@ class _StatsDataset(dataset_ops.UnaryDataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._tag,
         **dataset_ops.flat_structure(self))
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes

@@ -33,14 +33,6 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
-    name: "LEGACY_INIT_OP_KEY"
-    mtype: "<type \'str\'>"
-  }
-  member {
-    name: "MAIN_OP_KEY"
-    mtype: "<type \'str\'>"
-  }
-  member {
     name: "PREDICT_INPUTS"
     mtype: "<type \'str\'>"
   }
@@ -105,12 +97,12 @@ tf_module {
     argspec: "args=[\'examples\', \'classes\', \'scores\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "is_valid_signature"
-    argspec: "args=[\'signature_def\'], varargs=None, keywords=None, defaults=None"
+    name: "contains_saved_model"
+    argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "maybe_saved_model_directory"
-    argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
+    name: "is_valid_signature"
+    argspec: "args=[\'signature_def\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "predict_signature_def"

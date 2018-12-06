@@ -88,7 +88,7 @@ def logdet(matrix, name=None):
     chol = gen_linalg_ops.cholesky(matrix)
     return 2.0 * math_ops.reduce_sum(
         math_ops.log(math_ops.real(array_ops.matrix_diag_part(chol))),
-        reduction_indices=[-1])
+        axis=[-1])
 
 
 @tf_export('linalg.adjoint')

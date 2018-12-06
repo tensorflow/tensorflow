@@ -189,7 +189,7 @@ landing_page:
       - label: Read more
         path: https://cloud.google.com/blog/products/ai-machine-learning/ai-motion-designing-simple-system-see-understand-and-react-real-world-part-ii
     - heading: "Introducing the Model Optimization Toolkit"
-      image_path: /ecosystem/images/tf-logo-card-16x9.png
+      image_path: /resources/images/tf-logo-card-16x9.png
       path: https://medium.com/tensorflow/introducing-the-model-optimization-toolkit-for-tensorflow-254aca1ba0a3
       buttons:
       - label: Read on TensorFlow blog
@@ -205,7 +205,7 @@ landing_page:
     background: grey
     items:
     - heading: "Using TensorFlow Lite on Android"
-      image_path: /ecosystem/images/tf-logo-card-16x9.png
+      image_path: /resources/images/tf-logo-card-16x9.png
       path: https://medium.com/tensorflow/using-tensorflow-lite-on-android-9bbc9cb7d69d
       buttons:
       - label: Read on TensorFlow blog
@@ -216,7 +216,7 @@ landing_page:
       - label: Watch the video
         path: https://www.youtube.com/watch?v=FAMfy7izB6A
     - heading: "TensorFlow Lite on GitHub"
-      image_path: /ecosystem/images/github-card-16x9.png
+      image_path: /resources/images/github-card-16x9.png
       path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite
       buttons:
       - label: View on GitHub

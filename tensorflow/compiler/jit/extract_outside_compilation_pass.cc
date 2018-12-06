@@ -366,7 +366,7 @@ Status ReplaceOrRemoveOutsideCompilationCallNode(
 //    replace this node with compilation result node.
 // 3) all outside compilation graphs.
 Status ConstructHostGraph(
-    const string& xla_cluster_name,
+    const string& xla_cluster_name, const string& outside_compilation_attr_name,
     const std::vector<string>& outside_compilation_host_graphs,
     FunctionLibraryDefinition* fld, std::unique_ptr<Graph>* host_graph) {
   host_graph->reset(new Graph(fld));
@@ -475,6 +475,10 @@ Status ConstructHostGraph(
   PruneForReverseReachability(
       host_graph->get(),
       std::unordered_set<const Node*>{(*host_graph)->sink_node()});
+
+  // Postprocess edges between different outside compilations.
+  TF_RETURN_IF_ERROR(PostprocessEdgesBetweenOutsideCompilations(
+      host_graph->get(), outside_compilation_attr_name));
 
   if (VLOG_IS_ON(4)) {
     dump_graph::DumpGraphToFile(
@@ -801,6 +805,11 @@ Status ExtractOutsideCompilationForFunction(
       },
       &fbody));
   std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+
+  // Preprocess edges between different outside compilations. They will be
+  // restored in `ConstructHostGraph()`.
+  TF_RETURN_IF_ERROR(PreprocessEdgesBetweenOutsideCompilations(
+      fbody->graph, outside_compilation_attr_name));
   if (VLOG_IS_ON(4)) {
     dump_graph::DumpGraphToFile(
         absl::StrCat("extract_outside_compilation_for_func_before_", func_name),
@@ -860,8 +869,9 @@ Status ExtractOutsideCompilationForFunction(
 
   // Construct host graph.
   if (!outside_compilation_host_graphs.empty()) {
-    TF_RETURN_IF_ERROR(ConstructHostGraph(
-        xla_cluster_name, outside_compilation_host_graphs, fld, host_graph));
+    TF_RETURN_IF_ERROR(
+        ConstructHostGraph(xla_cluster_name, outside_compilation_attr_name,
+                           outside_compilation_host_graphs, fld, host_graph));
   }
 
   // Remove the outside compilation graphs from function library.

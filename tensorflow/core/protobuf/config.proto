@@ -291,6 +291,13 @@ message RPCOptions {
   // transport for client-master communication that avoids the RPC
   // stack. This option is primarily for used testing the RPC stack.
   bool use_rpc_for_inprocess_master = 1;
+
+  // The compression algorithm to be used. One of "deflate", "gzip".
+  string compression_algorithm = 2;
+
+  // If compression_algorithm is set, the compression level to be used.
+  // From 0 (no compression), up to 3.
+  int32 compression_level = 3;
 };
 
 // Session configuration parameters.
@@ -413,6 +420,11 @@ message ConfigProto {
     // Any positive value sets the max chunk size.  0 defaults to 4096.
     // Any negative value indicates no max, i.e. one chunk only.
     int32 recv_buf_max_chunk = 4;
+
+    // If true, and supported by the platform, the runtime will attempt to
+    // use NUMA affinity where applicable.  One consequence will be the
+    // existence of as many CPU devices as there are available NUMA nodes.
+    bool use_numa_affinity = 5;
   };
 
   Experimental experimental = 16;

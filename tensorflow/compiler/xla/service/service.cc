@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/source_map_util.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -275,8 +276,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
   }
   if (execution_options != nullptr &&
       execution_options->has_shape_with_output_layout()) {
-    const auto& shape_with_output_layout =
-        execution_options->shape_with_output_layout();
+    const Shape shape_with_output_layout(
+        execution_options->shape_with_output_layout());
     TF_RETURN_IF_ERROR(
         ValidateResultShape(shape_with_output_layout, program_shape.result()));
     TF_RETURN_IF_ERROR(
@@ -658,9 +659,9 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     // replica 0.
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(request.computation().host_program_shape(),
-                           replicated_arguments.front(),
-                           request.execution_options()));
+        CreateModuleConfig(
+            ProgramShape{request.computation().host_program_shape()},
+            replicated_arguments.front(), request.execution_options()));
     VLOG(3)
         << "ExecuteGraphParallel created HloModuleConfig computation layout: "
         << module_config->entry_computation_layout().ToString();
@@ -745,9 +746,9 @@ Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
   }
   if (available_device_count < arg->device_count() * replica_count) {
     return ResourceExhausted(
-        "Requested device count (%d) exceeds the number of available devices "
-        "on the target (%d)",
-        arg->device_count(), available_device_count);
+        "Requested logical device count (%d) with replica count (%d) exceeds "
+        "the number of available physical devices on the target (%d)",
+        arg->device_count(), replica_count, available_device_count);
   }
 
   for (int64 i = 0; i < arg->device_count(); ++i) {
@@ -818,14 +819,17 @@ Status Service::Compile(const CompileRequest* arg, CompileResponse* result) {
         "The compile request does not support multiple device handles.");
   }
 
-  std::vector<const Shape*> argument_shapes;
-  absl::c_transform(arg->input_shape_with_layout(),
-                    std::back_inserter(argument_shapes),
-                    [](const Shape& shape) { return &shape; });
+  std::vector<Shape> argument_shapes;
+  argument_shapes.reserve(arg->input_shape_with_layout_size());
+  std::vector<const Shape*> argument_shape_ptrs;
+  for (const ShapeProto& shape_proto : arg->input_shape_with_layout()) {
+    argument_shapes.push_back(Shape(shape_proto));
+    argument_shape_ptrs.push_back(&argument_shapes.back());
+  }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(arg->computation().host_program_shape(),
-                         argument_shapes, &arg->execution_options()));
+      CreateModuleConfig(ProgramShape{arg->computation().host_program_shape()},
+                         argument_shape_ptrs, &arg->execution_options()));
   VLOG(3) << "Compile created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
 
@@ -930,14 +934,14 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
   TF_ASSIGN_OR_RETURN(const ShapedBuffer* shaped_buffer,
                       allocation_tracker_.ResolveForReplica(arg->data(), 0));
 
-  const Shape* return_shape;
+  Shape return_shape;
   if (arg->has_shape_with_layout()) {
-    if (!LayoutUtil::HasLayout(arg->shape_with_layout())) {
+    return_shape = Shape(arg->shape_with_layout());
+    if (!LayoutUtil::HasLayout(return_shape)) {
       return InvalidArgument("shape_with_layout must have layout if present.");
     }
-    return_shape = &arg->shape_with_layout();
   } else {
-    return_shape = &shaped_buffer->on_host_shape();
+    return_shape = Shape(shaped_buffer->on_host_shape());
   }
 
   TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(
@@ -948,29 +952,14 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
       execute_backend_->transfer_manager()->TransferLiteralFromDevice(
           stream.get(), *shaped_buffer));
 
-  if (LayoutUtil::LayoutsInShapesEqual(*return_shape, result_literal.shape())) {
+  if (LayoutUtil::LayoutsInShapesEqual(return_shape, result_literal.shape())) {
     *result->mutable_literal() = result_literal.ToProto();
   } else {
     *result->mutable_literal() =
-        result_literal.Relayout(*return_shape).ToProto();
+        result_literal.Relayout(return_shape).ToProto();
   }
   return Status::OK();
 }
-
-namespace {
-
-// Creates a clone of the given shaped buffer with the given device ordinal. The
-// shape and DeviceMemoryBase values of the clone are identical to the original.
-std::unique_ptr<ShapedBuffer> CloneShapedBufferOnDevice(
-    const ShapedBuffer& shaped_buffer, int device_ordinal) {
-  auto clone = absl::make_unique<ShapedBuffer>(
-      shaped_buffer.on_host_shape(), shaped_buffer.on_device_shape(),
-      shaped_buffer.platform(), device_ordinal);
-  clone->buffers() = shaped_buffer.buffers();
-  return clone;
-}
-
-}  // namespace
 
 Status Service::TransferToServer(const TransferToServerRequest* arg,
                                  TransferToServerResponse* result) {
@@ -1060,11 +1049,11 @@ Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
     executor = replicas[arg->replica_id()];
   }
 
-  auto literal = Literal::CreateFromShape(arg->shape_with_layout());
+  auto literal = Literal::CreateFromShape(Shape(arg->shape_with_layout()));
 
   TF_RETURN_IF_ERROR(
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
-          executor, arg->shape_with_layout(), literal));
+          executor, Shape(arg->shape_with_layout()), literal));
   *result->mutable_literal() = literal.ToProto();
   return Status::OK();
 }
@@ -1087,7 +1076,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
         "constant computation may not depend on any parameters.");
   }
 
-  ProgramShape program_shape = arg->computation().host_program_shape();
+  ProgramShape program_shape(arg->computation().host_program_shape());
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
   if (arg->has_output_layout()) {
     TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(
@@ -1118,7 +1107,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
 Status Service::GetShape(const GetShapeRequest* arg, GetShapeResponse* result) {
   TF_ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
                       allocation_tracker_.ResolveForReplica(arg->data(), 0));
-  *result->mutable_shape() = buffer->on_host_shape();
+  *result->mutable_shape() = buffer->on_host_shape().ToProto();
   return Status::OK();
 }
 
@@ -1131,7 +1120,7 @@ Status Service::GetComputationGraphStats(
     return InvalidArgument("Program shape may not be empty.");
   }
 
-  HloModuleConfig config(arg->computation().host_program_shape());
+  HloModuleConfig config(ProgramShape{arg->computation().host_program_shape()});
   config.set_debug_options(arg->debug_options());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       CreateModuleFromProto(arg->computation(), config));

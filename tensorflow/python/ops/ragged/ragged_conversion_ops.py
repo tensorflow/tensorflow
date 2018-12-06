@@ -196,7 +196,7 @@ def to_tensor(rt_input, default_value=None, name=None):
   Args:
     rt_input: The input `RaggedTensor`.
     default_value: Value to set for indices not specified in `rt_input`.
-      Defaults to zero.  `default_value.shape` must be equal to
+      Defaults to zero.  `default_value` must be broadcastable to
       `rt_input.shape[rt_input.ragged_rank + 1:]`.
     name: A name prefix for the returned tensors (optional).
 
@@ -210,12 +210,25 @@ def to_tensor(rt_input, default_value=None, name=None):
         rt_input, name='rt_input')
     if not ragged_tensor.is_ragged(rt_input):
       return rt_input  # already dense
+    if default_value is not None:
+      default_value = ops.convert_to_tensor(
+          default_value, name='default_value', dtype=rt_input.dtype)
 
     # If ragged_rank > 1, then recursively convert the ragged values into a
     # `Tensor` before we proceed.
     values = rt_input.values
     if ragged_tensor.is_ragged(values):
       values = to_tensor(values, default_value)
+
+    # Tile the default value, if necessary.
+    if default_value is not None:
+      if values.shape.ndims is not None:
+        default_value.shape.with_rank_at_most(values.shape.ndims - 1)
+      if (values.shape.ndims is None or default_value.shape.ndims is None or
+          values.shape.ndims != default_value.shape.ndims + 1):
+        value_shape = array_ops.shape(values)[1:]
+        default_value = array_ops.broadcast_to(default_value, value_shape)
+      default_value.shape.assert_is_compatible_with(values.shape[1:])
 
     # Get the expected dense shape ([nrows, ncols] + value_shape).
     rt_row_lengths = [rt_input.row_splits[1:] - rt_input.row_splits[:-1]]
@@ -228,9 +241,6 @@ def to_tensor(rt_input, default_value=None, name=None):
     # Build a default value if none was supplied.
     if default_value is None:
       default_value = array_ops.zeros(value_shape, dtype=values.dtype)
-    else:
-      default_value = ops.convert_to_tensor(
-          default_value, name='default_value', dtype=values.dtype)
     default_value.shape.assert_is_compatible_with(values.shape[1:])
     default_value.set_shape(values.shape[1:])
 
@@ -351,9 +361,14 @@ def from_sparse(st_input, name=None):
     st_input = sparse_tensor.convert_to_tensor_or_sparse_tensor(
         st_input, name='rt_input')
 
-    if (st_input.dense_shape.shape.ndims != 2 and
-        st_input.indices.shape.ndims is None or
-        st_input.indices.shape.dims[1].value != 2):
+    static_rank_from_dense_shape = (
+        None if st_input.dense_shape.shape.ndims is None
+        else st_input.dense_shape.shape.dims[0].value)
+    static_rank_from_indices = (
+        None if st_input.indices.shape.ndims is None
+        else st_input.indices.shape.dims[1].value)
+
+    if static_rank_from_dense_shape != 2 and static_rank_from_indices != 2:
       raise ValueError('rank(st_input) must be 2')
 
     with ops.control_dependencies(

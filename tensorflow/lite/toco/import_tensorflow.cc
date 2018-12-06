@@ -935,6 +935,25 @@ tensorflow::Status ConvertSplitOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertSplitVOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "SplitV");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 3));
+  auto* op = new TensorFlowSplitVOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->inputs.push_back(node.input(2));
+  const int num_split = GetIntAttr(node, "num_split");
+  op->outputs.push_back(node.name());
+  for (int i = 1; i < num_split; i++) {
+    op->outputs.push_back(absl::StrCat(node.name(), ":", i));
+  }
+  op->num_split = num_split;
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status ConvertSwitchOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
@@ -1134,6 +1153,31 @@ tensorflow::Status ConvertConcatOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertMirrorPadOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  if (node.op() != "MirrorPad") {
+    LOG(FATAL) << "Expected MirrorPad.";
+  }
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  CHECK_EQ(num_inputs, 2);
+  auto* op = new MirrorPadOperator;
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->outputs.push_back(node.name());
+  const auto mode = GetStringAttr(node, "mode");
+  if (mode == "REFLECT") {
+    op->mode = toco::MirrorPadMode::kReflect;
+  } else if (mode == "SYMMETRIC") {
+    op->mode = toco::MirrorPadMode::kSymmetric;
+  }
+
+  model->operators.emplace_back(op);
+
+  return tensorflow::Status::OK();
+}
+
 static constexpr int kAnyNumInputs = -1;
 
 enum FlexSupport { kFlexOk, kFlexNotOk };
@@ -1221,7 +1265,7 @@ void GetOutputNamesFromNodeDef(const NodeDef& node,
 void GetOutputTypesFromNodeDef(const NodeDef& node,
                                const tensorflow::OpDef& op_def,
                                TensorFlowUnsupportedOperator* op) {
-  // The the given type to the op, or clear the types if invalid.
+  // The given type to the op, or clear the types if invalid.
   auto add_type = [&node, op](tensorflow::DataType type) {
     if (type == tensorflow::DT_INVALID) {
       LOG(WARNING) << "Op node missing output type attribute: " << node.name();
@@ -2012,13 +2056,13 @@ bool InlineAllFunctions(GraphDef* graphdef) {
   tensorflow::SessionOptions options;
   auto* device_count = options.config.mutable_device_count();
   device_count->insert({"CPU", 1});
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<tensorflow::Device>> devices;
   TF_CHECK_OK(tensorflow::DeviceFactory::AddDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
 
   tensorflow::FunctionLibraryDefinition fld(tensorflow::OpRegistry::Global(),
                                             graphdef_copy.library());
-  tensorflow::DeviceMgr device_mgr(devices);
+  tensorflow::DeviceMgr device_mgr(std::move(devices));
   tensorflow::OptimizerOptions o_opts;
   tensorflow::ProcessFunctionLibraryRuntime pflr(
       &device_mgr, tensorflow::Env::Default(), TF_GRAPH_DEF_VERSION, &fld,
@@ -2220,6 +2264,21 @@ tensorflow::Status ConvertUnidirectionalSequenceLstm(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertLeakyReluOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "LeakyRelu");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
+  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
+  const auto& input_name = node.input(0);
+  auto* op = new LeakyReluOperator;
+  op->inputs.push_back(input_name);
+  op->outputs.push_back(node.name());
+  op->alpha = GetFloatAttr(node, "alpha");
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 namespace internal {
@@ -2233,12 +2292,14 @@ ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
   return std::unordered_map<std::string, ConverterType>({
       // We need to let TCO convert Placeholder information into
       // array data, so that the data types are correct.
+      {"LegacyFedInput", ConvertPlaceholderOperator},
       {"Placeholder", ConvertPlaceholderOperator},
   });
 }
 
 ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
+      {"Abs", ConvertSimpleOperator<AbsOperator>},
       {"Add", ConvertSimpleOperator<AddOperator, 2>},
       {"AddN", ConvertSimpleOperatorFlexOk<AddNOperator>},
       {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
@@ -2282,6 +2343,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
        ConvertSimpleOperator<TensorFlowGreaterEqualOperator, 2>},
       {"Identity", ConvertIdentityOperator},
       {"LRN", ConvertLRNOperator},
+      {"LeakyRelu", ConvertLeakyReluOperator},
       {"LegacyFedInput", ConvertPlaceholderOperator},
       {"Less", ConvertSimpleOperator<TensorFlowLessOperator, 2>},
       {"LessEqual", ConvertSimpleOperator<TensorFlowLessEqualOperator, 2>},
@@ -2332,8 +2394,11 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"SpaceToDepth", ConvertSpaceToDepthOperator},
       {"SparseToDense", ConvertSparseToDenseOperator},
       {"Split", ConvertSplitOperator},
+      {"SplitV", ConvertSplitVOperator},
       {"Sqrt", ConvertSimpleOperator<TensorFlowSqrtOperator, 1>},
       {"Square", ConvertSimpleOperator<TensorFlowSquareOperator, 1>},
+      {"SquaredDifference",
+       ConvertSimpleOperator<SquaredDifferenceOperator, 2>},
       {"Squeeze", ConvertSqueezeOperator},
       {"StopGradient", ConvertIdentityOperator},
       {"StridedSlice", ConvertStridedSliceOperator},
@@ -2349,6 +2414,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Unpack", ConvertUnpackOperator},
       {"ZerosLike", ConvertSimpleOperator<TensorFlowZerosLikeOperator, 1>},
       {"UnidirectionalSequenceLstm", ConvertUnidirectionalSequenceLstm},
+      {"MirrorPad", ConvertMirrorPadOperator},
   });
 }
 

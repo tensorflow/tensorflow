@@ -18,11 +18,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/tf2xla/lib/batch_dot.h"
 #include "tensorflow/compiler/tf2xla/lib/triangular_solve.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
+#include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -101,10 +102,7 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
       // a[..., i, i]
       auto a_ii = DynamicSliceInMinorDims(body_a, {i, i}, {1, 1});
       // np.dot(row, np.swapaxes(row, -1, -2))
-      auto diag_dot = BatchDot(row, row,
-                               /*transpose_x=*/false,
-                               /*transpose_y=*/true, /*conjugate_x=*/false,
-                               /*conjugate_y=*/false, precision);
+      auto diag_dot = BatchDot(row, TransposeInMinorDims(row), precision);
       // l[..., i, i] = np.sqrt(a[..., i, i] - np.dot(row,
       //                                              np.swapaxes(row, -1, -2)))
       auto l_ii =
@@ -122,10 +120,7 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
       // The columns in [i, n] are zeroed out in `row`, so we just have to
       // zero out rows above i+1 after the BatchDot. np.dot(l[..., :, :i],
       // r.T)
-      auto dot = BatchDot(body_l, row,
-                          /*transpose_x=*/false,
-                          /*transpose_y=*/true, /*conjugate_x=*/false,
-                          /*conjugate_y=*/false, precision);
+      auto dot = BatchDot(body_l, TransposeInMinorDims(row), precision);
       // np.dot(l[..., i+1:, :i], r.T)
       auto dot_ip1 =
           xla::Select(xla::Le(mask_range_col, i), mask_zeros_col, dot);
@@ -185,9 +180,7 @@ xla::XlaOp Cholesky(xla::XlaOp a, int64 block_size,
         // a[i:, i:i+k] -= np.dot(l[i:, :i], np.transpose(l[i:i+k, :i]))
         auto lhs = SliceInMinorDims(l, {i, 0}, {n, i});
         auto rhs = SliceInMinorDims(l, {i, 0}, {i + k, i});
-        auto delta = BatchDot(lhs, rhs, /*transpose_x=*/false,
-                              /*transpose_y=*/true, /*conjugate_x=*/false,
-                              /*conjugate_y=*/false, precision);
+        auto delta = BatchDot(lhs, TransposeInMinorDims(rhs), precision);
         auto before = SliceInMinorDims(a, {i, i}, {n, i + k});
         a = UpdateSliceInMinorDims(a, before - delta, {i, i});
       }

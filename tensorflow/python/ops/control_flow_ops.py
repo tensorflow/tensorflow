@@ -56,7 +56,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -113,7 +112,6 @@ def _summarize_eager(tensor, summarize=None):
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
 @tf_export("debugging.Assert", "Assert")
-@tf_should_use.should_use_result
 def Assert(condition, data, summarize=None, name=None):
   """Asserts that the given condition is true.
 
@@ -158,7 +156,7 @@ def Assert(condition, data, summarize=None, name=None):
 
   with ops.name_scope(name, "Assert", [condition, data]) as name:
     xs = ops.convert_n_to_tensor(data)
-    if all([x.dtype in {dtypes.string, dtypes.int32} for x in xs]):
+    if all(x.dtype in {dtypes.string, dtypes.int32} for x in xs):
       # As a simple heuristic, we assume that string and int32 are
       # on host to avoid the need to use cond. If it is not case,
       # we will pay the price copying the tensor to host memory.
@@ -457,19 +455,19 @@ def merge(inputs, name=None):
     ValueError: If any of the inputs is None, or inputs are IndexedSlices and
       some but not all have a dense_shape property.
   """
-  if any([inp is None for inp in inputs]):
+  if any(inp is None for inp in inputs):
     raise ValueError("At least one of the merge inputs is None: %s" % inputs)
   with ops.name_scope(name, "Merge", inputs) as name:
     inputs = [
         ops.internal_convert_to_tensor_or_indexed_slices(inp, as_ref=True)
         for inp in inputs
     ]
-    if all([isinstance(v, ops.Tensor) for v in inputs]):
-      if all([v.dtype._is_ref_dtype for v in inputs]):  # pylint: disable=protected-access
+    if all(isinstance(v, ops.Tensor) for v in inputs):
+      if all(v.dtype._is_ref_dtype for v in inputs):  # pylint: disable=protected-access
         return gen_control_flow_ops.ref_merge(inputs, name)
       else:
         return gen_control_flow_ops.merge(inputs, name)
-    elif all([isinstance(v, sparse_tensor.SparseTensor) for v in inputs]):
+    elif all(isinstance(v, sparse_tensor.SparseTensor) for v in inputs):
       # Only handle the case when all inputs are SparseTensor.
       values, _ = merge([inp.values for inp in inputs], name=name)
       indices, chosen_index = gen_control_flow_ops.merge(
@@ -557,7 +555,7 @@ def _SetShapeInvariants(input_vars, enter_vars, shapes):
   if shapes is None:
     return
   flat_shapes = nest.flatten(shapes)
-  if not all([isinstance(s, tensor_shape.TensorShape) for s in flat_shapes]):
+  if not all(isinstance(s, tensor_shape.TensorShape) for s in flat_shapes):
     raise ValueError("`shapes` must be a (possibly nested) list of shapes.")
   # Check that the shapes of the inputs are less than the shape invariants,
   # and set the shapes of `enter_vars` to the shape invariants.
@@ -1976,7 +1974,7 @@ def _UnpackIfSingleton(res):
 
 # pylint: disable=redefined-outer-name
 # pylint: disable=g-doc-args
-@tf_export("cond")
+@tf_export(v1=["cond"])
 @deprecation.deprecated_args(
     None, "fn1/fn2 are deprecated in favor of the true_fn/false_fn arguments.",
     "fn1", "fn2")
@@ -2171,6 +2169,77 @@ def cond(pred,
 
 # pylint: enable=g-doc-args
 # pylint: enable=redefined-outer-name
+
+
+@tf_export("cond", v1=[])
+def cond_for_tf_v2(pred,
+                   true_fn=None,
+                   false_fn=None,
+                   name=None):
+  """Return `true_fn()` if the predicate `pred` is true else `false_fn()`.
+
+  `true_fn` and `false_fn` both return lists of output tensors. `true_fn` and
+  `false_fn` must have the same non-zero number and type of outputs.
+
+  **WARNING**: Any Tensors or Operations created outside of `true_fn` and
+  `false_fn` will be executed regardless of which branch is selected at runtime.
+
+  Although this behavior is consistent with the dataflow model of TensorFlow,
+  it has frequently surprised users who expected a lazier semantics.
+  Consider the following simple program:
+
+  ```python
+  z = tf.multiply(a, b)
+  result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
+  ```
+
+  If `x < y`, the `tf.add` operation will be executed and `tf.square`
+  operation will not be executed. Since `z` is needed for at least one
+  branch of the `cond`, the `tf.multiply` operation is always executed,
+  unconditionally.
+
+  Note that `cond` calls `true_fn` and `false_fn` *exactly once* (inside the
+  call to `cond`, and not at all during `Session.run()`). `cond`
+  stitches together the graph fragments created during the `true_fn` and
+  `false_fn` calls with some additional graph nodes to ensure that the right
+  branch gets executed depending on the value of `pred`.
+
+  `tf.cond` supports nested structures as implemented in
+  `tensorflow.python.util.nest`. Both `true_fn` and `false_fn` must return the
+  same (possibly nested) value structure of lists, tuples, and/or named tuples.
+  Singleton lists and tuples form the only exceptions to this: when returned by
+  `true_fn` and/or `false_fn`, they are implicitly unpacked to single values.
+
+  Args:
+    pred: A scalar determining whether to return the result of `true_fn` or
+      `false_fn`.
+    true_fn: The callable to be performed if pred is true.
+    false_fn: The callable to be performed if pred is false.
+    name: Optional name prefix for the returned tensors.
+
+  Returns:
+    Tensors returned by the call to either `true_fn` or `false_fn`. If the
+    callables return a singleton list, the element is extracted from the list.
+
+  Raises:
+    TypeError: if `true_fn` or `false_fn` is not callable.
+    ValueError: if `true_fn` and `false_fn` do not return the same number of
+      tensors, or return tensors of different types.
+
+  Example:
+
+  ```python
+  x = tf.constant(2)
+  y = tf.constant(5)
+  def f1(): return tf.multiply(x, 17)
+  def f2(): return tf.add(y, 23)
+  r = tf.cond(tf.less(x, y), f1, f2)
+  # r is set to f1().
+  # Operations in f2 (e.g., tf.add) are not executed.
+  ```
+
+  """
+  return cond(pred, true_fn=true_fn, false_fn=false_fn, strict=True, name=name)
 
 
 def _resource_safe_shape(t):
@@ -3065,7 +3134,186 @@ class WhileContext(ControlFlowContext):
 
 
 # pylint: disable=redefined-outer-name
-@tf_export("while_loop")
+@tf_export("while_loop", v1=[])
+def while_loop_v2(cond,
+                  body,
+                  loop_vars,
+                  shape_invariants=None,
+                  parallel_iterations=10,
+                  back_prop=True,
+                  swap_memory=False,
+                  maximum_iterations=None,
+                  name=None):
+  """Repeat `body` while the condition `cond` is true.
+
+  `cond` is a callable returning a boolean scalar tensor. `body` is a callable
+  returning a (possibly nested) tuple, namedtuple or list of tensors of the same
+  arity (length and structure) and types as `loop_vars`. `loop_vars` is a
+  (possibly nested) tuple, namedtuple or list of tensors that is passed to both
+  `cond` and `body`. `cond` and `body` both take as many arguments as there are
+  `loop_vars`.
+
+  In addition to regular Tensors or IndexedSlices, the body may accept and
+  return TensorArray objects.  The flows of the TensorArray objects will
+  be appropriately forwarded between loops and during gradient calculations.
+
+  Note that `while_loop` calls `cond` and `body` *exactly once* (inside the
+  call to `while_loop`, and not at all during `Session.run()`). `while_loop`
+  stitches together the graph fragments created during the `cond` and `body`
+  calls with some additional graph nodes to create the graph flow that
+  repeats `body` until `cond` returns false.
+
+  For correctness, `tf.while_loop()` strictly enforces shape invariants for
+  the loop variables. A shape invariant is a (possibly partial) shape that
+  is unchanged across the iterations of the loop. An error will be raised
+  if the shape of a loop variable after an iteration is determined to be more
+  general than or incompatible with its shape invariant. For example, a shape
+  of [11, None] is more general than a shape of [11, 17], and [11, 21] is not
+  compatible with [11, 17]. By default (if the argument `shape_invariants` is
+  not specified), it is assumed that the initial shape of each tensor in
+  `loop_vars` is the same in every iteration. The `shape_invariants` argument
+  allows the caller to specify a less specific shape invariant for each loop
+  variable, which is needed if the shape varies between iterations. The
+  `tf.Tensor.set_shape`
+  function may also be used in the `body` function to indicate that
+  the output loop variable has a particular shape. The shape invariant for
+  SparseTensor and IndexedSlices are treated specially as follows:
+
+  a) If a loop variable is a SparseTensor, the shape invariant must be
+  TensorShape([r]) where r is the rank of the dense tensor represented
+  by the sparse tensor. It means the shapes of the three tensors of the
+  SparseTensor are ([None], [None, r], [r]). NOTE: The shape invariant here
+  is the shape of the SparseTensor.dense_shape property. It must be the shape of
+  a vector.
+
+  b) If a loop variable is an IndexedSlices, the shape invariant must be
+  a shape invariant of the values tensor of the IndexedSlices. It means
+  the shapes of the three tensors of the IndexedSlices are (shape, [shape[0]],
+  [shape.ndims]).
+
+  `while_loop` implements non-strict semantics, enabling multiple iterations
+  to run in parallel. The maximum number of parallel iterations can be
+  controlled by `parallel_iterations`, which gives users some control over
+  memory consumption and execution order. For correct programs, `while_loop`
+  should return the same result for any parallel_iterations > 0.
+
+  For training, TensorFlow stores the tensors that are produced in the
+  forward inference and are needed in back propagation. These tensors are a
+  main source of memory consumption and often cause OOM errors when training
+  on GPUs. When the flag swap_memory is true, we swap out these tensors from
+  GPU to CPU. This for example allows us to train RNN models with very long
+  sequences and large batches.
+
+  Args:
+    cond: A callable that represents the termination condition of the loop.
+    body: A callable that represents the loop body.
+    loop_vars: A (possibly nested) tuple, namedtuple or list of numpy array,
+      `Tensor`, and `TensorArray` objects.
+    shape_invariants: The shape invariants for the loop variables.
+    parallel_iterations: The number of iterations allowed to run in parallel. It
+      must be a positive integer.
+    back_prop: Whether backprop is enabled for this while loop.
+    swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
+    maximum_iterations: Optional maximum number of iterations of the while loop
+      to run.  If provided, the `cond` output is AND-ed with an additional
+      condition ensuring the number of iterations executed is no greater than
+      `maximum_iterations`.
+    name: Optional name prefix for the returned tensors.
+
+  Returns:
+    The output tensors for the loop variables after the loop. The return value
+      has the same structure as `loop_vars`.
+
+  Raises:
+    TypeError: if `cond` or `body` is not callable.
+    ValueError: if `loop_vars` is empty.
+
+  Example:
+
+  ```python
+  i = tf.constant(0)
+  c = lambda i: tf.less(i, 10)
+  b = lambda i: tf.add(i, 1)
+  r = tf.while_loop(c, b, [i])
+  ```
+
+  Example with nesting and a namedtuple:
+
+  ```python
+  import collections
+  Pair = collections.namedtuple('Pair', 'j, k')
+  ijk_0 = (tf.constant(0), Pair(tf.constant(1), tf.constant(2)))
+  c = lambda i, p: i < 10
+  b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
+  ijk_final = tf.while_loop(c, b, ijk_0)
+  ```
+
+  Example using shape_invariants:
+
+  ```python
+  i0 = tf.constant(0)
+  m0 = tf.ones([2, 2])
+  c = lambda i, m: i < 10
+  b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
+  tf.while_loop(
+      c, b, loop_vars=[i0, m0],
+      shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
+  ```
+
+  Example which demonstrates non-strict semantics: In the following
+  example, the final value of the counter `i` does not depend on `x`. So
+  the `while_loop` can increment the counter parallel to updates of `x`.
+  However, because the loop counter at one loop iteration depends
+  on the value at the previous iteration, the loop counter itself cannot
+  be incremented in parallel. Hence if we just want the final value of the
+  counter (which we print on the line `print(sess.run(i))`), then
+  `x` will never be incremented, but the counter will be updated on a
+  single thread. Conversely, if we want the value of the output (which we
+  print on the line `print(sess.run(out).shape)`), then the counter may be
+  incremented on its own thread, while `x` can be incremented in
+  parallel on a separate thread. In the extreme case, it is conceivable
+  that the thread incrementing the counter runs until completion before
+  `x` is incremented even a single time. The only thing that can never
+  happen is that the thread updating `x` can never get ahead of the
+  counter thread because the thread incrementing `x` depends on the value
+  of the counter.
+
+  ```python
+  import tensorflow as tf
+
+  n = 10000
+  x = tf.constant(list(range(n)))
+  c = lambda i, x: i < n
+  b = lambda i, x: (tf.Print(i + 1, [i]), tf.Print(x + 1, [i], "x:"))
+  i, out = tf.while_loop(c, b, (0, x))
+  with tf.Session() as sess:
+      print(sess.run(i))  # prints [0] ... [9999]
+
+      # The following line may increment the counter and x in parallel.
+      # The counter thread may get ahead of the other thread, but not the
+      # other way around. So you may see things like
+      # [9996] x:[9987]
+      # meaning that the counter thread is on iteration 9996,
+      # while the other thread is on iteration 9987
+      print(sess.run(out).shape)
+  ```
+
+  """
+  return while_loop(
+      cond=cond,
+      body=body,
+      loop_vars=loop_vars,
+      shape_invariants=shape_invariants,
+      parallel_iterations=parallel_iterations,
+      back_prop=back_prop,
+      swap_memory=swap_memory,
+      name=name,
+      maximum_iterations=maximum_iterations,
+      return_same_structure=True)
+
+
+# pylint: disable=redefined-outer-name
+@tf_export(v1=["while_loop"])
 def while_loop(cond,
                body,
                loop_vars,
@@ -3244,7 +3492,8 @@ def while_loop(cond,
         loop_vars,
         shape_invariants=shape_invariants,
         maximum_iterations=maximum_iterations,
-        name=name)
+        name=name,
+        return_same_structure=return_same_structure)
 
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
@@ -3465,7 +3714,43 @@ def group(*inputs, **kwargs):
       return no_op(name=name)
 
 
-@tf_export("tuple")
+@tf_export("tuple", v1=[])
+def tuple_v2(tensors, control_inputs=None, name=None):
+  """Group tensors together.
+
+  This creates a tuple of tensors with the same values as the `tensors`
+  argument, except that the value of each tensor is only returned after the
+  values of all tensors have been computed.
+
+  `control_inputs` contains additional ops that have to finish before this op
+  finishes, but whose outputs are not returned.
+
+  This can be used as a "join" mechanism for parallel computations: all the
+  argument tensors can be computed in parallel, but the values of any tensor
+  returned by `tuple` are only available after all the parallel computations
+  are done.
+
+  See also `tf.group` and
+  `tf.control_dependencies`.
+
+  Args:
+    tensors: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.
+    control_inputs: List of additional ops to finish before returning.
+    name: (optional) A name to use as a `name_scope` for the operation.
+
+  Returns:
+    Same as `tensors`.
+
+  Raises:
+    ValueError: If `tensors` does not contain any `Tensor` or `IndexedSlices`.
+    TypeError: If `control_inputs` is not a list of `Operation` or `Tensor`
+      objects.
+
+  """
+  return tuple(tensors=tensors, name=name, control_inputs=control_inputs)  # pylint: disable=redefined-builtin
+
+
+@tf_export(v1=["tuple"])
 def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined-builtin
   """Group tensors together.
 

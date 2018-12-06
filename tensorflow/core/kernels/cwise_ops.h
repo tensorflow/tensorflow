@@ -449,6 +449,27 @@ struct functor_traits<scalar_round_op_google<Scalar>> {
   enum { Cost = 4 * NumTraits<Scalar>::AddCost, PacketAccess = false };
 };
 
+template <typename Scalar>
+struct scalar_round_up_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& x) const {
+    EIGEN_STATIC_ASSERT((!NumTraits<Scalar>::IsComplex),
+                        NUMERIC_TYPE_MUST_BE_REAL)
+
+    Scalar round_val = Eigen::numext::floor(x);
+    const Scalar fraction = x - round_val;
+    if (fraction >= Scalar(.5)) {
+      round_val += Scalar(1.0);
+    }
+    return round_val;
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<scalar_round_up_op<Scalar>> {
+  enum { Cost = 4 * NumTraits<Scalar>::AddCost, PacketAccess = false };
+};
+
 #undef ENABLE_FLOAT_EQUALITY_WARNING
 #undef DISABLE_FLOAT_EQUALITY_WARNING
 

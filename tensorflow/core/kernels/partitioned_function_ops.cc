@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/grappler/utils/functions.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
@@ -50,12 +51,29 @@ class PartitionedCallOp : public AsyncOpKernel {
  public:
   explicit PartitionedCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
-    string rewriter_config_serialized;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &rewriter_config_serialized));
+    string deprecated_config_serialized;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &deprecated_config_serialized));
+    string config_proto_serialized;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config_proto", &config_proto_serialized));
     OP_REQUIRES(
-        ctx, rewriter_config_.ParseFromString(rewriter_config_serialized),
-        errors::InvalidArgument("Unable to parse rewriter_config string as "
-                                "tensorflow::RewriterConfig proto."));
+        ctx,
+        deprecated_config_serialized.empty() || config_proto_serialized.empty(),
+        errors::InvalidArgument("Provided both 'config' and 'config_proto' but "
+                                "only one should be provided.  Note the "
+                                "'config' option is deprecated."));
+    if (!deprecated_config_serialized.empty()) {
+      OP_REQUIRES(ctx,
+                  config_proto_.mutable_graph_options()
+                      ->mutable_rewrite_options()
+                      ->ParseFromString(deprecated_config_serialized),
+                  errors::InvalidArgument("Unable to parse config string as "
+                                          "tensorflow::RewriteOptions proto."));
+    } else {
+      OP_REQUIRES(
+          ctx, config_proto_.ParseFromString(config_proto_serialized),
+          errors::InvalidArgument("Unable to parse config_proto string as "
+                                  "tensorflow::ConfigProto proto."));
+    }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("executor_type", &executor_type_));
   }
 
@@ -435,7 +453,7 @@ class PartitionedCallOp : public AsyncOpKernel {
         },
         rendez, std::move(done), std::placeholders::_1);
     auto* refcounted_done = new ReffedStatusCallback(std::move(callback));
-    for (int i = 1; i < handles->size(); ++i) {
+    for (int i = 0; i < handles->size(); ++i) {
       refcounted_done->Ref();
     }
 
@@ -489,6 +507,7 @@ class PartitionedCallOp : public AsyncOpKernel {
             });
       }
     }
+    refcounted_done->Unref();
   }
 
   string UniquifyFunctionName(const FunctionLibraryDefinition* function_library,
@@ -506,11 +525,17 @@ class PartitionedCallOp : public AsyncOpKernel {
                        FunctionLibraryDefinition* flib,
                        const DeviceSet& device_set, Device* cpu_device,
                        std::unique_ptr<Graph>* graph) {
-    if (!tensorflow::grappler::MetaOptimizerEnabled(rewriter_config_)) {
+    if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto_)) {
       return Status::OK();
     }
 
     tensorflow::grappler::GrapplerItem item;
+
+    // Add all available devices so that inlined function can be placed.
+    for (const Device* d : device_set.devices()) {
+      Status added_device = item.AddDevice(d->name());
+      if (!added_device.ok()) VLOG(3) << added_device.error_message();
+    }
 
     // Add fetches so that the graph can be pruned.
     for (Node* node : ret_nodes) {
@@ -530,7 +555,7 @@ class PartitionedCallOp : public AsyncOpKernel {
     // TODO(nareshmodi): Consider adding and using the more generic GraphOptions
     // proto (which also contain the OptimizerOptions).
     TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
-        item, rewriter_config_, cpu_device, &cluster, &out_graph));
+        item, config_proto_, cpu_device, &cluster, &out_graph));
 
     std::unique_ptr<Graph> optimized_graph(new Graph(OpRegistry::Global()));
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
@@ -562,7 +587,7 @@ class PartitionedCallOp : public AsyncOpKernel {
   }
 
   NameAttrList func_;
-  RewriterConfig rewriter_config_;
+  ConfigProto config_proto_;
   string executor_type_;
   // Contains maps from device names to handles of function partitions, keyed by
   // FunctionLibraryRuntime pointers. (Because this kernel may be instantiated

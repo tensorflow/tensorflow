@@ -77,7 +77,11 @@ bool CanImplementAsCudnnForwardConv(HloInstruction* conv) {
     return false;
   }
 
-  if (window_util::HasWindowReversal(conv->window())) {
+  // CuDNN can perform either cross correlation (no reversal),
+  // or convolution (all dimensions reversed).
+  if (dnums.input_spatial_dimensions_size() == 2
+          ? !window_util::AllOrNoneReversed(conv->window())
+          : window_util::HasWindowReversal(conv->window())) {
     return false;
   }
   return true;

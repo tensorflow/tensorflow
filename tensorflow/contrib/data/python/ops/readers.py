@@ -355,7 +355,7 @@ def read_batch_features(file_pattern,
       shuffle=randomize_input,
       num_epochs=num_epochs,
       shuffle_buffer_size=capacity)
-  iterator = dataset.make_one_shot_iterator()
+  iterator = dataset_ops.make_one_shot_iterator(dataset)
   outputs = iterator.get_next()
   return outputs
 
@@ -379,15 +379,13 @@ class LMDBDataset(dataset_ops.DatasetSource):
     (key value) pairs sequentially.
     For example:
     ```python
+    tf.enable_eager_execution()
+
     dataset = tf.contrib.lmdb.LMDBDataset("/foo/bar.mdb")
-    iterator = dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
+
     # Prints the (key, value) pairs inside a lmdb file.
-    while True:
-      try:
-        print(sess.run(next_element))
-      except tf.errors.OutOfRangeError:
-        break
+    for key, value in dataset:
+      print(key, value)
     ```
     Args:
       filenames: A `tf.string` tensor containing one or more filenames.

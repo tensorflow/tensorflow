@@ -28,6 +28,8 @@ import tempfile as _tempfile
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
+from tensorflow.lite.toco import types_pb2 as _types_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -53,6 +55,18 @@ else:
 if _toco_from_proto_bin and not _os.path.exists(_toco_from_proto_bin):
   _toco_from_proto_bin = "toco_from_protos"
 
+
+# Map of tf.dtypes to TFLite types_flag_pb2.
+_MAP_TF_TO_TFLITE_TYPES = {
+    dtypes.float32: _types_pb2.FLOAT,
+    dtypes.int32: _types_pb2.INT32,
+    dtypes.int64: _types_pb2.INT64,
+    dtypes.string: _types_pb2.STRING,
+    dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
+    dtypes.complex64: _types_pb2.COMPLEX64
+}
+
+
 def _try_convert_to_unicode(output):
   if output is None:
     return u""
@@ -63,6 +77,24 @@ def _try_convert_to_unicode(output):
     except UnicodeDecodeError:
       pass
   return output
+
+
+def convert_dtype_to_tflite_type(tf_dtype):
+  """Converts tf.dtype to TFLite proto type.
+
+  Args:
+    tf_dtype: tf.dtype
+
+  Raises:
+    ValueError: Unsupported tf.dtype.
+
+  Returns:
+    types_flag_pb2.
+  """
+  result = _MAP_TF_TO_TFLITE_TYPES.get(tf_dtype)
+  if result is None:
+    raise ValueError("Unsupported tf.dtype {0}".format(tf_dtype))
+  return result
 
 
 class OpsSet(enum.Enum):
@@ -214,10 +246,10 @@ def build_toco_convert_protos(input_tensors,
       `foo.get_shape()` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
     inference_type: Target data type of real-number arrays in the output file.
-      Must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
+      Must be `{tf.float32, tf.uint8}`.  (default tf.float32)
     inference_input_type: Target data type of real-number input arrays. Allows
       for a different type for input arrays in the case of quantization.
-      Must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
+      Must be `{tf.float32, tf.uint8}`. (default `inference_type`)
     input_format: Type of data to read Currently must be
       `{TENSORFLOW_GRAPHDEF}`. (default TENSORFLOW_GRAPHDEF)
     input_shapes: Input array shape. It needs to be a list of the same length
@@ -269,16 +301,19 @@ def build_toco_convert_protos(input_tensors,
     process.
 
   Raises:
-    ValueError: If the input tensor type is unknown
+    ValueError:
+      If the input tensor type is unknown
+      Missing mean_values or std_dev_values
     RuntimeError: If TOCO fails to convert (in which case the runtime error's
       error text will contain the TOCO error log)
   """
   toco = _toco_flags_pb2.TocoFlags()
   toco.input_format = input_format
   toco.output_format = output_format
-  toco.inference_type = inference_type
+  toco.inference_type = convert_dtype_to_tflite_type(inference_type)
   if inference_input_type:
-    toco.inference_input_type = inference_input_type
+    toco.inference_input_type = convert_dtype_to_tflite_type(
+        inference_input_type)
   else:
     toco.inference_input_type = toco.inference_type
   toco.drop_control_dependency = drop_control_dependency
@@ -302,9 +337,14 @@ def build_toco_convert_protos(input_tensors,
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
     input_array = model.input_arrays.add()
-    if toco.inference_input_type == lite_constants.QUANTIZED_UINT8:
-      input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
     input_array.name = tensor_name(input_tensor)
+    input_array.data_type = convert_dtype_to_tflite_type(input_tensor.dtype)
+
+    if toco.inference_input_type == _types_pb2.QUANTIZED_UINT8:
+      if not quantized_input_stats:
+        raise ValueError("std_dev and mean must be defined when "
+                         "inference_input_type is QUANTIZED_UINT8.")
+      input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
     if input_shapes is None:
       shape = input_tensor.get_shape()
     else:
@@ -352,7 +392,11 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
 
   for idx, (name, shape) in enumerate(input_arrays_with_shape):
     input_array = model_flags.input_arrays.add()
-    if kwargs["inference_type"] == lite_constants.QUANTIZED_UINT8:
+    if toco_flags.inference_input_type == _types_pb2.QUANTIZED_UINT8:
+      if (("quantized_input_stats" not in kwargs) or
+          (not kwargs["quantized_input_stats"])):
+        raise ValueError("std_dev and mean must be defined when "
+                         "inference_input_type is QUANTIZED_UINT8.")
       input_array.mean_value, input_array.std_value = kwargs[
           "quantized_input_stats"][idx]
     input_array.name = name

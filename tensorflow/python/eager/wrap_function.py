@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 class VariableHolder(object):
@@ -45,6 +46,7 @@ class VariableHolder(object):
       return self._fn(*args, **kwargs)
 
 
+# TODO(allenl): make this checkpointable
 class WrappedFunction(function.Function):
   """Wraps a tf V1 piece of code in a function."""
 
@@ -77,6 +79,7 @@ class WrappedFunction(function.Function):
     return pruned_fn
 
 
+@tf_export(v1=["wrap_function"])
 def wrap_function(fn, signature, name=None):
   """Wraps the TF 1.x function fn into a graph function.
 
@@ -108,6 +111,21 @@ def wrap_function(fn, signature, name=None):
   assert float(f_sub(1.0)) == 4.0
   assert float(f_sub(1.0)) == 3.0
   ```
+
+  Both `tf.compat.v1.wrap_function` and `tf.function` create a callable
+  TensorFlow graph. But while `tf.function` runs all stateful operations
+  (e.g. `tf.print`) and sequences operations to provide the same semantics as
+  eager execution, `wrap_function` is closer to the behavior of `session.run` in
+  TensorFlow 1.x. It will not run any operations unless they are required to
+  compute the function's outputs, either through a data dependency or a control
+  dependency. Nor will it sequence operations.
+
+  Unlike `tf.function`, `wrap_function` will only trace the Python function
+  once. As with placeholders in TF 1.x, shapes and dtypes must be provided to
+  `wrap_function`'s `signature` argument.
+
+  Since it is only traced once, variables and state may be created inside the
+  function and owned by the function wrapper object.
 
   Args:
     fn: python function to be wrapped

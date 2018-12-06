@@ -25,6 +25,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -39,6 +40,7 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("MoreThanOne", 0, 2, errors.InvalidArgumentError,
        "Dataset had more than one element."),
   )
+  @test_util.run_deprecated_v1
   def testGetSingleElement(self, skip, take, error=None, error_msg=None):
     skip_t = array_ops.placeholder(dtypes.int64, shape=[])
     take_t = array_ops.placeholder(dtypes.int64, shape=[])
@@ -66,6 +68,17 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
       else:
         with self.assertRaisesRegexp(error, error_msg):
           sess.run(element, feed_dict={skip_t: skip, take_t: take})
+
+  def testWindow(self):
+    """Test that `get_single_element()` can consume a nested dataset."""
+    def flat_map_func(ds):
+      batched = ds.batch(2)
+      element = get_single_element.get_single_element(batched)
+      return dataset_ops.Dataset.from_tensors(element)
+
+    dataset = dataset_ops.Dataset.range(10).window(2).flat_map(flat_map_func)
+    self.assertDatasetProduces(
+        dataset, [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
 
 
 if __name__ == "__main__":

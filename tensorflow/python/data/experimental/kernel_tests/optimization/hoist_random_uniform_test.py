@@ -20,12 +20,15 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -58,23 +61,29 @@ def _hoist_random_uniform_test_cases():
   return tuple(tests)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _testDataset(self, dataset):
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
     previous_result = 0
-    with self.cached_session() as sess:
-      for _ in range(5):
-        result = sess.run(get_next)
-        self.assertLessEqual(1, result)
-        self.assertLessEqual(result, 10)
-        # This checks if the result is somehow random by checking if we are not
-        # generating the same values.
-        self.assertNotEqual(previous_result, result)
-        previous_result = result
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    if context.executing_eagerly():
+      iterator = dataset.__iter__()
+      get_next = iterator._next_internal  # pylint: disable=protected-access
+    else:
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
+      get_next = iterator.get_next
+    for _ in range(5):
+      result = self.evaluate(get_next())
+      self.assertLessEqual(1, result)
+      self.assertLessEqual(result, 10)
+      # This checks if the result is somehow random by checking if we are not
+      # generating the same values.
+      self.assertNotEqual(previous_result, result)
+      previous_result = result
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   @parameterized.named_parameters(*_hoist_random_uniform_test_cases())
   def testHoisting(self, function, will_optimize):
@@ -83,7 +92,8 @@ class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
             ["Zip[0]", "Map"] if will_optimize else ["Map"])).map(function)
 
     options = dataset_ops.Options()
-    options.experimental_hoist_random_uniform = True
+    options.experimental_optimization = OptimizationOptions()
+    options.experimental_optimization.hoist_random_uniform = True
     dataset = dataset.with_options(options)
     self._testDataset(dataset)
 
@@ -99,7 +109,8 @@ class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(5).apply(
         optimization.assert_next(["Zip[0]", "Map"])).map(random_with_capture)
     options = dataset_ops.Options()
-    options.experimental_hoist_random_uniform = True
+    options.experimental_optimization = OptimizationOptions()
+    options.experimental_optimization.hoist_random_uniform = True
     dataset = dataset.with_options(options)
     self._testDataset(dataset)
 

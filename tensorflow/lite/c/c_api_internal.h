@@ -96,7 +96,7 @@ int TfLiteIntArrayEqualsArray(TfLiteIntArray* a, int b_size, int b_data[]);
 
 // Create a copy of an array passed as `src`.
 // You are expected to free memory with TfLiteIntArrayFree
-TfLiteIntArray* TfLiteIntArrayCopy(TfLiteIntArray* src);
+TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src);
 
 // Free memory of array `v`.
 void TfLiteIntArrayFree(TfLiteIntArray* v);
@@ -179,6 +179,7 @@ typedef enum {
   kTfLiteBool = 6,
   kTfLiteInt16 = 7,
   kTfLiteComplex64 = 8,
+  kTfLiteInt8 = 9,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
@@ -203,6 +204,7 @@ typedef union {
   bool* b;
   int16_t* i16;
   TfLiteComplex64* c64;
+  int8_t* int8;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
@@ -486,19 +488,20 @@ typedef struct _TfLiteDelegate {
   // delegated subgraphs of the original graph.
   TfLiteStatus (*Prepare)(TfLiteContext* context, TfLiteDelegate* delegate);
 
-  // Copy the data from delegate buffer handle to raw memory.
-  // This can be null if the delegate doesn't use its own buffer.
+  // Copy the data from delegate buffer handle into raw memory of the given
+  // 'tensor'. This cannot be null. The delegate is allowed to allocate the raw
+  // bytes as long as it follows the rules for kTfLiteDynamic tensors.
   TfLiteStatus (*CopyFromBufferHandle)(TfLiteContext* context,
                                        TfLiteDelegate* delegate,
                                        TfLiteBufferHandle buffer_handle,
-                                       void* data, size_t size);
+                                       TfLiteTensor* tensor);
 
-  // Copy the data from raw memory to delegate buffer handle.
-  // This can be null if the delegate doesn't use its own buffer.
+  // Copy the data from raw memory of the given 'tensor' to delegate buffer
+  // handle. This can be null if the delegate doesn't use its own buffer.
   TfLiteStatus (*CopyToBufferHandle)(TfLiteContext* context,
                                      TfLiteDelegate* delegate,
                                      TfLiteBufferHandle buffer_handle,
-                                     void* data, size_t size);
+                                     TfLiteTensor* tensor);
 
   // Free the Delegate Buffer Handle. Note: This only frees the handle, but
   // this doesn't release the underlying resource (e.g. textures). The
@@ -510,6 +513,10 @@ typedef struct _TfLiteDelegate {
   // Bitmask flags. See the comments in `TfLiteDelegateFlags`.
   int64_t flags;
 } TfLiteDelegate;
+
+// Build a 'null' delegate, with all the fields properly set to their default
+// values.
+TfLiteDelegate TfLiteDelegateCreate();
 
 // WARNING: This is an experimental interface that is subject to change.
 //

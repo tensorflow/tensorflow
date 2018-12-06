@@ -14,6 +14,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
+        "//knowledge/cerebra/sense/im2query:__subpackages__",
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
         "//medical/pathology:__subpackages__",
@@ -215,7 +216,7 @@ py_library(
     ],
     deps = [
         ":tpu_lib",
-        "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
         "//tensorflow/contrib/distribute",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
@@ -263,7 +264,7 @@ py_library(
         ":tpu_py",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/compiler/xla/python_api:xla_shape",
-        "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/contrib/tpu/proto:optimization_parameters_proto_py",

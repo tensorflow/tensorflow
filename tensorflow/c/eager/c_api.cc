@@ -21,9 +21,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/core/platform/host_info.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #endif  // TENSORFLOW_EAGER_USE_XLA
@@ -79,7 +81,7 @@ tensorflow::Status GetAllRemoteDevices(
     const std::vector<string>& remote_workers,
     tensorflow::WorkerCacheInterface* worker_cache,
     std::unique_ptr<tensorflow::DeviceMgr>* device_mgr) {
-  std::vector<tensorflow::Device*> remote_devices;
+  std::vector<std::unique_ptr<tensorflow::Device>> remote_devices;
   tensorflow::Status status;
   // TODO(nareshmodi) do this in parallel instead of serially.
   for (const string& remote_worker : remote_workers) {
@@ -92,7 +94,7 @@ tensorflow::Status GetAllRemoteDevices(
           status = s;
           if (s.ok()) {
             for (tensorflow::Device* d : *devices) {
-              remote_devices.push_back(d);
+              remote_devices.emplace_back(d);
             }
           }
           n.Notify();
@@ -100,7 +102,7 @@ tensorflow::Status GetAllRemoteDevices(
     n.WaitForNotification();
   }
   std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr(
-      new tensorflow::DeviceMgr(remote_devices));
+      new tensorflow::DeviceMgr(std::move(remote_devices)));
 
   TF_RETURN_IF_ERROR(status);
 
@@ -261,13 +263,13 @@ TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<tensorflow::Device>> devices;
   status->status = tensorflow::DeviceFactory::AddDevices(
       opts->session_options.options, "/job:localhost/replica:0/task:0",
       &devices);
   if (!status->status.ok()) return nullptr;
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
-      new tensorflow::DeviceMgr(devices));
+      new tensorflow::DeviceMgr(std::move(devices)));
 
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
@@ -409,6 +411,18 @@ const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
                         : d->name().c_str();
 }
 
+const char* TFE_TensorHandleBackingDeviceName(TFE_TensorHandle* h,
+                                              TF_Status* status) {
+  if (h == nullptr || h->handle == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "The passed in handle is a nullptr");
+    return nullptr;
+  }
+  tensorflow::Device* d = h->handle->device();
+  return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
+                        : d->name().c_str();
+}
+
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopySharingTensor(
     TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr || h->handle == nullptr) {
@@ -458,13 +472,20 @@ TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
                   TF_Status* status) {
   const char* name = op_or_function_name;  // Shorthand
   const tensorflow::AttrTypeMap* types;
-  status->status = tensorflow::AttrTypeMapForOp(name, &types);
-  if (status->status.ok()) return new TFE_Op(ctx, name, types);
-  if (TF_GetCode(status) == TF_NOT_FOUND) {
-    if (ctx->context.FindFunctionByName(name)) {
-      status->status = tensorflow::Status::OK();
-      return new TFE_Op(ctx, name, nullptr);
+  bool is_function = false;
+  status->status = tensorflow::AttrTypeMapForOp(name, &types, &is_function);
+  if (status->status.ok()) {
+    if (is_function && !ctx->context.FindFunctionByName(name)) {
+      status->status = tensorflow::errors::NotFound(
+          "'", name,
+          "' is neither a type of a primitive operation nor a name "
+          "of a function registered in binary running on ",
+          tensorflow::port::Hostname(),
+          ". Make sure the operation or function is "
+          "registered in the binary running in this process.");
+      return nullptr;
     }
+    return new TFE_Op(ctx, name, is_function, types);
   }
   return nullptr;
 }
@@ -497,12 +518,6 @@ void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
 TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
                               unsigned char* is_list, TF_Status* status) {
   TF_AttrType ret;
-  if (op->operation.is_function()) {
-    status->status = tensorflow::errors::Unimplemented(
-        "TODO(apassos): Support for attributes for TensorFlow functions is not "
-        "ready yet.");
-    return TF_ATTR_INT;  // The compiler requires that we return something.
-  }
   status->status = tensorflow::AttrTypeByName(*op->operation.AttrTypes(),
                                               attr_name, &ret, is_list);
   return ret;

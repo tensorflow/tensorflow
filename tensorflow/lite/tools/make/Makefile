@@ -85,6 +85,7 @@ CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \
 $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
+$(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
@@ -113,6 +114,10 @@ ifeq ($(BUILD_TYPE),micro)
 CORE_CC_EXCLUDE_SRCS += \
 tensorflow/lite/mmap_allocation.cc \
 tensorflow/lite/nnapi_delegate.cc
+else
+CORE_CC_EXCLUDE_SRCS += \
+tensorflow/contrib/lite/mmap_allocation_disabled.cc \
+tensorflow/contrib/lite/nnapi_delegate_disabled.cc
 endif
 # Filter out all the excluded files.
 TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
@@ -207,6 +212,9 @@ $(BENCHMARK_BINARY) : $(BENCHMARK_LIB)
 	$(LIBFLAGS) $(BENCHMARK_LIB) $(LDFLAGS) $(LIBS)
 
 benchmark: $(BENCHMARK_BINARY)
+
+libdir:
+	@echo $(LIBDIR)
 
 # Gets rid of all generated files.
 clean:

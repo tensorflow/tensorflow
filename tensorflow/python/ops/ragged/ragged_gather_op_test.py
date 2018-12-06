@@ -30,6 +30,7 @@ from tensorflow.python.platform import googletest
 
 class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testDocStringExamples(self):
     params = constant_op.constant(['a', 'b', 'c', 'd', 'e'])
     indices = constant_op.constant([3, 1, 2, 1, 0])
@@ -46,6 +47,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
           ragged.gather(ragged_params, ragged_indices).eval().tolist(),
           [[[b'e'], [b'd'], []], [[b'd']], [], [[b'a', b'b', b'c']]])
 
+  @test_util.run_deprecated_v1
   def testTensorParamsAndTensorIndices(self):
     params = ['a', 'b', 'c', 'd', 'e']
     indices = [2, 0, 2, 1]
@@ -55,6 +57,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
           [b'c', b'a', b'c', b'b'])
       self.assertEqual(type(ragged.gather(params, indices)), ops.Tensor)
 
+  @test_util.run_deprecated_v1
   def testRaggedParamsAndTensorIndices(self):
     params = ragged.constant([['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']])
     indices = [2, 0, 2, 1]
@@ -63,6 +66,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
           ragged.gather(params, indices).eval().tolist(),
           [[b'f'], [b'a', b'b'], [b'f'], [b'c', b'd', b'e']])
 
+  @test_util.run_deprecated_v1
   def testTensorParamsAndRaggedIndices(self):
     params = ['a', 'b', 'c', 'd', 'e']
     indices = ragged.constant([[2, 1], [1, 2, 0], [3]])
@@ -71,6 +75,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
           ragged.gather(params, indices).eval().tolist(),
           [[b'c', b'b'], [b'b', b'c', b'a'], [b'd']])
 
+  @test_util.run_deprecated_v1
   def testRaggedParamsAndRaggedIndices(self):
     params = ragged.constant([['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']])
     indices = ragged.constant([[2, 1], [1, 2, 0], [3]])
@@ -82,6 +87,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
            [[]]]                                        #  [p[3]            ]]
       )  # pyformat: disable
 
+  @test_util.run_deprecated_v1
   def testRaggedParamsAndScalarIndices(self):
     params = ragged.constant([['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']])
     indices = 1
@@ -89,6 +95,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(
           ragged.gather(params, indices).eval().tolist(), [b'c', b'd', b'e'])
 
+  @test_util.run_deprecated_v1
   def test3DRaggedParamsAnd2DTensorIndices(self):
     params = ragged.constant([[['a', 'b'], []], [['c', 'd'], ['e'], ['f']],
                               [['g']]])
@@ -101,6 +108,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
            [[[b'g']], [[b'g']]]]                                  #  [p2, p2]]
       )  # pyformat: disable
 
+  @test_util.run_deprecated_v1
   def testTensorParamsAnd4DRaggedIndices(self):
     indices = ragged.constant(
         [[[[3, 4], [0, 6]], []], [[[2, 1], [1, 0]], [[2, 5]], [[2, 3]]],
@@ -115,6 +123,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
            [[[b'c', b'b'], [b'b', b'a']], [[b'c', b'f']], [[b'c', b'd']]],
            [[[b'b', b'a']]]])  # pyformat: disable
 
+  @test_util.run_deprecated_v1
   def testOutOfBoundsError(self):
     tensor_params = ['a', 'b', 'c']
     tensor_indices = [0, 1, 2]
@@ -131,6 +140,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
                               r'indices\[1\] = 3 is not in \[0, 2\)',
                               ragged.gather(ragged_params, ragged_indices).eval)
 
+  @test_util.run_deprecated_v1
   def testUnknownIndicesRankError(self):
     params = ragged.constant([], ragged_rank=1)
     indices = constant_op.constant([0], dtype=dtypes.int64)

@@ -43,4 +43,7 @@ enum IODataType {
 
   // Complex64, not quantized
   COMPLEX64 = 8;
+
+  // Int8, quantized based on QuantizationParameters in schema.
+  INT8 = 9;
 }

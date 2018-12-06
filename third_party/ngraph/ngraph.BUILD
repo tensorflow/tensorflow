@@ -97,13 +97,6 @@ cc_library(
         "src/ngraph/runtime/cpu/pass/cpu_workspace_insertion.cpp",
     ],
     hdrs = glob(["src/ngraph/runtime/cpu/**/*.hpp"]) + glob([]),
-    deps = [
-        ":ngraph_headers",
-        "@eigen_archive//:eigen",
-        "@nlohmann_json_lib",
-        "@tbb",
-        "@mkl_dnn//:mkl_dnn",
-    ],
     copts = [
         "-I external/ngraph/src",
         "-I external/nlohmann_json_lib/include/",
@@ -113,6 +106,13 @@ cc_library(
         '-D PROJECT_ROOT_DIR=\\"\\"',
     ],
     visibility = ["//visibility:public"],
+    deps = [
+        ":ngraph_headers",
+        "@eigen_archive//:eigen",
+        "@mkl_dnn",
+        "@nlohmann_json_lib",
+        "@tbb",
+    ],
     alwayslink = 1,
 )
 
@@ -138,12 +138,6 @@ cc_library(
         "src/ngraph/runtime/*.cpp",
         "src/ngraph/type/*.cpp",
     ]),
-    deps = [
-        ":ngraph_headers",
-        ":ngraph_cpu_backend",
-        "@eigen_archive//:eigen",
-        "@nlohmann_json_lib",
-    ],
     copts = [
         "-I external/ngraph/src",
         "-I external/nlohmann_json_lib/include/",
@@ -152,5 +146,11 @@ cc_library(
         '-D PROJECT_ROOT_DIR=\\"\\"',
     ],
     visibility = ["//visibility:public"],
+    deps = [
+        ":ngraph_cpu_backend",
+        ":ngraph_headers",
+        "@eigen_archive//:eigen",
+        "@nlohmann_json_lib",
+    ],
     alwayslink = 1,
 )

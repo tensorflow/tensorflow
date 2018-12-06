@@ -67,6 +67,10 @@ class QuantizedPoolingOpModel : public BasePoolingOpModel {
     QuantizeAndPopulate<uint8_t>(input_, data);
   }
 
+  void SetInput(const std::vector<float>& data) {
+    QuantizeAndPopulate<uint8_t>(input_, data);
+  }
+
   std::vector<uint8_t> GetOutput() { return ExtractVector<uint8_t>(output_); }
   std::vector<float> GetDequantizedOutput() {
     return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
@@ -104,6 +108,45 @@ TEST(QuantizedPoolingOpTest, AveragePool) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({2.75, 5.75})));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({44, 92}));
+}
+
+// Send in a white image, expect a white pixel.
+TEST(QuantizedPoolingOpTest, AveragePoolImageSize16) {
+  int image_size = 16;
+  QuantizedPoolingOpModel m(
+      BuiltinOperator_AVERAGE_POOL_2D,
+      /*input=*/{TensorType_UINT8, {1, image_size, image_size, 1}, 0, 16},
+      /*filter_width=*/image_size,
+      /*filter_height=*/image_size,
+      /*output=*/{TensorType_UINT8, {}, 0, 16});
+
+  std::vector<float> input(image_size * image_size, 16.f);
+  m.SetInput(input);
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ::testing::ElementsAre(255));
+  EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear({16})));
+}
+
+// Send in a white image, expect something other than a white pixel, due to
+// overflow.
+TEST(QuantizedPoolingOpTest, AveragePoolImageSize17) {
+  int image_size = 17;
+  QuantizedPoolingOpModel m(
+      BuiltinOperator_AVERAGE_POOL_2D,
+      /*input=*/{TensorType_UINT8, {1, image_size, image_size, 1}, 0, 16},
+      /*filter_width=*/image_size,
+      /*filter_height=*/image_size,
+      /*output=*/{TensorType_UINT8, {}, 0, 16});
+
+  std::vector<float> input(image_size * image_size, 16.f);
+  m.SetInput(input);
+  m.Invoke();
+
+  // Ordinarily we would see '255' here. However, the optimized version of
+  // AveragePool uses a uint16 accumulator which causes it to overflow for
+  // images this large.
+  EXPECT_THAT(m.GetOutput(), ::testing::ElementsAre(28));
 }
 
 TEST(FloatPoolingOpTest, MaxPool) {

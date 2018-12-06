@@ -132,6 +132,7 @@ py_library(
     srcs = ["estimator.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":custom_loss_head",
         ":estimator_utils",
         ":model",
         "//tensorflow/contrib/boosted_trees:losses",

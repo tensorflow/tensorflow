@@ -118,7 +118,7 @@ TfLiteStatus GatherStrings(TfLiteContext* context, const TfLiteTensor* input,
     const auto string_ref = GetString(input, pos);
     buffer.AddString(string_ref.str, string_ref.len);
   }
-  buffer.WriteToTensor(output);
+  buffer.WriteToTensorAsVector(output);
   return kTfLiteOk;
 }
 

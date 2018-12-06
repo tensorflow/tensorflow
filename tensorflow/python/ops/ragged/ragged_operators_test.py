@@ -27,6 +27,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase):
   # @TODO(edloper): Test right-handed versions of operators once we add
   # broadcasting support for elementwise ops.
 
+  @test_util.run_deprecated_v1
   def testOrderingOperators(self):
     x = ragged.constant([[1, 5], [3]])
     y = ragged.constant([[4, 5], [1]])
@@ -40,6 +41,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase):
     if a != b:
       print('%30s %s' % (b, a))
 
+  @test_util.run_deprecated_v1
   def testArithmeticOperators(self):
     x = ragged.constant([[1.0, -2.0], [8.0]])
     y = ragged.constant([[4.0, 4.0], [2.0]])
@@ -75,6 +77,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual((2.0 % y).eval().tolist(), [[2.0, 2.0], [0.0]])
       self.assertEqual((x % 2.0).eval().tolist(), [[1.0, 0.0], [0.0]])
 
+  @test_util.run_deprecated_v1
   def testLogicalOperators(self):
     a = ragged.constant([[True, True], [False]])
     b = ragged.constant([[True, False], [False]])
