@@ -150,26 +150,27 @@ class MakeBatchedFeaturesDatasetTestBase(test_base.DatasetTestBase):
       writer.close()
     return filenames
 
-  def _run_actual_batch(self, outputs, sess, label_key_provided=False):
+  def _run_actual_batch(self, get_next, label_key_provided=False):
     if label_key_provided:
       # outputs would be a tuple of (feature dict, label)
+      outputs = get_next()
       label_op = outputs[1]
       features_op = outputs[0]
     else:
-      features_op = outputs
+      features_op = get_next()
       label_op = features_op["label"]
     file_op = features_op["file"]
     keywords_indices_op = features_op["keywords"].indices
     keywords_values_op = features_op["keywords"].values
     keywords_dense_shape_op = features_op["keywords"].dense_shape
     record_op = features_op["record"]
-    return sess.run([
+    return self.evaluate([
         file_op, keywords_indices_op, keywords_values_op,
         keywords_dense_shape_op, record_op, label_op
     ])
 
-  def _next_actual_batch(self, sess, label_key_provided=False):
-    return self._run_actual_batch(self.outputs, sess, label_key_provided)
+  def _next_actual_batch(self, label_key_provided=False):
+    return self._run_actual_batch(self.get_next, label_key_provided)
 
   def _interleave(self, iterators, cycle_length):
     pending_iterators = iterators
@@ -251,7 +252,6 @@ class MakeBatchedFeaturesDatasetTestBase(test_base.DatasetTestBase):
       ]
 
   def verify_records(self,
-                     sess,
                      batch_size,
                      file_index=None,
                      num_epochs=1,
@@ -268,7 +268,7 @@ class MakeBatchedFeaturesDatasetTestBase(test_base.DatasetTestBase):
         num_epochs,
         cycle_length=interleave_cycle_length):
       actual_batch = self._next_actual_batch(
-          sess, label_key_provided=label_key_provided)
+          label_key_provided=label_key_provided)
       for i in range(len(expected_batch)):
         self.assertAllEqual(expected_batch[i], actual_batch[i])
 
