@@ -1143,7 +1143,7 @@ nullary mapping function that returns the constant value (e.g. `()->(-42)()`).
 Example showing reverse iteration of the inner loop:
 
 ```mlir {.mlir}
-#map57 = (d0, d1)[s0] -> (d0, s0 - d1)
+#map57 = (d0, d1)[s0] -> (d0, s0 - d1 - 1)
 
 mlfunc @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
   %N = dim %A, 0 : memref<?x?xf32>
@@ -1607,11 +1607,11 @@ operation.
 Example:
 
 ```mlir {.mlir}
-#remap1 = (d0, d1) -> (4*d0, d1+1)
+#remap1 = (d0, d1) -> (3*d0, d1+1)
 #remap2 = (d0) -> (2*d0 + 1)
  ...
 %1 = affine_apply #remap1(%i, %j)
-%12 = load %A[%1#0, %1#1] : memref<4x?xi32, #layout, hbm>
+%12 = load %A[%1#0, %1#1] : memref<8x?xi32, #layout, hbm>
 
 // Example of an indirect load (treated as non-affine)
 %2 = affine_apply #remap2(%12)
@@ -1862,11 +1862,11 @@ operation ::= ssa-id `=` `memref_cast` ssa-use `:` type `to` type
 Examples:
 
 ```mlir {.mlir}
-// Convert to a type with more known dimensions.
+// Discard static dimension information.
 %3 = memref_cast %2 : memref<4x?xf32> to memref<?x?xf32>
 
-// Discard static dimension information.
-%4 = memref_cast %3 : memref<?x?xf32> to tensor<4x?xf32>
+// Convert to a type with more known dimensions.
+%4 = memref_cast %3 : memref<?x?xf32> to memref<4x?xf32>
 ```
 
 Convert a memref from one type to an equivalent type without changing any data
