@@ -3177,6 +3177,7 @@ def where(condition, x=None, y=None, name=None):
     raise ValueError("x and y must both be non-None or both be None.")
 
 
+@tf_export(v1=["where_v2"], v2=["where"])
 def where_v2(condition, x=None, y=None, name=None):
   """Return the elements, either from `x` or `y`, depending on the `condition`.
   If both `x` and `y` are None, then this operation returns the coordinates of
