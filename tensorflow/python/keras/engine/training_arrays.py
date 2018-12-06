@@ -241,15 +241,14 @@ def model_iteration(model,
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
   progbar.on_train_begin()
+
   for epoch in range(initial_epoch, epochs):
     if callbacks.model.stop_training:
       break
 
     # Setup work for each epoch
     epoch_logs = {}
-    if hasattr(model, 'metrics'):
-      for m in model.metrics:
-        m.reset_states()
+    model.reset_metrics()
     callbacks.on_epoch_begin(epoch, epoch_logs, mode=mode)
     progbar.on_epoch_begin(epoch, epoch_logs)
 
@@ -373,6 +372,7 @@ def model_iteration(model,
   callbacks._call_end_hook(mode)
 
   if model._distribution_strategy:
+    # TODO(priyag, psv): Copy back metrics to the original model as well?
     if not validation_in_fit:
       training_distributed._copy_weights_to_original_model(
           model, model._grouped_model, mode)

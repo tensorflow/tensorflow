@@ -918,11 +918,17 @@ class Model(Network):
                                     [self.total_loss] + metrics_tensors)
 
   def _make_eval_function(self):
+    # TODO(psv,anjalisridhar): Remove updates after we fix b/118841692
+    # Stateful metrics updates
+    metric_updates = []
+    for m in self.metrics:
+      metric_updates += m.updates
+
     metrics_tensors = [
         self._all_stateful_metrics_tensors[m] for m in self.metrics_names[1:]
     ]
-    self._make_test_function_helper('_eval_function',
-                                    [self.total_loss] + metrics_tensors)
+    self._make_test_function_helper(
+        '_eval_function', [self.total_loss] + metrics_tensors, metric_updates)
 
   def _make_predict_function(self):
     if not hasattr(self, 'predict_function'):
@@ -2095,6 +2101,8 @@ class Model(Network):
     if hasattr(self, 'metrics'):
       for m in self.metrics:
         m.reset_states()
+      if self._distribution_strategy:
+        training_distributed._reset_metrics(self)  # pylint: disable=protected-access
 
   def train_on_batch(self,
                      x,

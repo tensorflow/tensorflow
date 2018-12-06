@@ -1259,9 +1259,43 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
       train_dataset = batch_wrapper(train_dataset, batch_size, distribution)
 
-      history = model.fit(x=train_dataset, epochs=1, steps_per_epoch=10)
-      self.assertEqual(history.history['binary_accuracy'], [1.0])
+      history = model.fit(x=train_dataset, epochs=2, steps_per_epoch=10)
+      self.assertEqual(history.history['binary_accuracy'], [1.0, 1.0])
 
+  @combinations.generate(all_strategy_combinations())
+  def test_eval_metrics_correctness(self, distribution):
+    with self.cached_session():
+      model = keras.Sequential()
+      model.add(
+          keras.layers.Dense(
+              3, activation='relu', input_dim=4, kernel_initializer='ones'))
+      model.add(
+          keras.layers.Dense(
+              1, activation='sigmoid', kernel_initializer='ones'))
+      model.compile(
+          loss='mae',
+          metrics=['accuracy', keras.metrics.BinaryAccuracy()],
+          optimizer=gradient_descent.GradientDescentOptimizer(0.001),
+          distribute=distribution)
+
+      # verify correctness of stateful and stateless metrics.
+      x = np.ones((100, 4)).astype('float32')
+      y = np.ones((100, 1)).astype('float32')
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).repeat()
+      dataset = batch_wrapper(dataset, 4, distribution)
+      outs = model.evaluate(dataset, steps=10)
+      self.assertEqual(outs[1], 1.)
+      self.assertEqual(outs[2], 1.)
+
+      y = np.zeros((100, 1)).astype('float32')
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).repeat()
+      dataset = batch_wrapper(dataset, 4, distribution)
+      outs = model.evaluate(dataset, steps=10)
+      self.assertEqual(outs[1], 0.)
+      self.assertEqual(outs[2], 0.)
+
+  # TODO(priyag): Add metrics correctness to this test to compare with and
+  # without distribution strategies.
   @combinations.generate(strategy_and_input_combinations())
   def test_correctness(self, distribution, use_numpy, use_validation_data):
 
@@ -1319,7 +1353,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
                                         with_distribution,
                                         x_train, y_train, x_predict))
 
-        traning_history = model.fit(**training_inputs).history
+        training_history = model.fit(**training_inputs).history
 
         if eval_inputs is not None:
           eval_result = model.evaluate(**eval_inputs)
@@ -1330,7 +1364,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
         weights = model.get_weights()
         predict_result = model.predict(**predict_inputs)
 
-        return weights, traning_history, eval_result, predict_result
+        return weights, training_history, eval_result, predict_result
 
       wts_with_ds, history_with_ds, eval_with_ds, predict_with_ds = (
           fit_eval_and_predict(with_distribution=distribution))
