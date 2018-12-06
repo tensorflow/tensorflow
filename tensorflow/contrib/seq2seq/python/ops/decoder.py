@@ -119,7 +119,7 @@ class Decoder(object):
         steps.
       final_state: RNNCell final state (possibly nested tuple of) tensor[s] for
         last time step.
-      sequence_lengths: Scalar `int32` tensor. Maximum sequence length.
+      sequence_lengths: `int32` tensor containing lengths of each sequences.
 
     Returns:
       `(final_outputs, final_state)`: `final_outputs` is an object containing
