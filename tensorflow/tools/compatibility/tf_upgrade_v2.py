@@ -605,30 +605,54 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         " they may already have been correct)."
     )
 
+    deprecate_partition_strategy_comment = (
+        "WARNING: `partition_strategy` has been removed from `%s` "
+        " The 'div' strategy is used by default.")
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     self.function_warnings = {
-        "tf.assert_greater": assert_return_type_comment,
-        "tf.assert_equal": assert_return_type_comment,
-        "tf.assert_less": assert_return_type_comment,
-        "tf.assert_rank": assert_rank_comment,
-        "tf.debugging.assert_equal": assert_return_type_comment,
-        "tf.debugging.assert_greater": assert_return_type_comment,
-        "tf.debugging.assert_greater_equal": assert_return_type_comment,
-        "tf.debugging.assert_integer": assert_return_type_comment,
-        "tf.debugging.assert_less": assert_return_type_comment,
-        "tf.debugging.assert_less_equal": assert_return_type_comment,
-        "tf.debugging.assert_near": assert_return_type_comment,
-        "tf.debugging.assert_negative": assert_return_type_comment,
-        "tf.debugging.assert_non_negative": assert_return_type_comment,
-        "tf.debugging.assert_non_positive": assert_return_type_comment,
-        "tf.debugging.assert_none_equal": assert_return_type_comment,
-        "tf.debugging.assert_positive": assert_return_type_comment,
-        "tf.debugging.assert_rank": assert_rank_comment,
-        "tf.debugging.assert_rank_at_least": assert_rank_comment,
-        "tf.debugging.assert_rank_in": assert_rank_comment,
-        "tf.flags": "tf.flags has been removed, please use the argparse or absl"
-                    " module if you need command line parsing.",
+        "tf.assert_greater":
+            assert_return_type_comment,
+        "tf.assert_equal":
+            assert_return_type_comment,
+        "tf.assert_less":
+            assert_return_type_comment,
+        "tf.assert_rank":
+            assert_rank_comment,
+        "tf.debugging.assert_equal":
+            assert_return_type_comment,
+        "tf.debugging.assert_greater":
+            assert_return_type_comment,
+        "tf.debugging.assert_greater_equal":
+            assert_return_type_comment,
+        "tf.debugging.assert_integer":
+            assert_return_type_comment,
+        "tf.debugging.assert_less":
+            assert_return_type_comment,
+        "tf.debugging.assert_less_equal":
+            assert_return_type_comment,
+        "tf.debugging.assert_near":
+            assert_return_type_comment,
+        "tf.debugging.assert_negative":
+            assert_return_type_comment,
+        "tf.debugging.assert_non_negative":
+            assert_return_type_comment,
+        "tf.debugging.assert_non_positive":
+            assert_return_type_comment,
+        "tf.debugging.assert_none_equal":
+            assert_return_type_comment,
+        "tf.debugging.assert_positive":
+            assert_return_type_comment,
+        "tf.debugging.assert_rank":
+            assert_rank_comment,
+        "tf.debugging.assert_rank_at_least":
+            assert_rank_comment,
+        "tf.debugging.assert_rank_in":
+            assert_rank_comment,
+        "tf.flags":
+            "tf.flags has been removed, please use the argparse or absl"
+            " module if you need command line parsing.",
         "tf.train.exponential_decay":
             decay_function_comment,
         "tf.train.piecewise_constant_decay":
@@ -664,23 +688,29 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.estimator.BaselineRegressor":
             default_loss_reduction_changed,
         "tf.nn.conv1d":
-        "WARNING: use_cudnn_on_gpu argument has been removed and \"value\" was "
-        "renamed to \"input\"",
+            "WARNING: use_cudnn_on_gpu argument has been removed and \"value\""
+            " was renamed to \"input\"",
         "tf.nn.conv2d":
-        "WARNING: use_cudnn_on_gpu argument has been removed and \"filter\" "
-        "was renamed to \"filters\"",
+            "WARNING: use_cudnn_on_gpu argument has been removed and "
+            "\"filter\" was renamed to \"filters\"",
         "tf.nn.conv2d_backprop_filter":
-        "WARNING: use_cudnn_on_gpu argument has been removed",
+            "WARNING: use_cudnn_on_gpu argument has been removed",
         "tf.nn.conv2d_backprop_input":
-        "WARNING: use_cudnn_on_gpu argument has been removed and \"filter\" "
-        "was renamed to \"filters\"",
+            "WARNING: use_cudnn_on_gpu argument has been removed and "
+            "\"filter\" was renamed to \"filters\"",
         "tf.nn.erosion2d":
-        "WARNING: <function name> now requires a data_format argument",
+            "WARNING: <function name> now requires a data_format argument",
         "tf.nn.nce_loss":
-        "WARNING: `partition_strategy` has been removed from `tf.nn.nce_loss` "
-        " The 'div' strategy is used by default.",
-        "tf.zeros_like": tf_01s_like_no_optimize_comment,
-        "tf.ones_like": tf_01s_like_no_optimize_comment,
+            deprecate_partition_strategy_comment % "tf.nn.nce_loss",
+        "tf.nn.safe_embedding_lookup_sparse":
+            deprecate_partition_strategy_comment %
+            "tf.nn.safe_embedding_lookup_sparse",
+        "tf.nn.sampled_softmax_loss":
+            deprecate_partition_strategy_comment % "tf.nn.sampled_softmax_loss",
+        "tf.zeros_like":
+            tf_01s_like_no_optimize_comment,
+        "tf.ones_like":
+            tf_01s_like_no_optimize_comment,
     }
 
     self.symbol_renames = {
