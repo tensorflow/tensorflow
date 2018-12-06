@@ -333,6 +333,8 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 
 /// Returns the AffineExpr that results from substituting `exprs[i]` into `e`
 /// for each AffineDimExpr of position i in `e`.
+/// Precondition: the maximal AffineDimExpr position in `e` is smaller than
+/// `exprs.size()`.
 static AffineExpr substExprs(AffineExpr e, llvm::ArrayRef<AffineExpr> exprs) {
   if (auto binExpr = e.template dyn_cast<AffineBinaryOpExpr>()) {
     AffineExpr lhs, rhs;
@@ -341,9 +343,8 @@ static AffineExpr substExprs(AffineExpr e, llvm::ArrayRef<AffineExpr> exprs) {
     return binOp(substExprs(lhs, exprs), substExprs(rhs, exprs));
   }
   if (auto dim = e.template dyn_cast<AffineDimExpr>()) {
-    // TODO(ntv): emitError instead of NYI assert.
     assert(dim.getPosition() < exprs.size() &&
-           "NYI: cannot compose due to dim mismatch");
+           "Cannot compose due to dim mismatch");
     return exprs[dim.getPosition()];
   }
   if (auto sym = e.template dyn_cast<AffineSymbolExpr>()) {
