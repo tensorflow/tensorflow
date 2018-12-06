@@ -53,9 +53,8 @@ except ImportError:
 
 class TrainingTest(keras_parameterized.TestCase):
 
-  @keras_parameterized.run_all_keras_modes_with_all_model_types(
-      exclude_models='sequential'
-  )
+  @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
+  @keras_parameterized.run_all_keras_modes
   def test_fit_on_arrays(self):
     input_a = keras.layers.Input(shape=(3,), name='input_a')
     input_b = keras.layers.Input(shape=(3,), name='input_b')

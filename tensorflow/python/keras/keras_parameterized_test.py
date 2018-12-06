@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import unittest
 
+from absl.testing import parameterized
+
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
@@ -78,21 +80,22 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       def runTest(self):
         pass
 
-      @keras_parameterized.run_with_all_model_types(
-          extra_parameters=[dict(with_brackets=True), dict(with_brackets=False)]
-      )
+      @keras_parameterized.run_with_all_model_types
+      @parameterized.named_parameters(
+          [dict(testcase_name="_0", with_brackets=True),
+           dict(testcase_name="_1", with_brackets=False)])
       def testBody(self, with_brackets):
         with_brackets = "with_brackets" if with_brackets else "without_brackets"
         model_types.append((with_brackets, testing_utils.get_model_type()))
         models.append(testing_utils.get_small_mlp(1, 4, input_dim=3))
 
     e = ExampleTest()
-    e.testBody_functional_0()
-    e.testBody_subclass_0()
-    e.testBody_sequential_0()
-    e.testBody_functional_1()
-    e.testBody_subclass_1()
-    e.testBody_sequential_1()
+    e.testBody_0_functional()
+    e.testBody_0_subclass()
+    e.testBody_0_sequential()
+    e.testBody_1_functional()
+    e.testBody_1_subclass()
+    e.testBody_1_sequential()
 
     self.assertLen(model_types, 6)
     self.assertAllEqual(model_types, [
@@ -247,9 +250,10 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       def runTest(self):
         pass
 
-      @keras_parameterized.run_all_keras_modes(
-          extra_parameters=[dict(with_brackets=True), dict(with_brackets=False)]
-      )
+      @keras_parameterized.run_all_keras_modes
+      @parameterized.named_parameters(
+          [dict(testcase_name="_0", with_brackets=True),
+           dict(testcase_name="_1", with_brackets=False)])
       def testBody(self, with_brackets):
         mode = "eager" if context.executing_eagerly() else "graph"
         with_brackets = "with_brackets" if with_brackets else "without_brackets"
@@ -258,13 +262,13 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
 
     e = ExampleTest()
     if not tf2.enabled():
-      e.testBody_v1_graph_0()
-      e.testBody_v1_graph_1()
+      e.testBody_0_v1_graph()
+      e.testBody_1_v1_graph()
 
-    e.testBody_v2_eager_0()
-    e.testBody_v2_function_0()
-    e.testBody_v2_eager_1()
-    e.testBody_v2_function_1()
+    e.testBody_0_v2_eager()
+    e.testBody_0_v2_function()
+    e.testBody_1_v2_eager()
+    e.testBody_1_v2_function()
 
     expected_combinations = {
         ("with_brackets", "eager", True),
@@ -324,7 +328,8 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       def runTest(self):
         pass
 
-      @keras_parameterized.run_all_keras_modes_with_all_model_types
+      @keras_parameterized.run_with_all_model_types
+      @keras_parameterized.run_all_keras_modes
       def testBody(self):
         mode = "eager" if context.executing_eagerly() else "graph"
         should_run_eagerly = testing_utils.should_run_eagerly()
@@ -368,12 +373,178 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
 
     self.assertLen(l, len(expected_combinations) * 2)
 
-  @keras_parameterized.run_all_keras_modes(extra_parameters=[dict(arg=True)])
+  def test_run_all_model_types_with_all_keras_modes(self):
+    l = []
+
+    class ExampleTest(keras_parameterized.TestCase):
+
+      def runTest(self):
+        pass
+
+      @keras_parameterized.run_all_keras_modes
+      @keras_parameterized.run_with_all_model_types
+      def testBody(self):
+        mode = "eager" if context.executing_eagerly() else "graph"
+        should_run_eagerly = testing_utils.should_run_eagerly()
+        l.append((mode, should_run_eagerly, testing_utils.get_model_type()))
+
+    e = ExampleTest()
+    e.testBody_functional_v2_eager()
+    e.testBody_functional_v2_function()
+    e.testBody_sequential_v2_eager()
+    e.testBody_sequential_v2_function()
+    e.testBody_subclass_v2_eager()
+    e.testBody_subclass_v2_function()
+
+    if not tf2.enabled():
+      e.testBody_functional_v1_graph()
+      e.testBody_sequential_v1_graph()
+      e.testBody_subclass_v1_graph()
+
+    expected_combinations = {
+        ("eager", True, "functional"),
+        ("eager", False, "functional"),
+        ("eager", True, "sequential"),
+        ("eager", False, "sequential"),
+        ("eager", True, "subclass"),
+        ("eager", False, "subclass"),
+    }
+
+    if not tf2.enabled():
+      expected_combinations = expected_combinations.union({
+          ("graph", False, "functional"),
+          ("graph", False, "sequential"),
+          ("graph", False, "subclass"),
+      })
+
+    self.assertLen(l, len(expected_combinations))
+    self.assertEqual(set(l), expected_combinations)
+
+    ts = unittest.makeSuite(ExampleTest)
+    res = unittest.TestResult()
+    ts.run(res)
+
+    self.assertLen(l, len(expected_combinations) * 2)
+
+  def test_run_all_keras_modes_with_all_model_types_annotate_class(self):
+    l = []
+
+    @keras_parameterized.run_with_all_model_types
+    @keras_parameterized.run_all_keras_modes
+    class ExampleTest(keras_parameterized.TestCase):
+
+      def runTest(self):
+        pass
+
+      @parameterized.named_parameters(dict(testcase_name="_arg",
+                                           arg=True))
+      def testBody(self, arg):
+        mode = "eager" if context.executing_eagerly() else "graph"
+        should_run_eagerly = testing_utils.should_run_eagerly()
+        l.append((mode, should_run_eagerly, testing_utils.get_model_type()))
+
+    e = ExampleTest()
+    e.testBody_arg_v2_eager_functional()
+    e.testBody_arg_v2_function_functional()
+    e.testBody_arg_v2_eager_sequential()
+    e.testBody_arg_v2_function_sequential()
+    e.testBody_arg_v2_eager_subclass()
+    e.testBody_arg_v2_function_subclass()
+
+    if not tf2.enabled():
+      e.testBody_arg_v1_graph_functional()
+      e.testBody_arg_v1_graph_sequential()
+      e.testBody_arg_v1_graph_subclass()
+
+    expected_combinations = {
+        ("eager", True, "functional"),
+        ("eager", False, "functional"),
+        ("eager", True, "sequential"),
+        ("eager", False, "sequential"),
+        ("eager", True, "subclass"),
+        ("eager", False, "subclass"),
+    }
+
+    if not tf2.enabled():
+      expected_combinations = expected_combinations.union({
+          ("graph", False, "functional"),
+          ("graph", False, "sequential"),
+          ("graph", False, "subclass"),
+      })
+
+    self.assertLen(l, len(expected_combinations))
+    self.assertEqual(set(l), expected_combinations)
+
+    ts = unittest.makeSuite(ExampleTest)
+    res = unittest.TestResult()
+    ts.run(res)
+
+    self.assertLen(l, len(expected_combinations) * 2)
+
+  def test_run_all_keras_modes_with_all_model_types_annotate_class_2(self):
+    l = []
+
+    @keras_parameterized.run_with_all_model_types
+    class ExampleTest(keras_parameterized.TestCase):
+
+      def runTest(self):
+        pass
+
+      @keras_parameterized.run_all_keras_modes
+      @parameterized.named_parameters(dict(testcase_name="_arg",
+                                           arg=True))
+      def testBody(self, arg):
+        mode = "eager" if context.executing_eagerly() else "graph"
+        should_run_eagerly = testing_utils.should_run_eagerly()
+        l.append((mode, should_run_eagerly, testing_utils.get_model_type()))
+
+    e = ExampleTest()
+    e.testBody_arg_v2_eager_functional()
+    e.testBody_arg_v2_function_functional()
+    e.testBody_arg_v2_eager_sequential()
+    e.testBody_arg_v2_function_sequential()
+    e.testBody_arg_v2_eager_subclass()
+    e.testBody_arg_v2_function_subclass()
+
+    if not tf2.enabled():
+      e.testBody_arg_v1_graph_functional()
+      e.testBody_arg_v1_graph_sequential()
+      e.testBody_arg_v1_graph_subclass()
+
+    expected_combinations = {
+        ("eager", True, "functional"),
+        ("eager", False, "functional"),
+        ("eager", True, "sequential"),
+        ("eager", False, "sequential"),
+        ("eager", True, "subclass"),
+        ("eager", False, "subclass"),
+    }
+
+    if not tf2.enabled():
+      expected_combinations = expected_combinations.union({
+          ("graph", False, "functional"),
+          ("graph", False, "sequential"),
+          ("graph", False, "subclass"),
+      })
+
+    self.assertLen(l, len(expected_combinations))
+    self.assertEqual(set(l), expected_combinations)
+
+    ts = unittest.makeSuite(ExampleTest)
+    res = unittest.TestResult()
+    ts.run(res)
+
+    self.assertLen(l, len(expected_combinations) * 2)
+
+  @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters(dict(testcase_name="argument",
+                                       arg=True))
   def test_run_all_keras_modes_extra_params_2(self, arg):
     self.assertEqual(arg, True)
 
-  @keras_parameterized.run_with_all_model_types(
-      extra_parameters=[dict(arg=True)])
+  @keras_parameterized.run_with_all_model_types
+  @parameterized.named_parameters(dict(testcase_name="argument",
+                                       arg=True))
   def test_run_with_all_model_types_extra_params_2(self, arg):
     self.assertEqual(arg, True)
 
