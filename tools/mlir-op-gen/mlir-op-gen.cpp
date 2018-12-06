@@ -68,6 +68,16 @@ static inline bool hasStringAttribute(const Record &record,
   return isa<CodeInit>(valueInit) || isa<StringInit>(valueInit);
 }
 
+// Returns `fieldName`'s value queried from `record` if `fieldName` is set as
+// an string in record; otherwise, returns `defaultVal`.
+static inline StringRef getAsStringOrDefault(const Record &record,
+                                             StringRef fieldName,
+                                             StringRef defaultVal) {
+  return hasStringAttribute(record, fieldName)
+             ? record.getValueAsString(fieldName)
+             : defaultVal;
+}
+
 namespace {
 // Simple RAII helper for defining ifdef-undef-endif scopes.
 class IfDefScope {
@@ -209,17 +219,64 @@ void OpEmitter::emitAttrGetters() {
 }
 
 void OpEmitter::emitBuilder() {
-  if (!hasStringAttribute(def, "builder"))
-    return;
-
-  // If a custom builder is given then print that out instead.
-  auto builder = def.getValueAsString("builder");
-  if (!builder.empty()) {
-    os << builder << '\n';
-    return;
+  if (hasStringAttribute(def, "builder")) {
+    // If a custom builder is given then print that out instead.
+    auto builder = def.getValueAsString("builder");
+    if (!builder.empty()) {
+      os << builder << '\n';
+      return;
+    }
   }
 
-  // TODO(jpienaar): Redo generating builder.
+  // Otherwise, generate a default builder that requires all result type,
+  // operands, and attributes as parameters.
+
+  std::vector<Record *> returnTypes = def.getValueAsListOfDefs("returnTypes");
+  std::vector<Record *> operandTypes = def.getValueAsListOfDefs("operandTypes");
+
+  os << "  static void build(Builder* builder, OperationState* result";
+
+  // Emit parameters for all return types
+  for (unsigned i = 0, e = returnTypes.size(); i != e; ++i)
+    os << ", Type returnType" << i;
+
+  // Emit parameters for all operands
+  for (unsigned i = 0, e = operandTypes.size(); i != e; ++i)
+    os << ", SSAValue* arg" << i;
+
+  // Emit parameters for all attributes
+  // TODO(antiagainst): Support default initializer for attributes
+  for (const auto &pair : attrs) {
+    const Record &attr = *pair.second;
+    os << ", " << getAsStringOrDefault(attr, "storageType", "Attribute").trim()
+       << ' ' << pair.first->getName();
+  }
+
+  os << ") {\n";
+
+  // Push all result types to the result
+  if (!returnTypes.empty()) {
+    os << "    result->addTypes({returnType0";
+    for (unsigned i = 1, e = returnTypes.size(); i != e; ++i)
+      os << ", returnType" << i;
+    os << "});\n\n";
+  }
+
+  // Push all operands to the result
+  if (!operandTypes.empty()) {
+    os << "    result->addOperands({arg0";
+    for (unsigned i = 1, e = operandTypes.size(); i != e; ++i)
+      os << ", arg" << i;
+    os << "});\n";
+  }
+
+  // Push all attributes to the result
+  for (const auto &pair : attrs) {
+    StringRef name = pair.first->getName();
+    os << "    result->addAttribute(\"" << name << "\", " << name << ");\n";
+  }
+
+  os << "  }\n";
 }
 
 void OpEmitter::emitCanonicalizationPatterns() {

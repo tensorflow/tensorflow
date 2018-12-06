@@ -144,6 +144,15 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   // Define the hooks used for building, parsing, printing, verification.
 
   // Custom builder.
+  // If a derived class/def does not override this, then a default builder
+  // is generated, with the following signature:
+  //
+  //   static void build(Builder* builder, OperationState* result,
+  //                     Type resultType0, Type resultType1, ...,
+  //                     SSAValue* arg0, SSAValue* arg1, ...,
+  //                     Attribute attr0, Attribute attr1, ...);
+  //
+  // Where the attributes follow the same declaration order as in the op.
   code builder = ?;
 
   // Custom parser.
@@ -183,29 +192,10 @@ class Traits<list<string> Traits> {
 }
 
 class BinaryOp<string mnemonic, list<OpProperty> props> :
-    Op<mnemonic, props>, Operands<[Tensor, Tensor]>, Results<[Tensor]> {
-
-  // TODO(jpienaar): To autogen the builder the type of the result needs to be
-  // determined from the operands. That would (beyond trivial cases) require
-  // type propagation information.
-  let builder = [{
-    static void build(Builder *builder, OperationState *result, SSAValue *lhs,
-                      SSAValue *rhs) {
-      return impl::buildBinaryOp(builder, result, lhs, rhs);
-    }
-  }];
-}
+    Op<mnemonic, props>, Operands<[Tensor, Tensor]>, Results<[Tensor]>;
 
 class TernaryOp<string mnemonic, list<OpProperty> props> :
     Op<mnemonic, props>, Operands<[Tensor, Tensor, Tensor]>;
 
 class UnaryOp<string mnemonic, list<OpProperty> props> :
-    Op<mnemonic, props>, Operands<[Tensor]>, Results<[Tensor]> {
-  let builder = [{
-    static void build(Builder *builder, OperationState *result,
-                      SSAValue *arg) {
-      result->addOperands({arg});
-      result->types.push_back(arg->getType());
-    }
-  }];
-}
+    Op<mnemonic, props>, Operands<[Tensor]>, Results<[Tensor]>;
