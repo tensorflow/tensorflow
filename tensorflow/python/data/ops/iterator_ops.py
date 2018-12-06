@@ -528,6 +528,7 @@ class EagerIterator(checkpointable.CheckpointableBase):
     self._device = context.context().device_name
     with ops.device("/cpu:0"):
       # pylint: disable=protected-access
+      dataset = dataset._apply_options()
       ds_variant = dataset._as_variant_tensor()
       self._structure = structure_lib.convert_legacy_structure(
           dataset.output_types, dataset.output_shapes, dataset.output_classes)
@@ -541,6 +542,7 @@ class EagerIterator(checkpointable.CheckpointableBase):
         # Delete the resource when this object is deleted
         self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
             handle=self._resource, handle_device=self._device)
+      # pylint: enable=protected-access
 
   def __iter__(self):
     return self

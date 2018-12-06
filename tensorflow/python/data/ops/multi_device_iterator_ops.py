@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
@@ -192,9 +193,13 @@ class MultiDeviceIterator(object):
           self._source_device_tensor, device, dataset._element_structure)  # pylint: disable=protected-access
       if prefetch_buffer_size > 0:
         ds = ds.prefetch(prefetch_buffer_size)
-      # TODO(jsimsa): Enable auto-tuning when supported for non-CPU devices.
+      # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
+      # non-CPU devices.
       options = dataset_ops.Options()
       options.experimental_autotune = False
+      opt_options = optimization_options.OptimizationOptions()
+      opt_options.apply_default_optimizations = False
+      options.experimental_optimization = opt_options
       ds = ds.with_options(options)
       with ops.device(device):
         self._device_iterators.append(ds.make_initializable_iterator())

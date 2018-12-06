@@ -163,7 +163,15 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.range(1)
     dataset = dataset.flat_map(flat_map_fn)
-    dataset = dataset_ops._OptimizeDataset(dataset, ["map_and_batch_fusion"])
+
+    # TODO(b/120558523): We use Options instead of _OptimizeDataset directly
+    # here because of a bug with chaining _OptimizeDatasets when there are
+    # nested dataset functions
+    options = dataset_ops.Options()
+    opt_options = optimization_options.OptimizationOptions()
+    opt_options.map_and_batch_fusion = True
+    options.experimental_optimization = opt_options
+    dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[[0]])
 
   def testOptimizationThreadPoolDataset(self):
@@ -244,6 +252,26 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertEqual(unoptimized, optimized)
       except errors.OutOfRangeError:
         break
+
+  def testOptimizationEnabledByDefault(self):
+    """Tests that some optimizations are applied to datasets by default."""
+    options = dataset_ops.Options()
+    expected_optimizations = ["noop_elimination"]
+    self.assertEqual(options._static_optimizations(), expected_optimizations)
+
+  def testOptimizationDisableDefault(self):
+    """Tests that we can disable all static optimizations enabled by default.
+
+    If the `apply_default_optimizations` optimization options flag is False,
+    only explicitly enabled optimizations will be applied.
+    """
+    options = dataset_ops.Options()
+    opt_options = optimization_options.OptimizationOptions()
+    opt_options.hoist_random_uniform = True
+    opt_options.apply_default_optimizations = False
+    options.experimental_optimization = opt_options
+    expected_optimizations = ["hoist_random_uniform"]
+    self.assertEqual(options._static_optimizations(), expected_optimizations)
 
 
 if __name__ == "__main__":
