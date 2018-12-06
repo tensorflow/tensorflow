@@ -79,6 +79,23 @@ class LoadTest(test.TestCase):
     with open(imported.asset2.asset_path.numpy(), "r") as f:
       self.assertEquals("contents 2", f.read())
 
+  def test_assets_dedup(self):
+    vocab = self._make_asset("contents")
+    root = tracking.Checkpointable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+
+    root.asset1 = tracking.TrackableAsset(vocab)
+    root.asset2 = tracking.TrackableAsset(vocab)
+
+    export_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save(root, export_dir)
+    imported = load.load(export_dir)
+
+    self.assertEqual(imported.asset1.asset_path.numpy(),
+                     imported.asset2.asset_path.numpy())
+
 
 if __name__ == "__main__":
   test.main()

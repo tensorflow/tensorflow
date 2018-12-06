@@ -39,7 +39,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-def _parse_saved_model(export_dir):
+def parse_saved_model(export_dir):
   """Reads the savedmodel.pb or savedmodel.pbtxt file containing `SavedModel`.
 
   Args:
@@ -276,7 +276,7 @@ class SavedModelLoader(object):
     """
     self._export_dir = export_dir
     self._variables_path = saved_model_utils.get_variables_path(export_dir)
-    self._saved_model = _parse_saved_model(export_dir)
+    self._saved_model = parse_saved_model(export_dir)
 
   @property
   def export_dir(self):

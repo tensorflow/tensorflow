@@ -353,6 +353,19 @@ class AssetTests(test.TestCase):
         {"output_0": [2, 1]},
         _import_and_infer(second_dir, {"keys": ["gamma", "beta"]}))
 
+  def test_unused_asset(self):
+    root = tracking.Checkpointable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    root.asset = tracking.TrackableAsset(self._vocab_path)
+
+    export_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save(root, export_dir)
+    self.assertAllClose(
+        {"output_0": [0.2]},
+        _import_and_infer(export_dir, {"x": [0.1]}))
+
 
 class MemoryTests(test.TestCase):
 

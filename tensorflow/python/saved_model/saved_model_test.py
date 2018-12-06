@@ -1460,10 +1460,8 @@ class SavedModelV1Test(SavedModelTestBase):
     self.assertIn("Tout", complex_node.attr)
 
     # Load graph "foo" from disk as-is to verify default attrs are stripped.
-    # pylint: disable=protected-access
-    saved_model_pb = loader_impl._parse_saved_model(export_dir)
+    saved_model_pb = loader_impl.parse_saved_model(export_dir)
     self.assertIsNotNone(saved_model_pb)
-    # pylint: enable=protected-access
 
     meta_graph_foo_def = None
     meta_graph_bar_def = None
