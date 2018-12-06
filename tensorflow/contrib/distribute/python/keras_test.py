@@ -1273,12 +1273,6 @@ class TestDistributionStrategyCorrectness(test.TestCase,
         # TODO(b/119257215): use the default one once the flakyness is fixed.
         tolerance = 1e-4
 
-      if (use_validation_data and
-          not isinstance(distribution, tpu_strategy.TPUStrategy)):
-        # TODO(b/120435565): Enable tests with use_validation_data once the
-        # the underlying bug is fixed.
-        return
-
       keras.backend.set_image_data_format('channels_last')
       np.random.seed(_RANDOM_SEED)
       random_seed.set_random_seed(_RANDOM_SEED)

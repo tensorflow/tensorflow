@@ -138,6 +138,7 @@ def model_iteration(model,
                     steps_per_epoch=None,
                     validation_steps=None,
                     mode='train',
+                    validation_in_fit=False,
                     **kwargs):
   """Loop function for arrays of data with modes 'train'/'test'/'predict'.
 
@@ -164,6 +165,9 @@ def model_iteration(model,
       validation_steps: Number of steps to run validation for (only if doing
         validation from data tensors). Ignored with the default value of `None`.
       mode: One of 'train'/'test'/'predict'.
+      validation_in_fit: if true, then this method is invoked from within
+        training iteration (for validation). In this case, do not copy weights
+        when using a tf.distribute.Strategy.
       **kwargs: Additional arguments for backwards compatibility.
 
   Returns:
@@ -230,8 +234,9 @@ def model_iteration(model,
     aggregator = training_utils.MetricsAggregator(use_steps,
                                                   num_samples_or_steps)
 
-  if model._distribution_strategy:
-    training_distributed._copy_weights_to_distributed_model(model)
+  if model._distribution_strategy and not validation_in_fit:
+    training_distributed._copy_weights_to_distributed_model(
+        model, model._grouped_model)
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
@@ -356,7 +361,8 @@ def model_iteration(model,
           steps_per_epoch=validation_steps,
           callbacks=callbacks,
           verbose=0,
-          mode='test')
+          mode='test',
+          validation_in_fit=True)
       if not isinstance(val_results, list):
         val_results = [val_results]
       epoch_logs.update(
@@ -367,7 +373,10 @@ def model_iteration(model,
   callbacks._call_end_hook(mode)
 
   if model._distribution_strategy:
-    training_distributed._copy_weights_to_original_model(model, mode)
+    if not validation_in_fit:
+      training_distributed._copy_weights_to_original_model(
+          model, model._grouped_model, mode)
+
     scope.__exit__(None, None, None)
 
   if mode == 'train':
