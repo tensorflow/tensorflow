@@ -626,9 +626,10 @@ def map_and_batch(map_func,
       whether the last batch should be dropped in case its size is smaller than
       desired; the default behavior is not to drop the smaller batch.
     num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
-        representing the number of elements to process in parallel. If not
-        specified, `batch_size * num_parallel_batches` elements will be
-        processed in parallel.
+      representing the number of elements to process in parallel. If not
+      specified, `batch_size * num_parallel_batches` elements will be processed
+      in parallel. If the value `tf.data.experimental.AUTOTUNE` is used, then
+      the number of parallel calls is set dynamically based on available CPU.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
