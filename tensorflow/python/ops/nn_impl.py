@@ -262,7 +262,7 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
         name=name)
 
 
-@tf_export("nn.relu_layer")
+@tf_export(v1=["nn.relu_layer"])
 def relu_layer(x, weights, biases, name=None):
   """Computes Relu(x * weight + biases).
 

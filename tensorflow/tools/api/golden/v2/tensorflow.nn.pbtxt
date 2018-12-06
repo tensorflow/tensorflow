@@ -106,7 +106,7 @@ tf_module {
   }
   member_method {
     name: "depth_to_space"
-    argspec: "args=[\'input\', \'block_size\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'NHWC\'], "
+    argspec: "args=[\'input\', \'block_size\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
   }
   member_method {
     name: "depthwise_conv2d"
@@ -134,11 +134,11 @@ tf_module {
   }
   member_method {
     name: "embedding_lookup"
-    argspec: "args=[\'params\', \'ids\', \'partition_strategy\', \'name\', \'validate_indices\', \'max_norm\'], varargs=None, keywords=None, defaults=[\'mod\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'params\', \'ids\', \'partition_strategy\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'mod\', \'None\', \'None\'], "
   }
   member_method {
     name: "embedding_lookup_sparse"
-    argspec: "args=[\'params\', \'sp_ids\', \'sp_weights\', \'partition_strategy\', \'name\', \'combiner\', \'max_norm\'], varargs=None, keywords=None, defaults=[\'mod\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'params\', \'sp_ids\', \'sp_weights\', \'partition_strategy\', \'combiner\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'mod\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "erosion2d"
@@ -158,7 +158,7 @@ tf_module {
   }
   member_method {
     name: "in_top_k"
-    argspec: "args=[\'predictions\', \'targets\', \'k\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'targets\', \'predictions\', \'k\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "l2_loss"
@@ -229,10 +229,6 @@ tf_module {
     argspec: "args=[\'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "relu_layer"
-    argspec: "args=[\'x\', \'weights\', \'biases\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "safe_embedding_lookup_sparse"
     argspec: "args=[\'embedding_weights\', \'sparse_ids\', \'sparse_weights\', \'combiner\', \'default_id\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'mean\', \'None\', \'None\', \'None\'], "
   }
@@ -278,7 +274,7 @@ tf_module {
   }
   member_method {
     name: "space_to_depth"
-    argspec: "args=[\'input\', \'block_size\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'NHWC\'], "
+    argspec: "args=[\'input\', \'block_size\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
   }
   member_method {
     name: "sparse_softmax_cross_entropy_with_logits"
