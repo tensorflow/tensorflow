@@ -19,9 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
 
@@ -37,15 +37,5 @@ class MatchingFilesDataset(dataset_ops.DatasetSource):
     return ged_ops.experimental_matching_files_dataset(self._patterns)
 
   @property
-  def output_classes(self):
-    return ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
-
-  @property
-  def output_types(self):
-    return dtypes.string
-
-
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.string, [])

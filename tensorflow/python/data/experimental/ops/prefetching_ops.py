@@ -261,16 +261,8 @@ class _MapOnGpuDataset(dataset_ops.UnaryDataset):
         **dataset_ops.flat_structure(self))
 
   @property
-  def output_classes(self):
-    return self._map_func.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._map_func.output_shapes
-
-  @property
-  def output_types(self):
-    return self._map_func.output_types
+  def _element_structure(self):
+    return self._map_func.output_structure
 
   def _transformation_name(self):
     return "map_on_gpu()"
