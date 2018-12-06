@@ -3213,13 +3213,13 @@ def extract_glimpse_v2(
 
 @tf_export('image.combined_non_max_suppression')
 def combined_non_max_suppression(boxes,
-                             scores,
-                             max_output_size_per_class,
-                             max_total_size,
-                             iou_threshold=0.5,
-                             score_threshold=float('-inf'),
-                             pad_per_class=False,
-                             name=None):
+                                 scores,
+                                 max_output_size_per_class,
+                                 max_total_size,
+                                 iou_threshold=0.5,
+                                 score_threshold=float('-inf'),
+                                 pad_per_class=False,
+                                 name=None):
   """Greedily selects a subset of bounding boxes in descending order of score.
 
   This operation performs non_max_suppression on the inputs per batch, across
@@ -3229,8 +3229,8 @@ def combined_non_max_suppression(boxes,
   [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
   diagonal pair of box corners and the coordinates can be provided as normalized
   (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
-  is agnostic to where the origin is in the coordinate system.  Note that this
-  algorithm is invariant to orthogonal transformations and translations
+  is agnostic to where the origin is in the coordinate system. Also note that
+  this algorithm is invariant to orthogonal transformations and translations
   of the coordinate system; thus translating or reflections of the coordinate
   system result in the same boxes being selected by the algorithm.
   The output of this operation is the final boxes, scores and classes tensor 

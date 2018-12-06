@@ -234,13 +234,12 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
 
   int q = inp_boxes.dim_size(2);
   int num_classes = inp_scores.dim_size(2);
-  //unpack along batch dimension
   const int num_batches = inp_boxes.dim_size(0);
 
   // Default clip window of [0, 0, 1, 1] if none specified
   std::vector<float> clip_window{0, 0, 1, 1};
   
-  // [num_batches, per_batch_size, 4]
+  // [num_batches, per_batch_size * 4]
   std::vector<std::vector<float>> nmsed_boxes(num_batches);
   // [num_batches, per_batch_size]
   std::vector<std::vector<float>> nmsed_scores(num_batches);
@@ -253,12 +252,12 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
 
   int per_batch_size = total_size_per_batch;
 
-  //perform non_max_suppression operation for each batch independently
+  // perform non_max_suppression operation for each batch independently
   for (int batch = 0; batch < num_batches; ++batch) {
     // dims of per_batch_boxes [num_boxes, q, 4]
-    Tensor per_batch_boxes = inp_boxes.Slice(batch, batch+1);
+    Tensor per_batch_boxes = inp_boxes.Slice(batch, batch + 1);
     // dims of per_batch_scores [num_boxes, num_classes]
-    Tensor per_batch_scores = inp_scores.Slice(batch, batch+1);
+    Tensor per_batch_scores = inp_scores.Slice(batch, batch + 1);
 
     struct ResultCandidate {
       int box_index;
@@ -273,34 +272,34 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
     std::priority_queue<ResultCandidate, std::vector<ResultCandidate>, 
       decltype(rc_cmp)> result_candidate_pq(rc_cmp);
 
-    float * scoresData = per_batch_scores.unaligned_flat<float>().data();
-    float * boxesData = per_batch_boxes.unaligned_flat<float>().data();
+    float* scores_data = per_batch_scores.unaligned_flat<float>().data();
+    float* boxes_data = per_batch_boxes.unaligned_flat<float>().data();
 
-    //Iterate through all classes
+    // Iterate through all classes
     for (int class_idx = 0; class_idx < num_classes; ++class_idx) {
-      std::vector<float> scores_data;
-      std::vector<float> boxes_data_vec;
+      std::vector<float> class_scores_data;
+      std::vector<float> class_boxes_data;
 
       for (int box = 0; box < num_boxes; ++box) {
-        //Get the scores per class 
-        //scores_data dim is [num_boxes].
-        scores_data.push_back(scoresData[box * num_classes + class_idx]);
-        for(int cid = 0; cid < 4; ++cid){
-          if(q > 1){
-            //Get the boxes per class. boxes_data_vec dims is [num_boxes, 4]
-            boxes_data_vec.push_back(boxesData[box * q * 4 + 
-                  class_idx * 4 + cid]);
+        // Get the scores per class
+        // class_scores_data dim is [num_boxes].
+        class_scores_data.push_back(scores_data[box * num_classes + class_idx]);
+        for (int cid = 0; cid < 4; ++cid){
+          if (q > 1){
+            // Get the boxes per class. class_boxes_data dims is [num_boxes, 4]
+            class_boxes_data.push_back(boxes_data[(box * q + class_idx) * 4
+                                                  + cid]);
           }
           else {
-              boxes_data_vec.push_back(boxesData[box * 4 + cid]);
+              class_boxes_data.push_back(boxes_data[box * 4 + cid]);
           }
         }
       }
         
-      //Copy boxes_data_vec to a tensor
+      // Copy class_boxes_data to a tensor
       TensorShape boxesShape({num_boxes, 4});
       Tensor boxes(per_batch_boxes.dtype(), boxesShape);
-      std::copy_n(boxes_data_vec.begin(), boxes_data_vec.size(), 
+      std::copy_n(class_boxes_data.begin(), class_boxes_data.size(),
           boxes.unaligned_flat<float>().data());
 
       const int size_per_class = std::min(max_size_per_class, num_boxes);
@@ -315,9 +314,9 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       };
       std::priority_queue<Candidate, std::deque<Candidate>, decltype(cmp)>
         candidate_priority_queue(cmp);
-      for (int i = 0; i < scores_data.size(); ++i) {
-        if (scores_data[i] > score_threshold) {
-          candidate_priority_queue.emplace(Candidate({i, scores_data[i]}));
+      for (int i = 0; i < class_scores_data.size(); ++i) {
+        if (class_scores_data[i] > score_threshold) {
+          candidate_priority_queue.emplace(Candidate({i, class_scores_data[i]}));
         }
       }
 
@@ -347,7 +346,7 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
 
         if (should_select) {
           selected.push_back(next_candidate.box_index);
-          //Add the selected box to the result candidate. Sorted by score
+          // Add the selected box to the result candidate. Sorted by score
           int id = next_candidate.box_index;
           ResultCandidate rc = {next_candidate.box_index, next_candidate.score,
             class_idx, {boxes_data(id, 0), boxes_data(id, 1), boxes_data(id, 2),
@@ -375,7 +374,7 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
 
     int curr_total_size = max_detections;
     // Pick the top max_detections values 
-    while(curr_total_size > 0 && !result_candidate_pq.empty())
+    while (curr_total_size > 0 && !result_candidate_pq.empty())
     {
       ResultCandidate next_candidate = result_candidate_pq.top();
       result_candidate_pq.pop();
