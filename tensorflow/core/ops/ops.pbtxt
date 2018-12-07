@@ -38154,6 +38154,17 @@ op {
   is_stateful: true
 }
 op {
+  name: "UnwrapDatasetVariant"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output_handle"
+    type: DT_VARIANT
+  }
+}
+op {
   name: "UpperBound"
   input_arg {
     name: "sorted_inputs"
@@ -38469,6 +38480,17 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+}
+op {
+  name: "WrapDatasetVariant"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output_handle"
+    type: DT_VARIANT
   }
 }
 op {
