@@ -122,7 +122,9 @@ class FuncGraph(ops.Graph):
     # restored.
     if context.executing_eagerly():
       self.seed = context.global_seed()
-      self._xla_compile = (context.context().device_spec.device_type == "TPU")
+      device_type = context.context().device_spec.device_type
+      self._xla_compile = (device_type == "TPU" or device_type == "XLA_GPU"
+                           or device_type == "XLA_CPU")
       if self._distribution_strategy_stack or self._xla_compile:
         self._add_device_to_stack(context.context().device_name)
     else:
