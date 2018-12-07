@@ -511,7 +511,6 @@ renames = {
     'tf.sets.set_intersection': 'tf.sets.intersection',
     'tf.sets.set_size': 'tf.sets.size',
     'tf.sets.set_union': 'tf.sets.union',
-    'tf.space_to_batch': 'tf.nn.space_to_batch',
     'tf.space_to_depth': 'tf.compat.v1.space_to_depth',
     'tf.sparse.matmul': 'tf.sparse.sparse_dense_matmul',
     'tf.sparse.merge': 'tf.compat.v1.sparse.merge',

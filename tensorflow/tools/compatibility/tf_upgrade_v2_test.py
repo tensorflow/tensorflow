@@ -567,6 +567,19 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testSpacetoBatch(self):
+    text = "tf.space_to_batch_nd(input, shape, paddings, name)"
+    expected_text = "tf.space_to_batch(input, shape, paddings, name)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.nn.space_to_batch(input, paddings, block_size, name)"
+    expected_text = (
+        "tf.space_to_batch(input=input, paddings=paddings, "
+        "block_size=block_size, name=name)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
   def testInTopK(self):
     text = "tf.math.in_top_k(a, b, c, n)"
     expected_text = (
