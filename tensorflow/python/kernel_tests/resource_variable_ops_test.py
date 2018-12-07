@@ -33,6 +33,8 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -584,6 +586,33 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(variables.global_variables_initializer())
     v.load(2.0)
     self.assertEqual(2.0, self.evaluate(v.value()))
+
+  def testShapePassedToGradient(self):
+    with ops.Graph().as_default():
+      @custom_gradient.custom_gradient
+      def differentiable_scatter_update(handle, indices, values):
+        with ops.control_dependencies([
+            resource_variable_ops.resource_scatter_update(
+                handle, indices, values)]):
+          new_handle = array_ops.identity(handle)
+
+        def grad(dresult):
+          self.assertIsNotNone(
+              tensor_util.constant_value(dresult.dense_shape))
+          return [dresult, None, None]
+
+        return new_handle, grad
+
+      var = variable_scope.get_variable(
+          "foo", shape=[20], initializer=init_ops.zeros_initializer,
+          dtype=dtypes.float64, use_resource=True)
+
+      indices = math_ops.range(10)
+      updates = math_ops.range(9, -1, -1, dtype=dtypes.float64)
+      new_handle = differentiable_scatter_update(var.handle, indices, updates)
+      gathered = resource_variable_ops.resource_gather(
+          new_handle, indices, dtype=var.dtype)
+      gradients_impl.gradients([gathered], [updates])
 
   def testToFromProtoCachedValue(self):
     with ops.Graph().as_default():

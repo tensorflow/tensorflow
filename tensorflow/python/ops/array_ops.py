@@ -78,7 +78,11 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
       return input._copy()  # pylint: disable=protected-access
     return input
   else:
-    return gen_array_ops.identity(input, name=name)
+    ret = gen_array_ops.identity(input, name=name)
+    # Propagate handle data for happier shape inference for resource variables.
+    if hasattr(input, "_handle_data"):
+      ret._handle_data = input._handle_data  # pylint: disable=protected-access
+    return ret
 
 
 # pylint: disable=redefined-builtin,protected-access
