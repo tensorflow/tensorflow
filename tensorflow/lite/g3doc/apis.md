@@ -304,6 +304,13 @@ one of the following primitive types:
 *   `long`
 *   `byte`
 
+`String` types are also supported, but they are encoded differently than the
+primitive types. In particular, the shape of a string Tensor dictates the number
+and arrangement of strings in the Tensor, with each element itself being a
+variable length string. In this sense, the (byte) size of the Tensor cannot be
+computed from the shape and type alone, and consequently strings cannot be
+provided as a single, flat `ByteBuffer` argument.
+
 If other data types, including boxed types like `Integer` and `Float`, are used,
 an `IllegalArgumentException` will be thrown.
 
