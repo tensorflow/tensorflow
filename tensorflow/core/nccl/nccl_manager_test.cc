@@ -65,6 +65,7 @@ class NcclManagerTest : public ::testing::Test {
 
   static void SetUpTestCase() {
     setenv("NCCL_DEBUG", "WARN", 1 /* replace */);
+    setenv("NCCL_LAUNCH_MODE", "PARALLEL", 1 /* replace */);
     devices_ = new std::vector<std::unique_ptr<BaseGPUDevice>>(GetGPUDevices());
     LOG(ERROR) << "Running test with " << devices_->size() << " gpus";
   }
@@ -200,7 +201,7 @@ TYPED_TEST_CASE(NcclManagerTest, TypeList);
 
 // Test basic sum reduction.
 TYPED_TEST(NcclManagerTest, BasicSumReduction) {
-  const int num_ranks = this->NumGPUs();
+  const int num_ranks = 4;
 
   for (int op = 0; op < 4; ++op) {
     ncclRedOp_t reduction_op = static_cast<ncclRedOp_t>(op);
@@ -208,6 +209,7 @@ TYPED_TEST(NcclManagerTest, BasicSumReduction) {
         this->MakeTestCase(num_ranks, reduction_op, TensorShape({2, 3}), 0.0f));
     for (int rank = 0; rank < num_ranks; ++rank) {
       auto* device = this->GetDevice(rank);
+      VLOG(2) << "rank " << rank << " device " << device->name();
       auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
       auto* stream = device->tensorflow_gpu_device_info()->stream;
       NcclManager::instance()->AddToAllReduce(
@@ -224,14 +226,12 @@ TYPED_TEST(NcclManagerTest, BasicSumReduction) {
 // Same as the Basic test, but with multiple threads launching parts of many
 // reductions.
 //
-// Testing the multi-rank execution is currently reduced as it can hang when run
-// with num_ranks > devices->size(), for some GPUs (e.g. K20m).
-// To test the higher settings, increase num_ranks,
-// num_collectives_per_iteration and time_limit_micros.
+// To run test longer, increase num_ranks, num_collectives_per_iteration and
+// time_limit_micros.
 TYPED_TEST(NcclManagerTest, MultipleCallers) {
-  const int num_ranks = this->NumGPUs();
+  const int num_ranks = 4;
   const int num_collectives_per_iteration = 10;  // 1000;
-  const int num_threads = 3;
+  const int num_threads = num_ranks * 2;
   const int time_limit_micros = 100;  // 60 * 30 * 1000 * 1000;
 
   int64 start = Env::Default()->NowMicros();
