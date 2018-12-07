@@ -122,6 +122,9 @@ REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .TypeConstraint<string>("T"),
                         ArgOp);
 
+REGISTER_KERNEL_BUILDER(
+    Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<Variant>("T"), ArgOp);
+
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
       Name(kRetOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);

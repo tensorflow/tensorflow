@@ -716,3 +716,14 @@ py_test(
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
+
+cuda_py_test(
+    name = "wrap_unwrap_test",
+    size = "small",
+    srcs = ["wrap_unwrap_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
