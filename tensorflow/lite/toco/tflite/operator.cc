@@ -1482,6 +1482,30 @@ class TensorFlowUnsupported : public BaseOperator {
   const bool enable_select_tf_ops_;
 };
 
+class Dequantize
+    : public BuiltinOperator<DequantizeOperator, ::tflite::DequantizeOptions,
+                             ::tflite::BuiltinOptions_DequantizeOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateDequantizeOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+
+  int GetVersion(const Operator& op) const override {
+    // TODO(suharshs): Dequantize now supports INT8 in addition to
+    // QUANTIZED_UINT8. When TOCO can create models with INT8, we need
+    // to find a way to see the type here and return version 2. Right now
+    // version 2 will only be added by post training quantization tools.
+    return 1;
+  }
+};
+
 namespace {
 // Build a vector containing all the known operators.
 std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
