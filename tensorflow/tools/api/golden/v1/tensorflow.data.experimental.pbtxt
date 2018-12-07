@@ -21,6 +21,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "NestedStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "OptimizationOptions"
     mtype: "<type \'type\'>"
   }

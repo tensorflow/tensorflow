@@ -26,6 +26,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@CheckpointInputPipelineHook
 @@CsvDataset
 @@DatasetStructure
+@@NestedStructure
 @@OptimizationOptions
 @@Optional
 @@OptionalStructure
@@ -121,6 +122,7 @@ from tensorflow.python.data.ops.dataset_ops import DatasetStructure
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 from tensorflow.python.data.ops.optional_ops import OptionalStructure
+from tensorflow.python.data.util.structure import NestedStructure
 from tensorflow.python.data.util.structure import SparseTensorStructure
 from tensorflow.python.data.util.structure import Structure
 from tensorflow.python.data.util.structure import TensorStructure

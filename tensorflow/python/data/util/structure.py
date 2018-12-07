@@ -273,6 +273,7 @@ def convert_legacy_structure(output_types, output_shapes, output_classes):
 # NOTE(mrry): The following classes make extensive use of non-public methods of
 # their base class, so we disable the protected-access lint warning once here.
 # pylint: disable=protected-access
+@tf_export("data.experimental.NestedStructure")
 class NestedStructure(Structure):
   """Represents a nested structure in which each leaf is a `Structure`."""
 
