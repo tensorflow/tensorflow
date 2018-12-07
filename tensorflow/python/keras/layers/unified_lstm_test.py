@@ -298,6 +298,50 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(y_1, y_2)
     self.assertAllClose(y_2, y_3)
 
+  @parameterized.named_parameters(
+      # test_name, time_major, go_backwards
+      ('normal', False, False),
+      ('time_major', True, False),
+      ('go_backwards', False, True),
+      ('both', True, True),
+  )
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_time_major_and_go_backward(self, time_major, go_backwards):
+    input_shape = 10
+    rnn_state_size = 8
+    timestep = 4
+    batch = 100
+
+    x_train = np.random.random((batch, timestep, input_shape))
+
+    def build_model(layer_cls):
+      inputs = keras.layers.Input(
+          shape=[timestep, input_shape], dtype=dtypes.float32)
+      layer = layer_cls(rnn_state_size,
+                        recurrent_activation='sigmoid',
+                        time_major=time_major,
+                        return_sequences=True,
+                        go_backwards=go_backwards)
+      if time_major:
+        converted_input = keras.layers.Lambda(
+            lambda t: array_ops.transpose(t, [1, 0, 2]))(inputs)
+        outputs = layer(converted_input)
+        outputs = keras.layers.Lambda(
+            lambda t: array_ops.transpose(t, [1, 0, 2]))(outputs)
+      else:
+        outputs = layer(inputs)
+      return keras.models.Model(inputs, outputs)
+
+    lstm_model = build_model(keras.layers.LSTM)
+    y_ref = lstm_model.predict(x_train)
+    weights = lstm_model.get_weights()
+
+    unified_lstm_model = build_model(keras.layers.UnifiedLSTM)
+    unified_lstm_model.set_weights(weights)
+    y = unified_lstm_model.predict(x_train)
+
+    self.assertAllClose(y, y_ref)
+
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_keras_model_with_lstm(self):
     input_shape = 10
