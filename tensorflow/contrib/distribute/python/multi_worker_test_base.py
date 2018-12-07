@@ -40,7 +40,6 @@ from tensorflow.python.client import session
 from tensorflow.python.estimator import run_config
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import coordinator
 from tensorflow.python.training import server_lib
 
 ASSIGNED_PORTS = set()
@@ -361,7 +360,6 @@ class IndependentWorkerTestBase(test.TestCase):
     self._mock_os_env = MockOsEnv()
     self._mock_context = test.mock.patch.object(os, 'environ',
                                                 self._mock_os_env)
-    self._coord = coordinator.Coordinator()
     super(IndependentWorkerTestBase, self).setUp()
     self._mock_context.__enter__()
 
@@ -370,9 +368,8 @@ class IndependentWorkerTestBase(test.TestCase):
     super(IndependentWorkerTestBase, self).tearDown()
 
   def _task_thread(self, task_fn, tf_config, *args, **kwargs):
-    with self._coord.stop_on_exception():
-      os.environ['TF_CONFIG'] = json.dumps(tf_config)
-      task_fn(*args, **kwargs)
+    os.environ['TF_CONFIG'] = json.dumps(tf_config)
+    task_fn(*args, **kwargs)
 
   def _run_task_in_thread(self, task_fn, cluster_spec, task_type, task_id,
                           *args, **kwargs):
@@ -406,6 +403,3 @@ class IndependentWorkerTestBase(test.TestCase):
                                      *args, **kwargs)
         threads[task_type].append(t)
     return threads
-
-  def join_independent_workers(self, worker_threads):
-    self._coord.join(worker_threads)

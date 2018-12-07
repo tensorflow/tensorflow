@@ -29,7 +29,6 @@ from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator_context
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import coordinator
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import server_lib
 
@@ -329,8 +328,7 @@ def _run_single_worker(worker_fn,
                        task_id,
                        session_config,
                        rpc_layer="",
-                       worker_barrier=None,
-                       coord=None):
+                       worker_barrier=None):
   """Runs a single worker by calling `worker_fn` under context."""
   session_config = copy.deepcopy(session_config)
   strategy = copy.deepcopy(strategy)
@@ -352,11 +350,7 @@ def _run_single_worker(worker_fn,
       rpc_layer=rpc_layer,
       worker_barrier=worker_barrier)
   with context:
-    if coord:
-      with coord.stop_on_exception():
-        return worker_fn(strategy)
-    else:
-      return worker_fn(strategy)
+    return worker_fn(strategy)
 
 
 def _split_cluster_for_evaluator(cluster_spec, task_type):
@@ -429,7 +423,6 @@ def _run_std_server(cluster_spec=None,
 def _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
                               cluster_spec, session_config, rpc_layer):
   """Runs a standalone client for between-graph replication."""
-  coord = coordinator.Coordinator()
   eval_thread = None
   if _TaskType.EVALUATOR in cluster_spec.jobs:
     eval_thread = threading.Thread(
@@ -438,7 +431,6 @@ def _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
               session_config),
         kwargs={
             "rpc_layer": rpc_layer,
-            "coord": coord,
         })
     eval_thread.start()
 
@@ -452,18 +444,18 @@ def _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
                 session_config),
           kwargs={
               "rpc_layer": rpc_layer,
-              "worker_barrier": worker_barrier,
-              "coord": coord,
+              "worker_barrier": worker_barrier
           })
       t.start()
       threads.append(t)
 
+  # TODO(yuefengz): wrap threads into thread coordinator?
+  for t in threads:
+    t.join()
+
+  # TODO(yuefengz): is it necessary to join eval thread?
   if eval_thread:
-    # TODO(yuefengz): is it necessary to join eval thread?
-    threads_to_join = threads + [eval_thread]
-  else:
-    threads_to_join = threads
-  coord.join(threads_to_join)
+    eval_thread.join()
 
   # TODO(yuefengz): we probably want to return results from all workers?
   return None
@@ -472,7 +464,6 @@ def _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
 def _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
                          cluster_spec, session_config, rpc_layer):
   """Runs a standalone client for in-graph replication."""
-  coord = coordinator.Coordinator()
   eval_thread = None
   if _TaskType.EVALUATOR in cluster_spec.jobs:
     eval_thread = threading.Thread(
@@ -481,7 +472,6 @@ def _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
               session_config),
         kwargs={
             "rpc_layer": rpc_layer,
-            "coord": coord,
         })
     eval_thread.start()
 
@@ -492,12 +482,9 @@ def _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
       None,
       None,
       session_config,
-      rpc_layer=rpc_layer,
-      coord=coord)
-
+      rpc_layer=rpc_layer)
   if eval_thread:
-    coord.join([eval_thread])
-
+    eval_thread.join()
   return worker_result
 
 
