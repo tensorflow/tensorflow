@@ -263,7 +263,8 @@ Status EagerLocalExecute(EagerOperation* op,
     // Note that it is not ideal, but currently ok, to set this
     // attribute after computing the kernel cache key above.
     if (op->is_function() && device != nullptr &&
-        device->device_type() == "TPU") {
+        (device->device_type() == "TPU" || device->device_type() == "XLA_GPU" ||
+         device->device_type() == "XLA_CPU")) {
       op->MutableAttrs()->Set(kXlaCompileAttr, true);
     }
 
