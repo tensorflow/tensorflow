@@ -163,8 +163,13 @@ public abstract class ImageClassifier {
     }
   }
 
-  public void setUseNNAPI(Boolean nnapi) {
-    tfliteOptions.setUseNNAPI(nnapi);
+  public void useCPU() {
+    tfliteOptions.setUseNNAPI(false);
+    recreateInterpreter();
+  }
+
+  public void useNNAPI() {
+    tfliteOptions.setUseNNAPI(true);
     recreateInterpreter();
   }
 
