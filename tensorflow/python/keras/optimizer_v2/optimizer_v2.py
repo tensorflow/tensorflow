@@ -24,7 +24,8 @@ import abc
 
 import six
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -252,12 +253,14 @@ class OptimizerV2(optimizer_v1.Optimizer):
       with backprop.GradientTape() as tape:
         tape.watch(var_list)
         loss_value = loss()
+        loss_value = self._scale_loss(loss_value)
       grads = tape.gradient(loss_value, var_list, grad_loss)
     else:
       if context.executing_eagerly():
         raise RuntimeError("`loss` passed to Optimizer.compute_gradients "
                            "should be a function when eager execution is "
                            "enabled.")
+      loss = self._scale_loss(loss)
       self._assert_valid_dtypes([loss])
       if grad_loss is not None:
         self._assert_valid_dtypes([grad_loss])
@@ -276,6 +279,15 @@ class OptimizerV2(optimizer_v1.Optimizer):
     ])
 
     return grads_and_vars
+
+  @staticmethod
+  def _scale_loss(loss_value):
+    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
+      num_replicas = \
+        distribute_ctx.get_distribution_strategy().num_replicas_in_sync
+      if num_replicas > 1:
+        loss_value *= (1. / num_replicas)
+    return loss_value
 
   def apply_gradients(self, grads_and_vars, name=None):
     """Apply gradients to variables.
@@ -299,7 +311,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     """
     grads_and_vars = _filter_grads(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
-    if distribution_strategy_context.has_distribution_strategy():
+    if distribute_ctx.has_distribution_strategy():
       reduced_grads = merge_grads(grads_and_vars)
       grads_and_vars = zip(reduced_grads, var_list)
 
@@ -598,7 +610,7 @@ def merge_update_step(update_ops, local_step):
       incre_op = local_step.assign_add(1).op
     return incre_op
 
-  return distribution_strategy_context.get_replica_context().merge_call(
+  return distribute_ctx.get_replica_context().merge_call(
       merge_update_step_fn, args=(update_ops, local_step))
 
 
@@ -606,11 +618,11 @@ def merge_grads(grads_and_vars):
   """Merge gradients from different replicas."""
 
   def merge_grad_fn(strategy, grads_and_vars):
-    reduced_grads = strategy.batch_reduce(
-        ds_reduce_util.ReduceOp.MEAN, grads_and_vars)
+    reduced_grads = strategy.batch_reduce(ds_reduce_util.ReduceOp.SUM,
+                                          grads_and_vars)
     return reduced_grads
 
-  return distribution_strategy_context.get_replica_context().merge_call(
+  return distribute_ctx.get_replica_context().merge_call(
       merge_grad_fn, args=(grads_and_vars,))
 
 
@@ -629,7 +641,7 @@ def _var_key(var):
   """
 
   # pylint: disable=protected-access
-  if distribution_strategy_context.has_distribution_strategy() and hasattr(
+  if distribute_ctx.has_distribution_strategy() and hasattr(
       var, "_primary_var"):
     var = var._primary_var
   if hasattr(var, "op"):
