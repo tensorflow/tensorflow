@@ -285,6 +285,7 @@ class IteratorContext {
           function_library(ctx->function_library()),
           lib(ctx->lib()),
           function_handle_cache(ctx->function_handle_cache()),
+          resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
@@ -324,6 +325,10 @@ class IteratorContext {
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
 
+    // A resource manager for storing dataset-related state, e.g. random
+    // seeds or cached tensors. Not owned.
+    ResourceMgr* resource_mgr = nullptr;
+
     // If non-null, identifies the object used for performance modeling.
     std::shared_ptr<model::Model> model = nullptr;
 
@@ -362,6 +367,8 @@ class IteratorContext {
   FunctionHandleCache* function_handle_cache() {
     return params_.function_handle_cache;
   }
+
+  ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
   const std::shared_ptr<model::Model>& model() { return params_.model; }
 
