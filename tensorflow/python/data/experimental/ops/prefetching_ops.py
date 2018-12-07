@@ -20,8 +20,6 @@ from __future__ import print_function
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import function
 from tensorflow.python.framework import device as framework_device
 from tensorflow.python.framework import dtypes
@@ -106,13 +104,6 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
     self._source_device_string = source_device
     self._source_device = ops.convert_to_tensor(source_device)
 
-    self._flat_output_shapes = nest.flatten(
-        sparse.as_dense_shapes(self._input_dataset.output_shapes,
-                               self._input_dataset.output_classes))
-    self._flat_output_types = nest.flatten(
-        sparse.as_dense_types(self._input_dataset.output_types,
-                              self._input_dataset.output_classes))
-
     @function.defun()
     def _init_func():
       """Creates an iterator for the input dataset.
@@ -123,8 +114,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
       # pylint: disable=protected-access
       ds_variant = self._input_dataset._as_variant_tensor()
       resource = gen_dataset_ops.anonymous_iterator(
-          output_types=self._flat_output_types,
-          output_shapes=self._flat_output_shapes)
+          **dataset_ops.flat_structure(self._input_dataset))
       with ops.control_dependencies(
           [gen_dataset_ops.make_iterator(ds_variant, resource)]):
         return gen_dataset_ops.iterator_to_string_handle(resource)
@@ -155,8 +145,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
         iterator = iterator_ops.Iterator.from_string_handle(
             string_handle, self.output_types, self.output_shapes,
             self.output_classes)
-      ret = iterator.get_next()
-      return nest.flatten(sparse.serialize_sparse_tensors(ret))
+      return self._element_structure._to_tensor_list(iterator.get_next())  # pylint: disable=protected-access
 
     next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access
 
@@ -166,7 +155,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
           target=self._source_device,
           args=[string_handle] +
           next_func_concrete.captured_inputs,
-          Tout=self._flat_output_types,
+          Tout=self._input_dataset._element_structure._flat_types,  # pylint: disable=protected-access
           f=next_func_concrete)
 
     self._next_func = _remote_next_func._get_concrete_function_internal()  # pylint: disable=protected-access
@@ -183,8 +172,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
       """
       iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
           string_handle,
-          output_types=self._flat_output_types,
-          output_shapes=self._flat_output_shapes)
+          **dataset_ops.flat_structure(self._input_dataset))
       with ops.control_dependencies([
           resource_variable_ops.destroy_resource_op(
               iterator_resource, ignore_lookup_error=True)]):
@@ -196,8 +184,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
     def _remote_finalize_func(string_handle):
       return functional_ops.remote_call(
           target=self._source_device,
-          args=[string_handle] +
-          finalize_func_concrete.captured_inputs,
+          args=[string_handle] + finalize_func_concrete.captured_inputs,
           Tout=[dtypes.int64],
           f=finalize_func_concrete)
 
@@ -233,8 +220,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
           init_func=self._init_func,
           next_func=self._next_func,
           finalize_func=self._finalize_func,
-          output_types=self._flat_output_types,
-          output_shapes=self._flat_output_shapes)
+          **dataset_ops.flat_structure(self._input_dataset))
 
 
 class _MapOnGpuDataset(dataset_ops.UnaryDataset):
