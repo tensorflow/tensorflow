@@ -80,10 +80,10 @@ public:
   void dump() const;
 
   /// Emit an error about fatal conditions with this operation, reporting up to
-  /// any diagnostic handlers that may be listening.  NOTE: This may terminate
-  /// the containing application, only use when the IR is in an inconsistent
-  /// state.
-  void emitError(const Twine &message) const;
+  /// any diagnostic handlers that may be listening.  This function always
+  /// returns true.  NOTE: This may terminate the containing application, only
+  /// use when the IR is in an inconsistent state.
+  bool emitError(const Twine &message) const;
 
   /// Emit a warning about this operation, reporting up to any diagnostic
   /// handlers that may be listening.

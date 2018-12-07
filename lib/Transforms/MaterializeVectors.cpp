@@ -535,15 +535,11 @@ static bool instantiateMaterialization(Statement *stmt,
                                        MaterializationState *state) {
   LLVM_DEBUG(dbgs() << "\ninstantiate: " << *stmt);
 
-  if (isa<ForStmt>(stmt)) {
-    stmt->emitError("NYI path ForStmt");
-    return true;
-  }
+  if (isa<ForStmt>(stmt))
+    return stmt->emitError("NYI path ForStmt");
 
-  if (isa<IfStmt>(stmt)) {
-    stmt->emitError("NYI path IfStmt");
-    return true;
-  }
+  if (isa<IfStmt>(stmt))
+    return stmt->emitError("NYI path IfStmt");
 
   // Create a builder here for unroll-and-jam effects.
   MLFuncBuilder b(stmt);
@@ -562,14 +558,10 @@ static bool instantiateMaterialization(Statement *stmt,
   // The only op with 0 results reaching this point must, by construction, be
   // VectorTransferWriteOps and have been caught above. Ops with >= 2 results
   // are not yet supported. So just support 1 result.
-  if (opStmt->getNumResults() != 1) {
-    stmt->emitError("NYI: ops with != 1 results");
-    return true;
-  }
-  if (opStmt->getResult(0)->getType() != state->superVectorType) {
-    stmt->emitError("Op does not return a supervector.");
-    return true;
-  }
+  if (opStmt->getNumResults() != 1)
+    return stmt->emitError("NYI: ops with != 1 results");
+  if (opStmt->getResult(0)->getType() != state->superVectorType)
+    return stmt->emitError("Op does not return a supervector.");
   auto *clone =
       instantiate(&b, opStmt, state->hwVectorType, state->substitutionsMap);
   if (!clone) {

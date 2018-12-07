@@ -1486,39 +1486,27 @@ bool VectorTransferReadOp::parse(OpAsmParser *parser, OperationState *result) {
 
   // Resolution.
   auto funType = type.dyn_cast<FunctionType>();
-  if (!funType) {
-    parser->emitError(parser->getNameLoc(), "Function type expected");
-    return true;
-  }
-  if (funType.getNumInputs() < 1) {
-    parser->emitError(parser->getNameLoc(),
-                      "Function type expects at least one input");
-    return true;
-  }
+  if (!funType)
+    return parser->emitError(parser->getNameLoc(), "Function type expected");
+  if (funType.getNumInputs() < 1)
+    return parser->emitError(parser->getNameLoc(),
+                             "Function type expects at least one input");
   MemRefType memrefType =
       funType.getInput(Offsets::MemRefOffset).dyn_cast<MemRefType>();
-  if (!memrefType) {
-    parser->emitError(parser->getNameLoc(),
-                      "MemRef type expected for first input");
-    return true;
-  }
-  if (funType.getNumResults() < 1) {
-    parser->emitError(parser->getNameLoc(),
-                      "Function type expects exactly one vector result");
-    return true;
-  }
+  if (!memrefType)
+    return parser->emitError(parser->getNameLoc(),
+                             "MemRef type expected for first input");
+  if (funType.getNumResults() < 1)
+    return parser->emitError(parser->getNameLoc(),
+                             "Function type expects exactly one vector result");
   VectorType vectorType = funType.getResult(0).dyn_cast<VectorType>();
-  if (!vectorType) {
-    parser->emitError(parser->getNameLoc(),
-                      "Vector type expected for first result");
-    return true;
-  }
-  if (parsedOperands.size() != funType.getNumInputs()) {
-    parser->emitError(parser->getNameLoc(), "requires " +
-                                                Twine(funType.getNumInputs()) +
-                                                " operands");
-    return true;
-  }
+  if (!vectorType)
+    return parser->emitError(parser->getNameLoc(),
+                             "Vector type expected for first result");
+  if (parsedOperands.size() != funType.getNumInputs())
+    return parser->emitError(parser->getNameLoc(),
+                             "requires " + Twine(funType.getNumInputs()) +
+                                 " operands");
 
   // Extract optional paddingValue.
   OpAsmParser::OperandType memrefInfo = parsedOperands[0];
@@ -1535,12 +1523,10 @@ bool VectorTransferReadOp::parse(OpAsmParser *parser, OperationState *result) {
     paddingType = funType.getInputs().back();
     paddingValue = indexInfo.pop_back_val();
   }
-  if (funType.getNumInputs() != expectedNumOperands) {
-    parser->emitError(
+  if (funType.getNumInputs() != expectedNumOperands)
+    return parser->emitError(
         parser->getNameLoc(),
         "requires actual number of operands to match function type");
-    return true;
-  }
 
   auto indexType = parser->getBuilder().getIndexType();
   return parser->resolveOperand(memrefInfo, memrefType, result->operands) ||
@@ -1693,36 +1679,28 @@ bool VectorTransferWriteOp::parse(OpAsmParser *parser, OperationState *result) {
   }
 
   // Resolution.
-  if (parsedOperands.size() != types.size()) {
-    parser->emitError(parser->getNameLoc(),
-                      "requires number of operands and input types to match");
-    return true;
-  }
-  if (parsedOperands.size() < Offsets::FirstIndexOffset) {
-    parser->emitError(parser->getNameLoc(),
-                      "requires at least vector and memref operands");
-    return true;
-  }
+  if (parsedOperands.size() != types.size())
+    return parser->emitError(
+        parser->getNameLoc(),
+        "requires number of operands and input types to match");
+  if (parsedOperands.size() < Offsets::FirstIndexOffset)
+    return parser->emitError(parser->getNameLoc(),
+                             "requires at least vector and memref operands");
   VectorType vectorType = types[Offsets::VectorOffset].dyn_cast<VectorType>();
-  if (!vectorType) {
-    parser->emitError(parser->getNameLoc(),
-                      "Vector type expected for first input type");
-    return true;
-  }
+  if (!vectorType)
+    return parser->emitError(parser->getNameLoc(),
+                             "Vector type expected for first input type");
   MemRefType memrefType = types[Offsets::MemRefOffset].dyn_cast<MemRefType>();
-  if (!memrefType) {
-    parser->emitError(parser->getNameLoc(),
-                      "MemRef type expected for second input type");
-    return true;
-  }
+  if (!memrefType)
+    return parser->emitError(parser->getNameLoc(),
+                             "MemRef type expected for second input type");
 
   unsigned expectedNumOperands =
       Offsets::FirstIndexOffset + memrefType.getRank();
-  if (parsedOperands.size() != expectedNumOperands) {
-    parser->emitError(parser->getNameLoc(),
-                      "requires " + Twine(expectedNumOperands) + " operands");
-    return true;
-  }
+  if (parsedOperands.size() != expectedNumOperands)
+    return parser->emitError(parser->getNameLoc(),
+                             "requires " + Twine(expectedNumOperands) +
+                                 " operands");
 
   OpAsmParser::OperandType vectorInfo = parsedOperands[Offsets::VectorOffset];
   OpAsmParser::OperandType memrefInfo = parsedOperands[Offsets::MemRefOffset];

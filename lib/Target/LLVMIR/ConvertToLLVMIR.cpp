@@ -279,14 +279,10 @@ ModuleLowerer::linearizeSubscripts(ArrayRef<llvm::Value *> indices,
 // TODO(zinenko): this function should disappear when the conversion fully
 // supports MemRefs.
 static bool checkSupportedMemRefType(MemRefType type, const Operation &op) {
-  if (!type.getAffineMaps().empty()) {
-    op.emitError("NYI: memrefs with affine maps");
-    return true;
-  }
-  if (type.getMemorySpace() != 0) {
-    op.emitError("NYI: non-default memory space");
-    return true;
-  }
+  if (!type.getAffineMaps().empty())
+    return op.emitError("NYI: memrefs with affine maps");
+  if (type.getMemorySpace() != 0)
+    return op.emitError("NYI: non-default memory space");
   return false;
 }
 
@@ -494,10 +490,8 @@ bool ModuleLowerer::convertInstruction(const Instruction &inst) {
       return true;
     // TODO(somebody): float attributes have "double" semantics whatever the
     // type of the constant.  This should be fixed at the parser level.
-    if (!type->isFloatTy()) {
-      inst.emitError("NYI: only floats are currently supported");
-      return true;
-    }
+    if (!type->isFloatTy())
+      return inst.emitError("NYI: only floats are currently supported");
     bool unused;
     auto APvalue = constantOp->getValue();
     APFloat::opStatus status = APvalue.convert(
@@ -507,10 +501,8 @@ bool ModuleLowerer::convertInstruction(const Instruction &inst) {
           "Lossy conversion of a float constant to the float type");
       // No return intended.
     }
-    if (status != APFloat::opOK) {
-      inst.emitError("Failed to convert a floating point constant");
-      return true;
-    }
+    if (status != APFloat::opOK)
+      return inst.emitError("Failed to convert a floating point constant");
     auto value = APvalue.convertToFloat();
     valueMapping[constantOp->getResult()] =
         llvm::ConstantFP::get(type->getContext(), llvm::APFloat(value));
@@ -520,10 +512,8 @@ bool ModuleLowerer::convertInstruction(const Instruction &inst) {
     llvm::Type *type = convertType(constantOp->getType());
     if (!type)
       return true;
-    if (!isa<llvm::IntegerType>(type)) {
-      inst.emitError("only integer types are supported");
-      return true;
-    }
+    if (!isa<llvm::IntegerType>(type))
+      return inst.emitError("only integer types are supported");
     auto attr = (constantOp->getValue()).cast<IntegerAttr>();
     // Create a new APInt even if we can extract one from the attribute, because
     // attributes are currently hardcoded to be 64-bit APInts and LLVM will
@@ -569,7 +559,7 @@ bool ModuleLowerer::convertInstruction(const Instruction &inst) {
     const SSAValue *container = dimOp->getOperand();
     MemRefType type = container->getType().dyn_cast<MemRefType>();
     if (!type)
-      return dimOp->emitError("only memref types are supported"), true;
+      return dimOp->emitError("only memref types are supported");
 
     auto shape = type.getShape();
     auto index = dimOp->getIndex();
@@ -641,8 +631,7 @@ bool ModuleLowerer::convertInstruction(const Instruction &inst) {
                          blockMapping[condBranchInst->getFalseDest()]);
     return false;
   }
-  inst.emitError("unsupported operation");
-  return true;
+  return inst.emitError("unsupported operation");
 }
 
 bool ModuleLowerer::convertBasicBlock(const BasicBlock &bb,

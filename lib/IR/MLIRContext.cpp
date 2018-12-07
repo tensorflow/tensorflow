@@ -540,9 +540,10 @@ void MLIRContext::emitDiagnostic(Location location, const llvm::Twine &message,
   os.flush();
 }
 
-void MLIRContext::emitError(Location location,
+bool MLIRContext::emitError(Location location,
                             const llvm::Twine &message) const {
   emitDiagnostic(location, message, DiagnosticKind::Error);
+  return true;
 }
 
 //===----------------------------------------------------------------------===//

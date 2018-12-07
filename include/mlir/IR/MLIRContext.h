@@ -79,15 +79,15 @@ public:
   /// Return the current diagnostic handler, or null if none is present.
   DiagnosticHandlerTy getDiagnosticHandler() const;
 
-  /// This emits an diagnostic using the registered issue handle if present, or
-  /// with the default behavior if not.  The MLIR compiler should not generally
+  /// Emit a diagnostic using the registered issue handle if present, or with
+  /// the default behavior if not.  The MLIR compiler should not generally
   /// interact with this, it should use methods on Operation instead.
   void emitDiagnostic(Location location, const Twine &message,
                       DiagnosticKind kind) const;
 
-  /// Emits an error message using the registered issue handle if present, or to
-  /// the standard error stream otherwise.
-  void emitError(Location location, const Twine &message) const;
+  /// Emit an error message using the registered issue handle if present, or to
+  /// the standard error stream otherwise and return true.
+  bool emitError(Location location, const Twine &message) const;
 
   // This is effectively private given that only MLIRContext.cpp can see the
   // MLIRContextImpl type.

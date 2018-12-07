@@ -508,11 +508,9 @@ bool ReturnOp::verify() const {
                        Twine(results.size()));
 
   for (unsigned i = 0, e = results.size(); i != e; ++i)
-    if (getOperand(i)->getType() != results[i]) {
-      emitError("type of return operand " + Twine(i) +
-                " doesn't match function result type");
-      return true;
-    }
+    if (getOperand(i)->getType() != results[i])
+      return emitError("type of return operand " + Twine(i) +
+                       " doesn't match function result type");
 
   return false;
 }

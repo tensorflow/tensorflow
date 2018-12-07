@@ -185,10 +185,8 @@ public:
 
     // Check for the right kind of attribute.
     result = type.dyn_cast<TypeType>();
-    if (!result) {
-      emitError(loc, "invalid kind of type specified");
-      return true;
-    }
+    if (!result)
+      return emitError(loc, "invalid kind of type specified");
 
     return false;
   }
@@ -241,10 +239,8 @@ public:
 
     // Check for the right kind of attribute.
     result = attr.dyn_cast<AttrType>();
-    if (!result) {
-      emitError(loc, "invalid kind of constant specified");
-      return true;
-    }
+    if (!result)
+      return emitError(loc, "invalid kind of constant specified");
 
     return false;
   }

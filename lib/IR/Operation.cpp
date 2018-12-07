@@ -278,19 +278,17 @@ void Operation::emitWarning(const Twine &message) const {
 }
 
 /// Emit an error about fatal conditions with this operation, reporting up to
-/// any diagnostic handlers that may be listening.  NOTE: This may terminate
-/// the containing application, only use when the IR is in an inconsistent
-/// state.
-void Operation::emitError(const Twine &message) const {
-  getContext()->emitDiagnostic(getLoc(), message,
-                               MLIRContext::DiagnosticKind::Error);
+/// any diagnostic handlers that may be listening.  This function always returns
+/// true.  NOTE: This may terminate the containing application, only use when
+/// the IR is in an inconsistent state.
+bool Operation::emitError(const Twine &message) const {
+  return getContext()->emitError(getLoc(), message);
 }
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
 bool Operation::emitOpError(const Twine &message) const {
-  emitError(Twine('\'') + getName().getStringRef() + "' op " + message);
-  return true;
+  return emitError(Twine('\'') + getName().getStringRef() + "' op " + message);
 }
 
 /// Remove this operation from its parent block and delete it.
@@ -380,8 +378,8 @@ void OpState::print(OpAsmPrinter *p) const {
 /// any diagnostic handlers that may be listening.  NOTE: This may terminate
 /// the containing application, only use when the IR is in an inconsistent
 /// state.
-void OpState::emitError(const Twine &message) const {
-  getOperation()->emitError(message);
+bool OpState::emitError(const Twine &message) const {
+  return getOperation()->emitError(message);
 }
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is
@@ -557,19 +555,15 @@ static bool verifyBBArguments(
     llvm::iterator_range<Operation::const_operand_iterator> operands,
     const BasicBlock *destBB, const Operation *op) {
   unsigned operandCount = std::distance(operands.begin(), operands.end());
-  if (operandCount != destBB->getNumArguments()) {
-    op->emitError("branch has " + Twine(operandCount) +
-                  " operands, but target block has " +
-                  Twine(destBB->getNumArguments()));
-    return true;
-  }
+  if (operandCount != destBB->getNumArguments())
+    return op->emitError("branch has " + Twine(operandCount) +
+                         " operands, but target block has " +
+                         Twine(destBB->getNumArguments()));
 
   auto operandIt = operands.begin();
   for (unsigned i = 0, e = operandCount; i != e; ++i, ++operandIt) {
-    if ((*operandIt)->getType() != destBB->getArgument(i)->getType()) {
-      op->emitError("type mismatch in bb argument #" + Twine(i));
-      return true;
-    }
+    if ((*operandIt)->getType() != destBB->getArgument(i)->getType())
+      return op->emitError("type mismatch in bb argument #" + Twine(i));
   }
 
   return false;
@@ -580,10 +574,8 @@ static bool verifyTerminatorSuccessors(const Operation *op) {
   const Function *fn = op->getOperationFunction();
   for (unsigned i = 0, e = op->getNumSuccessors(); i != e; ++i) {
     auto *succ = op->getSuccessor(i);
-    if (succ->getFunction() != fn) {
-      op->emitError("reference to block defined in another function");
-      return true;
-    }
+    if (succ->getFunction() != fn)
+      return op->emitError("reference to block defined in another function");
     if (verifyBBArguments(op->getSuccessorOperands(i), succ, op))
       return true;
   }

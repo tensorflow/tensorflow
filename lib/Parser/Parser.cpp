@@ -228,8 +228,7 @@ ParseResult Parser::emitError(SMLoc loc, const Twine &message) {
   if (getToken().is(Token::error))
     return ParseFailure;
 
-  getContext()->emitDiagnostic(getEncodedSourceLocation(loc), message,
-                               MLIRContext::DiagnosticKind::Error);
+  getContext()->emitError(getEncodedSourceLocation(loc), message);
   return ParseFailure;
 }
 

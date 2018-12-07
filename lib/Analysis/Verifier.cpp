@@ -53,13 +53,11 @@ namespace {
 class Verifier {
 public:
   bool failure(const Twine &message, const Operation &value) {
-    value.emitError(message);
-    return true;
+    return value.emitError(message);
   }
 
   bool failure(const Twine &message, const Function &fn) {
-    fn.emitError(message);
-    return true;
+    return fn.emitError(message);
   }
 
   bool failure(const Twine &message, const BasicBlock &bb) {

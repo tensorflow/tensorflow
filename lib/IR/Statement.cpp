@@ -164,13 +164,12 @@ void Statement::emitWarning(const Twine &message) const {
                                MLIRContext::DiagnosticKind::Warning);
 }
 
-/// Emit an error about fatal conditions with this statement, reporting up to
-/// any diagnostic handlers that may be listening.  NOTE: This may terminate
-/// the containing application, only use when the IR is in an inconsistent
-/// state.
-void Statement::emitError(const Twine &message) const {
-  getContext()->emitDiagnostic(getLoc(), message,
-                               MLIRContext::DiagnosticKind::Error);
+/// Emit an error about fatal conditions with this operation, reporting up to
+/// any diagnostic handlers that may be listening.  This function always
+/// returns true.  NOTE: This may terminate the containing application, only
+/// use when the IR is in an inconsistent state.
+bool Statement::emitError(const Twine &message) const {
+  return getContext()->emitError(getLoc(), message);
 }
 //===----------------------------------------------------------------------===//
 // ilist_traits for Statement
