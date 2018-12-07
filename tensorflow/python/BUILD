@@ -3251,6 +3251,7 @@ cuda_py_test(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
@@ -3835,6 +3836,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":util",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
