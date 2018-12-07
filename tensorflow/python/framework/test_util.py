@@ -1277,6 +1277,63 @@ class CapturedWrites(object):
     return output_data
 
 
+class FakeEagerSession(object):
+  """Fake session so tests that conditionally use placeholders can use eager.
+
+  There are a number of tests that conditionally use placeholders for shape
+  inference. The pattern is demonstrated here:
+
+  ```python
+  with self.cached_session() as sess:
+    if static_shape:
+      y = math_ops.matmul(x, ...)
+      feed_dict = {}
+    else:
+      x_ph = array_ops.placeholder(...)
+      y = math_ops.matmul(x_ph, ...)
+      feed_dict = {x_ph: x}
+    val = sess.run(y, feed_dict=feed_dict)
+  ```
+
+  Since the feed_dict is empty when not using placeholders we should be able to
+  call self.evaluate(), however this requires rewriting the test case.
+  This class shold be considered a stop-gap solution to get tests running with
+  eager with minimal changes to the actual test.
+  """
+
+  def __init__(self, test_case):
+    self._test_case = test_case
+
+  def run(self, fetches, *args, **kwargs):
+    """Evalaute `fetches`.
+
+    Fail if additional args are specified.
+
+    Args:
+      fetches: A Tensor or a nested list/tuple of Tensors.
+      *args: Positional arguments
+      **kwargs: Keyword arguments
+
+    Raises:
+      RuntimeError: If args or kwargs are specified.
+
+    Returns:
+      Tensors as numpy values.
+    """
+    feed_dict = kwargs.pop("feed_dict", {})
+    if feed_dict:
+      raise RuntimeError(
+          "feed_dict is not supported when eager execution is enabled "
+          "(in this case, sess.run(t) is shorthand for t.numpy()")
+
+    if args or kwargs:
+      raise RuntimeError(
+          "Optional args are not supported when eager execution is enabled "
+          "(in this case, sess.run(t) is shorthand for t.numpy()")
+
+    return self._test_case.evaluate(fetches)
+
+
 class ErrorLoggingSession(session.Session):
   """Wrapper around a Session that logs errors in run().
   """
@@ -1584,7 +1641,7 @@ class TensorFlowTestCase(googletest.TestCase):
       the graph building and execution code in a test case.
     """
     if context.executing_eagerly():
-      yield None
+      yield FakeEagerSession(self)
     else:
       sess = self._get_cached_session(
           graph, config, force_gpu, crash_if_inconsistent_args=True)

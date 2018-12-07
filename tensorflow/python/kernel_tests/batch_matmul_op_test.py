@@ -198,6 +198,7 @@ if __name__ == "__main__":
     for adjoint_a_ in False, True:
       for adjoint_b_ in False, True:
         name = "%s_%s_%s" % (dtype_.__name__, adjoint_a_, adjoint_b_)
+        # TF2 does not support placeholders under eager so we skip it
         for use_static_shape_ in set([True, tf2.enabled()]):
           setattr(BatchMatmulOpTest,
                   "testBatchMatmulOp_" + name + ("_%s" % use_static_shape_),

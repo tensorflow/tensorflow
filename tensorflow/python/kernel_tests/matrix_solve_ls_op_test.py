@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -150,13 +151,17 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
     empty1 = np.empty([0, 2])
     for fast in [True, False]:
       with self.cached_session(use_gpu=True):
-        tf_ans = linalg_ops.matrix_solve_ls(empty0, empty0, fast=fast).eval()
+        tf_ans = self.evaluate(
+            linalg_ops.matrix_solve_ls(empty0, empty0, fast=fast))
         self.assertEqual(tf_ans.shape, (0, 0))
-        tf_ans = linalg_ops.matrix_solve_ls(empty0, full, fast=fast).eval()
+        tf_ans = self.evaluate(
+            linalg_ops.matrix_solve_ls(empty0, full, fast=fast))
         self.assertEqual(tf_ans.shape, (0, 2))
-        tf_ans = linalg_ops.matrix_solve_ls(full, empty0, fast=fast).eval()
+        tf_ans = self.evaluate(
+            linalg_ops.matrix_solve_ls(full, empty0, fast=fast))
         self.assertEqual(tf_ans.shape, (2, 0))
-        tf_ans = linalg_ops.matrix_solve_ls(empty1, empty1, fast=fast).eval()
+        tf_ans = self.evaluate(
+            linalg_ops.matrix_solve_ls(empty1, empty1, fast=fast))
         self.assertEqual(tf_ans.shape, (2, 2))
 
   @test_util.run_deprecated_v1
@@ -350,7 +355,8 @@ class MatrixSolveLsBenchmark(test_lib.Benchmark):
 
 if __name__ == "__main__":
   for dtype_ in [np.float32, np.float64, np.complex64, np.complex128]:
-    for use_placeholder_ in [True, False]:
+    # TF2 does not support placeholders under eager so we skip it
+    for use_placeholder_ in set([False, not tf2.enabled()]):
       for fast_ in [True, False]:
         l2_regularizers = [0] if dtype_ == np.complex128 else [0, 0.1]
         for l2_regularizer_ in l2_regularizers:

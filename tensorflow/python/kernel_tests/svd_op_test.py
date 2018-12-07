@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -117,13 +118,13 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         diag_s = array_ops.concat([diag_s, zeros], a.ndim - 1)
     a_recon = math_ops.matmul(u, diag_s)
     a_recon = math_ops.matmul(a_recon, v, adjoint_b=True)
-    self.assertAllClose(a_recon.eval(), a, rtol=tol, atol=tol)
+    self.assertAllClose(a_recon, a, rtol=tol, atol=tol)
 
   def CheckUnitary(self, x, tol):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
     xx = math_ops.matmul(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
-    self.assertAllClose(identity.eval(), self.evaluate(xx), atol=tol)
+    self.assertAllClose(identity, xx, atol=tol)
 
   def Test(self):
     is_complex = dtype_ in (np.complex64, np.complex128)
@@ -263,7 +264,8 @@ if __name__ == "__main__":
           for cols in 1, 2, 5, 10, 32, 100:
             for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
               shape = batch_dims + (rows, cols)
-              for use_static_shape in True, False:
+              # TF2 does not support placeholders under eager so we skip it
+              for use_static_shape in set([True, tf2.enabled()]):
                 name = "%s_%s_static_shape_%s__compute_uv_%s_full_%s" % (
                     dtype.__name__, "_".join(map(str, shape)), use_static_shape,
                     compute_uv, full_matrices)
