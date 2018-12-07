@@ -59,11 +59,10 @@ gtl::InlinedVector<int64, 4> IntTensorToInt64Vec(const Tensor& tensor) {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 // A version of SharedValidation (slice_op.h) written for input that is in
-// either Mkl layout or Tensorflow layout.
-// A shared code to validate input shapes and check for identity, which is not
-// dependent on the type of T.
-// We do this to reduce code size by not duplicating
-// all this for all T (float, double, int32, etc.)
+// either Mkl layout or Tensorflow layout. A shared code to validate input
+// shapes and check for identity, which is not dependent on the type of T.
+// We do this to reduce code size by not duplicating all this for all T
+// (float, double, int32, etc.)
 static void ValidateMklInputs(OpKernelContext* context, bool* is_identity,
                               gtl::InlinedVector<int64, 4>* begin,
                               gtl::InlinedVector<int64, 4>* size) {
