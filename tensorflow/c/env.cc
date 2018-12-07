@@ -145,3 +145,17 @@ TF_StringStream* TF_GetLocalTempDirectories() {
   list->position = 0;
   return list;
 }
+
+TF_CAPI_EXPORT extern uint64_t TF_NowNanos(void) {
+  return ::tensorflow::Env::Default()->NowNanos();
+}
+
+// Returns the number of microseconds since the Unix epoch.
+TF_CAPI_EXPORT extern uint64_t TF_NowMicros(void) {
+  return ::tensorflow::Env::Default()->NowMicros();
+}
+
+// Returns the number of seconds since the Unix epoch.
+TF_CAPI_EXPORT extern uint64_t TF_NowSeconds(void) {
+  return ::tensorflow::Env::Default()->NowSeconds();
+}

@@ -92,3 +92,9 @@ TEST(TestEnv, TestDirHandling) {
 
   TF_StringStreamDone(tempdirs);
 }
+
+TEST(TestEnv, TestTimeFunctions) {
+  ASSERT_GE(TF_NowSeconds(), 946684800);  // Midnight Jan 1, 2000
+  ASSERT_GE(TF_NowMicros(), 946684800 * 1e6);
+  ASSERT_GE(TF_NowNanos(), 946684800 * 1e9);
+}
