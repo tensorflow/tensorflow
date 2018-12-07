@@ -279,7 +279,6 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/experimental/ops:optimization",
-        "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
