@@ -232,10 +232,14 @@ def check_num_samples(ins,
   return None  # Edge case where ins == [static_learning_phase]
 
 
-def standardize_single_array(x):
+def standardize_single_array(x, expected_shape=None):
+  """Expand data of shape (x,) to (x, 1), unless len(expected_shape)==1."""
   if x is None:
     return None
-  if x.shape is not None and len(x.shape) == 1:
+
+  if (x.shape is not None
+      and len(x.shape) == 1
+      and (expected_shape is None or len(expected_shape) != 1)):
     if tensor_util.is_tensor(x):
       x = array_ops.expand_dims(x, axis=1)
     else:
@@ -301,7 +305,11 @@ def standardize_input_data(data,
   else:
     data = data.values if data.__class__.__name__ == 'DataFrame' else data
     data = [data]
-  data = [standardize_single_array(x) for x in data]
+  if shapes is not None:
+    data = [standardize_single_array(x, shape)
+            for (x, shape) in zip(data, shapes)]
+  else:
+    data = [standardize_single_array(x) for x in data]
 
   if len(data) != len(names):
     if data and hasattr(data[0], 'shape'):
