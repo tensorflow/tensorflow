@@ -2704,7 +2704,7 @@ class UnifiedLSTM(LSTM):
       # both normal and CuDNN implementations.
       if self.go_backwards:
         # Reverse time axis.
-        inputs = K.reverse(inputs, 1)
+        inputs = K.reverse(inputs, 0 if self.time_major else 1)
 
       if 0 < self.dropout < 1:
         if self._dropout_mask is None:
