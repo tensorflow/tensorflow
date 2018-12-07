@@ -161,7 +161,7 @@ def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
             math_ops.matmul(tf_v, array_ops.matrix_diag(tf_e)),
             tf_v,
             adjoint_b=True)
-        self.assertAllClose(a_ev.eval(), a, atol=atol)
+        self.assertAllClose(self.evaluate(a_ev), a, atol=atol)
 
         # Compare to numpy.linalg.eigh.
         CompareEigenDecompositions(self, np_e, np_v, self.evaluate(tf_e),
@@ -169,7 +169,7 @@ def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
       else:
         tf_e = linalg_ops.self_adjoint_eigvals(constant_op.constant(a))
         self.assertAllClose(
-            np.sort(np_e, -1), np.sort(tf_e.eval(), -1), atol=atol)
+            np.sort(np_e, -1), np.sort(self.evaluate(tf_e), -1), atol=atol)
 
   return Test
 
