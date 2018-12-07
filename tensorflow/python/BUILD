@@ -3236,6 +3236,7 @@ cuda_py_test(
     srcs = ["ops/control_flow_ops_test.py"],
     additional_deps = [
         ":array_ops",
+        ":cond_v2",
         ":control_flow_ops",
         ":embedding_ops",
         ":framework_for_generated_wrappers",
@@ -3251,6 +3252,7 @@ cuda_py_test(
         ":util",
         ":variable_scope",
         ":variables",
+        ":while_v2",
         "//tensorflow/python/eager:def_function",
     ],
 )
