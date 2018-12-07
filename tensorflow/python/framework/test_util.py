@@ -494,7 +494,8 @@ def with_control_flow_v2(cls):
     return cls
 
   for name, value in cls.__dict__.copy().items():
-    if (callable(value) and name.startswith("test") and
+    if (callable(value) and
+        name.startswith(unittest.TestLoader.testMethodPrefix) and
         not getattr(value, "_disable_control_flow_v2", False)):
       setattr(cls, name + "WithControlFlowV2", enable_control_flow_v2(value))
   return cls
@@ -893,8 +894,10 @@ def run_all_in_graph_and_eager_modes(cls):
   """Execute all test methods in the given class with and without eager."""
   base_decorator = run_in_graph_and_eager_modes
   for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith("test") and not (
-        name.startswith("testSkipEager") or name.startswith("test_skip_eager")):
+    if (callable(value) and
+        name.startswith(unittest.TestLoader.testMethodPrefix) and
+        not (name.startswith("testSkipEager")
+             or name.startswith("test_skip_eager"))):
       setattr(cls, name, base_decorator(value))
   return cls
 
@@ -1059,7 +1062,16 @@ def run_v1_only(reason, func=None):
 
   def decorator(f):
     if tf_inspect.isclass(f):
-      raise ValueError("`run_v1_only` only supports test methods.")
+      setup = f.__dict__.get("setUp")
+      if setup is not None:
+        setattr(f, "setUp", decorator(setup))
+
+      for name, value in f.__dict__.copy().items():
+        if (callable(value) and
+            name.startswith(unittest.TestLoader.testMethodPrefix)):
+          setattr(f, name, decorator(value))
+
+      return f
 
     def decorated(self, *args, **kwargs):
       if tf2.enabled():
