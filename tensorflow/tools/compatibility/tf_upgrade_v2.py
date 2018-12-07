@@ -51,6 +51,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.batch_to_space": {
             "block_size": "block_shape",
         },
+        "tf.space_to_batch": {
+            "block_size": "block_shape",
+        },
         "tf.constant": {
             "verify_shape": "verify_shape_is_now_always_true",
         },
@@ -294,6 +297,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.manual_symbol_renames = {
         "tf.batch_to_space_nd":
             "tf.batch_to_space",
+        "tf.space_to_batch_nd":
+            "tf.space_to_batch",
+        "tf.nn.space_to_batch":
+            "tf.space_to_batch",
         "tf.extract_image_patches":
             "tf.image.extract_image_patches",
         "tf.gfile.Copy":
@@ -497,6 +504,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.argmax",
         "tf.argmin",
         "tf.batch_to_space",
+        "tf.nn.space_to_batch",
         "tf.boolean_mask",
         "tf.convert_to_tensor",
         "tf.nn.moments",

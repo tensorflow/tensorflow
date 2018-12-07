@@ -2652,7 +2652,7 @@ def required_space_to_batch_paddings(input_shape,
     return result_paddings, result_crops
 
 
-@tf_export("nn.space_to_batch", v1=["nn.space_to_batch", "space_to_batch"])
+@tf_export(v1=["nn.space_to_batch", "space_to_batch"])
 @deprecation.deprecated_endpoints("space_to_batch")
 def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=redefined-builtin
   result = space_to_batch_nd(
@@ -2665,6 +2665,14 @@ def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=r
 
 
 space_to_batch.__doc__ = gen_array_ops.space_to_batch.__doc__
+
+
+@tf_export("space_to_batch", "nn.space_to_batch", v1=[])
+def space_to_batch_v2(input, block_shape, paddings, name=None):  # pylint: disable=redefined-builtin
+  return space_to_batch_nd(input, block_shape, paddings, name)
+
+
+space_to_batch_v2.__doc__ = gen_array_ops.space_to_batch_nd.__doc__
 
 
 @tf_export(v1=["nn.space_to_depth", "space_to_depth"])
