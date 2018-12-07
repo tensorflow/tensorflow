@@ -1131,9 +1131,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     std::vector<string> fused_ops;
     TF_CHECK_OK(GetNodeAttr(n->def(), "fused_ops", &fused_ops));
-    return (CompareFusedOps(fused_ops, {"BiasAdd"}) ||
-            CompareFusedOps(fused_ops, {"Relu"}) ||
-            CompareFusedOps(fused_ops, {"BiasAdd", "Relu"}));
+    return (fused_ops == std::vector<string>{"BiasAdd"} ||
+            fused_ops == std::vector<string>{"Relu"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "Relu"});
   }
 
   // Rewrites input node to a new node specified by its matching rewrite info.

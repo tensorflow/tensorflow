@@ -1099,12 +1099,12 @@ class MklConvOp : public OpKernel {
   }
 
  protected:
-  void FuseBiasAdd(bool fuse_bias_add) { fuse_biasadd_ = fuse_bias_add; }
-  void FuseRelu(bool fuse_relu) { fuse_relu_ = fuse_relu; }
+  void set_fuse_biasadd(bool fuse_biasadd) { fuse_biasadd_ = fuse_biasadd; }
+  void set_fuse_relu(bool fuse_relu) { fuse_relu_ = fuse_relu; }
 
-  // This method is called for the base class MklConvOp, which handles the
+  // This method is for the base class MklConvOp, which handles the
   // floating point implementation of Conv. The quantized conv implementations
-  // will use overiddern versions of this method.
+  // will use overidden versions of this method.
   virtual void ExtendConvFwdParams(OpKernelContext* context,
                                    MklConvFwdParams& params) {
     // Create a string from data types of input, filter, bias, and output.
@@ -1114,6 +1114,8 @@ class MklConvOp : public OpKernel {
     params.dtypes.append(typeid(Toutput).name());
 
     // Add fusions as post ops
+    // Note: Fusion of BiasAdd is handled directly inside MklConvOp by
+    // checking fuse_biasadd_ flag.
     if (fuse_relu_) params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
   }
 
@@ -1169,7 +1171,7 @@ class MklConvOp : public OpKernel {
   Padding padding_;
   TensorFormat data_format_;
 
-  // Initialize to value the template is instantiated with
+  // Initialize to values the template is instantiated with
   bool fuse_biasadd_ = biasEnabled;
   bool fuse_relu_ = false;
 
@@ -1177,11 +1179,6 @@ class MklConvOp : public OpKernel {
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
   const int kDilationH = 0, kDilationW = 1;
 
-  // Helper function to compare fused_ops attribute strings
-  bool CompareFusedOps(const std::vector<string>& fused_ops,
-                       const std::vector<string>& expected) {
-    return fused_ops == expected;
-  }
   // Allocate filter output tensor.
   void AllocateFilterOutputTensor(
       OpKernelContext* context,
@@ -1254,27 +1251,27 @@ class MklFusedConvOp : public MklConvOp<Device, Tinput, Tfilter, Tbias, Toutput,
   explicit MklFusedConvOp(OpKernelConstruction* context)
       : MklConvOp<Device, Tinput, Tfilter, Tbias, Toutput, Ttemp_output, false>(
             context) {
-    // Since we came here through the registration of _MklFusedConv2D then get
+    // Since we came here through the registration of _MklFusedConv2D, get
     // all information from 'fused_ops' and 'num_args'
     std::vector<string> fused_ops;
     OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &fused_ops));
 
     int num_args;
     OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
-    OP_REQUIRES(context, (num_args == 0 || !fused_ops.empty()),
+    OP_REQUIRES(context, !fused_ops.empty(),
                 errors::InvalidArgument(
                     "Fused Conv2D must have at least one fused op."));
 
-    if (CompareFusedOps(fused_ops, {"BiasAdd"})) {
-      this->FuseBiasAdd(true);
+    if (fused_ops == std::vector<string>{"BiasAdd"}) {
+      this->set_fuse_biasadd(true);
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
-    } else if (CompareFusedOps(fused_ops, {"Relu"})) {
-      this->FuseRelu(true);
-    } else if (CompareFusedOps(fused_ops, {"BiasAdd", "Relu"})) {
-      this->FuseBiasAdd(true);
-      this->FuseRelu(true);
+    } else if (fused_ops == std::vector<string>{"Relu"}) {
+      this->set_fuse_relu(true);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_relu(true);
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
@@ -1873,7 +1870,6 @@ TF_CALL_float(REGISTER_MKL_CPU_2D);
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklFusedConvOp<CPUDevice, T, T, T, T, T>);
-// Note we are registering _MklFusedConv2D.
 // We check the fused_ops attributes to decide if bias is enabled or not.
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_FUSED);
