@@ -1,7 +1,7 @@
 # Where component owners are known, add them here.
 
 /tenosrflow/core/debug @caisq
-/tensorflow/core/nccl/ @azaks @csigg
+/tensorflow/core/nccl/ @azaks2 @chsigg
 /tensorflow/core/platform/windows/ @mrry
 /tensorflow/core/platform/s3 @yongtang
 /tensorflow/go @asimshankar
