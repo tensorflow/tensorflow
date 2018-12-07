@@ -97,21 +97,24 @@ Status FoldSubDivMulBatchNorms(const GraphDef& input_graph_def,
           },
           {"Const"}                     // bias const beta
         }
-      }, // clang-format on */
+      },  // clang-format on */
       [&node_map](const NodeMatch& match, const std::set<string>& input_nodes,
          const std::set<string>& output_nodes,
-         std::vector<NodeDef>* new_nodes) {          
-        
+         std::vector<NodeDef>* new_nodes) {
         // Find all the nodes we expect in the subgraph.
         const NodeDef& biasadd_node   = match.node;
-        // const NodeDef& mul_node    = match.inputs[0].node;
         const NodeDef& beta_node      = match.inputs[1].node;
         const NodeDef& gamma_node     = match.inputs[0].inputs[1].node;
-        const NodeDef& variance_node  = match.inputs[0].inputs[0].inputs[1].node;
-        const NodeDef& conv_node      = match.inputs[0].inputs[0].inputs[0].inputs[0].node;
-        const NodeDef& mean_node      = match.inputs[0].inputs[0].inputs[0].inputs[1].node;
-        const NodeDef& input_node     = match.inputs[0].inputs[0].inputs[0].inputs[0].inputs[0].node;
-        const NodeDef& weights_node   = match.inputs[0].inputs[0].inputs[0].inputs[0].inputs[1].node;
+        const NodeDef& variance_node  =
+            match.inputs[0].inputs[0].inputs[1].node;
+        const NodeDef& conv_node      =
+            match.inputs[0].inputs[0].inputs[0].inputs[0].node;
+        const NodeDef& mean_node      =
+            match.inputs[0].inputs[0].inputs[0].inputs[1].node;
+        const NodeDef& input_node     =
+            match.inputs[0].inputs[0].inputs[0].inputs[0].inputs[0].node;
+        const NodeDef& weights_node   =
+            match.inputs[0].inputs[0].inputs[0].inputs[0].inputs[1].node;
 
         // Verify all the Const Nodes are proper.
         CHECK_EQ("Const", beta_node.op());
@@ -123,10 +126,10 @@ Status FoldSubDivMulBatchNorms(const GraphDef& input_graph_def,
         // Get the Tensor Values of all the constant nodes
         Tensor beta     = GetNodeTensorAttr(beta_node,    "value");
         Tensor gamma    = GetNodeTensorAttr(gamma_node,   "value");
-        Tensor variance = GetNodeTensorAttr(variance_node,"value");
+        Tensor variance = GetNodeTensorAttr(variance_node, "value");
         Tensor mean     = GetNodeTensorAttr(mean_node,    "value");
         Tensor weights  = GetNodeTensorAttr(weights_node, "value");
-        
+
         // Let us find the new weights(Modify const node to Conv2D)
         // --------------------------------------------------------
         // Get the Shape and the actual dimensions of each needed tensor
@@ -139,23 +142,25 @@ Status FoldSubDivMulBatchNorms(const GraphDef& input_graph_def,
         CHECK_EQ(weights_cols, variance_cols);
 
         // Flat all dimensions except the last one so that we can iterate.
-        auto weights_matrix = weights.flat_inner_dims<float>(); 
-        auto gamma_matrix = gamma.flat_inner_dims<float>();//gamma is a scalar value
-        auto variance_matrix = variance.flat_inner_dims<float>();//variance is 1d vector
+        auto weights_matrix = weights.flat_inner_dims<float>();
+        // gamma is a scalar value
+        auto gamma_matrix = gamma.flat_inner_dims<float>();
+        // variance is 1D vector
+        auto variance_matrix = variance.flat_inner_dims<float>();
 
         // Perform the actual calculation to get w_new(new_weights_matrix)
         Tensor new_weights(DT_FLOAT, weights.shape());
         auto new_weights_matrix = new_weights.flat_inner_dims<float>();
         for (int64 row = 0; row < weights_matrix.dimension(0); ++row) {
           for (int64 col = 0; col < weights_cols; ++col) {
-            new_weights_matrix(row, col) =
-                weights_matrix(row, col) * gamma_matrix(col) / variance_matrix(col);
+            new_weights_matrix(row, col) = weights_matrix(row, col)
+                * gamma_matrix(col) / variance_matrix(col);
           }
         }
 
         // Let us find the new Beta (Modify Const node to BiasAdd)
         // -------------------------------------------------------
-        
+
         // Get the Shape and the actual dimensions of each needed tensor
         const int64 beta_cols = beta.shape().dim_size(0);
         const int64 mean_cols = mean.shape().dim_size(0);
@@ -166,19 +171,21 @@ Status FoldSubDivMulBatchNorms(const GraphDef& input_graph_def,
         CHECK_EQ(beta_cols, variance_cols);
 
         // Flat all dimensions except the last one so that we can iterate.
-        auto beta_matrix = beta.flat_inner_dims<float>();// beta is a scalar value
-        auto mean_matrix = mean.flat_inner_dims<float>();// mean is a scalar value
+        // beta is a scalar value
+        auto beta_matrix = beta.flat_inner_dims<float>();
+        // mean is a scalar value
+        auto mean_matrix = mean.flat_inner_dims<float>();
 
         // Perform the actual calculation to get b_new(new_beta_matrix)
         Tensor new_beta(DT_FLOAT, beta.shape());
         auto new_beta_matrix = new_beta.flat_inner_dims<float>();
         for (int64 col = 0; col < beta_cols; ++col) {
-          new_beta_matrix(col) =
-              (((0- mean_matrix(col)) * gamma_matrix(col)) / variance_matrix(col) ) + beta_matrix(col);
+          new_beta_matrix(col) = (((0- mean_matrix(col)) * gamma_matrix(col))
+                                 / variance_matrix(col) ) + beta_matrix(col);
         }
 
-        // Now that we have calculated the w_new and b_new Construct the new modified graph
-        // --------------------------------------------------------------------------------
+        // Construct the new modified graph
+        // --------------------------------
         // Construct the new weights const node.
         NodeDef new_weights_node;
         new_weights_node.set_op("Const");
@@ -193,7 +200,7 @@ Status FoldSubDivMulBatchNorms(const GraphDef& input_graph_def,
         SetNodeAttr("dtype", DT_FLOAT, &new_beta_node);
         SetNodeTensorAttr<float>("value", new_beta, &new_beta_node);
 
-        // Construct the new BiasAdd node. 
+        // Construct the new BiasAdd node.
         // Note that the input of BiasAdd node is the new beta const node
         // and the conv 2d node. (The Sub, TrueDiv and Mul is removed.)
         NodeDef bias_add_node;
@@ -209,16 +216,16 @@ Status FoldSubDivMulBatchNorms(const GraphDef& input_graph_def,
         // The input and convolution can be copied straight over.
 
         // Construct the new graph with the new nodes.
-        new_nodes->push_back(input_node);       // insert input node first.
-        new_nodes->push_back(new_weights_node); // insert the new weights node.
-        new_nodes->push_back(conv_node);        // insert the conv node.        
-        new_nodes->push_back(new_beta_node);    // insert the beta node.    
-        new_nodes->push_back(bias_add_node);    // insert the biasadd node.
+        new_nodes->push_back(input_node);        // insert input node first.
+        new_nodes->push_back(new_weights_node);  // insert the new weights node.
+        new_nodes->push_back(conv_node);         // insert the conv node.
+        new_nodes->push_back(new_beta_node);     // insert the beta node.
+        new_nodes->push_back(bias_add_node);     // insert the biasadd node.
 
-        return Status::OK();        
+        return Status::OK();
       },
       options, &replaced_graph_def));
-  
+
   *output_graph_def = replaced_graph_def;
   return Status::OK();
 }
