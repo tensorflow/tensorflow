@@ -194,8 +194,8 @@ struct MaterializationState {
   DenseMap<const MLValue *, MLValue *> *substitutionsMap;
 };
 
-struct MaterializeVectors : public FunctionPass {
-  MaterializeVectors() : FunctionPass(&MaterializeVectors::passID) {}
+struct MaterializeVectorsPass : public FunctionPass {
+  MaterializeVectorsPass() : FunctionPass(&MaterializeVectorsPass::passID) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
 
@@ -207,7 +207,7 @@ struct MaterializeVectors : public FunctionPass {
 
 } // end anonymous namespace
 
-char MaterializeVectors::passID = 0;
+char MaterializeVectorsPass::passID = 0;
 
 /// Given a shape with sizes greater than 0 along all dimensions,
 /// returns the distance, in number of elements, between a slice in a dimension
@@ -641,7 +641,7 @@ static bool emitSlice(MaterializationState *state,
 ///   3. get the superVectorType for this particular terminator and the
 ///      corresponding hardware vector type (for now limited to F32)
 ///      TODO(ntv): be more general than F32.
-///   4. emit the transitive useDef set to operate on the finer grain vector
+///   4. emit the transitive useDef set to operate on the finer-grain vector
 ///      types.
 ///
 /// Notes
@@ -709,7 +709,7 @@ static bool materialize(MLFunction *f,
   return false;
 }
 
-PassResult MaterializeVectors::runOnMLFunction(MLFunction *f) {
+PassResult MaterializeVectorsPass::runOnMLFunction(MLFunction *f) {
   using matcher::Op;
   LLVM_DEBUG(dbgs() << "\nMaterializeVectors on MLFunction\n");
   LLVM_DEBUG(f->print(dbgs()));
@@ -736,17 +736,15 @@ PassResult MaterializeVectors::runOnMLFunction(MLFunction *f) {
     terminators.insert(cast<OperationStmt>(m.first));
   }
 
-  // Call materialization.
   auto fail = materialize(f, terminators, &state);
-
   return fail ? PassResult::Failure : PassResult::Success;
 }
 
-FunctionPass *mlir::createMaterializeVectors() {
-  return new MaterializeVectors();
+FunctionPass *mlir::createMaterializeVectorsPass() {
+  return new MaterializeVectorsPass();
 }
 
-static PassRegistration<MaterializeVectors>
+static PassRegistration<MaterializeVectorsPass>
     pass("materialize-vectors", "Materializes super-vectors to vectors of the "
                                 "proper size for the hardware");
 
