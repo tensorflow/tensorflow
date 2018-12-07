@@ -28,6 +28,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -732,7 +733,7 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
 
-class UnifiedLSTMPerformanceTest(test.TestCase):
+class UnifiedLSTMPerformanceTest(test.Benchmark):
 
   def _measure_performance(self, test_config, model, x_train, y_train):
     batch = test_config['batch']
@@ -808,11 +809,11 @@ class UnifiedLSTMPerformanceTest(test.TestCase):
                  'Normal LSTM', sec_per_epoch)
     return sec_per_epoch
 
-  @test_util.run_in_graph_and_eager_modes(config=_config, use_gpu=True)
-  def test_performance_with_standard_cudnn_impl(self):
+  def _benchmark_performance_with_standard_cudnn_impl(self):
     if not test.is_gpu_available():
       self.skipTest('performance test will only run on GPU')
 
+    mode = 'eager' if context.executing_eagerly() else 'graph'
     batch = 64
     num_batch = 10
     test_config = {
@@ -832,34 +833,42 @@ class UnifiedLSTMPerformanceTest(test.TestCase):
         num_classes=test_config['output_shape'])
     y_train = keras.utils.to_categorical(y_train, test_config['output_shape'])
 
-    cudnn_duration = self._time_performance_run_cudnn_lstm(
+    cudnn_sec_per_epoch = self._time_performance_run_cudnn_lstm(
         test_config, x_train, y_train)
-    unified_lstm_gpu_duration = self._time_performance_run_unifed_lstm_gpu(
+    unified_lstm_sec_per_epoch = self._time_performance_run_unifed_lstm_gpu(
         test_config, x_train, y_train)
-    normal_lstm_duration = self._time_performance_run_normal_lstm(
+    normal_lstm_sec_per_epoch = self._time_performance_run_normal_lstm(
         test_config, x_train, y_train)
 
-    cudnn_vs_unified = cudnn_duration / unified_lstm_gpu_duration
-    unified_vs_normal = normal_lstm_duration / unified_lstm_gpu_duration
+    cudnn_vs_unified = cudnn_sec_per_epoch / unified_lstm_sec_per_epoch
+    unified_vs_normal = normal_lstm_sec_per_epoch / unified_lstm_sec_per_epoch
 
-    # TODO(scottzhu): reeanble the test after moving it to benchmark test suite.
-    # The current test has performance flakiness issue.
+    self.report_benchmark(name='keras_cudnn_lstm_' + mode,
+                          wall_time=cudnn_sec_per_epoch,
+                          iters=test_config['epoch'],
+                          extras=test_config)
+    self.report_benchmark(name='keras_unified_lstm_' + mode,
+                          wall_time=unified_lstm_sec_per_epoch,
+                          iters=test_config['epoch'],
+                          extras=test_config)
+    self.report_benchmark(name='keras_canonical_lstm_' + mode,
+                          wall_time=normal_lstm_sec_per_epoch,
+                          iters=test_config['epoch'],
+                          extras=test_config)
+
     logging.info('Expect the performance of Unified LSTM is within 80% of '
                  'CuDNN LSTM, got {0:.2f}%'.format(cudnn_vs_unified * 100))
     logging.info('Expect the performance of Unified LSTM is more than 5 times'
                  ' of normal LSTM, got {0:.2f}'.format(unified_vs_normal))
 
-    # Assert the performance diff should be within 80% of the native cudnn.
-    # self.assertGreaterEqual(
-    #     cudnn_vs_unified, 0.80,
-    #     'Expect the performance of Unified LSTM is within 80% of CuDNN LSTM, '
-    #     'but got {0:.2f}%'.format(cudnn_vs_unified * 100))
-    # # Assert the performance diff between CPU impl and GPU impl should be more
-    # # than 5 times.
-    # self.assertGreaterEqual(
-    #     unified_vs_normal, 5,
-    #     'Expect the performance of Unified LSTM is more than 5 times of '
-    #     'normal LSTM, but got {0:.2f}'.format(unified_vs_normal))
+  def benchmark_performance_graph(self):
+    with context.graph_mode(), session_lib.Session(config=_config):
+      self._benchmark_performance_with_standard_cudnn_impl()
+
+  def benchmark_performance_eager(self):
+    with context.eager_mode():
+      self._benchmark_performance_with_standard_cudnn_impl()
+
 
 if __name__ == '__main__':
   test.main()
