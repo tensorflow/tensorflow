@@ -492,7 +492,10 @@ cc_library(
         ":platform_env_internal_hdrs",
     ],
     copts = tf_copts(),
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+    ],
     deps = [
         ":error_codes_proto_cc",
         ":lib",
