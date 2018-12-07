@@ -3515,13 +3515,13 @@ py_library(
         exclude = [
             "**/*test*",
             "training/checkpointable/**/*.py",
+            "training/saving/**/*.py",
             # The following targets have their own build rules (same name as the
             # file):
             "training/basic_session_run_hooks.py",
             "training/checkpoint_management.py",
             "training/distribute.py",
             "training/distribution_strategy_context.py",
-            "training/saveable_object.py",
             "training/saver.py",
             "training/session_run_hook.py",
             "training/training_util.py",
@@ -3597,12 +3597,6 @@ py_library(
 )
 
 py_library(
-    name = "saveable_object",
-    srcs = ["training/saveable_object.py"],
-    srcs_version = "PY2AND3",
-)
-
-py_library(
     name = "checkpoint_management",
     srcs = ["training/checkpoint_management.py"],
     deps = [
@@ -3655,7 +3649,6 @@ py_library(
         ":platform",
         ":pywrap_tensorflow",
         ":resource_variable_ops",
-        ":saveable_object",
         ":session",
         ":state_ops",
         ":string_ops",
@@ -3665,6 +3658,8 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/training/saving:saveable_object_util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

@@ -25,9 +25,9 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:io_ops_gen",
         "//tensorflow/python:platform",
-        "//tensorflow/python:saveable_object",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/saving:saveable_object",
     ],
 )
 
@@ -114,7 +114,6 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:io_ops_gen",
         "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python:saveable_object",
         "//tensorflow/python:saver",
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_shape",
@@ -123,6 +122,9 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/training/saving:functional_saver",
+        "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/training/saving:saveable_object_util",
     ],
 )
 
