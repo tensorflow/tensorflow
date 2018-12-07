@@ -912,6 +912,8 @@ public:
   VectorType getResultType() const {
     return getResult()->getType().cast<VectorType>();
   }
+  SSAValue *getVector() { return getResult(); }
+  const SSAValue *getVector() const { return getResult(); }
   SSAValue *getMemRef() { return getOperand(Offsets::MemRefOffset); }
   const SSAValue *getMemRef() const {
     return getOperand(Offsets::MemRefOffset);

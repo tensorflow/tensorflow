@@ -92,6 +92,9 @@ FunctionPass *createDmaGenerationPass(unsigned lowMemorySpace,
 /// bounds that cannot be replaced.
 FunctionPass *createLowerAffineApplyPass();
 
+/// Creates a pass to lower VectorTransferReadOp and VectorTransferWriteOp.
+FunctionPass *createLowerVectorTransfersPass();
+
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H
