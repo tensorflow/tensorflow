@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import shutil
 import time
 
 from absl.testing import parameterized
@@ -26,6 +28,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -175,6 +178,86 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
                         bias_regularizer=bias_regularizer)
     self.assertFalse(layer.could_use_cudnn)
 
+  def test_unified_lstm_feature_parity_with_canonical_lstm(self):
+    with context.eager_mode():
+      # Run this test under eager only due to b/120160788 for model.set_weights.
+      input_shape = 10
+      rnn_state_size = 8
+      timestep = 4
+      batch = 20
+
+      (x_train, y_train), _ = testing_utils.get_test_data(
+          train_samples=batch,
+          test_samples=0,
+          input_shape=(timestep, input_shape),
+          num_classes=rnn_state_size)
+      y_train = keras.utils.to_categorical(y_train, rnn_state_size)
+
+      inputs = keras.layers.Input(
+          shape=[timestep, input_shape], dtype=dtypes.float32)
+      lstm_layer = keras.layers.LSTM(rnn_state_size,
+                                     recurrent_activation='sigmoid')
+      output = lstm_layer(inputs)
+      lstm_model = keras.models.Model(inputs, output)
+      weights = lstm_model.get_weights()
+      y_1 = lstm_model.predict(x_train)
+      lstm_model.compile('rmsprop', 'mse')
+      lstm_model.fit(x_train, y_train)
+      y_2 = lstm_model.predict(x_train)
+
+      with test_util.device(use_gpu=True):
+        cudnn_layer = keras.layers.UnifiedLSTM(rnn_state_size,
+                                               recurrent_activation='sigmoid')
+        cudnn_model = keras.models.Model(inputs, cudnn_layer(inputs))
+      cudnn_model.set_weights(weights)
+      y_3 = cudnn_model.predict(x_train)
+      cudnn_model.compile('rmsprop', 'mse')
+      cudnn_model.fit(x_train, y_train)
+      y_4 = cudnn_model.predict(x_train)
+
+      self.assertAllClose(y_1, y_3)
+      self.assertAllClose(y_2, y_4)
+
+  @parameterized.named_parameters(
+      # test_name, use_bias, bias_initializer, activation
+      ('normal', True, 'zeros'),
+      ('no_bias', False, 'zeros'),
+      ('random_bias', True, 'random_uniform'),
+  )
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_unified_lstm_model_save_load(self, use_bias, bias_initializer):
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    h5_path = os.path.join(temp_dir, 'test.h5')
+
+    batch = 10
+    timestep = 3
+    input_dim = 5
+    units = 2
+
+    x = np.random.random((batch, timestep, input_dim))
+
+    def build_model():
+      inputs = keras.layers.Input(
+          shape=[timestep, input_dim], dtype=dtypes.float32)
+      layer = keras.layers.UnifiedLSTM(
+          units,
+          use_bias=use_bias,
+          bias_initializer=bias_initializer)
+      output = layer(inputs)
+      return keras.models.Model(inputs, output), layer
+
+    model, layer = build_model()
+    y_ref = model.predict(x)
+    model.save_weights(h5_path)
+
+    cloned_model, new_layer = build_model()
+    cloned_model.load_weights(h5_path)
+    y = cloned_model.predict(x)
+
+    self.assertAllClose(y, y_ref)
+    self.assertAllClose(layer.get_weights(), new_layer.get_weights())
+
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_unified_lstm_output_on_multiple_kernel(self):
     input_shape = 10
@@ -240,6 +323,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     model.compile('rmsprop', loss='mse')
     model.fit(x_train, y_train, epochs=epoch)
     model.evaluate(x_train, y_train)
+    model.predict(x_train)
 
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_return_sequences_LSTM(self):
