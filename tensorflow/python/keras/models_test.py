@@ -365,7 +365,9 @@ class TestCloneAndBuildModel(test.TestCase):
 
     self.assertEqual('mse', model.loss)
     self.assertTrue(
-        isinstance(model.optimizer, keras.optimizers.RMSprop))
+        isinstance(model.optimizer,
+                   (keras.optimizers.RMSprop,
+                    keras.optimizer_v2.rmsprop.RMSprop)))
     self.assertEqual(['acc', metrics.categorical_accuracy],
                      model._compile_metrics)
 
