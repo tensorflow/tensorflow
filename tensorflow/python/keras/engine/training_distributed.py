@@ -350,11 +350,18 @@ def experimental_test_loop(model,
   for step in range(steps):
     _, batch_outs = K.get_session().run([test_op, output_tensors])
     for i, label in enumerate(model.metrics_names):
-      outs[i] += batch_outs[label]
+      if i == 0:
+        # Loss is stateless metrics.
+        outs[i] += batch_outs[label]
+      else:
+        # For all stateful metrics, the aggregation is handled by mirrored vars.
+        outs[i] = batch_outs[label]
+
     if verbose >= 1:
       progbar.update(step + 1)
-  for i in range(len(outs)):
-    outs[i] /= (steps)
+
+  if len(outs) >= 0:
+    outs[0] /= (steps)
 
   if initialize_finalize_strategy:
     K.get_session().run(current_strategy.finalize())
@@ -724,4 +731,3 @@ def _reset_metrics(model, distributed_model=None):
         distributed_model or
         model._distribution_strategy.unwrap(model._grouped_model)[0])
     distributed_model.reset_metrics()
-

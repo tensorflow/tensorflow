@@ -165,7 +165,9 @@ def get_multi_inputs_multi_outputs_data():
   return (train_data, test_data)
 
 
-def batch_wrapper(dataset, batch_size, distribution):
+def batch_wrapper(dataset, batch_size, distribution, repeat=None):
+  if repeat:
+    dataset = dataset.repeat(repeat)
   # TPUs currently require fully defined input shapes, drop_remainder ensures
   # the input will have fully defined shapes.
   if isinstance(distribution, tpu_strategy.TPUStrategy):
@@ -216,6 +218,7 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
                                 with_distribution,
                                 x_train, y_train, x_predict):
   """Generates the inputs for correctness check when enable Keras with DS."""
+  training_epochs = 2
   global_batch_size = 64
   batch_size = global_batch_size
   # TODO(b/118776054): Use global batch size for Keras/DS support.
@@ -231,7 +234,7 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
         'batch_size': batch_size,
         'x': x_train,
         'y': y_train,
-        'epochs': 1,
+        'epochs': training_epochs,
         'shuffle': False,
     }
 
@@ -252,13 +255,14 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
     # keras.fit/evaluate/predict. The batch size is part of the dataset.
     train_dataset = dataset_ops.Dataset.from_tensor_slices(
         (x_train, y_train))
-    x = batch_wrapper(train_dataset, batch_size, with_distribution)
+    x = batch_wrapper(
+        train_dataset, batch_size, with_distribution, repeat=training_epochs)
 
     training_inputs = {
         'batch_size': None,
         'x': x,
         'y': None,
-        'epochs': 1,
+        'epochs': training_epochs,
         'shuffle': False,
         'steps_per_epoch': len(x_train) // global_batch_size,
     }
@@ -1301,11 +1305,14 @@ class TestDistributionStrategyCorrectness(test.TestCase,
 
     with self.cached_session():
       tolerance = 1e-5
+      metrics = ['mse']
 
       if isinstance(distribution, (mirrored_strategy.MirroredStrategy,
                                    mirrored_strategy.CoreMirroredStrategy)):
         # TODO(b/119257215): use the default one once the flakyness is fixed.
         tolerance = 1e-4
+        # TODO(b/120570676): Enable metrics check once the bug is fixed.
+        metrics = None
 
       keras.backend.set_image_data_format('channels_last')
       np.random.seed(_RANDOM_SEED)
@@ -1346,6 +1353,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
         model.compile(
             loss=keras.losses.mean_squared_error,
             optimizer=gradient_descent_keras.SGD(0.5),
+            metrics=metrics,
             distribute=with_distribution)
 
         training_inputs, eval_inputs, predict_inputs = (
