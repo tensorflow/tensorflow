@@ -1,5 +1,7 @@
 platform :ios, '8.0'
 inhibit_all_warnings!
 
+project 'tflite_camera_example.xcodeproj'
+
 target 'tflite_camera_example'
        pod 'TensorFlowLite', '1.12.0'
