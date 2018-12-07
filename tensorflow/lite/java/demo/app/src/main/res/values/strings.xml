@@ -23,4 +23,8 @@
     <string name="toggle">Use NNAPI</string>
     <string name="tflite">tflite</string>
     <string name="nnapi">NNAPI</string>
+    <string name="gpu">GPU</string>
+    <string name="cpu">CPU</string>
+    <string name="modelLabel">Model</string>
+    <string name="runonLabel">Device</string>
 </resources>

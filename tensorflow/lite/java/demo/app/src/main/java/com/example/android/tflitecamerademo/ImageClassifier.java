@@ -84,14 +84,14 @@ public abstract class ImageClassifier {
   private static final float FILTER_FACTOR = 0.4f;
 
   private PriorityQueue<Map.Entry<String, Float>> sortedLabels =
-      new PriorityQueue<>(
-          RESULTS_TO_SHOW,
-          new Comparator<Map.Entry<String, Float>>() {
-            @Override
-            public int compare(Map.Entry<String, Float> o1, Map.Entry<String, Float> o2) {
-              return (o1.getValue()).compareTo(o2.getValue());
-            }
-          });
+          new PriorityQueue<>(
+                  RESULTS_TO_SHOW,
+                  new Comparator<Map.Entry<String, Float>>() {
+                    @Override
+                    public int compare(Map.Entry<String, Float> o1, Map.Entry<String, Float> o2) {
+                      return (o1.getValue()).compareTo(o2.getValue());
+                    }
+                  });
 
   /** Initializes an {@code ImageClassifier}. */
   ImageClassifier(Activity activity) throws IOException {
@@ -99,12 +99,12 @@ public abstract class ImageClassifier {
     tflite = new Interpreter(tfliteModel, tfliteOptions);
     labelList = loadLabelList(activity);
     imgData =
-        ByteBuffer.allocateDirect(
-            DIM_BATCH_SIZE
-                * getImageSizeX()
-                * getImageSizeY()
-                * DIM_PIXEL_SIZE
-                * getNumBytesPerChannel());
+            ByteBuffer.allocateDirect(
+                    DIM_BATCH_SIZE
+                            * getImageSizeX()
+                            * getImageSizeY()
+                            * DIM_PIXEL_SIZE
+                            * getNumBytesPerChannel());
     imgData.order(ByteOrder.nativeOrder());
     filterLabelProbArray = new float[FILTER_STAGES][getNumLabels()];
     Log.d(TAG, "Created a Tensorflow Lite Image Classifier.");
@@ -140,13 +140,13 @@ public abstract class ImageClassifier {
     // Low pass filter `labelProbArray` into the first stage of the filter.
     for (int j = 0; j < numLabels; ++j) {
       filterLabelProbArray[0][j] +=
-          FILTER_FACTOR * (getProbability(j) - filterLabelProbArray[0][j]);
+              FILTER_FACTOR * (getProbability(j) - filterLabelProbArray[0][j]);
     }
     // Low pass filter each stage into the next.
     for (int i = 1; i < FILTER_STAGES; ++i) {
       for (int j = 0; j < numLabels; ++j) {
         filterLabelProbArray[i][j] +=
-            FILTER_FACTOR * (filterLabelProbArray[i - 1][j] - filterLabelProbArray[i][j]);
+                FILTER_FACTOR * (filterLabelProbArray[i - 1][j] - filterLabelProbArray[i][j]);
       }
     }
 

@@ -56,7 +56,12 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AbsListView;
+import android.widget.AdapterView;
+import android.widget.AdapterView.OnItemSelectedListener;
+import android.widget.ArrayAdapter;
 import android.widget.CompoundButton;
+import android.widget.ListView;
 import android.widget.NumberPicker;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -87,9 +92,10 @@ public class Camera2BasicFragment extends Fragment
   private boolean runClassifier = false;
   private boolean checkedPermissions = false;
   private TextView textView;
-  private ToggleButton toggle;
   private NumberPicker np;
   private ImageClassifier classifier;
+  private ListView runonView;
+  private ListView modelView;
 
   /** Max preview width that is guaranteed by Camera2 API */
   private static final int MAX_PREVIEW_WIDTH = 1920;
@@ -168,6 +174,19 @@ public class Camera2BasicFragment extends Fragment
           }
         }
       };
+
+  private String[] runonStrings = new String[] {
+          "CPU",
+          "GPU",
+          "NNAPI"
+  };
+  private String[] modelStrings = new String[] {
+          "mobilenet v1 quant",
+          "mobilenet v1 float"
+  };
+
+  int currentRunon = -1;
+  int currentModel = -1;
 
   /** An additional thread for running tasks that shouldn't block the UI. */
   private HandlerThread backgroundThread;
@@ -298,19 +317,97 @@ public class Camera2BasicFragment extends Fragment
     return inflater.inflate(R.layout.fragment_camera2_basic, container, false);
   }
 
+  private void updateActiveModel() {
+    int model_index = modelView.getCheckedItemPosition();
+    int runon_index = runonView.getCheckedItemPosition();
+    if(model_index == currentModel && runon_index == currentRunon) return;
+    currentModel = model_index;
+    currentRunon = runon_index;
+
+    Log.e(TAG, "Run on " + runon_index + " model " + model_index);
+    synchronized (lock) {
+      runClassifier = false;
+
+    }
+
+    if(classifier != null) {
+      classifier.close();
+    }
+    classifier = null;
+    try {
+      switch (model_index) {
+        case 0: // quant
+          classifier = new ImageClassifierQuantizedMobileNet(getActivity());
+          break;
+        case 1: // float
+          classifier = new ImageClassifierFloatMobileNet(getActivity());
+          break;
+        default:
+          showToast("Failed to load model");
+      }
+    } catch (IOException e) {
+      Log.d(TAG, "Failed to load", e);
+      classifier = null;
+    }
+
+    switch (runon_index) {
+      case 0: // CPU
+        break;
+      case 1:
+        showToast("GPU not supported on this build.");
+        classifier = null;
+        break;
+      case 2:
+        classifier.setUseNNAPI(true);
+        break;
+    }
+
+
+    if (classifier != null) {
+      synchronized (lock) {
+        runClassifier = true;
+      }
+    }
+
+  }
+
   /** Connect the buttons to their event handler. */
   @Override
   public void onViewCreated(final View view, Bundle savedInstanceState) {
+
     textureView = (AutoFitTextureView) view.findViewById(R.id.texture);
     textView = (TextView) view.findViewById(R.id.text);
-    toggle = (ToggleButton) view.findViewById(R.id.button);
 
-    toggle.setOnCheckedChangeListener(
-        new CompoundButton.OnCheckedChangeListener() {
-          public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-            backgroundHandler.post(() -> classifier.setUseNNAPI(isChecked));
-          }
-        });
+    runonView = (ListView) view.findViewById(R.id.runon);
+    modelView = (ListView) view.findViewById(R.id.model);
+
+
+
+
+    ArrayAdapter<String> runonAdapter = new ArrayAdapter<String>(getContext(), android.R.layout.simple_list_item_1, runonStrings);
+    runonView.setAdapter(new ArrayAdapter<String>(getContext(), R.layout.listview_row, R.id.listview_row_text, runonStrings));
+    runonView.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+    runonView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+      @Override
+      public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        backgroundHandler.post(() -> updateActiveModel());
+      }
+    });
+    runonView.setItemChecked(0, true);
+
+    modelView.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+    ArrayAdapter<String> modelAdapter = new ArrayAdapter<String>(
+            getContext(),R.layout.listview_row, R.id.listview_row_text,  modelStrings);
+    modelView.setAdapter(modelAdapter);
+    modelView.setItemChecked(0, true);
+    modelView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+      @Override
+      public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        backgroundHandler.post(() -> updateActiveModel());
+      }
+    });
+    // backgroundHandler.post(() -> updateActiveModel());
+
 
     np = (NumberPicker) view.findViewById(R.id.np);
     np.setMinValue(1);
@@ -325,16 +422,11 @@ public class Camera2BasicFragment extends Fragment
         });
   }
 
+
   /** Load the model and labels. */
   @Override
   public void onActivityCreated(Bundle savedInstanceState) {
     super.onActivityCreated(savedInstanceState);
-    try {
-      // create either a new ImageClassifierQuantizedMobileNet or an ImageClassifierFloatInception
-      classifier = new ImageClassifierQuantizedMobileNet(getActivity());
-    } catch (IOException e) {
-      Log.e(TAG, "Failed to initialize an image classifier.", e);
-    }
     startBackgroundThread();
   }
 
@@ -562,9 +654,9 @@ public class Camera2BasicFragment extends Fragment
     backgroundThread = new HandlerThread(HANDLE_THREAD_NAME);
     backgroundThread.start();
     backgroundHandler = new Handler(backgroundThread.getLooper());
-    synchronized (lock) {
-      runClassifier = true;
-    }
+    //synchronized (lock) {
+    //  runClassifier = true;
+    //}
     backgroundHandler.post(periodicClassify);
   }
 
