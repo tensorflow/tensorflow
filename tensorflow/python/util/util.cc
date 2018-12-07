@@ -172,7 +172,7 @@ class CachedTypeCheck {
     auto* type = Py_TYPE(o);
 
     {
-      mutex_lock l(type_to_sequence_map_mu_);
+      tf_shared_lock l(type_to_sequence_map_mu_);
       auto it = type_to_sequence_map_.find(type);
       if (it != type_to_sequence_map_.end()) {
         return it->second;
@@ -195,7 +195,12 @@ class CachedTypeCheck {
       mutex_lock l(type_to_sequence_map_mu_);
       if (type_to_sequence_map_.size() < kMaxItemsInCache) {
         Py_INCREF(type);
-        type_to_sequence_map_.insert({type, check_result});
+        auto insert_result = type_to_sequence_map_.insert({type, check_result});
+        if (!insert_result.second) {
+          // The type was added to the cache by a concurrent thread after we
+          // looked it up above.
+          Py_DECREF(type);
+        }
       }
     }
 

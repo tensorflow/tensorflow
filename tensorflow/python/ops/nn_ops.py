@@ -2577,8 +2577,9 @@ def sparse_softmax_cross_entropy_with_logits(
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
-  A common use case is to have logits and labels of shape
-  `[batch_size, num_classes]`, but higher dimensions are supported, in which
+  A common use case is to have logits of shape
+  `[batch_size, num_classes]` and have labels of shape
+  `[batch_size]`, but higher dimensions are supported, in which
   case the `dim`-th dimension is assumed to be of size `num_classes`.
   `logits` must have the dtype of `float16`, `float32`, or `float64`, and
   `labels` must have the dtype of `int32` or `int64`.
@@ -3813,4 +3814,3 @@ tf_export(v1=["nn.quantized_avg_pool"])(gen_nn_ops.quantized_avg_pool)
 tf_export(v1=["nn.quantized_conv2d"])(gen_nn_ops.quantized_conv2d)
 tf_export(v1=["nn.quantized_relu_x"])(gen_nn_ops.quantized_relu_x)
 tf_export(v1=["nn.quantized_max_pool"])(gen_nn_ops.quantized_max_pool)
-

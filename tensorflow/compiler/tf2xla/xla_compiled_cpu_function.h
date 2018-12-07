@@ -206,8 +206,14 @@ class XlaCompiledCpuFunction {
   //
   // Aliasing of argument and result buffers is not allowed, and results in
   // undefined behavior.
-  void set_arg_data(size_t index, void* data) {
-    buffer_table_[arg_index_table_[index]] = data;
+  void set_arg_data(size_t index, const void* data) {
+    // The const_cast is safe because the generated code does not write to arg
+    // buffers.
+    //
+    // buffer_table_ contains pointers to buffers that _will_ be written to by
+    // generated code so it would be misleading to make buffer_table_ a `const
+    // void**`.
+    buffer_table_[arg_index_table_[index]] = const_cast<void*>(data);
   }
 
   // ------------------------------

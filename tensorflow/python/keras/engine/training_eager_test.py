@@ -152,12 +152,12 @@ class TrainingTest(test.TestCase):
           ValueError, r'provide either `batch_size` or `validation_steps`'):
         model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
                   validation_data=(x, y))
-    with self.assertRaisesRegexp(
-        ValueError, r'specify the number of steps'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'specify the `validation_steps` argument.'):
       model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
                 validation_data=validation_dataset)
-    with self.assertRaisesRegexp(
-        ValueError, r'specify the number of steps'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'specify the `validation_steps` argument.'):
       model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
                 validation_data=validation_iterator)
 

@@ -75,18 +75,24 @@ Status WriteToFile(const string& filepath,
 
 template <class T>
 string WriteTextProtoToUniqueFile(Env* env, const string& name,
-                                  const char* proto_type, T& proto) {
-  const char* dirname = getenv("TF_DUMP_GRAPH_PREFIX");
-  if (!dirname) {
+                                  const char* proto_type, T& proto,
+                                  const string& dirname) {
+  const char* dir = nullptr;
+  if (!dirname.empty()) {
+    dir = dirname.c_str();
+  } else {
+    dir = getenv("TF_DUMP_GRAPH_PREFIX");
+  }
+  if (!dir) {
     return "(TF_DUMP_GRAPH_PREFIX not specified)";
   }
-  Status status = env->RecursivelyCreateDir(dirname);
+  Status status = env->RecursivelyCreateDir(dir);
   if (!status.ok()) {
-    LOG(WARNING) << "Failed to create " << dirname << " for dumping "
-                 << proto_type << ": " << status;
+    LOG(WARNING) << "Failed to create " << dir << " for dumping " << proto_type
+                 << ": " << status;
     return "(unavailable)";
   }
-  string filepath = absl::StrCat(dirname, "/", MakeUniqueFilename(name));
+  string filepath = absl::StrCat(dir, "/", MakeUniqueFilename(name));
   status = WriteToFile(filepath, proto);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to dump " << proto_type << " to file: " << filepath
@@ -99,23 +105,27 @@ string WriteTextProtoToUniqueFile(Env* env, const string& name,
 
 }  // anonymous namespace
 
-string DumpGraphDefToFile(const string& name, GraphDef const& graph_def) {
-  return WriteTextProtoToUniqueFile(Env::Default(), name, "GraphDef",
-                                    graph_def);
+string DumpGraphDefToFile(const string& name, GraphDef const& graph_def,
+                          const string& dirname) {
+  return WriteTextProtoToUniqueFile(Env::Default(), name, "GraphDef", graph_def,
+                                    dirname);
 }
 
 string DumpGraphToFile(const string& name, Graph const& graph,
-                       const FunctionLibraryDefinition* flib_def) {
+                       const FunctionLibraryDefinition* flib_def,
+                       const string& dirname) {
   GraphDef graph_def;
   graph.ToGraphDef(&graph_def);
   if (flib_def) {
     *graph_def.mutable_library() = flib_def->ToProto();
   }
-  return DumpGraphDefToFile(name, graph_def);
+  return DumpGraphDefToFile(name, graph_def, dirname);
 }
 
-string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef) {
-  return WriteTextProtoToUniqueFile(Env::Default(), name, "FunctionDef", fdef);
+string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef,
+                             const string& dirname) {
+  return WriteTextProtoToUniqueFile(Env::Default(), name, "FunctionDef", fdef,
+                                    dirname);
 }
 
 }  // namespace tensorflow

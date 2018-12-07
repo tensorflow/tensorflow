@@ -103,8 +103,6 @@ KNOWN_BUGS = {
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
     # Div will use floordiv.
     r"div.*int32": "72051395",
-    # Constant 1D gather crashes toco.
-    r"gather_buggy.*input_shape=\[3\].*": "120029508",
 }
 
 
@@ -815,6 +813,7 @@ def make_constant_tests(zip_path):
   test_parameters = [{
       "dtype": [tf.float32, tf.int32],
       "input_shape": [[], [1], [2], [1, 1, 1, 1], [2, 2, 2, 2]],
+      "constant_is_also_output": [True, False],
   }]
 
   def build_graph(parameters):
@@ -824,17 +823,19 @@ def make_constant_tests(zip_path):
         shape=parameters["input_shape"])
     constant = tf.constant(
         create_tensor_data(parameters["dtype"], parameters["input_shape"]))
-    # This maximum node is here to avoid the situation where a graph output is
-    # a constant, which is an error in toco.
-    out = tf.maximum(dummy_input, constant)
-    return [dummy_input], [out]
+    out = [tf.maximum(dummy_input, constant)]
+    if parameters["constant_is_also_output"]:
+      out.append(constant)
+
+    return [dummy_input], out
 
   def build_inputs(parameters, sess, inputs, outputs):
     dummy_input = np.zeros(
         parameters["input_shape"], dtype=_TF_TYPE_INFO[parameters["dtype"]][0])
     return [dummy_input], sess.run(outputs, feed_dict={inputs[0]: dummy_input})
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs,
+                    expected_tf_success=20)
 
 
 def make_binary_op_tests(zip_path, binary_operator):
@@ -1257,8 +1258,8 @@ def make_gather_tests(zip_path):
       expected_tf_success=60)
 
 
-def make_gather_buggy_tests(zip_path):
-  """Make a set of tests to show gather crashes toco."""
+def make_gather_with_constant_tests(zip_path):
+  """Make a set of test which feed a constant to gather toco."""
 
   test_parameters = [{
       "input_shape": [[3]],

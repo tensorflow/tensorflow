@@ -76,6 +76,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
+        "no_windows",
         "notsan",
     ],
     deps = [
@@ -316,6 +317,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
+        "no_windows",
         "notap",
     ],
     deps = [
@@ -358,6 +360,9 @@ py_test(
     size = "small",
     srcs = ["matching_files_dataset_serialization_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",

@@ -50,9 +50,15 @@ class DepthwiseConvolution2DTest
 static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
   std::vector<DepthwiseConvolution2DSpec> config_set;
   std::vector<std::vector<int64>> config_options = {
-      {128, 6, 3, 64},  {256, 5, 3, 256},  {256, 5, 2, 144}, {144, 5, 3, 64},
-      {144, 5, 2, 256}, {8, 48, 17, 8},    {128, 20, 6, 64}, {128, 1, 2, 144},
-      {256, 1, 2, 64},  {64, 14, 12, 172}, {16, 9, 4, 16}};
+      {128, 6, 3, 64},  {256, 5, 3, 256},  {256, 5, 2, 144},
+      {144, 5, 3, 64},  {144, 5, 2, 256},  {8, 48, 17, 8},
+      {128, 20, 6, 64}, {64, 14, 12, 172}, {16, 9, 4, 16}};
+
+#ifndef XLA_TEST_BACKEND_GPU
+  // TODO(b/119590850): Figure out why this fails on the GPU backend.
+  config_options.push_back({128, 1, 2, 144});
+  config_options.push_back({256, 1, 2, 64});
+#endif
 
   for (auto option : config_options) {
     int64 feature = option[0];

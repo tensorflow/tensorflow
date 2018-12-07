@@ -25,8 +25,8 @@ namespace {
 
 // Gathers data from axis 0.
 template <ArrayDataType Type>
-inline void Gather(const Array& input_array, int input_rank,
-                   const Array& coords_array, Array* output_array) {
+inline void Gather(const Array& input_array, const Array& coords_array,
+                   Array* output_array) {
   const Shape& input_shape = input_array.shape();
   const std::vector<DataType<Type>>& input_data =
       input_array.GetBuffer<Type>().data;
@@ -39,21 +39,20 @@ inline void Gather(const Array& input_array, int input_rank,
       output_array->GetMutableBuffer<Type>().data;
   output_data.resize(RequiredBufferSizeForShape(output_shape));
 
-  int rev_input_rank = input_shape.dimensions_count() - 1 - (input_rank - 1);
-  CHECK_EQ(coords_shape.dims(0), output_array->shape().dims(rev_input_rank));
+  CHECK_EQ(coords_shape.dims(0), output_array->shape().dims(0));
 
   int stride = 1;
-  for (int i = input_shape.dimensions_count() - 1; i >= input_rank - 1; --i) {
+  for (int i = 1; i < input_shape.dimensions_count(); ++i) {
     stride *= input_shape.dims(i);
   }
 
   // Let's make sure we have enough space for all element in the memcpy()
-  // below, which writes 'stride' elements startng at 'i * stride'.
+  // below, which writes 'stride' elements starting at 'i * stride'.
   CHECK_EQ(stride * coords_shape.dims(0), output_data.size());
 
   for (int i = 0; i < coords_shape.dims(0); ++i) {
     DCHECK_GE(coords_data[i], 0);
-    DCHECK_LT(coords_data[i], input_shape.dims(rev_input_rank));
+    DCHECK_LT(coords_data[i], input_shape.dims(0));
     DataType<Type>* out = output_data.data() + i * stride;
     const DataType<Type>* in = input_data.data() + coords_data[i] * stride;
     memcpy(out, in, sizeof(DataType<Type>) * stride);
@@ -122,24 +121,20 @@ inline void Gather(const Array& input_array, int input_rank,
   CHECK(!output_array.buffer);
   switch (output_array.data_type) {
     case ArrayDataType::kFloat:
-      Gather<ArrayDataType::kFloat>(input_array, op->input_rank, coords_array,
-                                    &output_array);
+      Gather<ArrayDataType::kFloat>(input_array, coords_array, &output_array);
       break;
     case ArrayDataType::kUint8:
-      Gather<ArrayDataType::kUint8>(input_array, op->input_rank, coords_array,
-                                    &output_array);
+      Gather<ArrayDataType::kUint8>(input_array, coords_array, &output_array);
       break;
     case ArrayDataType::kInt32:
-      Gather<ArrayDataType::kInt32>(input_array, op->input_rank, coords_array,
-                                    &output_array);
+      Gather<ArrayDataType::kInt32>(input_array, coords_array, &output_array);
       break;
     case ArrayDataType::kInt64:
-      Gather<ArrayDataType::kInt64>(input_array, op->input_rank, coords_array,
-                                    &output_array);
+      Gather<ArrayDataType::kInt64>(input_array, coords_array, &output_array);
       break;
     case ArrayDataType::kComplex64:
-      Gather<ArrayDataType::kComplex64>(input_array, op->input_rank,
-                                        coords_array, &output_array);
+      Gather<ArrayDataType::kComplex64>(input_array, coords_array,
+                                        &output_array);
       break;
     default:
       LOG(FATAL) << "Unsupported data type given to Gather op with output \""

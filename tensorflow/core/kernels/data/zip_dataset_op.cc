@@ -76,6 +76,21 @@ class ZipDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "ZipDatasetOp::Dataset"; }
 
+    int64 Cardinality() const override {
+      int64 result = kInfiniteCardinality;
+      for (const auto& input : inputs_) {
+        int64 n = input->Cardinality();
+        if (n == kUnknownCardinality) {
+          return kUnknownCardinality;
+        }
+        if (n != kInfiniteCardinality &&
+            (result == kInfiniteCardinality || n < result)) {
+          result = n;
+        }
+      }
+      return result;
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

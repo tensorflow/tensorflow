@@ -1803,7 +1803,7 @@ cc_library(
 # registration of ops to prune code size.
 cc_library(
     name = "android_tensorflow_lib_selective_registration",
-    srcs = if_android(["//tensorflow/core:android_srcs"]),
+    srcs = if_android(["//tensorflow/core:android_srcs_only_runtime"]),
     copts = tf_copts(android_optimization_level_override = None) + [
         "-DSUPPORT_SELECTIVE_REGISTRATION",
     ],
@@ -1815,10 +1815,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc_impl",
-        "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@double_conversion//:double-conversion",
-        "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
@@ -1828,7 +1825,7 @@ cc_library(
 # no proto_rtti.
 cc_library(
     name = "android_tensorflow_lib_selective_registration_nortti",
-    srcs = if_android(["//tensorflow/core:android_srcs"]),
+    srcs = if_android(["//tensorflow/core:android_srcs_only_runtime"]),
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_android() + [
         "-DSUPPORT_SELECTIVE_REGISTRATION",
     ],
@@ -1840,10 +1837,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc_impl",
-        "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@double_conversion//:double-conversion",
-        "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
@@ -2087,9 +2081,7 @@ tf_proto_library_cc(
     srcs = ["protobuf/master.proto"],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
 )
 
 tf_proto_library_cc(

@@ -66,6 +66,21 @@ class ConvertTest(test_util.TensorFlowTestCase):
         quantized_input_stats=[(0., 1.)])
     self.assertTrue(tflite_model)
 
+  def testQuantizationInvalid(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = array_ops.fake_quant_with_min_max_args(
+        in_tensor + in_tensor, min=0., max=1.)
+    sess = session.Session()
+
+    with self.assertRaises(ValueError) as error:
+      convert.toco_convert(
+          sess.graph_def, [in_tensor], [out_tensor],
+          inference_type=lite_constants.QUANTIZED_UINT8)
+    self.assertEqual(
+        "std_dev and mean must be defined when inference_input_type is "
+        "QUANTIZED_UINT8.", str(error.exception))
+
   def testGraphDefBasic(self):
     in_tensor = array_ops.placeholder(
         shape=[1, 16, 16, 3], dtype=dtypes.float32, name="input")
@@ -138,6 +153,27 @@ class ConvertTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.uint8, output_details[0]["dtype"])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]["shape"]).all())
     self.assertTrue(output_details[0]["quantization"][0] > 0)  # scale
+
+  def testGraphDefQuantizationInvalid(self):
+    in_tensor_1 = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32, name="inputA")
+    in_tensor_2 = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32, name="inputB")
+    _ = array_ops.fake_quant_with_min_max_args(
+        in_tensor_1 + in_tensor_2, min=0., max=1., name="output")
+    sess = session.Session()
+
+    input_arrays_map = [("inputA", [1, 16, 16, 3]), ("inputB", [1, 16, 16, 3])]
+    output_arrays = ["output"]
+    with self.assertRaises(ValueError) as error:
+      convert.toco_convert_graph_def(
+          sess.graph_def,
+          input_arrays_map,
+          output_arrays,
+          inference_type=lite_constants.QUANTIZED_UINT8)
+    self.assertEqual(
+        "std_dev and mean must be defined when inference_input_type is "
+        "QUANTIZED_UINT8.", str(error.exception))
 
 
 class ConvertTestOpHint(test_util.TensorFlowTestCase):

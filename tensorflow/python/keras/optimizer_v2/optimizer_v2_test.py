@@ -52,6 +52,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.training import momentum
 
 
 class OptimizerTest(test.TestCase):
@@ -493,7 +494,7 @@ class OptimizersCompatibilityTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       ('adadelta', 'adadelta', True, True), ('adagrad', 'adagrad', True, True),
       ('adam', 'adam', True, True), ('adamax', 'adamax', True, True),
-      ('nadam', 'nadam', True, False), ('momentum', 'momentum', False, False),
+      ('nadam', 'nadam', True, False), ('momentum', 'momentum', True, True),
       ('sgd', 'sgd', False, True))
   def testOptimizersCompatibility(self, opt_str, test_weights, test_numeric):
     np.random.seed(1331)
@@ -546,6 +547,81 @@ class OptimizersCompatibilityTest(test.TestCase, parameterized.TestCase):
 
       if old_mode is not None:
         os.environ['TF2_BEHAVIOR'] = old_mode
+
+  def testNumericEquivalenceForNesterovMomentum(self):
+    np.random.seed(1331)
+    with self.cached_session():
+      train_samples = 20
+      input_dim = 3
+      num_classes = 2
+      (x, y), _ = testing_utils.get_test_data(
+          train_samples=train_samples,
+          test_samples=10,
+          input_shape=(input_dim,),
+          num_classes=num_classes)
+      y = keras.utils.to_categorical(y)
+
+      num_hidden = 5
+      model_k_v1 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2.set_weights(model_k_v1.get_weights())
+      model_tf = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_tf.set_weights(model_k_v2.get_weights())
+
+      opt_k_v1 = optimizers.SGD(lr=0.001, momentum=0.9, nesterov=True)
+      opt_k_v2 = gradient_descent.SGD(momentum=0.9, nesterov=True)
+      opt_tf = momentum.MomentumOptimizer(
+          learning_rate=0.001, momentum=0.9, use_nesterov=True)
+
+      model_k_v1.compile(opt_k_v1, loss='categorical_crossentropy', metrics=[])
+      model_k_v2.compile(opt_k_v2, loss='categorical_crossentropy', metrics=[])
+      model_tf.compile(opt_tf, loss='categorical_crossentropy', metrics=[])
+
+      hist_k_v1 = model_k_v1.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+      hist_k_v2 = model_k_v2.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+      hist_tf = model_tf.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+
+      self.assertAllClose(model_k_v1.get_weights(), model_tf.get_weights())
+      self.assertAllClose(model_k_v1.get_weights(), model_k_v2.get_weights())
+      self.assertAllClose(opt_k_v1.get_weights(), opt_k_v2.get_weights())
+      self.assertAllClose(hist_k_v1.history['loss'], hist_tf.history['loss'])
+      self.assertAllClose(hist_k_v1.history['loss'], hist_k_v2.history['loss'])
+
+  def testNumericEquivalenceForAmsgrad(self):
+    np.random.seed(1331)
+    with self.cached_session():
+      train_samples = 20
+      input_dim = 3
+      num_classes = 2
+      (x, y), _ = testing_utils.get_test_data(
+          train_samples=train_samples,
+          test_samples=10,
+          input_shape=(input_dim,),
+          num_classes=num_classes)
+      y = keras.utils.to_categorical(y)
+
+      num_hidden = 5
+      model_k_v1 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2.set_weights(model_k_v1.get_weights())
+
+      opt_k_v1 = optimizers.Adam(amsgrad=True)
+      opt_k_v2 = adam.Adam(amsgrad=True)
+
+      model_k_v1.compile(opt_k_v1, loss='categorical_crossentropy', metrics=[])
+      model_k_v2.compile(opt_k_v2, loss='categorical_crossentropy', metrics=[])
+
+      hist_k_v1 = model_k_v1.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+      hist_k_v2 = model_k_v2.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+
+      self.assertAllClose(model_k_v1.get_weights(), model_k_v2.get_weights())
+      self.assertAllClose(opt_k_v1.get_weights(), opt_k_v2.get_weights())
+      self.assertAllClose(hist_k_v1.history['loss'], hist_k_v2.history['loss'])
 
 
 def disable_tf2():
