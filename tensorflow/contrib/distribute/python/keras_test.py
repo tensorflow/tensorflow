@@ -1303,16 +1303,17 @@ class TestDistributionStrategyCorrectness(test.TestCase,
 
     with self.cached_session():
       default_tolerance = 1e-5
-      weights_tolerance = default_tolerance
-      metrics_tolerance = default_tolerance
-      predict_tolerance = default_tolerance
+      tol_table = {}
 
       if isinstance(distribution, (mirrored_strategy.MirroredStrategy,
                                    mirrored_strategy.CoreMirroredStrategy)):
-        # TODO(b/119257215): Weights are not exactly the same, so use lower
-        # tolerance for now.
-        weights_tolerance = 1e-4
-        predict_tolerance = 1e-4
+        # TODO(b/119257215): Weights are not exactly the same, so use larger
+        # tolerance for now. Predict should be related to weights.
+        tol_table = {
+            'weights_1': 1e-4,
+            'weights_2': 1e-4,
+            'predict_result_1': 1e-4,
+        }
 
       keras.backend.set_image_data_format('channels_last')
       np.random.seed(_RANDOM_SEED)
@@ -1361,56 +1362,47 @@ class TestDistributionStrategyCorrectness(test.TestCase,
                                         with_distribution,
                                         x_train, y_train, x_predict))
 
-        training_history = model.fit(**training_inputs).history
+        result = {}
+        result['training_history_1'] = model.fit(**training_inputs).history
 
         if eval_inputs is not None:
-          eval_result = model.evaluate(**eval_inputs)
-        else:
-          # Creates a dummy identical eval_result to be compared later.
-          eval_result = 1.0
+          result['eval_result_1'] = model.evaluate(**eval_inputs)
 
-        weights = model.get_weights()
-        predict_result = model.predict(**predict_inputs)
+        result['weights_1'] = model.get_weights()
+        result['predict_result_1'] = model.predict(**predict_inputs)
 
-        return weights, training_history, eval_result, predict_result
+        # Train and eval again to mimic user's flow.
 
-      wts_with_ds, history_with_ds, eval_with_ds, predict_with_ds = (
-          fit_eval_and_predict(with_distribution=distribution))
+        result['training_history_2'] = model.fit(**training_inputs).history
 
-      (wts_without_ds, history_without_ds, eval_without_ds,
-       predict_without_ds) = fit_eval_and_predict(with_distribution=None)
+        if eval_inputs is not None:
+          result['eval_result_2'] = model.evaluate(**eval_inputs)
+
+        result['weights_2'] = model.get_weights()
+
+        return result
+
+      results_with_ds = fit_eval_and_predict(with_distribution=distribution)
+      results_without_ds = fit_eval_and_predict(with_distribution=None)
 
       # Verify that the weights, training history, eval results, predict outputs
       # are the same within some limits of tolerance.
-      self.assertAllClose(
-          wts_with_ds,
-          wts_without_ds,
-          atol=weights_tolerance,
-          rtol=weights_tolerance,
-          msg='Fail to assert weights after training.')
-      self.assertAllClose(
-          eval_with_ds,
-          eval_without_ds,
-          atol=metrics_tolerance,
-          rtol=metrics_tolerance,
-          msg='Fail to assert eval results.')
-      self.assertAllClose(
-          predict_with_ds,
-          predict_without_ds,
-          atol=predict_tolerance,
-          rtol=predict_tolerance,
-          msg='Fail to assert predict results.')
+      for key in results_with_ds:
+        if (key.startswith('training_history') and
+            isinstance(distribution, tpu_strategy.TPUStrategy) and
+            distribution.extended.steps_per_run > 1):
+          # TODO(b/119894254): Enable this test for all cases once the
+          # underlying bug is fixed.
+          continue
 
-      if not (isinstance(distribution, tpu_strategy.TPUStrategy) and
-              distribution.extended.steps_per_run > 1):
-        # TODO(b/119894254): Enable this test for all cases once the underlying
-        # bug is fixed.
+        tolerance = tol_table.get(key, default_tolerance)
+
         self.assertAllClose(
-            history_with_ds,
-            history_without_ds,
-            atol=metrics_tolerance,
-            rtol=metrics_tolerance,
-            msg='Fail to assert training history.')
+            results_with_ds[key],
+            results_without_ds[key],
+            atol=tolerance,
+            rtol=tolerance,
+            msg='Fail to assert {}.'.format(key))
 
 
 if __name__ == '__main__':
