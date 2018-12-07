@@ -66,7 +66,7 @@ class ConvMklToTF : public OpsTestBase {
     PerformConversion(dtype, tensor, mkl_meta_tensor, &output);
     test::ExpectTensorNear<T>(expected, output, 1e-5);
   }
-  void TestBody(){};
+  void TestBody() {}
 };
 
 // Testing MKL's fused convolution ops
@@ -175,6 +175,8 @@ class MklFusedConv2DOpTest : public OpsTestBase {
 
     // Compare output to expected results
     const Tensor& output_tensor = *GetOutput(0);
+    // Index 2 will need to be changed if the number of outputs produced
+    // by MklConv2D change.
     const Tensor& output_meta_tensor = *GetOutput(2);
     ConvMklToTF<T> conv_comp;
     conv_comp.PerformConversion(dtype, output_tensor, output_meta_tensor,
@@ -207,7 +209,7 @@ class MklFusedConv2DOpTest : public OpsTestBase {
     ASSERT_EQ(conv_2d.dtype(), fused_conv_2d.dtype());
     ASSERT_EQ(conv_2d.shape(), fused_conv_2d.shape());
 
-    test::ExpectTensorNear<T>(conv_2d, fused_conv_2d, 1e-5);
+    test::ExpectClose(conv_2d, fused_conv_2d);
   }
 
   // Verifies that computing Conv2D+BiasAdd in a graph is identical to
@@ -293,10 +295,8 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndRelu) {
   this->VerifyConv2DWithBiasAndRelu(filter_size, filter_count);
 }
 
-REGISTER_TYPED_TEST_CASE_P(MklFusedConv2DWithBiasOpTest,
-                           OneByOneConvolution,         //
-                           SpatialConvolution,          //
-                           OneByOneConvolutionAndRelu,  //
+REGISTER_TYPED_TEST_CASE_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolution,
+                           SpatialConvolution, OneByOneConvolutionAndRelu,
                            SpatialConvolutionAndRelu);
 
 using MklFusedBiasAddDataTypes = ::testing::Types<float>;
