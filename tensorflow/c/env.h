@@ -141,6 +141,15 @@ TF_CAPI_EXPORT extern TF_StringStream* TF_GetChildren(const char* filename,
 // The caller is responsible for freeing the list (see TF_StringStreamDone).
 TF_CAPI_EXPORT extern TF_StringStream* TF_GetLocalTempDirectories(void);
 
+// Returns the number of nanoseconds since the Unix epoch.
+TF_CAPI_EXPORT extern uint64_t TF_NowNanos(void);
+
+// Returns the number of microseconds since the Unix epoch.
+TF_CAPI_EXPORT extern uint64_t TF_NowMicros(void);
+
+// Returns the number of seconds since the Unix epoch.
+TF_CAPI_EXPORT extern uint64_t TF_NowSeconds(void);
+
 #ifdef __cplusplus
 }
 #endif
