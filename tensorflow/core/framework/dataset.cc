@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -73,6 +75,113 @@ class DatasetVariantWrapper {
  private:
   DatasetBase* const dataset_;  // Owns one reference.
 };
+
+const char kWrappedDatasetVariantTypeName[] =
+    "tensorflow::data::WrappedDatasetVariant";
+
+class WrappedDatasetVariantWrapper {
+ public:
+  WrappedDatasetVariantWrapper() {}
+
+  explicit WrappedDatasetVariantWrapper(const Tensor& ds_tensor)
+      : ds_tensor_(ds_tensor) {}
+
+  Tensor get() const { return ds_tensor_; }
+
+  string TypeName() const { return "tensorflow::WrappedDatasetVariantWrapper"; }
+
+  string DebugString() const {
+    return "tensorflow::WrappedDatasetVariantWrapper::DebugString";
+  }
+
+  void Encode(VariantTensorData* data) const {
+    *(data->add_tensors()) = ds_tensor_;
+  }
+
+  bool Decode(const VariantTensorData& data) {
+    ds_tensor_ = data.tensors(0);
+    return true;
+  }
+
+ private:
+  Tensor ds_tensor_;
+};
+
+class WrapDatasetVariantOp : public OpKernel {
+ public:
+  explicit WrapDatasetVariantOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& tensor = ctx->input(0);
+    OP_REQUIRES(ctx,
+                tensor.dtype() == DT_VARIANT &&
+                    TensorShapeUtils::IsScalar(tensor.shape()),
+                errors::InvalidArgument(
+                    "Dataset tensor must be a scalar of dtype DT_VARIANT."));
+    DatasetBase* unused;
+    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(tensor, &unused));
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    output->scalar<Variant>()() = WrappedDatasetVariantWrapper(tensor);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("WrapDatasetVariant").Device(DEVICE_CPU),
+                        WrapDatasetVariantOp);
+REGISTER_KERNEL_BUILDER(Name("WrapDatasetVariant")
+                            .HostMemory("input_handle")
+                            .HostMemory("output_handle")
+                            .Device(DEVICE_GPU),
+                        WrapDatasetVariantOp);
+
+class UnwrapDatasetVariantOp : public OpKernel {
+ public:
+  explicit UnwrapDatasetVariantOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& tensor = ctx->input(0);
+    OP_REQUIRES(ctx,
+                tensor.dtype() == DT_VARIANT &&
+                    TensorShapeUtils::IsScalar(tensor.shape()),
+                errors::InvalidArgument(
+                    "Dataset tensor must be a scalar of dtype DT_VARIANT."));
+    Variant variant = tensor.scalar<Variant>()();
+    const WrappedDatasetVariantWrapper* wrapper =
+        variant.get<WrappedDatasetVariantWrapper>();
+    OP_REQUIRES(ctx, wrapper != nullptr,
+                errors::InvalidArgument(
+                    "Tensor must be a WrappedDataset variant object."));
+    Tensor ds_tensor = wrapper->get();
+    OP_REQUIRES_OK(ctx, ctx->set_output("output_handle", ds_tensor));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("UnwrapDatasetVariant").Device(DEVICE_CPU),
+                        UnwrapDatasetVariantOp);
+REGISTER_KERNEL_BUILDER(Name("UnwrapDatasetVariant")
+                            .HostMemory("input_handle")
+                            .HostMemory("output_handle")
+                            .Device(DEVICE_GPU),
+                        UnwrapDatasetVariantOp);
+
+static Status WrappedDatasetVariantDeviceCopy(
+    const WrappedDatasetVariantWrapper& from, WrappedDatasetVariantWrapper* to,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
+  *to = WrappedDatasetVariantWrapper(from);
+  return Status::OK();
+}
+
+#define REGISTER_OPTIONAL_COPY(DIRECTION)               \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      WrappedDatasetVariantWrapper, DIRECTION,          \
+      WrappedDatasetVariantDeviceCopy)
+
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(WrappedDatasetVariantWrapper,
+                                       kWrappedDatasetVariantTypeName);
 
 }  // namespace
 
