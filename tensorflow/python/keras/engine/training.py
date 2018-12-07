@@ -875,17 +875,11 @@ class Model(Network):
                                      [self.total_loss] + metrics_tensors)
 
   def _make_fit_function(self):
-    # TODO(psv/anjalisridhar): Remove updates after we fix b/118841692
-    # Stateful metrics updates
-    metric_updates = []
-    for m in self.metrics:
-      metric_updates += m.updates
-
     metrics_tensors = [
         self._all_stateful_metrics_tensors[m] for m in self.metrics_names[1:]
     ]
     self._make_train_function_helper(
-        '_fit_function', [self.total_loss] + metrics_tensors, metric_updates)
+        '_fit_function', [self.total_loss] + metrics_tensors)
 
   def _make_test_function_helper(self, fn_name, outputs, metric_updates=None):
     if not hasattr(self, fn_name):
@@ -918,17 +912,11 @@ class Model(Network):
                                     [self.total_loss] + metrics_tensors)
 
   def _make_eval_function(self):
-    # TODO(psv,anjalisridhar): Remove updates after we fix b/118841692
-    # Stateful metrics updates
-    metric_updates = []
-    for m in self.metrics:
-      metric_updates += m.updates
-
     metrics_tensors = [
         self._all_stateful_metrics_tensors[m] for m in self.metrics_names[1:]
     ]
     self._make_test_function_helper(
-        '_eval_function', [self.total_loss] + metrics_tensors, metric_updates)
+        '_eval_function', [self.total_loss] + metrics_tensors)
 
   def _make_predict_function(self):
     if not hasattr(self, 'predict_function'):

@@ -169,7 +169,12 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
           # capture the name_scope from the first MRT and assume it is
           # the same for all other MRTs.
           mtt_captured_name_scope = threads[0].captured_name_scope
-          with ops.name_scope(mtt_captured_name_scope):
+          # Capture and merge the control dependencies from all the threads.
+          mtt_captured_control_deps = set()
+          for t in threads:
+            mtt_captured_control_deps.update(t.captured_control_deps)
+          with ops.name_scope(mtt_captured_name_scope),\
+              ops.control_dependencies(mtt_captured_control_deps):
             merge_result = threads[0].merge_fn(distribution, *merge_args,
                                                **merge_kwargs)
           for t in threads:
@@ -898,6 +903,8 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
     # Adding a "/" at end lets us re-enter this scope later.
     if t.captured_name_scope:
       t.captured_name_scope += "/"
+
+    t.captured_control_deps = t.graph._current_control_dependencies()  # pylint: disable=protected-access
     t.has_paused.set()
     t.should_run.wait()
     t.should_run.clear()
