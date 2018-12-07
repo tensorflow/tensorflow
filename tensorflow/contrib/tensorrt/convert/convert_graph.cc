@@ -132,6 +132,8 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "Min",
       "Relu6",
       "Square",
+      "ExpandDims",
+      "Squeeze",
   };
   bool is_supported_op_type =
       (candidate_ops.count(node->type_string()) ||
