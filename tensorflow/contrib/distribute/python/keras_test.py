@@ -1302,16 +1302,18 @@ class TestDistributionStrategyCorrectness(test.TestCase,
   def test_correctness(self, distribution, use_numpy, use_validation_data):
 
     with self.cached_session():
-      weights_tolerance = 1e-5
-      metrics_tolerance = 1e-4
+      default_tolerance = 1e-5
+      weights_tolerance = default_tolerance
+      metrics_tolerance = default_tolerance
+      predict_tolerance = default_tolerance
 
       if isinstance(distribution, (mirrored_strategy.MirroredStrategy,
                                    mirrored_strategy.CoreMirroredStrategy)):
         # TODO(b/119257215): Weights are not exactly the same, so use lower
         # tolerance for now.
         weights_tolerance = 1e-4
+        predict_tolerance = 1e-4
 
-      metrics = ['mse']
       keras.backend.set_image_data_format('channels_last')
       np.random.seed(_RANDOM_SEED)
       random_seed.set_random_seed(_RANDOM_SEED)
@@ -1351,7 +1353,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
         model.compile(
             loss=keras.losses.mean_squared_error,
             optimizer=gradient_descent_keras.SGD(0.5),
-            metrics=metrics,
+            metrics=['mse'],
             distribute=with_distribution)
 
         training_inputs, eval_inputs, predict_inputs = (
@@ -1395,8 +1397,8 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       self.assertAllClose(
           predict_with_ds,
           predict_without_ds,
-          atol=weights_tolerance,
-          rtol=weights_tolerance,
+          atol=predict_tolerance,
+          rtol=predict_tolerance,
           msg='Fail to assert predict results.')
 
       if not (isinstance(distribution, tpu_strategy.TPUStrategy) and
