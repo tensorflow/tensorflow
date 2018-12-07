@@ -33,7 +33,7 @@ limitations under the License.
 //   #endif
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/intel_mkl_dnn/include/mkldnn.h"
+#include "mkldnn.h"
 
 namespace Eigen {
 namespace internal {
@@ -126,6 +126,11 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
                                       &alpha, blockA, &ldA, blockB, &ldB, &beta,
                                       const_cast<float*>(output.data()), &ldC);
     eigen_assert(st == 0);
+
+    // eigen_assert is a no-op in optimized mode so we add these to avoid
+    // compiler's unused-variable errors.
+    EIGEN_UNUSED_VARIABLE(max_index);
+    EIGEN_UNUSED_VARIABLE(st);
   }
 };
 
@@ -143,8 +148,8 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
   // Multiply default choice of block size along M and N dimensions.
   // TODO(ezhulenev): Explore if this can work in general (kScaleM=2.0 worked
   // well in some of models).
-  static const float kScaleM = 1.5;
-  static const float kScaleN = 1.0;
+  static constexpr float kScaleM = 1.5;
+  static constexpr float kScaleN = 1.0;
 
   // Mkldnn Avx/Avx2/Avx512 unroll factors are: 8/16/48.
   static const StorageIndex kUnrollM = 48;

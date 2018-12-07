@@ -123,11 +123,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "3cf6132129ba87f0781c383bfaf381b7174b5818e81fffcc5d04bb451154f0f2",
-        strip_prefix = "abseil-cpp-f95179062eb65ce40895cc76f1398cce25394369",
+        sha256 = "7bb63336f2522ce893c34ec241e6ccdfdece56b1a1f43eb3a732712dbd426f4f",
+        strip_prefix = "abseil-cpp-44b0fafc62d9b8f192e8180cbe9c4b806b339d57",
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/f95179062eb65ce40895cc76f1398cce25394369.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/f95179062eb65ce40895cc76f1398cce25394369.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/44b0fafc62d9b8f192e8180cbe9c4b806b339d57.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/44b0fafc62d9b8f192e8180cbe9c4b806b339d57.tar.gz",
         ],
     )
 
@@ -347,11 +347,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     )
 
     PROTOBUF_URLS = [
-        "https://mirror.bazel.build/github.com/google/protobuf/archive/v3.6.1.1.tar.gz",
-        "https://github.com/google/protobuf/archive/v3.6.1.1.tar.gz",
+        "https://mirror.bazel.build/github.com/google/protobuf/archive/v3.6.1.2.tar.gz",
+        "https://github.com/google/protobuf/archive/v3.6.1.2.tar.gz",
     ]
-    PROTOBUF_SHA256 = "1ade182f91f0fa6c6116195def5d22270e01b9d03fe91319e4c6215022d0d24b"
-    PROTOBUF_STRIP_PREFIX = "protobuf-3.6.1.1"
+    PROTOBUF_SHA256 = "2244b0308846bb22b4ff0bcc675e99290ff9f1115553ae9671eba1030af31bc0"
+    PROTOBUF_STRIP_PREFIX = "protobuf-3.6.1.2"
 
     tf_http_archive(
         name = "protobuf_archive",
@@ -445,14 +445,26 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
+    # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "grpc",
-        sha256 = "50db9cf2221354485eb7c3bd55a4c27190caef7048a2a1a15fbe60a498f98b44",
-        strip_prefix = "grpc-1.13.0",
+        sha256 = "1aa84387232dda273ea8fdfe722622084f72c16f7b84bfc519ac7759b71cdc91",
+        strip_prefix = "grpc-69b6c047bc767b4d80e7af4d00ccb7c45b683dae",
         system_build_file = clean_dep("//third_party/systemlibs:grpc.BUILD"),
         urls = [
-            "https://mirror.bazel.build/github.com/grpc/grpc/archive/v1.13.0.tar.gz",
-            "https://github.com/grpc/grpc/archive/v1.13.0.tar.gz",
+            "https://mirror.bazel.build/github.com/grpc/grpc/archive/69b6c047bc767b4d80e7af4d00ccb7c45b683dae.tar.gz",
+            "https://github.com/grpc/grpc/archive/69b6c047bc767b4d80e7af4d00ccb7c45b683dae.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "com_github_nanopb_nanopb",
+        sha256 = "8bbbb1e78d4ddb0a1919276924ab10d11b631df48b657d960e0c795a25515735",
+        build_file = "@grpc//third_party:nanopb.BUILD",
+        strip_prefix = "nanopb-f8ac463766281625ad710900479130c7fcb4d63b",
+        urls = [
+            "https://mirror.bazel.build/github.com/nanopb/nanopb/archive/f8ac463766281625ad710900479130c7fcb4d63b.tar.gz",
+            "https://github.com/nanopb/nanopb/archive/f8ac463766281625ad710900479130c7fcb4d63b.tar.gz",
         ],
     )
 
@@ -846,7 +858,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     # important since we have set GRPC_ARES=0 in .bazelrc
     native.bind(
         name = "cares",
-        actual = "@grpc//third_party/nanopb:nanopb",
+        actual = "@com_github_nanopb_nanopb//:nanopb",
     )
 
     # Needed by Protobuf
@@ -878,7 +890,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     # Needed by gRPC
     native.bind(
         name = "nanopb",
-        actual = "@grpc//third_party/nanopb:nanopb",
+        actual = "@com_github_nanopb_nanopb//:nanopb",
     )
 
     # Needed by gRPC

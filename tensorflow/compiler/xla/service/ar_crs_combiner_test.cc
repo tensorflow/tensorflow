@@ -317,12 +317,15 @@ ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(2, 1);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::Subtract(op::CrossReplicaSum(), op::Constant()),
-                        op::Subtract(op::CrossReplicaSum(), op::Constant())));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(op::Subtract(op::CrossReplicaSum(),
+                             op::Multiply(op::Constant(), op::Constant())),
+                op::Subtract(op::CrossReplicaSum(),
+                             op::Multiply(op::Constant(), op::Constant()))));
   auto sub = module->entry_computation()->root_instruction()->operands()[0];
   auto crs_after = sub->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -406,7 +409,7 @@ ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_str));
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(2, 1);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
 }

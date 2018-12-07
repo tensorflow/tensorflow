@@ -262,7 +262,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
           "`key_func` must return a single tf.int64 tensor. "
           "Got type=%s and shape=%s"
           % (wrapped_func.output_types, wrapped_func.output_shapes))
-    self._key_func = wrapped_func.function
+    self._key_func = wrapped_func
 
   def _make_init_func(self, init_func):
     """Make wrapping defun for init_func."""
@@ -272,7 +272,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
         input_classes=ops.Tensor,
         input_shapes=tensor_shape.scalar(),
         input_types=dtypes.int64)
-    self._init_func = wrapped_func.function
+    self._init_func = wrapped_func
     self._state_classes = wrapped_func.output_classes
     self._state_shapes = wrapped_func.output_shapes
     self._state_types = wrapped_func.output_types
@@ -334,8 +334,8 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
         self._state_shapes = nest.pack_sequence_as(self._state_shapes,
                                                    weakened_state_shapes)
 
-    self._reduce_func = wrapped_func.function
-    self._reduce_func.add_to_graph(ops.get_default_graph())
+    self._reduce_func = wrapped_func
+    self._reduce_func.function.add_to_graph(ops.get_default_graph())
 
   def _make_finalize_func(self, finalize_func):
     """Make wrapping defun for finalize_func."""
@@ -345,7 +345,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
         input_classes=self._state_classes,
         input_shapes=self._state_shapes,
         input_types=self._state_types)
-    self._finalize_func = wrapped_func.function
+    self._finalize_func = wrapped_func
     self._output_classes = wrapped_func.output_classes
     self._output_shapes = wrapped_func.output_shapes
     self._output_types = wrapped_func.output_types
@@ -362,17 +362,22 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
   def output_types(self):
     return self._output_types
 
+  def _functions(self):
+    return [
+        self._key_func, self._init_func, self._reduce_func, self._finalize_func
+    ]
+
   def _as_variant_tensor(self):
     return ged_ops.experimental_group_by_reducer_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._key_func.captured_inputs,
-        self._init_func.captured_inputs,
-        self._reduce_func.captured_inputs,
-        self._finalize_func.captured_inputs,
-        key_func=self._key_func,
-        init_func=self._init_func,
-        reduce_func=self._reduce_func,
-        finalize_func=self._finalize_func,
+        self._key_func.function.captured_inputs,
+        self._init_func.function.captured_inputs,
+        self._reduce_func.function.captured_inputs,
+        self._finalize_func.function.captured_inputs,
+        key_func=self._key_func.function,
+        init_func=self._init_func.function,
+        reduce_func=self._reduce_func.function,
+        finalize_func=self._finalize_func.function,
         **dataset_ops.flat_structure(self))
 
   def _transformation_name(self):
@@ -408,7 +413,7 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
         wrapped_func.output_shapes.is_compatible_with(tensor_shape.scalar())):
       raise ValueError(
           "`window_size_func` must return a single tf.int64 scalar tensor.")
-    self._window_size_func = wrapped_func.function
+    self._window_size_func = wrapped_func
 
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping defun for key_func."""
@@ -422,7 +427,7 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
         wrapped_func.output_shapes.is_compatible_with(tensor_shape.scalar())):
       raise ValueError(
           "`key_func` must return a single tf.int64 scalar tensor.")
-    self._key_func = wrapped_func.function
+    self._key_func = wrapped_func
 
   def _make_reduce_func(self, reduce_func, input_dataset):
     """Make wrapping defun for reduce_func."""
@@ -444,7 +449,7 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
     self._output_classes = element_structure._to_legacy_output_classes()
     self._output_types = element_structure._to_legacy_output_types()
     self._output_shapes = element_structure._to_legacy_output_shapes()
-    self._reduce_func = wrapped_func.function
+    self._reduce_func = wrapped_func
 
   @property
   def output_classes(self):
@@ -458,15 +463,18 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
   def output_types(self):
     return self._output_types
 
+  def _functions(self):
+    return [self._key_func, self._reduce_func, self._window_size_func]
+
   def _as_variant_tensor(self):
     return ged_ops.experimental_group_by_window_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._key_func.captured_inputs,
-        self._reduce_func.captured_inputs,
-        self._window_size_func.captured_inputs,
-        key_func=self._key_func,
-        reduce_func=self._reduce_func,
-        window_size_func=self._window_size_func,
+        self._key_func.function.captured_inputs,
+        self._reduce_func.function.captured_inputs,
+        self._window_size_func.function.captured_inputs,
+        key_func=self._key_func.function,
+        reduce_func=self._reduce_func.function,
+        window_size_func=self._window_size_func.function,
         **dataset_ops.flat_structure(self))
 
   def _transformation_name(self):

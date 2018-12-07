@@ -2012,6 +2012,16 @@ class ControlFlowTest(test.TestCase):
       for i in xrange(10):
         self.assertEqual([i], q.dequeue().eval())
 
+  def testWhileTimeOut(self):
+    run_options = config_pb2.RunOptions(timeout_in_ms=1)
+    with self.cached_session() as sess:
+      n = constant_op.constant(0)
+      c = lambda x: True
+      b = lambda x: math_ops.add(x, 1)
+      r = control_flow_ops.while_loop(c, b, [n])
+      with self.assertRaises(errors_impl.DeadlineExceededError):
+        sess.run(r, options=run_options)
+
   @test_util.disable_control_flow_v2("b/117119329 (stack)")
   def testWhileStack_1(self):
     with self.cached_session():

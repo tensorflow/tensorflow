@@ -61,6 +61,8 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     template <class T>
     class Iterator : public DatasetIterator<T> {

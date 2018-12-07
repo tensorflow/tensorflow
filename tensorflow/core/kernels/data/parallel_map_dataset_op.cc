@@ -118,6 +118,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       return "ParallelMapDatasetOp::Dataset";
     }
 
+    // TODO(b/120482302): Note that this is inaccurate until MapDataset is
+    // modified to preserve cardinality.
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

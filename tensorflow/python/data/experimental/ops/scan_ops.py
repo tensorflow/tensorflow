@@ -125,16 +125,19 @@ class _ScanDataset(dataset_ops.UnaryDataset):
         self._state_shapes = nest.pack_sequence_as(self._state_shapes,
                                                    weakened_state_shapes)
 
-    self._scan_func = wrapped_func.function
-    self._scan_func.add_to_graph(ops.get_default_graph())
+    self._scan_func = wrapped_func
+    self._scan_func.function.add_to_graph(ops.get_default_graph())
+
+  def _functions(self):
+    return [self._scan_func]
 
   def _as_variant_tensor(self):
     input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
     return gen_experimental_dataset_ops.experimental_scan_dataset(
         input_t,
         nest.flatten(sparse.serialize_sparse_tensors(self._initial_state)),
-        self._scan_func.captured_inputs,
-        f=self._scan_func,
+        self._scan_func.function.captured_inputs,
+        f=self._scan_func.function,
         **dataset_ops.flat_structure(self))
 
   @property

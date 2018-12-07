@@ -56,6 +56,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override { return "PrefetchDatasetOp::Dataset"; }
 
+  int64 Cardinality() const override { return input_->Cardinality(); }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

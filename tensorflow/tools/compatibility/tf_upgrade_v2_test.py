@@ -388,6 +388,11 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+    text = "tf.arg_min(input, 0)"
+    expected_text = "tf.argmin(input, 0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
   def testArgmax(self):
     text = "tf.argmax(input, name=n, dimension=1, output_type=type)"
     expected_text = "tf.argmax(input=input, name=n, axis=1, output_type=type)"
@@ -396,6 +401,11 @@ class TestUpgrade(test_util.TensorFlowTestCase):
 
     text = "tf.argmax(input, 0)"
     expected_text = "tf.argmax(input=input, axis=0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.arg_max(input, 0)"
+    expected_text = "tf.argmax(input, 0)"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -441,6 +451,44 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     text = "tf.nn.softmax_cross_entropy_with_logits_v2(labels, logits, dim=2)"
     expected_text = (
         "tf.nn.softmax_cross_entropy_with_logits(labels, logits, axis=2)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testSparseMatmul(self):
+    text = ("tf.sparse_matmul(a, b, c, d, e, f, g)\n")
+    expected_text = ("tf.linalg.matmul(a=a, b=b, transpose_a=c, transpose_b=d, "
+                     "a_is_sparse=e, b_is_sparse=f, name=g)\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testWeightedMoments(self):
+    text = "tf.nn.weighted_moments(x, axes, freq, name, kd)"
+    expected_text = (
+        "tf.nn.weighted_moments(x=x, axes=axes, frequency_weights=freq, "
+        "name=name, keep_dims=kd)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testSparseAdd(self):
+    text = "tf.sparse.add(a, b, t)"
+    expected_text = "tf.sparse.add(a=a, b=b, threshold=t)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testSparseConcat(self):
+    text = "tf.sparse.concat(ax, inp, name, exp, concat)"
+    expected_text = (
+        "tf.sparse.concat(axis=ax, sp_inputs=inp, name=name, "
+        "expand_nonconcat_dim=exp, axis=concat)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testSeparableConv2D(self):
+    text = "tf.nn.separable_conv2d(inp, d, pt, strides, pad, rate, name, fmt)"
+    expected_text = (
+        "tf.nn.separable_conv2d(input=inp, depthwise_filter=d, "
+        "pointwise_filter=pt, strides=strides, padding=pad, "
+        "dilations=rate, name=name, data_format=fmt)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 

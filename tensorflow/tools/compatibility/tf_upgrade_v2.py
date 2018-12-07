@@ -417,6 +417,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.sparse.concat",
         "tf.sparse_split":
             "tf.sparse.split",
+        "tf.sparse_matmul":
+            "tf.linalg.matmul",
         "tf.random.stateless_multinomial":
             "tf.random.stateless_categorical",
         "tf.string_to_hash_bucket":
@@ -467,6 +469,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.string",
         "tf.lite.constants.QUANTIZED_UINT8":
             "tf.uint8",
+        "tf.arg_max":
+            "tf.argmax",
+        "tf.arg_min":
+            "tf.argmin",
     }
     # pylint: enable=line-too-long
 
@@ -496,9 +502,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "data_format"
         ],
         "tf.nn.crelu": ["features", "name", "axis"],
+        "tf.nn.weighted_moments": [
+            "x", "axes", "frequency_weights", "name", "keep_dims"
+        ],
         "tf.nn.pool": [
             "input", "window_shape", "pooling_type", "padding", "dilation_rate",
             "strides", "name", "data_format"
+        ],
+        "tf.nn.separable_conv2d": [
+            "input", "depthwise_filter", "pointwise_filter", "strides",
+            "padding", "rate", "name", "data_format"
         ],
         "tf.nn.depthwise_conv2d": [
             "input", "filter", "strides", "padding", "rate", "name",
@@ -537,6 +550,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         ],
         "tf.sparse.segment_sum": [
             "data", "indices", "segment_ids", "name", "num_segments"
+        ],
+        "tf.sparse_matmul": [
+            "a", "b", "transpose_a", "transpose_b", "a_is_sparse",
+            "b_is_sparse", "name"
         ],
         "tf.io.decode_csv": [
             "records",
@@ -786,11 +803,32 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "only effects core estimator. If you are using "
         "tf.contrib.learn.Estimator, please switch to using core estimator.")
 
+    make_initializable_iterator_deprecation = (
+        "(Manual edit required) The "
+        "`tf.data.Dataset.make_initializable_iterator()` method has been "
+        "removed. If you are using the Estimator API, you can return a dataset "
+        "directly from your input functions without creating an iterator. "
+        "As a last resort, please replace calls to that method on `dataset` "
+        "with a call to "
+        "`tf.compat.v1.data.make_initializable_iterator(dataset)`.")
+
+    make_one_shot_iterator_deprecation = (
+        "(Manual edit required) The "
+        "`tf.data.Dataset.make_one_shot_iterator()` method has been "
+        "removed. If you are using eager execution, you can iterate over "
+        "`dataset` using a Python `for` loop. If you are using the Estimator "
+        "API, you can return a dataset directly from your input functions "
+        "without creating an iterator. As a last resort, please replace calls "
+        "to that method on `dataset` with a call to "
+        "`tf.compat.v1.data.make_one_shot_iterator(dataset)`.")
+
     # Specify warnings for functions that aren't restricted to the tf.x.y.z
     # format. This should only be used for methods with unique names, e.g.
     # export_savedmodel, which is only defined in Estimator objects.
     self.unrestricted_function_warnings = {
         "export_savedmodel": export_saved_model_renamed,
+        "make_initializable_iterator": make_initializable_iterator_deprecation,
+        "make_one_shot_iterator": make_one_shot_iterator_deprecation,
     }
 
   @staticmethod

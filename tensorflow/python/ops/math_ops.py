@@ -2538,7 +2538,8 @@ def matvec(a,
 
 _OverrideBinaryOperatorHelper(matmul, "matmul")
 
-sparse_matmul = gen_math_ops.sparse_mat_mul
+sparse_matmul = deprecation.deprecated(None, "Use `tf.linalg.matmul` instead")(
+    gen_math_ops.sparse_mat_mul)
 tf_export(v1=["sparse_matmul"])(sparse_matmul)
 
 

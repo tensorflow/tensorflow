@@ -114,6 +114,14 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
                              ")::Dataset");
     }
 
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return n / batch_size_ + (n % batch_size_ == 0 ? 0 : 1);
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

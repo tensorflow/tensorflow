@@ -114,7 +114,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
   //   with dim indices specifying which value. No bounds checking is performed
   //   on dim indices.
 
-  void set_arg0_data(void* data) {
+  void set_arg0_data(const void* data) {
     set_arg_data(0, data);
   }
   float* arg0_data() {
@@ -132,7 +132,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
         arg_data(0)))[dim0][dim1];
   }
 
-  void set_arg_myfeed_data(void* data) {
+  void set_arg_myfeed_data(const void* data) {
     set_arg_data(0, data);
   }
   float* arg_myfeed_data() {
@@ -150,7 +150,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
         arg_data(0)))[dim0][dim1];
   }
 
-  void set_arg1_data(void* data) {
+  void set_arg1_data(const void* data) {
     set_arg_data(1, data);
   }
   tensorflow::int64* arg1_data() {
