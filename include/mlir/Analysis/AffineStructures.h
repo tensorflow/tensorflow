@@ -519,8 +519,8 @@ public:
   Optional<int64_t> getConstantUpperBound(unsigned pos) const;
 
   /// Returns the smallest known constant bound for the extent of the
-  /// specified identifier, i.e., the smallest known constant that is greater
-  /// than or equal to 'exclusive upper bound' - 'lower bound' of the
+  /// specified identifier (pos^th), i.e., the smallest known constant that is
+  /// greater than or equal to 'exclusive upper bound' - 'lower bound' of the
   /// identifier; returns None if it's not a constant. This method employs
   /// trivial (low complexity / cost) checks and detection. Symbolic identifiers
   /// are treated specially, i.e., it looks for constant differences between
@@ -528,8 +528,8 @@ public:
   /// at function definition for examples. 'lb', if provided, is set to the
   /// lower bound associated with the constant difference.
   Optional<int64_t>
-  getConstantBoundDifference(unsigned pos,
-                             SmallVectorImpl<int64_t> *lb = nullptr) const;
+  getConstantBoundOnDimSize(unsigned pos,
+                            SmallVectorImpl<int64_t> *lb = nullptr) const;
 
   // Returns the lower and upper bounds of the specified dimensions as
   // AffineMap's. Returns false for the unimplemented cases for the moment.

@@ -1390,7 +1390,7 @@ void FlatAffineConstraints::constantFoldIdRange(unsigned pos, unsigned num) {
 //  Egs: 0 <= i <= 15, return 16.
 //       s0 + 2 <= i <= s0 + 17, returns 16. (s0 has to be a symbol)
 //       i + s0 + 16 <= d0 <= i + s0  + 31, returns 16.
-Optional<int64_t> FlatAffineConstraints::getConstantBoundDifference(
+Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
     unsigned pos, SmallVectorImpl<int64_t> *lb) const {
   assert(pos < getNumDimIds() && "Invalid position");
   assert(getNumLocalIds() == 0);

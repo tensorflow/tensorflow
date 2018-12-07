@@ -135,6 +135,38 @@ void DmaGeneration::visitOperationStmt(OperationStmt *opStmt) {
   regions.push_back(std::move(region));
 }
 
+// Info comprising stride and number of elements transferred every stride.
+struct StrideInfo {
+  int64_t stride;
+  int64_t numEltPerStride;
+};
+
+/// Returns striding information for a copy/transfer of this region with
+/// potentially multiple striding levels from outermost to innermost. For an
+/// n-dimensional region, there can be at most n-1 levels of striding
+/// successively nested.
+//  TODO(bondhugula): make this work with non-identity layout maps.
+static void getMultiLevelStrides(const MemRefRegion &region,
+                                 ArrayRef<int> bufferShape,
+                                 SmallVectorImpl<StrideInfo> *strideInfos) {
+  if (bufferShape.size() <= 1)
+    return;
+
+  int64_t numEltPerStride = 1;
+  int64_t stride = 1;
+  for (int d = bufferShape.size() - 1; d >= 1; d--) {
+    int dimSize = region.memref->getType().cast<MemRefType>().getDimSize(d);
+    stride *= dimSize;
+    numEltPerStride *= bufferShape[d];
+    // A stride is needed only if the region has a shorter extent than the
+    // memref along the dimension *and* has an extent greater than one along the
+    // next major dimension.
+    if (bufferShape[d] < dimSize && bufferShape[d - 1] > 1) {
+      strideInfos->push_back({stride, numEltPerStride});
+    }
+  }
+}
+
 // Creates a buffer in the faster memory space for the specified region;
 // generates a DMA from the lower memory space to this one, and replaces all
 // loads to load from that buffer. Returns true if DMAs are generated.
@@ -150,21 +182,33 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
   // Builder to create constants at the top level.
   MLFuncBuilder top(forStmt->findFunction());
 
-
   auto loc = forStmt->getLoc();
   auto *memref = region.memref;
   auto memRefType = memref->getType().cast<MemRefType>();
 
-  // Indices to use for DmaStart op.
-  SmallVector<SSAValue *, 4> srcIndices, destIndices;
+  auto layoutMaps = memRefType.getAffineMaps();
+  if (layoutMaps.size() > 1 ||
+      (layoutMaps.size() == 1 && !layoutMaps[0].isIdentity())) {
+    LLVM_DEBUG(llvm::dbgs() << "Non-identity layout map not yet supported\n");
+    return false;
+  }
+
+  // Indices to use for the DmaStart op.
+  // Indices for the original memref being DMAed from/to.
+  SmallVector<SSAValue *, 4> memIndices;
+  // Indices for the faster buffer being DMAed into/from.
+  SmallVector<SSAValue *, 4> bufIndices;
 
   SSAValue *zeroIndex = top.create<ConstantIndexOp>(loc, 0);
 
   unsigned rank = memRefType.getRank();
-  SmallVector<int, 4> shape;
+  SmallVector<int, 4> fastBufferShape;
 
   // Compute the extents of the buffer.
-  Optional<int64_t> numElements = region.getConstantSize();
+  std::vector<SmallVector<int64_t, 4>> lbs;
+  lbs.reserve(rank);
+  Optional<int64_t> numElements =
+      region.getBoundingConstantSizeAndShape(&fastBufferShape, &lbs);
   if (!numElements.hasValue()) {
     LLVM_DEBUG(llvm::dbgs() << "Non-constant region size not supported\n");
     *sizeInBytes = 0;
@@ -176,8 +220,6 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
     *sizeInBytes = 0;
     return false;
   }
-
-  region.getConstantShape(&shape);
 
   // 'outerIVs' holds the values that this memory region is symbolic/paramteric
   // on; this would correspond to loop IVs surrounding the level at which the
@@ -200,31 +242,29 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
   SmallVector<AffineExpr, 4> offsets;
   offsets.reserve(rank);
   for (unsigned d = 0; d < rank; d++) {
-    SmallVector<int64_t, 4> lb;
-    cst->getConstantBoundDifference(d, &lb);
-    assert(lb.size() == cst->getNumCols() - rank && "incorrect bound size");
+    assert(lbs[d].size() == cst->getNumCols() - rank && "incorrect bound size");
 
     AffineExpr offset = top.getAffineConstantExpr(0);
     for (unsigned j = 0, e = cst->getNumCols() - rank - 1; j < e; j++) {
-      offset = offset + lb[j] * top.getAffineDimExpr(j);
+      offset = offset + lbs[d][j] * top.getAffineDimExpr(j);
     }
-    offset = offset + lb[cst->getNumCols() - 1 - rank];
+    offset = offset + lbs[d][cst->getNumCols() - 1 - rank];
 
     // Set DMA start location for this dimension in the lower memory space
     // memref.
     if (auto caf = offset.dyn_cast<AffineConstantExpr>()) {
-      srcIndices.push_back(cast<MLValue>(
+      memIndices.push_back(cast<MLValue>(
           top.create<ConstantIndexOp>(loc, caf.getValue())->getResult()));
     } else {
       // The coordinate for the start location is just the lower bound along the
       // corresponding dimension on the memory region (stored in 'offset').
       auto map = top.getAffineMap(
           cst->getNumDimIds() + cst->getNumSymbolIds() - rank, 0, offset, {});
-      srcIndices.push_back(cast<MLValue>(
+      memIndices.push_back(cast<MLValue>(
           b->create<AffineApplyOp>(loc, map, outerIVs)->getResult(0)));
     }
     // The fast buffer is DMAed into at location zero; addressing is relative.
-    destIndices.push_back(zeroIndex);
+    bufIndices.push_back(zeroIndex);
 
     // Record the offsets since they are needed to remap the memory accesses of
     // the original memref further below.
@@ -239,8 +279,8 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
   // that multiple memory op's on the same memref have the *same* memory
   // footprint.
   if (fastBufferMap.find(memref) == fastBufferMap.end()) {
-    auto fastMemRefType = top.getMemRefType(shape, memRefType.getElementType(),
-                                            {}, fastMemorySpace);
+    auto fastMemRefType = top.getMemRefType(
+        fastBufferShape, memRefType.getElementType(), {}, fastMemorySpace);
 
     LLVM_DEBUG(llvm::dbgs() << "Creating a new buffer of type: ");
     LLVM_DEBUG(fastMemRefType.dump(); llvm::dbgs() << "\n");
@@ -271,17 +311,34 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
   // TODO(bondhugula): check for transfer sizes not being a multiple of
   // minDmaTransferSize and handle them appropriately.
 
-  // TODO(bondhugula): Need to use strided DMA for multi-dimensional (>= 2-d)
-  // case.
+  SmallVector<StrideInfo, 4> strideInfos;
+  getMultiLevelStrides(region, fastBufferShape, &strideInfos);
+
+  // TODO(bondhugula): use all stride level once DmaStartOp is extended for
+  // multi-level strides.
+  if (strideInfos.size() > 1) {
+    LLVM_DEBUG(llvm::dbgs() << "Only up to one level of stride supported\n");
+    return false;
+  }
+
+  SSAValue *stride = nullptr;
+  SSAValue *numEltPerStride = nullptr;
+  if (!strideInfos.empty()) {
+    stride = top.create<ConstantIndexOp>(loc, strideInfos[0].stride);
+    numEltPerStride =
+        top.create<ConstantIndexOp>(loc, strideInfos[0].numEltPerStride);
+  }
 
   if (!region.isWrite()) {
-    b->create<DmaStartOp>(loc, memref, srcIndices, fastMemRef, destIndices,
-                          numElementsSSA, tagMemRef, zeroIndex);
+    // DMA non-blocking read from original buffer to fast buffer.
+    b->create<DmaStartOp>(loc, memref, memIndices, fastMemRef, bufIndices,
+                          numElementsSSA, tagMemRef, zeroIndex, stride,
+                          numEltPerStride);
   } else {
-    // dest and src is switched for the writes (since DMA is from the faster
-    // memory space to the slower one).
-    b->create<DmaStartOp>(loc, fastMemRef, destIndices, memref, srcIndices,
-                          numElementsSSA, tagMemRef, zeroIndex);
+    // DMA non-blocking write from fast buffer to the original memref.
+    b->create<DmaStartOp>(loc, fastMemRef, bufIndices, memref, memIndices,
+                          numElementsSSA, tagMemRef, zeroIndex, stride,
+                          numEltPerStride);
   }
 
   // Matching DMA wait to block on completion; tag always has a 0 index.

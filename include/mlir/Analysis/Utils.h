@@ -67,13 +67,26 @@ struct MemRefRegion {
   bool isWrite() const { return write; }
   void setWrite(bool flag) { write = flag; }
 
-  // Computes the shape if the extents are known constants, returns false
-  // otherwise.
-  bool getConstantShape(llvm::SmallVectorImpl<int> *shape) const;
+  /// Returns a constant upper bound on the number of elements in this region if
+  /// bounded by a known constant, None otherwise. The 'shape' vector is set to
+  /// the corresponding dimension-wise bounds major to minor. We use int64_t
+  /// instead of uint64_t since index types can be at most int64_t.
+  Optional<int64_t> getBoundingConstantSizeAndShape(
+      SmallVectorImpl<int> *shape = nullptr,
+      std::vector<SmallVector<int64_t, 4>> *lbs = nullptr) const;
 
-  // Returns the number of elements in this region if it's a known constant. We
-  // use int64_t instead of uint64_t since index types can be at most int64_t.
-  Optional<int64_t> getConstantSize() const;
+  /// A wrapper around FlatAffineConstraints::getConstantBoundOnDimSize(). 'pos'
+  /// corresponds to the position of the memref shape's dimension (major to
+  /// minor) which matches 1:1 with the dimensional identifier positions in
+  //'cst'.
+  Optional<int64_t>
+  getConstantBoundOnDimSize(unsigned pos, SmallVectorImpl<int64_t> *lb) const {
+    assert(pos < getRank() && "invalid position");
+    return cst.getConstantBoundOnDimSize(pos, lb);
+  }
+
+  /// Returns the rank of the memref that this region corresponds to.
+  unsigned getRank() const;
 
   /// Memref that this region corresponds to.
   MLValue *memref;

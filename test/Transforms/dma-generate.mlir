@@ -130,7 +130,8 @@ mlfunc @loop_nest_high_d(%A: memref<512 x 32 x f32>,
   return
 }
 
-// A loop nest with a modulo 2 access.
+// A loop nest with a modulo 2 access. A strided DMA is not needed here a 1x2
+// region within a 256 x 8 memref.
 //
 // CHECK-LABEL: mlfunc @loop_nest_modulo() {
 // CHECK:       %0 = alloc() : memref<256x8xf32>
@@ -159,7 +160,6 @@ mlfunc @loop_nest_modulo() {
   return
 }
 
-
 // DMA on tiled loop nest. This also tests the case where the bounds are
 // dependent on outer loop IVs.
 // CHECK-LABEL: mlfunc @loop_nest_tiled() -> memref<256x1024xf32> {
@@ -169,7 +169,8 @@ mlfunc @loop_nest_tiled() -> memref<256x1024xf32> {
     for %i1 = 0 to 1024 step 32 {
 // CHECK:      %3 = alloc() : memref<32x32xf32, 1>
 // CHECK-NEXT: %4 = alloc() : memref<1xi32>
-// CHECK-NEXT: dma_start %0[
+// Strided DMA here: 32 x 32 tile in a 256 x 1024 memref.
+// CHECK-NEXT: dma_start %0[%1, %2], %3[%c0, %c0], %c1024, %4[%c0], %c1024, %c32 : memref<256x1024xf32>, memref<32x32xf32, 1>, memref<1xi32>
 // CHECK-NEXT: dma_wait
 // CHECK-NEXT: for %i2 = #map
 // CHECK-NEXT:   for %i3 = #map
@@ -191,7 +192,8 @@ mlfunc @dma_constant_dim_access(%A : memref<100x100xf32>) {
   %one = constant 1 : index
   // CHECK:      %0 = alloc() : memref<1x100xf32, 1>
   // CHECK-NEXT: %1 = alloc() : memref<1xi32>
-  // CHECK:      dma_start %arg0[%c1, %c0], %0[%c0, %c0], %c100,
+  // No strided DMA needed here.
+  // CHECK:      dma_start %arg0[%c1, %c0], %0[%c0, %c0], %c100, %1[%c0] : memref<100x100xf32>, memref<1x100xf32, 1>,
   // CHECK-NEXT: dma_wait %1[%c0], %c100 : memref<1xi32>
   for %i = 0 to 100 {
     for %j = 0 to 100 {
@@ -225,4 +227,53 @@ mlfunc @dma_with_symbolic_accesses(%A : memref<100x100xf32>, %M : index) {
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
+}
+
+// CHECK-LABEL: mlfunc @dma_with_symbolic_loop_bounds
+mlfunc @dma_with_symbolic_loop_bounds(%A : memref<100x100xf32>, %M : index, %N: index) {
+  %K = constant 9 : index
+// The buffer size can't be bound by a constant smaller than the original
+// memref size; so the DMA buffer is the entire 100x100.
+// CHECK:       %0 = alloc() : memref<100x100xf32, 1>
+// CHECK-NEXT:  %1 = alloc() : memref<1xi32>
+// CHECK-NEXT:  dma_start %arg0[%c0, %c0], %0[%c0, %c0], %c10000, %1[%c0] : memref<100x100xf32>, memref<100x100xf32, 1>, memref<1xi32>
+// CHECK-NEXT:  dma_wait %1[%c0], %c10000 : memref<1xi32>
+  for %i = 0 to 100 {
+    for %j = %M to %N {
+      %idx = affine_apply (d0, d1) [s0] -> (d0, d1 + s0)(%i, %j)[%K]
+      load %A[%idx#0, %idx#1] : memref<100 x 100 x f32>
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: mlfunc @dma_unknown_size
+mlfunc @dma_unknown_size(%arg0 : memref<?x?xf32>) {
+  %M = dim %arg0, 0 : memref<? x ? x f32>
+  %N = dim %arg0, 0 : memref<? x ? x f32>
+  for %i = 0 to %M {
+    for %j = 0 to %N {
+      // If this loop nest isn't tiled, requires a non-constant size DMA -- not
+      // yet implemented.
+      // CHECK: %2 = load %arg0[%i0, %i1] : memref<?x?xf32>
+      load %arg0[%i, %j] : memref<? x ? x f32>
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: mlfunc @dma_memref_3d
+mlfunc @dma_memref_3d(%arg0 : memref<1024x1024x1024xf32>) {
+  for %i = 0 to 1024 {
+    for %j = 0 to 1024 {
+      for %k = 0 to 1024 {
+        %idx = affine_apply (d0, d1, d2) -> (d0 mod 128, d1 mod 128, d2 mod 128)(%i, %j, %k)
+        // DMA with nested striding (or emulating with loop around strided DMA)
+        // not yet implemented.
+        // CHECK: %3 = load %arg0[%2#0, %2#1, %2#2] : memref<1024x1024x1024xf32>
+        %v = load %arg0[%idx#0, %idx#1, %idx#2] : memref<1024 x 1024 x 1024 x f32>
+      }
+    }
+  }
+  return
 }

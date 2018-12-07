@@ -80,41 +80,45 @@ void mlir::getLoopIVs(const Statement &stmt,
   std::reverse(loops->begin(), loops->end());
 }
 
-Optional<int64_t> MemRefRegion::getConstantSize() const {
-  auto memRefType = memref->getType().cast<MemRefType>();
-  unsigned rank = memRefType.getRank();
-
-  // Compute the extents of the buffer.
-  int64_t numElements = 1;
-  for (unsigned d = 0; d < rank; d++) {
-    Optional<int64_t> diff = cst.getConstantBoundDifference(d);
-
-    if (!diff.hasValue())
-      return None;
-    int64_t diffConstant = diff.getValue();
-
-    if (diffConstant <= 0)
-      return 0;
-    numElements *= diffConstant;
-  }
-  return numElements;
+unsigned MemRefRegion::getRank() const {
+  return memref->getType().cast<MemRefType>().getRank();
 }
 
-bool MemRefRegion::getConstantShape(SmallVectorImpl<int> *shape) const {
+Optional<int64_t> MemRefRegion::getBoundingConstantSizeAndShape(
+    SmallVectorImpl<int> *shape,
+    std::vector<SmallVector<int64_t, 4>> *lbs) const {
   auto memRefType = memref->getType().cast<MemRefType>();
   unsigned rank = memRefType.getRank();
   shape->reserve(rank);
 
-  // Compute the extents of this memref region.
+  // Find a constant upper bound on the extent of this memref region along each
+  // dimension.
+  int64_t numElements = 1;
+  int64_t diffConstant;
   for (unsigned d = 0; d < rank; d++) {
-    Optional<int64_t> diff = cst.getConstantBoundDifference(d);
-    if (!diff.hasValue())
-      return false;
-
-    int diffConstant = std::max(0L, diff.getValue());
-    shape->push_back(diffConstant);
+    SmallVector<int64_t, 4> lb;
+    Optional<int64_t> diff = cst.getConstantBoundOnDimSize(d, &lb);
+    if (diff.hasValue()) {
+      diffConstant = diff.getValue();
+    } else {
+      // If no constant bound is found, then it can always be bound by the
+      // memref's dim size if the latter has a constant size along this dim.
+      auto dimSize = memRefType.getDimSize(d);
+      if (dimSize == -1)
+        return None;
+      diffConstant = dimSize;
+      // Lower bound becomes 0.
+      lb.resize(cst.getNumSymbolIds() + 1, 0);
+    }
+    numElements *= diffConstant;
+    if (lbs) {
+      lbs->push_back(lb);
+    }
+    if (shape) {
+      shape->push_back(diffConstant);
+    }
   }
-  return true;
+  return numElements;
 }
 
 /// Computes the memory region accessed by this memref with the region
