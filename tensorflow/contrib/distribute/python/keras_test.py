@@ -1298,22 +1298,20 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       self.assertEqual(outs[1], 0.)
       self.assertEqual(outs[2], 0.)
 
-  # TODO(priyag): Add metrics correctness to this test to compare with and
-  # without distribution strategies.
   @combinations.generate(strategy_and_input_combinations())
   def test_correctness(self, distribution, use_numpy, use_validation_data):
 
     with self.cached_session():
-      tolerance = 1e-5
-      metrics = ['mse']
+      weights_tolerance = 1e-5
+      metrics_tolerance = 1e-4
 
       if isinstance(distribution, (mirrored_strategy.MirroredStrategy,
                                    mirrored_strategy.CoreMirroredStrategy)):
-        # TODO(b/119257215): use the default one once the flakyness is fixed.
-        tolerance = 1e-4
-        # TODO(b/120570676): Enable metrics check once the bug is fixed.
-        metrics = None
+        # TODO(b/119257215): Weights are not exactly the same, so use lower
+        # tolerance for now.
+        weights_tolerance = 1e-4
 
+      metrics = ['mse']
       keras.backend.set_image_data_format('channels_last')
       np.random.seed(_RANDOM_SEED)
       random_seed.set_random_seed(_RANDOM_SEED)
@@ -1383,22 +1381,33 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       # Verify that the weights, training history, eval results, predict outputs
       # are the same within some limits of tolerance.
       self.assertAllClose(
-          wts_with_ds, wts_without_ds, atol=tolerance, rtol=tolerance,
+          wts_with_ds,
+          wts_without_ds,
+          atol=weights_tolerance,
+          rtol=weights_tolerance,
           msg='Fail to assert weights after training.')
-
       self.assertAllClose(
-          eval_with_ds, eval_without_ds, atol=tolerance, rtol=tolerance,
+          eval_with_ds,
+          eval_without_ds,
+          atol=metrics_tolerance,
+          rtol=metrics_tolerance,
           msg='Fail to assert eval results.')
       self.assertAllClose(
-          predict_with_ds, predict_without_ds, atol=tolerance, rtol=tolerance,
+          predict_with_ds,
+          predict_without_ds,
+          atol=weights_tolerance,
+          rtol=weights_tolerance,
           msg='Fail to assert predict results.')
 
-      if not (isinstance(distribution, tpu_strategy.TPUStrategy)
-              and distribution.extended.steps_per_run > 1):
+      if not (isinstance(distribution, tpu_strategy.TPUStrategy) and
+              distribution.extended.steps_per_run > 1):
         # TODO(b/119894254): Enable this test for all cases once the underlying
         # bug is fixed.
         self.assertAllClose(
-            history_with_ds, history_without_ds, atol=tolerance, rtol=tolerance,
+            history_with_ds,
+            history_without_ds,
+            atol=metrics_tolerance,
+            rtol=metrics_tolerance,
             msg='Fail to assert training history.')
 
 
