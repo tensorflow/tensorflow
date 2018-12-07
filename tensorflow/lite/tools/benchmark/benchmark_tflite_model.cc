@@ -281,6 +281,11 @@ void BenchmarkTfLiteModel::PrepareInputsAndOutputs() {
           interpreter->typed_tensor<uint8_t>(i),
           std::vector<int>(sizes.begin() + 1, sizes.end()),
           []() { return static_cast<uint8_t>(rand()) % 255; });
+    } else if (t->type == kTfLiteInt8) {
+      FillRandomValue<int8_t>(
+          interpreter->typed_tensor<int8_t>(i),
+          std::vector<int>(sizes.begin() + 1, sizes.end()),
+          []() { return static_cast<int8_t>(rand()) % 255 - 127; });
     } else if (t->type == kTfLiteString) {
       tflite::DynamicBuffer buffer;
       FillRandomString(&buffer, sizes, []() {
