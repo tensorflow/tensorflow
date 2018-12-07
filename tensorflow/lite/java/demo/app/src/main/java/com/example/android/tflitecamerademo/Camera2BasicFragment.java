@@ -66,6 +66,9 @@ import android.widget.NumberPicker;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ToggleButton;
+
+import org.tensorflow.lite.GpuDelegateHelper;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -175,16 +178,17 @@ public class Camera2BasicFragment extends Fragment
         }
       };
 
-  private String[] runonStrings = new String[] {
-          "CPU",
-          "GPU",
-          "NNAPI"
-  };
-  private String[] modelStrings = new String[] {
-          "mobilenet v1 quant",
-          "mobilenet v1 float"
-  };
+  private String GPU = "GPU";
+  private String CPU = "CPU";
+  private String NNAPI = "NNAPI";
+  private String MOBILENET_V1_QUANT = "mobilenet v1 quant";
+  private String MOBILENET_V1_FLOAT = "mobilenet v1 float";
 
+
+  private ArrayList<String> runonStrings = new ArrayList<String>();
+  private String[] modelStrings = new String[] {MOBILENET_V1_QUANT, MOBILENET_V1_FLOAT};
+
+  /** Current indices of device and model. */
   int currentRunon = -1;
   int currentModel = -1;
 
@@ -330,36 +334,40 @@ public class Camera2BasicFragment extends Fragment
 
     }
 
+    // Lookup names of parameters.
+    String model = modelStrings[model_index];
+    String runon = runonStrings.get(runon_index);
+
     if(classifier != null) {
       classifier.close();
     }
     classifier = null;
     try {
-      switch (model_index) {
-        case 0: // quant
-          classifier = new ImageClassifierQuantizedMobileNet(getActivity());
-          break;
-        case 1: // float
-          classifier = new ImageClassifierFloatMobileNet(getActivity());
-          break;
-        default:
-          showToast("Failed to load model");
+      if (model == MOBILENET_V1_QUANT) {
+        classifier = new ImageClassifierQuantizedMobileNet(getActivity());
+      } else if (model == MOBILENET_V1_FLOAT) {
+        classifier = new ImageClassifierFloatMobileNet(getActivity());
+      } else {
+        showToast("Failed to load model");
       }
     } catch (IOException e) {
       Log.d(TAG, "Failed to load", e);
       classifier = null;
     }
 
-    switch (runon_index) {
-      case 0: // CPU
-        break;
-      case 1:
-        showToast("GPU not supported on this build.");
+    if(runon == CPU) {}
+    else if(runon == GPU){
+      if(!GpuDelegateHelper.isGpuDelegateAvailable()) {
+        showToast("GPU not in this build.");
         classifier = null;
-        break;
-      case 2:
-        classifier.setUseNNAPI(true);
-        break;
+      } else if (model == MOBILENET_V1_QUANT) {
+        showToast("GPU requires float model.");
+        classifier = null;
+      } else {
+        classifier.useGpu();
+      }
+    } else if (runon == NNAPI) {
+      classifier.setUseNNAPI(true);
     }
 
 
@@ -382,9 +390,16 @@ public class Camera2BasicFragment extends Fragment
     modelView = (ListView) view.findViewById(R.id.model);
 
 
+    int defaultModelIndex = 0;
+    runonStrings.add(CPU);
+    if(GpuDelegateHelper.isGpuDelegateAvailable()) {
+      runonStrings.add(GPU);
+    }
+    runonStrings.add(NNAPI);
 
 
-    ArrayAdapter<String> runonAdapter = new ArrayAdapter<String>(getContext(), android.R.layout.simple_list_item_1, runonStrings);
+    ArrayAdapter<String> runonAdapter = new ArrayAdapter<String>(
+            getContext(), android.R.layout.simple_list_item_1, runonStrings);
     runonView.setAdapter(new ArrayAdapter<String>(getContext(), R.layout.listview_row, R.id.listview_row_text, runonStrings));
     runonView.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
     runonView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
@@ -399,7 +414,7 @@ public class Camera2BasicFragment extends Fragment
     ArrayAdapter<String> modelAdapter = new ArrayAdapter<String>(
             getContext(),R.layout.listview_row, R.id.listview_row_text,  modelStrings);
     modelView.setAdapter(modelAdapter);
-    modelView.setItemChecked(0, true);
+    modelView.setItemChecked(defaultModelIndex, true);
     modelView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
       @Override
       public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -420,6 +435,8 @@ public class Camera2BasicFragment extends Fragment
             backgroundHandler.post(() -> classifier.setNumThreads(newVal));
           }
         });
+
+    // Start initial model.
   }
 
 
@@ -658,6 +675,7 @@ public class Camera2BasicFragment extends Fragment
     //  runClassifier = true;
     //}
     backgroundHandler.post(periodicClassify);
+    backgroundHandler.post(() -> updateActiveModel());
   }
 
   /** Stops the background thread and its {@link Handler}. */

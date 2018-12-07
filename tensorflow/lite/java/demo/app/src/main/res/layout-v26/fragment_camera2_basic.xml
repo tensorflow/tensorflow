@@ -130,8 +130,7 @@
             <ListView
                 android:id="@+id/runon"
                 android:layout_width="match_parent"
-                android:layout_height="180dp"
-                android:entries="@string/nnapi" />
+                android:layout_height="180dp" />
 
         </LinearLayout>
 
