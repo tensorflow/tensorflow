@@ -24,6 +24,7 @@ from __future__ import print_function
 import textwrap
 
 import gast
+import six
 
 from tensorflow.python.util import tf_inspect
 
@@ -91,7 +92,17 @@ def parse_entity(entity):
 def parse_str(src):
   """Returns the AST of given piece of code."""
   # TODO(mdan): This should exclude the module things are autowrapped in.
-  return gast.parse(src)
+
+  if six.PY2 and '.print(' in src:
+    # This special treatment is required because gast.parse is not aware of
+    # whether print_function was present in the original context.
+    src = 'from __future__ import print_function\n' + src
+    parsed_module = gast.parse(src)
+    parsed_module.body = parsed_module.body[1:]
+  else:
+    parsed_module = gast.parse(src)
+
+  return parsed_module
 
 
 def parse_expression(src):
