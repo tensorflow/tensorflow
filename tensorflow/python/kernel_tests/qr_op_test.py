@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -102,7 +103,7 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
       tol = 1e-14
     # Tests that a ~= q*r.
     a_recon = math_ops.matmul(q, r)
-    self.assertAllClose(a_recon.eval(), a, rtol=tol, atol=tol)
+    self.assertAllClose(a_recon, a, rtol=tol, atol=tol)
 
   def CheckUnitary(self, x):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
@@ -112,7 +113,7 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
       tol = 1e-5
     else:
       tol = 1e-14
-    self.assertAllClose(identity.eval(), self.evaluate(xx), atol=tol)
+    self.assertAllClose(identity, xx, atol=tol)
 
   def Test(self):
     np.random.seed(1)
@@ -202,7 +203,8 @@ if __name__ == "__main__":
       for cols in 1, 2, 5, 10, 32, 100:
         for full_matrices in False, True:
           for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
-            for use_static_shape in True, False:
+            # TF2 does not support placeholders under eager so we skip it
+            for use_static_shape in set([True, tf2.enabled()]):
               shape = batch_dims + (rows, cols)
               name = "%s_%s_full_%s_static_%s" % (dtype.__name__,
                                                   "_".join(map(str, shape)),
