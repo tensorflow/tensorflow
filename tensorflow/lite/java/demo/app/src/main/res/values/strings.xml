@@ -23,4 +23,5 @@
     <string name="toggle">Use NNAPI</string>
     <string name="tflite">tflite</string>
     <string name="nnapi">NNAPI</string>
+    <string name="cpu">CPU</string>
 </resources>

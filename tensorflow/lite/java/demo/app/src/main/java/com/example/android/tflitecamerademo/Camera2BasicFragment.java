@@ -56,11 +56,10 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.CompoundButton;
 import android.widget.NumberPicker;
+import android.widget.RadioButton;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.ToggleButton;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -87,9 +86,11 @@ public class Camera2BasicFragment extends Fragment
   private boolean runClassifier = false;
   private boolean checkedPermissions = false;
   private TextView textView;
-  private ToggleButton toggle;
   private NumberPicker np;
   private ImageClassifier classifier;
+
+  enum InferenceEngine { CPU, NNAPI };
+  private InferenceEngine inferenceEngine = InferenceEngine.CPU;
 
   /** Max preview width that is guaranteed by Camera2 API */
   private static final int MAX_PREVIEW_WIDTH = 1920;
@@ -303,14 +304,6 @@ public class Camera2BasicFragment extends Fragment
   public void onViewCreated(final View view, Bundle savedInstanceState) {
     textureView = (AutoFitTextureView) view.findViewById(R.id.texture);
     textView = (TextView) view.findViewById(R.id.text);
-    toggle = (ToggleButton) view.findViewById(R.id.button);
-
-    toggle.setOnCheckedChangeListener(
-        new CompoundButton.OnCheckedChangeListener() {
-          public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-            backgroundHandler.post(() -> classifier.setUseNNAPI(isChecked));
-          }
-        });
 
     np = (NumberPicker) view.findViewById(R.id.np);
     np.setMinValue(1);
@@ -321,6 +314,32 @@ public class Camera2BasicFragment extends Fragment
           @Override
           public void onValueChange(NumberPicker picker, int oldVal, int newVal) {
             backgroundHandler.post(() -> classifier.setNumThreads(newVal));
+          }
+        });
+
+    RadioButton cpuButton = (RadioButton) view.findViewById(R.id.radio_cpu);
+    cpuButton.setChecked(true);  // TFLite runs on CPU by default.
+    cpuButton.setOnClickListener(
+        new View.OnClickListener() {
+          @Override
+          public void onClick(View view) {
+            if (inferenceEngine == InferenceEngine.CPU) {
+              return;
+            }
+            inferenceEngine = InferenceEngine.CPU;
+            backgroundHandler.post(() -> classifier.useCPU());
+          }
+        });
+
+    ((RadioButton) view.findViewById(R.id.radio_nnapi)).setOnClickListener(
+        new View.OnClickListener() {
+          @Override
+          public void onClick(View view) {
+            if (inferenceEngine == InferenceEngine.NNAPI) {
+              return;
+            }
+            inferenceEngine = InferenceEngine.NNAPI;
+            backgroundHandler.post(() -> classifier.useNNAPI());
           }
         });
   }

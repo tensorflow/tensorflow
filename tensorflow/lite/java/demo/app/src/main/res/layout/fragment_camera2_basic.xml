@@ -80,15 +80,25 @@
             android:layout_marginLeft="10dp"
             android:theme="@style/AppTheme.Picker"
             android:visibility="visible" />
-        <ToggleButton
-            android:id="@+id/button"
-            android:textOff="@string/tflite"
-            android:textOn="@string/nnapi"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="10dp"
-            android:background="#0000000f"
-            android:textColor="@android:color/white" />
-
+        <RadioGroup
+            android:gravity="center"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
+            <RadioButton
+                android:id="@+id/radio_cpu"
+                android:background="#0000000f"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/cpu"
+                android:textColor="@android:color/white" />
+            <RadioButton
+                android:id="@+id/radio_nnapi"
+                android:background="#0000000f"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/nnapi"
+                android:textColor="@android:color/white" />
+        </RadioGroup>
     </LinearLayout>
 </RelativeLayout>
