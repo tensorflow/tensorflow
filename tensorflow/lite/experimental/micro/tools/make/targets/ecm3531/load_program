@@ -1,0 +1,35 @@
+#!/usr/bin/python3
+
+import os
+import telnetlib
+
+def send_ocd_cmd(line):
+    ocd_sock.write(bytes(line,encoding = 'utf-8'))
+    print(ocd_sock.read_until(b'> ').decode('utf-8'), end='')
+
+def get_ocd_response():
+    print(ocd_sock.read_until(b'> ').decode('utf-8'), end='')
+
+#get hooked up to openocd daemon
+ocd_sock = telnetlib.Telnet(host='localhost', port=4444)
+get_ocd_response() # clean it out
+
+# git path to project elf file
+cur_dir = os.getcwd()
+elf_file = cur_dir + '/../../gen/ecm3531_cortex-m3/bin/' + 'micro_speech_test'
+print("elf_file = ",elf_file)
+
+
+# use these to download and run the elf fle
+ocd_commands = ["halt\n",
+                "load_image {}\n".format(elf_file),
+                "mww 0x1001FFF8 0xDEADBEEF\n",
+                "mww 0x1001FFFC 0xC369A517\n",
+                "reset\n"]
+
+# OK now do what we came here for!!!
+for x in ocd_commands: 
+    print(x)
+    send_ocd_cmd(x)
+
+
