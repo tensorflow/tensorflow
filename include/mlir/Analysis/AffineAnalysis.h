@@ -48,21 +48,30 @@ AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
                               unsigned numSymbols);
 
 /// Given 2 unbounded AffineMaps `f` and `g`, returns the AffineMap f o g
-/// (i.e. f(g), i.e. f composed with g). This assumes (and enforces) that the
-/// maps are composable, i.e. that the number of AffineDimExpr of `f` matches
-/// the number of results of `g`.
+/// (i.e. f(g), i.e. f composed with g).
 /// The resulting AffineMap has as many AffineDimExpr as `g` and as many
 /// AffineSymbolExpr as the max of either `f` or `g`.
 /// In particular, this does not try and compress the unused AffineDimExpr and
 /// AffineSymbolExpr. This could be implemented later as a canonicalization if
 /// needed.
 ///
+/// Prerequisites:
+/// The maps are composable, i.e. that the number of AffineDimExpr of `f`
+/// matches the number of results of `g`.
+///
 /// Examples:
 /// compose((d0, d1) -> (d0 + 1, d1 - 1),
 ///         (d0)[s0] -> (d0 + s0, d0 - s0))
 /// Returns (d0)[s0] -> (d0 + s0 + 1, d0 - s0 - 1)
-///
 AffineMap composeUnboundedMaps(AffineMap f, AffineMap g);
+
+/// Given an AffineExpr `e` and an unbounded AffineMap `g`, returns the
+/// AffineExpr e o g (i.e. e(g), i.e. e composed with g).
+///
+/// Prerequisites:
+/// `e` and `g` are composable, i.e. that the number of AffineDimExpr of `e` is
+/// smaller than the number of results of `g`.
+AffineExpr composeWithUnboundedMap(AffineExpr e, AffineMap g);
 
 /// Returns the sequence of AffineApplyOp OperationStmts operation in
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',

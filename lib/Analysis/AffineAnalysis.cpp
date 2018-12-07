@@ -336,18 +336,18 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 /// Precondition: the maximal AffineDimExpr position in `e` is smaller than
 /// `exprs.size()`.
 static AffineExpr substExprs(AffineExpr e, llvm::ArrayRef<AffineExpr> exprs) {
-  if (auto binExpr = e.template dyn_cast<AffineBinaryOpExpr>()) {
+  if (auto binExpr = e.dyn_cast<AffineBinaryOpExpr>()) {
     AffineExpr lhs, rhs;
     AffineExprBinaryOp binOp;
     std::tie(lhs, rhs, binOp) = matchBinaryOpExpr(binExpr);
     return binOp(substExprs(lhs, exprs), substExprs(rhs, exprs));
   }
-  if (auto dim = e.template dyn_cast<AffineDimExpr>()) {
+  if (auto dim = e.dyn_cast<AffineDimExpr>()) {
     assert(dim.getPosition() < exprs.size() &&
            "Cannot compose due to dim mismatch");
     return exprs[dim.getPosition()];
   }
-  if (auto sym = e.template dyn_cast<AffineSymbolExpr>()) {
+  if (auto sym = e.dyn_cast<AffineSymbolExpr>()) {
     return sym;
   }
   return e.template cast<AffineConstantExpr>();
@@ -360,16 +360,17 @@ AffineMap mlir::composeUnboundedMaps(AffineMap f, AffineMap g) {
   assert(g.getRangeSizes().empty() && "Expected unbounded AffineMap");
   assert(f.getRangeSizes().empty() && "Expected unbounded AffineMap");
   auto exprs = functional::map(
-      [g](AffineExpr expr) {
-        auto e = simplifyAffineExpr(substExprs(expr, g.getResults()),
-                                    g.getNumDims(), g.getNumSymbols());
-        return e;
-      },
+      [g](AffineExpr expr) { return mlir::composeWithUnboundedMap(expr, g); },
       f.getResults());
   auto composed =
       AffineMap::get(g.getNumDims(),
                      std::max(f.getNumSymbols(), g.getNumSymbols()), exprs, {});
   return composed;
+}
+
+AffineExpr mlir::composeWithUnboundedMap(AffineExpr e, AffineMap g) {
+  return simplifyAffineExpr(substExprs(e, g.getResults()), g.getNumDims(),
+                            g.getNumSymbols());
 }
 
 // Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
