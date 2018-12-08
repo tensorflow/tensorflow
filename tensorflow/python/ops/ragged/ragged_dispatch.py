@@ -30,7 +30,6 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_array_ops
-from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_shape
@@ -122,22 +121,22 @@ class UnaryRaggedElementwiseDispatcher(dispatch.OpDispatcher):
         nested_splits_lists = [
             elt.nested_row_splits for elt in x if ragged_tensor.is_ragged(elt)
         ]
-        inner_values = [
-            elt.inner_values if ragged_tensor.is_ragged(elt) else elt
+        flat_values = [
+            elt.flat_values if ragged_tensor.is_ragged(elt) else elt
             for elt in x
         ]
         with ops.control_dependencies(
             ragged_util.assert_splits_match(nested_splits_lists)):
-          return ragged_factory_ops.from_nested_row_splits(
-              self._original_op(inner_values, *args, **kwargs),
+          return ragged_tensor.RaggedTensor.from_nested_row_splits(
+              self._original_op(flat_values, *args, **kwargs),
               nested_splits_lists[0])
       else:
         return self.NOT_SUPPORTED
     else:
       found_ragged = ragged_tensor.is_ragged(x)
       if found_ragged:
-        mapped_values = self._original_op(x.inner_values, *args, **kwargs)
-        return x.with_inner_values(mapped_values)
+        mapped_values = self._original_op(x.flat_values, *args, **kwargs)
+        return x.with_flat_values(mapped_values)
       else:
         return self.NOT_SUPPORTED
 
@@ -191,8 +190,8 @@ class BinaryRaggedElementwiseDispatcher(dispatch.OpDispatcher):
       return self.NOT_SUPPORTED
 
     if ((x_is_ragged and y_is_ragged) or
-        (x_is_ragged and x.inner_values.shape.ndims <= y.shape.ndims) or
-        (y_is_ragged and y.inner_values.shape.ndims <= x.shape.ndims)):
+        (x_is_ragged and x.flat_values.shape.ndims <= y.shape.ndims) or
+        (y_is_ragged and y.flat_values.shape.ndims <= x.shape.ndims)):
       bcast_shape = ragged_tensor_shape.broadcast_dynamic_shape(
           ragged_tensor_shape.RaggedTensorDynamicShape.from_tensor(x),
           ragged_tensor_shape.RaggedTensorDynamicShape.from_tensor(y))
@@ -201,13 +200,13 @@ class BinaryRaggedElementwiseDispatcher(dispatch.OpDispatcher):
       y = ragged_tensor_shape.broadcast_to(
           y, bcast_shape, broadcast_inner_dimensions=False)
 
-    x_values = x.inner_values if ragged_tensor.is_ragged(x) else x
-    y_values = y.inner_values if ragged_tensor.is_ragged(y) else y
+    x_values = x.flat_values if ragged_tensor.is_ragged(x) else x
+    y_values = y.flat_values if ragged_tensor.is_ragged(y) else y
     mapped_values = self._original_op(x_values, y_values, *args, **kwargs)
     if ragged_tensor.is_ragged(x):
-      return x.with_inner_values(mapped_values)
+      return x.with_flat_values(mapped_values)
     else:
-      return y.with_inner_values(mapped_values)
+      return y.with_flat_values(mapped_values)
 
 
 class RaggedDispatcher(dispatch.OpDispatcher):

@@ -9,47 +9,6 @@ different lengths.  For example, the inner (column) dimension of
 description of ragged tensors, see the `tf.RaggedTensor`
 class documentation.
 
-## `RaggedTensor` Operations
-
-### `RaggedTensor` Factory ops
-
-* `tf.ragged.constant`
-* `tf.ragged.from_row_splits`
-* `tf.ragged.from_row_splits`
-* `tf.ragged.from_row_lengths`
-* `tf.ragged.from_row_starts`
-* `tf.ragged.from_row_limits`
-* `tf.ragged.from_value_rowids`
-* `tf.ragged.from_nested_row_splits`
-* `tf.ragged.from_nested_value_rowids`
-
-### `RaggedTensor` Conversion ops
-
-* `tf.ragged.from_tensor`
-* `tf.ragged.to_tensor`
-* `tf.ragged.from_sparse`
-* `tf.ragged.to_sparse`
-* `tf.ragged.from_variant`
-* `tf.ragged.to_variant`
-* `tf.ragged.convert_to_tensor_or_ragged_tensor`
-
-### `RaggedTensor` Shape ops
-
-* `tf.ragged.row_splits`
-* `tf.ragged.row_lengths`
-* `tf.ragged.row_starts`
-* `tf.ragged.row_limits`
-* `tf.ragged.value_rowids`
-* `tf.ragged.nrows`
-* `tf.ragged.nested_row_splits`
-* `tf.ragged.row_splits_to_segment_ids`
-* `tf.ragged.segment_ids_to_row_splits`
-* `tf.ragged.bounding_shape`
-
-### Functional ops
-* `tf.ragged.map_inner_values`
-
-
 <!-- Ragged Classes & related helper functions -->
 @@RaggedTensor
 @@RaggedTensorType
@@ -57,15 +16,9 @@ class documentation.
 @@is_ragged
 
 <!-- Factory Ops -->
+@@ragged_factory_ops
 @@constant
 @@constant_value
-@@from_row_splits
-@@from_row_lengths
-@@from_row_starts
-@@from_row_limits
-@@from_value_rowids
-@@from_nested_row_splits
-@@from_nested_value_rowids
 @@convert_to_tensor_or_ragged_tensor
 
 <!-- Conversion Ops -->
@@ -77,14 +30,6 @@ class documentation.
 @@segment_ids_to_row_splits
 
 <!-- Array Ops -->
-@@row_splits
-@@row_lengths
-@@row_starts
-@@row_limits
-@@value_rowids
-@@nrows
-@@nested_row_splits
-@@bounding_shape
 @@gather
 @@batch_gather
 @@gather_nd
@@ -114,7 +59,7 @@ class documentation.
 @@reduce_any
 
 <!-- Functional Ops -->
-@@map_inner_values
+@@map_flat_values
 @@map_fn
 
 <!-- Shape & broadcasting -->
@@ -133,18 +78,12 @@ from tensorflow.python.ops.ragged import ragged_string_ops
 
 from tensorflow.python.ops.ragged.ragged_array_ops import batch_gather
 from tensorflow.python.ops.ragged.ragged_array_ops import boolean_mask
-from tensorflow.python.ops.ragged.ragged_array_ops import bounding_shape
 from tensorflow.python.ops.ragged.ragged_array_ops import concat
 from tensorflow.python.ops.ragged.ragged_array_ops import expand_dims
 from tensorflow.python.ops.ragged.ragged_array_ops import gather
 from tensorflow.python.ops.ragged.ragged_array_ops import gather_nd
-from tensorflow.python.ops.ragged.ragged_array_ops import nrows
-from tensorflow.python.ops.ragged.ragged_array_ops import row_lengths
-from tensorflow.python.ops.ragged.ragged_array_ops import row_limits
-from tensorflow.python.ops.ragged.ragged_array_ops import row_starts
 from tensorflow.python.ops.ragged.ragged_array_ops import stack
 from tensorflow.python.ops.ragged.ragged_array_ops import tile
-from tensorflow.python.ops.ragged.ragged_array_ops import value_rowids
 from tensorflow.python.ops.ragged.ragged_array_ops import where
 
 from tensorflow.python.ops.ragged.ragged_conversion_ops import from_sparse
@@ -154,16 +93,8 @@ from tensorflow.python.ops.ragged.ragged_conversion_ops import to_tensor
 
 from tensorflow.python.ops.ragged.ragged_factory_ops import constant
 from tensorflow.python.ops.ragged.ragged_factory_ops import constant_value
-from tensorflow.python.ops.ragged.ragged_factory_ops import convert_to_tensor_or_ragged_tensor
-from tensorflow.python.ops.ragged.ragged_factory_ops import from_nested_row_splits
-from tensorflow.python.ops.ragged.ragged_factory_ops import from_nested_value_rowids
-from tensorflow.python.ops.ragged.ragged_factory_ops import from_row_lengths
-from tensorflow.python.ops.ragged.ragged_factory_ops import from_row_limits
-from tensorflow.python.ops.ragged.ragged_factory_ops import from_row_splits
-from tensorflow.python.ops.ragged.ragged_factory_ops import from_row_starts
-from tensorflow.python.ops.ragged.ragged_factory_ops import from_value_rowids
 
-from tensorflow.python.ops.ragged.ragged_functional_ops import map_inner_values
+from tensorflow.python.ops.ragged.ragged_functional_ops import map_flat_values
 
 from tensorflow.python.ops.ragged.ragged_map_ops import map_fn
 
@@ -184,6 +115,7 @@ from tensorflow.python.ops.ragged.ragged_math_ops import segment_prod
 from tensorflow.python.ops.ragged.ragged_math_ops import segment_sqrt_n
 from tensorflow.python.ops.ragged.ragged_math_ops import segment_sum
 
+from tensorflow.python.ops.ragged.ragged_tensor import convert_to_tensor_or_ragged_tensor
 from tensorflow.python.ops.ragged.ragged_tensor import is_ragged
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensorType

@@ -24,26 +24,27 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
-                            parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedTensorBoundingShapeOp(ragged_test_util.RaggedTensorTestCase,
+                                  parameterized.TestCase):
 
   def assertShapeEq(self, x, y):
     assert isinstance(x, ragged.RaggedTensorDynamicShape)
     assert isinstance(y, ragged.RaggedTensorDynamicShape)
     x_partitioned_dim_sizes = [
-        splits.eval().tolist()  #
+        self.eval_to_list(splits)  #
         for splits in x.partitioned_dim_sizes
     ]
     y_partitioned_dim_sizes = [
-        splits.eval().tolist()  #
+        self.eval_to_list(splits)  #
         for splits in y.partitioned_dim_sizes
     ]
     self.assertEqual(x_partitioned_dim_sizes, y_partitioned_dim_sizes)
-    self.assertEqual(x.inner_dim_sizes.eval().tolist(),
-                     y.inner_dim_sizes.eval().tolist())
+    self.assertAllEqual(x.inner_dim_sizes, y.inner_dim_sizes)
 
   @parameterized.parameters([
       dict(value='x', expected_dim_sizes=[]),
@@ -82,13 +83,11 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
           value=ragged.constant_value([[[1, 2], [3]], [[4, 5]]]),
           expected_dim_sizes=[2, [2, 1], [2, 1, 2]]),
   ])
-  @test_util.run_v1_only('b/120545219')
   def testFromTensor(self, value, expected_dim_sizes):
     shape = ragged.RaggedTensorDynamicShape.from_tensor(value)
     expected = ragged.RaggedTensorDynamicShape.from_dim_sizes(
         expected_dim_sizes)
-    with self.cached_session():
-      self.assertShapeEq(shape, expected)
+    self.assertShapeEq(shape, expected)
 
   @parameterized.parameters([
       dict(dim_sizes=[], rank=0, expected_dim_sizes=[]),
@@ -106,15 +105,13 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
           rank=5,
           expected_dim_sizes=[1, 3, [3, 2, 4], 2, 3]),
   ])
-  @test_util.run_v1_only('b/120545219')
   def testBroadcastToRank(self, dim_sizes, rank, expected_dim_sizes):
     shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(dim_sizes)
     expected = ragged.RaggedTensorDynamicShape.from_dim_sizes(
         expected_dim_sizes)
     broadcasted_shape = shape.broadcast_to_rank(rank)
-    with self.cached_session():
-      self.assertShapeEq(broadcasted_shape, expected)
-      self.assertEqual(broadcasted_shape.rank, rank)
+    self.assertShapeEq(broadcasted_shape, expected)
+    self.assertEqual(broadcasted_shape.rank, rank)
 
   @parameterized.parameters([
       #=========================================================================
@@ -283,7 +280,6 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
            original_dim_sizes=[2, (2, 1), 2, 1],
            broadcast_dim_sizes=[2, (2, 1), 2, (2, 1, 2, 1, 2, 1)]),
   ])  # pyformat: disable
-  @test_util.run_v1_only('b/120545219')
   def testBroadcastDimension(self, axis, row_length, original_dim_sizes,
                              broadcast_dim_sizes):
     """Tests for the broadcast_dimension method.
@@ -306,17 +302,16 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
     broadcast_shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(
         broadcast_dim_sizes)
     self.assertEqual(original_shape.rank, broadcast_shape.rank)
-    with self.cached_session():
-      # shape[axis].value == 1 and row_length > 1:
-      bcast1 = original_shape.broadcast_dimension(axis, row_length)
-      # shape[axis].value > 1 and row_length == shape[axis].value:
-      bcast2 = broadcast_shape.broadcast_dimension(axis, row_length)
-      # shape[axis].value > 1 and row_length == 1:
-      bcast3 = broadcast_shape.broadcast_dimension(axis, 1)
+    # shape[axis].value == 1 and row_length > 1:
+    bcast1 = original_shape.broadcast_dimension(axis, row_length)
+    # shape[axis].value > 1 and row_length == shape[axis].value:
+    bcast2 = broadcast_shape.broadcast_dimension(axis, row_length)
+    # shape[axis].value > 1 and row_length == 1:
+    bcast3 = broadcast_shape.broadcast_dimension(axis, 1)
 
-      self.assertShapeEq(bcast1, broadcast_shape)
-      self.assertShapeEq(bcast2, broadcast_shape)
-      self.assertShapeEq(bcast3, broadcast_shape)
+    self.assertShapeEq(bcast1, broadcast_shape)
+    self.assertShapeEq(bcast2, broadcast_shape)
+    self.assertShapeEq(bcast3, broadcast_shape)
 
   @parameterized.parameters(
       [
@@ -373,16 +368,14 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
               y_dims=[1, 1, 2, (2, 1)],
               expected_dims=[2, (2, 1), 2, (2, 1, 2, 1, 2, 1)]),
       ])
-  @test_util.run_v1_only('b/120545219')
   def testBroadcastDynamicShape(self, x_dims, y_dims, expected_dims):
     x_shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(x_dims)
     y_shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(y_dims)
     expected = ragged.RaggedTensorDynamicShape.from_dim_sizes(expected_dims)
     result1 = ragged.broadcast_dynamic_shape(x_shape, y_shape)
     result2 = ragged.broadcast_dynamic_shape(y_shape, x_shape)
-    with self.cached_session():
-      self.assertShapeEq(expected, result1)
-      self.assertShapeEq(expected, result2)
+    self.assertShapeEq(expected, result1)
+    self.assertShapeEq(expected, result2)
 
   def testRepr(self):
     shape = ragged.RaggedTensorDynamicShape.from_dim_sizes([2, (2, 1), 2, 1])
@@ -420,17 +413,12 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
           dim_sizes=[3, [3, 0, 2]],
           expected=ragged.constant_value([[10, 10, 10], [], [10, 10]])),
   ])
-  @test_util.run_v1_only('b/120545219')
   def testRaggedBroadcastTo(self, x, dim_sizes, expected):
     shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(dim_sizes)
     result = ragged.broadcast_to(x, shape)
-    with self.cached_session():
-      self.assertEqual(
-          getattr(result, 'ragged_rank', 0), getattr(expected, 'ragged_rank',
-                                                     0))
-      if hasattr(expected, 'tolist'):
-        expected = expected.tolist()
-      self.assertEqual(result.eval().tolist(), expected)
+    self.assertEqual(
+        getattr(result, 'ragged_rank', 0), getattr(expected, 'ragged_rank', 0))
+    self.assertRaggedEqual(result, expected)
 
   @parameterized.parameters([
       dict(
@@ -475,7 +463,6 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
               [[[[11, 21], [32]], [[13, 23], [34]]],
                [[[15, 25], [36]]]])),
   ])
-  @test_util.run_v1_only('b/120545219')
   def testRaggedAddWithBroadcasting(self, x, y, expected, doc):
     expected_rrank = getattr(expected, 'ragged_rank', 0)
     x = ragged.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
@@ -485,8 +472,7 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
     self.assertEqual(expected_rrank, result_rrank)
     if hasattr(expected, 'tolist'):
       expected = expected.tolist()
-    with self.cached_session():
-      self.assertEqual(result.eval().tolist(), expected)
+    self.assertRaggedEqual(result, expected)
 
 
 if __name__ == '__main__':

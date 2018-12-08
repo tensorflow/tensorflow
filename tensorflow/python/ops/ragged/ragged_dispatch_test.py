@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -32,6 +33,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import ragged
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 # Constants listing various op types to test.  Each operation
@@ -126,8 +128,8 @@ BINARY_INT_OPS = [
 ]
 
 
-@test_util.run_v1_only('b/120545219')
-class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedElementwiseOpsTest(ragged_test_util.RaggedTensorTestCase,
                                parameterized.TestCase):
 
   def assertSameShape(self, x, y):
@@ -138,7 +140,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       for (x_splits, y_splits) in zip(x.nested_row_splits, y.nested_row_splits):
         self.assertAllEqual(x_splits, y_splits)
       self.assertAllEqual(
-          array_ops.shape(x.inner_values), array_ops.shape(y.inner_values))
+          array_ops.shape(x.flat_values), array_ops.shape(y.flat_values))
     else:
       self.assertIsInstance(y, ops.Tensor)
       self.assertAllEqual(array_ops.shape(x), array_ops.shape(y))
@@ -215,19 +217,18 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     result = op(x, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
-    dense_x = x.inner_values if isinstance(x, ragged.RaggedTensor) else x
+    dense_x = x.flat_values if isinstance(x, ragged.RaggedTensor) else x
     expected_flat_values = array_ops.reshape(op(dense_x, **extra_args), [-1])
 
-    with self.test_session():
-      # Check that the result has the expected shape.
-      self.assertSameShape(x, result)
+    # Check that the result has the expected shape.
+    self.assertSameShape(x, result)
 
-      # Check that the result has the expected (flattened) values.
-      if isinstance(result, ragged.RaggedTensor):
-        result_flat_values = array_ops.reshape(result.inner_values, [-1])
-      else:
-        result_flat_values = array_ops.reshape(result, [-1])
-      self.assertAllEqual(expected_flat_values, result_flat_values)
+    # Check that the result has the expected (flattened) values.
+    if isinstance(result, ragged.RaggedTensor):
+      result_flat_values = array_ops.reshape(result.flat_values, [-1])
+    else:
+      result_flat_values = array_ops.reshape(result, [-1])
+    self.assertAllEqual(expected_flat_values, result_flat_values)
 
   @parameterized.parameters(
       [
@@ -327,21 +328,20 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       result = op(x, y, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
-    dense_x = x.inner_values if isinstance(x, ragged.RaggedTensor) else x
-    dense_y = y.inner_values if isinstance(y, ragged.RaggedTensor) else y
+    dense_x = x.flat_values if isinstance(x, ragged.RaggedTensor) else x
+    dense_y = y.flat_values if isinstance(y, ragged.RaggedTensor) else y
     expected_flat_values = array_ops.reshape(
         op(dense_x, dense_y, **extra_args), [-1])
 
-    with self.test_session():
-      # Check that the result has the expected shape.
-      self.assertSameShape(y, result)
+    # Check that the result has the expected shape.
+    self.assertSameShape(y, result)
 
-      # Check that the result has the expected (flattened) values.
-      if isinstance(result, ragged.RaggedTensor):
-        result_flat_values = array_ops.reshape(result.inner_values, [-1])
-      else:
-        result_flat_values = array_ops.reshape(result, [-1])
-      self.assertAllEqual(expected_flat_values, result_flat_values)
+    # Check that the result has the expected (flattened) values.
+    if isinstance(result, ragged.RaggedTensor):
+      result_flat_values = array_ops.reshape(result.flat_values, [-1])
+    else:
+      result_flat_values = array_ops.reshape(result, [-1])
+    self.assertAllEqual(expected_flat_values, result_flat_values)
 
   @parameterized.parameters(
       [
@@ -385,26 +385,27 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
 
     # Run the wrapped op on the dense values, for comparison.
     dense_inputs = [
-        x.inner_values if isinstance(x, ragged.RaggedTensor) else x
+        x.flat_values if isinstance(x, ragged.RaggedTensor) else x
         for x in inputs
     ]
     expected_flat_values = array_ops.reshape(
         op(dense_inputs, **extra_args), [-1])
 
-    with self.test_session():
-      # Check that the result has the expected shape.
-      self.assertSameShape(inputs[0], result)
+    # Check that the result has the expected shape.
+    self.assertSameShape(inputs[0], result)
 
-      # Check that the result has the expected (flattened) values.
-      if isinstance(result, ragged.RaggedTensor):
-        result_flat_values = array_ops.reshape(result.inner_values, [-1])
-      else:
-        result_flat_values = array_ops.reshape(result, [-1])
-      self.assertAllEqual(expected_flat_values, result_flat_values)
+    # Check that the result has the expected (flattened) values.
+    if isinstance(result, ragged.RaggedTensor):
+      result_flat_values = array_ops.reshape(result.flat_values, [-1])
+    else:
+      result_flat_values = array_ops.reshape(result, [-1])
+    self.assertAllEqual(expected_flat_values, result_flat_values)
 
   def testElementwiseOpUnknownRankError(self):
+    if context.executing_eagerly():
+      return
     x = ragged.constant([[1, 2], [3]])
-    y = ragged.from_row_splits(
+    y = ragged.RaggedTensor.from_row_splits(
         array_ops.placeholder_with_default([1, 2, 3], shape=None), x.row_splits)
     with self.assertRaisesRegexp(ValueError,
                                  r'Unable to broadcast: unknown rank'):
@@ -428,27 +429,22 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     x = ragged.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
     y = ragged.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
     result = x + y
-    with self.cached_session():
-      self.assertEqual(result.eval().tolist(), expected)
+    self.assertRaggedEqual(result, expected)
 
   def testElementwiseOpShapeMismatch(self):
     x = ragged.constant([[1, 2, 3], [4, 5]])
     y = ragged.constant([[1, 2, 3], [4, 5, 6]])
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'Incompatible shapes'):
-      with self.cached_session():
-        math_ops.add(x, y).eval()
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(math_ops.add(x, y))
 
   def testBinaryOpSparseAndRagged(self):
     x = ragged.constant([[1, 2, 3], [4, 5]])
     y = sparse_tensor.SparseTensor([[0, 0], [0, 1], [2, 0]], [1, 2, 3], [3, 2])
-    with self.assertRaises(TypeError):
-      with self.cached_session():
-        math_ops.add(x, y).eval()
+    with self.assertRaises((TypeError, ValueError)):
+      self.evaluate(math_ops.add(x, y))
 
-    with self.assertRaises(TypeError):
-      with self.cached_session():
-        math_ops.add_n([x, y]).eval()
+    with self.assertRaises((TypeError, ValueError)):
+      self.evaluate(math_ops.add_n([x, y]))
 
 
 if __name__ == '__main__':
