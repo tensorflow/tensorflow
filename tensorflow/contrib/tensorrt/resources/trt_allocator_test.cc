@@ -48,11 +48,11 @@ TEST(TRTAllocatorTest, Align) {
         513ul, 700ul, 12345ul, 1ul << 32}) {
     for (uint64_t alignment = 1; alignment <= space * 4; alignment *= 2) {
       for (const uintptr_t ptr_val :
-           {1ul, alignment == 1 ? 1ul : alignment - 1, alignment, alignment + 1,
+           {1ull, alignment == 1 ? 1ull : alignment - 1, alignment, alignment + 1,
             alignment + (alignment / 2)}) {
         if (ptr_val % alignment == 0) {
           for (const uint64_t size :
-               {1ul, space == 1 ? 1ul : space - 1, space, space + 1}) {
+               {1ull, space == 1 ? 1ull : space - 1, space, space + 1}) {
             EXPECT_EQ(space >= size, RunTest(alignment, size, ptr_val, space));
           }
         } else {
