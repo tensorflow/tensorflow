@@ -256,8 +256,9 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testOptimizationEnabledByDefault(self):
     """Tests that some optimizations are applied to datasets by default."""
     options = dataset_ops.Options()
-    expected_optimizations = ["noop_elimination"]
-    self.assertEqual(options._static_optimizations(), expected_optimizations)
+    expected_optimizations = ["noop_elimination", "map_and_batch_fusion"]
+    self.assertEqual(
+        set(options._static_optimizations()), set(expected_optimizations))
 
   def testOptimizationDisableDefault(self):
     """Tests that we can disable all static optimizations enabled by default.

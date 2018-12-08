@@ -94,7 +94,6 @@ class OptimizationOptions(options.OptionsBase):
     optimizations_to_enable = [
         "filter_fusion",
         "hoist_random_uniform",
-        "map_and_batch_fusion",
         "map_and_filter_fusion",
         "map_fusion",
         "map_parallelization",
@@ -109,6 +108,7 @@ class OptimizationOptions(options.OptionsBase):
       # The following optimizations are turned on by default, unless the
       # user explicitly disables them.
       optimizations_to_disable = [
+          "map_and_batch_fusion",
           "noop_elimination",
       ]
       for optimization in optimizations_to_disable:
