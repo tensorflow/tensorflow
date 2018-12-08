@@ -62,7 +62,7 @@ TEST(TRTAllocatorTest, Align) {
             EXPECT_TRUE(
                 RunTest(alignment, space - diff, ptr_val + diff, space - diff));
             for (const uint64_t size :
-                 {1ul, space - diff > 1 ? space - diff - 1 : 1ul, space - diff,
+                 {1ull, space - diff > 1 ? space - diff - 1 : 1ull, space - diff,
                   space - diff + 1, space - 1}) {
               EXPECT_EQ(space - diff >= size,
                         RunTest(alignment, size, ptr_val, space));
