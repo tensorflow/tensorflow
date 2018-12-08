@@ -1093,6 +1093,9 @@ def sparse_reduce_max_v2(
 @deprecation.deprecated_endpoints("sparse_reduce_max")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
+@deprecation.deprecated_args(
+    None, "reduction_axes is deprecated, use axis instead",
+    "reduction_axes")
 def sparse_reduce_max(sp_input, axis=None, keepdims=None,
                       reduction_axes=None, keep_dims=None):
   """Computes the max of elements across dimensions of a SparseTensor.
@@ -1141,7 +1144,7 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of axis.
+    reduction_axes: Deprecated name of `axis`.
     keep_dims:  Deprecated alias for `keepdims`.
 
   Returns:
@@ -1279,6 +1282,9 @@ def sparse_reduce_sum_v2(
 @deprecation.deprecated_endpoints("sparse_reduce_sum")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
+@deprecation.deprecated_args(
+    None, "reduction_axes is deprecated, use axis instead",
+    "reduction_axes")
 def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
                       reduction_axes=None, keep_dims=None):
   """Computes the sum of elements across dimensions of a SparseTensor.
@@ -1314,7 +1320,7 @@ def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of axis.
+    reduction_axes: Deprecated name of `axis`.
     keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
