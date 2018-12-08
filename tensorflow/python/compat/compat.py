@@ -32,7 +32,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2018, 12, 7)
+_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2018, 12, 8)
 
 
 @tf_export("compat.forward_compatible")
