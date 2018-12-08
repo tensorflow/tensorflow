@@ -24,6 +24,7 @@ from tensorflow.python import tf2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test as test_lib
@@ -40,6 +41,7 @@ def _add_test(test, test_name, fn):
 
 class TensordotTest(test_lib.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def test_invalid_shape(self):
     a = [[1, 2], [3, 4]]
     b = [[1, 2], [3, 4], [5, 6]]
@@ -63,6 +65,7 @@ class TensordotTest(test_lib.TestCase):
                 axes_ph: (a_axes, b_axes)
             })
 
+  @test_util.run_v1_only("b/120545219")
   def test_invalid_axes(self):
     a = [[1, 2], [3, 4]]
     b = [[1, 2], [3, 4]]
@@ -105,6 +108,7 @@ class TensordotTest(test_lib.TestCase):
         self.assertAllEqual(tf_ans.shape, np_ans.shape)
         self.assertAllEqual(tf_ans, np_ans)
 
+  @test_util.run_v1_only("b/120545219")
   def test_partial_shape_inference(self):
     for axes in ([1], [0]), 1:
       a = array_ops.placeholder(dtypes.float32)

@@ -309,7 +309,7 @@ class TensorArrayTest(test.TestCase):
     self._testTensorArraySplitRead(dtypes.string)
 
   @test_util.disable_control_flow_v2("v2 does not support TensorArray.grad.")
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("v2 does not support TensorArray.grad.")
   def testSkipEagerTensorGradArrayWriteRead(self):
     with self.session(use_gpu=True) as session:
       ta = tensor_array_ops.TensorArray(
@@ -364,7 +364,7 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual([2.0], session.run(g2))
 
   @test_util.disable_control_flow_v2("v2 does not support TensorArray.grad.")
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("v2 does not support TensorArray.grad.")
   def testSkipEagerTensorGradArrayDynamicWriteRead(self):
     with self.session(use_gpu=True) as session:
       ta = tensor_array_ops.TensorArray(
@@ -407,7 +407,7 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual(3, g_vs)
 
   @test_util.disable_control_flow_v2("v2 does not support TensorArray.grad.")
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("v2 does not support TensorArray.grad.")
   def testSkipEagerTensorGradAccessTwiceReceiveSameObject(self):
     with self.session(use_gpu=True) as session:
       ta = tensor_array_ops.TensorArray(
@@ -424,7 +424,7 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual(t_g_ta_0, t_g_ta_1)
       self.assertAllEqual([[4.0, 5.0]], d_r1_0)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testTensorArrayWriteWrongIndexOrDataTypeFails(self):
     with self.session(use_gpu=True):
       ta = _make_ta(3, "foo", dtype=dtypes.float32)
@@ -458,7 +458,7 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(error_msg):
         self.evaluate(ta.write(3, 3.0).flow)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testTensorArrayReadWrongIndexOrDataTypeFails(self):
     with self.session(use_gpu=True):
       ta = _make_ta(3, "foo", dtype=dtypes.float32)
@@ -493,7 +493,7 @@ class TensorArrayTest(test.TestCase):
         self.evaluate(ta.read(3))
 
   @test_util.disable_control_flow_v2("v2 allows multiple writes.")
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("v2 allows multiple writes.")
   def testSkipEagerTensorArrayWriteMultipleFails(self):
     with self.session(use_gpu=True):
       ta = tensor_array_ops.TensorArray(
@@ -504,7 +504,7 @@ class TensorArrayTest(test.TestCase):
           "it has already been written to."):
         self.evaluate(ta.write(2, 3.0).write(2, 3.0).flow)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testTensorArrayConcatIncompatibleShapesFails(self):
     with self.session(use_gpu=True):
       ta = tensor_array_ops.TensorArray(
@@ -536,7 +536,7 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError("shape"):
         self.evaluate(w3.concat())
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testTensorArraySplitIncompatibleShapesFails(self):
     with self.session(use_gpu=True):
       in_eager_mode = context.executing_eagerly()
@@ -611,14 +611,14 @@ class TensorArrayTest(test.TestCase):
         wb1_grad.flow.eval()
 
   @test_util.disable_control_flow_v2("v2 does not support TensorArray.grad.")
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("v2 does not support TensorArray.grad.")
   def testSkipEagerTensorArrayWriteGradientAddMultipleAdds(self):
     for dtype in (dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64,
                   dtypes.complex64, dtypes.complex128):
       self._testTensorArrayWriteGradientAddMultipleAdds(dtype)
 
   @test_util.disable_control_flow_v2("Low level legacy TA op test.")
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("Low level legacy TA op test.")
   def testSkipEagerTensorArrayGradWithShapeKnownElementShape(self):
     with self.session(use_gpu=True) as sess:
       ta = tensor_array_ops.TensorArray(
@@ -649,7 +649,7 @@ class TensorArrayTest(test.TestCase):
                           sess.run(read_value, feed_dict={value: fed_value}))
 
   @test_util.disable_control_flow_v2("Low level legacy TA op test.")
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("Low level legacy TA op test.")
   def testSkipEagerTensorArrayGradWithShapeUnknownElementShape(self):
     with self.session(use_gpu=True) as sess:
       ta = tensor_array_ops.TensorArray(
@@ -778,7 +778,7 @@ class TensorArrayTest(test.TestCase):
     self._testTensorArrayGradientWritePackConcatAndRead()
 
   @test_util.disable_control_flow_v2("v2 does not support clear_after_read.")
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("v2 does not support clear_after_read.")
   def testTensorArrayReadTwice(self):
     with self.session(use_gpu=True):
       value = constant_op.constant([[1.0, -1.0], [10.0, -10.0]])
@@ -1351,7 +1351,7 @@ class TensorArrayTest(test.TestCase):
                                     .ENABLE_TENSOR_ARRAY_V2 else v1_msg):
         ta.stack().eval()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSkipEagerTensorArrayEvalEmpty(self):
     self._testTensorArrayEvalEmpty()
 
@@ -1443,7 +1443,7 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual(expected_grad, grad_vals[0])
 
   @test_util.disable_control_flow_v2("colocate_with not supported in v2.")
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSkipEagerTensorArrayGetsDeviceFromFirstWrite(self):
     with ops.device("/job:worker/task:0/cpu:0"):
       # this initial device will be ignored.
@@ -1493,7 +1493,7 @@ class TensorArrayTest(test.TestCase):
             [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
 
   @test_util.disable_control_flow_v2("colocate_with not supported in v2.")
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSkipEagerTensorArrayGetsDeviceFromFirstWriteInWhileLoop(self):
     with ops.device("/job:worker/task:0/cpu:0"):
       ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=2)
@@ -1524,7 +1524,7 @@ class TensorArrayTest(test.TestCase):
             [s for s in dev_stats[d] if "TensorArray" == s.node_name])
 
   @test_util.disable_control_flow_v2("colocate_with not supported in v2.")
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSkipEagerTensorArrayDisabledColocateWithFirstWriteCall(self):
     with ops.device("/job:worker/task:0/cpu:0"):
       ta = tensor_array_ops.TensorArray(

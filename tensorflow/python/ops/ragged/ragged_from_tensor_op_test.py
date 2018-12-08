@@ -31,7 +31,7 @@ from tensorflow.python.platform import googletest
 class RaggedFromTensorOpTest(test_util.TensorFlowTestCase,
                              parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testDocStringExamples(self):
     # The examples from ragged.from_tensor.__doc__.
     dt = constant_op.constant([[5, 7, 0], [0, 3, 0], [6, 0, 0]])
@@ -263,7 +263,7 @@ class RaggedFromTensorOpTest(test_util.TensorFlowTestCase,
                        [[[5, 6], [7]], [[0, 8], []]]]
       },
   )  # pyformat: disable
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testRaggedFromTensor(self,
                            tensor,
                            expected,
@@ -398,7 +398,7 @@ class RaggedFromTensorOpTest(test_util.TensorFlowTestCase,
           'expected': [[], []]
       },
   )
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testEmpty(self, dt_shape, expected, lengths=None, padding=None):
     dt = array_ops.zeros(dt_shape)
     rt = ragged.from_tensor(dt, lengths, padding)

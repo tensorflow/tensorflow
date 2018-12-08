@@ -126,6 +126,7 @@ BINARY_INT_OPS = [
 ]
 
 
+@test_util.run_v1_only('b/120545219')
 class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
                                parameterized.TestCase):
 
@@ -401,7 +402,6 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
         result_flat_values = array_ops.reshape(result, [-1])
       self.assertAllEqual(expected_flat_values, result_flat_values)
 
-  @test_util.run_deprecated_v1
   def testElementwiseOpUnknownRankError(self):
     x = ragged.constant([[1, 2], [3]])
     y = ragged.from_row_splits(

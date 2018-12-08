@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import session_ops
@@ -28,6 +29,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+@test_util.run_v1_only("b/120545219")
 class SessionOpsTest(test.TestCase):
 
   def testHandleBasic(self):
@@ -232,6 +234,7 @@ class SessionOpsTest(test.TestCase):
                      b_p: b_handle.handle})
       self.assertEqual(3.0, c_handle.eval())
 
+  @test_util.run_v1_only("b/120545219")
   def testFeedOneHandleDirectly(self):
     with self.cached_session() as sess:
       a = constant_op.constant(10.0)
@@ -243,6 +246,7 @@ class SessionOpsTest(test.TestCase):
 
       self.assertAllClose(2500.0, sess.run(d, feed_dict={c: h_c}))
 
+  @test_util.run_v1_only("b/120545219")
   def testDirectHandleFeedOverlappingWithFetches(self):
     with self.cached_session() as sess:
       a = constant_op.constant(10.0)
@@ -283,6 +287,7 @@ class SessionOpsTest(test.TestCase):
       self.assertAllClose(48.0, sess.run(e, feed_dict={c: h_c, d: h_d}))
       self.assertAllClose(-48.0, sess.run(e, feed_dict={c: h_d, d: h_c}))
 
+  @test_util.run_v1_only("b/120545219")
   def testFeedHandleToVariableDirectly(self):
     with self.cached_session() as sess:
       a = variables.Variable(12.0)

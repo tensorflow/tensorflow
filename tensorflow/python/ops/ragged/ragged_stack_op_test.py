@@ -265,7 +265,7 @@ class RaggedStackOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           axis=0,
           expected=[[[b'a00', b'a01'], [], [b'a20', b'a21']]]),
   )   # pyformat: disable
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testRaggedStack(self,
                       descr,
                       rt_inputs,

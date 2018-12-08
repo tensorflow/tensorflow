@@ -170,6 +170,7 @@ class CondV2Test(test.TestCase):
         self.assertRegexpMatches(
             cond2_op.get_attr("else_branch").name, r"foo_cond_1_false_\d*")
 
+  @test_util.run_v1_only("b/120545219")
   def testDefunInCond(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -189,6 +190,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  @test_util.run_deprecated_v1
   def testNestedDefunInCond(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -213,6 +215,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  @test_util.run_deprecated_v1
   def testDoubleNestedDefunInCond(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -773,6 +776,7 @@ class CondV2Test(test.TestCase):
     self.assertAllEqual(
         self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
 
+  @test_util.run_deprecated_v1
   def testForwardPassRewrite(self):
     x = constant_op.constant(1.0, name="x")
     output = cond_v2.cond_v2(constant_op.constant(True),

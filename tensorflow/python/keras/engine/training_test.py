@@ -471,7 +471,7 @@ class TrainingTest(keras_parameterized.TestCase):
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly())
 
-  @tf_test_util.run_deprecated_v1
+  @tf_test_util.run_v1_only('b/120545219')
   def test_that_trainable_disables_updates(self):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
@@ -864,6 +864,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
     self.assertLess(score[0], ref_score[0])
 
   @keras_parameterized.run_all_keras_modes
+  @tf_test_util.run_v1_only('b/120545219')
   def test_sample_weights(self):
     num_classes = 5
     batch_size = 5
@@ -961,6 +962,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
       self.assertTrue(msg_found)
 
   @keras_parameterized.run_all_keras_modes
+  @tf_test_util.run_v1_only('b/120545219')
   # TODO(b/120562577): Test failing with assertion error.
   def DISABLED_test_temporal_sample_weights(self):
     num_classes = 5
@@ -1283,7 +1285,7 @@ class LossMaskingTest(keras_parameterized.TestCase):
 
 class TestDynamicTrainability(keras_parameterized.TestCase):
 
-  @tf_test_util.run_deprecated_v1
+  @tf_test_util.run_v1_only('b/120545219')
   def test_trainable_warning(self):
     with self.cached_session():
       x = np.random.random((5, 3))
@@ -1297,7 +1299,7 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
       model.train_on_batch(x, y)
       self.assertRaises(Warning)
 
-  @tf_test_util.run_deprecated_v1
+  @tf_test_util.run_v1_only('b/120545219')
   def test_trainable_argument(self):
     with self.cached_session():
       x = np.random.random((5, 3))

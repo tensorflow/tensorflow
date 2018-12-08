@@ -165,7 +165,7 @@ class RaggedWhereOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           y=ragged.constant_value([[[['a']]], [[['b']]]]),
           expected=ragged.constant_value([[[[], [b'A']]], [[[b'b']]]])),
   ])   # pyformat: disable
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testRaggedWhere(self, condition, expected, x=None, y=None):
     result = ragged.where(condition, x, y)
     self.assertEqual(

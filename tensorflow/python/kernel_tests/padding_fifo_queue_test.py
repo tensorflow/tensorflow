@@ -29,11 +29,13 @@ from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_v1_only("b/120545219")
 class PaddingFIFOQueueTest(test.TestCase):
 
   def testConstructor(self):
@@ -1393,6 +1395,7 @@ class PaddingFIFOQueueTest(test.TestCase):
     with self.assertRaisesOpError("was cancelled"):
       self.evaluate(enqueue_many_op)
 
+  @test_util.run_deprecated_v1
   def testResetOfBlockingOperation(self):
     with self.cached_session() as sess:
       q_empty = data_flow_ops.PaddingFIFOQueue(5, dtypes_lib.float32, ((),))

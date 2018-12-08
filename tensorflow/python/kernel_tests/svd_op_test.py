@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import linalg_ops
@@ -39,6 +40,7 @@ def _AddTest(test_class, op_name, testcase_name, fn):
 
 class SvdOpTest(test.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def testWrongDimensions(self):
     # The input to svd should be a tensor of at least rank 2.
     scalar = constant_op.constant(1.)
@@ -50,6 +52,7 @@ class SvdOpTest(test.TestCase):
                                  "Shape must be at least rank 2 but is rank 1"):
       linalg_ops.svd(vector)
 
+  @test_util.run_v1_only("b/120545219")
   def testConcurrentExecutesWithoutError(self):
     with self.session(use_gpu=True) as sess:
       all_ops = []
@@ -126,6 +129,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
     self.assertAllClose(identity, xx, atol=tol)
 
+  @test_util.run_v1_only("b/120545219")
   def Test(self):
     is_complex = dtype_ in (np.complex64, np.complex128)
     is_single = dtype_ in (np.float32, np.complex64)
@@ -214,6 +218,7 @@ def _GetSvdGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
     tf_v *= phase[..., :n]
     return tf_s, tf_u, tf_v
 
+  @test_util.run_v1_only("b/120545219")
   def Test(self):
     np.random.seed(42)
     a = np.random.uniform(low=-1.0, high=1.0, size=shape_).astype(dtype_)

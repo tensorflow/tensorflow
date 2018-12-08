@@ -28,6 +28,7 @@ from tensorflow.python.ops import ragged
 from tensorflow.python.platform import googletest
 
 
+@test_util.run_v1_only('b/120545219')
 class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
 
@@ -183,7 +184,6 @@ class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
           indices=[[0, 0, 1], [0, 0, 0], [0, 1, 0]],
           expected=[[b'c', b'd'], [b'a', b'b'], [b'e', b'f']]),
   ])  # pyformat: disable
-  @test_util.run_deprecated_v1
   def testRaggedGatherNd(self, descr, params, indices, expected):
     result = ragged.gather_nd(params, indices)
     self.assertEqual(
@@ -193,7 +193,6 @@ class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
         expected = expected.tolist()
       self.assertEqual(self.evaluate(result).tolist(), expected)
 
-  @test_util.run_deprecated_v1
   def testRaggedGatherNdUnknownRankError(self):
     params = ragged.constant([['a', 'b'], ['c', 'd']])
     indices1 = array_ops.placeholder(dtypes.int32, shape=None)
@@ -221,7 +220,6 @@ class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
           indices=ragged.constant([[0]]),
           message='The innermost dimension of indices may not be ragged'),
   ])
-  @test_util.run_deprecated_v1
   def testRaggedGatherNdStaticError(self,
                                     params,
                                     indices,

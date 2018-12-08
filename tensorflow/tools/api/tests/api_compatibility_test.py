@@ -314,7 +314,7 @@ class ApiCompatibilityTest(test.TestCase):
         update_goldens=FLAGS.update_goldens,
         api_version=api_version)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testAPIBackwardsCompatibility(self):
     api_version = 1
     golden_file_pattern = os.path.join(
@@ -333,7 +333,7 @@ class ApiCompatibilityTest(test.TestCase):
         'tensorflow.python.util.lazy_loader.LazyLoader'
         in str(type(tf.contrib)))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testAPIBackwardsCompatibilityV1(self):
     api_version = 1
     golden_file_pattern = os.path.join(

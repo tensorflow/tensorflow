@@ -143,7 +143,7 @@ class RaggedRowLengthsOp(test_util.TensorFlowTestCase, parameterized.TestCase):
           expected=[[2, 3, 0], [4, 1]],
           expected_ragged_rank=1),
   ])  # pyformat: disable
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testRowLengths(self,
                      rt_input,
                      expected,

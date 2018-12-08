@@ -61,6 +61,7 @@ class MatrixUnaryFunctorGradientTest(test_lib.TestCase):
 
 def _GetMatrixUnaryFunctorGradientTest(functor_, dtype_, shape_, **kwargs_):
 
+  @test_util.run_v1_only('b/120545219')
   def Test(self):
     with self.session(use_gpu=True):
       np.random.seed(1)
@@ -103,6 +104,7 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
                                         float32_tol_fudge=1.0,
                                         **kwargs_):
 
+  @test_util.run_v1_only('b/120545219')
   def Test(self):
     # TODO(rmlarsen): Debug illegal address bug on CUDA and re-enable
     # GPU test for matrix_solve.

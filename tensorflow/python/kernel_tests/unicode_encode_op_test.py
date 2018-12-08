@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl as errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
@@ -58,6 +59,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
         ragged_string_ops.unicode_encode(test_value, encoding, "strict").eval()
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
   def testIgnoreErrors(self, encoding):
     test_value = np.array([72, 101, 2147483647, -1, 111], np.int32)
     expected_value = u"Heo".encode(encoding)
@@ -69,6 +71,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(result, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
   def testReplaceErrors(self, encoding):
     test_value = np.array([72, 101, 2147483647, -1, 111], np.int32)
     expected_value = u"He\U0000fffd\U0000fffdo".encode(encoding)
@@ -109,6 +112,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
   # -- regular Tensor tests -- #
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
   def testVector(self, encoding):
     test_value = np.array([72, 101, 108, 108, 111], np.int32)
     expected_value = u"Hello".encode(encoding)
@@ -144,6 +148,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(result, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
   def testMatrix(self, encoding):
     test_value = np.array(
         [[72, 128516, 108, 108, 111], [87, 128516, 114, 108, 100]], np.int32)
@@ -157,6 +162,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(result, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
   def test3DimMatrix(self, encoding):
     test_value = constant_op.constant(
         [[[72, 101, 108, 108, 111], [87, 111, 114, 108, 100]],
@@ -172,6 +178,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(result, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
   def test4DimMatrix(self, encoding):
     test_value = constant_op.constant(
         [[[[72, 101, 108, 108, 111]], [[87, 111, 114, 108, 100]]],
@@ -192,6 +199,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
   # -- Ragged Tensor tests -- #
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
   def testRaggedMatrix(self, encoding):
     test_value = ragged_factory_ops.constant(
         [[72, 195, 108, 108, 111], [87, 128516, 114, 108, 100, 46]], np.int32)
@@ -205,6 +213,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(result, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
   def test3DimMatrixWithRagged2ndDim(self, encoding):
     test_value = ragged_factory_ops.constant(
         [[[72, 101, 108, 108, 111], [87, 111, 114, 108, 100]],
@@ -224,6 +233,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(result.tolist(), expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
   def test3DimMatrixWithRagged3rdDim(self, encoding):
     test_value = ragged_factory_ops.constant(
         [[[72, 101, 108, 108, 111], [87, 111, 114, 108, 100, 46]],
@@ -241,6 +251,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(result.tolist(), expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
   def test3DimMatrixWithRagged2ndAnd3rdDim(self, encoding):
     test_value = ragged_factory_ops.constant(
         [[[72, 101, 108, 108, 111], [87, 111, 114, 108, 100, 46]], [],
@@ -254,6 +265,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(result.tolist(), expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
   def test4DimRaggedMatrix(self, encoding):
     test_value = ragged_factory_ops.constant(
         [[[[72, 101, 108, 108, 111], [87, 111, 114, 108, 100]]],
@@ -267,6 +279,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(result.tolist(), expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
   def testRaggedMatrixWithMultiDimensionInnerValues(self, encoding):
     test_inner_values = constant_op.constant([[[72, 101, 108, 108, 111],
                                                [87, 111, 114, 108, 100]],

@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -55,6 +56,7 @@ class GrpcServerTest(test.TestCase):
       self.assertAllEqual([[4]], sess.run(e))
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
 
+  @test_util.run_v1_only("b/120545219")
   def testMultipleSessions(self):
     server = self._cached_server
 
@@ -73,6 +75,7 @@ class GrpcServerTest(test.TestCase):
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
 
   # Verifies various reset failures.
+  @test_util.run_v1_only("b/120545219")
   def testResetFails(self):
     # Creates variable with container name.
     with ops.container("test0"):
@@ -146,6 +149,7 @@ class GrpcServerTest(test.TestCase):
       self.assertEqual(0.5, min_val)
       self.assertEqual(0.5, max_val)
 
+  @test_util.run_v1_only("b/120545219")
   def testCloseCancelsBlockingOperation(self):
     server = self._cached_server
     sess = session.Session(server.target, config=self._useRPCConfig())
@@ -207,6 +211,7 @@ class GrpcServerTest(test.TestCase):
               "local": ["localhost"]
           }, job_name="local", task_index=0)
 
+  @test_util.run_v1_only("b/120545219")
   def testTimeoutRaisesException(self):
     server = self._cached_server
     q = data_flow_ops.FIFOQueue(1, [dtypes.float32])
@@ -241,6 +246,7 @@ class GrpcServerTest(test.TestCase):
       queue_runner_impl.start_queue_runners(sess)
       sess.run(var.assign(3.0))
 
+  @test_util.run_v1_only("b/120545219")
   def testIsolateSessionState(self):
     server = self._cached_server
 
@@ -296,6 +302,7 @@ class GrpcServerTest(test.TestCase):
     self.assertAllEqual(37, isolate_sess_0.run(v))
     self.assertAllEqual([19, 86], isolate_sess_1.run(v))
 
+  @test_util.run_v1_only("b/120545219")
   def testShapeChangingIsolateState(self):
     server = self._cached_server
     sharing_config = config_pb2.ConfigProto(isolate_session_state=False)

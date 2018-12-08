@@ -43,7 +43,7 @@ from tensorflow.python.util import compat
 
 class VariablesTestCase(test.TestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testInitialization(self):
     with self.cached_session():
       var0 = variables.VariableV1(0.0)
@@ -71,7 +71,7 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose(0.0, self.evaluate(var0))
       self.assertAllClose(1.1, self.evaluate(var1))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testInitializationOrder(self):
     with self.cached_session():
       rnd = variables.Variable(random_ops.random_uniform([3, 6]), name="rnd")
@@ -194,7 +194,7 @@ class VariablesTestCase(test.TestCase):
   def testCountUpToInt64(self):
     self._countUpToTest(dtypes.int64)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testControlDepsNone(self):
     with self.cached_session():
       c = constant_op.constant(1.0)
@@ -208,7 +208,7 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual([], var_x.value().op.control_inputs)
       self.assertEqual([], var_x._ref().op.control_inputs)  # pylint: disable=protected-access
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testControlFlow(self):
     with self.cached_session() as sess:
       v0 = variables.Variable(0, name="v0")
@@ -245,7 +245,7 @@ class VariablesTestCase(test.TestCase):
       self.evaluate(v0.initializer)
       self.evaluate(add)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testControlFlowInitialization(self):
     """Expects an error if an initializer is in a control-flow scope."""
     def cond(i, _):
@@ -412,7 +412,7 @@ class VariablesTestCase(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllClose([1, 12], self.evaluate(var))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testColocation(self):
     with ops.device("/job:ps"):
       var = variables.VariableV1(0, name="v")
@@ -421,7 +421,7 @@ class VariablesTestCase(test.TestCase):
     self.assertDeviceEqual("/job:ps", assign_op.device)
     self.assertEqual([b"loc:@v"], assign_op.op.colocation_groups())
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testInitializerFunction(self):
     value = [[-42], [133.7]]
     shape = [2, 1]
@@ -459,7 +459,7 @@ class VariablesTestCase(test.TestCase):
           lambda: constant_op.constant(1.),
           constraint=constraint)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testNoRefDataRace(self):
     with self.cached_session():
       a = variables.Variable([1, 2, 3], dtype=dtypes.float32)
@@ -489,7 +489,7 @@ class VariablesTestCase(test.TestCase):
       for i in v2.initializer.inputs:
         self.assertEqual(expected_group_v2, i.op.colocation_groups())
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testVariableDefInitializedInstances(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v_def = variables.Variable(
@@ -542,7 +542,7 @@ class VariablesTestCase(test.TestCase):
 
       self.assertAllClose(np.ones((5, 5), np.float32), self.evaluate(var))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testRepr(self):
     var = variables.VariableV1(np.zeros((5, 5), np.float32), name="noop")
     self.assertEqual(
@@ -576,7 +576,7 @@ class IsInitializedTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertEqual(0, self.evaluate(uninited).size)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testVariableList(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v = variables.VariableV1([1, 2], name="v")
@@ -614,7 +614,7 @@ class ObsoleteIsInitializedTest(test.TestCase):
     with ops.Graph().as_default():
       self.assertEqual(None, variables.assert_variables_initialized())
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testVariables(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v = variables.VariableV1([1, 2])
@@ -626,7 +626,7 @@ class ObsoleteIsInitializedTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.evaluate(inited)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testVariableList(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v = variables.VariableV1([1, 2])

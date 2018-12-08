@@ -861,7 +861,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (SLICE_BUILDER[:, -2:], [row[-2:] for row in EXAMPLE_RAGGED_TENSOR_2D]),
       # TODO(edloper): Add tests for strided slices, once support is added.
   )
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testRaggedTensorGetItemWithRaggedRank1(self, slice_spec, expected):
     """Test that rt.__getitem__(slice_spec) == expected."""
     # Ragged tensor
@@ -903,7 +903,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (SLICE_BUILDER[..., 0, 0, 0], IndexError,
        'Too many indices for RaggedTensor'),
   )
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testRaggedTensorGetItemErrorsWithRaggedRank1(self, slice_spec, expected,
                                                    message):
     """Test that rt.__getitem__(slice_spec) == expected."""
@@ -982,7 +982,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       # TODO(edloper): Add tests slicing inner ragged dimensions, one support
       # is added.
   )
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testRaggedTensorGetItemWithRaggedRank2(self, slice_spec, expected):
     """Test that rt.__getitem__(slice_spec) == expected."""
     rt = ragged.from_nested_row_splits(
@@ -1069,7 +1069,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     rt = ragged.from_row_splits(values, [0, 1])
     self._TestGetItemException(rt, slice_spec, expected, message)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testGetItemNewAxis(self):
     # rt: [[[['a', 'b'], ['c', 'd']], [], [['e', 'f']]], []]
     splits1 = [0, 3, 3]
@@ -1155,7 +1155,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   # RaggedTensor.with_values() and RaggedTensor.with_inner_values().
   #=============================================================================
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testWithValues(self):
     rt1 = ragged.constant([[1, 2], [3, 4, 5], [6], [], [7]])
     rt2 = ragged.constant([[[1, 2], [3, 4, 5]], [[6]], [], [[], [7]]])
@@ -1208,7 +1208,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(result['rt1'].tolist(), [[1, 2, 3], [4]])
       self.assertEqual(result['rt2'].tolist(), [[[], [1, 2]], [[3]]])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testSessionPartialRunFeed(self):
     # Placeholder inputs.
     a = ragged.from_row_splits(

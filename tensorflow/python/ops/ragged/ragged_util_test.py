@@ -87,6 +87,7 @@ class RaggedRepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       # Empty tensor
       dict(data=[], repeats=[], axis=0, expected=[]),
   ])
+  @test_util.run_v1_only('b/120545219')
   def testRepeat(self, data, repeats, expected, axis=None):
     result = ragged_util.repeat(data, repeats, axis)
     with self.test_session():
@@ -135,6 +136,7 @@ class RaggedRepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           dict(data=TENSOR_4D, repeats=[1, 3, 0, 0, 2], axis=3),
       ]
   ])
+  @test_util.run_v1_only('b/120545219')
   def testValuesMatchesNumpy(self, mode, data, repeats, axis):
     # Exception: we can't handle negative axis if data.ndims is unknown.
     if axis < 0 and mode == 'unknown_shape':

@@ -140,7 +140,7 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase):
     self.assertEqual(st.values.shape.as_list(), [7])
     self.assertEqual(st.dense_shape.shape.as_list(), [3])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testKernelErrors(self):
     # An empty vector, defined using a placeholder to ensure that we can't
     # determine that it's invalid at graph-construction time.
@@ -179,7 +179,7 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase):
       self.assertRaisesRegexp(errors.InvalidArgumentError, empty_splits_error,
                               ragged.to_sparse(bad_rt5).eval)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testGradient(self):
     # rt1.shape == rt2.shape == [2, (D2), (D3), 2].
     rt1 = ragged.constant([[[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0]]]],

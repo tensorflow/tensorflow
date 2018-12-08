@@ -53,6 +53,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(ret), 16.)
       self.assertSequenceEqual(self.evaluate(grad), [32.])
 
+  @test_util.run_v1_only("b/120545219")
   def testReturnSameStructureTrue(self):
     x = constant_op.constant(2.)
     ret = while_loop_v2(
@@ -145,7 +146,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(grad), [32.])
       self.assertSequenceEqual(self.evaluate(grad_grad), [48.])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testPruning(self):
     x = constant_op.constant(1)
 
@@ -441,6 +442,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # grad = gradients_impl.gradients(output, [n])
     # self.assertEqual(self.evaluate(grad), 3.5)
 
+  @test_util.run_deprecated_v1
   def testForwardPassRewrite(self):
     x = constant_op.constant(1.0, name="x")
     output = while_v2.while_loop(lambda x: x < 10.0,

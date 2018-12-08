@@ -306,7 +306,7 @@ class AdagradOptimizerTest(test.TestCase):
             np.array([2.715679168701172, 3.715679168701172]),
             self.evaluate(var1))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testDynamicShapeVariable_Ok(self):
     with self.cached_session():
       v = variable_scope.get_variable("v", initializer=constant_op.constant(1.),
@@ -315,7 +315,7 @@ class AdagradOptimizerTest(test.TestCase):
       # Creating optimizer should cause no exception.
       adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testDynamicShapeVariableWithCallableInit(self):
     var0 = variable_scope.get_variable("var0",
                                        initializer=constant_op.constant(1.),
