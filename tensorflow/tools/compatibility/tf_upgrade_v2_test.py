@@ -198,6 +198,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
             _, _, _, text = self._upgrade("tf." + name)
             if (text and
                 not text.startswith("tf.compat.v1") and
+                not text.startswith("tf.estimator") and
                 text not in v1_symbols):
               self.assertFalse(
                   True, "Symbol %s generated from %s not in v1 API" % (
