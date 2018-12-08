@@ -13,10 +13,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CheckpointSaverHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "ClusterDef"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -53,20 +49,8 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "FeedFnHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "FinalOpsHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "FloatList"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "GlobalStepWaiterHook"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "Int64List"
@@ -75,14 +59,6 @@ tf_module {
   member {
     name: "JobDef"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "LoggingTensorHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "NanTensorHook"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "ProximalGradientDescentOptimizer"
@@ -102,18 +78,6 @@ tf_module {
   }
   member {
     name: "SessionRunHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "StepCounterHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "StopAtStepHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SummarySaverHook"
     mtype: "<type \'type\'>"
   }
   member_method {

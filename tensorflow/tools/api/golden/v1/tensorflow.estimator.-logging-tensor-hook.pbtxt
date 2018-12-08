@@ -1,11 +1,11 @@
-path: "tensorflow.train.FeedFnHook"
+path: "tensorflow.estimator.LoggingTensorHook"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks.FeedFnHook\'>"
+  is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks.LoggingTensorHook\'>"
   is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunHook\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'feed_fn\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'tensors\', \'every_n_iter\', \'every_n_secs\', \'at_end\', \'formatter\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "after_create_session"

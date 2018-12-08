@@ -1,11 +1,11 @@
-path: "tensorflow.estimator.experimental.InMemoryEvaluatorHook"
+path: "tensorflow.estimator.ProfilerHook"
 tf_class {
-  is_instance: "<class \'tensorflow_estimator.python.estimator.hooks.hooks.InMemoryEvaluatorHook\'>"
+  is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks.ProfilerHook\'>"
   is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunHook\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'estimator\', \'input_fn\', \'steps\', \'hooks\', \'name\', \'every_n_iter\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'100\'], "
+    argspec: "args=[\'self\', \'save_steps\', \'save_secs\', \'output_dir\', \'show_dataflow\', \'show_memory\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'\', \'True\', \'False\'], "
   }
   member_method {
     name: "after_create_session"
