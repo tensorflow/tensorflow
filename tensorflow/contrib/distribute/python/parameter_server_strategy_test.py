@@ -648,7 +648,7 @@ class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
                                     self._cluster_spec, num_gpus)
 
   @combinations.generate(
-    combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
   def testMinimizeLossGraphLocal(self, num_gpus):
     self._test_minimize_loss_graph(None, None, num_gpus)
 
