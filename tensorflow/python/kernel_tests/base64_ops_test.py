@@ -31,6 +31,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_v1_only("b/120545219")
 class Base64OpsTest(test_util.TensorFlowTestCase):
 
   def setUp(self):

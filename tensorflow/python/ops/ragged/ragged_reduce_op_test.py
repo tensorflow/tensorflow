@@ -300,7 +300,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           axis=2,
           expected=[[mean(1, 2), mean(3, 4, 5)], [mean(6, 7), 8], [9]]),
   )
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testReduce(self, ragged_reduce_op, rt_input, axis, expected):
     rt_input = ragged.constant(rt_input)
     reduced = ragged_reduce_op(rt_input, axis)

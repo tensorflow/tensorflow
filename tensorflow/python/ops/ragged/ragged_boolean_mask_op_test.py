@@ -298,7 +298,7 @@ class RaggedBooleanMaskOpTest(test_util.TensorFlowTestCase,
           keepdims=True,
           expected=ragged.constant_value([[[1], [4, 6]], [[7, 9], []]])),
   ])  # pyformat: disable
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testBooleanMask(self, descr, data, mask, keepdims, expected):
     actual = ragged.boolean_mask(data, mask, keepdims=keepdims)
     self.assertEqual(

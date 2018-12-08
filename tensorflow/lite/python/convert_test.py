@@ -34,6 +34,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_v1_only("b/120545219")
 class ConvertTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
@@ -176,6 +177,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
         "QUANTIZED_UINT8.", str(error.exception))
 
 
+@test_util.run_v1_only("b/120545219")
 class ConvertTestOpHint(test_util.TensorFlowTestCase):
   """Test the hint to stub functionality."""
 

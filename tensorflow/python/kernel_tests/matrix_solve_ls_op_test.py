@@ -135,7 +135,7 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
       self.assertEqual(np_ans.shape, tf_ans_val.shape)
       self.assertAllClose(np_ans, tf_ans_val, atol=2 * tol, rtol=2 * tol)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWrongDimensions(self):
     # The matrix and right-hand sides should have the same number of rows.
     with self.session(use_gpu=True):
@@ -144,7 +144,6 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
       with self.assertRaises(ValueError):
         linalg_ops.matrix_solve_ls(matrix, rhs)
 
-  @test_util.run_deprecated_v1
   def testEmpty(self):
     full = np.array([[1., 2.], [3., 4.], [5., 6.]])
     empty0 = np.empty([3, 0])
@@ -164,7 +163,7 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
             linalg_ops.matrix_solve_ls(empty1, empty1, fast=fast))
         self.assertEqual(tf_ans.shape, (2, 2))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testBatchResultSize(self):
     # 3x3x3 matrices, 3x3x1 right-hand sides.
     matrix = np.array([1., 2., 3., 4., 5., 6., 7., 8., 9.] * 3).reshape(3, 3, 3)

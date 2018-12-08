@@ -29,7 +29,7 @@ from tensorflow.python.platform import googletest
 
 class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testDocStringExample(self):
     st = sparse_tensor.SparseTensor(
         indices=[[0, 0], [0, 1], [0, 2], [1, 0], [3, 0]],
@@ -40,7 +40,7 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase):
     with self.test_session():
       self.assertEqual(rt.eval().tolist(), [[1, 2, 3], [4], [], [5]])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testEmpty(self):
     st = sparse_tensor.SparseTensor(
         indices=array_ops.zeros([0, 2], dtype=dtypes.int64),
@@ -67,7 +67,7 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase):
     self.assertRaisesRegexp(ValueError, r'rank\(st_input\) must be 2',
                             ragged.from_sparse, st3)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testGoodPartialSparseTensorRank(self):
     st1 = sparse_tensor.SparseTensor(
         indices=[[0, 0]],
@@ -82,7 +82,7 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase):
     ragged.from_sparse(st1)
     ragged.from_sparse(st2)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testNonRaggedSparseTensor(self):
     # "index_suffix" means the value of the innermost dimension of the index
     # (i.e., indices[i][-1]).

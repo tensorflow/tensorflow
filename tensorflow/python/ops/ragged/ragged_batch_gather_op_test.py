@@ -135,7 +135,7 @@ class RaggedBatchGatherOpTest(test_util.TensorFlowTestCase,
           expected=ragged.constant_value(
               [[[[b'c', b'a'], [b'd', b'd']], [[b'f', b'e']]]], ragged_rank=2)),
   ])
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testRaggedBatchGather(self, descr, params, indices, expected):
     result = ragged.batch_gather(params, indices)
     self.assertEqual(
@@ -188,7 +188,7 @@ class RaggedBatchGatherOpTest(test_util.TensorFlowTestCase,
            indices=[[[0]]],
            message='batch shape from indices does not match params shape'),
   ])
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testRaggedBatchGatherStaticError(self,
                                        params,
                                        indices,

@@ -30,7 +30,7 @@ from tensorflow.python.platform import googletest
 
 class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testDocStringExamples(self):
     params = constant_op.constant(['a', 'b', 'c', 'd', 'e'])
     indices = constant_op.constant([3, 1, 2, 1, 0])
@@ -66,7 +66,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
           ragged.gather(params, indices).eval().tolist(),
           [[b'f'], [b'a', b'b'], [b'f'], [b'c', b'd', b'e']])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testTensorParamsAndRaggedIndices(self):
     params = ['a', 'b', 'c', 'd', 'e']
     indices = ragged.constant([[2, 1], [1, 2, 0], [3]])
@@ -75,7 +75,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
           ragged.gather(params, indices).eval().tolist(),
           [[b'c', b'b'], [b'b', b'c', b'a'], [b'd']])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testRaggedParamsAndRaggedIndices(self):
     params = ragged.constant([['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']])
     indices = ragged.constant([[2, 1], [1, 2, 0], [3]])
@@ -108,7 +108,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
            [[[b'g']], [[b'g']]]]                                  #  [p2, p2]]
       )  # pyformat: disable
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testTensorParamsAnd4DRaggedIndices(self):
     indices = ragged.constant(
         [[[[3, 4], [0, 6]], []], [[[2, 1], [1, 0]], [[2, 5]], [[2, 3]]],
@@ -123,7 +123,7 @@ class RaggedTensorOpsTest(test_util.TensorFlowTestCase):
            [[[b'c', b'b'], [b'b', b'a']], [[b'c', b'f']], [[b'c', b'd']]],
            [[[b'b', b'a']]]])  # pyformat: disable
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testOutOfBoundsError(self):
     tensor_params = ['a', 'b', 'c']
     tensor_indices = [0, 1, 2]

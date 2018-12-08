@@ -450,6 +450,7 @@ class DropoutTest(test_lib.TestCase):
     with self.assertRaises(ValueError):
       nn_ops.dropout(t, array_ops.placeholder(dtypes.float32, shape=[2]))
 
+  @test_util.run_deprecated_v1
   def testInvalidRate(self):
     x_dim = 40
     y_dim = 30

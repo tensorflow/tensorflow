@@ -43,7 +43,7 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase,
     with self.test_session():
       self.assertEqual(result.eval().tolist(), expected)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testDocStringExamples(self):
     """Test the examples in apply_op_to_ragged_values.__doc__."""
     rt = ragged.constant([[1, 2, 3], [], [4, 5], [6]])
@@ -63,7 +63,7 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase,
         args=(tensor,),
         expected=[[0, 0, 0], [], [0, 0]])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testOpWithTwoRaggedTensorArgs(self):
     x = ragged.constant([[3, 1, 4], [], [1, 5]])
     y = ragged.constant([[1, 2, 3], [], [4, 5]])
@@ -76,7 +76,7 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase,
     self.assertRaggedMapInnerValuesReturns(
         op=math_ops.multiply, args=(5, y), expected=[[5, 10, 15], [], [20, 25]])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testOpWithThreeRaggedTensorArgs(self):
     condition = ragged.constant(
         [[True, True, False], [], [True, False]])  # pyformat: disable
@@ -87,7 +87,7 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase,
         args=(condition, x, y),
         expected=[[b'a', b'b', b'C'], [], [b'd', b'E']])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testOpWithRaggedTensorListArg(self):
     x = ragged.constant([[1, 2, 3], [], [4, 5]])
     y = ragged.constant([[10, 20, 30], [], [40, 50]])
@@ -96,7 +96,7 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase,
         args=([x, y, x],),
         expected=[[12, 24, 36], [], [48, 60]])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testOpWithKeywordArgs(self):
     x = ragged.constant([[3, 1, 4], [], [1, 5]])
     y = ragged.constant([[1, 2, 3], [], [4, 5]])
@@ -105,7 +105,7 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase,
         kwargs=dict(x=x, y=y),
         expected=[[3, 2, 12], [], [4, 25]])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testOpWithMixedPositionalAndKeywordArgs(self):
     x = ragged.constant([[3, 1, 4], [], [1, 5]])
     y = ragged.constant([[1, 2, 3], [], [4, 5]])
@@ -128,7 +128,7 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase,
         },
         expected=[[8, 15, 13], [], [16, 25]])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testOpWithRaggedRankGreaterThanOne(self):
     # ragged_rank=0
     x0 = [3, 1, 4, 1, 5, 9, 2, 6, 5]
@@ -173,7 +173,7 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase,
             [[[54, 14], [48, 45]]]    # row 3
         ])  # pyformat: disable
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testOpWithRaggedRankThree(self):
     x = ragged.constant([[[3, 1, 4]], [], [[], [1, 5]]])
     y = ragged.constant([[[1, 2, 3]], [], [[], [4, 5]]])
@@ -203,7 +203,7 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase,
                             r'Inputs must have identical ragged splits.*',
                             ragged.map_inner_values, math_ops.add, x, y)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testRaggedTensorSplitsMismatchErrorAtRuntime(self):
     splits1 = array_ops.placeholder_with_default(
         constant_op.constant([0, 3, 3, 5], dtypes.int64), None)

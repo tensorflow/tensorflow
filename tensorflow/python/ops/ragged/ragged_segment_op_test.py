@@ -182,7 +182,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
                  []]  # pyformat: disable
     self.assertEqual(self.evaluate(segmented2).tolist(), expected2)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testRaggedSegmentIds(self):
     rt = ragged.constant([
         [[111, 112, 113, 114], [121],],  # row 0
@@ -205,7 +205,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
         'but segment_ids is ragged and data is not.', ragged.segment_sum, dt,
         segment_ids, 3)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testShapeMismatchError2(self):
     rt = ragged.constant([
         [[111, 112, 113, 114], [121]],  # row 0

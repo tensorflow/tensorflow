@@ -34,6 +34,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -82,6 +83,7 @@ def _make_coordinated_sloppy_dataset(num_elements, num_parallel_calls):
   return next_element, coordination_events
 
 
+@test_util.run_v1_only("b/120545219")
 class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _buildMapDataset(self, components, count):

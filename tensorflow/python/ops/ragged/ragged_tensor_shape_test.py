@@ -82,6 +82,7 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
           value=ragged.constant_value([[[1, 2], [3]], [[4, 5]]]),
           expected_dim_sizes=[2, [2, 1], [2, 1, 2]]),
   ])
+  @test_util.run_v1_only('b/120545219')
   def testFromTensor(self, value, expected_dim_sizes):
     shape = ragged.RaggedTensorDynamicShape.from_tensor(value)
     expected = ragged.RaggedTensorDynamicShape.from_dim_sizes(
@@ -105,6 +106,7 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
           rank=5,
           expected_dim_sizes=[1, 3, [3, 2, 4], 2, 3]),
   ])
+  @test_util.run_v1_only('b/120545219')
   def testBroadcastToRank(self, dim_sizes, rank, expected_dim_sizes):
     shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(dim_sizes)
     expected = ragged.RaggedTensorDynamicShape.from_dim_sizes(
@@ -281,6 +283,7 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
            original_dim_sizes=[2, (2, 1), 2, 1],
            broadcast_dim_sizes=[2, (2, 1), 2, (2, 1, 2, 1, 2, 1)]),
   ])  # pyformat: disable
+  @test_util.run_v1_only('b/120545219')
   def testBroadcastDimension(self, axis, row_length, original_dim_sizes,
                              broadcast_dim_sizes):
     """Tests for the broadcast_dimension method.
@@ -370,6 +373,7 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
               y_dims=[1, 1, 2, (2, 1)],
               expected_dims=[2, (2, 1), 2, (2, 1, 2, 1, 2, 1)]),
       ])
+  @test_util.run_v1_only('b/120545219')
   def testBroadcastDynamicShape(self, x_dims, y_dims, expected_dims):
     x_shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(x_dims)
     y_shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(y_dims)
@@ -416,6 +420,7 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
           dim_sizes=[3, [3, 0, 2]],
           expected=ragged.constant_value([[10, 10, 10], [], [10, 10]])),
   ])
+  @test_util.run_v1_only('b/120545219')
   def testRaggedBroadcastTo(self, x, dim_sizes, expected):
     shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(dim_sizes)
     result = ragged.broadcast_to(x, shape)
@@ -470,6 +475,7 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
               [[[[11, 21], [32]], [[13, 23], [34]]],
                [[[15, 25], [36]]]])),
   ])
+  @test_util.run_v1_only('b/120545219')
   def testRaggedAddWithBroadcasting(self, x, y, expected, doc):
     expected_rrank = getattr(expected, 'ragged_rank', 0)
     x = ragged.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)

@@ -56,9 +56,9 @@ _graph_options = config_pb2.GraphOptions(rewrite_options=_rewrites)
 _config = config_pb2.ConfigProto(graph_options=_graph_options)
 
 
+@test_util.run_v1_only('b/120545219')
 class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_unifiedLSTM(self):
     input_shape = 10
     rnn_state_size = 8
@@ -103,7 +103,6 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
         self.assertNotEqual(existing_loss, loss_value)
         existing_loss = loss_value
 
-  @test_util.run_deprecated_v1
   def test_unifiedLSTM_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under
     # the condition that the function returns different number of internal
@@ -692,6 +691,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     model.train_on_batch([main_inputs] + initial_state, targets)
 
 
+@test_util.run_v1_only('b/120545219')
 class LSTMLayerGraphOnlyTest(test.TestCase):
 
   def test_statefulness_LSTM(self):

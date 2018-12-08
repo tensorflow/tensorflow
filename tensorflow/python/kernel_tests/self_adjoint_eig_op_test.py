@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import linalg_ops
@@ -39,6 +40,7 @@ def _AddTest(test_class, op_name, testcase_name, fn):
 
 class SelfAdjointEigTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testWrongDimensions(self):
     # The input to self_adjoint_eig should be a tensor of
     # at least rank 2.
@@ -49,6 +51,7 @@ class SelfAdjointEigTest(test.TestCase):
     with self.assertRaises(ValueError):
       linalg_ops.self_adjoint_eig(vector)
 
+  @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
     all_ops = []
     with self.session(use_gpu=True) as sess:
