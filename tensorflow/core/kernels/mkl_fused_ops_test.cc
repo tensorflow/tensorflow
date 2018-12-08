@@ -295,8 +295,10 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndRelu) {
   this->VerifyConv2DWithBiasAndRelu(filter_size, filter_count);
 }
 
-REGISTER_TYPED_TEST_CASE_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolution,
-                           SpatialConvolution, OneByOneConvolutionAndRelu,
+REGISTER_TYPED_TEST_CASE_P(MklFusedConv2DWithBiasOpTest,
+                           OneByOneConvolution,    //
+                           SpatialConvolution,     //
+                           OneByOneConvolutionAndRelu,   //
                            SpatialConvolutionAndRelu);
 
 using MklFusedBiasAddDataTypes = ::testing::Types<float>;
