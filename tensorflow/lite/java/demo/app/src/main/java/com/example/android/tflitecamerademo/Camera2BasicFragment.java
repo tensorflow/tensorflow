@@ -56,8 +56,10 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.ListView;
 import android.widget.NumberPicker;
-import android.widget.RadioButton;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.IOException;
@@ -68,6 +70,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+
 
 /** Basic fragments for the Camera. */
 public class Camera2BasicFragment extends Fragment
@@ -88,9 +91,9 @@ public class Camera2BasicFragment extends Fragment
   private TextView textView;
   private NumberPicker np;
   private ImageClassifier classifier;
+  private ListView deviceView;
+  private ListView modelView;
 
-  enum InferenceEngine { CPU, NNAPI };
-  private InferenceEngine inferenceEngine = InferenceEngine.CPU;
 
   /** Max preview width that is guaranteed by Camera2 API */
   private static final int MAX_PREVIEW_WIDTH = 1920;
@@ -123,6 +126,15 @@ public class Camera2BasicFragment extends Fragment
         @Override
         public void onSurfaceTextureUpdated(SurfaceTexture texture) {}
       };
+
+  // Model parameter constants.
+  private String gpu;
+  private String cpu;
+  private String nnApi;
+  private String mobilenetV1Quant;
+  private String mobilenetV1Float;
+
+
 
   /** ID of the current {@link CameraDevice}. */
   private String cameraId;
@@ -169,6 +181,14 @@ public class Camera2BasicFragment extends Fragment
           }
         }
       };
+
+  private ArrayList<String> deviceStrings = new ArrayList<String>();
+  private ArrayList<String> modelStrings = new ArrayList<String>();
+
+  /** Current indices of device and model. */
+  int currentDevice = -1;
+
+  int currentModel = -1;
 
   /** An additional thread for running tasks that shouldn't block the UI. */
   private HandlerThread backgroundThread;
@@ -299,11 +319,115 @@ public class Camera2BasicFragment extends Fragment
     return inflater.inflate(R.layout.fragment_camera2_basic, container, false);
   }
 
+  private void updateActiveModel() {
+    // Get UI information before delegating to background
+    final int modelIndex = modelView.getCheckedItemPosition();
+    final int deviceIndex = deviceView.getCheckedItemPosition();
+
+    backgroundHandler.post(() -> {
+      if (modelIndex == currentModel && deviceIndex == currentDevice) {
+        return;
+      }
+      currentModel = modelIndex;
+      currentDevice = deviceIndex;
+
+      // Disable classifier while updating
+      if (classifier != null) {
+        classifier.close();
+        classifier = null;
+      }
+
+      // Lookup names of parameters.
+      String model = modelStrings.get(modelIndex);
+      String device = deviceStrings.get(deviceIndex);
+
+      Log.i(TAG, "Changing model to " + model + " device " + device);
+
+      // Try to load model.
+      try {
+        if (model.equals(mobilenetV1Quant)) {
+          classifier = new ImageClassifierQuantizedMobileNet(getActivity());
+        } else if (model.equals(mobilenetV1Float)) {
+          classifier = new ImageClassifierFloatMobileNet(getActivity());
+        } else {
+          showToast("Failed to load model");
+        }
+      } catch (IOException e) {
+        Log.d(TAG, "Failed to load", e);
+        classifier = null;
+      }
+
+      // Customzie the interpreter to the type of device we want to use.
+      if (device.equals(cpu)) {
+      } else if (device.equals(gpu)) {
+        if (!GpuDelegateHelper.isGpuDelegateAvailable()) {
+          showToast("gpu not in this build.");
+          classifier = null;
+        } else if (model.equals(mobilenetV1Quant)) {
+          showToast("gpu requires float model.");
+          classifier = null;
+        } else {
+          classifier.useGpu();
+        }
+      } else if (device.equals(nnApi)) {
+        classifier.useNNAPI();
+      }
+    });
+  }
+
   /** Connect the buttons to their event handler. */
   @Override
   public void onViewCreated(final View view, Bundle savedInstanceState) {
+    gpu = getString(R.string.gpu);
+    cpu = getString(R.string.cpu);
+    nnApi = getString(R.string.nnapi);
+    mobilenetV1Quant = getString(R.string.mobilenetV1Quant);
+    mobilenetV1Float = getString(R.string.mobilenetV1Float);
+
+    // Get references to widgets.
     textureView = (AutoFitTextureView) view.findViewById(R.id.texture);
     textView = (TextView) view.findViewById(R.id.text);
+    deviceView = (ListView) view.findViewById(R.id.device);
+    modelView = (ListView) view.findViewById(R.id.model);
+
+    // Build list of models
+    modelStrings.add(mobilenetV1Quant);
+    modelStrings.add(mobilenetV1Float);
+
+    // Build list of devices
+    int defaultModelIndex = 0;
+    deviceStrings.add(cpu);
+    if (GpuDelegateHelper.isGpuDelegateAvailable()) {
+      deviceStrings.add(gpu);
+    }
+    deviceStrings.add(nnApi);
+
+    deviceView.setAdapter(
+        new ArrayAdapter<String>(
+            getContext(), R.layout.listview_row, R.id.listview_row_text, deviceStrings));
+    deviceView.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+    deviceView.setOnItemClickListener(
+        new AdapterView.OnItemClickListener() {
+          @Override
+          public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+            updateActiveModel();
+          }
+        });
+    deviceView.setItemChecked(0, true);
+
+    modelView.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+    ArrayAdapter<String> modelAdapter =
+        new ArrayAdapter<>(
+            getContext(), R.layout.listview_row, R.id.listview_row_text, modelStrings);
+    modelView.setAdapter(modelAdapter);
+    modelView.setItemChecked(defaultModelIndex, true);
+    modelView.setOnItemClickListener(
+        new AdapterView.OnItemClickListener() {
+          @Override
+          public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+            updateActiveModel();
+          }
+        });
 
     np = (NumberPicker) view.findViewById(R.id.np);
     np.setMinValue(1);
@@ -317,43 +441,13 @@ public class Camera2BasicFragment extends Fragment
           }
         });
 
-    RadioButton cpuButton = (RadioButton) view.findViewById(R.id.radio_cpu);
-    cpuButton.setChecked(true);  // TFLite runs on CPU by default.
-    cpuButton.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View view) {
-            if (inferenceEngine == InferenceEngine.CPU) {
-              return;
-            }
-            inferenceEngine = InferenceEngine.CPU;
-            backgroundHandler.post(() -> classifier.useCPU());
-          }
-        });
-
-    ((RadioButton) view.findViewById(R.id.radio_nnapi)).setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View view) {
-            if (inferenceEngine == InferenceEngine.NNAPI) {
-              return;
-            }
-            inferenceEngine = InferenceEngine.NNAPI;
-            backgroundHandler.post(() -> classifier.useNNAPI());
-          }
-        });
+    // Start initial model.
   }
 
   /** Load the model and labels. */
   @Override
   public void onActivityCreated(Bundle savedInstanceState) {
     super.onActivityCreated(savedInstanceState);
-    try {
-      // create either a new ImageClassifierQuantizedMobileNet or an ImageClassifierFloatInception
-      classifier = new ImageClassifierQuantizedMobileNet(getActivity());
-    } catch (IOException e) {
-      Log.e(TAG, "Failed to initialize an image classifier.", e);
-    }
     startBackgroundThread();
   }
 
@@ -581,10 +675,12 @@ public class Camera2BasicFragment extends Fragment
     backgroundThread = new HandlerThread(HANDLE_THREAD_NAME);
     backgroundThread.start();
     backgroundHandler = new Handler(backgroundThread.getLooper());
+    // Start the classification train & load an initial model.
     synchronized (lock) {
       runClassifier = true;
     }
     backgroundHandler.post(periodicClassify);
+    updateActiveModel();
   }
 
   /** Stops the background thread and its {@link Handler}. */

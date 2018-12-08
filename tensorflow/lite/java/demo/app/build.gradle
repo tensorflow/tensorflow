@@ -40,6 +40,15 @@ repositories {
         url 'https://google.bintray.com/tensorflow'
     }
 }
+allprojects {
+    repositories {
+        // Uncomment if you want to use a local repo.
+        // mavenLocal()
+        jcenter()
+    }
+}
+
+
 
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
@@ -49,7 +58,10 @@ dependencies {
     compile 'com.android.support:support-annotations:25.3.1'
     compile 'com.android.support:support-v13:25.2.0'
 
+    // Build off of nightly TensorFlow Lite
     compile 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    // Use local TensorFlow library
+    // compile 'org.tensorflow:tensorflow-lite-local:0.0.0'
 }
 
 def targetFolder = "src/main/assets"
