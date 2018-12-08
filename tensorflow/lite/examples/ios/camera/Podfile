@@ -4,4 +4,10 @@ inhibit_all_warnings!
 project 'tflite_camera_example.xcodeproj'
 
 target 'tflite_camera_example'
-       pod 'TensorFlowLite', '1.12.0'
+  # Comment 'TensorFlowLite' pod and un-comment 'TensorFlowLiteGpuExperimental'
+  # to use TFLite GPU Delegate.
+  # Note: TFLite GPU Delegate binary isn't releast yet, and we're working
+  # on it.
+
+  pod 'TensorFlowLite', '1.12.0'
+  # pod 'TensorFlowLiteGpuExperimental', '0.0.1'
