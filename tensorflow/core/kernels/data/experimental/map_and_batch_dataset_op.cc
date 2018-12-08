@@ -455,8 +455,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                 // TODO(mrry): Add a version of DoParallelConcat that allows us
                 // to move `tensor` where possible, to speed up string tensor
                 // batching.
-                Status copy_status = ::tensorflow::functor::DoParallelConcat(
-                    *dataset()->device_, tensor, offset, batch);
+                Status copy_status =
+                    batch_util::CopyElementToSlice(tensor, batch, offset);
                 if (!copy_status.ok()) {
                   result->UpdateStatus(copy_status, offset);
                   break;
