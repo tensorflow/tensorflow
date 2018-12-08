@@ -36,6 +36,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.argmax": {
             "dimension": "axis",
         },
+        "tf.arg_min": {
+            "dimension": "axis",
+        },
+        "tf.arg_max": {
+            "dimension": "axis",
+        },
+        "tf.math.argmin": {
+            "dimension": "axis",
+        },
+        "tf.math.argmax": {
+            "dimension": "axis",
+        },
         "tf.image.crop_and_resize": {
             "box_ind": "box_indices",
         },
@@ -54,6 +66,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.space_to_batch": {
             "block_size": "block_shape",
         },
+        "tf.nn.space_to_batch": {
+            "block_size": "block_shape",
+        },
         "tf.constant": {
             "verify_shape": "verify_shape_is_now_always_true",
         },
@@ -65,6 +80,15 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.linalg.l2_normalize": {
             "dim": "axis",
+        },
+        "tf.linalg.norm": {
+            "keep_dims": "keepdims",
+        },
+        "tf.norm": {
+            "keep_dims": "keepdims",
+        },
+        "tf.load_file_system_library": {
+            "library_filename": "library_location",
         },
         "tf.math.count_nonzero": {
             "input_tensor": "input",
@@ -99,6 +123,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.separable_conv2d": {
             "rate": "dilations"
         },
+        "tf.nn.depthwise_conv2d": {
+            "rate": "dilations"
+        },
         "tf.nn.softmax": {
             "dim": "axis"
         },
@@ -117,14 +144,35 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.sparse.concat": {
             "concat_dim": "axis",
+            "expand_nonconcat_dim": "expand_nonconcat_dims",
         },
         "tf.sparse_concat": {
             "concat_dim": "axis",
+            "expand_nonconcat_dim": "expand_nonconcat_dims",
         },
         "tf.sparse.split": {
             "split_dim": "axis",
         },
-        "tf.max_pool_with_argmax": {
+        "tf.sparse_split": {
+            "split_dim": "axis",
+        },
+        "tf.sparse.reduce_max": {
+            "reduction_axes": "axis",
+            "keep_dims": "keepdims",
+        },
+        "tf.sparse_reduce_max": {
+            "reduction_axes": "axis",
+            "keep_dims": "keepdims",
+        },
+        "tf.sparse.reduce_sum": {
+            "reduction_axes": "axis",
+            "keep_dims": "keepdims",
+        },
+        "tf.sparse_reduce_sum": {
+            "reduction_axes": "axis",
+            "keep_dims": "keepdims",
+        },
+        "tf.nn.max_pool_with_argmax": {
             "Targmax": "output_dtype",
         },
         "tf.multinomial": {
@@ -132,6 +180,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.random.multinomial": {
             "output_dtype": "dtype",
+        },
+        "tf.reverse_sequence": {
+            "seq_dim": "seq_axis",
+            "batch_dim": "batch_axis",
         },
         "tf.nn.batch_norm_with_global_normalization": {
             "t": "input",
@@ -150,6 +202,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.ones_like": {
             "tensor": "input",
+        },
+        "tf.nn.conv2d_transpose": {
+            "value": "input",
+            "filter": "filters",
         },
         "tf.nn.conv3d_transpose": {
             "value": "input",
@@ -286,6 +342,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.squeeze": {
             "squeeze_dims": "axis",
+        },
+        "tf.nn.weighted_moments": {
+            "keep_dims": "keepdims"
         },
     }
 
@@ -427,6 +486,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.sparse.split",
         "tf.sparse_matmul":
             "tf.linalg.matmul",
+        "tf.sparse_reduce_sum":
+            "tf.sparse.reduce_sum",
+        "tf.sparse_reduce_max":
+            "tf.sparse.reduce_max",
         "tf.random.stateless_multinomial":
             "tf.random.stateless_categorical",
         "tf.string_to_hash_bucket":
@@ -481,6 +544,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.argmax",
         "tf.arg_min":
             "tf.argmin",
+        # tf.nn.ctc_loss is still available in 2.0 but behavior
+        # changed significantly.
+        "tf.nn.ctc_loss":
+            "tf.compat.v1.nn.ctc_loss",
     }
     # pylint: enable=line-too-long
 
@@ -530,6 +597,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.sparse.segment_sqrt_n",
         "tf.sparse.segment_sum",
         "tf.sparse_matmul",
+        "tf.sparse.reduce_max",
+        "tf.sparse_reduce_max",
         "tf.io.decode_csv",
         "tf.strings.substr",
         "tf.strings.reduce_join",
@@ -566,6 +635,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.embedding_lookup_sparse",
         "tf.nn.in_top_k",
         "tf.nn.space_to_depth",
+        "tf.linalg.norm",
+        "tf.norm",
+        "tf.reverse_sequence",
+        "tf.sparse_split",
     }
 
     # Functions that were reordered should be changed to the new keyword args
@@ -634,6 +707,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_return_type_comment,
         "tf.assert_rank":
             assert_rank_comment,
+        "tf.cond": "tf.cond no longer takes 'strict'. "
+                   "Now 'strict' defaults to True."
+                   "fn1/fn2 arguments are replaced by true_fn/false_fn.",
         "tf.debugging.assert_equal":
             assert_return_type_comment,
         "tf.debugging.assert_greater":
@@ -664,6 +740,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.debugging.assert_rank_in":
             assert_rank_comment,
+        "tf.device": "tf.device no longer takes function as an argument. "
+                     "'devide_name_or_function' argument has been renamed to "
+                     "'device_name'.",
         "tf.flags":
             "tf.flags has been removed, please use the argparse or absl"
             " module if you need command line parsing.",
@@ -701,6 +780,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             default_loss_reduction_changed,
         "tf.estimator.BaselineRegressor":
             default_loss_reduction_changed,
+        "tf.hessians": "tf.hessians no longer takes "
+                       "'colocate_gradients_with_ops' argument. Also, "
+                       "arguments have been reordered so that 'name' is the "
+                       "last argument.",
         "tf.nn.conv1d":
             "WARNING: use_cudnn_on_gpu argument has been removed and \"value\""
             " was renamed to \"input\"",
@@ -727,9 +810,33 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             tf_01s_like_no_optimize_comment,
         "tf.nn.embedding_lookup":
             "WARNING: validate_indices argument has been removed.",
-        "tf.sparse.concat":
-            ("WARNING: expand_nonconcat_dim was renamed to "
-             "expand_nonconcat_dims."),
+        "tf.while_loop":
+            "tf.while_loop no longer takes 'return_same_structure' argument. "
+            "'return_same_structure' now defaults to True. Also, 'name'"
+            "argument is now the last argument.",
+        "tf.image.sample_distorted_bounding_box":
+            "tf.image.sample_distorted_bounding_box no longer takes 'seed2' "
+            "argument.",
+        "tf.nn.ctc_beam_search_decoder":
+            "tf.nn.ctc_beam_search_decoder no longer takes 'merge_repeated' "
+            "argument. 'merge_repeated' now defaults to False.",
+        "tf.nn.fractional_avg_pool":
+            "tf.nn.fractional_avg_pool no longer takes 'seed2' and "
+            "'deterministic' arguments. Now it takes a single 'seed' arg. If "
+            "'seed' is zero, the execution is random and deterministic "
+            "otherwise",
+        "tf.nn.fractional_max_pool":
+            "tf.nn.fractional_max_pool no longer takes 'seed2' and "
+            "'deterministic' arguments. Now it takes a single 'seed' arg. If "
+            "'seed' is zero, the execution is random and deterministic "
+            "otherwise",
+        "tf.nn.softmax_cross_entropy_with_logits":
+            "tf.nn.softmax_cross_entropy_with_logits behavior has changed. "
+            "'labels' needs to be wrapped with tf.stop_gradient to keep the "
+            "old behavior. Also, 'dim' argument has been renamed to 'axis'.",
+        "tf.test.assert_equal_graph_def":
+            "tf.assert_equal_graph_def no longer takes 'checkpoint_v2' "
+            "argument. 'checkpoint_v2' now defaults to True.",
     }
 
     self.symbol_renames = {
