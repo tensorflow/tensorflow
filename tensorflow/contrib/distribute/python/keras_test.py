@@ -1085,8 +1085,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(
       distribution=[
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_two_gpus],
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu],
       mode=['graph', 'eager']))
   def test_unsupported_features(self, distribution):
     with self.cached_session():
@@ -1134,8 +1134,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(
       distribution=[
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_two_gpus],
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu],
       mode=['graph', 'eager']))
   def test_calling_with_unsupported_predefined_callbacks(self, distribution):
     with self.cached_session():
@@ -1161,12 +1161,6 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
                                    'using'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                   callbacks=[keras.callbacks.ReduceLROnPlateau()])
-      with self.assertRaisesRegexp(ValueError,
-                                   'histogram_freq in the TensorBoard callback '
-                                   'is not supported when using '
-                                   'DistributionStrategy.'):
-        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
-                  callbacks=[keras.callbacks.TensorBoard(histogram_freq=10)])
 
 
 class TestDistributionStrategyWithLossMasking(test.TestCase,
