@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
@@ -100,6 +99,7 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
       extra_deps=(iter_,),
       opts=dict(maximum_iterations=n))
   # Dropping the iteration index because it's not syntactically visible.
+  # TODO(mdan): Don't.
   results = results[1:]
 
   # TODO(mdan): Remove this special case.
@@ -110,40 +110,15 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
 
 def _dataset_for_stmt(ds, extra_test, body, init_state):
   """Overload of for_stmt that iterates over TF Datasets."""
-  # Because Datsets only expose get_next, in the style of Python iterators,
-  # we are forced to unpack the loop as:
-  #
-  # epoch_number, iterate = ds.get_next()
-  # while epoch_number < 2:
-  #   <body>
-  #   epoch_number, iterate = ds.get_next()
-  epoch_numbers = dataset_ops.Dataset.range(2)
-  def tag_with(ds, tag):
-    return dataset_ops.Dataset.zip(
-        (dataset_ops.Dataset.from_tensors(tag).repeat(), ds))
-  ds_with_epoch = epoch_numbers.flat_map(lambda i: tag_with(ds, i))
+  if extra_test(*init_state) is not True:
+    raise NotImplementedError(
+        'break statements are not yet supported in for/Dataset loops')
 
-  iterator = dataset_ops.make_initializable_iterator(ds_with_epoch)
-  with ops.control_dependencies((iterator.initializer,)):
-    epoch_number, iterate = iterator.get_next()
+  def reduce_body(state, iterate):
+    new_state = body(iterate, *state)
+    return new_state
 
-    def while_body(epoch_number, iterate, *state):
-      new_state = body(iterate, *state)
-      epoch_number, iterate = iterator.get_next()
-      return (epoch_number, iterate) + new_state
-
-    def while_cond(epoch_number, iterate, *state):
-      del iterate
-      return gen_math_ops.logical_and(epoch_number < 1, extra_test(*state))
-
-    results = while_stmt(
-        while_cond,
-        while_body,
-        init_state=(epoch_number, iterate) + init_state,
-        extra_deps=())
-  # Dropping the epoch number and iterate because they are not syntactically
-  # visible.
-  results = results[2:]
+  results = ds.reduce(init_state, reduce_body)
 
   # TODO(mdan): Remove this special case.
   if len(results) == 1:
