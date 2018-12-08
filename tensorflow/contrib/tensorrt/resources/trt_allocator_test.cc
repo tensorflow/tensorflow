@@ -48,11 +48,14 @@ TEST(TRTAllocatorTest, Align) {
         513ul, 700ul, 12345ul, 1ul << 32}) {
     for (uint64_t alignment = 1; alignment <= space * 4; alignment *= 2) {
       for (const uintptr_t ptr_val :
-           {static_cast<uint64_t>(1), alignment == 1 ? static_cast<uint64_t>(1) : alignment - 1, alignment, alignment + 1,
-            alignment + (alignment / 2)}) {
+           {static_cast<uint64_t>(1),
+            alignment == 1 ? static_cast<uint64_t>(1) : alignment - 1,
+            alignment, alignment + 1, alignment + (alignment / 2)}) {
         if (ptr_val % alignment == 0) {
           for (const uint64_t size :
-               {static_cast<uint64_t>(1), space == 1 ? static_cast<uint64_t>(1) : space - 1, space, space + 1}) {
+               {static_cast<uint64_t>(1),
+                space == 1 ? static_cast<uint64_t>(1) : space - 1, space,
+                space + 1}) {
             EXPECT_EQ(space >= size, RunTest(alignment, size, ptr_val, space));
           }
         } else {
@@ -62,8 +65,10 @@ TEST(TRTAllocatorTest, Align) {
             EXPECT_TRUE(
                 RunTest(alignment, space - diff, ptr_val + diff, space - diff));
             for (const uint64_t size :
-                 {static_cast<uint64_t>(1), space - diff > 1 ? space - diff - 1 : static_cast<uint64_t>(1), space - diff,
-                  space - diff + 1, space - 1}) {
+                 {static_cast<uint64_t>(1),
+                  space - diff > 1 ? space - diff - 1
+                                   : static_cast<uint64_t>(1),
+                  space - diff, space - diff + 1, space - 1}) {
               EXPECT_EQ(space - diff >= size,
                         RunTest(alignment, size, ptr_val, space));
             }
