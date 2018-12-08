@@ -58,21 +58,6 @@ using namespace mlir;
 
 #define DEBUG_TYPE "lower-vector-transfers"
 
-/// Creates and returns a memoized `constant 0 : index` at the top level of the
-/// each function `f` on which it is called.
-static SSAValue *getZero(MLFunction *f) {
-  static thread_local llvm::DenseMap<MLFunction *, SSAValue *> zeros;
-  auto it = zeros.find(f);
-  if (it == zeros.end()) {
-    MLFuncBuilder b(f);
-    b.setInsertionPointToStart(f);
-    zeros.insert(
-        std::make_pair(f, b.create<ConstantIndexOp>(b.getUnknownLoc(), 0)));
-    it = zeros.find(f);
-  }
-  return it->second;
-}
-
 namespace {
 
 struct LowerVectorTransfersPass : public FunctionPass {
@@ -85,6 +70,11 @@ struct LowerVectorTransfersPass : public FunctionPass {
   MLFunctionMatcherContext mlContext;
 
   static char passID;
+};
+
+struct LowerVectorTransfersState {
+  // Top of the function constant zero index.
+  SSAValue *zero;
 };
 
 } // end anonymous namespace
@@ -117,7 +107,8 @@ static SSAValue *add(MLFuncBuilder *b, Location loc, SSAValue *v, SSAValue *w) {
 // argument being one of the two types. Extract the common behavior into helper
 // functions and detemplatizing it.
 template <typename VectorTransferOpTy>
-static void lowerAsLoops(VectorTransferOpTy *transfer) {
+static void lowerAsLoops(VectorTransferOpTy *transfer,
+                         const LowerVectorTransfersState &state) {
   static_assert(
       std::is_same<VectorTransferOpTy, VectorTransferReadOp>::value ||
           std::is_same<VectorTransferOpTy, VectorTransferWriteOp>::value,
@@ -131,24 +122,23 @@ static void lowerAsLoops(VectorTransferOpTy *transfer) {
   auto vectorMemRefType = MemRefType::get({1}, vectorType, {}, 0);
 
   MLFuncBuilder b(cast<OperationStmt>(transfer->getOperation()));
-  auto *zero = getZero(b.getFunction());
 
   // 1. First allocate the local buffer in fast memory.
   // TODO(ntv): CL memory space.
   // TODO(ntv): Allocation padding for potential bank conflicts (e.g. GPUs).
   auto tmpScalarAlloc = b.create<AllocOp>(transfer->getLoc(), tmpMemRefType);
   // TODO(ntv): Proper OperationStmt.
-  OperationState state(b.getContext(), transfer->getLoc(), "vector_type_cast",
-                       ArrayRef<SSAValue *>{tmpScalarAlloc->getResult()},
-                       ArrayRef<Type>{vectorMemRefType});
-  auto vecView = b.createOperation(state);
+  OperationState opState(b.getContext(), transfer->getLoc(), "vector_type_cast",
+                         ArrayRef<SSAValue *>{tmpScalarAlloc->getResult()},
+                         ArrayRef<Type>{vectorMemRefType});
+  auto vecView = b.createOperation(opState);
 
   // 2. Store the vector to local storage in case of a vector_transfer_write.
   // TODO(ntv): This vector_store operation should be further lowered in the
   // case of GPUs.
   if (std::is_same<VectorTransferOpTy, VectorTransferWriteOp>::value) {
     b.create<StoreOp>(vecView->getLoc(), transfer->getVector(),
-                      vecView->getResult(0), ArrayRef<SSAValue *>{zero});
+                      vecView->getResult(0), ArrayRef<SSAValue *>{state.zero});
   }
 
   // 3. Emit the loop-nest.
@@ -206,7 +196,7 @@ static void lowerAsLoops(VectorTransferOpTy *transfer) {
   if (std::is_same<VectorTransferOpTy, VectorTransferReadOp>::value) {
     b.setInsertionPoint(cast<OperationStmt>(transfer->getOperation()));
     auto *vector = b.create<LoadOp>(transfer->getLoc(), vecView->getResult(0),
-                                    ArrayRef<SSAValue *>{zero})
+                                    ArrayRef<SSAValue *>{state.zero})
                        ->getResult();
     transfer->getVector()->replaceAllUsesWith(vector);
   }
@@ -220,6 +210,13 @@ static void lowerAsLoops(VectorTransferOpTy *transfer) {
 }
 
 PassResult LowerVectorTransfersPass::runOnMLFunction(MLFunction *f) {
+  LowerVectorTransfersState state;
+  {
+    MLFuncBuilder b(f);
+    b.setInsertionPointToStart(f);
+    state.zero = b.create<ConstantIndexOp>(b.getUnknownLoc(), 0);
+  }
+
   using matcher::Op;
   LLVM_DEBUG(dbgs() << "\nLowerVectorTransfersPass on MLFunction\n");
   LLVM_DEBUG(f->print(dbgs()));
@@ -233,7 +230,7 @@ PassResult LowerVectorTransfersPass::runOnMLFunction(MLFunction *f) {
   for (auto m : Op(filterReads).match(f)) {
     auto read = cast<OperationStmt>(m.first)->cast<VectorTransferReadOp>();
     // TODO(ntv): Drop &* once lowerAsLoops is detemplatized.
-    lowerAsLoops(&*read);
+    lowerAsLoops(&*read, state);
   }
 
   // 2. vector_transfer_writes;
@@ -244,7 +241,7 @@ PassResult LowerVectorTransfersPass::runOnMLFunction(MLFunction *f) {
   for (auto m : Op(filterWrites).match(f)) {
     auto write = cast<OperationStmt>(m.first)->cast<VectorTransferWriteOp>();
     // TODO(ntv): Drop &* once lowerAsLoops is detemplatized.
-    lowerAsLoops(&*write);
+    lowerAsLoops(&*write, state);
   }
 
   return PassResult::Success;
