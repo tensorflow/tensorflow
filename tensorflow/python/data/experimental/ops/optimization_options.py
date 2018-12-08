@@ -86,7 +86,8 @@ class OptimizationOptions(options.OptionsBase):
   shuffle_and_repeat_fusion = options.create_option(
       name="shuffle_and_repeat_fusion",
       ty=bool,
-      docstring="Whether to fuse shuffle and repeat transformations.")
+      docstring="Whether to fuse shuffle and repeat transformations. If None, "
+      "defaults to True.")
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
@@ -98,7 +99,6 @@ class OptimizationOptions(options.OptionsBase):
         "map_fusion",
         "map_parallelization",
         "map_vectorization",
-        "shuffle_and_repeat_fusion",
     ]
     for optimization in optimizations_to_enable:
       if getattr(self, optimization):
@@ -110,6 +110,7 @@ class OptimizationOptions(options.OptionsBase):
       optimizations_to_disable = [
           "map_and_batch_fusion",
           "noop_elimination",
+          "shuffle_and_repeat_fusion",
       ]
       for optimization in optimizations_to_disable:
         if getattr(self, optimization) is not False:

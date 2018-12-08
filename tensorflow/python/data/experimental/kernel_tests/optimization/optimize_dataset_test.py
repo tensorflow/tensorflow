@@ -230,10 +230,10 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertGreaterEqual(len(w), 1)
     expected = ("tf.data static optimizations are not compatible with "
-                "tf.Variable. The following optimizations will be disabled: "
-                "map_and_batch_fusion, noop_elimination. To enable "
-                "optimizations, use resource variables instead by calling "
-                "`tf.enable_resource_variables()` at the start of the program.")
+                "tf.Variable. The following optimizations will be disabled: %s."
+                " To enable optimizations, use resource variables instead by "
+                "calling `tf.enable_resource_variables()` at the start of the "
+                "program." % (", ".join(opt_options._static_optimizations())))
     self.assertTrue(any([expected in str(warning) for warning in w]))
 
     # Check that outputs are the same in the optimized and unoptimized cases,
@@ -256,7 +256,11 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testOptimizationEnabledByDefault(self):
     """Tests that some optimizations are applied to datasets by default."""
     options = dataset_ops.Options()
-    expected_optimizations = ["noop_elimination", "map_and_batch_fusion"]
+    expected_optimizations = [
+        "map_and_batch_fusion",
+        "noop_elimination",
+        "shuffle_and_repeat_fusion",
+    ]
     self.assertEqual(
         set(options._static_optimizations()), set(expected_optimizations))
 
