@@ -45,7 +45,7 @@ enum TensorType : byte {
 // Custom quantization parameters for experimenting with new quantization
 // techniques.
 table CustomQuantization {
-  custom:[byte];
+  custom:[ubyte] (force_align: 16);
 }
 
 // Represents a specific quantization technique's parameters.
