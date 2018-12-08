@@ -277,6 +277,9 @@ class ApiCompatibilityTest(test.TestCase):
 
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
     public_api_visitor.private_map['tf'] = ['contrib']
+    if api_version == 2:
+      public_api_visitor.private_map['tf'].append('enable_v2_behavior')
+
     public_api_visitor.do_not_descend_map['tf.GPUOptions'] = ['Experimental']
     if FLAGS.only_test_core_api:
       public_api_visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
