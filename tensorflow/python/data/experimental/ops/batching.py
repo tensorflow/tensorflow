@@ -24,7 +24,6 @@ from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -406,21 +405,19 @@ def unbatch():
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    if not sparse.any_sparse(dataset.output_classes):
-      return _UnbatchDataset(dataset)
-
     # NOTE(mrry): We must ensure that any SparseTensors in `dataset`
     # are normalized to the rank-1 dense representation, so that the
     # sparse-oblivious unbatching logic will slice them
     # appropriately. This leads to a somewhat inefficient re-encoding step
     # for all SparseTensor components.
-    # TODO(mrry): Consider optimizing this in future
-    # if it turns out to be a bottleneck.
+    # TODO(mrry): Consider optimizing this in future if it turns out to be
+    # a bottleneck.
     def normalize(arg, *rest):
+      # pylint: disable=protected-access
       if rest:
-        return sparse.serialize_many_sparse_tensors((arg,) + rest)
+        return dataset._element_structure._to_batched_tensor_list((arg,) + rest)
       else:
-        return sparse.serialize_many_sparse_tensors(arg)
+        return dataset._element_structure._to_batched_tensor_list(arg)
 
     normalized_dataset = dataset.map(normalize)
 
