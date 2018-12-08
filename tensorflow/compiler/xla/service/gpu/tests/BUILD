@@ -37,7 +37,7 @@ cc_library(
     hdrs = ["gpu_codegen_test.h"],
     tags = tf_cuda_tests_tags(),
     deps = [
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
         "//tensorflow/compiler/xla/tests:filecheck",
@@ -205,6 +205,18 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service/llvm_ir:alias_analysis",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_atomic_test",
+    srcs = ["gpu_atomic_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

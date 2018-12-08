@@ -182,7 +182,6 @@ class HloDataflowAnalysis {
   // Updates the value set for a particular instruction type. Returns whether
   // the instruction value set changed.
   bool UpdateBitcastValueSet(HloInstruction* bitcast);
-  bool UpdateSliceValueSet(HloInstruction* slice);
   bool UpdateCallValueSet(HloInstruction* call);
   bool UpdateConditionalValueSet(HloInstruction* conditional);
   bool UpdateCopyValueSet(HloInstruction* copy);
@@ -194,6 +193,7 @@ class HloDataflowAnalysis {
   bool UpdateSendValueSet(HloInstruction* send);
   bool UpdateTupleValueSet(HloInstruction* tuple);
   bool UpdateWhileValueSet(HloInstruction* xla_while);
+  bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);
 
   // Propagate the dataflow through the module.
   void Propagate();

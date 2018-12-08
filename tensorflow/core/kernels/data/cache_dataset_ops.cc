@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
@@ -23,7 +24,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level description of
+// See documentation in ../../ops/dataset_ops.cc for a high-level description of
 // the following op.
 
 class CacheDatasetOp : public UnaryDatasetOpKernel {
@@ -84,6 +85,8 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       return "CacheDatasetOp::FileDataset";
     }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -133,6 +136,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("mode"), mode_));
@@ -243,6 +252,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
+        std::shared_ptr<model::Node> CreateNode(
+            IteratorContext* ctx, model::Node::Args args) const override {
+          return model::MakeKnownRatioNode(std::move(args),
+                                           /*ratio=*/1);
+        }
+
         Status SaveInternal(IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
           if (iteration_completed_) {
@@ -468,6 +483,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
+        std::shared_ptr<model::Node> CreateNode(
+            IteratorContext* ctx, model::Node::Args args) const override {
+          return model::MakeKnownRatioNode(std::move(args),
+                                           /*ratio=*/1);
+        }
+
         Status SaveInternal(IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
           TF_RETURN_IF_ERROR(
@@ -516,10 +537,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         // `FileReaderIterator` and seek to the `cur_index`.
         switch (mode_) {
           case Mode::read:
-            iterator_.reset(new FileReaderIterator({dataset(), prefix()}));
+            iterator_.reset(new FileReaderIterator(
+                {dataset(), strings::StrCat(prefix(), "Impl")}));
             break;
           case Mode::write:
-            iterator_.reset(new FileWriterIterator({dataset(), prefix()}));
+            iterator_.reset(new FileWriterIterator(
+                {dataset(), strings::StrCat(prefix(), "Impl")}));
         }
       }
 
@@ -542,9 +565,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
   class MemoryDataset : public DatasetBase {
    public:
     explicit MemoryDataset(OpKernelContext* ctx, const DatasetBase* input)
-        : DatasetBase(DatasetContext(ctx)),
-          input_(input),
-          cache_(new MemoryCache()) {
+        : DatasetBase(DatasetContext(ctx)), input_(input) {
       input->Ref();
     }
 
@@ -552,8 +573,8 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new MemoryIterator(
-          {this, strings::StrCat(prefix, "::MemoryCache")}, cache_));
+      return std::unique_ptr<IteratorBase>(
+          new MemoryIterator({this, strings::StrCat(prefix, "::MemoryCache")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -567,6 +588,8 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       return "CacheDatasetOp::MemoryDataset";
     }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -587,9 +610,11 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     // The expected use is that a single `MemoryWriterIterator` populates the
     // cache with dataset elements. Once all elements are cached, the cache can
     // be used by one or more `MemoryReaderIterator`s.
-    class MemoryCache {
+    class MemoryCache : public ResourceBase {
      public:
       MemoryCache() = default;
+
+      string DebugString() override { return "CacheDataset::MemoryCache"; }
 
       // Marks the cache as completed.
       void Complete() {
@@ -657,15 +682,25 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
 
     class MemoryIterator : public DatasetIterator<MemoryDataset> {
      public:
-      explicit MemoryIterator(const Params& params,
-                              const std::shared_ptr<MemoryCache>& cache)
-          : DatasetIterator<MemoryDataset>(params), cache_(cache) {
-        mode_ = cache->MaybeClaim() ? Mode::write : Mode::read;
-        InitializeIterator();
-      }
+      explicit MemoryIterator(const Params& params)
+          : DatasetIterator<MemoryDataset>(params) {}
+
+      ~MemoryIterator() override { cache_->Unref(); }
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(mu_);
+        // Use the resource manager in the iterator context to get / create
+        // a cache.
+        ResourceMgr* mgr = ctx->resource_mgr();
+        const string name =
+            strings::StrCat(prefix(), "::", dataset()->name(), "::MemoryCache");
+        TF_RETURN_IF_ERROR(mgr->LookupOrCreate<MemoryCache>(
+            "tf_data", name, &cache_, [](MemoryCache** cache) {
+              *cache = new MemoryCache();
+              return Status::OK();
+            }));
+        mode_ = cache_->MaybeClaim() ? Mode::write : Mode::read;
+        InitializeIterator();
         if (mode_ == Mode::read && !cache_->IsCompleted()) {
           return errors::Internal(
               "Cache should only be read after it has been completed.");
@@ -681,6 +716,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("mode"), mode_));
@@ -758,8 +799,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
      private:
       class MemoryWriterIterator : public DatasetIterator<MemoryDataset> {
        public:
-        explicit MemoryWriterIterator(const Params& params,
-                                      const std::shared_ptr<MemoryCache>& cache)
+        explicit MemoryWriterIterator(const Params& params, MemoryCache* cache)
             : DatasetIterator<MemoryDataset>(params), cache_(cache) {
           CHECK(cache_);
         }
@@ -792,11 +832,18 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
             cache_->Complete();
             return Status::OK();
           }
+          RecordBufferEnqueue(ctx, *out_tensors);
           cache_->emplace_back(*out_tensors);
           return Status::OK();
         }
 
        protected:
+        std::shared_ptr<model::Node> CreateNode(
+            IteratorContext* ctx, model::Node::Args args) const override {
+          return model::MakeKnownRatioNode(std::move(args),
+                                           /*ratio=*/1);
+        }
+
         Status SaveInternal(IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
           return SaveInput(writer, input_impl_);
@@ -811,31 +858,25 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
        private:
         mutex mu_;
         std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-        std::shared_ptr<MemoryCache> cache_;
+        MemoryCache* const cache_ GUARDED_BY(mu_);  // not owned.
       };  // MemoryWriterIterator
 
       class MemoryReaderIterator : public DatasetIterator<MemoryDataset> {
        public:
-        explicit MemoryReaderIterator(const Params& params,
-                                      const std::shared_ptr<MemoryCache>& cache)
+        explicit MemoryReaderIterator(const Params& params, MemoryCache* cache)
             : DatasetIterator<MemoryDataset>(params), cache_(cache), index_(0) {
           CHECK(cache);
         }
 
-       protected:
-        Status SaveInternal(IteratorStateWriter* writer) override {
-          mutex_lock l(mu_);
-          TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("index"), index_));
-          return Status::OK();
-        }
-
-        Status RestoreInternal(IteratorContext* ctx,
-                               IteratorStateReader* reader) override {
-          mutex_lock l(mu_);
-          {
-            int64 temp;
-            TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("index"), &temp));
-            index_ = static_cast<size_t>(temp);
+        Status Initialize(IteratorContext* ctx) override {
+          // The memory allocated for the cache is owned by the parent
+          // dataset but performance modeling uses the iterator abstraction and
+          // thus we record the memory allocated for the cache here. The caveat
+          // is that this is incorrect if there are concurrent instances of this
+          // iterator.
+          tf_shared_lock l(mu_);
+          for (size_t i = 0; i < cache_->size(); ++i) {
+            RecordBufferEnqueue(ctx, cache_->at(i));
           }
           return Status::OK();
         }
@@ -857,33 +898,56 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
+       protected:
+        std::shared_ptr<model::Node> CreateNode(
+            IteratorContext* ctx, model::Node::Args args) const override {
+          return model::MakeKnownRatioNode(std::move(args),
+                                           /*ratio=*/1);
+        }
+
+        Status SaveInternal(IteratorStateWriter* writer) override {
+          mutex_lock l(mu_);
+          TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("index"), index_));
+          return Status::OK();
+        }
+
+        Status RestoreInternal(IteratorContext* ctx,
+                               IteratorStateReader* reader) override {
+          mutex_lock l(mu_);
+          {
+            int64 temp;
+            TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("index"), &temp));
+            index_ = static_cast<size_t>(temp);
+          }
+          return Status::OK();
+        }
+
        private:
         mutex mu_;
-        const std::shared_ptr<MemoryCache> cache_;
+        MemoryCache* const cache_ GUARDED_BY(mu_);  // not owned.
         size_t index_ GUARDED_BY(mu_);
       };  // MemoryReaderIterator
 
       void InitializeIterator() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         switch (mode_) {
           case Mode::read:
-            iterator_.reset(
-                new MemoryReaderIterator({dataset(), prefix()}, cache_));
+            iterator_.reset(new MemoryReaderIterator(
+                {dataset(), strings::StrCat(prefix(), "Impl")}, cache_));
             break;
           case Mode::write:
-            iterator_.reset(
-                new MemoryWriterIterator({dataset(), prefix()}, cache_));
+            iterator_.reset(new MemoryWriterIterator(
+                {dataset(), strings::StrCat(prefix(), "Impl")}, cache_));
         }
       }
 
       mutex mu_;
-      std::shared_ptr<MemoryCache> cache_;
+      MemoryCache* cache_ GUARDED_BY(mu_);  // not owned.
       enum Mode { read, write };
       Mode mode_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> iterator_ GUARDED_BY(mu_);
     };  // MemoryIterator
 
     const DatasetBase* const input_;
-    const std::shared_ptr<MemoryCache> cache_;
   };  // MemoryDataset
 };    // CacheDatasetOp
 

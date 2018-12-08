@@ -48,13 +48,6 @@ import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
 
-from tensorflow.python.tools import component_api_helper
-component_api_helper.package_hook(
-    parent_package_str='tensorflow.python',
-    child_package_str=(
-        'tensorflow_estimator.python.estimator'))
-del component_api_helper
-
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
 from tensorflow.core.framework.node_def_pb2 import *
@@ -85,6 +78,7 @@ from tensorflow.python.ops import initializers_ns as initializers
 
 # Bring in subpackages.
 from tensorflow.python import data
+from tensorflow.python import distribute
 from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.layers import layers
@@ -93,11 +87,12 @@ from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import ragged
 from tensorflow.python.ops import sets
-from tensorflow.python.ops import spectral_ops as spectral
 from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.ops.signal import signal
 from tensorflow.python.profiler import profiler
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
@@ -131,6 +126,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Eager execution
 from tensorflow.python.eager.context import executing_eagerly
+from tensorflow.python.eager.def_function import function
 from tensorflow.python.framework.ops import enable_eager_execution
 
 # Necessary for the symbols in this module to be taken into account by
@@ -149,26 +145,26 @@ nn.rnn_cell = rnn_cell
 
 # Export protos
 # pylint: disable=undefined-variable
-tf_export('AttrValue')(AttrValue)
-tf_export('ConfigProto')(ConfigProto)
+tf_export(v1=['AttrValue'])(AttrValue)
+tf_export(v1=['ConfigProto'])(ConfigProto)
 tf_export('Event', 'summary.Event')(Event)
-tf_export('GPUOptions')(GPUOptions)
-tf_export('GraphDef')(GraphDef)
-tf_export('GraphOptions')(GraphOptions)
-tf_export('HistogramProto')(HistogramProto)
-tf_export('LogMessage')(LogMessage)
-tf_export('MetaGraphDef')(MetaGraphDef)
-tf_export('NameAttrList')(NameAttrList)
-tf_export('NodeDef')(NodeDef)
-tf_export('OptimizerOptions')(OptimizerOptions)
-tf_export('RunMetadata')(RunMetadata)
-tf_export('RunOptions')(RunOptions)
-tf_export('SessionLog', 'summary.SessionLog')(SessionLog)
+tf_export(v1=['GPUOptions'])(GPUOptions)
+tf_export(v1=['GraphDef'])(GraphDef)
+tf_export(v1=['GraphOptions'])(GraphOptions)
+tf_export(v1=['HistogramProto'])(HistogramProto)
+tf_export(v1=['LogMessage'])(LogMessage)
+tf_export(v1=['MetaGraphDef'])(MetaGraphDef)
+tf_export(v1=['NameAttrList'])(NameAttrList)
+tf_export(v1=['NodeDef'])(NodeDef)
+tf_export(v1=['OptimizerOptions'])(OptimizerOptions)
+tf_export(v1=['RunMetadata'])(RunMetadata)
+tf_export(v1=['RunOptions'])(RunOptions)
+tf_export(v1=['SessionLog', 'summary.SessionLog'])(SessionLog)
 tf_export('Summary', 'summary.Summary')(Summary)
 tf_export('summary.SummaryDescription')(SummaryDescription)
 tf_export('SummaryMetadata')(SummaryMetadata)
 tf_export('summary.TaggedRunMetadata')(TaggedRunMetadata)
-tf_export('TensorInfo')(TensorInfo)
+tf_export(v1=['TensorInfo'])(TensorInfo)
 # pylint: enable=undefined-variable
 
 # Special dunders that we choose to export:

@@ -828,7 +828,7 @@ class BaseSession(SessionInterface):
     nested list, tuple, namedtuple, dict, or OrderedDict containing graph
     elements at its leaves.  A graph element can be one of the following types:
 
-    * An `tf.Operation`.
+    * A `tf.Operation`.
       The corresponding fetched value will be `None`.
     * A `tf.Tensor`.
       The corresponding fetched value will be a numpy ndarray containing the
@@ -1097,7 +1097,7 @@ class BaseSession(SessionInterface):
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
                             'Acceptable feed values include Python scalars, '
-                            'strings, lists, numpy ndarrays, or TensorHandles.'
+                            'strings, lists, numpy ndarrays, or TensorHandles. '
                             'For reference, the tensor object was ' +
                             str(feed_val) + ' which was passed to the '
                             'feed with key ' + str(feed) + '.')
@@ -1283,7 +1283,7 @@ class BaseSession(SessionInterface):
   # Old format: [[Node: <node_name> = ...]]
   # New format: [[{{node <node_name>}} = ...]]
   _NODEDEF_NAME_RE = re.compile(
-      r'\[\[(Node: )?(\{\{node )?([^\} ]*)(\}\})?\s*=')
+      r'\[\[(Node: )?(\{\{node )?([^\} ]*)(\}\})?\s*=*')
 
   def _do_run(self, handle, target_list, fetch_list, feed_dict, options,
               run_metadata):
@@ -1471,7 +1471,7 @@ class BaseSession(SessionInterface):
     return BaseSession._Callable(self, callable_options)
 
 
-@tf_export('Session')
+@tf_export(v1=['Session'])
 class Session(BaseSession):
   """A class for running TensorFlow operations.
 
@@ -1626,7 +1626,7 @@ class Session(BaseSession):
     tf_session.TF_Reset(target, containers, config)
 
 
-@tf_export('InteractiveSession')
+@tf_export(v1=['InteractiveSession'])
 class InteractiveSession(BaseSession):
   """A TensorFlow `Session` for use in interactive contexts, such as a shell.
 

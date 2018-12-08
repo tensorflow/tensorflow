@@ -67,6 +67,7 @@ limitations under the License.
 %rename("%s") TFE_ContextStartStep;
 %rename("%s") TFE_ContextEndStep;
 %rename("%s") TFE_Py_RegisterVSpace;
+%rename("%s") TFE_Py_EncodeArg;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -208,6 +209,7 @@ limitations under the License.
     SWIG_fail;
   } else {
     int num_outputs = $1->size();
+    Py_CLEAR($result);
     $result = PyList_New(num_outputs);
     for (int i = 0; i < num_outputs; ++i) {
       PyObject *output;

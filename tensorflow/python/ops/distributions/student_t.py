@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -42,7 +43,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.StudentT")
+@tf_export(v1=["distributions.StudentT"])
 class StudentT(distribution.Distribution):
   """Student's t-distribution.
 
@@ -140,6 +141,14 @@ class StudentT(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                df,
                loc,
@@ -361,6 +370,11 @@ class StudentT(distribution.Distribution):
 class StudentTWithAbsDfSoftplusScale(StudentT):
   """StudentT with `df = floor(abs(df))` and `scale = softplus(scale)`."""
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "Use `tfd.StudentT(tf.floor(tf.abs(df)), loc, "
+      "tf.nn.softplus(scale)) instead.",
+      warn_once=True)
   def __init__(self,
                df,
                loc,

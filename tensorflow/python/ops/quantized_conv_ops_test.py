@@ -60,7 +60,7 @@ class Conv2DTest(test.TestCase):
     x2 = x2.astype(np.uint8).reshape(filter_in_sizes)
     x2_min = 0.0
     x2_max = 255.0
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtypes.quint8)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtypes.quint8)
       conv = nn_ops.quantized_conv2d(
@@ -73,7 +73,7 @@ class Conv2DTest(test.TestCase):
           max_input=x1_max,
           min_filter=x2_min,
           max_filter=x2_max)
-      value = sess.run(conv)
+      value = self.evaluate(conv)
     quantized_output = value[0]
     output_min = value[1]
     output_max = value[2]

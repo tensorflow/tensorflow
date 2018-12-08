@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -34,7 +35,11 @@ namespace {
 
 using ::testing::HasSubstr;
 
-// This class cannot be converted to use HloVerifiedTestBase. It explicitly
+std::unique_ptr<HloModule> CreateUnverifiedModule() {
+  return absl::make_unique<HloModule>("module", HloModuleConfig());
+}
+
+// This class cannot be converted to use HloTestBase. It explicitly
 // uses HloTestBase to create and test malformed HLOs.
 class HloVerifierTest : public HloTestBase {
  public:
@@ -50,6 +55,14 @@ class HloVerifierTestAllowMixedPrecision : public HloTestBase {
                     /*allow_mixed_precision_in_hlo_verifier=*/true) {}
 };
 
+class HloVerifierTestLayoutSensitive : public HloTestBase {
+ public:
+  HloVerifierTestLayoutSensitive()
+      : HloTestBase(/*verifier_layout_sensitive=*/true,
+                    /*allow_mixed_precision_in_hlo_verifier=*/false,
+                    LayoutAssignment::InstructionCanChangeLayout) {}
+};
+
 TEST_F(HloVerifierTest, NullInstructionParent) {
   HloComputation::Builder builder(TestName());
   const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
@@ -57,7 +70,7 @@ TEST_F(HloVerifierTest, NullInstructionParent) {
       HloInstruction::CreateParameter(0, scalar_shape, "param"));
   HloInstruction* negate = builder.AddInstruction(
       HloInstruction::CreateUnary(scalar_shape, HloOpcode::kNegate, param));
-  auto module = CreateNewModule();
+  auto module = CreateUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK(verifier().Run(module.get()).status());
@@ -76,7 +89,7 @@ TEST_F(HloVerifierTest, NullComputationParent) {
       HloInstruction::CreateParameter(0, scalar_shape, "param"));
   builder.AddInstruction(
       HloInstruction::CreateUnary(scalar_shape, HloOpcode::kNegate, param));
-  auto module = CreateNewModule();
+  auto module = CreateUnverifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK(verifier().Run(module.get()).status());
@@ -95,7 +108,7 @@ TEST_F(HloVerifierTest, DifferentOperandParents) {
       HloInstruction::CreateParameter(0, scalar_shape, "param"));
   HloInstruction* negate = builder.AddInstruction(
       HloInstruction::CreateUnary(scalar_shape, HloOpcode::kNegate, param));
-  auto module = CreateNewModule();
+  auto module = CreateUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   HloComputation::Builder emb_builder(TestName());
@@ -129,7 +142,7 @@ TEST_F(HloVerifierTest, ResetsShapeVerifierState) {
   builder.AddInstruction(
       HloInstruction::CreateBinary(s2, HloOpcode::kMultiply, add, add));
 
-  auto module = CreateNewModule();
+  auto module = CreateUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   // Run the verifier twice.  It should fail both times, because it shouldn't
@@ -294,7 +307,7 @@ TEST_F(HloVerifierTest, NegativeInteriorPaddingNotAllowed) {
           HloInstruction::CreateConstant(LiteralUtil::Zero(F32))),
       padding_config));
 
-  auto module = CreateNewModule();
+  auto module = CreateUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   auto status = verifier().Run(module.get()).status();
@@ -318,7 +331,7 @@ TEST_F(HloVerifierTest, PadNegativeInteriorDilationNotAllowed) {
           HloInstruction::CreateConstant(LiteralUtil::Zero(F32).Clone())),
       padding_config));
 
-  auto module = CreateNewModule();
+  auto module = CreateUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
@@ -358,5 +371,63 @@ TEST_F(HloVerifierTest, ConvNegativeBaseDilationNotAllowed) {
               HasSubstr("non-positive base area dilation factor"));
 }
 
+static const char* const kAddWithLayoutChangeHlo = R"(
+   HloModule AddWithLayoutChange
+    ENTRY AddWithLayoutChange {
+      par0 = f32[3,4]{1,0} parameter(0)
+      par1 = f32[3,4]{0,1} parameter(1)
+      ROOT add0 = f32[3,4]{1,0} add(par0,par1)
+    }
+  )";
+
+TEST_F(HloVerifierTest, AddWithLayoutChange) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kAddWithLayoutChangeHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, AddWithLayoutChangeNotAllowed) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kAddWithLayoutChangeHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Instruction shouldn't change layouts"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, SliceWithLayoutChangeNotAllowed) {
+  const char* const kSliceWithLayoutChangeHlo = R"(
+   HloModule SliceWithLayoutChange
+    ENTRY SliceWithLayoutChange {
+      par0 = f32[4,5]{0,1} parameter(0)
+      par1 = s32[2] parameter(1)
+      ROOT dslice0 = f32[3,4]{1,0} dynamic-slice(par0, par1),
+        dynamic_slice_sizes={3,4}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseHloString(kSliceWithLayoutChangeHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Instruction shouldn't change layouts"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, ConcatWithLayoutChangeNotAllowed) {
+  const char* const kConcatWithLayoutChangeHlo = R"(
+   HloModule ConcatWithLayoutChange
+   ENTRY ConcatWithLayoutChange {
+      par0 = f32[3,5]{0,1} parameter(0)
+      par1 = f32[3,3]{1,0} parameter(1)
+      ROOT concat0 = f32[3,8]{1,0} concatenate(f32[3,5] par0, f32[3,3] par1),
+        dimensions={1}
+   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseHloString(kConcatWithLayoutChangeHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Instruction shouldn't change layouts"));
+}
 }  // namespace
 }  // namespace xla

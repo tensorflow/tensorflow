@@ -22,6 +22,8 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -41,10 +43,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using absl::flat_hash_map;
+using absl::flat_hash_set;
 using absl::StrAppend;
 using absl::StrAppendFormat;
-using ::tensorflow::gtl::FlatMap;
-using ::tensorflow::gtl::FlatSet;
 using ::tensorflow::strings::HumanReadableNumBytes;
 
 template <typename T>
@@ -128,8 +130,8 @@ Status GatherComputationsByAllocationType(
 
   // Sets for quickly checking membership. Computations are returned in vectors
   // for stable iteration.
-  FlatSet<const HloComputation*> thread_local_set;
-  FlatSet<const HloComputation*> global_set;
+  flat_hash_set<const HloComputation*> thread_local_set;
+  flat_hash_set<const HloComputation*> global_set;
 
   while (!worklist.empty()) {
     auto worklist_front = worklist.front();
@@ -237,7 +239,7 @@ BufferAllocation::Slice BufferAllocation::GetSlice(
 
 void BufferAllocation::AddAssignment(const LogicalBuffer& buffer, int64 offset,
                                      int64 size) {
-  VLOG(4) << "Trying to add " << buffer << " to " << this;
+  VLOG(4) << "Trying to add " << buffer << " to allocation #" << index();
   CHECK(assigned_buffers_.count(&buffer) == 0)
       << "LogicalBuffer " << buffer << " already assigned to allocation "
       << index_;
@@ -376,6 +378,20 @@ const BufferAllocation& BufferAssignment::GetAllocation(
   return allocations_[index];
 }
 
+const BufferAllocation* BufferAssignment::GetInstructionAllocation(
+    const HloInstruction* hlo, const ShapeIndex& shape_index) const {
+  const PointsToSet& points_to_set = points_to_analysis().GetPointsToSet(hlo);
+  const LogicalBuffer* buffer = points_to_set.element(shape_index)[0];
+
+  if (!HasAllocation(*buffer)) {
+    return nullptr;
+  }
+
+  const BufferAllocation& instruction_allocation =
+      GetAssignedAllocation(*buffer);
+  return &instruction_allocation;
+}
+
 BufferAllocation* BufferAssignment::GetMutableAllocation(
     BufferAllocation::Index index) {
   return const_cast<BufferAllocation*>(&GetAllocation(index));
@@ -444,7 +460,7 @@ bool BufferAssignment::SharesSliceAtIndex(
 bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
                                           const HloInstruction* hlo_b) const {
   using SliceSet =
-      FlatSet<BufferAllocation::Slice, BufferAllocation::Slice::Hasher>;
+      flat_hash_set<BufferAllocation::Slice, BufferAllocation::Slice::Hasher>;
   // Gets the slices all of instr's subshapes.  If any subshape doesn't have an
   // assigned slice, returns the empty set.
   auto collect_slices = [&](const HloInstruction* instr) -> SliceSet {
@@ -512,6 +528,9 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
   TF_CHECK_OK(points_to_analysis().VerifyBuffer(buffer));
 
   allocation->AddAssignment(buffer, offset, size);
+  if (liveness().MaybeLiveOut(buffer)) {
+    allocation->set_maybe_live_out(true);
+  }
   allocation_index_for_buffer_[&buffer] = allocation->index();
 }
 
@@ -519,7 +538,8 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
 // BufferAllocation.
 void BufferAssignment::CombineTempAllocations() {
   VLOG(1) << "CombineTempAllocations()";
-  FlatMap<LogicalBuffer::Color, BufferAllocation, LogicalBuffer::Color::Hasher>
+  flat_hash_map<LogicalBuffer::Color, BufferAllocation,
+                LogicalBuffer::Color::Hasher>
       combined_allocation_map;
 
   // Move all temp allocations into a single run at the end of the allocations
@@ -582,7 +602,8 @@ void BufferAssignment::CombineTempAllocations() {
   }
 
   // Update allocation indices to their new positions.
-  allocation_index_for_buffer_.clear_no_resize();
+  allocation_index_for_buffer_.erase(allocation_index_for_buffer_.begin(),
+                                     allocation_index_for_buffer_.end());
   for (size_t index = 0; index < allocations_.size(); ++index) {
     BufferAllocation* allocation = &allocations_[index];
     allocation->set_index(index);
@@ -620,7 +641,7 @@ Status BufferAssignment::ComputeSummaryStats() {
   bool schedule_complete = true;
   for (const auto& computation : module_->computations()) {
     if (!computation->IsFusionComputation()) {
-      const std::vector<const HloInstruction*>* sequence =
+      const HloInstructionSequence* sequence =
           liveness_->hlo_ordering().SequentialOrder(*computation);
       if (sequence == nullptr) {
         schedule_complete = false;
@@ -724,13 +745,88 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     LogicalBuffer::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     bool allow_input_output_aliasing, bool allocate_buffers_for_constants,
-    BufferLiveness::Colorer colorer) {
-  BufferAssigner assigner(allow_input_output_aliasing,
-                          allocate_buffers_for_constants, std::move(colorer));
+    BufferLiveness::Colorer colorer, ReuseAllocationFunction reuse_checker) {
+  BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
+                          std::move(reuse_checker));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    std::move(buffer_size),
                                    std::move(color_alignment));
 }
+
+namespace {
+
+// a and b are in different subcomputations. Check for the case
+// where a is inside the while body, and b is outside, part of the same while's
+// init-operand or while-result.
+bool MayInterfereAcrossSubcomputations(BufferAssignment* assignment,
+                                       const LogicalBuffer& a_buffer,
+                                       const LogicalBuffer& b_buffer) {
+  auto call_graph = assignment->liveness().hlo_ordering().call_graph();
+  const HloInstruction* a_ancestor;
+  const HloInstruction* b_ancestor;
+  std::tie(a_ancestor, b_ancestor) =
+      call_graph.NearestAncestorsInSameComputation(a_buffer.instruction(),
+                                                   b_buffer.instruction());
+  if (a_ancestor == nullptr) {
+    // No common ancestor.
+    return true;
+  }
+  if (a_ancestor->opcode() == HloOpcode::kWhile &&
+      call_graph.InstructionIsNestedIn(a_buffer.instruction(),
+                                       a_ancestor->while_body())) {
+    const PointsToSet& init_set =
+        assignment->liveness().points_to_analysis().GetPointsToSet(
+            a_ancestor->operand(0));
+    if (init_set.ContainsBuffer(b_buffer)) {
+      VLOG(4) << "Can't interfere: " << a_buffer << " and " << b_buffer
+              << " (part of while-operand)";
+      return false;
+    }
+    const PointsToSet& while_set =
+        assignment->liveness().points_to_analysis().GetPointsToSet(a_ancestor);
+    if (while_set.ContainsBuffer(b_buffer)) {
+      VLOG(4) << "Can't interfere: " << a_buffer << " and " << b_buffer
+              << " (part of while)";
+      return false;
+    }
+  }
+  return true;
+}
+
+// Return true, if a and b can't possibly interfere (and therefore further
+// checking for interference can be skipped). This function checks for special
+// cases where copy insertion guarantees no interference, but the regular buffer
+// liveness is too conservative:
+//
+// Operations inside a while-body can't interfere with operations outside the
+// while op if their last use is at the while-loop itself as part of the
+// while-init op, or the while-result.  For ops that are live across a
+// while-loop, copy insertion will already insert the necessary copies to avoid
+// such interference.
+//
+// This allows sharing buffers in cases like this:
+// init = {...}
+// while (init):
+//  p = param(0)
+//  gte = get-tuple-element(p), index=i
+//  t1 = op1 (gte)
+//  t2 = op2 (t1)
+//  ROOT tuple = {..., t2, ...}
+//
+// where t1 and t2 can share the same buffer.
+bool MaySkipInterferenceCheck(BufferAssignment* assignment,
+                              const LogicalBuffer& a_buffer,
+                              const LogicalBuffer& b_buffer) {
+  if (a_buffer.instruction()->parent() == b_buffer.instruction()->parent()) {
+    // Ops within the same computation are not handled here. Assume that they
+    // may interfere.
+    return false;
+  }
+  return !MayInterfereAcrossSubcomputations(assignment, a_buffer, b_buffer) ||
+         !MayInterfereAcrossSubcomputations(assignment, b_buffer, a_buffer);
+}
+
+}  // namespace
 
 bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
                                        const LogicalBuffer& buffer,
@@ -759,6 +855,12 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     return false;
   }
 
+  if (reuse_checker_ != nullptr &&
+      !reuse_checker_(*assignment, *allocation, buffer)) {
+    VLOG(4) << "Can't assign: reuse_checker_(allocation, buffer) == false";
+    return false;
+  }
+
   if (!allocation->is_reusable()) {
     VLOG(4) << "Can't assign: allocation is not reusable";
     return false;
@@ -766,6 +868,9 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 
   for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
     const LogicalBuffer& assigned_buffer = *buffer_offset_size.first;
+    if (MaySkipInterferenceCheck(assignment, buffer, assigned_buffer)) {
+      continue;
+    }
     if (assignment->liveness().MayInterfere(assigned_buffer, buffer)) {
       VLOG(4) << "Can't assign: assignee " << assigned_buffer
               << " may interfere with " << buffer;
@@ -777,21 +882,6 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
       VLOG(4) << "Can't assign: assignee " << assigned_buffer
               << " is used at copy instruction " << buffer;
       return false;
-    }
-  }
-
-  if (allow_input_output_aliasing_ && allocation->maybe_live_out()) {
-    const HloComputation* entry_computation =
-        assignment->module_->entry_computation();
-    for (auto param : entry_computation->parameter_instructions()) {
-      for (auto& param_buffer :
-           assignment->points_to_analysis().GetBuffersDefinedByInstruction(
-               param)) {
-        if (assignment->liveness().MayInterfere(*param_buffer, buffer)) {
-          VLOG(4) << "Can't assign: Parameter interference with result";
-          return false;
-        }
-      }
     }
   }
 
@@ -812,9 +902,9 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 
 Status BufferAssigner::AssignBuffersForComputation(
     const HloComputation* computation, bool is_thread_local,
-    const FlatSet<const LogicalBuffer*>& colocated_buffers,
-    const FlatSet<BufferAllocation::Index>& colocated_allocations,
-    FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>*
+    const flat_hash_set<const LogicalBuffer*>& colocated_buffers,
+    const flat_hash_set<BufferAllocation::Index>& colocated_allocations,
+    flat_hash_map<const HloComputation*, flat_hash_set<const LogicalBuffer*>>*
         buffers_to_assign_sequentially,
     BufferAssignment* assignment) {
   // Buffers are sorted and assigned to BufferAllocations in decreasing order of
@@ -833,7 +923,7 @@ Status BufferAssigner::AssignBuffersForComputation(
 
   // Generate a post order sort of instructions for sorting of the
   // LogicalBuffers.
-  FlatMap<const HloInstruction*, int> post_order_position;
+  flat_hash_map<const HloInstruction*, int> post_order_position;
   int position = 0;
   for (auto* instruction : computation->MakeInstructionPostOrder()) {
     post_order_position.emplace(instruction, position);
@@ -850,8 +940,8 @@ Status BufferAssigner::AssignBuffersForComputation(
     // buffers_to_assign_sequentially map, even if we end up with an empty set
     // of buffers. This ensures we can correctly determine whether to run
     // whole-module heap simulation.
-    buffers_to_assign_sequentially->emplace(computation,
-                                            FlatSet<const LogicalBuffer*>());
+    buffers_to_assign_sequentially->emplace(
+        computation, flat_hash_set<const LogicalBuffer*>());
   }
 
   // Sort the LogicalBuffers first by size. We assign the larger LogicalBuffers
@@ -1043,12 +1133,12 @@ Status BufferAssigner::AssignBuffersForComputation(
   return Status::OK();
 }
 
-FlatMap<LogicalBuffer::Color, FlatSet<const LogicalBuffer*>,
-        LogicalBuffer::Color::Hasher>
+flat_hash_map<LogicalBuffer::Color, flat_hash_set<const LogicalBuffer*>,
+              LogicalBuffer::Color::Hasher>
 BufferAssigner::SplitBuffersByColor(
-    const FlatSet<const LogicalBuffer*>& buffers) {
-  FlatMap<LogicalBuffer::Color, FlatSet<const LogicalBuffer*>,
-          LogicalBuffer::Color::Hasher>
+    const flat_hash_set<const LogicalBuffer*>& buffers) {
+  flat_hash_map<LogicalBuffer::Color, flat_hash_set<const LogicalBuffer*>,
+                LogicalBuffer::Color::Hasher>
       color_map;
   for (auto buffer : buffers) {
     color_map[buffer->color()].insert(buffer);
@@ -1057,7 +1147,8 @@ BufferAssigner::SplitBuffersByColor(
 }
 
 Status BufferAssigner::AssignBuffersWithSequentialOrdering(
-    const FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>&
+    const flat_hash_map<const HloComputation*,
+                        flat_hash_set<const LogicalBuffer*>>&
         buffers_to_assign_sequentially,
     bool run_whole_module_heap_simulation, BufferAssignment* assignment) {
   // Run the sequence of instructions through the heap simulator.  The heuristic
@@ -1083,11 +1174,12 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     // only live for the duration of their calling instructions.
     VLOG(1) << "Running whole-module heap simulation";
     HloSchedule schedule(&assignment->module());
-    FlatSet<const LogicalBuffer*> all_buffers_to_assign;
+    flat_hash_set<const LogicalBuffer*> all_buffers_to_assign;
     for (const auto& pair : buffers_to_assign_sequentially) {
       const HloComputation* computation = pair.first;
-      const FlatSet<const LogicalBuffer*>& buffers_to_assign = pair.second;
-      const std::vector<const HloInstruction*>* instruction_sequence =
+      const flat_hash_set<const LogicalBuffer*>& buffers_to_assign =
+          pair.second;
+      const HloInstructionSequence* instruction_sequence =
           hlo_ordering.SequentialOrder(*computation);
       CHECK(instruction_sequence != nullptr) << computation->name();
       schedule.set_sequence(computation, *instruction_sequence);
@@ -1120,8 +1212,9 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     VLOG(1) << "Running per-computation heap simulation";
     for (const auto& pair : buffers_to_assign_sequentially) {
       const HloComputation* computation = pair.first;
-      const FlatSet<const LogicalBuffer*>& buffers_to_assign = pair.second;
-      const std::vector<const HloInstruction*>* instruction_sequence =
+      const flat_hash_set<const LogicalBuffer*>& buffers_to_assign =
+          pair.second;
+      const HloInstructionSequence* instruction_sequence =
           hlo_ordering.SequentialOrder(*computation);
       CHECK(instruction_sequence != nullptr) << computation->name();
       auto color_map = SplitBuffersByColor(buffers_to_assign);
@@ -1136,7 +1229,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
             HeapSimulator::Run(get_heap_algorithm(alignment), *computation,
-                               HloInstructionSequence(*instruction_sequence),
+                               *instruction_sequence,
                                assignment->points_to_analysis(),
                                assignment->buffer_size_, options));
         AssignBuffersFromHeapSimulator(result, assignment,
@@ -1155,9 +1248,8 @@ std::vector<const LogicalBuffer*> ComputePeakMemoryLogicalBuffers(
     const BufferAllocation& allocation, const HeapSimulatorTrace& heap_trace) {
   // Create a map from LogicalBuffer::Id to LogicalBuffer* for the logical
   // buffers in this allocation.
-  tensorflow::gtl::FlatMap<LogicalBuffer::Id, const LogicalBuffer*>
-      id_to_buffer;
-  tensorflow::gtl::FlatMap<const LogicalBuffer*, int64> buffer_sizes;
+  absl::flat_hash_map<LogicalBuffer::Id, const LogicalBuffer*> id_to_buffer;
+  absl::flat_hash_map<const LogicalBuffer*, int64> buffer_sizes;
   for (const auto& pair : allocation.assigned_buffers()) {
     const LogicalBuffer* buffer = pair.first;
     const BufferAllocation::OffsetSize& offset_size = pair.second;
@@ -1196,7 +1288,7 @@ std::vector<const LogicalBuffer*> ComputePeakMemoryLogicalBuffers(
 
   // Next gather the set of logical buffers live at the earliest point of
   // maximal live set size.
-  tensorflow::gtl::FlatSet<const LogicalBuffer*> live_buffers;
+  absl::flat_hash_set<const LogicalBuffer*> live_buffers;
   live_size = 0;
   for (const auto& event : heap_trace.events()) {
     const LogicalBuffer* buffer = id_to_buffer.at(event.buffer_id());
@@ -1341,33 +1433,40 @@ BufferAssigner::MergeColocatedBufferSets(
            computation == module->entry_computation();
   };
 
+  std::vector<bool> set_can_be_merged(colocated_buffer_sets.size(), true);
+
+  // Do not merge if one of the sets includes live outs, entry parameters or
+  // constants.
+  //
+  // Buffer liveness does not report the correct live range for entry
+  // parameter and live out buffers so we have to special case them here.  On
+  // backends that support constant buffer allocations, constant buffers are
+  // assigned globals in readonly storage so we can't merge colocated buffer
+  // sets containing constants with colocated buffer sets containing writing
+  // instructions or other constants.
+  //
+  // Moreover (on the CPU/GPU backends) the entry parameter buffers belong to
+  // the caller of the executable so we can't write to entry parameters
+  // either, and the argument for not merging constants also applies to entry
+  // parameters.
+  for (int64 i = 0; i < colocated_buffer_sets.size(); ++i) {
+    for (auto& buffer : colocated_buffer_sets[i]) {
+      if (buffer_liveness.MaybeLiveOut(*buffer) ||
+          is_entry_parameter(*buffer) ||
+          buffer->instruction()->opcode() == HloOpcode::kConstant) {
+        set_can_be_merged[i] = false;
+        break;
+      }
+    }
+  }
+
   // Returns true if the two colocated buffer sets (specified by their indices
   // into the colocated_buffer_sets) can be merged into a single set.
   auto cannot_merge_buffer_sets = [&colocated_buffer_sets, &buffer_liveness,
                                    &buffer_size,
-                                   &is_entry_parameter](int64 i, int64 j) {
-    // Do not merge if one of the sets includes live outs, entry parameters or
-    // constants.
-    //
-    // Buffer liveness does not report the correct live range for entry
-    // parameter and live out buffers so we have to special case them here.  On
-    // backends that support constant buffer allocations, constant buffers are
-    // assigned globals in readonly storage so we can't merge colocated buffer
-    // sets containing constants with colocated buffer sets containing writing
-    // instructions or other constants.
-    //
-    // Moreover (on the CPU/GPU backends) the entry parameter buffers belong to
-    // the caller of the executable so we can't write to entry parameters
-    // either, and the argument for not merging constants also applies to entry
-    // parameters.
-    for (int64 key : {i, j}) {
-      for (auto& buffer : colocated_buffer_sets[key]) {
-        if (buffer_liveness.MaybeLiveOut(*buffer) ||
-            is_entry_parameter(*buffer) ||
-            buffer->instruction()->opcode() == HloOpcode::kConstant) {
-          return true;
-        }
-      }
+                                   &set_can_be_merged](int64 i, int64 j) {
+    if (!set_can_be_merged[i] || !set_can_be_merged[j]) {
+      return true;
     }
 
     // Colocated sets satisfy the invariant that all buffers within a set have
@@ -1428,13 +1527,30 @@ BufferAssigner::MergeColocatedBufferSets(
 
 // Builds sets of buffers in 'colocated_buffer_sets' which should be colocated
 // in the same allocation (currently just supports kWhile, kCall, and
-// kConditional).
+// kConditional and input output aliasing).
 void BufferAssigner::BuildColocatedBufferSets(
     const HloModule* module, const BufferLiveness& buffer_liveness,
     const LogicalBuffer::SizeFunction& buffer_size,
     std::vector<ColocatedBufferSet>* colocated_buffer_sets) {
   const TuplePointsToAnalysis& points_to_analysis =
       buffer_liveness.points_to_analysis();
+
+  // Set up colocated buffer set for input and output.
+  VLOG(4) << "Input/Output Alias Config: ";
+  VLOG(4) << module->input_output_alias_config();
+  module->input_output_alias_config().ForEachAlias(
+      [&](const ShapeIndex& output_index, int64 param_number,
+          const ShapeIndex& param_index) {
+        std::vector<const LogicalBuffer*> colocated_set;
+        AddBufferToColocatedSet(module->entry_computation()->root_instruction(),
+                                output_index, points_to_analysis,
+                                &colocated_set);
+        AddBufferToColocatedSet(
+            module->entry_computation()->parameter_instruction(param_number),
+            param_index, points_to_analysis, &colocated_set);
+        AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
+      });
+
   for (const HloComputation* computation : module->MakeComputationPostOrder()) {
     if (computation->IsFusionComputation()) {
       continue;
@@ -1568,6 +1684,13 @@ void BufferAssigner::BuildColocatedBufferSets(
     return;
   }
 
+  int64 i = 0;
+  for (const auto& colocated_set : *colocated_buffer_sets) {
+    VLOG(4) << "Colocated set " << i++ << ":";
+    for (const auto& buffer : colocated_set) {
+      VLOG(4) << "  " << buffer->ToString();
+    }
+  }
   // Try to find more coalescing opportunities among the colocated buffer sets.
   //
   // TODO(b/32491382): We should be able to remove this by using the
@@ -1586,8 +1709,8 @@ void BufferAssigner::BuildColocatedBufferSets(
 void BufferAssigner::AssignColocatedBufferSets(
     const std::vector<ColocatedBufferSet>& colocated_buffer_sets,
     BufferAssignment* assignment,
-    FlatSet<const LogicalBuffer*>* colocated_buffers,
-    FlatSet<BufferAllocation::Index>* colocated_allocations) {
+    flat_hash_set<const LogicalBuffer*>* colocated_buffers,
+    flat_hash_set<BufferAllocation::Index>* colocated_allocations) {
   for (const ColocatedBufferSet& colocated_buffer_set : colocated_buffer_sets) {
     BufferAllocation* allocation = nullptr;
     // Set 'entry_parameter_number' and 'entry_parameter_shape_idx' if entry
@@ -1660,8 +1783,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   // Once b/32491382 enables module-level liveness analysis, we may be able
   // to assign colocated buffers (or at least reuse their allocation for
   // buffers outside of the set) in AssignBuffersForComputation.
-  FlatSet<const LogicalBuffer*> colocated_buffers;
-  FlatSet<BufferAllocation::Index> colocated_allocations;
+  flat_hash_set<const LogicalBuffer*> colocated_buffers;
+  flat_hash_set<BufferAllocation::Index> colocated_allocations;
   std::vector<ColocatedBufferSet> colocated_buffer_sets;
   BuildColocatedBufferSets(module, assignment->liveness(),
                            assignment->buffer_size_, &colocated_buffer_sets);
@@ -1679,7 +1802,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
 
   // First assign buffers for global computatations. Temporary buffers for
   // sequential computations are collected in 'buffers_to_assign_sequentially'.
-  FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>
+  flat_hash_map<const HloComputation*, flat_hash_set<const LogicalBuffer*>>
       buffers_to_assign_sequentially;
   for (auto* computation : global_computations) {
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(

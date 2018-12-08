@@ -120,11 +120,17 @@ class SessionTest(test_util.TensorFlowTestCase):
       inp = constant_op.constant(10.0, name='W1')
       self.assertAllEqual(inp.eval(), 10.0)
 
-      devices = sess.list_devices()
-      self.assertEqual(2, len(devices))
-      for device in devices:
-        self.assertEqual('CPU', framework_device_lib.DeviceSpec.from_string(
-            device.name).device_type)
+      num_cpu_devices = 0
+      num_gpu_devices = 0
+      for device in sess.list_devices():
+        device_type = framework_device_lib.DeviceSpec.from_string(
+            device.name).device_type
+        if device_type == 'CPU':
+          num_cpu_devices += 1
+        elif device_type == 'GPU':
+          num_gpu_devices += 1
+      self.assertEqual(2, num_cpu_devices)
+      self.assertEqual(0, num_gpu_devices)
 
   def testPerSessionThreads(self):
     with session.Session(
@@ -306,6 +312,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(None, res[2])
       self.assertEqual(44.0, res[1])
 
+  @test_util.run_v1_only('b/120545219')
   def testFetchAttrs(self):
     if attr is None:
       self.skipTest('attr module is unavailable.')
@@ -334,6 +341,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(val3, result.field1)
       self.assertAllEqual(val2, result.field2)
 
+  @test_util.run_v1_only('b/120545219')
   def testFetchNestedAttrs(self):
     if attr is None:
       self.skipTest('attr module is unavailable.')
@@ -1018,11 +1026,12 @@ class SessionTest(test_util.TensorFlowTestCase):
       fed_c_val = c.eval(feed_dict={a.name: [[4.0, 4.0]]})
       self.assertAllEqual([[16.0, 16.0, 16.0]], fed_c_val)
 
+  @test_util.run_v1_only('b/120545219')
   def testOperationRunMethod(self):
     with session.Session():
       a = constant_op.constant(1.0, shape=[1, 2])
       b = constant_op.constant(2.0, shape=[1, 2], name='b')
-      v = variables.Variable(a, a.dtype)
+      v = variables.VariableV1(a, a.dtype)
       assign_a_to_v = state_ops.assign(v, a)
 
       assign_a_to_v.eval()
@@ -1148,6 +1157,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         else:
           importer.import_graph_def(gdef, name='import')
 
+  @test_util.run_v1_only('b/120545219')
   def testParallelRunAndSingleBuild(self):
     with session.Session() as sess:
       c = constant_op.constant(5.0)
@@ -1168,6 +1178,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       for t in threads:
         t.join()
 
+  @test_util.run_v1_only('b/120545219')
   def testParallelRunAndParallelBuild(self):
     with session.Session() as sess:
       c = constant_op.constant(5.0)
@@ -1268,6 +1279,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
         sess.run({})
 
+  @test_util.run_v1_only('b/120545219')
   def testNotEntered(self):
     # pylint: disable=protected-access
     self.assertEqual(ops._default_session_stack.get_default(), None)
@@ -1283,6 +1295,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           ValueError, lambda e: 'No default session is registered.' in str(e)):
         c_2.eval()
 
+  @test_util.run_v1_only('b/120545219')
   def testInteractive(self):
     with ops.device('/cpu:0'):
       sess = session.InteractiveSession()
@@ -1295,6 +1308,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[24.0]], e.eval())
       sess.close()
 
+  @test_util.run_v1_only('b/120545219')
   def testMultipleInteractiveSessionsWarning(self):
     # Reinitialize the global state to ensure that the expected warnings will
     # be emitted.
@@ -1322,6 +1336,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     sess2.close()
     sess.close()
 
+  @test_util.run_v1_only('b/120545219')
   def testInteractivePlacePrunedGraph(self):
     sess = session.InteractiveSession()
 
@@ -1343,6 +1358,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       a.eval()
     sess.close()
 
+  @test_util.run_v1_only('b/120545219')
   def testDefaultSessionPlacePrunedGraph(self):
     sess = session.Session()
 
@@ -1763,9 +1779,11 @@ class SessionTest(test_util.TensorFlowTestCase):
     sess.run(a, run_metadata=run_metadata)
     self.assertEqual(len(run_metadata.partition_graphs), 0)
 
+  @test_util.run_v1_only('b/120545219')
   def testOutputPartitionGraphsDirect(self):
     self.runTestOutputPartitionGraphs(session.Session())
 
+  @test_util.run_v1_only('b/120545219')
   def testOutputPartitionGraphsDistributed(self):
     server = server_lib.Server.create_local_server()
     self.runTestOutputPartitionGraphs(session.Session(server.target))
@@ -1790,6 +1808,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     del sess1
     del sess2
 
+  @test_util.run_v1_only('b/120545219')
   def testAsDefault(self):
     c = constant_op.constant(37)
     sess = session.Session()
@@ -1815,6 +1834,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError, 'graph must be a tf.Graph'):
       session.Session(graph=37)
 
+  @test_util.run_v1_only('b/120545219')
   def testTimeoutWithShortOperations(self):
     num_epochs = 5
     q = data_flow_ops.FIFOQueue(capacity=50, dtypes=[dtypes.int32], shapes=[()])
@@ -1828,6 +1848,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess.run(enqueue_op)
       self.assertEqual(sess.run(q.size()), num_epochs * 2)
 
+  @test_util.run_v1_only('b/120545219')
   def testRegisterFetchAndFeedConversionFunctions(self):
 
     class SquaredTensor(object):
@@ -1859,6 +1880,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       squared_eval = sess.partial_run(partial_run, squared_tensor)
       self.assertAllClose(np2 * np2, squared_eval)
 
+  @test_util.run_v1_only('b/120545219')
   def testDefaultLogDevicePlacement(self):
 
     class CaptureStderr(str):
@@ -1908,6 +1930,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertTrue('/job:local/replica:0/task:0/device:CPU:0' in str(log),
                       str(log))
 
+  @test_util.run_v1_only('b/120545219')
   def testLocalMasterSessionTimeout(self):
     # Test that the timeout passed in a config to the session works correctly.
     config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
@@ -1921,6 +1944,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaises(errors.DeadlineExceededError):
         sess.run(dequeued_t)
 
+  @test_util.run_v1_only('b/120545219')
   def testDefaultServerTimeout(self):
     # Test that the default server config timeout gets used when no Session
     # config is provided.
@@ -1946,9 +1970,11 @@ class SessionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesOpError('has inputs from different frames'):
       sess.run(res, feed_dict={data: 1.0})
 
+  @test_util.run_v1_only('b/120545219')
   def testBuildGraphErrorDirect(self):
     self.runTestBuildGraphError(session.Session())
 
+  @test_util.run_v1_only('b/120545219')
   def testBuildGraphErrorDist(self):
     server = server_lib.Server.create_local_server()
     self.runTestBuildGraphError(session.Session(server.target))
@@ -1987,9 +2013,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       result = sess.run(f)
       self.assertEqual(result, 2.0)
 
+  @test_util.run_v1_only('b/120545219')
   def testAddFunctionToSession(self):
     self.runTestAddFunctionToSession()
 
+  @test_util.run_v1_only('b/120545219')
   def testAddFunctionToGrpcSession(self):
     server = server_lib.Server.create_local_server()
     self.runTestAddFunctionToSession(server.target)
@@ -2003,6 +2031,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with session.Session():
       pass
 
+  @test_util.run_v1_only('b/120545219')
   def testAutoConvertAndCheckData(self):
     with self.cached_session() as sess:
       a = array_ops.placeholder(dtype=dtypes.string)

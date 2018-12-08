@@ -55,8 +55,8 @@ RUN pip --no-cache-dir install \
         h5py \
         ipykernel \
         jupyter \
-        keras_applications==1.0.5 \
-        keras_preprocessing==1.0.3 \
+        keras_applications \
+        keras_preprocessing \
         matplotlib \
         mock \
         numpy \
@@ -100,7 +100,7 @@ RUN mkdir /bazel && \
 
 # Download and build TensorFlow.
 WORKDIR /tensorflow
-RUN git clone --branch=r1.11 --depth=1 https://github.com/tensorflow/tensorflow.git .
+RUN git clone --branch=r1.12 --depth=1 https://github.com/tensorflow/tensorflow.git .
 
 # Configure the build for our CUDA configuration.
 ENV CI_BUILD_PYTHON python

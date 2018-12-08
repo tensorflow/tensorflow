@@ -55,6 +55,9 @@ class DeviceMgr;
 
 class Device : public DeviceBase {
  public:
+  // Callback type that takes a Status and returns void.
+  typedef std::function<void(const Status&)> DoneCallback;
+
   Device(Env* env, const DeviceAttributes& device_attributes);
   ~Device() override;
 
@@ -101,10 +104,23 @@ class Device : public DeviceBase {
     }
   }
 
+  // If true, and tracing is enabled, the `tracing::ScopedAnnotation()` tracing
+  // mechanism will be used instead of `tracing::ScopedActivity()`. Some devices
+  // may override this method to use annotations, which enable child activities
+  // (such as GPU kernel launches) to be related to the OpKernel invocation.
+  virtual bool TraceUsingAnnotations() const { return false; }
+
   // Blocks until all operations queued on the device at the time of
   // the call have completed.  Returns any error pending on the device
   // at completion.
   virtual Status Sync() = 0;
+
+  // Calls the given callback when all operations queued on the device at the
+  // time of the call have completed. The callback is passed any error pending
+  // on the device at completion.
+  // TODO(b/112409994): Consolidate these two APIs, removing the synchronous
+  // version.
+  virtual void Sync(const DoneCallback& done);
 
   // Override this to return true for devices that require a Sync() call before
   // session completion.

@@ -35,10 +35,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-void CopyAttribute(const string& attr_name, const NodeDef& from, NodeDef* to) {
-  (*to->mutable_attr())[attr_name] = from.attr().at(attr_name);
-}
-
 // Returns a FunctionDef containing a MapDefun op that wraps the original
 // function.
 FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
@@ -48,7 +44,7 @@ FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
   // Function inputs and outputs are the same as original, just
   // with different shapes.
   *vectorized_func->mutable_signature() = orig_func.signature();
-  graph_utils::SetUniqueGraphFunctionName("vectorized_function", library,
+  graph_utils::SetUniqueGraphFunctionName("naively_vectorized_fn", library,
                                           vectorized_func);
 
   // Add MapDefun node
@@ -61,16 +57,27 @@ FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
   for (const string& k : {"f", "output_types", "output_shapes"}) {
     // Function, output types and (unbatched) shapes are the same as the
     // original map node.
-    CopyAttribute(k, map_node, map_defun_node);
+    graph_utils::CopyAttribute(k, map_node, map_defun_node);
   }
 
+  // Note that the inputs to the function are either regular arguments (for
+  // which the function is mapped across their 0th dimension) or captured inputs
+  // (for which the function takes the argument wholesale). We can infer
+  // the split between these arguments from the `map_node`'s attrs.
+  // The Targuments attr on `map_node` corresponds to a list of types of
+  // MapDataset's captured inputs.
+  auto t_captured = map_node.attr().at("Targuments");
+
   // Get types of input arguments from original map function
-  AttrValue t_args;
+  DataTypeVector t_args;  // Regular arguments
   for (const auto& input : vectorized_func->signature().input_arg()) {
-    t_args.mutable_list()->add_type(input.type());
+    t_args.push_back(input.type());
     map_defun_node->add_input(input.name());
   }
-  (*map_defun_node->mutable_attr())["Targuments"] = t_args;
+  // Erase the captured arguments from Targuments
+  t_args.erase(t_args.end() - t_captured.list().type_size(), t_args.end());
+  AddNodeAttr("Targuments", t_args, map_defun_node);
+  AddNodeAttr("Tcaptured", t_captured, map_defun_node);
 
   // Set return values to match output names
   string output_prefix = strings::StrCat(map_defun_node->name(), ":output:");
@@ -90,21 +97,21 @@ FunctionDef* AddVectorizedFunction(const NodeDef& map_node,
   // efficient vectorization with VectorizeMapDefun.
   FunctionDef* vectorized_func =
       CreateMapDefunWrapper(map_node, orig_func, library);
-  NodeDef* map_defun_node = vectorized_func->mutable_node_def()->Mutable(0);
-  DCHECK_EQ(map_defun_node->op(), "MapDefun");
+  const NodeDef& map_defun_node = vectorized_func->node_def(0);
+  DCHECK_EQ(map_defun_node.op(), "MapDefun");
 
-  // Create a copy of the original function so that we can mutate it, and
-  // attach that to the map defun node.
-  FunctionDef* map_defun_fn = library->add_function();
-  *map_defun_fn = orig_func;
-  graph_utils::SetUniqueGraphFunctionName(orig_func.signature().name(), library,
-                                          map_defun_fn);
-  (*map_defun_node->mutable_attr())["f"].mutable_func()->set_name(
-      map_defun_fn->signature().name());
+  // TODO(b/116285210): Unreferenced functions should get cleaned up later
+  FunctionDef* result;
+  Status s = vectorization_utils::VectorizeMapDefun(
+      *vectorized_func, map_defun_node, library, &result);
 
-  vectorization_utils::VectorizeMapDefun(vectorized_func, map_defun_fn,
-                                         map_defun_node);
-  return vectorized_func;
+  if (!s.ok()) {
+    LOG(WARNING) << "VectorizeMapDefun failed. The function will only be "
+                    "naively vectorized with MapDefun. Reason: "
+                 << s;
+    return vectorized_func;
+  }
+  return result;
 }
 
 bool IsOutputShapesFullyDefined(const NodeDef& node) {
@@ -134,17 +141,13 @@ bool IsStatefulFn(const FunctionLibraryDefinition& library,
   return false;
 }
 
-bool HasCapturedInputs(const NodeDef& map_node) {
-  return map_node.attr().at("Targuments").list().type_size() > 0;
-}
-
 NodeDef MakeNewBatchNode(const NodeDef& old_batch_node,
                          const NodeDef& input_node,
                          const FunctionDef& vectorized_func,
                          MutableGraphView* graph) {
   NodeDef batch_node;
   batch_node.set_op(old_batch_node.op());
-  graph_utils::SetUniqueGraphNodeName(batch_node.op(), graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName(batch_node.op(), graph->graph(),
                                       &batch_node);
 
   // Set the `input_dataset` input argument
@@ -184,8 +187,7 @@ NodeDef MakeNewMapNode(const NodeDef& old_map_node,
                        MutableGraphView* graph) {
   NodeDef map_node;
   map_node.set_op(old_map_node.op());
-  graph_utils::SetUniqueGraphNodeName(map_node.op(), graph->GetGraph(),
-                                      &map_node);
+  graph_utils::SetUniqueGraphNodeName(map_node.op(), graph->graph(), &map_node);
 
   // Set the `input_dataset` input argument
   map_node.add_input(new_batch_node.name());
@@ -195,13 +197,16 @@ NodeDef MakeNewMapNode(const NodeDef& old_map_node,
   }
 
   // Set attrs
-  CopyAttribute("Targuments", old_map_node, &map_node);
+  graph_utils::CopyAttribute("Targuments", old_map_node, &map_node);
   auto& func_attr = (*map_node.mutable_attr())["f"];
   func_attr.mutable_func()->set_name(vectorized_func.signature().name());
 
   for (auto key : {"output_shapes", "output_types"}) {
-    CopyAttribute(key, old_batch_node, &map_node);
+    graph_utils::CopyAttribute(key, old_batch_node, &map_node);
   }
+
+  (*map_node.mutable_attr())["use_inter_op_parallelism"].set_b(true);
+
   return map_node;
 }
 
@@ -241,15 +246,12 @@ Status MapVectorization::Optimize(Cluster* cluster, const GrapplerItem& item,
     // Check that this is a valid optimization.
     if (!IsOutputShapesFullyDefined(*input_node) ||
         !IsOutputShapesFullyDefined(*map_node) ||
-        IsStatefulFn(function_library, *orig_func) ||
-        HasCapturedInputs(*map_node)) {
+        IsStatefulFn(function_library, *orig_func)) {
       // 1. If any of the inputs have an unknown shape, don't optimize, since
       // inputs might not be batchable.
       // 2. If any of the map func outputs have an unknown shape, don't
       // optimize, so that batching errors surface as before.
       // 3. If the function is stateful, don't vectorize it.
-      // 4. TODO(rachelim): Make this work for MapDataset with captured inputs
-      // by tiling inputs or modifying the signature of MapDefun.
       continue;
     }
 
@@ -262,7 +264,7 @@ Status MapVectorization::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     auto* new_map_node = graph.AddNode(MakeNewMapNode(
         *map_node, batch_node, *new_batch_node, *vectorized_func, &graph));
-    graph.ReplaceInput(batch_node, *new_map_node);
+    graph.UpdateFanouts(batch_node.name(), new_map_node->name());
 
     // Mark the `Map` and `Batch` nodes for removal.
     nodes_to_delete.insert(map_node->name());

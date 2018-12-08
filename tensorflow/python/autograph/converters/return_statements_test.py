@@ -151,6 +151,18 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 2)
     self.assertTransformedEquivalent(test_fn, -2)
 
+  def test_nested_functions_in_control_flow(self):
+
+    def test_fn(x):
+
+      if x:
+        def inner_fn(y):
+          return y
+        inner_fn(x)
+
+    self.assertTransformedEquivalent(test_fn, 2)
+    self.assertTransformedEquivalent(test_fn, -2)
+
   def test_loop(self):
 
     def test_fn(x):

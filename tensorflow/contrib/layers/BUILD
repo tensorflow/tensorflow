@@ -1,14 +1,15 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 package(default_visibility = [
     "//learning/brain:__subpackages__",
     "//tensorflow:__subpackages__",
+    "//tensorflow_model_optimization:__subpackages__",
 ])
+
+licenses(["notice"])  # Apache 2.0
+
+exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -77,6 +78,11 @@ tf_custom_op_py_library(
         ":sparse_feature_cross_op_op_lib",
     ],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//video/youtube/personalization:__subpackages__",
+    ],
     deps = [
         ":sparse_feature_cross_op",
         "//tensorflow/contrib/framework:framework_py",
@@ -252,7 +258,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )
@@ -276,7 +282,7 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )

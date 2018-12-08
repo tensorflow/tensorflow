@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt_state.h"
 
 #include <stdint.h>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -33,6 +34,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
@@ -40,14 +43,44 @@ namespace tensorflow {
 
 namespace {
 
+class BufferAllocStats {
+ public:
+  struct Stats {
+    int64 count = 0;
+    int64 size = 0;
+  };
+
+  Stats ReportAlloc(int64 device, int64 msize) {
+    mutex_lock lock(lock_);
+    Stats* device_stats = &stats_[device];
+    device_stats->count += 1;
+    device_stats->size += msize;
+    return *device_stats;
+  }
+
+  Stats ReportFree(int64 device, int64 msize) {
+    mutex_lock lock(lock_);
+    Stats* device_stats = &stats_[device];
+    device_stats->count -= 1;
+    device_stats->size -= msize;
+    return *device_stats;
+  }
+
+ private:
+  mutable mutex lock_;
+  std::map<int64, Stats> stats_;
+};
+
 const char* kTupleContainer = "tuples";
 
-// Counter used to assign unique handles.
-mutex _uid_mutex(tensorflow::LINKER_INITIALIZED);
-int64 _uid GUARDED_BY(_uid_mutex) = 0;
 int64 get_uid() {
-  mutex_lock l(_uid_mutex);
-  return _uid++;
+  uint64 unsigned_rand = random::New64() & INT64_MAX;
+  return static_cast<int64>(unsigned_rand);
+}
+
+BufferAllocStats* GetAllocStats() {
+  static BufferAllocStats* stats = new BufferAllocStats();
+  return stats;
 }
 
 Status AllocateScopedShapedBuffer(
@@ -67,6 +100,9 @@ Status AllocateScopedShapedBuffer(
   // requests the host-shape sub-buffer at index i, that will correspond to the
   // right device-shape sub-buffer at the same index.
   xla::Shape on_device_shape = transfer_manager->HostShapeToDeviceShape(shape);
+  VLOG(3) << "Allocating literal buffer: host_shape="
+          << xla::ShapeUtil::HumanStringWithLayout(shape) << " device_shape="
+          << xla::ShapeUtil::HumanStringWithLayout(on_device_shape);
 
   // The ScopedShapedBuffer frees the buffers that have so far been allocated if
   // it goes out of scope. That's useful if we return early as the result of an
@@ -99,9 +135,19 @@ XRTBufferAllocation::XRTBufferAllocation(const se::DeviceMemoryBase& allocation,
                                          xla::DeviceMemoryAllocator* allocator)
     : allocation_(allocation),
       device_ordinal_(device_ordinal),
-      allocator_(allocator) {}
+      allocator_(allocator) {
+  if (VLOG_IS_ON(2)) {
+    auto stats =
+        GetAllocStats()->ReportAlloc(device_ordinal_, allocation_.size());
+    LOG(INFO) << "XRT Allocation Stats: device=" << device_ordinal_
+              << " count=" << stats.count << " size=" << stats.size;
+  }
+}
 
 XRTBufferAllocation::~XRTBufferAllocation() {
+  if (VLOG_IS_ON(2)) {
+    GetAllocStats()->ReportFree(device_ordinal_, allocation_.size());
+  }
   // Deallocate explicitly allows allocation_ to be null.
   Status s = allocator_->Deallocate(device_ordinal_, allocation_);
   // Nothing to do but check fail here if memory datastructures are corrupted.
@@ -180,6 +226,20 @@ Status XRTTupleAllocation::ToLiteral(xla::Backend* backend, int device_ordinal,
   TF_ASSIGN_OR_RETURN(*literal, transfer_manager->TransferLiteralFromDevice(
                                     stream.get(), ToShapedBuffer()));
   return Status::OK();
+}
+
+Status XRTTupleAllocation::WriteLiteral(xla::Backend* backend,
+                                        const xla::Literal& literal) {
+  if (!xla::ShapeUtil::Equal(literal.shape(), on_host_shape())) {
+    return errors::InvalidArgument(
+        "New literal shape not matching the existing one: literal=",
+        xla::ShapeUtil::HumanStringWithLayout(literal.shape()),
+        " device=", xla::ShapeUtil::HumanStringWithLayout(on_host_shape()));
+  }
+  auto transfer_manager = backend->transfer_manager();
+  TF_ASSIGN_OR_RETURN(auto stream, backend->BorrowStream(device_ordinal()));
+  return transfer_manager->TransferLiteralToDevice(stream.get(), literal,
+                                                   ToShapedBuffer());
 }
 
 void XRTTupleAllocation::DiscardAllocation(

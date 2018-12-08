@@ -65,8 +65,6 @@
 #   TF_GPU_COUNT:
 #                      Run this many parallel tests for serial builds.
 #                      For now, only can be edited for PIP builds.
-#                      TODO(gunan): Find a way to pass this environment variable
-#                      to the script bazel runs (using --run_under).
 #   TF_BUILD_TEST_TUTORIALS:
 #                      If set to any non-empty and non-0 value, will perform
 #                      tutorials tests (Applicable only if TF_BUILD_IS_PIP is
@@ -85,6 +83,9 @@
 #                     Use the specified configurations when building.
 #                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
 #                     options, as this will replace the two.
+#   TF_BUILD_TEST_TIMEOUT:
+#                     Sets the value of bazel --test_timeout, defaults to -1
+#                     which uses the bazel defaults.
 #   TF_SKIP_CONTRIB_TESTS:
 #                     If set to any non-empty or non-0 value, will skip running
 #                     contrib tests.
@@ -127,6 +128,9 @@ NO_DOCKER_OPT_FLAG="--genrule_strategy=standalone"
 
 DO_DOCKER=1
 
+# Default values for various settings.
+TF_BUILD_TEST_TIMEOUT=${TF_BUILD_TEST_TIMEOUT:--1}  # Use bazel defaults
+TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 
 # Helpful flags:
 # --test_summary=detailed: Tell us more about which targets are being built
@@ -134,11 +138,35 @@ DO_DOCKER=1
 # --build_tests_only: Don't build targets depended on by tests if the test is
 #                     disabled. Also saves some compilation time. Otherwise,
 #                     tries to build everything.
-BAZEL_TEST_FLAGS="--test_summary=detailed --build_tests_only --keep_going"
+# --test_timeout: Test timeouts in the order short,moderate,long,eternal.
+# --test_env: Environment variables to set when running bazel tests. These are
+#             especially important when using --run_under with
+#             parallel_gpu_execute.
+BAZEL_TEST_FLAGS=""\
+"--test_summary=detailed --build_tests_only --keep_going "\
+"--test_timeout=${TF_BUILD_TEST_TIMEOUT} "\
+"--test_env=TF_GPU_COUNT=${TF_GPU_COUNT}"
+
+# Only set these environment variables if they're specified, to avoid causing
+# problems like b/118404869, where an envvar set to the empty string has
+# different semantics from an unset envvar.
+if [ -n "${TF_TESTS_PER_GPU}" ]; then
+  BAZEL_TEST_FLAGS="${BAZEL_TEST_FLAGS} "\
+"--test_env=TF_TESTS_PER_GPU=${TF_TESTS_PER_GPU}"
+fi
+if [ -n "${TF_PER_DEVICE_MEMORY_LIMIT_MB}" ]; then
+  BAZEL_TEST_FLAGS="${BAZEL_TEST_FLAGS} "\
+"--test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=${TF_PER_DEVICE_MEMORY_LIMIT_MB}"
+fi
+
 BAZEL_BUILD_FLAGS="--keep_going"
 
-BAZEL_CMD="bazel test ${BAZEL_TEST_FLAGS}"
-BAZEL_BUILD_ONLY_CMD="bazel build ${BAZEL_BUILD_FLAGS}"
+# Explicitly set jdk8 since that's what's installed in our images. Note that
+# bazel 0.16 and higher defaults to jdk9, which causes failures. See b/117634064
+BAZEL_JAVA_FLAGS="--java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8"
+
+BAZEL_CMD="bazel test ${BAZEL_TEST_FLAGS} ${BAZEL_JAVA_FLAGS}"
+BAZEL_BUILD_ONLY_CMD="bazel build ${BAZEL_BUILD_FLAGS} ${BAZEL_JAVA_FLAGS}"
 BAZEL_CLEAN_CMD="bazel clean"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
@@ -147,7 +175,6 @@ PIP_INTEGRATION_TESTS_FLAG="--integration_tests"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
 ANDROID_FULL_CMD="${CI_BUILD_DIR}/builds/android_full.sh"
 
-TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 PARALLEL_GPU_TEST_CMD='//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute'
 
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
@@ -410,13 +437,14 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
   if [[ ${CTYPE} == cpu* ]] || \
      [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
     # CPU only command, fully parallel.
-    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} -- "\
-"${BAZEL_TARGET}"
+    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} "\
+"${EXTRA_ARGS} -- ${BAZEL_TARGET}"
   elif [[ ${CTYPE} == gpu* ]]; then
     # GPU only command, run as many jobs as the GPU count only.
     NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
 "--local_test_jobs=${TF_GPU_COUNT} "\
-"--run_under=${PARALLEL_GPU_TEST_CMD} ${EXTRA_ARGS} -- ${BAZEL_TARGET}"
+"--run_under=${PARALLEL_GPU_TEST_CMD} "\
+"${EXTRA_ARGS} -- ${BAZEL_TARGET}"
   elif [[ ${CTYPE} == "android" ]]; then
     # Run android specific script for android build.
     NO_PIP_MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "

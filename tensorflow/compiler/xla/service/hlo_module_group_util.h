@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 
@@ -87,7 +87,7 @@ class HloModuleGroupUtil {
   // * visit_state: map from each instruction to its visit state.
   // * visit_function: function called when each instruction group.
   // * root: the root instruction of the traversal.
-  using VisitStates = tensorflow::gtl::FlatMap<HloInstruction*, VisitState>;
+  using VisitStates = absl::flat_hash_map<HloInstruction*, VisitState>;
   Status VisitTopologicalOrder(VisitStates* visit_state,
                                const VisitFunction& visit_function,
                                HloInstruction* root);

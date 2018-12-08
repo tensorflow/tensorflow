@@ -112,11 +112,9 @@ def safe_embedding_lookup_sparse(embedding_weights,
   dtype = sparse_weights.dtype if sparse_weights is not None else None
   if isinstance(embedding_weights, variables.PartitionedVariable):
     embedding_weights = list(embedding_weights)
-  if not isinstance(embedding_weights[0],
-                    resource_variable_ops.ResourceVariable):
-    embedding_weights = [
-        ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
-    ]
+  embedding_weights = [
+      ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
+  ]
 
   contrib_tensor_util.assert_same_float_dtype(embedding_weights +
                                               [sparse_weights])
@@ -126,7 +124,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
                                            sparse_weights]) as scope:
     # Reshape higher-rank sparse ids and weights to linear segment ids.
     original_shape = sparse_ids.dense_shape
-    original_rank_dim = sparse_ids.dense_shape.get_shape()[0]
+    original_rank_dim = tensor_shape.Dimension(tensor_shape.dimension_value(
+        sparse_ids.dense_shape.get_shape()[0]))
     original_rank = (
         array_ops.size(original_shape)
         if original_rank_dim.value is None
@@ -351,7 +350,7 @@ def _sampled_scattered_embedding_lookup(
       shape = params[p].get_shape()
       shape.assert_has_rank(1)
       shape.assert_is_fully_defined()
-      partition_sizes.append(shape[0].value)
+      partition_sizes.append(tensor_shape.dimension_value(shape[0]))
     num_params = sum(partition_sizes)  # Total number of parameters.
 
     # Assert the size of each partition.
@@ -781,16 +780,16 @@ def _embedding_lookup_with_distributed_aggregation(params,
         # Compute num_total_ids as the sum of dim-0 of params, then assign to
         # partitions based on a constant number of ids per partition. Optimize
         # if we already know the full shape statically.
-        dim_0_size = params[0].get_shape()[0]
+        dim_0_size = params[0].get_shape().dims[0]
         for p in xrange(1, np):
-          dim_0_size += params[p].get_shape()[0]
+          dim_0_size += params[p].get_shape().dims[0]
         if dim_0_size.value:
-          num_total_ids = constant_op.constant(dim_0_size.value, flat_ids.dtype)
+          num_total_ids = constant_op.constant(dim_0_size, flat_ids.dtype)
         else:
           dim_0_sizes = []
           for p in xrange(np):
-            if params[p].get_shape()[0].value is not None:
-              dim_0_sizes.append(params[p].get_shape()[0].value)
+            if params[p].get_shape().dims[0].value is not None:
+              dim_0_sizes.append(params[p].get_shape().dims[0].value)
             else:
               with ops.colocate_with(params[p]):
                 dim_0_sizes.append(array_ops.shape(params[p])[0])

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -31,11 +32,29 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_utils {
 
+// Returns the index of the first element in collection that fulfills predicate.
+// If no such element exists, returns -1.
+template <typename Predicate, typename Collection>
+int GetFirstElementIndexWithPredicate(const Predicate& predicate,
+                                      const Collection& collection) {
+  unsigned idx = 0;
+  for (auto&& element : collection) {
+    if (predicate(element)) {
+      return idx;
+    }
+    idx++;
+  }
+  return -1;
+}
+
 // Adds a node to the graph.
 NodeDef* AddNode(StringPiece name, StringPiece op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  MutableGraphView* graph);
+
+// Adds Placeholder node for given type.
+NodeDef* AddScalarPlaceholder(DataType dtype, MutableGraphView* graph);
 
 // Adds a Const node with the given value to the graph.
 template <typename T>
@@ -98,10 +117,28 @@ std::vector<int> FindAllGraphNodesWithOp(const string& op,
 // is unique across the graph.
 void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph, NodeDef* node);
 
-// Sets the node name using the `prefix` name as a prefix while guaranteeing the
-// name is unique across the graph.
+// Sets the function name using the `prefix` name as a prefix while guaranteeing
+// the name is unique across the function library.
 void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
                                 FunctionDef* function);
+
+// Copies attribute having name `attribute_name` from node `from` to node
+// `to_node`.
+void CopyAttribute(const string& attribute_name, const NodeDef& from,
+                   NodeDef* to_node);
+
+// Concatenates list attribute having name `attribute_name` from `first` and
+// `second` node, setting it to `to_node`.
+void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
+                         const NodeDef& second, NodeDef* to_node);
+
+// Checks that all nodes in the graphs have unique names, and sets their names
+// to be unique if they are not already.  This is necessary as Graph does not
+// have the provisions to deduplicate names, and name deduplication elsewhere
+// in tensorflow happens in other layers (for example, in the Scope class of the
+// C++ API). Note that the nodes in the graph are identified by their id,
+// and renaming nodes does not mutate any edges.
+Status EnsureNodeNamesUnique(Graph* g);
 
 }  // end namespace graph_utils
 }  // end namespace grappler

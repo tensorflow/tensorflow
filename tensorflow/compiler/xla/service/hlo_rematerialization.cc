@@ -20,6 +20,8 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -75,7 +77,7 @@ bool IsRematerializable(const HloInstruction* instruction) {
 // cache before, and eventually calling the IsRematerializable() API.
 bool CanBeRematerialized(
     const HloInstruction* instruction,
-    tensorflow::gtl::FlatMap<const HloInstruction*, bool>* remat_able) {
+    absl::flat_hash_map<const HloInstruction*, bool>* remat_able) {
   auto it = remat_able->find(instruction);
   if (it != remat_able->end()) {
     return it->second;
@@ -128,10 +130,10 @@ using ItemList = absl::InlinedVector<Item*, 3>;
 // before arbitrary elements.
 class InstructionList {
  public:
-  explicit InstructionList(const std::vector<const HloInstruction*>& order) {
+  explicit InstructionList(const HloInstructionSequence& order) {
     int64 position = 0;
     Item* last = nullptr;
-    for (const HloInstruction* inst : order) {
+    for (HloInstruction* inst : order.instructions()) {
       // Add a new item to the linked list.
       Item* item = new Item;
       item->next = nullptr;
@@ -149,7 +151,7 @@ class InstructionList {
       // to be monotonically increasing through the list, and so is still useful
       // for quickly(-ish) determining the order of arbitrary instructions in
       // the list.
-      item->instruction = const_cast<HloInstruction*>(inst);
+      item->instruction = inst;
       item->position = position;
       position++;
 
@@ -268,7 +270,7 @@ class InstructionList {
   Item* first_;
 
   // Item for each instruction.
-  tensorflow::gtl::FlatMap<const HloInstruction*, Item*> item_map_;
+  absl::flat_hash_map<const HloInstruction*, Item*> item_map_;
 };
 
 // Return the items which use the given LogicalBuffer. Sets
@@ -503,7 +505,7 @@ MemoryUsageTracker::MemoryUsageTracker(
   PointsToSet::BufferSet live_out_set =
       points_to_analysis.GetPointsToSet(computation_->root_instruction())
           .CreateFlattenedSet();
-  tensorflow::gtl::FlatMap<const LogicalBuffer*, BufferId>
+  absl::flat_hash_map<const LogicalBuffer*, BufferId>
       logical_buffer_to_buffer_id;
 
   for (auto* item = instruction_list_.first(); item != nullptr;
@@ -854,7 +856,7 @@ int64 RematerializationCost(const HloInstruction* instruction,
 Item* PickRematerializationCandidate(
     const MemoryUsageTracker& memory_tracker,
     const InstructionList& instruction_list, int64 memory_limit_bytes,
-    tensorflow::gtl::FlatMap<const HloInstruction*, bool>* remat_able) {
+    absl::flat_hash_map<const HloInstruction*, bool>* remat_able) {
   Item* best_item = nullptr;
   int64 best_cost = 0;
 
@@ -925,7 +927,7 @@ Item* PickRematerializationCandidate(
 
 StatusOr<int64> HloRematerialization::ComputePeakMemory(
     const HloComputation* computation,
-    const std::vector<const HloInstruction*>& order) const {
+    const HloInstructionSequence& order) const {
   InstructionList instruction_list(order);
   MemoryUsageTracker tracker(computation, size_function_, *points_to_analysis_,
                              instruction_list);
@@ -969,8 +971,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
           << HumanReadableNumBytes(computation_peak_memory_.at(computation));
   CHECK(!ContainsKey(rematerialized_computations_, computation));
 
-  InstructionList instruction_list(
-      schedule->sequence(computation).instructions());
+  InstructionList instruction_list(schedule->sequence(computation));
   MemoryUsageTracker memory_tracker(computation, size_function_,
                                     *points_to_analysis_, instruction_list);
   bool changed = false;
@@ -980,10 +981,10 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   // rematerialization is essentially a move). If the next rematerialization of
   // the instruction is also a move then the rematerialization is added to the
   // blacklist.
-  tensorflow::gtl::FlatSet<const HloInstruction*> remat_move_instructions;
+  absl::flat_hash_set<const HloInstruction*> remat_move_instructions;
 
   // The map from instructions to their rematerializable status.
-  tensorflow::gtl::FlatMap<const HloInstruction*, bool> remat_able;
+  absl::flat_hash_map<const HloInstruction*, bool> remat_able;
 
   // The peak memory of the computation at any point in the instruction
   // sequence.
@@ -1182,7 +1183,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   sequence.clear();
   for (auto* item = instruction_list.first(); item != nullptr;
        item = instruction_list.next(item)) {
-    const HloInstruction* instruction = item->instruction;
+    HloInstruction* instruction = item->instruction;
     sequence.push_back(instruction);
   }
   rematerialized_computations_.insert(computation);
@@ -1213,7 +1214,7 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
   // by the caller.
   int64 module_output_size = 0;
   ShapeUtil::ForEachSubshape(
-      module->entry_computation()->root_instruction()->shape(),
+      module->result_shape(),
       [&module_output_size, this](const Shape& subshape,
                                   const ShapeIndex& /*index*/) {
         module_output_size += size_function_(subshape);
@@ -1233,10 +1234,8 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
         if (node.context() == CallContext::kSequential) {
           TF_ASSIGN_OR_RETURN(
               computation_peak_memory_[node.computation()],
-              ComputePeakMemory(node.computation(),
-                                module->schedule()
-                                    .sequence(node.computation())
-                                    .instructions()));
+              ComputePeakMemory(node.computation(), module->schedule().sequence(
+                                                        node.computation())));
         }
         return Status::OK();
       },

@@ -1,0 +1,119 @@
+path: "tensorflow.data.experimental.CsvDataset"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.experimental.ops.readers.CsvDatasetV2\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetSource\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV2\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "output_classes"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "output_shapes"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "output_types"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'filenames\', \'record_defaults\', \'compression_type\', \'buffer_size\', \'header\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'select_cols\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \',\', \'True\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "apply"
+    argspec: "args=[\'self\', \'transformation_func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "batch"
+    argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "cache"
+    argspec: "args=[\'self\', \'filename\'], varargs=None, keywords=None, defaults=[\'\'], "
+  }
+  member_method {
+    name: "concatenate"
+    argspec: "args=[\'self\', \'dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "filter"
+    argspec: "args=[\'self\', \'predicate\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "flat_map"
+    argspec: "args=[\'self\', \'map_func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_generator"
+    argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_tensor_slices"
+    argspec: "args=[\'tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_tensors"
+    argspec: "args=[\'tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "interleave"
+    argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
+  }
+  member_method {
+    name: "list_files"
+    argspec: "args=[\'file_pattern\', \'shuffle\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "map"
+    argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "options"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "padded_batch"
+    argspec: "args=[\'self\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "prefetch"
+    argspec: "args=[\'self\', \'buffer_size\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "range"
+    argspec: "args=[], varargs=args, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reduce"
+    argspec: "args=[\'self\', \'initial_state\', \'reduce_func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "repeat"
+    argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "shuffle"
+    argspec: "args=[\'self\', \'buffer_size\', \'seed\', \'reshuffle_each_iteration\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "skip"
+    argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "take"
+    argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "window"
+    argspec: "args=[\'self\', \'size\', \'shift\', \'stride\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'False\'], "
+  }
+  member_method {
+    name: "with_options"
+    argspec: "args=[\'self\', \'options\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "zip"
+    argspec: "args=[\'datasets\'], varargs=None, keywords=None, defaults=None"
+  }
+}

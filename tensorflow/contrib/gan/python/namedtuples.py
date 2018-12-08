@@ -213,7 +213,8 @@ class GANTrainOps(
     collections.namedtuple('GANTrainOps', (
         'generator_train_op',
         'discriminator_train_op',
-        'global_step_inc_op'
+        'global_step_inc_op',
+        'train_hooks'
     ))):
   """GANTrainOps contains the training ops.
 
@@ -221,7 +222,16 @@ class GANTrainOps(
     generator_train_op: Op that performs a generator update step.
     discriminator_train_op: Op that performs a discriminator update step.
     global_step_inc_op: Op that increments the shared global step.
+    train_hooks: a list or tuple containing hooks related to training that need
+      to be populated when training ops are instantiated. Used primarily for
+      sync hooks.
   """
+
+  def __new__(cls, generator_train_op, discriminator_train_op,
+              global_step_inc_op, train_hooks=()):
+    return super(GANTrainOps, cls).__new__(cls, generator_train_op,
+                                           discriminator_train_op,
+                                           global_step_inc_op, train_hooks)
 
 
 class GANTrainSteps(

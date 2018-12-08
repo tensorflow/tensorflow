@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <type_traits>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace xla {
@@ -360,7 +360,7 @@ class IndexedArrayAnalysis {
 
   std::vector<std::unique_ptr<Array>> owned_tensors_;
   std::vector<Literal> owned_literals_;
-  tensorflow::gtl::FlatMap<const HloInstruction*, Array*> cache_;
+  absl::flat_hash_map<const HloInstruction*, Array*> cache_;
 };
 
 // A pass that prints all non-trivial results returned by IndexedArrayAnalysis.

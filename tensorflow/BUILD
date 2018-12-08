@@ -43,6 +43,11 @@ TENSORFLOW_API_INIT_FILES_V2 = (
     TENSORFLOW_API_INIT_FILES + get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
 )
 
+# @unused
+TENSORFLOW_API_INIT_FILES_V1_WITH_COMPAT = (
+    TENSORFLOW_API_INIT_FILES_V1 + get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+)
+
 # Config setting used when building for products
 # which requires restricted licenses to be avoided.
 config_setting(
@@ -203,127 +208,56 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(jhseu): Enable on other platforms other than Linux.
-config_setting(
-    name = "with_jemalloc_linux_x86_64",
-    define_values = {"with_jemalloc": "true"},
-    values = {"cpu": "k8"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_jemalloc_linux_ppc64le",
-    define_values = {"with_jemalloc": "true"},
-    values = {"cpu": "ppc"},
-    visibility = ["//visibility:public"],
-)
-
 config_setting(
     name = "with_default_optimizations",
     define_values = {"with_default_optimizations": "true"},
     visibility = ["//visibility:public"],
 )
 
+# Features that are default ON are handled differently below.
+#
 config_setting(
-    name = "with_gcp_support",
-    define_values = {"with_gcp_support": "true"},
+    name = "no_aws_support",
+    define_values = {"no_aws_support": "true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "with_hdfs_support",
-    define_values = {"with_hdfs_support": "true"},
+    name = "no_gcp_support",
+    define_values = {"no_gcp_support": "true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "with_aws_support",
-    define_values = {"with_aws_support": "true"},
+    name = "no_hdfs_support",
+    define_values = {"no_hdfs_support": "true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "with_kafka_support",
-    define_values = {"with_kafka_support": "true"},
+    name = "no_ignite_support",
+    define_values = {"no_ignite_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_kafka_support",
+    define_values = {"no_kafka_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_nccl_support",
+    define_values = {"no_nccl_support": "true"},
     visibility = ["//visibility:public"],
 )
 
 # Crosses between platforms and file system libraries not supported on those
 # platforms due to limitations in nested select() statements.
 config_setting(
-    name = "with_gcp_support_windows_override",
-    define_values = {"with_gcp_support": "true"},
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_hdfs_support_windows_override",
-    define_values = {"with_hdfs_support": "true"},
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_aws_support_windows_override",
-    define_values = {"with_aws_support": "true"},
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_kafka_support_windows_override",
-    define_values = {"with_kafka_support": "true"},
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "with_cuda_support_windows_override",
     define_values = {"using_cuda_nvcc": "true"},
     values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_gcp_support_android_override",
-    define_values = {"with_gcp_support": "true"},
-    values = {"crosstool_top": "//external:android/crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_hdfs_support_android_override",
-    define_values = {"with_hdfs_support": "true"},
-    values = {"crosstool_top": "//external:android/crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_aws_support_android_override",
-    define_values = {"with_aws_support": "true"},
-    values = {"crosstool_top": "//external:android/crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_gcp_support_ios_override",
-    define_values = {"with_gcp_support": "true"},
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_hdfs_support_ios_override",
-    define_values = {"with_hdfs_support": "true"},
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_aws_support_ios_override",
-    define_values = {"with_aws_support": "true"},
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
     visibility = ["//visibility:public"],
 )
 
@@ -351,30 +285,6 @@ config_setting(
     name = "framework_shared_object",
     define_values = {
         "framework_shared_object": "true",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_jemalloc_linux_x86_64_dynamic",
-    define_values = {
-        "with_jemalloc": "true",
-        "framework_shared_object": "true",
-    },
-    values = {
-        "cpu": "k8",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_jemalloc_linux_ppc64le_dynamic",
-    define_values = {
-        "with_jemalloc": "true",
-        "framework_shared_object": "true",
-    },
-    values = {
-        "cpu": "ppc",
     },
     visibility = ["//visibility:public"],
 )
@@ -451,8 +361,9 @@ package_group(
         "-//third_party/tensorflow/python/estimator",
         "//learning/meta_rank/...",
         "//tensorflow/...",
-        "//tensorflow_estimator/...",
+        "//tensorflow_estimator/contrib/...",
         "//tensorflow_fold/llgtm/...",
+        "//tensorflow_text/...",
         "//third_party/py/tensor2tensor/...",
     ],
 )
@@ -630,6 +541,14 @@ genrule(
         continue
       fi
 
+      if [[ $${d} == external* ]]; then
+        extname="$${d#*external/}"
+        extname="$${extname%%/*}"
+        if [[ $${TF_SYSTEM_LIBS:-} == *$${extname}* ]]; then
+          continue
+        fi
+      fi
+
       mkdir -p "$@/$${d}"
       cp "$${f}" "$@/$${d}/"
     done
@@ -646,35 +565,45 @@ genrule(
     }),
     outs = ["__init__.py"],
     cmd = select({
-        "api_version_2": "cp $(@D)/_api/v2/__init__.py $(OUTS)",
-        "//conditions:default": "cp $(@D)/_api/v1/__init__.py $(OUTS)",
+        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS)",
+        "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS)",
     }),
 )
 
 gen_api_init_files(
     name = "tf_python_api_gen_v1",
-    srcs = ["api_template.__init__.py"],
+    srcs = [
+        "api_template_v1.__init__.py",
+        "compat_template_v1.__init__.py",
+    ],
     api_version = 1,
+    compat_api_versions = [1],
+    compat_init_templates = ["compat_template_v1.__init__.py"],
     output_dir = "_api/v1/",
-    output_files = TENSORFLOW_API_INIT_FILES_V1,
+    output_files = TENSORFLOW_API_INIT_FILES_V1_WITH_COMPAT,
     output_package = "tensorflow._api.v1",
-    root_init_template = "api_template.__init__.py",
+    root_file_name = "v1.py",
+    root_init_template = "api_template_v1.__init__.py",
 )
 
 gen_api_init_files(
     name = "tf_python_api_gen_v2",
-    srcs = ["api_template.__init__.py"],
+    srcs = [
+        "api_template.__init__.py",
+        "compat_template_v1.__init__.py",
+    ],
     api_version = 2,
     compat_api_versions = [1],
+    compat_init_templates = ["compat_template_v1.__init__.py"],
     output_dir = "_api/v2/",
     output_files = TENSORFLOW_API_INIT_FILES_V2,
     output_package = "tensorflow._api.v2",
+    root_file_name = "v2.py",
     root_init_template = "api_template.__init__.py",
 )
 
 py_library(
     name = "tensorflow_py",
-    srcs = ["//tensorflow/python/estimator/api:estimator_python_api_gen"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [

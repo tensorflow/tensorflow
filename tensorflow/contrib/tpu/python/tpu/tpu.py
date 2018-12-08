@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.contrib.compiler import xla
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
@@ -155,19 +156,20 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self, var):
+  def get_replicated_var_handle(self, name, vars_):
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
     and is not intended as a public API.
 
     Args:
-      var: The replicated TPU variable.
+      name: The common name of the variable.
+      vars_: The replicated TPU variables.
 
     Returns:
       The handle of the TPU replicated input node.
     """
-    handle = self._replicated_vars.get(var)
+    handle = self._replicated_vars.get(name)
     if handle is not None:
       return handle
 
@@ -183,10 +185,10 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     saved_context = graph._get_control_flow_context()
     graph._set_control_flow_context(self.outer_context)
     handle = tpu_ops.tpu_replicated_input(
-        [v.handle for v in var._vars], name=var.name + "/handle")
+        [v.handle for v in vars_], name=name + "/handle")
     graph._set_control_flow_context(saved_context)
     # pylint: enable=protected-access
-    self._replicated_vars[var] = handle
+    self._replicated_vars[name] = handle
     return handle
 
   def report_unsupported_operations(self):
@@ -370,14 +372,11 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if external_control_inputs:
       # Use an identity to pull control inputs as data inputs. Note that we
       # ignore ops which don't have outputs. TODO(phawkins): fix that.
-      with ops.control_dependencies(None):
-        self.Enter()
-        external_control_inputs = [
-            array_ops.identity(x.outputs[0]).op
-            for x in external_control_inputs
-            if x.outputs
-        ]
-        self.Exit()
+      external_control_inputs = [
+          array_ops.identity(x.outputs[0]).op
+          for x in external_control_inputs
+          if x.outputs
+      ]
       # pylint: disable=protected-access
       op._add_control_inputs(external_control_inputs)
       # pylint: enable=protected-access
@@ -600,7 +599,7 @@ def split_compile_and_replicate(computation,
           "input types {}, replica {} had input types {}".format(
               input_types, i, types))
 
-  arg_error = tpu_function.check_function_argument_count(
+  arg_error = xla.check_function_argument_count(
       computation, input_arity, infeed_queue)
   if arg_error is not None:
     if infeed_queue is None:
@@ -661,6 +660,10 @@ def split_compile_and_replicate(computation,
       # be less confusing to clients if they knowingly choose to use resource
       # variables.
       # Partitioned variables is not supported (b/112311320).
+      vscope = variable_scope.get_variable_scope()
+      saved_use_resource = vscope.use_resource
+      saved_custom_getter = vscope.custom_getter
+
       def custom_getter(getter, name, *args, **kwargs):
         """Variables on TPU have a few restrictions."""
         partitioner = kwargs["partitioner"]
@@ -671,12 +674,10 @@ def split_compile_and_replicate(computation,
               "`partitioner` that is {} for variable {}. "
               "Setting `partitioner` to `None`."
               .format(partitioner, name))
-        return getter(name, *args, **kwargs)
-
-      vscope = variable_scope.get_variable_scope()
-
-      saved_use_resource = vscope.use_resource
-      saved_custom_getter = vscope.custom_getter
+        if saved_custom_getter is None:
+          return getter(name, *args, **kwargs)
+        else:
+          return saved_custom_getter(getter, name, *args, **kwargs)
 
       vscope.set_use_resource(True)
       vscope.set_custom_getter(custom_getter)
@@ -1000,8 +1001,8 @@ def rewrite(computation,
       `rewrite` is a list of tensors corresponding to the tensors from the
       output of `computation`.
 
-      All `Operation`s returned from `computation` will be executed when
-      evaluating any of the returned output tensors.
+      All `Operation`s constructed during `computation` will be executed when
+      evaluating any of the returned output tensors, not just the ones returned.
     inputs: A list of input tensors or `None` (equivalent to an empty list).
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to `computation`.
@@ -1110,7 +1111,7 @@ def validate_inference_rewrite_for_variables(graph):
   Raises:
     RuntimeError: if validation failed.
   """
-  if not any([x.type == "GuaranteeConst" for x in graph.get_operations()]):
+  if not any(x.type == "GuaranteeConst" for x in graph.get_operations()):
     raise RuntimeError(
         "No GuaranteeConst ops found in the graph after running "
         "tpu.rewrite_for_inference(...). Please check that you are using "

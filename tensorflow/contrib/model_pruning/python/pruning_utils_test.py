@@ -85,8 +85,28 @@ class PruningUtilsTest(test.TestCase):
 
 
 @parameterized.named_parameters(
-    ("1x1", [1, 1]), ("4x4", [4, 4]), ("6x6", [6, 6]), ("1x4", [1, 4]),
-    ("4x1", [4, 1]), ("1x8", [1, 8]), ("8x1", [8, 1]))
+    ("Input_32x32_block_1x1", [32, 32], [1, 1]),
+    # block size 6x6
+    ("Input_3x3_block_6x6", [3, 3], [6, 6]),
+    ("Input_32x32_block_6x6", [32, 32], [6, 6]),
+    ("Input_2x32_block_6x6", [2, 32], [6, 6]),
+    ("Input_32x2_block_6x6", [32, 2], [6, 6]),
+    ("Input_30x30_block_6x6", [30, 30], [6, 6]),
+    # block size 4x4
+    ("Input_32x32_block_4x4", [32, 32], [4, 4]),
+    ("Input_2x32_block_4x4", [2, 32], [4, 4]),
+    ("Input_32x2_block_4x4", [32, 2], [4, 4]),
+    ("Input_30x30_block_4x4", [30, 30], [4, 4]),
+    # block size 1x4
+    ("Input_32x32_block_1x4", [32, 32], [1, 4]),
+    ("Input_2x32_block_1x4", [2, 32], [1, 4]),
+    ("Input_32x2_block_1x4", [32, 2], [1, 4]),
+    ("Input_30x30_block_1x4", [30, 30], [1, 4]),
+    # block size 4x1
+    ("Input_32x32_block_4x1", [32, 32], [4, 1]),
+    ("Input_2x32_block_4x1", [2, 32], [4, 1]),
+    ("Input_32x2_block_4x1", [32, 2], [4, 1]),
+    ("Input_30x30_block_4x1", [30, 30], [4, 1]))
 class PruningUtilsParameterizedTest(test.TestCase, parameterized.TestCase):
 
   def _compare_pooling_methods(self, weights, pooling_kwargs):
@@ -97,9 +117,11 @@ class PruningUtilsParameterizedTest(test.TestCase, parameterized.TestCase):
               array_ops.reshape(
                   weights,
                   [1, weights.get_shape()[0],
-                   weights.get_shape()[1], 1]), **pooling_kwargs))
+                   weights.get_shape()[1], 1]), **pooling_kwargs),
+          axis=[0, 3])
       pooled_weights_factorized_pool = pruning_utils.factorized_pool(
           weights, **pooling_kwargs)
+
       self.assertAllClose(pooled_weights_tf.eval(),
                           pooled_weights_factorized_pool.eval())
 
@@ -113,8 +135,8 @@ class PruningUtilsParameterizedTest(test.TestCase, parameterized.TestCase):
           [expanded_tensor, kronecker_product])
       self.assertAllEqual(expanded_tensor_val, kronecker_product_val)
 
-  def testFactorizedAvgPool(self, window_shape):
-    weights = variable_scope.get_variable("weights", shape=[1024, 2048])
+  def testFactorizedAvgPool(self, input_shape, window_shape):
+    weights = variable_scope.get_variable("weights", shape=input_shape)
     pooling_kwargs = {
         "window_shape": window_shape,
         "pooling_type": "AVG",
@@ -123,8 +145,8 @@ class PruningUtilsParameterizedTest(test.TestCase, parameterized.TestCase):
     }
     self._compare_pooling_methods(weights, pooling_kwargs)
 
-  def testFactorizedMaxPool(self, window_shape):
-    weights = variable_scope.get_variable("weights", shape=[1024, 2048])
+  def testFactorizedMaxPool(self, input_shape, window_shape):
+    weights = variable_scope.get_variable("weights", shape=input_shape)
     pooling_kwargs = {
         "window_shape": window_shape,
         "pooling_type": "MAX",
@@ -133,8 +155,8 @@ class PruningUtilsParameterizedTest(test.TestCase, parameterized.TestCase):
     }
     self._compare_pooling_methods(weights, pooling_kwargs)
 
-  def testExpandTensor(self, block_dim):
-    weights = random_ops.random_normal(shape=[1024, 512])
+  def testExpandTensor(self, input_shape, block_dim):
+    weights = random_ops.random_normal(shape=input_shape)
     self._compare_expand_tensor_with_kronecker_product(weights, block_dim)
 
 

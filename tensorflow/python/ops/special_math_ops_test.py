@@ -39,24 +39,26 @@ class LBetaTest(test.TestCase):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
     x_one_half = [2, 1.]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllClose(
           1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one))))
       self.assertAllClose(
           0.5, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
       self.assertEqual([], special_math_ops.lbeta(x_one).get_shape())
 
+  @test_util.run_deprecated_v1
   def test_one_dimensional_arg_dynamic(self):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
     x_one_half = [2, 1.]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       ph = array_ops.placeholder(dtypes.float32)
       beta_ph = math_ops.exp(special_math_ops.lbeta(ph))
       self.assertAllClose(1, beta_ph.eval(feed_dict={ph: x_one}))
       self.assertAllClose(0.5,
                           beta_ph.eval(feed_dict={ph: x_one_half}))
 
+  @test_util.run_deprecated_v1
   def test_four_dimensional_arg_with_partial_shape_dynamic(self):
     x_ = np.ones((3, 2, 3, 4))
     # Gamma(1) = 0! = 1
@@ -65,7 +67,7 @@ class LBetaTest(test.TestCase):
     #     = Gamma(1) * Gamma(1) * Gamma(1) * Gamma(1) / Gamma(1 + 1 + 1 + 1)
     #     = 1 / 6
     expected_beta_x = 1 / 6 * np.ones((3, 2, 3))
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x_ph = array_ops.placeholder(dtypes.float32, [3, 2, 3, None])
       beta_ph = math_ops.exp(special_math_ops.lbeta(x_ph))
       self.assertAllClose(expected_beta_x,
@@ -75,16 +77,17 @@ class LBetaTest(test.TestCase):
   def test_two_dimensional_arg(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllClose(
           [0.5, 0.5],
           self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
       self.assertEqual((2,), special_math_ops.lbeta(x_one_half).get_shape())
 
+  @test_util.run_deprecated_v1
   def test_two_dimensional_arg_dynamic(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       ph = array_ops.placeholder(dtypes.float32)
       beta_ph = math_ops.exp(special_math_ops.lbeta(ph))
       self.assertAllClose([0.5, 0.5],
@@ -94,7 +97,7 @@ class LBetaTest(test.TestCase):
   def test_two_dimensional_proper_shape(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllClose(
           [0.5, 0.5],
           self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
@@ -107,7 +110,7 @@ class LBetaTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_complicated_shape(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x = ops.convert_to_tensor(np.random.rand(3, 2, 2))
       self.assertAllEqual(
           (3, 2), self.evaluate(array_ops.shape(special_math_ops.lbeta(x))))
@@ -121,7 +124,7 @@ class LBetaTest(test.TestCase):
     # as the answer, always.
     x_a = [5.5]
     x_b = [0.1]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllClose(
           1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))))
       self.assertAllClose(
@@ -130,7 +133,7 @@ class LBetaTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_rank1_returns_negative_infinity(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x = constant_op.constant([], shape=[0])
       lbeta_x = special_math_ops.lbeta(x)
       expected_result = constant_op.constant(-np.inf, shape=())
@@ -141,7 +144,7 @@ class LBetaTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_rank2_with_zero_last_dim_returns_negative_infinity(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       event_size = 0
       for batch_size in [0, 1, 2]:
         x = constant_op.constant([], shape=[batch_size, event_size])
@@ -154,7 +157,7 @@ class LBetaTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_rank2_with_zero_batch_dim_returns_empty(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       batch_size = 0
       for event_size in [0, 1, 2]:
         x = constant_op.constant([], shape=[batch_size, event_size])
@@ -240,7 +243,7 @@ class EinsumTest(test.TestCase):
       'aef,fbc,dca->bde',
       'iJ,Jk->ik',
       'iJ,Ki->JK',
-      'iJk,Jklm->Jk'
+      'iJk,Jklm->Jk',
       'ij, jk, kl -> il',
       'a, ab, abc -> abc',
       'ab, ab, cd, cd, ef, ef -> ',
@@ -280,7 +283,7 @@ class EinsumTest(test.TestCase):
 
   dim_mismatch_cases = [('ijk,jkl->il', [(2, 3, 4), (3, 5, 6)])]
 
-  def disabled_test_simple(self):
+  def test_simple(self):
     for case in self.simple_cases:
       self.run_test(case)
 
@@ -288,6 +291,7 @@ class EinsumTest(test.TestCase):
     for case in self.long_cases:
       self.run_test(case)
 
+  @test_util.run_deprecated_v1
   def test_invalid(self):
     for axes in self.invalid_cases:
       inputs = [
@@ -297,6 +301,7 @@ class EinsumTest(test.TestCase):
       with self.assertRaises(ValueError):
         _ = special_math_ops.einsum(axes, *inputs)
 
+  @test_util.run_deprecated_v1
   def test_invalid_keyword_arguments(self):
     m0 = array_ops.placeholder(dtypes.int32, shape=(1, None))
     m1 = array_ops.placeholder(dtypes.int32, shape=(None, 1))
@@ -311,6 +316,13 @@ class EinsumTest(test.TestCase):
           invalid1='value1',
           invalid2='value2')
 
+  @test_util.run_deprecated_v1
+  def test_repeated_axis_single_input(self):
+    x = array_ops.placeholder(dtypes.float32, shape=[2, 2])
+    with self.assertRaises(ValueError):
+      _ = special_math_ops.einsum('ii->', x)
+
+  @test_util.run_deprecated_v1
   def test_dim_mismatch(self):
     for axes, input_shapes in self.dim_mismatch_cases:
       inputs = [
@@ -333,7 +345,7 @@ class EinsumTest(test.TestCase):
     input_tensors = [constant_op.constant(val) for val in input_vals]
     output_tensor = special_math_ops.einsum(axes, *input_tensors)
 
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       output_value = self.evaluate(output_tensor)
 
     correct_value = np.einsum(axes, *input_vals)

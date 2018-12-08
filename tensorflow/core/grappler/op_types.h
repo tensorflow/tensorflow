@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OP_TYPES_H_
 
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -46,6 +47,7 @@ bool IsConjugateTranspose(const NodeDef& node);
 bool IsConcat(const NodeDef& node);
 bool IsConcatOffset(const NodeDef& node);
 bool IsConstant(const NodeDef& node);
+bool IsControlFlow(const NodeDef& node);
 bool IsConv2D(const NodeDef& node);
 bool IsConv2DBackpropFilter(const NodeDef& node);
 bool IsConv2DBackpropInput(const NodeDef& node);
@@ -61,18 +63,22 @@ bool IsEnter(const NodeDef& node);
 bool IsEqual(const NodeDef& node);
 bool IsExit(const NodeDef& node);
 bool IsExp(const NodeDef& node);
+bool IsFakeParam(const NodeDef& node);
 bool IsFill(const NodeDef& node);
 bool IsFloorDiv(const NodeDef& node);
 bool IsFloorMod(const NodeDef& node);
+bool IsFusedBatchNorm(const NodeDef& node);
 bool IsFusedBatchNormGrad(const NodeDef& node);
 bool IsGreater(const NodeDef& node);
 bool IsGreaterEqual(const NodeDef& node);
 bool IsHistogramSummary(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);
 bool IsIdentityN(const NodeDef& node);
+bool IsIdentityNSingleInput(const NodeDef& node);
 bool IsIgamma(const NodeDef& node);
 bool IsIgammac(const NodeDef& node);
 bool IsImag(const NodeDef& node);
+bool IsImmutableConst(const NodeDef& node);
 bool IsInvGrad(const NodeDef& node);
 bool IsLess(const NodeDef& node);
 bool IsLessEqual(const NodeDef& node);
@@ -96,6 +102,7 @@ bool IsNextIteration(const NodeDef& node);
 bool IsPack(const NodeDef& node);
 bool IsPad(const NodeDef& node);
 bool IsPack(const NodeDef& node);
+bool IsPartitionedCall(const NodeDef& node);
 bool IsNeg(const NodeDef& node);
 bool IsNoOp(const NodeDef& node);
 bool IsNotEqual(const NodeDef& node);
@@ -109,6 +116,7 @@ bool IsRandomShuffle(const NodeDef& node);
 bool IsRank(const NodeDef& node);
 bool IsReal(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);
+bool IsRelu(const NodeDef& node);
 bool IsRelu6Grad(const NodeDef& node);
 bool IsReluGrad(const NodeDef& node);
 bool IsReciprocalGrad(const NodeDef& node);
@@ -143,13 +151,16 @@ bool IsStackOp(const NodeDef& node);
 bool IsStackCloseOp(const NodeDef& node);
 bool IsStackPushOp(const NodeDef& node);
 bool IsStackPopOp(const NodeDef& node);
+bool IsStatefulPartitionedCall(const NodeDef& node);
 bool IsStopGradient(const NodeDef& node);
 bool IsStridedSlice(const NodeDef& node);
 bool IsStridedSliceGrad(const NodeDef& node);
 bool IsSub(const NodeDef& node);
 bool IsSum(const NodeDef& node);
 bool IsSwitch(const NodeDef& node);
+bool IsSymbolicGradient(const NodeDef& node);
 bool IsTanhGrad(const NodeDef& node);
+bool IsTensorArray(const NodeDef& node);
 bool IsTile(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);
 bool IsTruncateDiv(const NodeDef& node);
@@ -170,7 +181,9 @@ bool IsCommutative(const NodeDef& node);
 // value.
 bool IsPersistent(const NodeDef& node);
 
-bool IsFreeOfSideEffect(const NodeDef& node);
+bool IsFreeOfSideEffect(const NodeDef& node,
+                        const OpRegistryInterface* op_registry);
+bool IsFreeOfSideEffect(const NodeDef& node);  // use OpRegistry::Global()
 
 // Returns true if the takes a tensor reference as input, or if looking up its
 // OpDef failed.
@@ -206,6 +219,10 @@ bool IsUnaryElementWise(const NodeDef& node);
 
 // Returns true if we can find an opdef corresponding to the op of the node.
 bool HasOpDef(const NodeDef& node);
+
+// Returns true if the op changes the scalar type of its first input elements
+// and preserves the number of elements.
+bool IsCastLike(const NodeDef& node);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

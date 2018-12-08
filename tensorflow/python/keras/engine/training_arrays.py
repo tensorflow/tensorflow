@@ -19,14 +19,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
+from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import make_batches
-from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.platform import tf_logging as logging
 
@@ -36,22 +39,108 @@ except ImportError:
   issparse = None
 
 
-def fit_loop(model,
-             inputs,
-             targets,
-             sample_weights=None,
-             batch_size=None,
-             epochs=100,
-             verbose=1,
-             callbacks=None,
-             val_inputs=None,
-             val_targets=None,
-             val_sample_weights=None,
-             shuffle=True,
-             initial_epoch=0,
-             steps_per_epoch=None,
-             validation_steps=None):
-  """Abstract fit function for arrays of data.
+def _get_model_feed(model, mode):
+  if mode == 'predict':
+    feed = model._feed_inputs
+  else:
+    feed = (
+        model._feed_inputs + model._feed_targets + model._feed_sample_weights)
+  return feed
+
+
+def _validate_arguments(steps_per_epoch, validation_steps, kwargs):
+  for k in kwargs:
+    if k != 'steps':
+      raise ValueError('Invalid argument passed: {}'.format(k))
+
+  # Validate inputs when in training mode.
+  if validation_steps and steps_per_epoch is None:
+    raise ValueError('Can only use `validation_steps` '
+                     'when doing step-wise '
+                     'training, i.e. `steps_per_epoch` '
+                     'must be set.')
+
+
+def _print_train_info(inputs, val_inputs, steps_per_epoch, verbose):
+  if (val_inputs and steps_per_epoch is None and verbose and inputs and
+      hasattr(inputs[0], 'shape') and hasattr(val_inputs[0], 'shape')):
+    print('Train on %d samples, validate on %d samples' %
+          (inputs[0].shape[0], val_inputs[0].shape[0]))
+
+
+def _get_num_samples_or_steps(ins, batch_size, steps_per_epoch):
+  """Returns total number of samples (when training in batch mode) or steps."""
+  if steps_per_epoch:
+    return steps_per_epoch
+  return training_utils.check_num_samples(ins, batch_size, steps_per_epoch,
+                                          'steps_per_epoch')
+
+
+def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
+  """Prepare feed values to the model execution function.
+
+  Arguments:
+    model: Model to prepare feed values for.
+    inputs: List or dict of model inputs.
+    targets: Optional list of model targets.
+    sample_weights: Optional list of sample weight arrays.
+    mode: One of 'train'/'test'/'predict'.
+
+  Returns:
+    Feed values for the model in the given mode.
+  """
+  if model._distribution_strategy:
+    def get_distributed_inputs():
+      return training_distributed._prepare_feed_values(
+          model, inputs, targets, sample_weights, mode)
+
+    # In the eager case, we want to call the input method per step, so return
+    # a lambda from here that can be called. Note that this is applicable only
+    # in Distribution Strategy case as it follows the same code path for both
+    # eager and graph modes.
+    # TODO(priyag,omalleyt): Either we should move the training DS with
+    # EagerIterator to use training_generator code path, or figure out how to
+    # set a symbolic Iterator out of a Dataset when in eager mode.
+    if context.executing_eagerly():
+      return get_distributed_inputs
+    else:
+      return get_distributed_inputs()
+
+  inputs = training_utils.ModelInputs(inputs).as_list()
+  targets = targets or []
+  sample_weights = sample_weights or []
+  ins = inputs + targets + sample_weights
+  if mode == 'train' and not isinstance(K.symbolic_learning_phase(), int):
+    ins += [True]
+  return ins
+
+
+def _make_execution_function(model, mode):
+  """Makes function to run one step of model execution."""
+  if model._distribution_strategy:
+    return training_distributed._make_execution_function(model, mode)
+  return model._make_execution_function(mode)
+
+
+def model_iteration(model,
+                    inputs,
+                    targets=None,
+                    sample_weights=None,
+                    batch_size=None,
+                    epochs=1,
+                    verbose=1,
+                    callbacks=None,
+                    val_inputs=None,
+                    val_targets=None,
+                    val_sample_weights=None,
+                    shuffle=True,
+                    initial_epoch=0,
+                    steps_per_epoch=None,
+                    validation_steps=None,
+                    mode='train',
+                    validation_in_fit=False,
+                    **kwargs):
+  """Loop function for arrays of data with modes 'train'/'test'/'predict'.
 
   Arguments:
       model: Keras Model instance.
@@ -66,137 +155,157 @@ def fit_loop(model,
       val_targets: List of target arrays.
       val_sample_weights: Optional list of sample weight arrays.
       shuffle: Whether to shuffle the data at the beginning of each epoch
-          concatenation of list the display names of the outputs of
-           `f` and the list of display names of the outputs of `f_val`.
-      initial_epoch: Epoch at which to start training
-          (useful for resuming a previous training run)
-      steps_per_epoch: Total number of steps (batches of samples)
-          before declaring one epoch finished and starting the
-          next epoch. Ignored with the default value of `None`.
-      validation_steps: Number of steps to run validation for
-          (only if doing validation from data tensors).
-          Ignored with the default value of `None`.
+        concatenation of list the display names of the outputs of `f` and the
+        list of display names of the outputs of `f_val`.
+      initial_epoch: Epoch at which to start training (useful for resuming a
+        previous training run)
+      steps_per_epoch: Total number of steps (batches of samples) before
+        declaring one epoch finished and starting the next epoch. Ignored with
+        the default value of `None`.
+      validation_steps: Number of steps to run validation for (only if doing
+        validation from data tensors). Ignored with the default value of `None`.
+      mode: One of 'train'/'test'/'predict'.
+      validation_in_fit: if true, then this method is invoked from within
+        training iteration (for validation). In this case, do not copy weights
+        when using a tf.distribute.Strategy.
+      **kwargs: Additional arguments for backwards compatibility.
 
   Returns:
-      `History` object.
+      - In 'train' mode: `History` object.
+      - In 'test' mode: Evaluation metrics.
+      - In 'predict' mode: Outputs of the Model called on inputs.
 
   Raises:
       ValueError: in case of invalid arguments.
   """
-  model._make_train_function()
-  f = model.train_function
+  # Backwards compatibility.
+  if 'steps' in kwargs:
+    steps_per_epoch = kwargs['steps']
 
-  sample_weights = sample_weights or []
-  val_sample_weights = val_sample_weights or []
-  inputs = training_utils.ModelInputs(inputs).as_list()
-  if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
-    ins = inputs + targets + sample_weights + [1]
-  else:
-    ins = inputs + targets + sample_weights
+  _validate_arguments(steps_per_epoch, validation_steps, kwargs)
+  if mode == 'train':
+    _print_train_info(inputs, val_inputs, steps_per_epoch, verbose)
 
-  do_validation = False
-  if val_inputs:
-    do_validation = True
-    if (steps_per_epoch is None and verbose and inputs and
-        hasattr(inputs[0], 'shape') and hasattr(val_inputs[0], 'shape')):
-      print('Train on %d samples, validate on %d samples' %
-            (inputs[0].shape[0], val_inputs[0].shape[0]))
-  if validation_steps:
-    do_validation = True
-    if steps_per_epoch is None:
-      raise ValueError('Can only use `validation_steps` '
-                       'when doing step-wise '
-                       'training, i.e. `steps_per_epoch` '
-                       'must be set.')
+  # Enter DistributionStrategy scope.
+  if model._distribution_strategy:
+    scope = model._distribution_strategy.scope()
+    scope.__enter__()
 
-  num_train_samples = training_utils.check_num_samples(
-      ins, batch_size, steps_per_epoch, 'steps_per_epoch')
-  count_mode = 'steps' if steps_per_epoch else 'samples'
+  # Get step function and loop type.
+  f = _make_execution_function(model, mode)
+  use_steps = steps_per_epoch is not None
+  do_validation = val_inputs is not None
+
+  # Prepare input data.
+  ins = _prepare_feed_values(model, inputs, targets, sample_weights, mode)
+  num_samples_or_steps = _get_num_samples_or_steps(ins, batch_size,
+                                                   steps_per_epoch)
+
+  # Configure callbacks.
+  count_mode = 'steps' if use_steps else 'samples'
   callbacks = cbks.configure_callbacks(
       callbacks,
       model,
       do_validation=do_validation,
-      val_inputs=val_inputs,
-      val_targets=val_targets,
-      val_sample_weights=val_sample_weights,
       batch_size=batch_size,
       epochs=epochs,
       steps_per_epoch=steps_per_epoch,
-      samples=num_train_samples,
-      validation_steps=validation_steps,
-      verbose=verbose,
-      count_mode=count_mode)
+      samples=num_samples_or_steps,
+      verbose=0,  # Handle ProgBarLogger separately in this loop.
+      mode=mode)
+  # TODO(omalleyt): Handle ProgBar as part of Callbacks once hooks are ready.
+  progbar = training_utils.get_progbar(model, count_mode)
+  progbar.params = callbacks.params
+  progbar.params['verbose'] = verbose
 
-  if num_train_samples is not None:
-    index_array = np.arange(num_train_samples)
+  # Find beforehand arrays that need sparse-to-dense conversion.
+  if issparse is not None and not use_steps:
+    indices_for_conversion_to_dense = []
+    feed = _get_model_feed(model, mode)
+    for i, (input_data, feed_tensor) in enumerate(zip(ins, feed)):
+      if issparse(input_data) and not K.is_sparse(feed_tensor):
+        indices_for_conversion_to_dense.append(i)
 
-  # To prevent a slowdown, we find beforehand the arrays that need conversion.
-  feed = model._feed_inputs + model._feed_targets + model._feed_sample_weights
-  indices_for_conversion_to_dense = []
-  for i in range(len(feed)):
-    if issparse is not None and issparse(ins[i]) and not K.is_sparse(feed[i]):
-      indices_for_conversion_to_dense.append(i)
+  # Select aggregation method.
+  if mode == 'predict':
+    aggregator = training_utils.OutputsAggregator(use_steps,
+                                                  num_samples_or_steps)
+  else:
+    aggregator = training_utils.MetricsAggregator(use_steps,
+                                                  num_samples_or_steps)
 
-  callbacks.on_train_begin()
+  if model._distribution_strategy and not validation_in_fit:
+    training_distributed._copy_weights_to_distributed_model(
+        model, model._grouped_model)
+
+  callbacks.model.stop_training = False
+  callbacks._call_begin_hook(mode)
+  progbar.on_train_begin()
+
   for epoch in range(initial_epoch, epochs):
-    # Reset stateful metrics
-    for m in model.stateful_metric_functions:
-      m.reset_states()
-    # Update callbacks
-    callbacks.on_epoch_begin(epoch)
+    if callbacks.model.stop_training:
+      break
+
+    # Setup work for each epoch
     epoch_logs = {}
-    if steps_per_epoch is not None:
-      # Step-wise fit loop.
-      for step_index in range(steps_per_epoch):
-        batch_logs = {'batch': step_index, 'size': 1}
-        callbacks.on_batch_begin(step_index, batch_logs)
+    model.reset_metrics()
+    callbacks.on_epoch_begin(epoch, epoch_logs, mode=mode)
+    progbar.on_epoch_begin(epoch, epoch_logs)
+
+    if use_steps:
+      # Step-wise loop.
+      for step in range(steps_per_epoch):
+        batch_logs = {'batch': step, 'size': 1}
+        callbacks._call_batch_hook(mode, 'begin', step, batch_logs)
+        progbar.on_batch_begin(step, batch_logs)
+
+        # Get outputs.
         try:
-          outs = f(ins)
+          # `ins` can be callable in DistributionStrategy + eager case.
+          actual_inputs = ins() if callable(ins) else ins
+          batch_outs = f(actual_inputs)
         except errors.OutOfRangeError:
           logging.warning('Your dataset iterator ran out of data; '
                           'interrupting training. Make sure that your dataset '
                           'can generate at least `steps_per_epoch * epochs` '
                           'batches (in this case, %d batches). You may need to'
                           'use the repeat() function when building your '
-                          'dataset.' %
-                          steps_per_epoch * epochs)
+                          'dataset.' % steps_per_epoch * epochs)
           break
+        if not isinstance(batch_outs, list):
+          batch_outs = [batch_outs]
 
-        if not isinstance(outs, list):
-          outs = [outs]
-        for l, o in zip(model.metrics_names, outs):
-          batch_logs[l] = o
+        if model._distribution_strategy:
+          batch_outs = training_distributed._per_device_aggregate_batch(
+              batch_outs, model, mode)
 
-        callbacks.on_batch_end(step_index, batch_logs)
+        # Aggregate results.
+        if step == 0:
+          aggregator.create(batch_outs)
+        aggregator.aggregate(batch_outs)
+
+        # Callbacks batch end.
+        batch_logs.update(training_utils.make_logs(model, batch_outs, mode))
+        callbacks._call_batch_hook(mode, 'end', step, batch_logs)
+        progbar.on_batch_end(step, batch_logs)
+
         if callbacks.model.stop_training:
           break
-
-      if do_validation:
-        val_outs = test_loop(
-            model,
-            val_inputs,
-            val_targets,
-            sample_weights=val_sample_weights,
-            steps=validation_steps,
-            verbose=0)
-        if not isinstance(val_outs, list):
-          val_outs = [val_outs]
-        # Same labels assumed.
-        for l, o in zip(model.metrics_names, val_outs):
-          epoch_logs['val_' + l] = o
     else:
-      # Sample-wise fit loop.
+      # Sample-wise loop.
+      index_array = np.arange(num_samples_or_steps)
       if shuffle == 'batch':
         index_array = training_utils.batch_shuffle(index_array, batch_size)
       elif shuffle:
         np.random.shuffle(index_array)
-
-      batches = make_batches(num_train_samples, batch_size)
+      batches = make_batches(num_samples_or_steps, batch_size)
 
       for batch_index, (batch_start, batch_end) in enumerate(batches):
         batch_ids = index_array[batch_start:batch_end]
+
+        # Slice into a batch.
         try:
-          if isinstance(ins[-1], int):
+          if ins and isinstance(ins[-1], int):
             # Do not slice the training phase flag.
             ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
           else:
@@ -205,256 +314,77 @@ def fit_loop(model,
           raise TypeError('TypeError while preparing batch. '
                           'If using HDF5 input data, '
                           'pass shuffle="batch".')
-        batch_logs = {}
-        batch_logs['batch'] = batch_index
-        batch_logs['size'] = len(batch_ids)
-        callbacks.on_batch_begin(batch_index, batch_logs)
-        for i in indices_for_conversion_to_dense:
-          ins_batch[i] = ins_batch[i].toarray()
 
-        outs = f(ins_batch)
-        if not isinstance(outs, list):
-          outs = [outs]
-        for l, o in zip(model.metrics_names, outs):
-          batch_logs[l] = o
+        # Sparse to dense conversion.
+        if issparse is not None:
+          for i in indices_for_conversion_to_dense:
+            ins_batch[i] = ins_batch[i].toarray()
 
-        callbacks.on_batch_end(batch_index, batch_logs)
+        # Callbacks batch_begin.
+        batch_logs = {'batch': batch_index, 'size': len(batch_ids)}
+        callbacks._call_batch_hook(mode, 'begin', batch_index, batch_logs)
+        progbar.on_batch_begin(batch_index, batch_logs)
+
+        # Get outputs.
+        batch_outs = f(ins_batch)
+        if not isinstance(batch_outs, list):
+          batch_outs = [batch_outs]
+
+        # Aggregate results.
+        if batch_index == 0:
+          aggregator.create(batch_outs)
+        aggregator.aggregate(batch_outs, batch_start, batch_end)
+
+        # Callbacks batch end.
+        batch_logs.update(training_utils.make_logs(model, batch_outs, mode))
+        callbacks._call_batch_hook(mode, 'end', batch_index, batch_logs)
+        progbar.on_batch_end(batch_index, batch_logs)
+
         if callbacks.model.stop_training:
           break
 
-        if batch_index == len(batches) - 1:  # Last batch.
-          if do_validation:
-            val_outs = test_loop(
-                model,
-                val_inputs,
-                val_targets,
-                sample_weights=val_sample_weights,
-                batch_size=batch_size,
-                verbose=0)
-            if not isinstance(val_outs, list):
-              val_outs = [val_outs]
-            # Same labels assumed.
-            for l, o in zip(model.metrics_names, val_outs):
-              epoch_logs['val_' + l] = o
-    callbacks.on_epoch_end(epoch, epoch_logs)
-    if callbacks.model.stop_training:
-      break
-  callbacks.on_train_end()
-  return model.history
+    aggregator.finalize()
+    results = aggregator.results
+    epoch_logs.update(training_utils.make_logs(model, results, mode))
+    if len(results) == 1:
+      results = results[0]
+
+    # Run the test loop every epoch during training.
+    if do_validation and not callbacks.model.stop_training:
+      val_results = model_iteration(
+          model,
+          val_inputs,
+          targets=val_targets,
+          sample_weights=val_sample_weights,
+          batch_size=batch_size,
+          steps_per_epoch=validation_steps,
+          callbacks=callbacks,
+          verbose=0,
+          mode='test',
+          validation_in_fit=True)
+      if not isinstance(val_results, list):
+        val_results = [val_results]
+      epoch_logs.update(
+          training_utils.make_logs(model, val_results, mode, prefix='val_'))
+
+    callbacks.on_epoch_end(epoch, epoch_logs, mode=mode)
+    progbar.on_epoch_end(epoch, epoch_logs)
+  callbacks._call_end_hook(mode)
+
+  if model._distribution_strategy:
+    # TODO(priyag, psv): Copy back metrics to the original model as well?
+    if not validation_in_fit:
+      training_distributed._copy_weights_to_original_model(
+          model, model._grouped_model, mode)
+
+    scope.__exit__(None, None, None)
+
+  if mode == 'train':
+    return model.history
+  return results
 
 
-def predict_loop(model, inputs, batch_size=32, verbose=0, steps=None):
-  """Abstract method to loop over some data in batches.
-
-  Arguments:
-      model: Keras Model instance.
-      inputs: list of tensors to be fed to `f`.
-      batch_size: integer batch size.
-      verbose: verbosity mode.
-      steps: Total number of steps (batches of samples)
-          before declaring `_predict_loop` finished.
-          Ignored with the default value of `None`.
-
-  Returns:
-      Array of predictions (if the model has a single output)
-      or list of arrays of predictions
-      (if the model has multiple outputs).
-  """
-  model._make_predict_function()
-  f = model.predict_function
-
-  inputs = training_utils.ModelInputs(inputs).as_list()
-  if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
-    ins = inputs + [0]
-  else:
-    ins = inputs
-
-  num_samples = training_utils.check_num_samples(
-      inputs, batch_size, steps, 'steps')
-  if verbose == 1:
-    if steps is not None:
-      progbar = Progbar(target=steps)
-    else:
-      progbar = Progbar(target=num_samples)
-
-  indices_for_conversion_to_dense = []
-  for i in range(len(model._feed_inputs)):
-    if (issparse is not None and issparse(inputs[i]) and
-        not K.is_sparse(model._feed_inputs[i])):
-      indices_for_conversion_to_dense.append(i)
-
-  if steps is not None:
-    # Step-based predictions.
-    # Since we do not know how many samples
-    # we will see, we cannot pre-allocate
-    # the returned Numpy arrays.
-    # Instead, we store one array per batch seen
-    # and concatenate them upon returning.
-    unconcatenated_outs = []
-    for step in range(steps):
-      batch_outs = f(ins)
-      if not isinstance(batch_outs, list):
-        batch_outs = [batch_outs]
-      if step == 0:
-        for batch_out in batch_outs:
-          unconcatenated_outs.append([])
-      for i, batch_out in enumerate(batch_outs):
-        unconcatenated_outs[i].append(batch_out)
-      if verbose == 1:
-        progbar.update(step + 1)
-    if len(unconcatenated_outs) == 1:
-      return np.concatenate(unconcatenated_outs[0], axis=0)
-    return [
-        np.concatenate(unconcatenated_outs[i], axis=0)
-        for i in range(len(unconcatenated_outs))
-    ]
-  else:
-    # Sample-based predictions.
-    outs = []
-    batches = make_batches(num_samples, batch_size)
-    index_array = np.arange(num_samples)
-    for batch_index, (batch_start, batch_end) in enumerate(batches):
-      batch_ids = index_array[batch_start:batch_end]
-      if ins and isinstance(ins[-1], int):
-        # Do not slice the training phase flag.
-        ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
-      else:
-        ins_batch = slice_arrays(ins, batch_ids)
-      for i in indices_for_conversion_to_dense:
-        ins_batch[i] = ins_batch[i].toarray()
-
-      batch_outs = f(ins_batch)
-      if not isinstance(batch_outs, list):
-        batch_outs = [batch_outs]
-      if batch_index == 0:
-        # Pre-allocate the results arrays.
-        for batch_out in batch_outs:
-          shape = (num_samples,) + batch_out.shape[1:]
-          outs.append(np.zeros(shape, dtype=batch_out.dtype))
-      for i, batch_out in enumerate(batch_outs):
-        outs[i][batch_start:batch_end] = batch_out
-      if verbose == 1:
-        progbar.update(batch_end)
-    if len(outs) == 1:
-      return outs[0]
-    return outs
-
-
-def test_loop(model,
-              inputs,
-              targets,
-              sample_weights=None,
-              batch_size=None,
-              verbose=0,
-              steps=None):
-  """Abstract method to loop over some data in batches.
-
-  Arguments:
-      model: Keras Model instance.
-      inputs: List of input arrays.
-      targets: List of target arrays.
-      sample_weights: Optional list of sample weight arrays.
-      batch_size: integer batch size or `None`.
-      verbose: verbosity mode.
-      steps: Total number of steps (batches of samples)
-          before declaring predictions finished.
-          Ignored with the default value of `None`.
-
-  Returns:
-      Scalar loss (if the model has a single output and no metrics)
-      or list of scalars (if the model has multiple outputs
-      and/or metrics). The attribute `model.metrics_names` will give you
-      the display labels for the scalar outputs.
-  """
-  model._make_test_function()
-  f = model.test_function
-
-  sample_weights = sample_weights or []
-  inputs = training_utils.ModelInputs(inputs).as_list()
-  if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
-    ins = inputs + targets + sample_weights + [0]
-  else:
-    ins = inputs + targets + sample_weights
-
-  if hasattr(model, 'metrics'):
-    for m in model.stateful_metric_functions:
-      m.reset_states()
-    stateful_metric_indices = [
-        i for i, name in enumerate(model.metrics_names)
-        if str(name) in model.stateful_metric_names
-    ]
-  else:
-    stateful_metric_indices = []
-
-  num_samples = training_utils.check_num_samples(
-      ins, batch_size, steps, 'steps')
-  outs = []
-  if verbose == 1:
-    if steps is not None:
-      progbar = Progbar(target=steps)
-    else:
-      progbar = Progbar(target=num_samples)
-
-  # To prevent a slowdown, we find beforehand the arrays that need conversion.
-  feed = model._feed_inputs + model._feed_targets + model._feed_sample_weights
-  indices_for_conversion_to_dense = []
-  for i in range(len(feed)):
-    if issparse is not None and issparse(ins[i]) and not K.is_sparse(feed[i]):
-      indices_for_conversion_to_dense.append(i)
-
-  if steps is not None:
-    for step in range(steps):
-      batch_outs = f(ins)
-      if isinstance(batch_outs, list):
-        if step == 0:
-          for _ in enumerate(batch_outs):
-            outs.append(0.)
-        for i, batch_out in enumerate(batch_outs):
-          if i in stateful_metric_indices:
-            outs[i] = batch_out
-          else:
-            outs[i] += batch_out
-      else:
-        if step == 0:
-          outs.append(0.)
-        outs[0] += batch_outs
-      if verbose == 1:
-        progbar.update(step + 1)
-    for i in range(len(outs)):
-      if i not in stateful_metric_indices:
-        outs[i] /= steps
-  else:
-    batches = make_batches(num_samples, batch_size)
-    index_array = np.arange(num_samples)
-    for batch_index, (batch_start, batch_end) in enumerate(batches):
-      batch_ids = index_array[batch_start:batch_end]
-      if isinstance(ins[-1], int):
-        # Do not slice the training phase flag.
-        ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
-      else:
-        ins_batch = slice_arrays(ins, batch_ids)
-      for i in indices_for_conversion_to_dense:
-        ins_batch[i] = ins_batch[i].toarray()
-
-      batch_outs = f(ins_batch)
-
-      if isinstance(batch_outs, list):
-        if batch_index == 0:
-          outs.extend([0.] * len(batch_outs))
-        for i, batch_out in enumerate(batch_outs):
-          if i in stateful_metric_indices:
-            outs[i] = batch_out
-          else:
-            outs[i] += batch_out * len(batch_ids)
-      else:
-        if batch_index == 0:
-          outs.append(0.)
-        outs[0] += batch_outs * len(batch_ids)
-      if verbose == 1:
-        progbar.update(batch_end)
-    for i in range(len(outs)):
-      if i not in stateful_metric_indices:
-        outs[i] /= num_samples
-  if len(outs) == 1:
-    return outs[0]
-  return outs
+# For backwards compatibility for internal users of these loops.
+fit_loop = functools.partial(model_iteration, mode='train')
+test_loop = functools.partial(model_iteration, mode='test', shuffle=False)
+predict_loop = functools.partial(model_iteration, mode='predict', shuffle=False)

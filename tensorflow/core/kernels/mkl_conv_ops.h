@@ -17,9 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MKL_CONV_OPS_H_
 
 #include <limits>
-#include <vector>
 #include <memory>
+#include <vector>
 
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -35,24 +36,16 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "tensorflow/core/util/mkl_util.h"
-
-#ifndef INTEL_MKL_ML_ONLY
-#include "mkldnn.hpp"
-
+using mkldnn::convolution_direct;
+using mkldnn::convolution_forward;
 using mkldnn::prop_kind;
 using mkldnn::stream;
 
-using mkldnn::convolution_direct;
-using mkldnn::convolution_forward;
-#endif
-
 namespace tensorflow {
-
-#ifndef INTEL_MKL_ML_ONLY
 
 class MklDnnConvUtil {
  protected:
@@ -92,7 +85,7 @@ class MklDnnConvUtil {
   }
 
   // Calculate Convolution dilations
-  virtual inline void GetDilationsInMklOrder(memory::dims *dilations) {
+  virtual inline void GetDilationsInMklOrder(memory::dims* dilations) {
     // For now we take the dilation from the second and third dimensions only
     // (we do not support dilation on the batch or depth dimension).
     CHECK_NOTNULL(dilations);
@@ -295,7 +288,7 @@ class MklDnnConvUtil {
       const TensorShape& input_shape, const TensorShape& filter_shape,
       const memory::dims& strides, const memory::dims& dilations,
       memory::dims* output_dims_tf_order, memory::dims* output_dims_mkl_order,
-      memory::dims* pad_l, memory::dims* pad_r) {
+      memory::dims* pad_l, memory::dims* pad_r, bool padEnabled = false) {
     CHECK_NOTNULL(output_dims_tf_order);
     CHECK_NOTNULL(output_dims_mkl_order);
     CHECK_NOTNULL(pad_l);
@@ -380,6 +373,36 @@ class MklDnnConvUtil {
                                    padding_, &out_cols, &pad_left, &pad_right));
     }
 
+    if (isConv2D) {
+      // Conv + pad fusion is enabled only for 2D
+      // If padEnabled, i.e., pad and conv op are fused, then
+      // all pads are already passed from pad op through
+      // *pad_l and *pad_r
+      if (padEnabled) {
+        pad_top = static_cast<int64>((*pad_l)[0]);
+        pad_left = static_cast<int64>((*pad_l)[1]);
+        pad_bottom = static_cast<int64>((*pad_r)[0]);
+        pad_right = static_cast<int64>((*pad_r)[1]);
+        // update the out_rows and out_cols based on all
+        // sides of the pads coming from pad op.
+        out_rows = out_rows + (pad_top + pad_bottom) / stride_rows;
+        out_cols = out_cols + (pad_left + pad_right) / stride_cols;
+      }
+      // Handle padding. MKL-DNN uses asymetric padding.
+      // But, if padEnabled, i.e., pad and conv op are fused,
+      // then, *pad_l and *pad_r are already set from pad op.
+      // In that case they need not set here.
+      else {
+        *pad_l = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
+        *pad_r = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
+      }
+    } else {
+      // Set padding for Conv3D here
+      *pad_l = {static_cast<int>(pad_D1), static_cast<int>(pad_top),
+                static_cast<int>(pad_left)};
+      *pad_r = {static_cast<int>(pad_D2), static_cast<int>(pad_bottom),
+                static_cast<int>(pad_right)};
+    }
     // Tensorflow output is in data_format order.
     //     Conv2D: NHWC or NCHW
     //     Conv3D: NDHWC or NCDHW
@@ -400,9 +423,6 @@ class MklDnnConvUtil {
       mkldnn_sizes[MklDnnDims::Dim_H] = static_cast<int>(out_rows);
       mkldnn_sizes[MklDnnDims::Dim_W] = static_cast<int>(out_cols);
       *output_dims_mkl_order = mkldnn_sizes;
-
-      *pad_l = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
-      *pad_r = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
     } else {
       std::vector<int> mkldnn_sizes(5, -1);
       mkldnn_sizes[MklDnnDims3D::Dim3d_N] = out_batch;
@@ -411,11 +431,6 @@ class MklDnnConvUtil {
       mkldnn_sizes[MklDnnDims3D::Dim3d_H] = static_cast<int>(out_rows);
       mkldnn_sizes[MklDnnDims3D::Dim3d_W] = static_cast<int>(out_cols);
       *output_dims_mkl_order = mkldnn_sizes;
-
-      *pad_l = {static_cast<int>(pad_D1), static_cast<int>(pad_top),
-                static_cast<int>(pad_left)};
-      *pad_r = {static_cast<int>(pad_D2), static_cast<int>(pad_bottom),
-                static_cast<int>(pad_right)};
     }
   }
 
@@ -448,8 +463,8 @@ class MklDnnConvUtil {
                                           input_tf_shape.DebugString()));
     }
 
-    GetOutputAndPadSizeInMklOrder(input_tf_shape, filter_tf_shape,
-                                  strides, dilations, output_dims_tf_order,
+    GetOutputAndPadSizeInMklOrder(input_tf_shape, filter_tf_shape, strides,
+                                  dilations, output_dims_tf_order,
                                   output_dims_mkl_order, pad_l, pad_r);
   }
 
@@ -464,10 +479,9 @@ class MklDnnConvUtil {
   inline void GetConvFwdSizesInMklOrder(
       const TensorShape& input_shape, const TensorShape& filter_shape,
       memory::dims* input_dims, memory::dims* filter_dims,
-      memory::dims* strides, memory::dims *dilations,
-      memory::dims* output_dims_tf_order,
-      memory::dims* output_dims_mkl_order, memory::dims* pad_l,
-      memory::dims* pad_r) {
+      memory::dims* strides, memory::dims* dilations,
+      memory::dims* output_dims_tf_order, memory::dims* output_dims_mkl_order,
+      memory::dims* pad_l, memory::dims* pad_r, bool padEnabled = false) {
     CHECK_NOTNULL(input_dims);
     CHECK_NOTNULL(filter_dims);
     CHECK_NOTNULL(strides);
@@ -483,10 +497,9 @@ class MklDnnConvUtil {
     if (!context_->status().ok()) return;
     GetStridesInMklOrder(strides);
     GetDilationsInMklOrder(dilations);
-    GetOutputAndPadSizeInMklOrder(input_shape, filter_shape,
-                                  *strides, *dilations,
-                                  output_dims_tf_order, output_dims_mkl_order,
-                                  pad_l, pad_r);
+    GetOutputAndPadSizeInMklOrder(
+        input_shape, filter_shape, *strides, *dilations, output_dims_tf_order,
+        output_dims_mkl_order, pad_l, pad_r, padEnabled);
     if (!context_->status().ok()) return;
   }
 };
@@ -542,8 +555,6 @@ class MklConvBackpropCommonOp : public OpKernel {
   Padding padding_;
   TensorFormat data_format_;  // NCHW or NHWC
 };
-
-#endif  // INTEL_MKL_ML_ONLY
 
 /////////////////////////////////////////////////////////////////////
 ///  Dummy Mkl op that is just used for operators that are intermediate

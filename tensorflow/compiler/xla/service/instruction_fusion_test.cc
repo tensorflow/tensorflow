@@ -117,7 +117,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfParameterUnfused) {
   auto reshape1 = builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {1, 1}), param0));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape1, computation->root_instruction());
   EXPECT_FALSE(
@@ -133,7 +133,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastSimpleReshapeOfParameterUnfused) {
   auto reshape1 = builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {1, 1}), param0));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape1, computation->root_instruction());
   EXPECT_FALSE(
@@ -149,7 +149,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfParameterUnfused) {
   auto transpose1 = builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(S32, {}), param0, {}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose1, computation->root_instruction());
   EXPECT_FALSE(
@@ -172,7 +172,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusible) {
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary, computation->root_instruction());
   EXPECT_FALSE(
@@ -361,7 +361,7 @@ TEST_F(InstructionFusionTest, AllowUnaryDuplication) {
   HloInstruction* unary2 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, unary1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary2, computation->root_instruction());
   EXPECT_TRUE(
@@ -385,13 +385,63 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary, computation->root_instruction());
   EXPECT_TRUE(
       InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
           .Run(module.get())
           .ValueOrDie());
+}
+
+TEST_F(InstructionFusionTest, FuseDiamondGraphsNoDuplication) {
+  auto module = ParseHloString(R"(
+  HloModule test_module
+  ENTRY Test {
+    p0 = f32[100] parameter(0)
+    p1 = f32[100] parameter(1)
+    add = f32[100] add(p0, p1)
+    slice1 = f32[99] slice(add), slice={[0:99:1]}
+    slice2 = f32[99] slice(add), slice={[1:100:1]}
+    ROOT add2 = f32[99] add(slice1, slice2)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  // 'add' would originally need to be duplicated if fused. However after its
+  // two users 'slice1' and 'slice2' are fused into 'add2', 'add' has only one
+  // user and can now be also fused.
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
+}
+
+TEST_F(InstructionFusionTest, FuseDiamondGraphsAllowDuplication) {
+  auto module = ParseHloString(R"(
+  HloModule test_module
+  ENTRY Test {
+    p0 = f32[100] parameter(0)
+    p1 = f32[100] parameter(1)
+    add = f32[100] add(p0, p1)
+    slice1 = f32[99] slice(add), slice={[0:99:1]}
+    slice2 = f32[99] slice(add), slice={[1:100:1]}
+    ROOT add2 = f32[99] add(slice1, slice2)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  // 'add' would originally need to be duplicated if fused. However after its
+  // two users 'slice1' and 'slice2' are fused into 'add2', 'add' has only one
+  // user and can now be also fused.
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
 }
 
 TEST_F(InstructionFusionTest,

@@ -14,8 +14,13 @@
 # ==============================================================================
 """Live variable analysis.
 
-This analysis attaches a set containing the live symbols that are live at the
-exit of control flow statements.
+See https://en.wikipedia.org/wiki/Live_variable_analysis for a definition of
+the following idioms: live variable, live in, live out, which are used
+throughout this file.
+
+This analysis attaches the following:
+ * symbols that are live at the exit of control flow statements
+ * symbols that are live at the entry of control flow statements
 
 Requires activity analysis.
 """
@@ -50,11 +55,11 @@ class Analyzer(cfg.GraphVisitor):
     if anno.hasanno(node.ast_node, anno.Static.SCOPE):
       node_scope = anno.getanno(node.ast_node, anno.Static.SCOPE)
 
-      gen = node_scope.used | self.extra_gen.get(node.ast_node, frozenset())
+      gen = node_scope.read | self.extra_gen.get(node.ast_node, frozenset())
       # TODO(mdan): verify whether composites' parents need to be added.
-      # E.g. if x.y is live whether x needs to be added. Theoretically the
+      # E.g. whether x needs to be added if x.y is live. Theoretically the
       # activity analysis should have both so that wouldn't be needed.
-      kill = node_scope.modified
+      kill = node_scope.modified | node_scope.deleted
 
       live_out = set()
       for n in node.next:
@@ -156,6 +161,16 @@ class Annotator(transformer.Base):
     self.cross_function_analyzer = cross_function_analyzer
     self.current_analyzer = None
 
+  def visit(self, node):
+    node = super(Annotator, self).visit(node)
+    if (self.current_analyzer is not None and
+        isinstance(node, gast.stmt) and
+        node in self.current_analyzer.graph.index):
+      cfg_node = self.current_analyzer.graph.index[node]
+      anno.setanno(node, anno.Static.LIVE_VARS_IN,
+                   frozenset(self.current_analyzer.in_[cfg_node]))
+    return node
+
   def visit_FunctionDef(self, node):
     parent_analyzer = self.current_analyzer
     self.current_analyzer = self.cross_function_analyzer.analyzers[node]
@@ -164,23 +179,45 @@ class Annotator(transformer.Base):
     self.current_analyzer = parent_analyzer
     return node
 
-  def _aggregate_successors_live_in(self, node):
+  def _block_statement_live_out(self, node):
     successors = self.current_analyzer.graph.stmt_next[node]
-    node_live_out = set()
+    stmt_live_out = set()
     for s in successors:
-      node_live_out.update(self.current_analyzer.in_[s])
-    anno.setanno(node, anno.Static.LIVE_VARS_OUT, frozenset(node_live_out))
-    node = self.generic_visit(node)
+      stmt_live_out.update(self.current_analyzer.in_[s])
+    anno.setanno(node, anno.Static.LIVE_VARS_OUT, frozenset(stmt_live_out))
+    return node
+
+  def _block_statement_live_in(self, node, entry_node):
+    cfg_node = self.current_analyzer.graph.index[entry_node]
+    stmt_live_in = frozenset(self.current_analyzer.in_[cfg_node])
+    anno.setanno(node, anno.Static.LIVE_VARS_IN, stmt_live_in)
     return node
 
   def visit_If(self, node):
-    return self._aggregate_successors_live_in(node)
+    node = self.generic_visit(node)
+    node = self._block_statement_live_out(node)
+    return self._block_statement_live_in(node, node.test)
 
   def visit_For(self, node):
-    return self._aggregate_successors_live_in(node)
+    node = self.generic_visit(node)
+    node = self._block_statement_live_out(node)
+    return self._block_statement_live_in(node, node.iter)
 
   def visit_While(self, node):
-    return self._aggregate_successors_live_in(node)
+    node = self.generic_visit(node)
+    node = self._block_statement_live_out(node)
+    return self._block_statement_live_in(node, node.test)
+
+  def visit_With(self, node):
+    node = self.generic_visit(node)
+    return self._block_statement_live_in(node, node.items[0])
+
+  def visit_Expr(self, node):
+    node = self.generic_visit(node)
+    cfg_node = self.current_analyzer.graph.index[node]
+    anno.setanno(node, anno.Static.LIVE_VARS_OUT,
+                 frozenset(self.current_analyzer.out[cfg_node]))
+    return node
 
 
 def resolve(node, source_info, graphs):

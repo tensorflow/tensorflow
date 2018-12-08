@@ -97,12 +97,6 @@ class Executor {
     typedef std::function<void()> Closure;
     typedef std::function<void(Closure)> Runner;
     Runner runner = nullptr;
-
-    // A callback that is invoked each time a node has finished executing.
-    typedef std::function<Status(const string& node_name, const int output_slot,
-                                 const Tensor* tensor, const bool is_ref,
-                                 OpKernelContext* ctx)>
-        NodeOutputsCallback;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;

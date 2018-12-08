@@ -19,16 +19,18 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import six
 
 from tensorflow.python.client import session
 from tensorflow.python.estimator import keras as estimator_keras_util
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.export import export as export_helpers
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import models as models_lib
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.metrics import Metric
 from tensorflow.python.keras.models import model_from_json
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
@@ -72,6 +74,25 @@ def save_keras_model(
   share variables. To use the train graph with evaluation or prediction graphs,
   create a new checkpoint if variable values have been updated.
 
+  Example:
+
+  ```python
+  import tensorflow as tf
+
+  # Create a tf.keras model.
+  model = tf.keras.Sequential()
+  model.add(tf.keras.layers.Dense(1, input_shape=[10]))
+  model.summary()
+
+  # Save the tf.keras model in the SavedModel format.
+  saved_to_path = tf.contrib.saved_model.save_keras_model(
+        model, '/tmp/my_simple_tf_keras_saved_model')
+
+  # Load the saved keras model back.
+  model_prime = tf.contrib.saved_model.load_keras_model(saved_to_path)
+  model_prime.summary()
+  ```
+
   Args:
     model: A `tf.keras.Model` to be saved.
     saved_model_path: a string specifying the path to the SavedModel directory.
@@ -85,15 +106,26 @@ def save_keras_model(
     String path to the SavedModel folder, a subdirectory of `saved_model_path`.
 
   Raises:
-    NotImplementedError: If the passed in model is a subclassed model.
+    NotImplementedError: If the model is a subclassed model.
+    ValueError: If a Sequential model does not have input shapes defined by the
+      user, and is not built.
   """
   if not model._is_graph_network:
-    raise NotImplementedError
+    if isinstance(model, sequential.Sequential):
+      # If input shape is not directly set in the model, the exported model
+      # will assume that the inputs have the same shape as the shape the model
+      # was built model with.
+      if not model.built:
+        raise ValueError(
+            'Sequential model must be built before it can be exported.')
+    else:
+      raise NotImplementedError(
+          'Exporting subclassed models is not yet supported.')
 
   export_dir = export_helpers.get_timestamped_export_dir(saved_model_path)
   temp_export_dir = export_helpers.get_temp_export_dir(export_dir)
 
-  builder = saved_model_builder.SavedModelBuilder(temp_export_dir)
+  builder = saved_model_builder._SavedModelBuilder(temp_export_dir)
 
   # Manually save variables to export them in an object-based checkpoint. This
   # skips the `builder.add_meta_graph_and_variables()` step, which saves a
@@ -195,9 +227,10 @@ def _export_mode(
       g.add_to_collection(ops.GraphKeys.GLOBAL_STEP, clone.optimizer.iterations)
 
     # Extract update and train ops from train/test/predict functions.
+    train_op = None
     if mode == model_fn_lib.ModeKeys.TRAIN:
       clone._make_train_function()
-      builder._add_train_op(clone.train_function.updates_op)
+      train_op = clone.train_function.updates_op
     elif mode == model_fn_lib.ModeKeys.EVAL:
       clone._make_test_function()
     else:
@@ -232,7 +265,8 @@ def _export_mode(
         model_fn_lib.EXPORT_TAG_MAP[mode],
         signature_def_map=_create_signature_def_map(clone, mode),
         saver=saver_lib.Saver(clone_var_list),
-        main_op=variables.local_variables_initializer())
+        init_op=variables.local_variables_initializer(),
+        train_op=train_op)
     return None
 
 
@@ -245,42 +279,40 @@ def _create_signature_def_map(model, mode):
     inputs_dict.update(targets_dict)
   outputs_dict = {name: x
                   for name, x in zip(model.output_names, model.outputs)}
+  metrics = estimator_keras_util._convert_keras_metrics_to_estimator(model)
+
+  # Add metric variables to the `LOCAL_VARIABLES` collection. Metric variables
+  # are by default not added to any collections. We are doing this here, so
+  # that metric variables get initialized.
+  local_vars = set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
+  vars_to_add = set()
+  if metrics is not None:
+    for key, value in six.iteritems(metrics):
+      if isinstance(value, Metric):
+        vars_to_add.update(value.variables)
+        # Convert Metric instances to (value_tensor, update_op) tuple.
+        metrics[key] = (value.result(), value.updates[0])
+  # Remove variables that are in the local variables collection already.
+  vars_to_add = vars_to_add.difference(local_vars)
+  for v in vars_to_add:
+    ops.add_to_collection(ops.GraphKeys.LOCAL_VARIABLES, v)
+
   export_outputs = model_fn_lib.export_outputs_for_mode(
       mode,
       predictions=outputs_dict,
       loss=model.total_loss if model.optimizer else None,
-      metrics=estimator_keras_util._convert_keras_metrics_to_estimator(model))
+      metrics=metrics)
   return export_helpers.build_all_signature_defs(
       inputs_dict,
       export_outputs=export_outputs,
       serving_only=(mode == model_fn_lib.ModeKeys.PREDICT))
 
 
-def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph):
+def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph):  # pylint: disable=unused-argument
   """Assert model and clone contain the same checkpointable objects."""
 
-  def get_non_optimizer_objects(m, g):
-    """Gather set of model and optimizer checkpointable objects."""
-    # Set default graph because optimizer.variables() returns optimizer
-    # variables defined in the default graph.
-    with g.as_default():
-      all_objects = set(checkpointable_utils.list_objects(m))
-      optimizer_and_variables = set()
-      for obj in all_objects:
-        if isinstance(obj, optimizers.TFOptimizer):
-          optimizer_and_variables.update(checkpointable_utils.list_objects(obj))
-          optimizer_and_variables.update(set(obj.optimizer.variables()))
-      return all_objects - optimizer_and_variables
-
-  model_objects = get_non_optimizer_objects(model, model_graph)
-  clone_objects = get_non_optimizer_objects(clone, clone_graph)
-
-  if len(model_objects) != len(clone_objects):
-    raise errors.InternalError(
-        None, None,
-        'Model and clone must use the same variables.'
-        '\n\tModel variables: %s\n\t Clone variables: %s'
-        % (model_objects, clone_objects))
+  # TODO(fchollet, kathywu): make sure this works in eager mode.
+  return True
 
 
 def load_keras_model(saved_model_path):
@@ -290,6 +322,25 @@ def load_keras_model(saved_model_path):
   1) loading model topology from json (this will eventually come
      from metagraph).
   2) loading model weights from checkpoint.
+
+  Example:
+
+  ```python
+  import tensorflow as tf
+
+  # Create a tf.keras model.
+  model = tf.keras.Sequential()
+  model.add(tf.keras.layers.Dense(1, input_shape=[10]))
+  model.summary()
+
+  # Save the tf.keras model in the SavedModel format.
+  saved_to_path = tf.contrib.saved_model.save_keras_model(
+        model, '/tmp/my_simple_tf_keras_saved_model')
+
+  # Load the saved keras model back.
+  model_prime = tf.contrib.saved_model.load_keras_model(saved_to_path)
+  model_prime.summary()
+  ```
 
   Args:
     saved_model_path: a string specifying the path to an existing SavedModel.

@@ -41,7 +41,7 @@ _NUM_CORES_TO_COMPUTATION_SHAPE = {
 
 
 class TPUContext(object):
-  """The context of current input_fn invocation."""
+  """A context that holds the current configuration of the TPU computation."""
 
   def __init__(self,
                internal_ctx,
@@ -118,6 +118,11 @@ class TPUContext(object):
     return self._internal_ctx.num_hosts
 
   @property
+  def current_host(self):
+    """The current host index for the TPU system."""
+    return self._invocation_index
+
+  @property
   def num_of_replicas_per_host(self):
     """The number of replicas for each host."""
     if self._internal_ctx.model_parallelism_enabled:
@@ -148,6 +153,20 @@ class TPUContext(object):
     # a random permutation. The order should not matter in most cases
     # as far as model is replicated to all cores in the system.
     return self._internal_ctx.device_for_replica(replica_id)
+
+  @property
+  def tpu_host_placement_function(self):
+    """Returns the TPU host place function.
+
+    The place function takes host_id as the input and returns the TF device
+    for the correspoding host.
+    """
+
+    def _placement_function(host_id):
+      """Return the host device given host_id."""
+      return self._internal_ctx.tpu_host_placement_function(host_id=host_id)
+
+    return _placement_function
 
 
 class _InternalTPUContext(object):
@@ -698,7 +717,7 @@ def _get_tpu_context(config, train_batch_size, eval_batch_size,
       config.tpu_config.num_cores_per_replica is None):
     logging.warning(
         'Setting TPUConfig.num_shards==1 is an unsupported behavior. '
-        'Please fix as soon as possible (leaving num_shards as None.')
+        'Please fix as soon as possible (leaving num_shards as None.)')
     return _OneCoreTPUContext(config, train_batch_size, eval_batch_size,
                               predict_batch_size, use_tpu)
 

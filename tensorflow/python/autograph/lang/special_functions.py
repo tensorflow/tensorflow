@@ -24,6 +24,34 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.autograph.operators import data_structures
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import tensor_util
+
+
+def _validate_list_constructor(elements, element_dtype, element_shape):
+  """Validates the inputs of tensor_list."""
+  if element_dtype is not None and element_shape is not None:
+    return
+  if tensor_util.is_tensor(elements):
+    return
+  if isinstance(elements, (list, tuple)):
+    if elements:
+      return
+    else:
+      raise ValueError(
+          'element_dtype and element_shape are required when elements are'
+          ' empty')
+
+  raise ValueError(
+      'unknown type for elements: {}; only Tensor, list and tuple are'
+      ' allowed'.format(type(elements)))
+
+
+def match_staging_level(value, like_value):
+  """Casts a value to be staged at the same level as another."""
+  if tensor_util.is_tensor(like_value):
+    return constant_op.constant(value)
+  return value
 
 
 def tensor_list(elements,
@@ -52,9 +80,7 @@ def tensor_list(elements,
   Raises:
     ValueError: for invalid arguments
   """
-  if not (elements or (element_dtype and element_shape)):
-    raise ValueError(
-        'element_dtype and element_shape are required for empty lists')
+  _validate_list_constructor(elements, element_dtype, element_shape)
   if use_tensor_array:
     return data_structures.tf_tensor_array_new(elements, element_dtype,
                                                element_shape)

@@ -125,4 +125,24 @@ output: The sum of all the distributed inputs.
 T: The type of elements to be summed.
 )doc");
 
+REGISTER_OP("CollectivePermute")
+    .Input("input: T")
+    .Input("source_target_pairs: int32")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+An Op to permute tensors across replicated TPU instances. Each instance
+supplies its own input.
+
+For example, suppose there are 4 TPU instances: `[A, B, C, D]`. Passing
+source_target_pairs=`[[0,1],[1,2],[2,3],[3,0]]` gets the outputs:
+`[D, A, B, C]`.
+
+input: The local input to be permuted. Currently only supports float and
+  bfloat16.
+source_target_pairs: A tensor with shape [num_pairs, 2].
+output: The permuted input.
+T: The type of elements to be exchanged.
+)doc");
 }  // namespace tensorflow

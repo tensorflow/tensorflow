@@ -209,16 +209,16 @@ template <>
 class OpDefBuilderWrapper<true> {
  public:
   OpDefBuilderWrapper(const char name[]) : builder_(name) {}
-  OpDefBuilderWrapper<true>& Attr(StringPiece spec) {
-    builder_.Attr(spec);
+  OpDefBuilderWrapper<true>& Attr(string spec) {
+    builder_.Attr(std::move(spec));
     return *this;
   }
-  OpDefBuilderWrapper<true>& Input(StringPiece spec) {
-    builder_.Input(spec);
+  OpDefBuilderWrapper<true>& Input(string spec) {
+    builder_.Input(std::move(spec));
     return *this;
   }
-  OpDefBuilderWrapper<true>& Output(StringPiece spec) {
-    builder_.Output(spec);
+  OpDefBuilderWrapper<true>& Output(string spec) {
+    builder_.Output(std::move(spec));
     return *this;
   }
   OpDefBuilderWrapper<true>& SetIsCommutative() {
@@ -237,12 +237,12 @@ class OpDefBuilderWrapper<true> {
     builder_.SetAllowsUninitializedInput();
     return *this;
   }
-  OpDefBuilderWrapper<true>& Deprecated(int version, StringPiece explanation) {
-    builder_.Deprecated(version, explanation);
+  OpDefBuilderWrapper<true>& Deprecated(int version, string explanation) {
+    builder_.Deprecated(version, std::move(explanation));
     return *this;
   }
-  OpDefBuilderWrapper<true>& Doc(StringPiece text) {
-    builder_.Doc(text);
+  OpDefBuilderWrapper<true>& Doc(string text) {
+    builder_.Doc(std::move(text));
     return *this;
   }
   OpDefBuilderWrapper<true>& SetShapeFn(

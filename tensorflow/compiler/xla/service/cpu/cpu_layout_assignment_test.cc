@@ -54,8 +54,9 @@ class CpuLayoutAssignmentTest : public HloTestBase {
         [](int64 shape_size) {
           return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
         });
-    cpu::CpuLayoutAssignment layout_assignment(entry_computation_layout,
-                                               &target_machine_features);
+    cpu::CpuLayoutAssignment layout_assignment(
+        entry_computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+        &target_machine_features);
     EXPECT_IS_OK(layout_assignment.Run(module).status());
   }
 };
@@ -72,7 +73,7 @@ TEST_F(CpuLayoutAssignmentTest, DotWithConstantRhsTensor) {
   auto result = builder.AddInstruction(
       CreateCanonicalDot(result_shape, dot_lhs, dot_rhs));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
   ComputationLayout computation_layout(computation->ComputeProgramShape());
@@ -113,7 +114,7 @@ TEST_F(CpuLayoutAssignmentTest, MultipleDotsWithSameConstantRhsTensor0) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       result_shape, HloOpcode::kAdd, dot_a_result, dot_b_result));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
   ComputationLayout computation_layout(computation->ComputeProgramShape());
@@ -157,7 +158,7 @@ TEST_F(CpuLayoutAssignmentTest, MultipleDotsWithSameConstantRhsTensor1) {
   auto tuple_result = builder.AddInstruction(
       HloInstruction::CreateTuple({dot_a_result, dot_b_result}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
   ComputationLayout computation_layout(computation->ComputeProgramShape());
@@ -191,7 +192,7 @@ TEST_F(CpuLayoutAssignmentTest, DotWithConstantLhsTensor) {
   auto dot_result = builder.AddInstruction(
       CreateCanonicalDot(result_shape, dot_lhs, dot_rhs));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
   ComputationLayout computation_layout(computation->ComputeProgramShape());
@@ -231,7 +232,7 @@ TEST_F(CpuLayoutAssignmentTest, DotWithConstantRhsTensorThroughGTE) {
   auto dot_result = builder.AddInstruction(
       CreateCanonicalDot(result_shape, dot_lhs, dot_rhs));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
   ComputationLayout computation_layout(computation->ComputeProgramShape());
@@ -321,8 +322,9 @@ static StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
       [](int64 shape_size) {
         return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
-  cpu::CpuLayoutAssignment layout_assignment(&computation_layout,
-                                             &target_machine_features);
+  cpu::CpuLayoutAssignment layout_assignment(
+      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+      &target_machine_features);
   TF_ASSIGN_OR_RETURN(result.layout_assignment_changed_something,
                       layout_assignment.Run(module));
 
@@ -351,7 +353,7 @@ static void AssertCorrectLayoutForDotOutputFusion(
 }
 
 TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_1x50x19_dot_idx_0) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
   TF_ASSERT_OK_AND_ASSIGN(
       DotOutputFusionLayoutAssignmentResult layout_assignment_result,
       RunDotOutputFusion(module.get(), TestName(), /*m=*/1, /*k=*/50, /*n=*/19,
@@ -363,7 +365,7 @@ TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_1x50x19_dot_idx_0) {
 }
 
 TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_1x50x19_dot_idx_1) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
   TF_ASSERT_OK_AND_ASSIGN(
       DotOutputFusionLayoutAssignmentResult layout_assignment_result,
       RunDotOutputFusion(module.get(), TestName(), /*m=*/1, /*k=*/50, /*n=*/19,
@@ -375,7 +377,7 @@ TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_1x50x19_dot_idx_1) {
 }
 
 TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x1_dot_idx_0) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
   TF_ASSERT_OK_AND_ASSIGN(
       DotOutputFusionLayoutAssignmentResult layout_assignment_result,
       RunDotOutputFusion(module.get(), TestName(), /*m=*/19, /*k=*/50, /*n=*/1,
@@ -387,7 +389,7 @@ TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x1_dot_idx_0) {
 }
 
 TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x1_dot_idx_1) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
   TF_ASSERT_OK_AND_ASSIGN(
       DotOutputFusionLayoutAssignmentResult layout_assignment_result,
       RunDotOutputFusion(module.get(), TestName(), /*m=*/19, /*k=*/50, /*n=*/1,
@@ -399,7 +401,7 @@ TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x1_dot_idx_1) {
 }
 
 TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x19_dot_idx_0) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
   TF_ASSERT_OK_AND_ASSIGN(
       DotOutputFusionLayoutAssignmentResult layout_assignment_result,
       RunDotOutputFusion(module.get(), TestName(), /*m=*/19, /*k=*/50, /*n=*/19,
@@ -411,7 +413,7 @@ TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x19_dot_idx_0) {
 }
 
 TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x19_dot_idx_1) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
   TF_ASSERT_OK_AND_ASSIGN(
       DotOutputFusionLayoutAssignmentResult layout_assignment_result,
       RunDotOutputFusion(module.get(), TestName(), /*m=*/19, /*k=*/50, /*n=*/19,

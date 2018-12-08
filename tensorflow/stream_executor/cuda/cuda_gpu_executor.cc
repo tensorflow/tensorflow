@@ -24,6 +24,8 @@ limitations under the License.
 #else
 #include <unistd.h>
 #endif
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/cuda/cuda_event.h"
@@ -31,17 +33,16 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/cuda/cuda_timer.h"
 #include "tensorflow/stream_executor/kernel_cache_config.h"
-#include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/mathutil.h"
+#include "tensorflow/stream_executor/lib/numbers.h"
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/process_state.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/timer.h"
-#include "tensorflow/stream_executor/lib/numbers.h"
 
 #ifdef PLATFORMS_GPUS_CUDA_DYNAMIC_LIBCUDA_DYNAMIC_LIBCUDA_H_
 #error \
@@ -147,14 +147,14 @@ port::Status CUDAExecutor::Init(int device_ordinal,
 }
 
 bool CUDAExecutor::FindOnDiskForComputeCapability(
-    port::StringPiece filename, port::StringPiece canonical_suffix,
+    absl::string_view filename, absl::string_view canonical_suffix,
     string *found_filename) const {
   if (cc_major_ == 0 && cc_minor_ == 0) {
     return false;
   }
 
   string cc_specific =
-      port::StrCat(filename, ".cc", cc_major_, cc_minor_, canonical_suffix);
+      absl::StrCat(filename, ".cc", cc_major_, cc_minor_, canonical_suffix);
   if (port::FileExists(cc_specific).ok()) {
     VLOG(2) << "found compute-capability-specific file, using that: "
             << cc_specific;
@@ -470,30 +470,59 @@ void CUDAExecutor::VlogOccupancyInfo(const KernelBase &kernel,
   const DeviceDescription &device_description =
       kernel.parent()->GetDeviceDescription();
 
-  uint64 blocks_per_sm = CalculateOccupancy(
-      device_description, regs_per_thread, smem_per_block, thread_dims);
+  const CUDAKernel *cuda_kernel = AsCUDAKernel(&kernel);
+  CUfunction cufunc = cuda_kernel->AsCUDAFunctionValue();
+
+  int blocks_per_sm = CalculateOccupancy(device_description, regs_per_thread,
+                                         smem_per_block, thread_dims, cufunc);
   VLOG(2) << "Resident blocks per SM is " << blocks_per_sm;
 
-  // To increase occupancy, there must be a sufficient number of blocks
-  // available to spread across the sm's at this new improved occupancy level.
-  int multiprocessor_count = device_description.core_count();
-  int block_count = block_dims.x * block_dims.y * block_dims.z;
-  int available_blocks_per_sm =
-      port::MathUtil::CeilOfRatio(block_count, multiprocessor_count);
-  if (available_blocks_per_sm <= static_cast<int64>(blocks_per_sm)) {
-    VLOG(2) << "Occupancy is limited by number of blocks available per sm.";
-    return;
+  int suggested_threads =
+      CompareOccupancy(&blocks_per_sm, device_description, regs_per_thread,
+                       smem_per_block, thread_dims, cufunc);
+  if (suggested_threads != 0) {
+    VLOG(2) << "The cuda occupancy calculator recommends using "
+            << suggested_threads
+            << " threads per block to achieve an occupancy of " << blocks_per_sm
+            << " blocks per SM.";
   }
+}
 
-  uint64 improved_regs_per_thread = CalculateRegisterLimitForTargetOccupancy(
-      device_description, smem_per_block, thread_dims, blocks_per_sm + 1);
-  if (improved_regs_per_thread != 0) {
-    VLOG(2) << "Reducing register usage from " << regs_per_thread
-            << " to " << improved_regs_per_thread
-            << " could increase resident blocks per SM by one.";
+// Compute and return maximum blocks per core (occupancy) based on the
+// device description, some kernel characteristics and the number of threads per
+// block.  If unable to compute occupancy, zero is returned.
+int CUDAExecutor::CalculateOccupancy(
+    const DeviceDescription &device_description, uint64 registers_per_thread,
+    uint64 shared_memory_per_block, const ThreadDim &thread_dims,
+    CUfunction func) {
+  int suggested_blocks = 0;
+  int suggested_threads = 0;
+  CUresult err = cuOccupancyMaxPotentialBlockSize(
+      &suggested_blocks, &suggested_threads, func, nullptr,
+      shared_memory_per_block, 0);
+  CHECK_EQ(err, CUDA_SUCCESS);
+  return suggested_blocks;
+}
+
+// Compute and return the suggested thread count to achieve ideal occupancy.
+// If the provided thread dimensions match this number, zero is returned.
+int CUDAExecutor::CompareOccupancy(int *initial_blocks,
+                                   const DeviceDescription &device_description,
+                                   uint64 registers_per_thread,
+                                   uint64 shared_memory_per_block,
+                                   const ThreadDim &thread_dims,
+                                   CUfunction func) {
+  int suggested_blocks = 0;
+  int suggested_threads = 0;
+  CUresult err = cuOccupancyMaxPotentialBlockSize(
+      &suggested_blocks, &suggested_threads, func, nullptr,
+      shared_memory_per_block, 0);
+  CHECK_EQ(err, CUDA_SUCCESS);
+  if (suggested_blocks > *initial_blocks) {
+    *initial_blocks = suggested_blocks;
+    return suggested_threads;
   } else {
-    VLOG(2) << "Resident blocks per SM cannot be increased by reducing "
-        "register usage.";
+    return 0;
   }
 }
 
@@ -633,8 +662,13 @@ bool CUDAExecutor::MemcpyDeviceToDevice(Stream *stream,
 }
 
 bool CUDAExecutor::HostCallback(Stream *stream,
-                                std::function<void()> callback) {
-  auto callback_ptr = new std::function<void()>(callback);
+                                std::function<port::Status()> callback) {
+  auto callback_ptr = new std::function<void()>([callback]() {
+    port::Status s = callback();
+    if (!s.ok()) {
+      LOG(WARNING) << "Host callback failed: " << s;
+    }
+  });
   return CUDADriver::AddStreamCallback(context_, AsCUDAStreamValue(stream),
                                        InternalHostCallback, callback_ptr);
 }
@@ -980,144 +1014,6 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
 #endif
 }
 
-// Set of compute capability specific device parameters that cannot be
-// queried from the driver API.  These values instead are baked into a
-// lookup table indexed by compute capability version.
-struct UnqueryableDeviceParams {
-  int cc_major;
-  int cc_minor;
-  uint64 blocks_per_core_limit;
-  uint64 registers_per_core_limit;
-  uint64 registers_per_thread_limit;
-  uint64 warp_alloc_granularity;
-  uint64 register_alloc_granularity;
-  uint64 shared_memory_alloc_granularity;
-};
-
-// http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities
-// https://developer.download.nvidia.com/compute/cuda/CUDA_Occupancy_calculator.xls
-static const UnqueryableDeviceParams kAllUnqueryableDeviceParams[] = {
-    {
-        2, 0,       // compute capability (2.0)
-        8,          // blocks_per_core_limit
-        32 * 1024,  // registers_per_core_limit
-        63,         // registers_per_thread_limit
-        2,          // warp_alloc_granularity
-        64,         // register_alloc_granularity
-        128,        // shared_memory_alloc_granularity
-    },
-    {
-        2, 1,       // compute capability (2.1)
-        8,          // blocks_per_core_limit
-        32 * 1024,  // registers_per_core_limit
-        63,         // registers_per_thread_limit
-        2,          // warp_alloc_granularity
-        64,         // register_alloc_granularity
-        128,        // shared_memory_alloc_granularity
-    },
-    {
-        3, 0,       // compute capability (3.0)
-        16,         // blocks_per_core_limit
-        64 * 1024,  // registers_per_core_limit
-        63,         // registers_per_thread_limit
-        4,          // warp_alloc_granularity
-        256,        // register_alloc_granularity
-        256,        // shared_memory_alloc_granularity
-    },
-    {
-        3, 2,       // compute capability (3.2)
-        16,         // blocks_per_core_limit
-        64 * 1024,  // registers_per_core_limit
-        255,        // registers_per_thread_limit
-        4,          // warp_alloc_granularity
-        256,        // register_alloc_granularity
-        256,        // shared_memory_alloc_granularity
-    },
-    {
-        3, 5,       // compute capability (3.5)
-        16,         // blocks_per_core_limit
-        64 * 1024,  // registers_per_core_limit
-        255,        // registers_per_thread_limit
-        4,          // warp_alloc_granularity
-        256,        // register_alloc_granularity
-        256,        // shared_memory_alloc_granularity
-    },
-    {
-        3, 7,        // compute capability (3.7)
-        16,          // blocks_per_core_limit
-        128 * 1024,  // registers_per_core_limit
-        255,         // registers_per_thread_limit
-        4,           // warp_alloc_granularity
-        256,         // register_alloc_granularity
-        256,         // shared_memory_alloc_granularity
-    },
-    {
-        5, 0,       // compute capability (5.0)
-        32,         // blocks_per_core_limit
-        64 * 1024,  // registers_per_core_limit
-        255,        // registers_per_thread_limit
-        4,          // warp_alloc_granularity
-        256,        // register_alloc_granularity
-        256,        // shared_memory_alloc_granularity
-    },
-    {
-        5, 2,       // compute capability (5.2)
-        32,         // blocks_per_core_limit
-        64 * 1024,  // registers_per_core_limit
-        255,        // registers_per_thread_limit
-        4,          // warp_alloc_granularity
-        256,        // register_alloc_granularity
-        256,        // shared_memory_alloc_granularity
-    },
-    {
-        5, 3,       // compute capability (5.3)
-        32,         // blocks_per_core_limit
-        64 * 1024,  // registers_per_core_limit
-        255,        // registers_per_thread_limit
-        4,          // warp_alloc_granularity
-        256,        // register_alloc_granularity
-        256,        // shared_memory_alloc_granularity
-    },
-    {
-        6, 0,       // compute capability (6.0)
-        32,         // blocks_per_core_limit
-        64 * 1024,  // registers_per_core_limit
-        255,        // registers_per_thread_limit
-        2,          // warp_alloc_granularity
-        256,        // register_alloc_granularity
-        256,        // shared_memory_alloc_granularity
-    },
-    {
-        6, 1,       // compute capability (6.1)
-        32,         // blocks_per_core_limit
-        64 * 1024,  // registers_per_core_limit
-        255,        // registers_per_thread_limit
-        4,          // warp_alloc_granularity
-        256,        // register_alloc_granularity
-        256,        // shared_memory_alloc_granularity
-    },
-    {
-        6, 2,       // compute capability (6.2)
-        32,         // blocks_per_core_limit
-        64 * 1024,  // registers_per_core_limit
-        255,        // registers_per_thread_limit
-        4,          // warp_alloc_granularity
-        256,        // register_alloc_granularity
-        256,        // shared_memory_alloc_granularity
-    },
-    // TODO(jlebar): Confirm the alloc granularity values for sm_70.  These are
-    // not published in the spreadsheet linked above.  Currently we guess that
-    // they're the same as sm_60.
-    {
-        7, 0,       // compute capability (7.0)
-        32,         // blocks_per_core_limit
-        64 * 1024,  // registers_per_core_limit
-        255,        // registers_per_thread_limit
-        2,          // warp_alloc_granularity
-        256,        // register_alloc_granularity
-        256,        // shared_memory_alloc_granularity
-    },
-};
 
 DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
   internal::DeviceDescriptionBuilder builder;
@@ -1193,21 +1089,8 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
     builder.set_name(device_name);
   }
 
-  for (size_t i = 0; i < TF_ARRAYSIZE(kAllUnqueryableDeviceParams); i++) {
-    const auto &params = kAllUnqueryableDeviceParams[i];
-    if (params.cc_major == cc_major_ && params.cc_minor == cc_minor_) {
-      builder.set_blocks_per_core_limit(params.blocks_per_core_limit);
-      builder.set_registers_per_core_limit(params.registers_per_core_limit);
-      builder.set_registers_per_thread_limit(params.registers_per_thread_limit);
-      builder.set_warp_alloc_granularity(params.warp_alloc_granularity);
-      builder.set_register_alloc_granularity(params.register_alloc_granularity);
-      builder.set_shared_memory_alloc_granularity(
-          params.shared_memory_alloc_granularity);
-    }
-  }
-
   builder.set_platform_version(
-      port::StrCat("Compute Capability ", cc_major_, ".", cc_minor_));
+      absl::StrCat("Compute Capability ", cc_major_, ".", cc_minor_));
 
   // TODO(leary) should be a way to query this from the driver, but this is
   // unlikely to change for us any time soon.
@@ -1227,6 +1110,10 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
       CUDADriver::GetMaxRegistersPerBlock(device_).ValueOrDie());
   builder.set_threads_per_warp(
       CUDADriver::GetThreadsPerWarp(device_).ValueOrDie());
+  builder.set_registers_per_core_limit(
+      CUDADriver::GetDeviceAttribute(
+          CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR, device_)
+          .ValueOrDie());
 
   auto built = builder.Build();
   return built.release();

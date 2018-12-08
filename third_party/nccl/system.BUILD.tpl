@@ -20,7 +20,7 @@ genrule(
     "libnccl.so.%{version}",
     "nccl.h",
   ],
-  cmd = """cp "%{install_path}/include/nccl.h" "$(@D)/nccl.h" &&
-           cp "%{install_path}/lib/libnccl.so.%{version}" "$(@D)/libnccl.so.%{version}" """,
+  cmd = """cp "%{hdr_path}/nccl.h" "$(@D)/nccl.h" &&
+           cp "%{install_path}/libnccl.so.%{version}" "$(@D)/libnccl.so.%{version}" """,
 )
 

@@ -133,6 +133,14 @@ Status TransposeShapeFn(InferenceContext* c) {
   } else {
     rank = perm->NumElements();
   }
+  if (!c->RankKnown(input) && rank < 2) {
+    // A permutation array containing a single element is ambiguous. It could
+    // indicate either a scalar or a 1-dimensional array, both of which the
+    // transpose op returns unchanged.
+    c->set_output(0, input);
+    return Status::OK();
+  }
+
   std::vector<DimensionHandle> dims;
   dims.resize(rank);
   TF_RETURN_IF_ERROR(c->WithRank(input, rank, &input));
@@ -1531,37 +1539,6 @@ REGISTER_OP("Size")
     .Attr("out_type: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ScalarShape);
 
-namespace {
-
-// This SliceHelper processes the output shape of the `slice`
-// when the tensor of `sizes` is available.
-template <typename T>
-Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
-                   const Tensor* sizes_value,
-                   std::vector<DimensionHandle>* dims) {
-  auto sizes_vec = sizes_value->vec<T>();
-  for (int i = 0; i < sizes_value->NumElements(); ++i) {
-    DimensionHandle dim = c->Dim(c->input(0), i);
-    if (sizes_vec(i) != -1) {
-      auto dim_val = c->Value(dim);
-      if (sizes_vec(i) < 0) {
-        return errors::InvalidArgument(
-            "Out of bounds slicing on dimension ", i, " of length ", dim_val,
-            ": sizes vector cannot be < -1, but was ", sizes_vec(i));
-      }
-
-      dims->emplace_back(c->MakeDim(sizes_vec(i)));
-    } else {
-      DimensionHandle result;
-      TF_RETURN_IF_ERROR(c->Subtract(dim, c->Dim(begin_value, i), &result));
-      dims->emplace_back(result);
-    }
-  }
-
-  return Status::OK();
-}
-}  // namespace
-
 // --------------------------------------------------------------------------
 REGISTER_OP("Slice")
     .Input("input: T")
@@ -1570,83 +1547,22 @@ REGISTER_OP("Slice")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Index: {int32,int64}")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input = c->input(0);
-      ShapeHandle begin_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &begin_shape));
-      ShapeHandle sizes_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &sizes_shape));
+    .SetShapeFn(shape_inference::SliceShape);
 
-      // Merge to check compatibility of begin and sizes tensors.
-      TF_RETURN_IF_ERROR(c->Merge(begin_shape, sizes_shape, &begin_shape));
-
-      DimensionHandle ndims = c->Dim(begin_shape, 0);
-      if (c->ValueKnown(ndims)) {
-        TF_RETURN_IF_ERROR(c->WithRank(input, c->Value(ndims), &input));
-      }
-
-      // NOTE(mrry): Use MakeShapeFromShapeTensor to handle partially-known
-      // values, even though the `begin` value does not represent a shape.
-      ShapeHandle begin_value;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &begin_value));
-
-      // We check the tensor value here and will only use
-      // `MakeShapeFromShapeTensor` when `sizes_value` is null.
-      // The reason is that `sizes`might contain -1, which can't
-      // be represented (-1 in the ShapeHandle would mean "unknown".
-      const Tensor* sizes_value = c->input_tensor(2);
-
-      if (sizes_value != nullptr) {
-        TF_RETURN_IF_ERROR(
-            c->WithRank(begin_value, sizes_value->NumElements(), &begin_value));
-        std::vector<DimensionHandle> dims;
-        // If the begin and sizes tensors are available, then
-        // we can be precise about the shape of the output.
-        if (sizes_value->dtype() == DT_INT64) {
-          TF_RETURN_IF_ERROR(
-              SliceHelper<int64>(c, begin_value, sizes_value, &dims));
-        } else {
-          TF_RETURN_IF_ERROR(
-              SliceHelper<int32>(c, begin_value, sizes_value, &dims));
-        }
-
-        c->set_output(0, c->MakeShape(dims));
-        return Status::OK();
-      } else {
-        // In case `sizes` is not available (`sizes_value` is null),
-        // we could try to use `MakeShapeFromShapeTensor` here.
-        // If sizes contain -1, we will simply consider it as `Unknown`.
-        // This is less than ideal but still an improvement of shape inference.
-        // The following is an example that returns [None, 1, None] with this
-        // code path:
-        //   z = tf.zeros((1, 2, 3))
-        //   m = tf.slice(z, [0, 0, 0], [tf.constant(1) + 0, 1, -1])
-        //   m.get_shape().as_list()
-        ShapeHandle sizes_value;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &sizes_value));
-        if (c->RankKnown(sizes_value)) {
-          TF_RETURN_IF_ERROR(
-              c->WithRank(begin_value, c->Rank(sizes_value), &begin_value));
-          std::vector<DimensionHandle> dims;
-          dims.reserve(c->Rank(sizes_value));
-          for (int i = 0; i < c->Rank(sizes_value); ++i) {
-            dims.emplace_back(c->Dim(sizes_value, i));
-          }
-          c->set_output(0, c->MakeShape(dims));
-          return Status::OK();
-        }
-
-        // We might know the rank of the input.
-        if (c->RankKnown(input)) {
-          c->set_output(0, c->UnknownShapeOfRank(c->Rank(input)));
-          return Status::OK();
-        } else {
-          return shape_inference::UnknownShape(c);
-        }
-      }
-
-      return Status::OK();
-    });
+#ifdef INTEL_MKL
+REGISTER_OP("_MklSlice")
+    .Input("input: T")
+    .Input("begin: Index")
+    .Input("size: Index")
+    .Input("mkl_input: uint8")
+    .Input("mkl_begin: uint8")
+    .Input("mkl_size: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: type")
+    .Attr("Index: {int32,int64}")
+    .SetShapeFn(shape_inference::SliceShape);
+#endif
 
 REGISTER_OP("StridedSlice")
     .Input("input: T")
@@ -2827,6 +2743,9 @@ REGISTER_OP("QuantizeAndDequantizeV2")
     .Attr("range_given: bool = false")
     .Output("output: T")
     .Attr("T: {bfloat16, half, float, double}")
+    .Attr(
+        "round_mode: {'HALF_TO_EVEN', 'HALF_UP'} = "
+        "'HALF_TO_EVEN'")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -2962,14 +2881,9 @@ REGISTER_OP("QuantizedInstanceNorm")
 
 namespace {
 
-Status ScatterNdShape(InferenceContext* c) {
-  ShapeHandle indices_shape;
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &indices_shape));
-  ShapeHandle updates_shape;
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &updates_shape));
-  ShapeHandle output_shape;
-  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output_shape));
-
+Status ScatterNdShapeHelper(InferenceContext* c, ShapeHandle indices_shape,
+                            ShapeHandle updates_shape,
+                            ShapeHandle output_shape) {
   if (c->Value(c->NumElements(output_shape)) == 0 &&
       (c->Value(c->NumElements(indices_shape)) > 0 ||
        c->Value(c->NumElements(updates_shape)) > 0)) {
@@ -3024,6 +2938,26 @@ Status ScatterNdShape(InferenceContext* c) {
   return Status::OK();
 }
 
+Status ScatterNdShape(InferenceContext* c) {
+  ShapeHandle indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &indices_shape));
+  ShapeHandle updates_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &updates_shape));
+  ShapeHandle output_shape;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output_shape));
+  return ScatterNdShapeHelper(c, indices_shape, updates_shape, output_shape);
+}
+
+Status ScatterNdTensorShape(InferenceContext* c) {
+  ShapeHandle output_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &output_shape));
+  ShapeHandle indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
+  ShapeHandle updates_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &updates_shape));
+  return ScatterNdShapeHelper(c, indices_shape, updates_shape, output_shape);
+}
+
 }  // namespace
 
 REGISTER_OP("UpperBound")
@@ -3062,6 +2996,33 @@ REGISTER_OP("ScatterNd")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn(ScatterNdShape);
+
+REGISTER_OP("TensorScatterUpdate")
+    .Input("tensor: T")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ScatterNdTensorShape);
+
+REGISTER_OP("TensorScatterAdd")
+    .Input("tensor: T")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ScatterNdTensorShape);
+
+REGISTER_OP("TensorScatterSub")
+    .Input("tensor: T")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ScatterNdTensorShape);
 
 REGISTER_OP("ScatterNdNonAliasingAdd")
     .Input("input: T")

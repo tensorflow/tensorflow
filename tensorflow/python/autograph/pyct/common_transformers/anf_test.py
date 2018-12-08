@@ -43,6 +43,29 @@ class DummyGensym(object):
     return stem + '_' + str(1000 + self._idx)
 
 
+# These two test functions have to be top-level, not nested, for compatibility
+# with some unknown version of Python 2.7 preceding 2.7.15.  Why?  Because
+# `exec` and nested function definitions _incomaptibly_ change the
+# representation of local variables, such that `exec` inside a nested function
+# definition is a syntax error in that version.  The tuple form of `exec` fixes
+# this problem, but apparently that was introduced in some unknown version of
+# Python that's more recent than at least one version that we wish to be
+# compatible with.
+def exec_test_function():
+  # The point is to test A-normal form conversion of exec
+  # pylint: disable=exec-used
+  exec('computed' + 5 + 'stuff', globals(), locals())
+
+
+def exec_expected_result():
+  # pylint: disable=exec-used
+  tmp_1001 = 'computed' + 5
+  tmp_1002 = tmp_1001 + 'stuff'
+  tmp_1003 = globals()
+  tmp_1004 = locals()
+  exec(tmp_1002, tmp_1003, tmp_1004)
+
+
 class AnfTransformerTest(test.TestCase):
 
   def _simple_source_info(self):
@@ -357,21 +380,7 @@ class AnfTransformerTest(test.TestCase):
     self.assert_body_anfs_as_expected(expected_result, test_function)
 
   def test_exec(self):
-
-    def test_function():
-      # The point is to test A-normal form conversion of exec
-      # pylint: disable=exec-used
-      exec('computed' + 5 + 'stuff', globals(), locals())
-
-    def expected_result():
-      # pylint: disable=exec-used
-      tmp_1001 = 'computed' + 5
-      tmp_1002 = tmp_1001 + 'stuff'
-      tmp_1003 = globals()
-      tmp_1004 = locals()
-      exec(tmp_1002, tmp_1003, tmp_1004)
-
-    self.assert_body_anfs_as_expected(expected_result, test_function)
+    self.assert_body_anfs_as_expected(exec_expected_result, exec_test_function)
 
   def test_simple_while_and_assert(self):
 

@@ -51,25 +51,18 @@ BIGTABLE_TABLE_NAME = '<FILL_ME_IN>'
 PREFIX = 'train-'
 
 def main():
+  tf.enable_eager_execution()
+
   client = tf.contrib.cloud.BigtableClient(GCP_PROJECT_ID, BIGTABLE_INSTANCE_ID)
   table = client.table(BIGTABLE_TABLE_NAME)
   dataset = table.keys_by_prefix_dataset(PREFIX)
-  iterator = dataset.make_initializable_iterator()
-  get_next_op = iterator.get_next()
 
-  with tf.Session() as sess:
-    print('Initializing the iterator.')
-    sess.run(iterator.initializer)
-    print('Retrieving rows:')
-    row_index = 0
-    while True:
-      try:
-        row_key = sess.run(get_next_op)
-        print('Row key %d: %s' % (row_index, row_key))
-        row_index += 1
-      except tf.errors.OutOfRangeError:
-        print('Finished reading data!')
-        break
+  print('Retrieving rows:')
+  row_index = 0
+  for row_key in dataset:
+    print('Row key %d: %s' % (row_index, row_key))
+    row_index += 1
+  print('Finished reading data!')
 
 if __name__ == '__main__':
   main()
@@ -203,7 +196,7 @@ def interleave_fn(index):
   start = tf.string_join(['training_data_', start_idx_str])
   end = tf.string_join(['training_data_', end_idx_str])
   return table.scan_range(start_idx, end_idx, columns=columns)
-ds = ds.apply(tf.contrib.data.parallel_interleave(
+ds = ds.apply(tf.data.experimental.parallel_interleave(
     interleave_fn, cycle_length=NUM_PARALLEL_READS, prefetch_input_elements=1))
 ```
 
@@ -249,7 +242,7 @@ def make_row_key_dataset():
    - ...
    - fake-data-23498103
   """
-  counter_dataset = tf.contrib.data.Counter()
+  counter_dataset = tf.data.experimental.Counter()
   width = 8
   row_key_prefix = 'fake-data-'
   ds = counter_dataset.map(lambda index: tf.as_string(index,

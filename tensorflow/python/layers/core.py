@@ -25,10 +25,11 @@ from __future__ import print_function
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.layers import base
 from tensorflow.python.ops import init_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('layers.Dense')
+@tf_export(v1=['layers.Dense'])
 class Dense(keras_layers.Dense, base.Layer):
   """Densely-connected layer class.
 
@@ -109,7 +110,10 @@ class Dense(keras_layers.Dense, base.Layer):
                                 **kwargs)
 
 
-@tf_export('layers.dense')
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.dense instead.')
+@tf_export(v1=['layers.dense'])
 def dense(
     inputs, units,
     activation=None,
@@ -184,7 +188,7 @@ def dense(
   return layer.apply(inputs)
 
 
-@tf_export('layers.Dropout')
+@tf_export(v1=['layers.Dropout'])
 class Dropout(keras_layers.Dropout, base.Layer):
   """Applies Dropout to the input.
 
@@ -223,7 +227,10 @@ class Dropout(keras_layers.Dropout, base.Layer):
     return super(Dropout, self).call(inputs, training=training)
 
 
-@tf_export('layers.dropout')
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.dropout instead.')
+@tf_export(v1=['layers.dropout'])
 def dropout(inputs,
             rate=0.5,
             noise_shape=None,
@@ -265,9 +272,16 @@ def dropout(inputs,
   return layer.apply(inputs, training=training)
 
 
-@tf_export('layers.Flatten')
+@tf_export(v1=['layers.Flatten'])
 class Flatten(keras_layers.Flatten, base.Layer):
   """Flattens an input tensor while preserving the batch axis (axis 0).
+
+  Arguments:
+    data_format: A string, one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, ..., channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, ...)`.
 
   Examples:
 
@@ -284,13 +298,21 @@ class Flatten(keras_layers.Flatten, base.Layer):
   pass
 
 
-@tf_export('layers.flatten')
-def flatten(inputs, name=None):
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.flatten instead.')
+@tf_export(v1=['layers.flatten'])
+def flatten(inputs, name=None, data_format='channels_last'):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 
   Arguments:
     inputs: Tensor input.
     name: The name of the layer (string).
+    data_format: A string, one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
 
   Returns:
     Reshaped tensor.
@@ -307,7 +329,7 @@ def flatten(inputs, name=None):
     # now `y` has shape `(None, None)`
   ```
   """
-  layer = Flatten(name=name)
+  layer = Flatten(name=name, data_format=data_format)
   return layer.apply(inputs)
 
 

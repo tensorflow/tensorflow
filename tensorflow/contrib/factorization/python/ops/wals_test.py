@@ -420,13 +420,13 @@ class WALSMatrixFactorizationUnsupportedTest(test.TestCase):
 class SweepHookTest(test.TestCase):
 
   def test_sweeps(self):
-    is_row_sweep_var = variables.Variable(True)
-    is_sweep_done_var = variables.Variable(False)
-    init_done = variables.Variable(False)
-    row_prep_done = variables.Variable(False)
-    col_prep_done = variables.Variable(False)
-    row_train_done = variables.Variable(False)
-    col_train_done = variables.Variable(False)
+    is_row_sweep_var = variables.VariableV1(True)
+    is_sweep_done_var = variables.VariableV1(False)
+    init_done = variables.VariableV1(False)
+    row_prep_done = variables.VariableV1(False)
+    col_prep_done = variables.VariableV1(False)
+    row_train_done = variables.VariableV1(False)
+    col_train_done = variables.VariableV1(False)
 
     init_op = state_ops.assign(init_done, True)
     row_prep_op = state_ops.assign(row_prep_done, True)
@@ -486,7 +486,7 @@ class StopAtSweepHookTest(test.TestCase):
 
   def test_stop(self):
     hook = wals_lib._StopAtSweepHook(last_sweep=10)
-    completed_sweeps = variables.Variable(
+    completed_sweeps = variables.VariableV1(
         8, name=wals_lib.WALSMatrixFactorization.COMPLETED_SWEEPS)
     train_op = state_ops.assign_add(completed_sweeps, 1)
     hook.begin()

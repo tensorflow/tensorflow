@@ -50,6 +50,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [],
     }) + [
+        "@com_google_absl//absl/memory",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
@@ -68,7 +69,10 @@ tf_cuda_library(
 tf_cuda_library(
     name = "c_api_internal",
     hdrs = ["c_api_internal.h"],
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//learning/deepmind/courier:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":c_api",
         "//tensorflow/c:c_api",
@@ -140,6 +144,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 

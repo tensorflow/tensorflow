@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/Triple.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -59,6 +59,9 @@ namespace cpu {
 class IrEmitter : public DfsHloVisitorWithDefault,
                   public IrBuilderMixin<IrEmitter> {
  public:
+  using GeneratorForOperandIrArrays =
+      std::function<std::vector<llvm_ir::IrArray>()>;
+
   // Create a new LLVM IR emitter.
   //
   // hlo_module: the HLO module we are emitting IR for.
@@ -98,7 +101,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   StatusOr<llvm::Function*> EmitComputation(
       HloComputation* computation, const string& function_name_prefix,
       bool is_top_level_computation,
-      const std::vector<const HloInstruction*>* instruction_order);
+      const std::vector<HloInstruction*>* instruction_order);
 
   llvm::IRBuilder<>* b() { return &b_; }
 
@@ -156,7 +159,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleConcatenate(HloInstruction* concatenate) override;
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleScatter(HloInstruction* scatter) override;
-  Status HandleAfterAll(HloInstruction* gen_token) override;
+  Status HandleAfterAll(HloInstruction* after_all) override;
+  Status HandleAddDependency(HloInstruction* add_dependency) override;
   Status HandleRng(HloInstruction* rng) override;
   Status FinishVisit(HloInstruction* root) override;
 
@@ -207,6 +211,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Gets a list of IrArrays, one for each of hlo's operands.
   std::vector<llvm_ir::IrArray> GetIrArraysForOperandsOf(
       const HloInstruction* hlo);
+
+  GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
+      HloInstruction* unnested_hlo) {
+    return [=]() { return GetIrArraysForOperandsOf(unnested_hlo); };
+  }
 
   // Augments IrArray with aliasing information.
   void AddAliasingInformationToIrArray(const HloInstruction& hlo,
@@ -427,7 +436,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Maps the buffer allocation slices for the parameters to the computation
   // being compiled to their parameter numbers.  Only relevant for thread local
   // computations.
-  tensorflow::gtl::FlatMap<BufferAllocation::Index, int64>
+  absl::flat_hash_map<BufferAllocation::Index, int64>
       computation_parameter_allocations_;
 
   // Maps HLO instructions to their index into the profile counter array.
@@ -459,9 +468,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // profiling a computation.
   class ProfilingState {
    public:
-    ProfilingState() : use_rdtscp_(false), prof_counters_(nullptr) {}
-    ProfilingState(bool use_rdtscp, llvm::Value* prof_counters)
-        : use_rdtscp_(use_rdtscp), prof_counters_(prof_counters) {}
+    ProfilingState() : use_rdtscp_(false) {}
+    explicit ProfilingState(bool use_rdtscp) : use_rdtscp_(use_rdtscp) {}
 
     // Record the cycle counter before an HLO executes.
     void RecordCycleStart(llvm::IRBuilder<>* b, HloInstruction* hlo);
@@ -485,9 +493,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     // Should we use the x86-specific rdtscp or the generic readcyclecounter
     // intrinsic?
     bool use_rdtscp_;
-
-    // The argument which corresponds to the profile counter buffer.
-    llvm::Value* prof_counters_;
 
     // The first read cycle counter in the program.
     llvm::Value* first_read_cycle_start_ = nullptr;
@@ -567,11 +572,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     }
   };
 
-  tensorflow::gtl::FlatMap<const Literal*, llvm::Constant*,
-                           LiteralPtrHashFunctor, LiteralPtrEqualityFunctor>
+  absl::flat_hash_map<const Literal*, llvm::Constant*, LiteralPtrHashFunctor,
+                      LiteralPtrEqualityFunctor>
       emitted_literals_;
 
-  tensorflow::gtl::FlatMap<BufferAllocation::Index, llvm::Constant*>
+  absl::flat_hash_map<BufferAllocation::Index, llvm::Constant*>
       constant_buffer_to_global_;
 
   std::vector<const HloComputation*> thread_local_computations_;

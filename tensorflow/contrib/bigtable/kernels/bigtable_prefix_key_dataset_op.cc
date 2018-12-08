@@ -31,6 +31,7 @@ class BigtablePrefixKeyDatasetOp : public DatasetOpKernel {
     BigtableTableResource* resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    core::ScopedUnref scoped_unref(resource);
 
     *output = new Dataset(ctx, resource, std::move(prefix));
   }

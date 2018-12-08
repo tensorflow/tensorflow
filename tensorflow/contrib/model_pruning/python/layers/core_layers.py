@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
@@ -119,15 +120,15 @@ class _MaskedConv(base.Layer):
     self.bias_initializer = bias_initializer
     self.kernel_regularizer = kernel_regularizer
     self.bias_regularizer = bias_regularizer
-    self.input_spec = base.InputSpec(ndim=self.rank + 2)
+    self.input_spec = input_spec.InputSpec(ndim=self.rank + 2)
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     channel_axis = 1 if self.data_format == 'channels_first' else -1
-    if input_shape[channel_axis].value is None:
+    if tensor_shape.dimension_value(input_shape[channel_axis]) is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
-    input_dim = input_shape[channel_axis].value
+    input_dim = tensor_shape.dimension_value(input_shape[channel_axis])
     kernel_shape = self.kernel_size + (input_dim, self.filters)
     self.mask = self.add_variable(
         name='mask',
@@ -171,7 +172,7 @@ class _MaskedConv(base.Layer):
           dtype=self.dtype)
     else:
       self.bias = None
-    self.input_spec = base.InputSpec(
+    self.input_spec = input_spec.InputSpec(
         ndim=self.rank + 2, axes={channel_axis: input_dim})
     self.built = True
 
@@ -393,19 +394,19 @@ class MaskedFullyConnected(base.Layer):
     self.bias_initializer = bias_initializer
     self.kernel_regularizer = kernel_regularizer
     self.bias_regularizer = bias_regularizer
-    self.input_spec = base.InputSpec(min_ndim=2)
+    self.input_spec = input_spec.InputSpec(min_ndim=2)
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
-    if input_shape[-1].value is None:
+    if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
-    self.input_spec = base.InputSpec(
-        min_ndim=2, axes={-1: input_shape[-1].value})
+    self.input_spec = input_spec.InputSpec(
+        min_ndim=2, axes={-1: tensor_shape.dimension_value(input_shape[-1])})
 
     self.kernel = self.add_variable(
         'kernel',
-        shape=[input_shape[-1].value, self.units],
+        shape=[tensor_shape.dimension_value(input_shape[-1]), self.units],
         initializer=self.kernel_initializer,
         regularizer=self.kernel_regularizer,
         dtype=self.dtype,
@@ -413,7 +414,7 @@ class MaskedFullyConnected(base.Layer):
 
     self.mask = self.add_variable(
         name='mask',
-        shape=[input_shape[-1].value, self.units],
+        shape=[tensor_shape.dimension_value(input_shape[-1]), self.units],
         initializer=init_ops.ones_initializer(),
         trainable=False,
         dtype=self.dtype)
@@ -470,7 +471,7 @@ class MaskedFullyConnected(base.Layer):
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_shape = input_shape.with_rank_at_least(2)
-    if input_shape[-1].value is None:
+    if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError(
           'The innermost dimension of input_shape must be defined, but saw: %s'
           % input_shape)

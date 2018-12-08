@@ -64,28 +64,36 @@ uint32 GetXLARandomSeed() {
   return counter.fetch_add(2);
 }
 
-// Looks up the input `key` in the compilation cache.
-Status GetComputationCacheEntry(
-    XRTCompilationCache* cache, int64 key,
-    std::unique_ptr<XRTCompilationCacheEntryRef>* entry) {
-  TF_RETURN_IF_ERROR(cache->Lookup(key, entry));
-  return Status::OK();
-}
-
 // Populates `inputs` with the input tensors to the computation.
 Status GetComputationInputs(OpKernelContext* context, ResourceMgr* rm,
                             bool release_inputs,
                             std::vector<XRTTupleAllocation*>* input_tuples,
                             std::vector<xla::ShapedBuffer>* input_allocations,
                             std::vector<xla::ShapedBuffer*>* input_pointers) {
+  std::vector<int64> input_uids;
   OpInputList arg_list;
   TF_RETURN_IF_ERROR(context->input_list("input_handles", &arg_list));
 
-  input_tuples->resize(arg_list.size());
-  input_pointers->resize(arg_list.size());
+  // Concatenate all input uids from list of scalars-or-vectors carrying them.
   for (int i = 0; i < arg_list.size(); ++i) {
-    TF_RET_CHECK(TensorShapeUtils::IsScalar(arg_list[i].shape()));
-    int64 input_uid = arg_list[i].scalar<int64>()();
+    const Tensor& arg = arg_list[i];
+    if (TensorShapeUtils::IsScalar(arg.shape())) {
+      input_uids.push_back(arg.scalar<int64>()());
+    } else {
+      TF_RET_CHECK(TensorShapeUtils::IsVector(arg.shape()));
+      auto arg_vec = arg.vec<int64>();
+      const int64 num_elts = arg.shape().dim_size(0);
+      for (int i = 0; i < num_elts; ++i) {
+        input_uids.push_back(arg_vec(i));
+      }
+    }
+  }
+
+  // Retrieve allocations for the uids.
+  input_tuples->resize(input_uids.size());
+  input_pointers->resize(input_uids.size());
+  for (int i = 0; i < input_uids.size(); ++i) {
+    const int64 input_uid = input_uids[i];
     TF_RETURN_IF_ERROR(
         XRTTupleAllocation::Lookup(rm, input_uid, &(*input_tuples)[i]));
     if (release_inputs) {
@@ -98,7 +106,7 @@ Status GetComputationInputs(OpKernelContext* context, ResourceMgr* rm,
     XRTTupleAllocation* tuple = (*input_tuples)[i];
     input_allocations->emplace_back(tuple->ToShapedBuffer());
   }
-  for (int i = 0; i < arg_list.size(); ++i) {
+  for (int i = 0; i < input_uids.size(); ++i) {
     (*input_pointers)[i] = &(*input_allocations)[i];
   }
   return Status::OK();
@@ -220,14 +228,35 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
       shaped_buffer, device_ref.backend(), device_ref.device_ordinal(),
       &output_tuple));
+  if (config_proto.return_exploded_tuple() &&
+      xla::ShapeUtil::IsTuple(output_tuple->on_device_shape())) {
+    int64 tuple_element_count =
+        xla::ShapeUtil::TupleElementCount(output_tuple->on_device_shape());
+    Tensor* output_tensor;
+    TF_RETURN_IF_ERROR(context->allocate_output(
+        0, TensorShape({tuple_element_count}), &output_tensor));
 
-  Tensor* output_tensor;
-  TF_RETURN_IF_ERROR(
-      context->allocate_output(0, TensorShape({}), &output_tensor));
-  int64 key;
-  TF_RETURN_IF_ERROR(output_tuple->Intern(rm, &key));
-  output_tensor->scalar<int64>()() = key;
+    for (int64 i = 0; i < tuple_element_count; ++i) {
+      xla::ShapeIndex shape_index;
+      shape_index.push_back(i);
 
+      XRTTupleAllocation* suballocation;
+      TF_RETURN_IF_ERROR(XRTTupleAllocation::MakeSubBuffer(
+          output_tuple, shape_index, &suballocation,
+          /*alias_parent_allocation=*/false));
+      int64 key;
+      TF_RETURN_IF_ERROR(suballocation->Intern(rm, &key));
+      output_tensor->vec<int64>()(i) = key;
+    }
+    output_tuple->Unref();
+  } else {
+    Tensor* output_tensor;
+    TF_RETURN_IF_ERROR(
+        context->allocate_output(0, TensorShape({}), &output_tensor));
+    int64 key;
+    TF_RETURN_IF_ERROR(output_tuple->Intern(rm, &key));
+    output_tensor->scalar<int64>()() = key;
+  }
   return Status::OK();
 }
 

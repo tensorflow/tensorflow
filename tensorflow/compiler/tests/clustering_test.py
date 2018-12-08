@@ -43,7 +43,7 @@ class ClusteringTest(xla_test.XLATestCase):
         input1 = constant_op.constant(val1, name="const1")
         input2 = constant_op.constant(val2, name="const2")
         output = math_ops.add(input1, input2)
-      result = output.eval()
+      result = self.evaluate(output)
     self.assertAllClose(result, expected, rtol=1e-3)
 
   def testAddFromCpuMultiple(self):
@@ -57,7 +57,7 @@ class ClusteringTest(xla_test.XLATestCase):
       with self.test_scope():
         output = math_ops.add(input1, input2)
       for _ in xrange(10):
-        result = output.eval()
+        result = self.evaluate(output)
         self.assertAllClose(result, expected, rtol=1e-3)
 
   def testDeadlock(self):

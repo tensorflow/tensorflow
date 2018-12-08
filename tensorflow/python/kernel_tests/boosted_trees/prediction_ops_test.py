@@ -28,6 +28,7 @@ from tensorflow.python.platform import googletest
 class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
   """Tests prediction ops for training."""
 
+  @test_util.run_deprecated_v1
   def testCachedPredictionOnEmptyEnsemble(self):
     """Tests that prediction on a dummy ensemble does not fail."""
     with self.cached_session() as session:
@@ -61,6 +62,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(cached_node_ids, new_node_ids)
       self.assertAllClose([[0], [0]], logits_updates)
 
+  @test_util.run_deprecated_v1
   def testNoCachedPredictionButTreeExists(self):
     """Tests that predictions are updated once trees are added."""
     with self.cached_session() as session:
@@ -127,6 +129,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose([2, 1], new_node_ids)
       self.assertAllClose([[0.1 * 8.79], [0.1 * 1.14]], logits_updates)
 
+  @test_util.run_deprecated_v1
   def testCachedPredictionIsCurrent(self):
     """Tests that prediction based on previous node in the tree works."""
     with self.cached_session() as session:
@@ -199,6 +202,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(cached_node_ids, new_node_ids)
       self.assertAllClose([[0], [0]], logits_updates)
 
+  @test_util.run_deprecated_v1
   def testCachedPredictionFromTheSameTree(self):
     """Tests that prediction based on previous node in the tree works."""
     with self.cached_session() as session:
@@ -313,6 +317,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # 1.65 and -3.875, and then multiply them by 0.1 (lr)
       self.assertAllClose([[0.1 * 1.65], [0.1 * -3.875]], logits_updates)
 
+  @test_util.run_deprecated_v1
   def testCachedPredictionFromPreviousTree(self):
     """Tests the predictions work when we have cache from previous trees."""
     with self.cached_session() as session:
@@ -445,6 +450,80 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       #            change= 0.1(1.14+7.0-7.0)
       self.assertAllClose([[1], [0.114]], logits_updates)
 
+  @test_util.run_deprecated_v1
+  def testCategoricalSplits(self):
+    """Tests the training prediction work for categorical splits."""
+    with self.cached_session() as session:
+      tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
+      text_format.Merge(
+          """
+        trees {
+          nodes {
+            categorical_split {
+              feature_id: 1
+              value: 2
+              left_id: 1
+              right_id: 2
+            }
+          }
+          nodes {
+            categorical_split {
+              feature_id: 0
+              value: 13
+              left_id: 3
+              right_id: 4
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 7.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 5.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 6.0
+            }
+          }
+        }
+        tree_weights: 1.0
+        tree_metadata {
+          is_finalized: true
+        }
+      """, tree_ensemble_config)
+
+      # Create existing ensemble with one root split
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto=tree_ensemble_config.SerializeToString())
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      feature_0_values = [13, 1, 3]
+      feature_1_values = [2, 2, 1]
+
+      # No previous cached values.
+      cached_tree_ids = [0, 0, 0]
+      cached_node_ids = [0, 0, 0]
+
+      # Grow tree ensemble.
+      predict_op = boosted_trees_ops.training_predict(
+          tree_ensemble_handle,
+          cached_tree_ids=cached_tree_ids,
+          cached_node_ids=cached_node_ids,
+          bucketized_features=[feature_0_values, feature_1_values],
+          logits_dimension=1)
+
+      logits_updates, new_tree_ids, new_node_ids = session.run(predict_op)
+
+      self.assertAllClose([0, 0, 0], new_tree_ids)
+      self.assertAllClose([3, 4, 2], new_node_ids)
+      self.assertAllClose([[5.], [6.], [7.]], logits_updates)
+
+  @test_util.run_deprecated_v1
   def testCachedPredictionFromTheSameTreeWithPostPrunedNodes(self):
     """Tests that prediction based on previous node in the tree works."""
     with self.cached_session() as session:
@@ -575,6 +654,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose([[0.01], [0.01], [0.0553], [0.0783], [0.01], [0.01]],
                           logits_updates + cached_values)
 
+  @test_util.run_deprecated_v1
   def testCachedPredictionFromThePreviousTreeWithPostPrunedNodes(self):
     """Tests that prediction based on previous node in the tree works."""
     with self.cached_session() as session:
@@ -720,6 +800,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
                            [root + 0.0783], [root + 0.01], [root + 0.01]],
                           logits_updates + cached_values)
 
+  @test_util.run_deprecated_v1
   def testCachedPredictionTheWholeTreeWasPruned(self):
     """Tests that prediction based on previous node in the tree works."""
     with self.cached_session() as session:
@@ -792,6 +873,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 class PredictionOpsTest(test_util.TensorFlowTestCase):
   """Tests prediction ops for inference."""
 
+  @test_util.run_deprecated_v1
   def testPredictionOnEmptyEnsemble(self):
     """Tests that prediction on a empty ensemble does not fail."""
     with self.cached_session() as session:
@@ -814,6 +896,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       logits = session.run(predict_op)
       self.assertAllClose(expected_logits, logits)
 
+  @test_util.run_deprecated_v1
   def testPredictionMultipleTree(self):
     """Tests the predictions work when we have multiple trees."""
     with self.cached_session() as session:
@@ -924,17 +1007,81 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       logits = session.run(predict_op)
       self.assertAllClose(expected_logits, logits)
 
+  @test_util.run_deprecated_v1
+  def testCategoricalSplits(self):
+    """Tests the predictions work for categorical splits."""
+    with self.cached_session() as session:
+      tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
+      text_format.Merge(
+          """
+        trees {
+          nodes {
+            categorical_split {
+              feature_id: 1
+              value: 2
+              left_id: 1
+              right_id: 2
+            }
+          }
+          nodes {
+            categorical_split {
+              feature_id: 0
+              value: 13
+              left_id: 3
+              right_id: 4
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 7.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 5.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 6.0
+            }
+          }
+        }
+        tree_weights: 1.0
+      """, tree_ensemble_config)
+
+      # Create existing ensemble with one root split
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto=tree_ensemble_config.SerializeToString())
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      feature_0_values = [13, 1, 3]
+      feature_1_values = [2, 2, 1]
+
+      expected_logits = [[5.], [6.], [7.]]
+
+      # Prediction should work fine.
+      predict_op = boosted_trees_ops.predict(
+          tree_ensemble_handle,
+          bucketized_features=[feature_0_values, feature_1_values],
+          logits_dimension=1)
+
+      logits = session.run(predict_op)
+      self.assertAllClose(expected_logits, logits)
+
 
 class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
   """Tests feature contribs ops for model understanding."""
 
+  @test_util.run_deprecated_v1
   def testContribsForOnlyABiasNode(self):
     """Tests case when, after training, only left with a bias node.
 
     For example, this could happen if the final ensemble contains one tree that
     got pruned up to the root.
     """
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge(
           """
@@ -988,9 +1135,10 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(feature_ids, expected_feature_ids)
       self.assertAllClose(logits_paths, expected_logits_paths)
 
+  @test_util.run_deprecated_v1
   def testContribsMultipleTreeWhenFirstTreeIsABiasNode(self):
     """Tests case when, after training, first tree contains only a bias node."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge(
           """
@@ -1085,6 +1233,7 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(feature_ids, expected_feature_ids)
       self.assertAllClose(logits_paths, expected_logits_paths)
 
+  @test_util.run_deprecated_v1
   def testContribsMultipleTree(self):
     """Tests that the contribs work when we have multiple trees."""
     with self.cached_session() as session:

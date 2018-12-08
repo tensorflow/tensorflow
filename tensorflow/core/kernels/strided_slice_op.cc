@@ -149,7 +149,7 @@ class StridedSliceOp : public OpKernel {
       // NDIM and T
       if (is_simple_slice && std::is_same<Device, CPUDevice>::value &&
           input_dims == 2 && processing_shape.dims() == 2 &&
-          final_shape.dims() == 2) {
+          final_shape.dims() == 2 && new_axis_mask == 0) {
         MemCpyFunctor<T> functor;
         if (functor.Copy(input, begin, end, result)) {
           return;
@@ -306,6 +306,7 @@ class StridedSliceAssignOp : public OpKernel {
       Var* v;
       OP_REQUIRES_OK(context,
                      LookupResource(context, HandleFromInput(context, 0), &v));
+      core::ScopedUnref scoped_unref(v);
       mutex_lock ml(*v->mu());
       OP_REQUIRES_OK(context,
                      PrepareToUpdateVariable<Device, T>(context, v->tensor()));
@@ -446,6 +447,8 @@ TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
                           StridedSliceAssignOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_bool(REGISTER_GPU);
+TF_CALL_int8(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);

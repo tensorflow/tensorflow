@@ -45,11 +45,11 @@ class Embedding(Layer):
     model = Sequential()
     model.add(Embedding(1000, 64, input_length=10))
     # the model will take as input an integer matrix of size (batch,
-    input_length).
+    # input_length).
     # the largest integer (i.e. word index) in the input should be no larger
-    than 999 (vocabulary size).
+    # than 999 (vocabulary size).
     # now model.output_shape == (None, 10, 64), where None is the batch
-    dimension.
+    # dimension.
 
     input_array = np.random.randint(1000, size=(32, 10))
 
@@ -82,10 +82,10 @@ class Embedding(Layer):
         (without it, the shape of the dense outputs cannot be computed).
 
   Input shape:
-      2D tensor with shape: `(batch_size, sequence_length)`.
+      2D tensor with shape: `(batch_size, input_length)`.
 
   Output shape:
-      3D tensor with shape: `(batch_size, sequence_length, output_dim)`.
+      3D tensor with shape: `(batch_size, input_length, output_dim)`.
 
   """
 
@@ -159,13 +159,15 @@ class Embedding(Layer):
       else:
         in_lens = [self.input_length]
       if len(in_lens) != len(input_shape) - 1:
-        ValueError('"input_length" is %s, but received input has shape %s' %
-                   (str(self.input_length), str(input_shape)))
+        raise ValueError('"input_length" is %s, '
+                         'but received input has shape %s' % (str(
+                             self.input_length), str(input_shape)))
       else:
         for i, (s1, s2) in enumerate(zip(in_lens, input_shape[1:])):
           if s1 is not None and s2 is not None and s1 != s2:
-            ValueError('"input_length" is %s, but received input has shape %s' %
-                       (str(self.input_length), str(input_shape)))
+            raise ValueError('"input_length" is %s, '
+                             'but received input has shape %s' % (str(
+                                 self.input_length), str(input_shape)))
           elif s1 is None:
             in_lens[i] = s2
       return (input_shape[0],) + tuple(in_lens) + (self.output_dim,)

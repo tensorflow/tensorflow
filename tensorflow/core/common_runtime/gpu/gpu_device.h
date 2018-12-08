@@ -65,6 +65,11 @@ class BaseGPUDevice : public LocalDevice {
   // completes.
   bool RequiresRecordingAccessedTensors() const override;
 
+  // GPU kernel execution requires us to use `tracing::ScopedAnnotation()`
+  // rather than `tracing::ScopedActivity()`, in order to relate asynchronously
+  // launched GPU kernels to the OpKernel.
+  bool TraceUsingAnnotations() const { return true; }
+
   void ConsumeListOfAccessedTensors(
       DeviceContext* device_context,
       const TensorReferenceVector& tensor_refs) override;
@@ -161,7 +166,7 @@ class BaseGPUDevice : public LocalDevice {
 class BaseGPUDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override;
+                       std::vector<std::unique_ptr<Device>>* devices) override;
 
   struct InterconnectMap {
     // Name of interconnect technology, if known.
@@ -202,15 +207,13 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   Status CreateGPUDevice(const SessionOptions& options,
                          const string& name_prefix, TfGpuId tf_gpu_id,
                          int64 memory_limit, const DeviceLocality& dev_locality,
-                         std::vector<Device*>* devices);
+                         std::vector<std::unique_ptr<Device>>* devices);
 
-  virtual BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
-                                         const string& name, Bytes memory_limit,
-                                         const DeviceLocality& dev_locality,
-                                         TfGpuId tf_gpu_id,
-                                         const string& physical_device_desc,
-                                         Allocator* gpu_allocator,
-                                         Allocator* cpu_allocator) = 0;
+  virtual std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
+      const SessionOptions& options, const string& name, Bytes memory_limit,
+      const DeviceLocality& dev_locality, TfGpuId tf_gpu_id,
+      const string& physical_device_desc, Allocator* gpu_allocator,
+      Allocator* cpu_allocator) = 0;
 
   // Returns into 'ids' the list of valid platform GPU ids, in the order that
   // they should map to TF GPU ids "/device:GPU:0", "/device:GPU:1", etc,

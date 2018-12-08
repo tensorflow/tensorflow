@@ -60,14 +60,26 @@ int32 BoostedTreesEnsembleResource::next_node(
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   DCHECK_LT(node_id, tree_ensemble_->trees(tree_id).nodes_size());
   const auto& node = tree_ensemble_->trees(tree_id).nodes(node_id);
-  DCHECK_EQ(node.node_case(), boosted_trees::Node::kBucketizedSplit);
-  const auto& split = node.bucketized_split();
-  if (bucketized_features[split.feature_id()](index_in_batch) <=
-      split.threshold()) {
-    return split.left_id();
-  } else {
-    return split.right_id();
+
+  switch (node.node_case()) {
+    case boosted_trees::Node::kBucketizedSplit: {
+      const auto& split = node.bucketized_split();
+      return (bucketized_features[split.feature_id()](index_in_batch) <=
+              split.threshold())
+                 ? split.left_id()
+                 : split.right_id();
+    }
+    case boosted_trees::Node::kCategoricalSplit: {
+      const auto& split = node.categorical_split();
+      return (bucketized_features[split.feature_id()](index_in_batch) ==
+              split.value())
+                 ? split.left_id()
+                 : split.right_id();
+    }
+    default:
+      DCHECK(false) << "Node type " << node.node_case() << " not supported.";
   }
+  return -1;
 }
 
 float BoostedTreesEnsembleResource::node_value(const int32 tree_id,

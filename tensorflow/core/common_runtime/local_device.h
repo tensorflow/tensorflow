@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_LOCAL_DEVICE_H_
 
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/tracing_device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -32,7 +31,7 @@ struct SessionOptions;
 // initializes a shared Eigen compute device used by both.  This
 // should eventually be removed once we refactor ThreadPoolDevice and
 // GPUDevice into more 'process-wide' abstractions.
-class LocalDevice : public TracingDevice {
+class LocalDevice : public Device {
  public:
   LocalDevice(const SessionOptions& options,
               const DeviceAttributes& attributes);
@@ -47,6 +46,13 @@ class LocalDevice : public TracingDevice {
 
   struct EigenThreadPoolInfo;
   std::unique_ptr<EigenThreadPoolInfo> owned_tp_info_;
+
+  // All ThreadPoolDevices in the process associated with the same
+  // NUMA node will share a single fixed sized threadpool for numerical
+  // computations.
+  static mutex global_tp_mu_;
+  static gtl::InlinedVector<EigenThreadPoolInfo*, 4> global_tp_info_
+      GUARDED_BY(global_tp_mu_);
 
   friend class test::Benchmark;
 

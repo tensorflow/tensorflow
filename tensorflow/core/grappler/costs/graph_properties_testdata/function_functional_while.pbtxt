@@ -88,6 +88,13 @@ library {
           }
         }
       }
+      attr {
+        key: "output_shapes"
+        value {
+          list {
+          }
+        }
+      }
     }
     ret {
       key: "while"

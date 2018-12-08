@@ -108,7 +108,7 @@ class UniqueOp : public OpKernel {
 
       std::unordered_map<T, TIndex> uniq;
       uniq.reserve(2 * N);
-      for (int64 i = 0, j = 0; i < N; ++i) {
+      for (Eigen::Index i = 0, j = 0; i < N; ++i) {
         auto it = uniq.insert(std::make_pair(Tin(i), j));
         idx_vec(i) = it.first->second;
         if (it.second) {
@@ -131,19 +131,20 @@ class UniqueOp : public OpKernel {
       // General implementation when unique is run over multiple elements.
       auto Tin = input.shaped<T, 3>(new_sizes);
 
-      auto hash_fn = [&Tin](const int64& key) {
+      auto hash_fn = [&Tin](const Eigen::Index& key) {
         size_t h = 0;
-        for (int64 i = 0; i < Tin.dimension(0); i++) {
-          for (int64 j = 0; j < Tin.dimension(2); j++) {
+        for (Eigen::Index i = 0; i < Tin.dimension(0); i++) {
+          for (Eigen::Index j = 0; j < Tin.dimension(2); j++) {
             h = Hash64Combine(h, hash<T>{}(Tin(i, key, j)));
           }
         }
         return h;
       };
 
-      auto equal_to_fn = [&Tin](const int64& lhs, const int64& rhs) {
-        for (int64 i = 0; i < Tin.dimension(0); i++) {
-          for (int64 j = 0; j < Tin.dimension(2); j++) {
+      auto equal_to_fn = [&Tin](const Eigen::Index& lhs,
+                                const Eigen::Index& rhs) {
+        for (Eigen::Index i = 0; i < Tin.dimension(0); i++) {
+          for (Eigen::Index j = 0; j < Tin.dimension(2); j++) {
             if (Tin(i, lhs, j) != Tin(i, rhs, j)) {
               return false;
             }

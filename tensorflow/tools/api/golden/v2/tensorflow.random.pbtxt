@@ -1,0 +1,71 @@
+path: "tensorflow.random"
+tf_module {
+  member_method {
+    name: "all_candidate_sampler"
+    argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "categorical"
+    argspec: "args=[\'logits\', \'num_samples\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "fixed_unigram_candidate_sampler"
+    argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'range_max\', \'vocab_file\', \'distortion\', \'num_reserved_ids\', \'num_shards\', \'shard\', \'unigrams\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'1.0\', \'0\', \'1\', \'0\', \'()\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "gamma"
+    argspec: "args=[\'shape\', \'alpha\', \'beta\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \'None\', \'None\'], "
+  }
+  member_method {
+    name: "learned_unigram_candidate_sampler"
+    argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'range_max\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "log_uniform_candidate_sampler"
+    argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'range_max\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "normal"
+    argspec: "args=[\'shape\', \'mean\', \'stddev\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\', \'None\'], "
+  }
+  member_method {
+    name: "poisson"
+    argspec: "args=[\'shape\', \'lam\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\', \'None\'], "
+  }
+  member_method {
+    name: "set_seed"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "shuffle"
+    argspec: "args=[\'value\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "stateless_categorical"
+    argspec: "args=[\'logits\', \'num_samples\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
+  }
+  member_method {
+    name: "stateless_normal"
+    argspec: "args=[\'shape\', \'seed\', \'mean\', \'stddev\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "stateless_truncated_normal"
+    argspec: "args=[\'shape\', \'seed\', \'mean\', \'stddev\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "stateless_uniform"
+    argspec: "args=[\'shape\', \'seed\', \'minval\', \'maxval\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "truncated_normal"
+    argspec: "args=[\'shape\', \'mean\', \'stddev\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\', \'None\'], "
+  }
+  member_method {
+    name: "uniform"
+    argspec: "args=[\'shape\', \'minval\', \'maxval\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \"<dtype: \'float32\'>\", \'None\', \'None\'], "
+  }
+  member_method {
+    name: "uniform_candidate_sampler"
+    argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'range_max\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

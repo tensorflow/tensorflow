@@ -38,6 +38,7 @@ class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
     BigtableTableResource* resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    core::ScopedUnref scoped_unref(resource);
 
     OP_REQUIRES(ctx, prefix.empty() || start_key.empty(),
                 errors::InvalidArgument(
@@ -166,7 +167,7 @@ class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
-        if (index_ > keys_.size() - 2) {
+        if (index_ + 2 > keys_.size()) {
           *end_of_sequence = true;
           return Status::OK();
         }

@@ -4,7 +4,7 @@ op {
   in_arg {
     name: "float_values"
     description: <<END
-float; List of Rank 2 Tensors each containing values for a single feature.
+float; List of Rank 1 Tensors each containing values for a single feature.
 END
   }
   in_arg {
@@ -22,8 +22,8 @@ END
   out_arg {
     name: "summaries"
     description: <<END
-float; List of Rank 2 Tensors each containing the quantile summary (value, weight,
-min_rank, max_rank) of a single feature.
+float; List of Rank 2 Tensors each containing the quantile summary
+(value, weight, min_rank, max_rank) of a single feature.
 END
   }
   attr {
@@ -35,6 +35,7 @@ END
   }
   summary: "Makes the summary of quantiles for the batch."
   description: <<END
-An op that takes a list of tensors and outputs the quantile summaries for each tensor.
+An op that takes a list of tensors (one tensor per feature) and outputs the
+quantile summaries for each tensor.
 END
 }

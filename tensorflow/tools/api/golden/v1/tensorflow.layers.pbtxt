@@ -76,6 +76,10 @@ tf_module {
     name: "SeparableConv2D"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "average_pooling1d"
     argspec: "args=[\'inputs\', \'pool_size\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'valid\', \'channels_last\', \'None\'], "
@@ -122,7 +126,7 @@ tf_module {
   }
   member_method {
     name: "flatten"
-    argspec: "args=[\'inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'inputs\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'channels_last\'], "
   }
   member_method {
     name: "max_pooling1d"

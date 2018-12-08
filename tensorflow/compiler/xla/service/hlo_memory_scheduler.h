@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
@@ -35,56 +36,56 @@ namespace xla {
 // that describes buffer aliasing, together with a target-specific size function
 // that maps a tensor's logical size to its padded size.
 typedef std::function<StatusOr<HloInstructionSequence>(
-    const HloComputation&, const TuplePointsToAnalysis&,
+    HloComputation*, const TuplePointsToAnalysis&,
     const LogicalBuffer::SizeFunction&,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&)>
+    const absl::flat_hash_map<const HloComputation*, int64>&)>
     MemorySchedulerAlgorithm;
 
 // List scheduler
 StatusOr<HloInstructionSequence> ListMemoryScheduler(
-    const HloComputation& computation,
+    HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation);
 
 // DFS-order scheduler
 StatusOr<HloInstructionSequence> DFSMemoryScheduler(
-    const HloComputation& computation,
+    HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation);
 
 // Naive Post Order scheduler
 StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
-    const HloComputation& computation,
+    HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation);
 
 // The default scheduling algorithm. Runs both the list scheduler
 // and the DFS scheduler, and chooses whichever returns a lower min-memory,
 // not accounting for fragmentation.
 StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
-    const HloComputation& computation,
+    HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation);
 
 // Returns an HloSchedule which seeks to minimize the memory required for
 // the computation. size_function is the function returning the number of bytes
 // required for a LogicalBuffer.
 StatusOr<HloSchedule> ScheduleModule(
-    const HloModule& module, const LogicalBuffer::SizeFunction& size_function,
+    HloModule* module, const LogicalBuffer::SizeFunction& size_function,
     const MemorySchedulerAlgorithm& algorithm = {});
 
 // Computes the schedule for a single computation.
 // Currently only used by the GPU backend.
 StatusOr<HloInstructionSequence> ScheduleComputation(
-    const HloComputation& computation,
+    HloComputation* computation,
     const LogicalBuffer::SizeFunction& size_function);
 
 // A pass which schedules the HLO instructions in a module. The HloModule's
@@ -105,6 +106,15 @@ class HloMemoryScheduler : public HloModulePass {
  private:
   LogicalBuffer::SizeFunction size_function_;
   MemorySchedulerAlgorithm algorithm_;
+};
+
+// A pass which produces a naive, but correct schedule. The schedule is produced
+// using a DFS traversal of the graph with no attempt to minimize memory use.
+class HloTrivialScheduler : public HloModulePass {
+ public:
+  absl::string_view name() const override { return "hlo-trivial-scheduler"; }
+
+  StatusOr<bool> Run(HloModule* module) override;
 };
 
 // A trivial pass which clears the schedule currently set on the

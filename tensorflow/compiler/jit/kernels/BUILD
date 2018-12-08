@@ -12,6 +12,7 @@ cc_library(
     hdrs = ["xla_ops.h"],
     deps = [
         "//tensorflow/compiler/jit:common",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:xla_compilation_cache",
         "//tensorflow/compiler/jit:xla_device",
         "//tensorflow/compiler/jit:xla_launch_util",
@@ -26,6 +27,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/kernels:variable_ops",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,

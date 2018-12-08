@@ -480,4 +480,16 @@ std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
   }
 }
 
+/*static*/ Status DeviceNameUtils::DeviceNameToCpuDeviceName(
+    const string& device_name, string* host_device_name) {
+  DeviceNameUtils::ParsedName device;
+  if (!DeviceNameUtils::ParseFullName(device_name, &device)) {
+    return errors::Internal("Could not parse device name ", device_name);
+  }
+  device.type = "CPU";
+  device.id = 0;
+  *host_device_name = DeviceNameUtils::ParsedNameToString(device);
+  return Status::OK();
+}
+
 }  // namespace tensorflow

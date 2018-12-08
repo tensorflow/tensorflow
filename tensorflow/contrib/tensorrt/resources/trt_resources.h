@@ -39,7 +39,8 @@ namespace tensorrt {
 class TRTCalibrationResource : public tensorflow::ResourceBase {
  public:
   ~TRTCalibrationResource() {
-    VLOG(0) << "Destroying Calibration Resource " << std::endl << DebugString();
+    LOG(INFO) << "Destroying Calibration Resource " << std::endl
+              << DebugString();
     builder_.reset();
     engine_.reset();
     // We need to manually destroy the builder and engine before the allocator
@@ -68,28 +69,6 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
   tensorflow::tensorrt::Logger logger_;
   // TODO(sami): Use threadpool threads!
   std::unique_ptr<std::thread> thr_;
-};
-
-class TRTWeightStore {
- public:
-  TRTWeightStore() {}
-
-  virtual ~TRTWeightStore() { VLOG(1) << "Destroying store" << DebugString(); }
-
-  string DebugString() {
-    std::stringstream oss;
-    size_t len_bytes = 0;
-    for (const auto& v : store_) {
-      len_bytes += v.size() * sizeof(uint8_t);
-    }
-    oss << " Number of entries     = " << store_.size() << std::endl
-        << " Total number of bytes = "
-        << store_.size() * sizeof(std::vector<uint8_t>) + len_bytes
-        << std::endl;
-    return oss.str();
-  }
-
-  std::list<std::vector<uint8_t>> store_;
 };
 
 }  // namespace tensorrt

@@ -70,6 +70,6 @@ tf_module {
   }
   member_method {
     name: "to_categorical"
-    argspec: "args=[\'y\', \'num_classes\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'y\', \'num_classes\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'float32\'], "
   }
 }

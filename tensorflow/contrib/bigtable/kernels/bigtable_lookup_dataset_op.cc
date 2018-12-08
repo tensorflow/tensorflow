@@ -28,6 +28,7 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
                    DatasetBase** output) override {
     BigtableTableResource* table;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &table));
+    core::ScopedUnref scoped_unref(table);
 
     std::vector<string> column_families;
     std::vector<string> columns;

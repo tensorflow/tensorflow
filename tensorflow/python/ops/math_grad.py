@@ -516,6 +516,40 @@ def _Log1pGrad(op, grad):
     return grad * math_ops.reciprocal(1 + x)
 
 
+@ops.RegisterGradient("Xlogy")
+def _XLogyGrad(op, grad):
+  """Returns gradient of xlogy(x, y) with respect to x and y."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  with ops.control_dependencies([grad]):
+    not_zero_x = math_ops.cast(
+        math_ops.not_equal(x, math_ops.cast(0., dtype=x.dtype)), dtype=x.dtype)
+    partial_x = gen_math_ops.xlogy(not_zero_x, y)
+    partial_y = gen_math_ops.xdivy(x, y)
+    return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
+            array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
+
+
+@ops.RegisterGradient("Xdivy")
+def _XDivyGrad(op, grad):
+  """Returns gradient of xdivy(x, y) with respect to x and y."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  with ops.control_dependencies([grad]):
+    not_zero_x = math_ops.cast(
+        math_ops.not_equal(x, math_ops.cast(0., dtype=x.dtype)), dtype=x.dtype)
+    partial_x = gen_math_ops.xdivy(not_zero_x, y)
+    partial_y = gen_math_ops.xdivy(math_ops.negative(x), y**2)
+    return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
+            array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
+
+
 @ops.RegisterGradient("Sinh")
 def _SinhGrad(op, grad):
   """Returns grad * cosh(x)."""
@@ -1007,11 +1041,12 @@ def _PowGrad(op, grad):
   # Avoid false singularity at x = 0
   if x.dtype.is_complex:
     # real(x) < 0 is fine for the complex case
-    log_x = array_ops.where(
-        math_ops.not_equal(x, 0), math_ops.log(x), array_ops.zeros_like(x))
+    mask = math_ops.not_equal(x, 0)
   else:
     # There's no sensible real value to return if x < 0, so return 0
-    log_x = array_ops.where(x > 0, math_ops.log(x), array_ops.zeros_like(x))
+    mask = x > 0
+  safe_x = array_ops.where(mask, x, array_ops.ones_like(x))
+  log_x = array_ops.where(mask, math_ops.log(safe_x), array_ops.zeros_like(x))
   gy = array_ops.reshape(math_ops.reduce_sum(grad * z * log_x, ry), sy)
   return gx, gy
 

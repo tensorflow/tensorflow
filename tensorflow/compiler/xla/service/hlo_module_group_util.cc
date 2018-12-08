@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -42,7 +42,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalPredecessors(
     HloInstruction* instruction) {
   std::vector<HloInstruction*>
       predecessors;  // Use a vector to avoid non-determinism.
-  tensorflow::gtl::FlatSet<HloInstruction*> unique;
+  absl::flat_hash_set<HloInstruction*> unique;
 
   // Adds to the unique predecessors list; if the predecessors is a companion
   // instruction, also add companion instructions; if the predecessors is a
@@ -119,7 +119,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalSuccessors(
     HloInstruction* instruction) {
   std::vector<HloInstruction*>
       successors;  // Use a vector to avoid non-determinism.
-  tensorflow::gtl::FlatSet<HloInstruction*> unique;
+  absl::flat_hash_set<HloInstruction*> unique;
 
   // Adds to the unique successors list; if the successor is a companion
   // instruction, also add companion instructions; if the successor is a

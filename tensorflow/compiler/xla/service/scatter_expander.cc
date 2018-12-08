@@ -155,6 +155,53 @@ static StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
   return MakeConcatHlo(expanded_index_components, /*dimension=*/0);
 }
 
+static StatusOr<HloInstruction*> CheckIndexValidity(
+    HloComputation* computation, HloInstruction* index,
+    absl::Span<const int64> operand_dims, absl::Span<const int64> window_sizes,
+    HloModule* module) {
+  DCHECK_NE(nullptr, module);
+  DCHECK_EQ(operand_dims.size(), window_sizes.size());
+
+  // Valid range for the index: [0, operand_dims - window_sizes]
+
+  // Check if the index has any negative values.
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * zero_index,
+      BroadcastZeros(computation, index->shape().element_type(),
+                     AsInt64Slice(index->shape().dimensions())));
+  TF_ASSIGN_OR_RETURN(HloInstruction * negative_index_check,
+                      MakeBinaryHlo(HloOpcode::kLe, zero_index, index));
+
+  // Check if the index is OOB w.r.t. the operand dimensions and window sizes.
+  std::vector<int64> max_valid_index(operand_dims.size());
+  for (int i = 0; i < operand_dims.size(); ++i) {
+    max_valid_index[i] = operand_dims[i] - window_sizes[i];
+  }
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * max_valid_index_constant,
+      MakeR1ConstantHlo<int64>(computation, index->shape().element_type(),
+                               max_valid_index));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * oob_index_check,
+      MakeBinaryHlo(HloOpcode::kGe, max_valid_index_constant, index));
+
+  // Combine the results of the two checks above.
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * valid_index,
+      MakeBinaryHlo(HloOpcode::kAnd, negative_index_check, oob_index_check));
+
+  // Reduce the index validity check vector into a scalar predicate.
+  auto reduction_init = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * valid_index_reduced,
+      MakeReduceHlo(valid_index, reduction_init, HloOpcode::kAnd, module));
+
+  // Return a broadcasted value of the scalar predicate to the same size as the
+  // window.
+  return MakeBroadcastHlo(valid_index_reduced, {}, window_sizes);
+}
+
 // Body of the while loop that performs the scatter operation using other HLOs.
 static StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
     HloInstruction* scatter, HloInstruction* induction_var,
@@ -222,7 +269,16 @@ static StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
       InsertDegenerateDims(update_slice_for_scatter,
                            AsInt64Slice(dim_numbers.inserted_window_dims())));
 
-  // Extact the slice to update from `operand` tensor.
+  // Note that the following transformation assumes that both DynamicSlice and
+  // DynamicUpdateSlice follow the same semantics for OOB indices. For example,
+  // if there are negative indices and DynamicSlice uses "clamping" semantics,
+  // then the extracted data will be "shifted". Since DynamicUpdateSlice also
+  // follows the same "clamping" semantics, writing the update will also be
+  // "shifted" by exactly the same amount. So, this transformation is correct as
+  // long as the semantics of handling OOB indices remain the same in
+  // DynamicSlice and DynamicUpdateSlice.
+
+  // Extract the slice to update from `operand` tensor.
   const Shape& update_slice_shape = update_slice_with_dims_inserted->shape();
   TF_ASSIGN_OR_RETURN(
       HloInstruction * operand_slice_to_update,
@@ -237,10 +293,24 @@ static StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
       MakeMapHlo({operand_slice_to_update, update_slice_with_dims_inserted},
                  scatter->to_apply()));
 
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * is_index_valid,
+      CheckIndexValidity(
+          operand->parent(), scatter_slice_start,
+          AsInt64Slice(operand->shape().dimensions()),
+          AsInt64Slice(update_slice_with_dims_inserted->shape().dimensions()),
+          scatter->GetModule()));
+
+  // Select the updated operand only if the index is valid. If not, select the
+  // original value.
+  TF_ASSIGN_OR_RETURN(HloInstruction * update_to_apply,
+                      MakeSelectHlo(is_index_valid, updated_operand_slice,
+                                    operand_slice_to_update));
+
   // Write the updated value of the slice into `operand` tensor.
-  TF_ASSIGN_OR_RETURN(HloInstruction * updated_operand,
-                      MakeDynamicUpdateSliceHlo(operand, updated_operand_slice,
-                                                scatter_slice_start));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * updated_operand,
+      MakeDynamicUpdateSliceHlo(operand, update_to_apply, scatter_slice_start));
 
   return StatusOr<std::vector<HloInstruction*>>{
       {updated_operand, scatter_indices, updates}};
@@ -322,7 +392,8 @@ StatusOr<HloInstruction*> ScatterExpander::ExpandScatter(
           [&](HloInstruction* induction_var,
               const std::vector<HloInstruction*>& loop_state) {
             return ScatterLoopBody(scatter, induction_var, loop_state);
-          });
+          },
+          scatter->metadata());
   TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> scatter_loop_result,
                       scatter_loop_result_status);
   return scatter_loop_result.front();
