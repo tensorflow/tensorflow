@@ -1717,6 +1717,8 @@ class TensorFlowTestCase(googletest.TestCase):
                    use_gpu=False,
                    force_gpu=False):
     """Use cached_session instead."""
+    if self.id().endswith(".test_session"):
+      self.skipTest("Not a test.")
     if context.executing_eagerly():
       yield None
     else:
