@@ -20,16 +20,20 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedConcatOpTest(ragged_test_util.RaggedTensorTestCase,
+                         parameterized.TestCase):
 
   def _rt_inputs_to_tensors(self, rt_inputs, ragged_ranks=None):
     if ragged_ranks is None:
@@ -221,7 +225,6 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           axis=0,
           expected=[[b'a00', b'a01'], [], [b'a20', b'a21']]),
   )   # pyformat: disable
-  @test_util.run_v1_only('b/120545219')
   def testRaggedConcat(self,
                        descr,
                        rt_inputs,
@@ -236,8 +239,7 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(concatenated.ragged_rank, expected_ragged_rank)
     if expected_shape is not None:
       self.assertEqual(concatenated.shape.as_list(), expected_shape)
-    with self.test_session():
-      self.assertEqual(concatenated.eval().tolist(), expected)
+    self.assertRaggedEqual(concatenated, expected)
 
   @parameterized.parameters(
       dict(
@@ -264,11 +266,14 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           ragged_ranks=(0, 0),
           rt_inputs=([[1, 2]], [[3, 4], [5, 6]]),
           axis=1,
-          error=ValueError,
-          message='Dimension 0 in both shapes must be equal'),
+          error=(ValueError, errors.InvalidArgumentError)),
   )
-  @test_util.run_deprecated_v1
-  def testStaticError(self, rt_inputs, axis, error, message, ragged_ranks=None):
+  def testStaticError(self,
+                      rt_inputs,
+                      axis,
+                      error,
+                      message=None,
+                      ragged_ranks=None):
     rt_inputs = self._rt_inputs_to_tensors(rt_inputs, ragged_ranks)
     self.assertRaisesRegexp(error, message, ragged.concat, rt_inputs, axis)
 
@@ -280,18 +285,20 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           error=errors.InvalidArgumentError,
           message='Input tensors have incompatible shapes'),
   ])
-  @test_util.run_v1_only('b/120545219')
   def testRuntimeError(self, rt_inputs, axis, error, message,
                        ragged_ranks=None):
+    if context.executing_eagerly():
+      return
     rt_inputs = [
         array_ops.placeholder_with_default(rt, shape=None) for rt in rt_inputs
     ]
     concatenated = ragged.concat(rt_inputs, axis)
-    with self.test_session():
-      self.assertRaisesRegexp(error, message, concatenated.eval)
+    with self.assertRaisesRegexp(error, message):
+      self.evaluate(concatenated)
 
-  @test_util.run_deprecated_v1
   def testNegativeAxisWithUnknownRankError(self):
+    if context.executing_eagerly():
+      return
     rt_inputs = [
         array_ops.placeholder(dtypes.int64),
         array_ops.placeholder(dtypes.int64)
@@ -300,7 +307,6 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ValueError, r'axis may only be negative if ndims is statically known.',
         ragged.concat, rt_inputs, -1)
 
-  @test_util.run_deprecated_v1
   def testSingleTensorInput(self):
     """Tests ragged_concat with a single tensor input.
 
@@ -310,8 +316,7 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     """
     rt_inputs = ragged.constant([[1, 2], [3, 4]])
     concatenated = ragged.concat(rt_inputs, 0)
-    with self.test_session():
-      self.assertEqual(concatenated.eval().tolist(), [[1, 2], [3, 4]])
+    self.assertRaggedEqual(concatenated, [[1, 2], [3, 4]])
 
 
 if __name__ == '__main__':
