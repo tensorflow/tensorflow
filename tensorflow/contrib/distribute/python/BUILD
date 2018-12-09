@@ -761,6 +761,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:values",
     ],
     tags = [
         "multi_and_single_gpu",

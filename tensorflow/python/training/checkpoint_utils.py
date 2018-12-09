@@ -206,6 +206,8 @@ def _init_from_checkpoint(_, ckpt_dir_or_file, assignment_map):
         and all(_is_variable(v) for v in current_var_or_name)):
       var = current_var_or_name
     else:
+      if hasattr(current_var_or_name, "_index"):
+        current_var_or_name = _validate_and_get_var_or_name(current_var_or_name)
       store_vars = vs._get_default_variable_store()._vars  # pylint:disable=protected-access
       # Check if this variable is in var_store.
       var = store_vars.get(current_var_or_name, None)
@@ -362,6 +364,15 @@ def _is_variable(x):
   return (isinstance(x, variables.Variable) or
           resource_variable_ops.is_resource_variable(x))
 
+def _validate_and_get_var_or_name(distributed_value):
+  assert distribution_strategy_context.get_cross_replica_context()
+  assert hasattr(distributed_value, "_index")
+  v0 = distributed_value._index.items()[0][1] # pylint:disable=protected-access
+  for (d, v) in six.iteritems(distributed_value._index): # pylint:disable=protected-access
+    if v != v0:
+      raise ValueError("Values on different device should be the same: "
+                       " %s != %s" % (v, v0))
+  return v0
 
 def _collect_partitioned_variable(name, all_vars):
   """Returns list of `tf.Variable` that comprise the partitioned variable."""

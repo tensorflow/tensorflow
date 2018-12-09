@@ -29,6 +29,7 @@ import os
 from absl.testing import parameterized
 
 from tensorflow.contrib.distribute.python import combinations
+from tensorflow.python.distribute import values
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -56,6 +57,13 @@ def _create_checkpoints(sess, checkpoint_dir):
 class CheckpointUtilsWithDistributionStrategyTest(
     test.TestCase, parameterized.TestCase):
 
+  def _get_test_object(self):
+    checkpoint_dir = self.get_temp_dir()
+    with self.cached_session() as session:
+      v1, v2, v3, v4 = checkpoint_utils_test._create_checkpoints(
+          session, checkpoint_dir)
+    return checkpoint_dir, v1, v2, v3, v4
+
   @combinations.generate(combinations.combine(
       distribution=[combinations.default_strategy,
                     combinations.one_device_strategy,
@@ -66,11 +74,9 @@ class CheckpointUtilsWithDistributionStrategyTest(
       in_replica_mode=[True, False],
       mode=["graph"]))
   def testInitFromCheckpoint(self, distribution, in_replica_mode):
-    checkpoint_dir = self.get_temp_dir()
-    with self.cached_session() as session:
-      v1_value, v2_value = _create_checkpoints(session, checkpoint_dir)
+    checkpoint_dir, v1_value, v2_value, _, _ = self._get_test_object()
 
-    def init_and_verify(g):
+    def init_from_constant_name_and_verify(g):
       v1 = variable_scope.get_variable("new_var1", [1, 10])
       v2 = variable_scope.get_variable(
           "new_var2", [10, 10],
@@ -85,11 +91,44 @@ class CheckpointUtilsWithDistributionStrategyTest(
         self.assertAllEqual(v1_value, self.evaluate(v1))
         self.assertAllEqual(v2_value, self.evaluate(v2))
 
+    def init_from_new_name_and_verify(g):
+      v1 = variable_scope.get_variable("new_var1", [1, 10])
+      # Use string add to create new object in each replica
+      prefix = "new_"
+      suffix = "var1"
+      new_var1 = prefix + suffix
+      checkpoint_utils.init_from_checkpoint(checkpoint_dir, {
+          "var1": new_var1,
+      })
+      with self.test_session(graph=g) as session:
+        session.run(variables.global_variables_initializer())
+        self.assertAllEqual(v1_value, self.evaluate(v1))
+
     with ops.Graph().as_default() as g, distribution.scope():
       if in_replica_mode:
-        distribution.extended.call_for_each_replica(init_and_verify, args=[g])
+        distribution.call_for_each_replica(
+            init_from_constant_name_and_verify, args=[g])
       else:
-        init_and_verify(g)
+        init_from_constant_name_and_verify(g)
+
+    with ops.Graph().as_default() as g, distribution.scope():
+      if in_replica_mode:
+        distribution.call_for_each_replica(
+            init_from_new_name_and_verify, g)
+
+  def testAssignmentMapHasDifferentValues(self):
+    checkpoint_dir, v1_value, _, _, _ = self._get_test_object()
+
+    def init_from_assignment_map_and_raise_error(g):
+      v1 = variable_scope.get_variable("new_var1", [1, 10])
+      assignment_map = values.regroup(
+          {"/gpu:0": {"var1": "new_var1"},
+           "/gpu:1": {"var1": "new_var2"}})
+      checkpoint_utils.init_from_checkpoint(
+          checkpoint_dir, assignment_map)
+
+    with ops.Graph().as_default() as g, self.assertRaises(ValueError):
+      init_from_assignment_map_and_raise_error(g)
 
 
 if __name__ == "__main__":
