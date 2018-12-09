@@ -205,38 +205,6 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     // If the code generator handles depthwise separable convolutions
     // inherently, then no filter expansion is needed.
     if (!filter_expansion_ && depthwise_separable) {
-      const int64 old_kernel_input_feature_dimension =
-          dim_numbers.kernel_input_feature_dimension();
-      const int64 old_kernel_output_feature_dimension =
-          dim_numbers.kernel_output_feature_dimension();
-
-      // For depthwise convolutions, we want the kernel input feature dimension
-      // to be smaller than the output feature dimension. If that's not the
-      // case, we swap the dimensions.
-      if (old_kernel_input_feature_dimension >
-          old_kernel_output_feature_dimension) {
-        Shape reshaped_filter_shape = filter->shape();
-        auto& dimensions = *reshaped_filter_shape.mutable_dimensions();
-        std::swap(dimensions[old_kernel_input_feature_dimension],
-                  dimensions[old_kernel_output_feature_dimension]);
-
-        auto reshaped_filter =
-            add(HloInstruction::CreateReshape(reshaped_filter_shape, filter));
-
-        dim_numbers.set_kernel_input_feature_dimension(
-            old_kernel_output_feature_dimension);
-
-        dim_numbers.set_kernel_output_feature_dimension(
-            old_kernel_input_feature_dimension);
-
-        auto new_convolution = HloInstruction::CreateConvolve(
-            convolution->shape(), convolution->mutable_operand(0),
-            reshaped_filter, group_count, convolution->window(), dim_numbers,
-            convolution->precision_config());
-
-        TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
-            convolution, std::move(new_convolution)));
-      }
       return Status::OK();
     }
     // We want to repeat 'filter' in the 'input_feature_dim' dimension
@@ -271,130 +239,72 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
         convolution, std::move(new_convolution)));
   } else {
     int64 activation_input_feature_dim = dim_numbers.input_feature_dimension();
-    auto activation = convolution->mutable_operand(0);
 
     int64 output_feature =
         filter->shape().dimensions(kernel_output_feature_dim);
 
-    int64 input_feature =
-        activation->shape().dimensions(activation_input_feature_dim);
-
     // If group_count == output_feature, then we map those grouped convolutions
-    // onto depthwise convolution + reduce. E.g., we would turn
+    // onto depthwise convolution. This is done by adding an additional spatial
+    // dimension to the activations, kernel, and the output.
+    // E.g., we would turn
     // [2, 12]{B, IF} conv [3, 4]{IF, OF} into
-    // [2, 12]{B, IF} depth conv [1, 12]{IF, OF}, and then use a reduce window
-    // of {1, 3} on the generated [2, 12] output to produce the final result of
-    // [2, 4].
+    // [3, 2, 4]{S, B, IF} depth conv [3, 1, 4]{S, IF, OF}, where S is the
+    // additional spatial dimension. The generated convolution output will be
+    // [1, 2, 4]{S, B, OF} and then reshape the output back to [2, 4] {B, OF}.
+
     if (group_count == output_feature && !filter_expansion_) {
+      auto filter = convolution->mutable_operand(1);
+      auto activation = convolution->mutable_operand(0);
+
+      // Add spatial dimension to the activation, and reshape.
+      Shape reshaped_activation_shape = activation->shape();
+      ShapeUtil::AppendMajorDimension(group_size, &reshaped_activation_shape);
+
+      int64 new_spatial_dim = reshaped_activation_shape.dimensions().size() - 1;
+
+      reshaped_activation_shape.set_dimensions(activation_input_feature_dim,
+                                               group_count);
+      activation = add(
+          HloInstruction::CreateReshape(reshaped_activation_shape, activation));
+
+      // Add spatial dimension to the filter, and reshape.
       Shape reshaped_filter_shape = filter->shape();
+      ShapeUtil::AppendMajorDimension(1, &reshaped_filter_shape);
 
-      if (kernel_input_feature_dim < kernel_output_feature_dim) {
-        // Transpose IF and OF on the kernel.
-        std::vector<int64> filter_dims;
-        for (int64 i = 0; i < dim_numbers.kernel_spatial_dimensions().size();
-             ++i) {
-          filter_dims.push_back(dim_numbers.kernel_spatial_dimensions(i));
-        }
-        filter_dims.push_back(kernel_output_feature_dim);
-        filter_dims.push_back(kernel_input_feature_dim);
-
-        Shape transposed_filter = filter->shape();
-        auto& dimensions = *transposed_filter.mutable_dimensions();
-        std::swap(dimensions[kernel_input_feature_dim],
-                  dimensions[kernel_output_feature_dim]);
-
-        filter = add(HloInstruction::CreateTranspose(transposed_filter, filter,
-                                                     filter_dims));
-      } else {
-        // For depthwise convolutions, we want the kernel input feature
-        // dimension to be smaller than the output feature dimension. If that's
-        // not the case, we swap the dimensions.
-
-        auto& dimensions = *reshaped_filter_shape.mutable_dimensions();
-        std::swap(dimensions[kernel_input_feature_dim],
-                  dimensions[kernel_output_feature_dim]);
-
-        dim_numbers.set_kernel_input_feature_dimension(
-            kernel_output_feature_dim);
-
-        dim_numbers.set_kernel_output_feature_dimension(
-            kernel_input_feature_dim);
-        std::swap(kernel_output_feature_dim, kernel_input_feature_dim);
-      }
-
-      reshaped_filter_shape.set_dimensions(kernel_input_feature_dim, 1);
-      reshaped_filter_shape.set_dimensions(kernel_output_feature_dim,
-                                           group_count * group_size);
-      auto reshaped_filter =
+      filter =
           add(HloInstruction::CreateReshape(reshaped_filter_shape, filter));
 
-      Shape reshaped_convolution_shape = convolution->shape();
-      reshaped_convolution_shape.set_dimensions(
-          dim_numbers.output_feature_dimension(), group_count * group_size);
+      Shape new_output_shape = convolution->shape();
+      ShapeUtil::AppendMajorDimension(1, &new_output_shape);
+
+      // Edit convolution dimension numbers. Note that kernel_input_feature_dim
+      // now becomes a spatial dimension, and the newly added dimension of size
+      // 1 is the new kernel_input_feature_dim.
+      dim_numbers.add_input_spatial_dimensions(new_spatial_dim);
+      dim_numbers.add_kernel_spatial_dimensions(kernel_input_feature_dim);
+      dim_numbers.set_kernel_input_feature_dimension(new_spatial_dim);
+      dim_numbers.add_output_spatial_dimensions(new_spatial_dim);
+
+      // Add window for the new spatial dimension.
+      Window new_window = convolution->window();
+      auto* dim = new_window.add_dimensions();
+      dim->set_window_dilation(1);
+      dim->set_base_dilation(1);
+      dim->set_stride(1);
+      dim->set_size(group_size);
+
       auto new_convolution = add(HloInstruction::CreateConvolve(
-          reshaped_convolution_shape, convolution->mutable_operand(0),
-          reshaped_filter, /*feature_group_count=*/input_feature,
-          convolution->window(), dim_numbers, convolution->precision_config()));
+          new_output_shape, activation, filter, group_count, new_window,
+          dim_numbers, convolution->precision_config()));
 
-      // Create the reduce window.
-      Window window;
-      for (int64 i = 0; i < new_convolution->shape().dimensions_size(); ++i) {
-        auto* dim = window.add_dimensions();
-        dim->set_padding_low(0);
-        dim->set_padding_high(0);
-        dim->set_window_dilation(1);
-        dim->set_base_dilation(1);
-        if (i == dim_numbers.output_feature_dimension()) {
-          dim->set_stride(group_size);
-          dim->set_size(group_size);
-        } else {
-          dim->set_stride(1);
-          dim->set_size(1);
-        }
-      }
+      // Delete the extra spatial dimension, and reshape.
+      Shape reshaped_convolution_shape =
+          ShapeUtil::DeleteDimension(new_spatial_dim, new_convolution->shape());
+      auto reshaped_convolution = HloInstruction::CreateReshape(
+          reshaped_convolution_shape, new_convolution);
 
-      auto reduce_window_shape = new_convolution->shape();
-      reduce_window_shape.set_dimensions(dim_numbers.output_feature_dimension(),
-                                         group_count);
-
-      auto zero_literal = LiteralUtil::CreateR0(0.0f);
-      TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(F32));
-      auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
-
-      auto reduce_function = [&]() -> HloComputation* {
-        HloComputation::Builder b("add_computation");
-        Shape shape = ShapeUtil::MakeShape(F32, {});
-        auto lhs =
-            b.AddInstruction(HloInstruction::CreateParameter(0, shape, "lhs"));
-        auto rhs =
-            b.AddInstruction(HloInstruction::CreateParameter(1, shape, "rhs"));
-        auto scalar_op = b.AddInstruction(
-            HloInstruction::CreateBinary(shape, HloOpcode::kAdd, lhs, rhs));
-        return computation_->parent()->AddEmbeddedComputation(
-            b.Build(scalar_op));
-      };
-
-      // Ensure that data input to reduce window is of type F32.
-      if (primitive_util::BitWidth(new_convolution->shape().element_type()) <
-          primitive_util::BitWidth(F32)) {
-        Shape convert_shape = new_convolution->shape();
-        convert_shape.set_element_type(F32);
-        new_convolution = add(HloInstruction::CreateBitcastConvert(
-            convert_shape, new_convolution));
-      }
-
-      auto reduce_window = add(HloInstruction::CreateReduceWindow(
-          reduce_window_shape, new_convolution, zero, window,
-          reduce_function()));
-
-      Shape convert_back_shape = reduce_window->shape();
-      convert_back_shape.set_element_type(activation->shape().element_type());
-
-      // Convert reduced data back to the original data type.
-      auto reduce_window_converted = HloInstruction::CreateBitcastConvert(
-          convert_back_shape, reduce_window);
       TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
-          convolution, std::move(reduce_window_converted)));
+          convolution, std::move(reshaped_convolution)));
 
     } else {
       // The filter expansion mechanism adds zeroes in the kernel.

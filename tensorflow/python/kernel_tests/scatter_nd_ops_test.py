@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
@@ -216,7 +217,7 @@ class StatefulScatterNdTest(test.TestCase):
   def testVariableRankAdd(self):
     self._VariableRankTests(_NumpyAdd, state_ops.scatter_nd_add)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testVariableRankSub(self):
     self._VariableRankTests(_NumpySub, state_ops.scatter_nd_sub)
 
@@ -234,7 +235,7 @@ class StatefulScatterNdTest(test.TestCase):
         self._VariableRankTest(
             np_scatter, tf_scatter, vtype, itype, repeat_indices=True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testScatterRepeatIndices(self):
     """This tests scatter_add using indices that repeat."""
     self._ScatterRepeatIndicesTest(_NumpyAdd, state_ops.scatter_nd_add)
@@ -256,7 +257,7 @@ class StatefulScatterNdTest(test.TestCase):
   #     session.run([update0, update1])
   #     self.assertAllEqual([False, True], self.evaluate(var))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testScatterOutOfRangeCpu(self):
     # TODO(simister): Re-enable once binary size increase due to
     # scatter_nd ops is under control.
@@ -293,7 +294,7 @@ class StatefulScatterNdTest(test.TestCase):
         state_ops.scatter_nd_update(ref, indices,
                                     updates).get_shape().as_list(), shape)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testResVarInvalidOutputShape(self):
     res = variables.Variable(
         initial_value=lambda: array_ops.zeros(shape=[], dtype=dtypes.float32),
@@ -508,7 +509,7 @@ class ScatterNdTest(test.TestCase):
         ValueError, "Indices and updates specified for empty output shape"):
       self.scatter_nd(indices, updates, shape)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testEmptyOutputShape2(self):
     indices = array_ops.placeholder(dtypes.int32, shape=None)
     updates = array_ops.placeholder(dtypes.int32, shape=None)
@@ -696,6 +697,57 @@ class ScatterNdNonAliasingAddTest(ScatterNdTest):
   def testString(self):
     # Not supported yet.
     pass
+
+
+class ScatterNdTensorTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUpdateAddSub(self):
+    indices = constant_op.constant([[4], [3], [1], [7]])
+    updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
+    t = array_ops.ones([8], dtype=dtypes.float32)
+    assigned = array_ops.tensor_scatter_update(t, indices, updates)
+    added = array_ops.tensor_scatter_add(t, indices, updates)
+    subbed = array_ops.tensor_scatter_sub(t, indices, updates)
+
+    self.assertAllEqual(assigned,
+                        constant_op.constant([1, 11, 1, 10, 9, 1, 1, 12]))
+    self.assertAllEqual(added,
+                        constant_op.constant([1, 12, 1, 11, 10, 1, 1, 13]))
+    self.assertAllEqual(subbed,
+                        constant_op.constant([1, -10, 1, -9, -8, 1, 1, -11]))
+
+  @test_util.run_v1_only("b/120545219")
+  def testUpdateAddSubGradients(self):
+
+    with self.cached_session():
+      indices = constant_op.constant([[3], [1]])
+      updates = constant_op.constant([9, 10], dtype=dtypes.float32)
+      x = array_ops.ones([4], dtype=dtypes.float32)
+
+      assigned = array_ops.tensor_scatter_update(x, indices, updates)
+      added = array_ops.tensor_scatter_add(x, indices, updates)
+      subbed = array_ops.tensor_scatter_sub(x, indices, updates)
+
+      err_assigned = gradient_checker.compute_gradient_error(
+          x, [4], assigned, [4])
+      err_added = gradient_checker.compute_gradient_error(x, [4], added, [4])
+      err_subbed = gradient_checker.compute_gradient_error(x, [4], subbed, [4])
+
+      self.assertLess(err_assigned, 2e-4)
+      self.assertLess(err_added, 2e-4)
+      self.assertLess(err_subbed, 2e-4)
+
+      err_assigned_wrt_updates = gradient_checker.compute_gradient_error(
+          updates, [2], assigned, [4])
+      err_added_wrt_updates = gradient_checker.compute_gradient_error(
+          updates, [2], added, [4])
+      err_subbed_wrt_updates = gradient_checker.compute_gradient_error(
+          updates, [2], subbed, [4])
+
+      self.assertLess(err_assigned_wrt_updates, 2e-4)
+      self.assertLess(err_added_wrt_updates, 2e-4)
+      self.assertLess(err_subbed_wrt_updates, 2e-4)
 
 
 if __name__ == "__main__":

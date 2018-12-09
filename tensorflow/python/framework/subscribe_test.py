@@ -215,7 +215,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertIn('graph2', shared)
     self.assertIn('graph3', shared)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testSubscribeVariable(self):
     """Confirm that variables can be subscribed."""
     v1 = variables.VariableV1(0.0)
@@ -254,7 +254,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
       # Make sure the values read from the variable match the expected ones.
       self.assertEqual([0.0, 3.0], shared)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testResourceType(self):
     """Confirm that subscribe correctly handles tensors with 'resource' type."""
     tensor_array = tensor_array_ops.TensorArray(
@@ -344,7 +344,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertEqual(add.device, add_sub.device)
     self.assertEqual(mul.device, mul_sub.device)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_subscribe_tensors_within_control_flow_context(self):
     """Side effect ops are added with the same control flow context."""
     c1 = constant_op.constant(10)

@@ -43,6 +43,7 @@ from tensorflow.python.ops.gen_math_ops import *
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -165,6 +166,7 @@ def argmin_v2(input,
 # pylint: disable=anomalous-backslash-in-string,protected-access
 # pylint: disable=g-docstring-has-escape
 @tf_export("math.abs", "abs")
+@dispatch.add_dispatch_support
 def abs(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the absolute value of a tensor.
 
@@ -189,22 +191,10 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
       of type `float32` or `float64`, respectively.
   """
   with ops.name_scope(name, "Abs", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      if x.values.dtype.is_complex:
-        x_abs = gen_math_ops.complex_abs(
-            x.values, Tout=x.values.dtype.real_dtype, name=name)
-        return sparse_tensor.SparseTensor(
-            indices=x.indices, values=x_abs, dense_shape=x.dense_shape)
-      x_abs = gen_math_ops._abs(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_abs, dense_shape=x.dense_shape)
-    else:
-      x = ops.convert_to_tensor(x, name="x")
-      if x.dtype.is_complex:
-        return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
-      return gen_math_ops._abs(x, name=name)
-
-
+    x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.is_complex:
+      return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
+    return gen_math_ops._abs(x, name=name)
 # pylint: enable=g-docstring-has-escape
 
 
@@ -240,6 +230,7 @@ class DivideDelegateWithName(object):
 
 
 @tf_export("math.divide", "divide")
+@dispatch.add_dispatch_support
 def divide(x, y, name=None):
   """Computes Python style division of `x` by `y`."""
 
@@ -252,6 +243,7 @@ def divide(x, y, name=None):
 
 
 @tf_export("math.multiply", "multiply")
+@dispatch.add_dispatch_support
 def multiply(x, y, name=None):
   return gen_math_ops.mul(x, y, name)
 
@@ -272,6 +264,7 @@ _mul.__doc__ = (
 
 
 @tf_export("math.subtract", "subtract")
+@dispatch.add_dispatch_support
 def subtract(x, y, name=None):
   return gen_math_ops.sub(x, y, name)
 
@@ -291,31 +284,7 @@ _sub.__doc__ = (
     gen_math_ops.sub.__doc__ + ("" if _sub.__doc__ is None else _sub.__doc__))
 
 
-# pylint: disable=g-docstring-has-escape
-@tf_export("math.negative", "negative")
-def negative(x, name=None):
-  """Computes numerical negative value element-wise.
-
-  I.e., \\(y = -x\\).
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-  """
-  with ops.name_scope(name, "Neg", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_neg = gen_math_ops.neg(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_neg, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.neg(x, name=name)
-
-
-# pylint: enable=g-docstring-has-escape
+negative = gen_math_ops.neg
 
 
 # pylint: disable=g-docstring-has-escape
@@ -339,105 +308,6 @@ def _neg(x, name=None):
 
 
 # pylint: enable=g-docstring-has-escape
-
-
-@tf_export("math.sign", "sign")
-def sign(x, name=None):
-  """Returns an element-wise indication of the sign of a number.
-
-  `y = sign(x) = -1` if `x < 0`; 0 if `x == 0` or `tf.is_nan(x)`; 1 if `x > 0`.
-
-  Zero is returned for NaN inputs.
-
-  For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-
-  @compatibility(numpy)
-  Equivalent to numpy.sign except for the behavior for input values of NaN.
-  @end_compatibility
-  """
-  with ops.name_scope(name, "Sign", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_sign = gen_math_ops.sign(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_sign, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.sign(x, name=name)
-
-
-@tf_export("math.square", "square")
-def square(x, name=None):
-  r"""Computes square of x element-wise.
-
-  I.e., \\(y = x * x = x^2\\).
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`. Has the same type as `x`.
-  """
-  with ops.name_scope(name, "Square", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_square = gen_math_ops.square(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_square, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.square(x, name=name)
-
-
-@tf_export("math.sqrt", "sqrt")
-def sqrt(x, name=None):
-  r"""Computes square root of x element-wise.
-
-  I.e., \\(y = \sqrt{x} = x^{1/2}\\).
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `complex64`, `complex128`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-  """
-  with ops.name_scope(name, "Sqrt", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_sqrt = gen_math_ops.sqrt(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_sqrt, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.sqrt(x, name=name)
-
-
-@tf_export("math.erf", v1=["math.erf", "erf"])
-@deprecation.deprecated_endpoints("erf")
-def erf(x, name=None):
-  """Computes the Gauss error function of `x` element-wise.
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-  """
-  with ops.name_scope(name, "Erf", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_erf = gen_math_ops.erf(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_erf, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.erf(x, name=name)
 
 
 @tf_export(v1=["math.scalar_mul", "scalar_mul"])
@@ -480,6 +350,7 @@ def scalar_mul_v2(scalar, x, name=None):
 
 
 @tf_export("math.pow", "pow")
+@dispatch.add_dispatch_support
 def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the power of one value to another.
 
@@ -508,6 +379,7 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
 
 # pylint: disable=redefined-builtin,redefined-outer-name
 @tf_export("dtypes.complex", "complex")
+@dispatch.add_dispatch_support
 def complex(real, imag, name=None):
   r"""Converts two real numbers to a complex number.
 
@@ -551,6 +423,7 @@ def complex(real, imag, name=None):
 
 @tf_export("math.real", v1=["math.real", "real"])
 @deprecation.deprecated_endpoints("real")
+@dispatch.add_dispatch_support
 def real(input, name=None):
   r"""Returns the real part of a complex (or real) tensor.
 
@@ -583,6 +456,7 @@ def real(input, name=None):
 
 @tf_export("math.imag", v1=["math.imag", "imag"])
 @deprecation.deprecated_endpoints("imag")
+@dispatch.add_dispatch_support
 def imag(input, name=None):
   r"""Returns the imaginary part of a complex (or real) tensor.
 
@@ -614,6 +488,7 @@ def imag(input, name=None):
 
 @tf_export("math.angle", v1=["math.angle", "angle"])
 @deprecation.deprecated_endpoints("angle")
+@dispatch.add_dispatch_support
 def angle(input, name=None):
   r"""Returns the element-wise argument of a complex (or real) tensor.
 
@@ -653,6 +528,7 @@ def angle(input, name=None):
 
 
 @tf_export("math.round", "round")
+@dispatch.add_dispatch_support
 def round(x, name=None):  # pylint: disable=redefined-builtin
   """Rounds the values of a tensor to the nearest integer, element-wise.
 
@@ -680,6 +556,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
 
 
 @tf_export("dtypes.cast", "cast")
+@dispatch.add_dispatch_support
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
 
@@ -743,6 +620,7 @@ def cast(x, dtype, name=None):
 
 
 @tf_export("dtypes.saturate_cast", "saturate_cast")
+@dispatch.add_dispatch_support
 def saturate_cast(value, dtype, name=None):
   """Performs a safe saturating cast of `value` to `dtype`.
 
@@ -1068,6 +946,7 @@ def _div_python2(x, y, name=None):
 
 
 @tf_export("math.truediv", "truediv")
+@dispatch.add_dispatch_support
 def truediv(x, y, name=None):
   """Divides x / y elementwise (using Python 3 division operator semantics).
 
@@ -1125,6 +1004,7 @@ def div(x, y, name=None):
 
 
 @tf_export("div_no_nan")
+@dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
   """Computes an unsafe divide which returns 0 if the y is zero.
 
@@ -1154,6 +1034,7 @@ mod = gen_math_ops.floor_mod
 # TODO(aselle): Deprecate this once all internal functionality uses
 # tf.truncatediv
 @tf_export("math.floordiv", v1=["math.floordiv", "floordiv"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("floordiv")
 def floordiv(x, y, name=None):
   """Divides `x / y` elementwise, rounding toward the most negative integer.
@@ -1183,16 +1064,11 @@ def floordiv(x, y, name=None):
 
 
 realdiv = gen_math_ops.real_div
-tf_export("realdiv")(realdiv)
 truncatediv = gen_math_ops.truncate_div
-tf_export("truncatediv")(truncatediv)
 # TODO(aselle): Rename this to floordiv when we can.
 floor_div = gen_math_ops.floor_div
-tf_export("floor_div")(floor_div)
 truncatemod = gen_math_ops.truncate_mod
-tf_export("truncatemod")(truncatemod)
 floormod = gen_math_ops.floor_mod
-tf_export("floormod", "mod")(floormod)
 
 
 def _mul_dispatch(x, y, name=None):
@@ -1228,6 +1104,7 @@ _OverrideBinaryOperatorHelper(pow, "pow")
 
 
 @tf_export("math.logical_xor", v1=["math.logical_xor", "logical_xor"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("logical_xor")
 def logical_xor(x, y, name="LogicalXor"):
   """x ^ y = (x | y) & ~(x & y)."""
@@ -1410,6 +1287,7 @@ def reduce_sum_v1(input_tensor,
 
 
 @tf_export("math.reduce_sum", "reduce_sum", v1=[])
+@dispatch.add_dispatch_support
 def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the sum of elements across dimensions of a tensor.
 
@@ -1657,6 +1535,7 @@ def reduce_mean_v1(input_tensor,
 
 
 @tf_export("math.reduce_mean", "reduce_mean", v1=[])
+@dispatch.add_dispatch_support
 def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the mean of elements across dimensions of a tensor.
 
@@ -1757,7 +1636,7 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_variance"
   with ops.name_scope(name):
     means = reduce_mean(input_tensor, axis=axis, keepdims=True)
-    squared_deviations = square(input_tensor - means)
+    squared_deviations = gen_math_ops.square(input_tensor - means)
     return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
 
 
@@ -1804,10 +1683,11 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_std"
   with ops.name_scope(name):
     variance = reduce_variance(input_tensor, axis=axis, keepdims=keepdims)
-    return sqrt(variance)
+    return gen_math_ops.sqrt(variance)
 
 
 @tf_export("math.reduce_prod", "reduce_prod", v1=[])
+@dispatch.add_dispatch_support
 def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the product of elements across dimensions of a tensor.
 
@@ -1929,6 +1809,7 @@ def reduce_min_v1(input_tensor,
 
 
 @tf_export("math.reduce_min", "reduce_min", v1=[])
+@dispatch.add_dispatch_support
 def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the minimum of elements across dimensions of a tensor.
 
@@ -2007,6 +1888,7 @@ def reduce_max_v1(input_tensor,
 
 
 @tf_export("math.reduce_max", "reduce_max", v1=[])
+@dispatch.add_dispatch_support
 def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the maximum of elements across dimensions of a tensor.
 
@@ -2094,6 +1976,7 @@ def reduce_all_v1(input_tensor,
 
 
 @tf_export("reduce_all", "math.reduce_all", v1=[])
+@dispatch.add_dispatch_support
 def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the "logical and" of elements across dimensions of a tensor.
 
@@ -2190,6 +2073,7 @@ def reduce_any_v1(input_tensor,
 
 
 @tf_export("math.reduce_any", "reduce_any", v1=[])
+@dispatch.add_dispatch_support
 def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the "logical or" of elements across dimensions of a tensor.
 
@@ -2671,7 +2555,8 @@ def matvec(a,
 
 _OverrideBinaryOperatorHelper(matmul, "matmul")
 
-sparse_matmul = gen_math_ops.sparse_mat_mul
+sparse_matmul = deprecation.deprecated(None, "Use `tf.linalg.matmul` instead")(
+    gen_math_ops.sparse_mat_mul)
 tf_export(v1=["sparse_matmul"])(sparse_matmul)
 
 
@@ -2751,6 +2636,7 @@ def _as_indexed_slices_list(inputs, optimize=True):
 
 
 @tf_export("math.add_n", "add_n")
+@dispatch.add_dispatch_support
 def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
@@ -2896,6 +2782,7 @@ def sigmoid(x, name=None):
 
 
 @tf_export("math.log_sigmoid", v1=["math.log_sigmoid", "log_sigmoid"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("log_sigmoid")
 def log_sigmoid(x, name=None):
   """Computes log sigmoid of `x` element-wise.
@@ -2913,27 +2800,6 @@ def log_sigmoid(x, name=None):
   with ops.name_scope(name, "LogSigmoid", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     return gen_math_ops.neg(gen_nn_ops.softplus(-x), name=name)
-
-
-@tf_export("math.tanh", "nn.tanh", "tanh")
-def tanh(x, name=None):
-  """Computes hyperbolic tangent of `x` element-wise.
-
-  Args:
-    x: A Tensor or SparseTensor with type `float16`, `float32`, `double`,
-      `complex64`, or `complex128`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A Tensor or SparseTensor respectively with the same type as `x`.
-  """
-  with ops.name_scope(name, "Tanh", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_tanh = gen_math_ops.tanh(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_tanh, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.tanh(x, name=name)
 
 
 @tf_export("math.bincount", v1=[])
@@ -3126,6 +2992,7 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
 
 
 @tf_export("math.conj", v1=["math.conj", "conj"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("conj")
 def conj(x, name=None):
   r"""Returns the complex conjugate of a complex number.
@@ -3230,6 +3097,7 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
     "math.unsorted_segment_mean",
     v1=["math.unsorted_segment_mean", "unsorted_segment_mean"])
 @deprecation.deprecated_endpoints("unsorted_segment_mean")
+@dispatch.add_dispatch_support
 def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r"""Computes the mean along segments of a tensor.
 
@@ -3275,6 +3143,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
     "math.unsorted_segment_sqrt_n",
     v1=["math.unsorted_segment_sqrt_n", "unsorted_segment_sqrt_n"])
 @deprecation.deprecated_endpoints("unsorted_segment_sqrt_n")
+@dispatch.add_dispatch_support
 def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 
@@ -3762,63 +3631,3 @@ def polyval(coeffs, x, name=None):
     for c in coeffs[1:]:
       p = c + p * x
     return p
-
-
-@tf_export("math.bessel_i0e")
-def bessel_i0e(x, name=None):
-  """Computes the Bessel i0e function of `x` element-wise.
-
-  Exponentially scaled modified Bessel function of order 0 defined as
-  `bessel_i0e(x) = exp(-abs(x)) bessel_i0(x)`.
-
-  This function is faster and numerically stabler than `bessel_i0(x)`.
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-
-  @compatibility(scipy)
-  Equivalent to scipy.special.i0e
-  @end_compatibility
-  """
-  with ops.name_scope(name, "bessel_i0e", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_i0e = gen_math_ops.bessel_i0e(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_i0e, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.bessel_i0e(x, name=name)
-
-
-@tf_export("math.bessel_i1e")
-def bessel_i1e(x, name=None):
-  """Computes the Bessel i1e function of `x` element-wise.
-
-  Exponentially scaled modified Bessel function of order 1 defined as
-  `bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
-
-  This function is faster and numerically stabler than `bessel_i1(x)`.
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-
-  @compatibility(scipy)
-  Equivalent to scipy.special.i1e
-  @end_compatibility
-  """
-  with ops.name_scope(name, "bessel_i1e", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensor):
-      x_i1e = gen_math_ops.bessel_i1e(x.values, name=name)
-      return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_i1e, dense_shape=x.dense_shape)
-    else:
-      return gen_math_ops.bessel_i1e(x, name=name)

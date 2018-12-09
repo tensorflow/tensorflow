@@ -109,11 +109,13 @@ class InterpreterInfo : public GraphInfo {
 };
 
 Subgraph::Subgraph(ErrorReporter* error_reporter,
-                   TfLiteExternalContext** external_contexts)
+                   TfLiteExternalContext** external_contexts,
+                   std::vector<std::unique_ptr<Subgraph>>* subgraphs)
     : context_(&owned_context_),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
-      external_contexts_(external_contexts) {
+      external_contexts_(external_contexts),
+      subgraphs_(subgraphs) {
   context_->impl_ = static_cast<void*>(this);
   context_->ResizeTensor = ResizeTensor;
   context_->ReportError = ReportErrorC;
@@ -559,6 +561,9 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
 
 TfLiteStatus Subgraph::PrepareOpsStartingAt(
     int first_execution_plan_index, int* last_execution_plan_index_prepared) {
+  if (first_execution_plan_index == 0) {
+    has_dynamic_tensors_ = false;
+  }
   for (int execution_plan_index = first_execution_plan_index;
        execution_plan_index < execution_plan_.size(); execution_plan_index++) {
     int node_index = execution_plan_[execution_plan_index];
@@ -577,7 +582,8 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     // stop for dynamic temporary tensors since they won't affect the
     // sizes of other tensors in the graph.
     if (HasDynamicTensor(*context_, node.outputs)) {
-      break;
+      has_dynamic_tensors_ = true;
+      return kTfLiteOk;
     }
   }
   return kTfLiteOk;
@@ -929,19 +935,7 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
     int last_execution_plan_index_prepared;
     TF_LITE_ENSURE_OK(&context_, PrepareOpsStartingAt(
                                      0, &last_execution_plan_index_prepared));
-
-    bool has_dynamic_tensors = true;
-    // Dynamic tensors exist if not all nodes can be prepared.
-    if (last_execution_plan_index_prepared + 1 == execution_plan_.size()) {
-      // If all the nodes can be prepared, check if the last node has dynamic
-      // tensors.
-      int node_index = execution_plan_[last_execution_plan_index_prepared];
-      TfLiteNode& node = nodes_and_registration_[node_index].first;
-      if (!HasDynamicTensor(*context_, node.outputs)) {
-        has_dynamic_tensors = false;
-      }
-    }
-    if (has_dynamic_tensors) {
+    if (has_dynamic_tensors_) {
       ReportError(
           "Attempting to use a delegate that only supports static-sized "
           "tensors with a graph that has dynamic-sized tensors.");

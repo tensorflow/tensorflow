@@ -65,7 +65,7 @@ def model_to_estimator(
     raise NotImplementedError(
         'tf.keras.estimator.model_to_estimator function not available in your '
         'installation.')
-  keras_lib.model_to_estimator(
+  return keras_lib.model_to_estimator(
       keras_model=keras_model,
       keras_model_path=keras_model_path,
       custom_objects=custom_objects,

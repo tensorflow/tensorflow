@@ -149,27 +149,6 @@ py_test(
     ],
 )
 
-cuda_py_test(
-    name = "function_buffering_resource_test",
-    size = "small",
-    srcs = ["function_buffering_resource_test.py"],
-    additional_deps = [
-        "//tensorflow/python/data/experimental/ops:prefetching_ops",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/eager:function",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-    ],
-    tags = ["no_windows_gpu"],
-)
-
 py_test(
     name = "get_single_element_test",
     size = "small",
@@ -387,6 +366,18 @@ py_test(
 )
 
 py_test(
+    name = "cardinality_test",
+    srcs = ["cardinality_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "override_threadpool_test",
     size = "small",
     srcs = ["override_threadpool_test.py"],
@@ -554,6 +545,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -720,6 +712,17 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:unique",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+cuda_py_test(
+    name = "wrap_unwrap_test",
+    size = "small",
+    srcs = ["wrap_unwrap_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],

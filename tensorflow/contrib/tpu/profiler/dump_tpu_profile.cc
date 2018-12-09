@@ -98,7 +98,7 @@ Status DumpOpProfileToLogDirectory(StringPiece run_dir,
   if (!status.ok()) {
     return errors::Internal(
         "Failed to convert op profile to json. Skipping... ",
-        string(status.error_message()));
+        string(status.message()));
   }
   TF_RETURN_IF_ERROR(WriteStringToFile(Env::Default(), path, json));
   if (os) {

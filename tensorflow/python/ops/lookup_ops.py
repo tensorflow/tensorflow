@@ -39,6 +39,7 @@ from tensorflow.python.ops import string_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_lookup_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.training.checkpointable import base as checkpointable_base
 from tensorflow.python.training.checkpointable import tracking as checkpointable
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
@@ -160,7 +161,9 @@ class InitializableLookupTableBase(LookupInterface):
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
     self._default_value.get_shape().merge_with(tensor_shape.scalar())
-    self._initializer = initializer
+    if isinstance(initializer, checkpointable_base.CheckpointableBase):
+      self._initializer = self._track_checkpointable(
+          initializer, "_initializer")
     self._resource_handle = self.create_resource()
     self._init_op = self.initialize()
 
@@ -309,7 +312,7 @@ class HashTable(InitializableLookupTableBase):
     return exported_keys, exported_values
 
 
-class TableInitializerBase(object):
+class TableInitializerBase(checkpointable_base.CheckpointableBase):
   """Base class for lookup table initializers."""
 
   def __init__(self, key_dtype, value_dtype):
@@ -522,12 +525,14 @@ class TextFileInitializer(TableInitializerBase):
     if (vocab_size is not None) and (vocab_size <= 0):
       raise ValueError("Invalid vocab_size %s." % vocab_size)
 
-    self._filename = filename
     self._key_index = key_index
     self._value_index = value_index
     self._vocab_size = vocab_size
     self._delimiter = delimiter
     self._name = name
+    self._filename = self._track_checkpointable(
+        checkpointable.TrackableAsset(filename),
+        "_filename")
 
     super(TextFileInitializer, self).__init__(key_dtype, value_dtype)
 

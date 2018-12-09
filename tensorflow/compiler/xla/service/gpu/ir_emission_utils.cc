@@ -268,5 +268,17 @@ string CudnnConvKindToString(CudnnConvKind kind) {
   }
 }
 
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
+  return b->CreateAnd(
+      b->CreateICmpEQ(
+          b->getInt32(0),
+          llvm_ir::EmitCallToIntrinsic(
+              llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b)),
+      b->CreateICmpEQ(
+          b->getInt32(0),
+          llvm_ir::EmitCallToIntrinsic(
+              llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, b)));
+}
+
 }  // namespace gpu
 }  // namespace xla

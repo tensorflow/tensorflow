@@ -57,7 +57,8 @@ TEST(MakeNumaAwareTest, ReplaceSimple) {
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
   EXPECT_FALSE(graph_utils::ContainsGraphNodeWithName("map_and_batch", output));
-  EXPECT_FALSE(graph_utils::ContainsNodeWithOp("MapAndBatchDatasetV2", output));
+  EXPECT_FALSE(graph_utils::ContainsNodeWithOp("ExperimentalMapAndBatchDataset",
+                                               output));
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp(
       "ExperimentalNumaMapAndBatchDataset", output));
 }
@@ -91,7 +92,8 @@ TEST(MapAndBatchNumaAawareReplacementTest, ReplaceWithExtraChild) {
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
   EXPECT_FALSE(graph_utils::ContainsGraphNodeWithName("map_and_batch", output));
-  EXPECT_FALSE(graph_utils::ContainsNodeWithOp("MapAndBatchDatasetV2", output));
+  EXPECT_FALSE(graph_utils::ContainsNodeWithOp("ExperimentalMapAndBatchDataset",
+                                               output));
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp(
       "ExperimentalNumaMapAndBatchDataset", output));
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp("CacheDataset", output));

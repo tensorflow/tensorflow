@@ -33,7 +33,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SensitivityAtSpecificity"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SparseCategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SpecificityAtSensitivity"
     mtype: "<type \'type\'>"
   }
   member {
@@ -70,7 +78,7 @@ tf_module {
   }
   member_method {
     name: "binary_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "categorical_accuracy"
@@ -78,7 +86,7 @@ tf_module {
   }
   member_method {
     name: "categorical_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "cosine"
@@ -154,7 +162,7 @@ tf_module {
   }
   member_method {
     name: "sparse_categorical_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "sparse_top_k_categorical_accuracy"

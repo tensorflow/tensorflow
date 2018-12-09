@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import readers
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -122,14 +123,15 @@ class MakeTFRecordDatasetTest(
 
     with ops.Graph().as_default() as g:
       with self.session(graph=g) as sess:
-        outputs = readers.make_tf_record_dataset(
-            file_pattern=file_pattern,
-            num_epochs=num_epochs,
-            batch_size=batch_size,
-            parser_fn=fn,
-            num_parallel_reads=num_parallel_reads,
-            drop_final_batch=drop_final_batch,
-            shuffle=False).make_one_shot_iterator().get_next()
+        outputs = dataset_ops.make_one_shot_iterator(
+            readers.make_tf_record_dataset(
+                file_pattern=file_pattern,
+                num_epochs=num_epochs,
+                batch_size=batch_size,
+                parser_fn=fn,
+                num_parallel_reads=num_parallel_reads,
+                drop_final_batch=drop_final_batch,
+                shuffle=False)).get_next()
         self._verify_records(
             sess, outputs, batch_size, file_index, num_epochs=num_epochs,
             interleave_cycle_length=num_parallel_reads,
@@ -185,7 +187,7 @@ class MakeTFRecordDatasetTest(
             num_parallel_reads=num_parallel_reads,
             shuffle=True,
             shuffle_seed=seed)
-        iterator = dataset.make_initializable_iterator()
+        iterator = dataset_ops.make_initializable_iterator(dataset)
         next_element = iterator.get_next()
 
         self.evaluate(iterator.initializer)

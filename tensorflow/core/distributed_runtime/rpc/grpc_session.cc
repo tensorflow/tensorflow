@@ -92,6 +92,12 @@ void ReEncodeConsts(GraphDef* gdef) {
 }
 }  // namespace
 
+void GrpcSession::SetHandleAndGraphVersion(string handle, int64 graph_version) {
+  mutex_lock l(mu_);
+  handle_ = std::move(handle);
+  current_graph_version_ = graph_version;
+}
+
 Status GrpcSession::Handle(string* out_handle) {
   mutex_lock l(mu_);
   if (handle_.empty()) {
@@ -117,9 +123,7 @@ Status GrpcSession::CreateImpl(CallOptions* call_options,
   CreateSessionResponse resp;
   Status s = master_->CreateSession(call_options, &req, &resp);
   if (s.ok()) {
-    mutex_lock l(mu_);
-    swap(handle_, *(resp.mutable_session_handle()));
-    current_graph_version_ = resp.graph_version();
+    SetHandleAndGraphVersion(resp.session_handle(), resp.graph_version());
   }
   return s;
 }

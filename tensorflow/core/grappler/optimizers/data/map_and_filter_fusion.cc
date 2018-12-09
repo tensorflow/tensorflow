@@ -55,8 +55,9 @@ NodeDef MakeFusedNode(const NodeDef& map_node,
   }
 
   // Optional attrs.
-  for (auto key : {"use_inter_op_parallelism", "sloppy"}) {
-    if (const auto* attr = gtl::FindOrNull(map_node.attr(), key)) {
+  for (auto key :
+       {"use_inter_op_parallelism", "sloppy", "preserve_cardinality"}) {
+    if (gtl::FindOrNull(map_node.attr(), key)) {
       graph_utils::CopyAttribute(key, map_node, &fused_node);
     }
   }

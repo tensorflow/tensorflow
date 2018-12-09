@@ -15,7 +15,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/kernels.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -115,4 +117,44 @@ void TF_RegisterKernelBuilder(const char* name, TF_KernelBuilder* builder,
       absl::make_unique<tensorflow::KernelBuilderFactory>(builder));
 
   TF_SetStatus(status, TF_OK, "");
+}
+
+int TF_NumInputs(TF_OpKernelContext* ctx) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  return cc_ctx->num_inputs();
+}
+
+int TF_NumOutputs(TF_OpKernelContext* ctx) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  return cc_ctx->num_outputs();
+}
+
+void TF_GetInput(TF_OpKernelContext* ctx, int i, TF_Tensor** tensor,
+                 TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (i < 0 || i >= cc_ctx->num_inputs()) {
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "input index out of range");
+    return;
+  }
+  const ::tensorflow::Tensor& cc_tensor(cc_ctx->input(i));
+  TF_Tensor* result = ::tensorflow::TF_TensorFromTensor(cc_tensor, status);
+  if (TF_GetCode(status) == TF_OK) {
+    *tensor = result;
+  }
+}
+
+void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
+                  TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (i < 0 || i >= cc_ctx->num_inputs()) {
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "input index out of range");
+    return;
+  }
+  ::tensorflow::Tensor cc_tensor;
+  ::tensorflow::Status s = ::tensorflow::TF_TensorToTensor(tensor, &cc_tensor);
+  TF_SetStatus(status, TF_OK, "");
+  ::tensorflow::Set_TF_Status_from_Status(status, s);
+  if (s.ok()) {
+    cc_ctx->set_output(i, cc_tensor);
+  }
 }

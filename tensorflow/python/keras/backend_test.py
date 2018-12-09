@@ -1104,13 +1104,13 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
                                                              initial_states,
                                                              **kwargs)
         # check static shape inference
-        self.assertEquals(last_output.get_shape().as_list(),
-                          [num_samples, output_dim])
-        self.assertEquals(outputs.get_shape().as_list(),
-                          [num_samples, timesteps, output_dim])
+        self.assertEqual(last_output.get_shape().as_list(),
+                         [num_samples, output_dim])
+        self.assertEqual(outputs.get_shape().as_list(),
+                         [num_samples, timesteps, output_dim])
         for state in new_states:
-          self.assertEquals(state.get_shape().as_list(),
-                            [num_samples, output_dim])
+          self.assertEqual(state.get_shape().as_list(),
+                           [num_samples, output_dim])
 
         last_output_list[i].append(keras.backend.eval(last_output))
         outputs_list[i].append(keras.backend.eval(outputs))
@@ -1208,7 +1208,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(outputs.get_shape().as_list(),
                          [num_samples, timesteps, output_dim])
         # for state in new_states:
-        #   self.assertEquals(state.get_shape().as_list(),
+        #   self.assertEqual(state.get_shape().as_list(),
         #                     [num_samples, output_dim])
         self.assertEqual(new_states[0].get_shape().as_list(),
                          [num_samples, output_dim])
@@ -1457,7 +1457,7 @@ class TestCTC(test.TestCase):
                 decode_truth[i] == keras.backend.eval(decode_pred_tf[i])))
       self.assertAllClose(log_prob_truth, log_prob_pred)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_ctc_batch_cost(self):
     with self.cached_session():
       label_lens = np.expand_dims(np.asarray([5, 4]), 1)

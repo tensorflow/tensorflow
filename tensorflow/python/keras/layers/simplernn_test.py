@@ -98,7 +98,7 @@ class SimpleRNNLayerTest(test.TestCase):
     self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
     self.assertEqual(layer.cell.bias.constraint, b_constraint)
 
-  @tf_test_util.run_deprecated_v1
+  @tf_test_util.run_v1_only('b/120545219')
   def test_with_masking_layer_SimpleRNN(self):
     layer_class = keras.layers.SimpleRNN
     inputs = np.random.random((2, 3, 4))
@@ -121,7 +121,7 @@ class SimpleRNNLayerTest(test.TestCase):
 
 class SimpleRNNLayerGraphOnlyTest(test.TestCase):
 
-  @tf_test_util.run_deprecated_v1
+  @tf_test_util.run_v1_only('b/120545219')
   def test_statefulness_SimpleRNN(self):
     num_samples = 2
     timesteps = 3

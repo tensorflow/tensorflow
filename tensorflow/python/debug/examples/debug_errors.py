@@ -77,4 +77,5 @@ if __name__ == "__main__":
       default=False,
       help="Use debugger to track down bad values during training")
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  with tf.Graph().as_default():
+    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

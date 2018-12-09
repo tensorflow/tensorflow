@@ -55,7 +55,7 @@ class TFConfigClusterResolver(ClusterResolver):
                task_index=None,
                rpc_layer=None,
                environment=None,
-               num_accelerators_per_worker=0):
+               num_accelerators=0):
     """Creates a new TFConfigClusterResolver.
 
     Args:
@@ -66,15 +66,17 @@ class TFConfigClusterResolver(ClusterResolver):
       rpc_layer: (String, optional) Overrides the rpc layer TensorFlow uses.
       environment: (String, optional) Overrides the environment TensorFlow
         operates in.
-      num_accelerators_per_worker: (Integer, optional) Specifies the number of
+      num_accelerators: (Integer, optional) Specifies the number of
         accelerators (e.g. GPUs, TPUs, others) that each node has.
     """
+    # TODO(frankchn): num_accelerators is a stop-gap and will be removed
+    # in favor of autodetection of devices soon.
 
     self._task_type = task_type
     self._task_index = task_index
     self._rpc_layer = rpc_layer
     self._environment = environment
-    self._num_accelerators_per_worker = num_accelerators_per_worker
+    self._num_accelerators = num_accelerators
 
   @property
   def task_type(self):
@@ -115,10 +117,15 @@ class TFConfigClusterResolver(ClusterResolver):
   def rpc_layer(self, rpc_layer):
     self._rpc_layer = rpc_layer
 
-  def num_accelerators_per_worker(self, session_config=None):
+  def num_accelerators(self,
+                       task_type=None,
+                       task_index=None,
+                       accelerator_type='GPU',
+                       config_proto=None):
     # TODO(frankchn): Connect to server (w/ session_config) in the future.
-    del session_config  # Unused, we do not connect to another server here.
-    return self._num_accelerators_per_worker
+    # Unused, we do not connect to another server here right now.
+    del task_type, task_index, accelerator_type, config_proto
+    return self._num_accelerators
 
   def cluster_spec(self):
     """Returns a ClusterSpec based on the TF_CONFIG environment variable.

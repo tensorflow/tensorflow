@@ -35,7 +35,8 @@ namespace tflite {
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
-  subgraphs_.emplace_back(new Subgraph(error_reporter_, external_contexts_));
+  // There's always at least 1 subgraph which is the primary subgraph.
+  AddSubgraphs(1);
   context_ = primary_subgraph().context();
 
   // Reserve some space for the tensors to avoid excessive resizing.
@@ -71,6 +72,19 @@ TfLiteStatus Interpreter::AllocateTensors() {
 
 void Interpreter::ReserveNodes(int count) {
   primary_subgraph().nodes_and_registration().reserve(count);
+}
+
+void Interpreter::AddSubgraphs(int subgraphs_to_add,
+                               int* first_new_subgraph_index) {
+  const size_t base_index = subgraphs_.size();
+  if (first_new_subgraph_index) *first_new_subgraph_index = base_index;
+
+  subgraphs_.reserve(base_index + subgraphs_to_add);
+  for (int i = 0; i < subgraphs_to_add; ++i) {
+    Subgraph* subgraph =
+        new Subgraph(error_reporter_, external_contexts_, &subgraphs_);
+    subgraphs_.emplace_back(subgraph);
+  }
 }
 
 TfLiteStatus Interpreter::AddNodeWithParameters(

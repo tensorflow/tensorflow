@@ -332,7 +332,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
 class TestWholeModelSaving(test.TestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_sequential_model_saving(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -635,7 +635,7 @@ class TestWholeModelSaving(test.TestCase):
       os.close(fd)
       os.remove(fname)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_saving_model_with_long_weights_names(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -756,7 +756,7 @@ class SubclassedModel(training.Model):
 
 class TestWeightSavingAndLoadingTFFormat(test.TestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_keras_optimizer_warning(self):
     graph = ops.Graph()
     with graph.as_default(), self.session(graph):

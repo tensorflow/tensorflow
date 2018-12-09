@@ -104,6 +104,7 @@ py_test(
     srcs = [
         "estimators_test.py",
     ],
+    shard_count = 3,
     srcs_version = "PY2AND3",
     tags = [
         "no_mac",

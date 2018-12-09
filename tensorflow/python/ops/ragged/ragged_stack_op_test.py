@@ -23,10 +23,13 @@ from absl.testing import parameterized
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedStackOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
+                        parameterized.TestCase):
 
   @parameterized.parameters(
       dict(
@@ -265,7 +268,6 @@ class RaggedStackOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           axis=0,
           expected=[[[b'a00', b'a01'], [], [b'a20', b'a21']]]),
   )   # pyformat: disable
-  @test_util.run_deprecated_v1
   def testRaggedStack(self,
                       descr,
                       rt_inputs,
@@ -286,8 +288,7 @@ class RaggedStackOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(stacked.ragged_rank, expected_ragged_rank)
     if expected_shape is not None:
       self.assertEqual(stacked.shape.as_list(), expected_shape)
-    with self.test_session():
-      self.assertEqual(stacked.eval().tolist(), expected)
+    self.assertRaggedEqual(stacked, expected)
 
   @parameterized.parameters(
       dict(
@@ -314,7 +315,6 @@ class RaggedStackOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testError(self, rt_inputs, axis, error, message):
     self.assertRaisesRegexp(error, message, ragged.stack, rt_inputs, axis)
 
-  @test_util.run_deprecated_v1
   def testSingleTensorInput(self):
     """Tests ragged_stack with a single tensor input.
 
@@ -324,8 +324,7 @@ class RaggedStackOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     """
     rt_inputs = ragged.constant([[1, 2], [3, 4]])
     stacked = ragged.stack(rt_inputs, 0)
-    with self.test_session():
-      self.assertEqual(stacked.eval().tolist(), [[[1, 2], [3, 4]]])
+    self.assertRaggedEqual(stacked, [[[1, 2], [3, 4]]])
 
 
 if __name__ == '__main__':

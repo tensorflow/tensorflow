@@ -48,6 +48,43 @@ ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   EXPECT_TRUE(ArCrsCombiner::TestInstructionsComputeSameValue(i1, i2));
 }
 
+TEST_F(ArCrsCombinerTest, SameValueTestBasecase2) {
+  const char* module_str = R"(
+HloModule foobar
+
+ENTRY %entrycomp (x: f32[]) -> (f32[], f32[]) {
+  %x = f32[] parameter(0)
+  ROOT %tuple = (f32[], f32[]) tuple(%x, %x)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto root_tuple = module->entry_computation()->root_instruction();
+  auto i1 = root_tuple->operands()[0];
+  auto i2 = root_tuple->operands()[1];
+  EXPECT_TRUE(ArCrsCombiner::TestInstructionsComputeSameValue(i1, i2));
+}
+
+TEST_F(ArCrsCombinerTest, SameValueTestBasecase3) {
+  const char* module_str = R"(
+HloModule foobar
+
+ENTRY %entrycomp (x: f32[], y: f32[]) -> (f32[], f32[]) {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %tuple = (f32[], f32[]) tuple(%x, %y)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto root_tuple = module->entry_computation()->root_instruction();
+  auto i1 = root_tuple->operands()[0];
+  auto i2 = root_tuple->operands()[1];
+  EXPECT_FALSE(ArCrsCombiner::TestInstructionsComputeSameValue(i1, i2));
+}
+
 TEST_F(ArCrsCombinerTest, SameValueTestNumOperands) {
   const char* module_str = R"(
 HloModule foobar
@@ -58,6 +95,46 @@ ENTRY %entrycomp (p: f32[2,2]) -> ((f32[2,2]), (f32[2,2], f32[2,2])) {
   %tuple1 = (f32[2,2]) tuple(%constant.f32)
   %tuple2 = (f32[2,2], f32[2,2]) tuple(%constant.f32, %constant.f32)
   ROOT %tuple = ((f32[2,2]), (f32[2,2], f32[2,2])) tuple(%tuple1, %tuple2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto root_tuple = module->entry_computation()->root_instruction();
+  auto i1 = root_tuple->operands()[0];
+  auto i2 = root_tuple->operands()[1];
+  EXPECT_FALSE(ArCrsCombiner::TestInstructionsComputeSameValue(i1, i2));
+}
+
+TEST_F(ArCrsCombinerTest, SameValueTestSliceIndicesMatch) {
+  const char* module_str = R"(
+HloModule foobar
+
+ENTRY %entrycomp (p: f32[2]) -> (f32[1], f32[1]) {
+  %p = f32[2] parameter(0)
+  %slice.1 = f32[1] slice(f32[2] %p), slice={[0:1]}
+  %slice.2 = f32[1] slice(f32[2] %p), slice={[0:1]}
+  ROOT %tuple = (f32[1], f32[1]) tuple(%slice.1, %slice.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto root_tuple = module->entry_computation()->root_instruction();
+  auto i1 = root_tuple->operands()[0];
+  auto i2 = root_tuple->operands()[1];
+  EXPECT_TRUE(ArCrsCombiner::TestInstructionsComputeSameValue(i1, i2));
+}
+
+TEST_F(ArCrsCombinerTest, SameValueTestSliceIndicesDontMatch) {
+  const char* module_str = R"(
+HloModule foobar
+
+ENTRY %entrycomp (p: f32[2]) -> (f32[1], f32[1]) {
+  %p = f32[2] parameter(0)
+  %slice.1 = f32[1] slice(f32[2] %p), slice={[0:1]}
+  %slice.2 = f32[1] slice(f32[2] %p), slice={[1:2]}
+  ROOT %tuple = (f32[1], f32[1]) tuple(%slice.1, %slice.2)
 }
 )";
 
@@ -320,11 +397,15 @@ ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   ArCrsCombiner combiner(2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::Subtract(op::CrossReplicaSum(), op::Constant()),
-                        op::Subtract(op::CrossReplicaSum(), op::Constant())));
-  auto sub = module->entry_computation()->root_instruction()->operands()[0];
-  auto crs_after = sub->operands()[0];
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(
+          op::CrossReplicaSum(op::Add(
+              op::Divide(op::Constant(), op::Constant()), op::Convert())),
+          op::CrossReplicaSum(op::Add(
+              op::Divide(op::Constant(), op::Constant()), op::Convert()))));
+  auto crs_after =
+      module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
   ASSERT_EQ(replica_groups_before.size(), replica_groups_after.size());
   for (int i = 0; i < replica_groups_before.size(); ++i) {

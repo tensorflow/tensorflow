@@ -60,7 +60,7 @@ absl::optional<HloInstruction*> MatchesArCrsPattern(
 
 absl::optional<HloInstruction*> ArCrsCombiner::WhileFromBodyParameter(
     HloInstruction* instruction) {
-  CHECK(HloOpcode::kParameter == instruction->opcode());
+  CHECK_EQ(HloOpcode::kParameter, instruction->opcode());
   HloComputation* computation = instruction->parent();
   auto caller_instructions = call_graph_->GetComputationCallers(computation);
   if (caller_instructions.size() == 1) {
@@ -120,7 +120,7 @@ bool ArCrsCombiner::TupleElementsComputeSameValue(
     return false;
   }
   for (auto tuple : tuples) {
-    CHECK(tuple->opcode() == HloOpcode::kTuple);
+    CHECK_EQ(tuple->opcode(), HloOpcode::kTuple);
     if (!InstructionsComputeSameValue(tuple->mutable_operand(i1),
                                       tuple->mutable_operand(i2),
                                       visited_pairs)) {
@@ -160,13 +160,6 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
   if (opcode1 != i2->opcode() || operands1.size() != i2->operands().size()) {
     return false;
   }
-  if (opcode1 == HloOpcode::kConstant || i1->IsCrossModuleAllReduce()) {
-    return i1->Identical(
-        *i2,
-        /*eq_operands=*/std::equal_to<const HloInstruction*>(),
-        /*eq_computations=*/std::equal_to<const HloComputation*>(),
-        /*layout_sensitive=*/false);
-  }
   visited_pairs->emplace(min_uid, max_uid);
   for (int i = 0; i < operands1.size(); ++i) {
     auto operand1 = operands1[i];
@@ -175,14 +168,28 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
       return false;
     }
   }
+  if (opcode1 == HloOpcode::kParameter) {
+    // In the general case, we don't try to prove equality of parameters.
+    // We only try in the context of get-tuple-element
+    // (see TupleElementsComputeSameValue).
+    return false;
+  }
   if (opcode1 == HloOpcode::kGetTupleElement) {
-    if (i1->tuple_index() == i2->tuple_index()) {
-      return true;
-    }
-    return TupleElementsComputeSameValue(operands1[0], i1->tuple_index(),
+    return i1->tuple_index() == i2->tuple_index() ||
+           TupleElementsComputeSameValue(operands1[0], i1->tuple_index(),
                                          i2->tuple_index(), visited_pairs);
   }
-  return true;
+  // Don't check that the operands are identical, because Identical can
+  // return false for instructions that compute the same value but are not
+  // identical, which we don't want. We have checked the arguments with
+  // InstructionsComputeSameValue earlier.
+  auto eq_instructions = [](const HloInstruction* i1,
+                            const HloInstruction* i2) -> bool { return true; };
+  auto eq_computations = [](const HloComputation* a, const HloComputation* b) {
+    return *a == *b;
+  };
+  return i1->Identical(*i2, eq_instructions, eq_computations,
+                       /*layout_sensitive=*/false);
 }
 
 void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
@@ -203,12 +210,12 @@ void ArCrsCombiner::KeepProvablyEqualInstructionGroups() {
 
     auto instr_0 = instruction_vec[0];
     auto add_0 = instr_0->users()[0]->users()[0];
-    CHECK(HloOpcode::kAdd == add_0->opcode());
+    CHECK_EQ(HloOpcode::kAdd, add_0->opcode());
 
     for (int i = 1; i < instruction_vec.size(); ++i) {
       auto instr_i = instruction_vec[i];
       auto add_i = instr_i->users()[0]->users()[0];
-      CHECK(HloOpcode::kAdd == add_i->opcode());
+      CHECK_EQ(HloOpcode::kAdd, add_i->opcode());
       absl::flat_hash_map<int64, int64> visited_pairs;
       if (!InstructionsComputeSameValue(add_0, add_i, &visited_pairs)) {
         all_reduce_map_.erase(it.first);
@@ -242,30 +249,22 @@ StatusOr<bool> ArCrsCombiner::RewriteGraph() {
       HloInstruction* other_summand = (add->operands()[0] == convert)
                                           ? add->operands()[1]
                                           : add->operands()[0];
-      // Remove the AllReduce and replace the CRS with:
-      // AllReduce - (other_summand * (num_spatial_partitions_ - 1))
+      // To move the AR past the addition, we need to divide other_summand by
+      // the number of spatial partitions.
+      CHECK_EQ(all_reduce->user_count(), 1);
       TF_CHECK_OK(
           all_reduce->ReplaceAllUsesWith(all_reduce->mutable_operand(0)));
-      crs->set_all_reduce_id(all_reduce->all_reduce_id());
-      auto new_shape = crs->shape();
-      HloInstruction* to_subtract;
-      if (num_spatial_partitions_ == 2) {
-        to_subtract = other_summand;
-      } else {
-        Literal partitions_minus_1_lit = Literal(new_shape);
-        partitions_minus_1_lit.PopulateWithValue<float>(
-            num_spatial_partitions_ - 1);
-        auto partitions_minus_1_const = parent_computation->AddInstruction(
-            HloInstruction::CreateConstant(partitions_minus_1_lit.Clone()));
-        to_subtract =
-            parent_computation->AddInstruction(HloInstruction::CreateBinary(
-                new_shape, HloOpcode::kMultiply, other_summand,
-                partitions_minus_1_const));
-      }
-      auto sub =
+      auto shape = other_summand->shape();
+      Literal lit(shape);
+      lit.PopulateWithValue<float>(num_spatial_partitions_);
+      auto divisor = parent_computation->AddInstruction(
+          HloInstruction::CreateConstant(lit.Clone()));
+      auto division =
           parent_computation->AddInstruction(HloInstruction::CreateBinary(
-              new_shape, HloOpcode::kSubtract, crs, to_subtract));
-      TF_CHECK_OK(crs->ReplaceAllUsesWith(sub));
+              shape, HloOpcode::kDivide, other_summand, divisor));
+      TF_CHECK_OK(other_summand->ReplaceUseWith(add, division));
+      // The AllReduce and the CRS are combined to an all-core AllReduce.
+      crs->set_all_reduce_id(all_reduce->all_reduce_id());
       TF_CHECK_OK(parent_computation->RemoveInstruction(all_reduce));
     }
   }

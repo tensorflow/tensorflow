@@ -1783,6 +1783,51 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
   }
 }
 
+void ProcessMirrorPadOperator(Model* model, MirrorPadOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  const auto& padding_matrix = model->GetArray(op->inputs[1]);
+
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+
+  auto& output_array = model->GetArray(op->outputs[0]);
+  // If output already computed or padding matrix is non
+  // const then return.
+  if (output_array.has_shape() ||
+      !IsConstantParameterArray(*model, op->inputs[1])) {
+    return;
+  }
+  Shape output_shape = input_array.shape();
+  std::vector<int>& dims = *output_shape.mutable_dims();
+
+  std::vector<int64_t> padding;
+  if (padding_matrix.data_type == ArrayDataType::kInt32) {
+    const auto& data = padding_matrix.GetBuffer<ArrayDataType::kInt32>().data;
+    for (auto elem : data) {
+      padding.push_back(static_cast<int64_t>(elem));
+    }
+  } else if (padding_matrix.data_type == ArrayDataType::kInt64) {
+    const auto& data = padding_matrix.GetBuffer<ArrayDataType::kInt64>().data;
+    for (auto elem : data) {
+      padding.push_back(elem);
+    }
+  } else {
+    CHECK(padding_matrix.data_type == ArrayDataType::kInt64 ||
+          padding_matrix.data_type == ArrayDataType::kInt32);
+  }
+  CHECK_EQ(padding_matrix.shape().dimensions_count(), 2);
+  CHECK_EQ(input_array.shape().dimensions_count(),
+           padding_matrix.shape().dims(0));
+  for (int i = 0; i < input_array.shape().dimensions_count(); ++i) {
+    dims[i] += padding[i * 2] + padding[i * 2 + 1];
+  }
+
+  output_array.copy_shape(output_shape);
+}
+
 }  // namespace
 
 ::tensorflow::Status PropagateFixedSizes::Run(Model* model,
@@ -2054,6 +2099,9 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
       break;
     case OperatorType::kUnpack:
       ProcessUnpackOperator(model, static_cast<UnpackOperator*>(op));
+      break;
+    case OperatorType::kMirrorPad:
+      ProcessMirrorPadOperator(model, static_cast<MirrorPadOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

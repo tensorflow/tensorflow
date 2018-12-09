@@ -872,19 +872,19 @@ class BatchTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSingleThreadKeepInput(self):
     self._testKeepInputHelper(1, False)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSingleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(1, True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testMultipleThreadKeepInput(self):
     self._testKeepInputHelper(5, False)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testMultipleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(5, True)
 
@@ -1482,19 +1482,19 @@ class BatchJoinTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSingleThreadKeepInput(self):
     self._testKeepInputHelper(1, False)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSingleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(1, True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testMultipleThreadKeepInput(self):
     self._testKeepInputHelper(5, False)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testMultipleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(5, True)
 
@@ -1905,19 +1905,19 @@ class ShuffleBatchTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSingleThreadKeepInput(self):
     self._testKeepInputHelper(1, False)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSingleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(1, True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testMultipleThreadKeepInput(self):
     self._testKeepInputHelper(5, False)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testMultipleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(5, True)
 
@@ -2309,19 +2309,19 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSingleThreadKeepInput(self):
     self._testKeepInputHelper(1, False)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSingleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(1, True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testMultipleThreadKeepInput(self):
     self._testKeepInputHelper(5, False)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testMultipleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(5, True)
 

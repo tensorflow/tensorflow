@@ -97,7 +97,7 @@ class SGD(optimizer_v2.OptimizerV2):
     lr_t = self._decayed_lr(var_dtype)
     if self._momentum:
       momentum_var = self.get_slot(var, "momentum")
-      return training_ops.resource_apply_momentum(
+      return training_ops.resource_apply_keras_momentum(
           var.handle,
           momentum_var.handle,
           lr_t,
@@ -124,7 +124,7 @@ class SGD(optimizer_v2.OptimizerV2):
     var_dtype = var.dtype.base_dtype
     lr_t = self._decayed_lr(var_dtype)
     momentum_var = self.get_slot(var, "momentum")
-    return training_ops.resource_sparse_apply_momentum(
+    return training_ops.resource_sparse_apply_keras_momentum(
         var.handle,
         momentum_var.handle,
         lr_t,
