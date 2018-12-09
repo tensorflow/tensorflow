@@ -330,6 +330,62 @@ TEST(UnknownTest, Model) {
   EXPECT_EQ(100, unknown->OutputTime(&input_times));
 }
 
+class TestNode : public model::Node {
+ public:
+  using model::Node::Node;
+
+  virtual ~TestNode() {}
+
+ protected:
+  std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
+      SHARED_LOCKS_REQUIRED(mu_) {
+    return nullptr;
+  }
+
+  int64 OutputTimeLocked(std::vector<int64>* input_times) const override
+      SHARED_LOCKS_REQUIRED(mu_) {
+    return 0;
+  }
+
+  int64 ProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+    return 0;
+  }
+};
+
+TEST(SetterGetterTest, Node) {
+  std::shared_ptr<TestNode> node =
+      std::make_shared<TestNode>(model::Node::Args{-1, "TestNode", nullptr});
+  EXPECT_EQ(-1, node->id());
+  EXPECT_EQ("TestNode", node->name());
+  EXPECT_EQ(nullptr, node->output());
+
+  EXPECT_EQ(0, node->buffered_bytes());
+  node->add_buffered_bytes(42);
+  EXPECT_EQ(42, node->buffered_bytes());
+
+  EXPECT_EQ(0, node->processing_time());
+  node->record_start(1);
+  EXPECT_EQ(0, node->processing_time());
+  node->record_stop(41);
+  EXPECT_EQ(40, node->processing_time());
+  node->add_processing_time(2);
+  EXPECT_EQ(42, node->processing_time());
+
+  std::shared_ptr<TestNode> input =
+      std::make_shared<TestNode>(model::Node::Args{-1, "TestInput", node});
+  EXPECT_EQ(node.get(), input->output());
+  EXPECT_EQ(0, node->inputs().size());
+  node->add_input(input);
+  EXPECT_EQ(1, node->inputs().size());
+  EXPECT_EQ(input, node->inputs().front());
+  node->remove_input(input);
+  EXPECT_EQ(0, node->inputs().size());
+
+  EXPECT_EQ(0, node->num_elements());
+  node->record_element();
+  EXPECT_EQ(1, node->num_elements());
+}
+
 }  // namespace
 }  // namespace model
 }  // namespace data

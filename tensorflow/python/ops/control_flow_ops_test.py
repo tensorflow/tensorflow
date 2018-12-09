@@ -21,9 +21,10 @@ from __future__ import print_function
 import collections
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.python.client import session
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -126,56 +127,56 @@ class GroupTestCase(test_util.TensorFlowTestCase):
       node { name: "root" op: "NoOp" input: "^a" input: "^b" }
     """, self._StripGraph(gd))
 
+  @test_util.run_deprecated_v1
   def testPassingNonTensors(self):
-    with ops.Graph().as_default():
-      with self.assertRaises(TypeError):
-        control_flow_ops.group(1, 2)
+    with self.assertRaises(TypeError):
+      control_flow_ops.group(1, 2)
 
 
 class ShapeTestCase(test_util.TensorFlowTestCase):
 
   def testShape(self):
-    with ops.Graph().as_default():
-      tensor = constant_op.constant([1.0, 2.0])
-      self.assertEquals([2], tensor.get_shape())
-      self.assertEquals([2],
-                        control_flow_ops.with_dependencies(
-                            [constant_op.constant(1.0)], tensor).get_shape())
+    tensor = constant_op.constant([1.0, 2.0])
+    self.assertEquals([2], tensor.get_shape())
+    self.assertEquals([2],
+                      control_flow_ops.with_dependencies(
+                          [constant_op.constant(1.0)], tensor).get_shape())
 
 
 class WithDependenciesTestCase(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testTupleDependencies(self):
-    with ops.Graph().as_default():
-      counter = variable_scope.get_variable(
-          "my_counter", shape=[], initializer=init_ops.zeros_initializer())
-      increment_counter = state_ops.assign_add(counter, 1)
-      const_with_dep = control_flow_ops.with_dependencies(
-          (increment_counter, constant_op.constant(42)),
-          constant_op.constant(7))
-      with self.cached_session():
-        variables.global_variables_initializer().run()
-        self.assertEquals(0, counter.eval())
-        self.assertEquals(7, const_with_dep.eval())
-        self.assertEquals(1, counter.eval())
+    counter = variable_scope.get_variable(
+        "my_counter", shape=[], initializer=init_ops.zeros_initializer())
+    increment_counter = state_ops.assign_add(counter, 1)
+    const_with_dep = control_flow_ops.with_dependencies(
+        (increment_counter, constant_op.constant(42)),
+        constant_op.constant(7))
 
+    self.evaluate(variables.global_variables_initializer())
+    self.assertEquals(0, self.evaluate(counter))
+    self.assertEquals(7, self.evaluate(const_with_dep))
+    self.assertEquals(1, self.evaluate(counter))
+
+  @test_util.run_deprecated_v1
   def testListDependencies(self):
-    with ops.Graph().as_default():
-      counter = variable_scope.get_variable(
-          "my_counter", shape=[], initializer=init_ops.zeros_initializer())
-      increment_counter = state_ops.assign_add(counter, 1)
-      const_with_dep = control_flow_ops.with_dependencies(
-          [increment_counter, constant_op.constant(42)],
-          constant_op.constant(7))
-      with self.cached_session():
-        variables.global_variables_initializer().run()
-        self.assertEquals(0, counter.eval())
-        self.assertEquals(7, const_with_dep.eval())
-        self.assertEquals(1, counter.eval())
+    counter = variable_scope.get_variable(
+        "my_counter", shape=[], initializer=init_ops.zeros_initializer())
+    increment_counter = state_ops.assign_add(counter, 1)
+    const_with_dep = control_flow_ops.with_dependencies(
+        [increment_counter, constant_op.constant(42)],
+        constant_op.constant(7))
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertEquals(0, self.evaluate(counter))
+    self.assertEquals(7, self.evaluate(const_with_dep))
+    self.assertEquals(1, self.evaluate(counter))
 
 
 class SwitchTestCase(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testIndexedSlicesWithDenseShape(self):
     with self.cached_session():
       data = ops.IndexedSlices(
@@ -189,68 +190,64 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       self.assertAllEqual([1, 2, 3], switch_true.values.eval())
       self.assertAllEqual([0, 1], switch_true.indices.eval())
 
+  @test_util.run_deprecated_v1
   def testIndexedSlicesGradient(self):
-    with ops.Graph().as_default():
-      embedding_matrix = variable_scope.get_variable(
-          "embedding_matrix", [5, 5],
-          initializer=init_ops.random_normal_initializer())
+    embedding_matrix = variable_scope.get_variable(
+        "embedding_matrix", [5, 5],
+        initializer=init_ops.random_normal_initializer())
 
-      def cond(it, _):
-        return it < 5
+    def cond(it, _):
+      return it < 5
 
-      def body(it, cost):
-        embedding = embedding_ops.embedding_lookup(embedding_matrix + 0.0, [0])
-        cost += math_ops.reduce_sum(embedding)
-        return it + 1, cost
+    def body(it, cost):
+      embedding = embedding_ops.embedding_lookup(embedding_matrix + 0.0, [0])
+      cost += math_ops.reduce_sum(embedding)
+      return it + 1, cost
 
-      _, cost = control_flow_ops.while_loop(
-          cond, body, [constant_op.constant(0),
-                       constant_op.constant(0.0)])
-      optimizer = momentum.MomentumOptimizer(0.1, 0.9)
-      train_op = optimizer.minimize(cost)
-      with self.cached_session() as sess:
-        sess.run(variables.global_variables_initializer())
-        for _ in range(10):
-          sess.run([train_op])
+    _, cost = control_flow_ops.while_loop(
+        cond, body, [constant_op.constant(0),
+                     constant_op.constant(0.0)])
+    optimizer = momentum.MomentumOptimizer(0.1, 0.9)
+    train_op = optimizer.minimize(cost)
+    with self.cached_session():
+      self.evaluate(variables.global_variables_initializer())
+      for _ in range(10):
+        self.evaluate([train_op])
 
   def testResourceReadInLoop(self):
-    with ops.Graph().as_default():
-      embedding_matrix = variable_scope.get_variable(
-          "embedding_matrix",
-          initializer=[[2.0], [3.0]],
-          use_resource=True)
+    embedding_matrix = variable_scope.get_variable(
+        "embedding_matrix", initializer=[[2.0], [3.0]], use_resource=True)
 
-      def cond(it, _):
-        return it < 5
+    def cond(it, _):
+      return it < 5
 
-      def body(it, cost):
-        embedding = embedding_ops.embedding_lookup(embedding_matrix, [0])
-        cost += math_ops.reduce_sum(embedding)
-        return it + 1, cost
+    def body(it, cost):
+      embedding = embedding_ops.embedding_lookup(embedding_matrix, [0])
+      cost += math_ops.reduce_sum(embedding)
+      return it + 1, cost
 
-      _, cost = control_flow_ops.while_loop(
-          cond, body, [constant_op.constant(0),
-                       constant_op.constant(0.0)])
-      with self.cached_session() as sess:
-        sess.run(variables.global_variables_initializer())
-        self.assertAllEqual(10.0, cost.eval())
+    _, cost = control_flow_ops.while_loop(
+        cond, body, [constant_op.constant(0),
+                     constant_op.constant(0.0)])
+    with self.cached_session():
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllEqual(10.0, self.evaluate(cost))
 
   def doTestIndexedSlicesGradientInCondInWhileLoop(self, use_resource=False):
-    with ops.Graph().as_default():
-      embedding_matrix = variable_scope.get_variable(
-          "embedding_matrix", [5, 5],
-          initializer=init_ops.random_normal_initializer(),
-          use_resource=use_resource)
+    embedding_matrix = variable_scope.get_variable(
+        "embedding_matrix", [5, 5],
+        initializer=init_ops.random_normal_initializer(),
+        use_resource=use_resource)
 
-      def cond(it, _):
-        return it < 5
+    def cond(it, _):
+      return it < 5
 
-      def body(it, cost):
-        embedding = embedding_ops.embedding_lookup(embedding_matrix, [0])
-        cost = control_flow_ops.cond(
-            math_ops.equal(it, 3), lambda: math_ops.square(cost),
-            lambda: cost + math_ops.reduce_sum(embedding))
-        return it + 1, cost
+    def body(it, cost):
+      embedding = embedding_ops.embedding_lookup(embedding_matrix, [0])
+      cost = control_flow_ops.cond(
+          math_ops.equal(it, 3), lambda: math_ops.square(cost),
+          (lambda: cost + math_ops.reduce_sum(embedding)))
+      return it + 1, cost
 
       _, cost = control_flow_ops.while_loop(
           cond, body, [constant_op.constant(0),
@@ -268,9 +265,9 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       static_grads = math_ops.segment_sum(static_grads.values,
                                           static_grads.indices)
 
-      with self.cached_session() as sess:
-        sess.run(variables.global_variables_initializer())
-        self.assertAllEqual(*sess.run([static_grads, dynamic_grads]))
+      with self.cached_session():
+        self.evaluate(variables.global_variables_initializer())
+        self.assertAllEqual(*self.evaluate([static_grads, dynamic_grads]))
 
   def testIndexedSlicesGradientInCondInWhileLoop(self):
     self.doTestIndexedSlicesGradientInCondInWhileLoop(use_resource=False)
@@ -278,6 +275,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
   def testIndexedSlicesGradientInCondInWhileLoopResource(self):
     self.doTestIndexedSlicesGradientInCondInWhileLoop(use_resource=True)
 
+  @test_util.run_v1_only("b/120545219")
   def testIndexedSlicesWithShapeGradientInWhileLoop(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session() as sess:
@@ -307,6 +305,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
         self.assertEquals(o, 20)
         self.assertAllEqual(grad, [1] * num_steps)
 
+  @test_util.run_v1_only("b/120545219")
   def testIndexedSlicesWithDynamicShapeGradientInWhileLoop(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session() as sess:
@@ -334,105 +333,94 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
         self.assertEquals(o, 6)
         self.assertAllEqual(grad, [1] * 3)
 
+  @test_util.run_deprecated_v1
   def testGradientThroughSingleBranchOutsideOfContext(self):
-    with self.cached_session():
-      x = constant_op.constant(2.)
-      s = constant_op.constant(True)
-      x_false, x_true = control_flow_ops.switch(x, s)
-      grad_x_true = gradients_impl.gradients(x_true, x)[0]
-      grad_x_false = gradients_impl.gradients(x_false, x)[0]
-      self.assertEquals(grad_x_true.eval(), 1.)
-      self.assertEquals(grad_x_false.eval(), 0.)
+    x = constant_op.constant(2.)
+    s = constant_op.constant(True)
+    x_false, x_true = control_flow_ops.switch(x, s)
+    grad_x_true = gradients_impl.gradients(x_true, x)[0]
+    grad_x_false = gradients_impl.gradients(x_false, x)[0]
+    self.assertEquals(self.evaluate(grad_x_true), 1.)
+    self.assertEquals(self.evaluate(grad_x_false), 0.)
 
 
 class CondTest(test_util.TensorFlowTestCase):
 
   def testCondTrue(self):
-    with ops.Graph().as_default():
-      with session.Session():
-        x = constant_op.constant(2)
-        y = constant_op.constant(5)
-        z = control_flow_ops.cond(
-            math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
-            lambda: math_ops.add(y, 23))
-        self.assertEquals(z.eval(), 34)
+    x = constant_op.constant(2)
+    y = constant_op.constant(5)
+    z = control_flow_ops.cond(
+        math_ops.less(
+            x,
+            y), lambda: math_ops.multiply(x, 17), lambda: math_ops.add(y, 23))
+    self.assertEquals(self.evaluate(z), 34)
 
   def testCondFalse(self):
-    with ops.Graph().as_default():
-      with session.Session():
-        x = constant_op.constant(2)
-        y = constant_op.constant(1)
-        z = control_flow_ops.cond(
-            math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
-            lambda: math_ops.add(y, 23))
-        self.assertEquals(z.eval(), 24)
+    x = constant_op.constant(2)
+    y = constant_op.constant(1)
+    z = control_flow_ops.cond(
+        math_ops.less(
+            x,
+            y), lambda: math_ops.multiply(x, 17), lambda: math_ops.add(y, 23))
+    self.assertEquals(self.evaluate(z), 24)
 
   def testCondTrueLegacy(self):
-    with ops.Graph().as_default():
-      with session.Session():
-        x = constant_op.constant(2)
-        y = constant_op.constant(5)
-        z = control_flow_ops.cond(
-            math_ops.less(x, y), fn1=lambda: math_ops.multiply(x, 17),
-            fn2=lambda: math_ops.add(y, 23))
-        self.assertEquals(z.eval(), 34)
+    x = constant_op.constant(2)
+    y = constant_op.constant(5)
+    z = control_flow_ops.cond(
+        math_ops.less(x, y),
+        fn1=lambda: math_ops.multiply(x, 17),
+        fn2=lambda: math_ops.add(y, 23))
+    self.assertEquals(self.evaluate(z), 34)
 
   def testCondFalseLegacy(self):
-    with ops.Graph().as_default():
-      with session.Session():
-        x = constant_op.constant(2)
-        y = constant_op.constant(1)
-        z = control_flow_ops.cond(
-            math_ops.less(x, y), fn1=lambda: math_ops.multiply(x, 17),
-            fn2=lambda: math_ops.add(y, 23))
-        self.assertEquals(z.eval(), 24)
+    x = constant_op.constant(2)
+    y = constant_op.constant(1)
+    z = control_flow_ops.cond(
+        math_ops.less(x, y),
+        fn1=lambda: math_ops.multiply(x, 17),
+        fn2=lambda: math_ops.add(y, 23))
+    self.assertEquals(self.evaluate(z), 24)
 
+  @test_util.run_deprecated_v1
   def testCondModifyBoolPred(self):
     # This test in particular used to fail only when running in GPU, hence
     # use_gpu=True.
-    with ops.Graph().as_default():
-      with session.Session() as sess:
-        bool_var = variable_scope.get_variable("bool_var", dtype=dtypes.bool,
-                                               initializer=True)
-        cond_on_bool_var = control_flow_ops.cond(
-            pred=bool_var,
-            true_fn=lambda: state_ops.assign(bool_var, False),
-            false_fn=lambda: True)
-        sess.run(bool_var.initializer)
-        self.assertEquals(sess.run(cond_on_bool_var), False)
-        self.assertEquals(sess.run(cond_on_bool_var), True)
+    with test_util.use_gpu():
+      bool_var = variable_scope.get_variable(
+          "bool_var", dtype=dtypes.bool, initializer=True)
+      cond_on_bool_var = control_flow_ops.cond(
+          pred=bool_var,
+          true_fn=lambda: state_ops.assign(bool_var, False),
+          false_fn=lambda: True)
+      self.evaluate(bool_var.initializer)
+      self.assertEquals(self.evaluate(cond_on_bool_var), False)
+      self.assertEquals(self.evaluate(cond_on_bool_var), True)
 
   def testCondMissingArg1(self):
-    with ops.Graph().as_default():
-      with session.Session():
-        x = constant_op.constant(1)
-        with self.assertRaises(TypeError):
-          control_flow_ops.cond(True, false_fn=lambda: x)
+    x = constant_op.constant(1)
+    with self.assertRaises(TypeError):
+      control_flow_ops.cond(True, false_fn=lambda: x)
 
   def testCondMissingArg2(self):
-    with ops.Graph().as_default():
-      with session.Session():
-        x = constant_op.constant(1)
-        with self.assertRaises(TypeError):
-          control_flow_ops.cond(True, lambda: x)
+    x = constant_op.constant(1)
+    with self.assertRaises(TypeError):
+      control_flow_ops.cond(True, lambda: x)
 
   def testCondDuplicateArg1(self):
-    with ops.Graph().as_default():
-      with session.Session():
-        x = constant_op.constant(1)
-        with self.assertRaises(TypeError):
-          control_flow_ops.cond(True, lambda: x, lambda: x, fn1=lambda: x)
+    x = constant_op.constant(1)
+    with self.assertRaises(TypeError):
+      control_flow_ops.cond(True, lambda: x, lambda: x, fn1=lambda: x)
 
   def testCondDuplicateArg2(self):
-    with ops.Graph().as_default():
-      with session.Session():
-        x = constant_op.constant(1)
-        with self.assertRaises(TypeError):
-          control_flow_ops.cond(True, lambda: x, lambda: x, fn2=lambda: x)
+    x = constant_op.constant(1)
+    with self.assertRaises(TypeError):
+      control_flow_ops.cond(True, lambda: x, lambda: x, fn2=lambda: x)
 
 
 class ContextTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testCondContext(self):
     with self.cached_session() as sess:
       x = constant_op.constant(2)
@@ -462,12 +450,15 @@ class ContextTest(test_util.TensorFlowTestCase):
               control_flow_ops.WhileContext.from_proto(
                   control_flow_context.to_proto()).to_proto())
 
+  @test_util.run_deprecated_v1
   def testWhileContext(self):
     self._testWhileContextHelper()
 
+  @test_util.run_deprecated_v1
   def testWhileContextWithMaximumIterations(self):
     self._testWhileContextHelper(maximum_iterations=10)
 
+  @test_util.run_deprecated_v1
   def testControlContextImportScope(self):
     class NoABCControlFlowContext(control_flow_ops.ControlFlowContext):
       """A noop wrapper around `ControlFlowContext`.
@@ -590,6 +581,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
       if check_cond:
         self.assertAllEqualNested(result_case, expected_value_false)
 
+  @test_util.run_deprecated_v1
   def test_int(self):
     shape = tensor_shape.TensorShape([])
     fn_true = lambda: 1
@@ -599,6 +591,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self._testShape(fn_true, fn_false, shape, strict=True)
     self._testReturnValues(fn_true, fn_false, 1, 2, strict=True)
 
+  @test_util.run_deprecated_v1
   def test_float(self):
     shape = tensor_shape.TensorShape([])
     fn_true = lambda: 1.0
@@ -606,12 +599,14 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self._testShape(fn_true, fn_false, shape)
     self._testReturnValues(fn_true, fn_false, 1.0, 2.0)
 
+  @test_util.run_deprecated_v1
   def test_noop(self):
     shape = tensor_shape.TensorShape(None)
     self._testShape(control_flow_ops.no_op, control_flow_ops.no_op, shape)
     self._testReturnValues(control_flow_ops.no_op, control_flow_ops.no_op,
                            True, False, check_cond=False)
 
+  @test_util.run_deprecated_v1
   def test_string(self):
     shape = tensor_shape.TensorShape([])
     fn_true = lambda: "abc"
@@ -619,6 +614,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self._testShape(fn_true, fn_false, shape)
     self._testReturnValues(fn_true, fn_false, b"abc", b"xyz")
 
+  @test_util.run_deprecated_v1
   def test_variable(self):
     shape = tensor_shape.TensorShape([])
     fn_true = lambda: variables.Variable(3.0)
@@ -626,6 +622,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self._testShape(fn_true, fn_false, shape)
     self._testReturnValues(fn_true, fn_false, 3.0, 4.0)
 
+  @test_util.run_v1_only("b/120553181")
   def test_none(self):
     fn_none = lambda: None
     fn_tensor = lambda: constant_op.constant(1)
@@ -636,6 +633,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       control_flow_ops.cond(constant_op.constant(True), fn_tensor, fn_none)
 
+  @test_util.run_deprecated_v1
   def test_tensors(self):
 
     def _build_true_branch(dtype):
@@ -664,6 +662,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
                              (np.zeros([2, 2]), np.ones([3, 3])),
                              (np.ones([2, 2]), np.zeros([3, 3])))
 
+  @test_util.run_deprecated_v1
   def test_tensors_unknown_shape(self):
 
     def _build_true_branch(dtype):
@@ -692,6 +691,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
                              feed_dict={true_tensor: np.zeros([2, 2]),
                                         false_tensor: np.ones([2, 2])})
 
+  @test_util.run_deprecated_v1
   def test_sparse_tensors(self):
     shape = tensor_shape.TensorShape([None, None])
 
@@ -707,11 +707,14 @@ class DataTypesTest(test_util.TensorFlowTestCase):
                                              values=[1, 2], dense_shape=[3, 4])
     value2 = sparse_tensor.SparseTensorValue(indices=[[0, 0], [2, 1]],
                                              values=[3, 4], dense_shape=[3, 4])
-    self._testShape(true_fn, false_fn, shape)
-    self._testReturnValues(true_fn, false_fn, value1, value2)
+    # Non-strict cond is only available in v1
+    if not tf2.enabled():
+      self._testShape(true_fn, false_fn, shape)
+      self._testReturnValues(true_fn, false_fn, value1, value2)
     self._testShape(true_fn, false_fn, [shape], strict=True)
     self._testReturnValues(true_fn, false_fn, [value1], [value2], strict=True)
 
+  @test_util.run_deprecated_v1
   def test_tensors_with_partially_specified_shapes(self):
 
     def _build_branch(dtype, shape):
@@ -741,6 +744,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
                                         true_tensors[2]: np.ones([3, 3]),
                                         false_tensors[2]: np.ones([3, 3])})
 
+  @test_util.run_deprecated_v1
   def test_tensor_arrays(self):
     element_shape = tensor_shape.TensorShape([2])
     ta1 = _create_tensor_array(4, element_shape)
@@ -750,6 +754,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     fn_false = lambda: ta2
     self._testShape(fn_true, fn_false, shape)
 
+  @test_util.run_deprecated_v1
   def test_tensor_array_reads(self):
     shape = tensor_shape.TensorShape([2])
     ta = _create_tensor_array(4, shape)
@@ -757,6 +762,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     fn_false = lambda: ta.read(1)
     self._testShape(fn_true, fn_false, shape)
 
+  @test_util.run_deprecated_v1
   def test_list(self):
     shape = [tensor_shape.TensorShape([]), tensor_shape.TensorShape([]),
              tensor_shape.TensorShape([])]
@@ -765,6 +771,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self._testShape(fn_true, fn_false, shape)
     self._testReturnValues(fn_true, fn_false, [1, 2, 3.0], [3, 4, 5.0])
 
+  @test_util.run_v1_only("Non-strict cond is only available in v1")
   def test_non_strict(self):
     shape = tensor_shape.TensorShape([])
     fn_tensor = lambda: constant_op.constant(1)
@@ -777,6 +784,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self._testReturnValues(fn_tensor, fn_tuple, 1, 3)
     self._testReturnValues(fn_list, fn_tuple, 2, 3)
 
+  @test_util.run_v1_only("b/120553181")
   def test_singleton_strict(self):
     fn_tensor = lambda: constant_op.constant(1)
     fn_list = lambda: [constant_op.constant(2)]
@@ -798,36 +806,46 @@ class DataTypesTest(test_util.TensorFlowTestCase):
       control_flow_ops.case([(constant_op.constant(True), fn_list)], fn_tuple,
                             strict=True)
 
+  @test_util.run_deprecated_v1
   def test_singleton_list(self):
     shape = tensor_shape.TensorShape([])
     fn_true = lambda: [constant_op.constant(1)]
     fn_false = lambda: [constant_op.constant(3)]
-    self._testShape(fn_true, fn_false, shape)
-    self._testReturnValues(fn_true, fn_false, 1, 3)
+    # Non-strict cond is only available in v1
+    if not tf2.enabled():
+      self._testShape(fn_true, fn_false, shape)
+      self._testReturnValues(fn_true, fn_false, 1, 3)
     self._testShape(fn_true, fn_false, [shape], strict=True)
     self._testReturnValues(fn_true, fn_false, [1], [3], strict=True)
 
+  @test_util.run_deprecated_v1
   def test_singleton_tuple(self):
     shape = tensor_shape.TensorShape([])
     fn_true = lambda: (constant_op.constant(1),)
     fn_false = lambda: (constant_op.constant(3),)
-    self._testShape(fn_true, fn_false, shape)
-    self._testReturnValues(fn_true, fn_false, 1, 3)
+    # Non-strict cond is only available in v1
+    if not tf2.enabled():
+      self._testShape(fn_true, fn_false, shape)
+      self._testReturnValues(fn_true, fn_false, 1, 3)
     self._testShape(fn_true, fn_false, (shape,), strict=True)
     self._testReturnValues(fn_true, fn_false, (1,), (3,),
                            strict=True)
 
+  @test_util.run_deprecated_v1
   def test_singleton_namedtuple(self):
     shape = tensor_shape.TensorShape([])
     fn_true = lambda: SingletonTestTuple(constant_op.constant(1))
     fn_false = lambda: SingletonTestTuple(constant_op.constant(3))
-    self._testShape(fn_true, fn_false, shape)
-    self._testReturnValues(fn_true, fn_false, 1, 3)
+    # Non-strict cond is only available in v1
+    if not tf2.enabled():
+      self._testShape(fn_true, fn_false, shape)
+      self._testReturnValues(fn_true, fn_false, 1, 3)
     self._testShape(fn_true, fn_false, SingletonTestTuple(shape),
                     strict=True)
     self._testReturnValues(fn_true, fn_false, SingletonTestTuple(1),
                            SingletonTestTuple(3), strict=True)
 
+  @test_util.run_deprecated_v1
   def test_tuple(self):
     shape = (tensor_shape.TensorShape([]), tensor_shape.TensorShape([]))
     fn_true = lambda: (constant_op.constant(1), 2)
@@ -835,6 +853,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self._testShape(fn_true, fn_false, shape)
     self._testReturnValues(fn_true, fn_false, (1, 2), (3, 4))
 
+  @test_util.run_deprecated_v1
   def test_namedtuple(self):
     shape = TestTuple(tensor_shape.TensorShape([]),
                       tensor_shape.TensorShape([]))
@@ -843,6 +862,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self._testShape(fn_true, fn_false, shape)
     self._testReturnValues(fn_true, fn_false, TestTuple(1, 2), TestTuple(3, 4))
 
+  @test_util.run_deprecated_v1
   def test_nested(self):
     shape = [tensor_shape.TensorShape([]),
              TestTuple(tensor_shape.TensorShape([]),
@@ -868,6 +888,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
         [11, TestTuple(12, [13, 14]),
          np.ones([5, 5]), 16])
 
+  @test_util.run_deprecated_v1
   def test_cond_inside_while_loop(self):
 
     def body(i, matrix):
@@ -889,6 +910,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
 class CaseTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testCase_withDefault(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
@@ -900,6 +922,7 @@ class CaseTest(test_util.TensorFlowTestCase):
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 6)
 
+  @test_util.run_deprecated_v1
   def testCase_multiple_matches_exclusive(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
@@ -913,6 +936,7 @@ class CaseTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 2})
 
+  @test_util.run_deprecated_v1
   def testCase_multiple_matches_non_exclusive(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
@@ -925,6 +949,7 @@ class CaseTest(test_util.TensorFlowTestCase):
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 8)
 
+  @test_util.run_deprecated_v1
   def testCase_withoutDefault(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
@@ -938,6 +963,7 @@ class CaseTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 4})
 
+  @test_util.run_deprecated_v1
   def testCase_withoutDefault_oneCondition(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2))]
@@ -979,6 +1005,7 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     # Expect a tuple since that is what the body returns.
     self.assertEqual(self.evaluate(r), (10,))
 
+  @test_util.run_deprecated_v1
   def testWhileLoopSameReturnShape_False(self):
     i = constant_op.constant(0)
     c = lambda i, _: math_ops.less(i, 10)
@@ -1004,6 +1031,7 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
 
 class AssertTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testAssert(self):
     i = constant_op.constant(0)
     c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
@@ -1014,6 +1042,18 @@ class AssertTest(test_util.TensorFlowTestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(c)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertInFunction(self):
+
+    @def_function.function
+    def whiny(value):
+      control_flow_ops.Assert(value, ["Raised false"])
+      return constant_op.constant(5)
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(whiny(False))
+
+    self.assertAllEqual(whiny(True), 5)
 
 if __name__ == "__main__":
   googletest.main()

@@ -217,6 +217,10 @@ class ReplicatedVariable(object):
   def get(self):
     return self._primary_var
 
+  @property
+  def _in_graph_mode(self):
+    return self._primary_var._in_graph_mode   # pylint: disable=protected-access
+
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass

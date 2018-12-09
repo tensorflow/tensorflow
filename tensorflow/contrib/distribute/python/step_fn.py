@@ -94,7 +94,7 @@ class StandardSingleLossStep(StandardInputStep):
 
   def __call__(self):
     with self._distribution.scope():
-      def step_fn(ctx, *inputs):
+      def step_fn(ctx, inputs):
         """Function to run one iteration with one input."""
         gradients_fn = backprop.implicit_grad(self._loss_fn)
         gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)

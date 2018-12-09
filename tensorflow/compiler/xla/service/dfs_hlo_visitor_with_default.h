@@ -206,6 +206,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleGetDimensionSize(HloInstructionPtr get_size) override {
     return DefaultAction(get_size);
   }
+  Status HandleAddDependency(HloInstructionPtr add_dependency) override {
+    return DefaultAction(add_dependency);
+  }
 
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".

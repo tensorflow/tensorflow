@@ -85,7 +85,7 @@ class Conv3DTransposeTest(xla_test.XLATestCase):
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       output = nn_ops.conv3d_transpose(
           x, f, y_shape, strides=strides, padding="SAME")
-      value = output.eval()
+      value = self.evaluate(output)
 
       # We count the number of cells being added at the locations in the output.
       # At the center, #cells = kernel_depth * kernel_height * kernel_width
@@ -135,7 +135,7 @@ class Conv3DTransposeTest(xla_test.XLATestCase):
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       output = nn_ops.conv3d_transpose(
           x, f, y_shape, strides=strides, padding="SAME")
-      value = output.eval()
+      value = self.evaluate(output)
 
       for n in xrange(x_shape[0]):
         for k in xrange(f_shape[3]):
@@ -173,7 +173,7 @@ class Conv3DTransposeTest(xla_test.XLATestCase):
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       output = nn_ops.conv3d_transpose(
           x, f, y_shape, strides=strides, padding="VALID")
-      value = output.eval()
+      value = self.evaluate(output)
 
       cache_values = np.zeros(y_shape, dtype=np.float32)
 

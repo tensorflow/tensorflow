@@ -33,7 +33,7 @@ namespace gpu {
 
 class GpuHloScheduleTest : public HloTestBase {
  protected:
-  using HloVec = std::vector<const HloInstruction*>;
+  using HloVec = std::vector<HloInstruction*>;
 
   // Pre-canned shapes.
   Shape f32_2x2_ = ShapeUtil::MakeShape(F32, {2, 2});
@@ -44,7 +44,7 @@ class GpuHloScheduleTest : public HloTestBase {
         .ConsumeValueOrDie();
   }
 
-  std::unique_ptr<HloModule> CreateNewUnverifiedModule() {
+  std::unique_ptr<HloModule> CreateNewVerifiedModule() {
     HloModuleConfig config;
     auto debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_disable_multi_streaming(false);
@@ -79,7 +79,7 @@ TEST_F(GpuHloScheduleTest, SequentialMatMul) {
   HloInstruction* dot2 =
       builder.AddInstruction(CreateCanonicalDot(f32_2x2_, dot1, z));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build(dot2));
 
   std::unique_ptr<StreamAssignment> streams = AssignStreams(*module);
@@ -139,7 +139,7 @@ TEST_F(GpuHloScheduleTest, SequentialAdd) {
   HloInstruction* add3 = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, add2));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build(add3));
 
   std::unique_ptr<StreamAssignment> streams = AssignStreams(*module);
@@ -209,7 +209,7 @@ TEST_F(GpuHloScheduleTest, ConcurrentMatMul) {
   HloInstruction* add =
       builder.AddInstruction(CreateCanonicalDot(f32_2x2_, dot1, dot2));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build(add));
 
   std::unique_ptr<StreamAssignment> streams = AssignStreams(*module);
@@ -288,7 +288,7 @@ TEST_F(GpuHloScheduleTest, LatticeMatMul) {
   HloInstruction* d40 =
       builder.AddInstruction(CreateCanonicalDot(f32_2x2_, d30, d31));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build(d40));
 
   std::unique_ptr<StreamAssignment> streams = AssignStreams(*module);

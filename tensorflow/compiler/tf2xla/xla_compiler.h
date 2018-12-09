@@ -150,7 +150,7 @@ class XlaCompiler {
 
     // For a TensorArray or Stack resource, what is the array's declared size?
     // (Used for lazy initialization.)
-    int64 tensor_array_size = -1;
+    int64 max_array_size = -1;
 
     // TensorArray resource parameters are passed as (array, gradient array 0,
     // ..., gradient array k), where the gradient arrays are in the same order

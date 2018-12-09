@@ -1,6 +1,7 @@
 path: "tensorflow.data.experimental.StatsOptions"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.experimental.ops.stats_options.StatsOptions\'>"
+  is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "aggregator"
@@ -20,6 +21,6 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'aggregator\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
 }

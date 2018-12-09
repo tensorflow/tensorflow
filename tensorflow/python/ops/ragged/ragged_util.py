@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import gen_ragged_math_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -229,3 +230,51 @@ def _with_nonzero_rank(data):
     return array_ops.reshape(
         data,
         array_ops.concat([[1], data_shape], axis=0)[-data_ndims:])
+
+
+def lengths_to_splits(lengths):
+  """Returns splits corresponding to the given lengths."""
+  return array_ops.concat([[0], math_ops.cumsum(lengths)], axis=-1)
+
+
+def repeat_ranges(params, splits, repeats):
+  """Repeats each range of `params` (as specified by `splits`) `repeats` times.
+
+  Let the `i`th range of `params` be defined as
+  `params[splits[i]:splits[i + 1]]`.  Then this function returns a tensor
+  containing range 0 repeated `repeats[0]` times, followed by range 1 repeated
+  `repeats[1]`, ..., followed by the last range repeated `repeats[-1]` times.
+
+  Args:
+    params: The `Tensor` whose values should be repeated.
+    splits: A splits tensor indicating the ranges of `params` that should be
+      repeated.
+    repeats: The number of times each range should be repeated.  Supports
+      broadcasting from a scalar value.
+
+  Returns:
+    A `Tensor` with the same rank and type as `params`.
+
+  #### Example:
+    ```python
+    >>> repeat_ranges(['a', 'b', 'c'], [0, 2, 3], 3)
+    ['a', 'b', 'a', 'b', 'a', 'b', 'c', 'c', 'c']
+    ```
+  """
+  # Divide `splits` into starts and limits, and repeat them `repeats` times.
+  if repeats.shape.ndims != 0:
+    repeated_starts = repeat(splits[:-1], repeats, axis=0)
+    repeated_limits = repeat(splits[1:], repeats, axis=0)
+  else:
+    # Optimization: we can just call repeat once, and then slice the result.
+    repeated_splits = repeat(splits, repeats, axis=0)
+    n_splits = array_ops.shape(repeated_splits, out_type=dtypes.int64)[0]
+    repeated_starts = repeated_splits[:n_splits - repeats]
+    repeated_limits = repeated_splits[repeats:]
+
+  # Get indices for each range from starts to limits, and use those to gather
+  # the values in the desired repetition pattern.
+  one = array_ops.ones((), repeated_starts.dtype)
+  offsets = gen_ragged_math_ops.ragged_range(
+      repeated_starts, repeated_limits, one)
+  return array_ops.gather(params, offsets.rt_dense_values)

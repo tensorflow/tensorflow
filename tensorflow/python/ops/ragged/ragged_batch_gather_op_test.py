@@ -20,15 +20,18 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedBatchGatherOpTest(test_util.TensorFlowTestCase,
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedBatchGatherOpTest(ragged_test_util.RaggedTensorTestCase,
                               parameterized.TestCase):
 
   @parameterized.parameters([
@@ -137,17 +140,14 @@ class RaggedBatchGatherOpTest(test_util.TensorFlowTestCase,
   ])
   def testRaggedBatchGather(self, descr, params, indices, expected):
     result = ragged.batch_gather(params, indices)
-    self.assertEqual(
-        getattr(result, 'ragged_rank', 0), getattr(expected, 'ragged_rank', 0))
-    with self.test_session():
-      if hasattr(expected, 'tolist'):
-        expected = expected.tolist()
-      self.assertEqual(result.eval().tolist(), expected)
+    self.assertRaggedEqual(result, expected)
 
   def testRaggedBatchGatherUnknownRankError(self):
+    if context.executing_eagerly():
+      return
     params = [['a', 'b'], ['c', 'd']]
     indices = array_ops.placeholder(dtypes.int32, shape=None)
-    ragged_indices = ragged.from_row_splits(indices, [0, 2, 4])
+    ragged_indices = ragged.RaggedTensor.from_row_splits(indices, [0, 2, 4])
 
     with self.assertRaisesRegexp(
         ValueError, 'batch_gather does not allow indices with unknown shape.'):
@@ -159,37 +159,39 @@ class RaggedBatchGatherOpTest(test_util.TensorFlowTestCase,
 
   @parameterized.parameters([
       dict(
-          params=ragged.constant([['a'], ['b'], ['c']]),
-          indices=ragged.constant([[0], [0]]),
+          params=ragged.constant_value([['a'], ['b'], ['c']]),
+          indices=ragged.constant_value([[0], [0]]),
           message='Dimensions 3 and 2 are not compatible'),
       dict(
           params=[[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
-          indices=ragged.constant([[[0, 0], [0, 0, 0]], [[0]]]),
+          indices=ragged.constant_value([[[0, 0], [0, 0, 0]], [[0]]]),
           message='batch shape from indices does not match params shape'),
+      dict(  # rank mismatch
+          params=ragged.constant_value([[[0, 0], [0, 0, 0]], [[0]]]),
+          indices=ragged.constant_value([[[0, 0]], [[0, 0, 0]], [[0]]]),
+          error=(ValueError, errors.InvalidArgumentError)),
       dict(
-          params=ragged.constant([[[0, 0], [0, 0, 0]], [[0]]]),
-          indices=ragged.constant([[[0, 0]], [[0, 0, 0]], [[0]]]),
-          message='Dimensions must be equal, but are 3 and 4'),
-      dict(
-          params=ragged.constant([[[0, 0], [0, 0, 0]], [[0]], [[0]]]),
-          indices=ragged.constant([[[0, 0]], [[0, 0, 0]], [[0]]]),
+          params=ragged.constant_value([[[0, 0], [0, 0, 0]], [[0]], [[0]]]),
+          indices=ragged.constant_value([[[0, 0]], [[0, 0, 0]], [[0]]]),
           error=errors.InvalidArgumentError,
-          message='Condition x == y did not hold element-wise'),
+          message='.*Condition x == y did not hold.*'),
       dict(
-          params=ragged.constant(['a', 'b', 'c']),
-          indices=ragged.constant([[0], [0]]),
+          params=ragged.constant_value(['a', 'b', 'c']),
+          indices=ragged.constant_value([[0], [0]]),
           message='batch shape from indices does not match params shape'),
-      dict(params=ragged.constant_value([['a']]),
-           indices=0,
-           message='indices.rank must be at least 1.'),
-      dict(params=ragged.constant_value([['a']]),
-           indices=[[[0]]],
-           message='batch shape from indices does not match params shape'),
+      dict(
+          params=ragged.constant_value([['a']]),
+          indices=0,
+          message='indices.rank must be at least 1.'),
+      dict(
+          params=ragged.constant_value([['a']]),
+          indices=[[[0]]],
+          message='batch shape from indices does not match params shape'),
   ])
   def testRaggedBatchGatherStaticError(self,
                                        params,
                                        indices,
-                                       message,
+                                       message=None,
                                        error=ValueError):
     with self.assertRaisesRegexp(error, message):
       ragged.batch_gather(params, indices)

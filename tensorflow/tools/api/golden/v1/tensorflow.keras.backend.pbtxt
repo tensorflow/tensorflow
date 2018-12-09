@@ -398,7 +398,7 @@ tf_module {
   }
   member_method {
     name: "rnn"
-    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\', \'input_length\', \'time_major\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\', \'None\', \'False\'], "
+    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\', \'input_length\', \'time_major\', \'zero_output_for_mask\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\', \'None\', \'False\', \'False\'], "
   }
   member_method {
     name: "round"
@@ -511,6 +511,10 @@ tf_module {
   member_method {
     name: "temporal_padding"
     argspec: "args=[\'x\', \'padding\'], varargs=None, keywords=None, defaults=[\'(1, 1)\'], "
+  }
+  member_method {
+    name: "tile"
+    argspec: "args=[\'x\', \'n\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "to_dense"

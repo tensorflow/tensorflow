@@ -64,13 +64,13 @@ nccl_library(
         ":device_srcs",
     ],
     copts = ["-DNCCL_OP=0"] + rdc_copts(),
+    linkstatic = True,
     prefix = "sum_",
     deps = [
-        ":src_hdrs",
         ":include_hdrs",
+        ":src_hdrs",
         "@local_config_cuda//cuda:cuda_headers",
     ],
-    linkstatic = True,
 )
 
 nccl_library(
@@ -80,13 +80,13 @@ nccl_library(
         ":device_srcs",
     ],
     copts = ["-DNCCL_OP=1"] + rdc_copts(),
+    linkstatic = True,
     prefix = "_prod",
     deps = [
-        ":src_hdrs",
         ":include_hdrs",
+        ":src_hdrs",
         "@local_config_cuda//cuda:cuda_headers",
     ],
-    linkstatic = True,
 )
 
 nccl_library(
@@ -96,13 +96,13 @@ nccl_library(
         ":device_srcs",
     ],
     copts = ["-DNCCL_OP=2"] + rdc_copts(),
+    linkstatic = True,
     prefix = "min_",
     deps = [
-        ":src_hdrs",
         ":include_hdrs",
+        ":src_hdrs",
         "@local_config_cuda//cuda:cuda_headers",
     ],
-    linkstatic = True,
 )
 
 nccl_library(
@@ -112,28 +112,28 @@ nccl_library(
         ":device_srcs",
     ],
     copts = ["-DNCCL_OP=3"] + rdc_copts(),
+    linkstatic = True,
     prefix = "max_",
     deps = [
-        ":src_hdrs",
         ":include_hdrs",
+        ":src_hdrs",
         "@local_config_cuda//cuda:cuda_headers",
     ],
-    linkstatic = True,
 )
 
 nccl_library(
     name = "functions",
     srcs = [
-        ":device_hdrs",
         "src/collectives/device/functions.cu",
+        ":device_hdrs",
     ],
     copts = rdc_copts(),
+    linkstatic = True,
     deps = [
-        ":src_hdrs",
         ":include_hdrs",
+        ":src_hdrs",
         "@local_config_cuda//cuda:cuda_headers",
     ],
-    linkstatic = True,
 )
 
 rdc_library(
@@ -162,13 +162,13 @@ nccl_library(
         "src/nccl.h",
     ],
     hdrs = ["src/nccl.h"],
+    copts = cuda_default_copts(),
     include_prefix = "third_party/nccl",
     strip_include_prefix = "src",
-    copts = cuda_default_copts(),
+    visibility = ["//visibility:public"],
     deps = [
         ":device_code",
         ":include_hdrs",
         ":src_hdrs",
     ],
-    visibility = ["//visibility:public"],
 )

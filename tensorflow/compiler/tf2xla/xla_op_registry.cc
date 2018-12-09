@@ -18,7 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -130,8 +130,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   // Lazily register the CPU and GPU JIT devices the first time
   // GetCompilationDevice is called.
   static void* registration_init = [&registry]() {
-    legacy_flags::MarkForCompilationPassFlags* flags =
-        legacy_flags::GetMarkForCompilationPassFlags();
+    MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
     bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
 
     mutex_lock lock(registry.mutex_);

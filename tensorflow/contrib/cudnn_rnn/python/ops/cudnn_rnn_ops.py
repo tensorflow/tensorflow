@@ -738,7 +738,7 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         self._variables, opaque_params, validate_shape=False)
 
   def _checkpointable_save(self, save_buffer):
-    weights, biases = self.format_converter.opaque_params_to_tf_canonical(
+    weights, biases = self.format_converter.opaque_to_tf_canonical(
         self._variables)
     for name, tensor in zip(self._param_names, weights + biases):
       save_buffer[name] = array_ops.identity(tensor)

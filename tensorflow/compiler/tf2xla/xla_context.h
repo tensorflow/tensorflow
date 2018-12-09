@@ -41,14 +41,10 @@ class XlaContext : public ResourceBase {
  public:
   // Retrieves the XlaContext of the current compilation.
   static XlaContext& Get(const OpKernelContext* ctx);
-  static XlaContext& Get(const XlaOpKernelContext* ctx);
 
   // Creates a new XlaContext. See the documentation on the class data fields
   // for descriptions of the arguments.
-  XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder,
-             bool allow_cpu_custom_calls,
-             const std::function<xla::StatusOr<xla::Shape>(
-                 const TensorShape&, DataType)>* shape_representation_fn);
+  XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder);
 
   // Virtual method defined by ResourceBase.
   string DebugString() override;
@@ -57,8 +53,6 @@ class XlaContext : public ResourceBase {
 
   // Returns the XlaBuilder that Ops use for compiling new expressions.
   xla::XlaBuilder* builder() { return builder_; }
-
-  bool allow_cpu_custom_calls() const { return allow_cpu_custom_calls_; }
 
   const std::vector<XlaExpression>& args() const { return args_; }
   void set_args(std::vector<XlaExpression> args);
@@ -70,24 +64,12 @@ class XlaContext : public ResourceBase {
   // grows the return values vector to size index+1 if it is smaller.
   void SetRetval(int index, const XlaExpression& expression);
 
-  // Creates a resource with resource `kind` and initial value `handle`. `name`
-  // is a descriptive name for use in error messages. See the `XlaResource`
-  // constructor for a description of the remaining arguments.
-  // Fails if the resource already exists.
-  Status CreateResource(XlaResource::Kind kind, int arg_num, string name,
-                        DataType type, TensorShape shape,
-                        const xla::XlaOp& handle, int64 tensor_array_size,
-                        const std::set<string>& tensor_array_gradients,
-                        XlaResource** resource);
+  // Adds 'resource' to the set of resources owned by the context.
+  XlaResource* AddResource(std::unique_ptr<XlaResource> resource);
 
   const std::vector<std::unique_ptr<XlaResource>>& resources() {
     return resources_;
   }
-
-  // Returns the XLA shape to be used to represent a variable of TF `shape`
-  // and `type`, or of an argument or return value of a top-level computation.
-  xla::StatusOr<xla::Shape> RepresentationShape(const TensorShape& shape,
-                                                DataType type) const;
 
   // Get an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
@@ -118,9 +100,6 @@ class XlaContext : public ResourceBase {
   // The XlaBuilder used to construct the subgraph's compiled representation.
   xla::XlaBuilder* builder_;
 
-  // Allow ops to emit CustomCall operations for CPU.
-  const bool allow_cpu_custom_calls_;
-
   // Arguments to the Tensorflow graph, indexed by _Arg index.
   // Includes both compile-time constant arguments and runtime parameters.
   std::vector<XlaExpression> args_;
@@ -130,11 +109,6 @@ class XlaContext : public ResourceBase {
 
   // Holds ownership of resources. The resources are not ordered.
   std::vector<std::unique_ptr<XlaResource>> resources_;
-
-  // Describes the on-host shapes of parameters and return values. Also see:
-  // XlaDevice::Options::shape_representation_fn.
-  const std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType)>*
-      shape_representation_fn_;
 
   // Cache of prebuilt computations indexed by their type.
   using ComputationMap = std::map<DataType, xla::XlaComputation>;

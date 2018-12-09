@@ -22,10 +22,11 @@ from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
 
   def testLatencyStatsOptimization(self):
@@ -39,22 +40,18 @@ class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
     options.experimental_stats.latency_all_edges = True
     options.experimental_stats.aggregator = aggregator
     dataset = dataset.with_options(options)
-    iterator = dataset.make_initializable_iterator()
-    get_next = iterator.get_next()
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[1],
+        requires_initialization=True,
+        num_test_iterations=1)
     summary_t = aggregator.get_summary()
-
-    with self.cached_session() as sess:
-      sess.run(iterator.initializer)
-      self.assertEqual(1 * 1, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-      summary_str = sess.run(summary_t)
-      self._assertSummaryHasCount(summary_str,
-                                  "record_latency_TensorDataset/_1", 1)
-      self._assertSummaryHasCount(summary_str, "record_latency_MapDataset/_4",
-                                  1)
-      self._assertSummaryHasCount(summary_str,
-                                  "record_latency_PrefetchDataset/_6", 1)
+    summary_str = self.evaluate(summary_t)
+    self._assertSummaryHasCount(summary_str, "record_latency_TensorDataset/_1",
+                                1)
+    self._assertSummaryHasCount(summary_str, "record_latency_MapDataset/_4", 1)
+    self._assertSummaryHasCount(summary_str,
+                                "record_latency_PrefetchDataset/_6", 1)
 
   def testLatencyStatsOptimizationV2(self):
     aggregator = stats_aggregator.StatsAggregator()
@@ -63,24 +60,21 @@ class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
             ["LatencyStats", "Map", "LatencyStats", "Prefetch",
              "LatencyStats"])).map(lambda x: x * x).prefetch(1)
     options = dataset_ops.Options()
-    options.experimental_stats = stats_options.StatsOptions(aggregator)
+    options.experimental_stats = stats_options.StatsOptions()
+    options.experimental_stats.aggregator = aggregator
     dataset = dataset.with_options(options)
-    iterator = dataset.make_initializable_iterator()
-    get_next = iterator.get_next()
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[1],
+        requires_initialization=True,
+        num_test_iterations=1)
     summary_t = aggregator.get_summary()
-
-    with self.cached_session() as sess:
-      sess.run(iterator.initializer)
-      self.assertEqual(1, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-      summary_str = sess.run(summary_t)
-      self._assertSummaryHasCount(summary_str,
-                                  "record_latency_TensorDataset/_1", 1)
-      self._assertSummaryHasCount(summary_str, "record_latency_MapDataset/_4",
-                                  1)
-      self._assertSummaryHasCount(summary_str,
-                                  "record_latency_PrefetchDataset/_6", 1)
+    summary_str = self.evaluate(summary_t)
+    self._assertSummaryHasCount(summary_str, "record_latency_TensorDataset/_1",
+                                1)
+    self._assertSummaryHasCount(summary_str, "record_latency_MapDataset/_4", 1)
+    self._assertSummaryHasCount(summary_str,
+                                "record_latency_PrefetchDataset/_6", 1)
 
 
 if __name__ == "__main__":

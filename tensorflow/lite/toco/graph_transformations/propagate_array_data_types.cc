@@ -86,6 +86,13 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
       SetDataTypeForAllOutputs(model, op, data_type);
       break;
     }
+    case OperatorType::kSplitV: {
+      // These operators produce output with the same type as its 1st input
+      CHECK_GE(op->inputs.size(), 3);
+      const ArrayDataType data_type = model->GetArray(op->inputs[0]).data_type;
+      SetDataTypeForAllOutputs(model, op, data_type);
+      break;
+    }
     case OperatorType::kTransposeConv: {
       // These operators produce an output with the same type as their 3rd input
       CHECK_GE(op->inputs.size(), 3);

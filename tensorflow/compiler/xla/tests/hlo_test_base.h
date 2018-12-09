@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -100,6 +101,7 @@ class HloTestBase : public ::testing::Test {
   //
   // This returns a vanilla HloModule that doesn't run the HLO verifier on
   // destruction.
+  ABSL_DEPRECATED("Use CreateNewVerifiedModule instead.")
   std::unique_ptr<HloModule> CreateNewUnverifiedModule(
       const string& name = TestName());
 
@@ -107,12 +109,6 @@ class HloTestBase : public ::testing::Test {
   // HLO verifier on destruction.
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
       const string& name = TestName());
-
-  // Parses the given string and returns module as a vanilla, unverified
-  // HloModule.
-  StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
-      absl::string_view hlo_text,
-      const HloModuleConfig& config = HloModuleConfig());
 
   // Parses the given string and returns module as a VerifiedHloModule.
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(

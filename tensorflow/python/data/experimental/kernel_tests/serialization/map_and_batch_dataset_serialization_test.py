@@ -22,6 +22,7 @@ import math
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -82,6 +83,19 @@ class MapAndBatchDatasetSerializationTest(
                         num_outputs_keep_remainder)
     self.run_core_tests(lambda: build_ds(10, True), lambda: build_ds(15, True),
                         num_outputs_drop_remainder)
+
+  def testSparse(self):
+
+    def build_dataset():
+
+      def map_fn(i):
+        return sparse_tensor.SparseTensorValue(
+            indices=[[0]], values=(i * [1]), dense_shape=[1])
+
+      return dataset_ops.Dataset.range(10).apply(
+          batching.map_and_batch(map_fn, 5))
+
+    self.run_core_tests(build_dataset, None, 2)
 
 
 if __name__ == "__main__":

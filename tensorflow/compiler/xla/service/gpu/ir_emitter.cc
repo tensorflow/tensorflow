@@ -63,9 +63,6 @@ IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
                 &ir_emitter_context->buffer_assignment(), &b_, module_,
                 is_nested),
       hlo_module_config_(hlo_module_config) {
-  b_.setFastMathFlags(llvm_ir::GetFastMathFlags(
-      /*fast_math_enabled=*/hlo_module_config.debug_options()
-          .xla_gpu_enable_fast_math()));
 }
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {
@@ -93,6 +90,18 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   // constant.
   if (bindings_.BoundToIrValue(*operand)) {
     bindings_.BindHloToIrValue(*bitcast, GetBasePointer(*operand));
+  }
+  return Status::OK();
+}
+
+Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
+  VLOG(2) << "HandleAddDependency: " << add_dependency->ToString();
+  const HloInstruction* operand = add_dependency->operand(0);
+  // Add_Dependency is a no-op, but we still want to bind it to an llvm::Value
+  // sometimes, e.g., when it's operand is a constant or a bitcast of a
+  // constant.
+  if (bindings_.BoundToIrValue(*operand)) {
+    bindings_.BindHloToIrValue(*add_dependency, GetBasePointer(*operand));
   }
   return Status::OK();
 }

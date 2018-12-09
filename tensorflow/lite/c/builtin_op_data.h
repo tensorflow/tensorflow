@@ -35,10 +35,20 @@ typedef enum {
   kTfLitePaddingValid,
 } TfLitePadding;
 
+typedef enum {
+  kTfLiteMirrorPaddingUnknown = 0,
+  kTfLiteMirrorPaddingReflect,
+  kTfLiteMirrorPaddingSymmetric,
+} TfLiteMirrorPaddingMode;
+
 typedef struct {
   int width;
   int height;
 } TfLitePaddingValues;
+
+typedef struct {
+  TfLiteMirrorPaddingMode mode;
+} TfLiteMirrorPaddingParams;
 
 // Possible fused activation functions.
 // TODO(aselle): rename to TfLiteActivation
@@ -268,6 +278,10 @@ typedef struct {
 } TfLiteSplitParams;
 
 typedef struct {
+  int num_splits;
+} TfLiteSplitVParams;
+
+typedef struct {
   // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
   // For now we will fix the maximum possible number of dimensions.
   int squeeze_dims[8];
@@ -327,6 +341,10 @@ typedef struct {
   int num;
   int axis;
 } TfLiteUnpackParams;
+
+typedef struct {
+  float alpha;
+} TfLiteLeakyReluParams;
 
 #ifdef __cplusplus
 }  // extern "C"

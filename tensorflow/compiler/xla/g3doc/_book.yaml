@@ -3,15 +3,15 @@ upper_tabs:
 - include: /_upper_tabs_left.yaml
 - include: /api_docs/_upper_tabs_api.yaml
 # Dropdown menu
-- name: Ecosystem
-  path: /ecosystem
+- name: Resources
+  path: /resources
   is_default: true
   menu:
-  - include: /ecosystem/_menu_toc.yaml
+  - include: /resources/_menu_toc.yaml
   lower_tabs:
     # Subsite tabs
     other:
-    - name: Guide
+    - name: Guide & Tutorials
       contents:
       - title: XLA overview
         path: /xla/overview
@@ -27,3 +27,9 @@ upper_tabs:
         path: /xla/shapes
       - title: Using AOT compilation
         path: /xla/tfcompile
+      - heading: Tutorials
+      - title: XLA compile API
+        path: /xla/tutorials/xla_compile
+        status: experimental
+
+- include: /_upper_tabs_right.yaml

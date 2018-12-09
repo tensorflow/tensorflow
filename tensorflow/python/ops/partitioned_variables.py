@@ -57,7 +57,7 @@ import math
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
@@ -68,7 +68,7 @@ __all__ = [
 ]
 
 
-@tf_export("variable_axis_size_partitioner")
+@tf_export(v1=["variable_axis_size_partitioner"])
 def variable_axis_size_partitioner(
     max_shard_bytes, axis=0, bytes_per_string_element=16, max_shards=None):
   """Get a partitioner for VariableScope to keep shards below `max_shard_bytes`.
@@ -96,7 +96,7 @@ def variable_axis_size_partitioner(
 
   Returns:
     A partition function usable as the `partitioner` argument to
-    `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+    `variable_scope` and `get_variable`.
 
   Raises:
     ValueError: If any of the byte counts are non-positive.
@@ -154,7 +154,7 @@ def variable_axis_size_partitioner(
   return _partitioner
 
 
-@tf_export("min_max_variable_partitioner")
+@tf_export(v1=["min_max_variable_partitioner"])
 def min_max_variable_partitioner(max_partitions=1, axis=0,
                                  min_slice_size=256 << 10,
                                  bytes_per_string_element=16):
@@ -175,7 +175,7 @@ def min_max_variable_partitioner(max_partitions=1, axis=0,
 
   Returns:
     A partition function usable as the `partitioner` argument to
-    `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+    `variable_scope` and `get_variable`.
 
   """
   def _partitioner(shape, dtype):
@@ -218,7 +218,7 @@ def min_max_variable_partitioner(max_partitions=1, axis=0,
   return _partitioner
 
 
-@tf_export("fixed_size_partitioner")
+@tf_export(v1=["fixed_size_partitioner"])
 def fixed_size_partitioner(num_shards, axis=0):
   """Partitioner to specify a fixed number of shards along given axis.
 
@@ -228,7 +228,7 @@ def fixed_size_partitioner(num_shards, axis=0):
 
   Returns:
     A partition function usable as the `partitioner` argument to
-    `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+    `variable_scope` and `get_variable`.
   """
   def _partitioner(shape, **unused_args):
     partitions_list = [1] * len(shape)
@@ -237,7 +237,10 @@ def fixed_size_partitioner(num_shards, axis=0):
   return _partitioner
 
 
-@tf_export("create_partitioned_variables")
+@tf_export(v1=["create_partitioned_variables"])
+@deprecation.deprecated(
+    date=None,
+    instructions="Use tf.get_variable with a partitioner set.")
 def create_partitioned_variables(
     shape, slicing, initializer, dtype=dtypes.float32,
     trainable=True, collections=None, name=None, reuse=None):
@@ -282,11 +285,6 @@ def create_partitioned_variables(
   Raises:
     ValueError: If any of the arguments is malformed.
   """
-  logging.warn(
-      "create_partitioned_variables is deprecated.  Use "
-      "tf.get_variable with a partitioner set, or "
-      "tf.get_partitioned_variable_list, instead.")
-
   if len(shape) != len(slicing):
     raise ValueError("The 'shape' and 'slicing' of a partitioned Variable "
                      "must have the length: shape: %s, slicing: %s" %

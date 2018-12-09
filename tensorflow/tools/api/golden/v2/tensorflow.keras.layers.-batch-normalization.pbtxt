@@ -1,6 +1,6 @@
 path: "tensorflow.keras.layers.BatchNormalization"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.layers.normalization.BatchNormalization\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.normalization.BatchNormalizationV2\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
@@ -87,6 +87,10 @@ tf_class {
   member_method {
     name: "add_loss"
     argspec: "args=[\'self\', \'losses\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "add_metric"
+    argspec: "args=[\'self\', \'value\', \'aggregation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "add_update"

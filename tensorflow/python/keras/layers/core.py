@@ -34,8 +34,8 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -81,7 +81,6 @@ class Masking(Layer):
     super(Masking, self).__init__(**kwargs)
     self.supports_masking = True
     self.mask_value = mask_value
-    self._can_use_graph_functions = True
 
   def compute_mask(self, inputs, mask=None):
     return K.any(math_ops.not_equal(inputs, self.mask_value), axis=-1)
@@ -125,7 +124,6 @@ class Dropout(Layer):
     self.noise_shape = noise_shape
     self.seed = seed
     self.supports_masking = True
-    self._can_use_graph_functions = True
 
   def _get_noise_shape(self, inputs):
     # Subclasses of `Dropout` may implement `_get_noise_shape(self, inputs)`,
@@ -326,7 +324,6 @@ class Activation(Layer):
     super(Activation, self).__init__(**kwargs)
     self.supports_masking = True
     self.activation = activations.get(activation)
-    self._can_use_graph_functions = True
 
   def call(self, inputs):
     return self.activation(inputs)
@@ -379,7 +376,6 @@ class Reshape(Layer):
   def __init__(self, target_shape, **kwargs):
     super(Reshape, self).__init__(**kwargs)
     self.target_shape = tuple(target_shape)
-    self._can_use_graph_functions = True
 
   def _fix_unknown_dimension(self, input_shape, output_shape):
     """Find and replace a missing dimension in an output shape.
@@ -488,7 +484,6 @@ class Permute(Layer):
           'The set of indices in `dims` must be consecutive and start from 1.' %
           (dims,))
     self.input_spec = InputSpec(ndim=len(self.dims) + 1)
-    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -510,6 +505,9 @@ class Permute(Layer):
 @tf_export('keras.layers.Flatten')
 class Flatten(Layer):
   """Flattens the input. Does not affect the batch size.
+
+  If inputs are shaped `(batch,)` without a channel dimension, then flattening
+  adds an extra channel dimension and output shapes are `(batch, 1)`.
 
   Arguments:
       data_format: A string,
@@ -539,24 +537,27 @@ class Flatten(Layer):
   def __init__(self, data_format=None, **kwargs):
     super(Flatten, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
-    self.input_spec = InputSpec(min_ndim=2)
-    self._can_use_graph_functions = True
+    self.input_spec = InputSpec(min_ndim=1)
 
   def call(self, inputs):
-    if self.data_format == 'channels_first':
+    if (self.data_format == 'channels_first'
+        and K.ndim(inputs) is not None and K.ndim(inputs) > 1):
       permutation = [0]
       permutation.extend([i for i in
                           range(2, K.ndim(inputs))])
       permutation.append(1)
       inputs = array_ops.transpose(inputs, perm=permutation)
 
-    outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
+    outputs = array_ops.reshape(
+        inputs, (inputs.shape[0].value or array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
     return outputs
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    if not input_shape:
+      output_shape = tensor_shape.TensorShape([1])
     output_shape = [input_shape[0]]
     if all(input_shape[1:]):
       output_shape += [np.prod(input_shape[1:])]
@@ -600,7 +601,6 @@ class RepeatVector(Layer):
     super(RepeatVector, self).__init__(**kwargs)
     self.n = n
     self.input_spec = InputSpec(ndim=2)
-    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -929,7 +929,6 @@ class Dense(Layer):
 
     self.supports_masking = True
     self.input_spec = InputSpec(min_ndim=2)
-    self._can_use_graph_functions = True
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -1029,7 +1028,6 @@ class ActivityRegularization(Layer):
     self.supports_masking = True
     self.l1 = l1
     self.l2 = l2
-    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     return input_shape

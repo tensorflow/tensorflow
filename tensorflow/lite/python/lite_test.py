@@ -80,6 +80,7 @@ class FromConstructor(test_util.TensorFlowTestCase):
     self.assertTrue(converter._has_valid_tensors())
 
 
+@test_util.run_v1_only('b/120545219')
 class FromSessionTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -177,12 +178,44 @@ class FromSessionTest(test_util.TensorFlowTestCase):
         'Quantization input stats are not available for input tensors '
         '\'inputB\'.', str(error.exception))
 
+  def testIntermediateInputArray(self):
+    """Convert a model from an intermediate input array."""
+    in_tensor_init = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    in_tensor_final = in_tensor_init + in_tensor_init
+    out_tensor = in_tensor_final + in_tensor_final
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor_final],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('add', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add_1', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
   def testSizeNoneInvalid(self):
     in_tensor = array_ops.placeholder(dtype=dtypes.float32)
     out_tensor = in_tensor + in_tensor
     sess = session.Session()
 
-    # Test invalid shape. None after 1st dimension.
+    # Test None as shape.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
     with self.assertRaises(ValueError) as error:
@@ -190,7 +223,20 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
                      str(error.exception))
 
-  def testBatchSizeInvalid(self):
+  def testSizeEmptyInvalid(self):
+    in_tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[])
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Test empty shape.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    with self.assertRaises(ValueError) as error:
+      converter.convert()
+    self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
+                     str(error.exception))
+
+  def testSizeInvalid(self):
     in_tensor = array_ops.placeholder(
         shape=[1, None, 16, 3], dtype=dtypes.float32)
     out_tensor = in_tensor + in_tensor
@@ -452,6 +498,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
 
+@test_util.run_v1_only('b/120545219')
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -699,6 +746,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
 
+@test_util.run_v1_only('b/120545219')
 class FromSavedModelTest(test_util.TensorFlowTestCase):
 
   def _createSavedModel(self, shape):
@@ -843,6 +891,7 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
 
+@test_util.run_v1_only('b/120545219')
 class FromKerasFile(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -931,12 +980,13 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     """Test a Sequential tf.keras model testing input shapes argument."""
     keras_file = self._getSequentialModel()
 
-    # Passing in shape of invalid input array has no impact as long as all input
-    # arrays have a shape.
-    converter = lite.TFLiteConverter.from_keras_model_file(
-        keras_file, input_shapes={'invalid-input': [2, 3]})
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # Passing in shape of invalid input array raises error.
+    with self.assertRaises(ValueError) as error:
+      converter = lite.TFLiteConverter.from_keras_model_file(
+          keras_file, input_shapes={'invalid-input': [2, 3]})
+    self.assertEqual(
+        "Invalid tensor 'invalid-input' found in tensor shapes map.",
+        str(error.exception))
 
     # Passing in shape of valid input array.
     converter = lite.TFLiteConverter.from_keras_model_file(

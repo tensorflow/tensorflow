@@ -25,7 +25,6 @@ import random
 import threading
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.framework import c_api_util
@@ -86,21 +85,21 @@ class FunctionCallOptions(object):
   Eager functions are functions decorated with tf.contrib.eager.defun.
   """
 
-  def __init__(self, executor_type=None, rewriter_config=None):
+  def __init__(self, executor_type=None, config_proto=None):
     """Constructor.
 
     Args:
       executor_type: (optional) name of the executor to be used to execute the
         eager function. If None or an empty string, the default Tensorflow
         executor will be used.
-      rewriter_config: (optional) a rewriter_config_pb2.RewriterConfig proto or
+      config_proto: (optional) a `config_pb2.ConfigProto` proto or
         a serialized string of that proto.
         The config used by Grappler when optimizing the function graph.
         Each concrete function is optimized the first time is called. Changing
-        rewriter_config after the first call has no effect.
-        If rewriter_config is None, an empty RewriterConfig will be used.
+        config_proto after the first call has no effect.
+        If config_proto is None, an empty RewriterConfig will be used.
     """
-    self.rewriter_config_serialized = rewriter_config
+    self.config_proto_serialized = config_proto
     self.executor_type = executor_type
 
   @property
@@ -112,24 +111,22 @@ class FunctionCallOptions(object):
     self._executor_type = executor_type
 
   @property
-  def rewriter_config_serialized(self):
-    return self._rewriter_config_serialized
+  def config_proto_serialized(self):
+    return self._config_proto_serialized
 
-  @rewriter_config_serialized.setter
-  def rewriter_config_serialized(self, config):
-    if isinstance(config, rewriter_config_pb2.RewriterConfig):
-      self._rewriter_config_serialized = config.SerializeToString()
+  @config_proto_serialized.setter
+  def config_proto_serialized(self, config):
+    if isinstance(config, config_pb2.ConfigProto):
+      self._config_proto_serialized = config.SerializeToString()
     elif isinstance(config, str):
-      self._rewriter_config_serialized = config
+      self._config_proto_serialized = config
     elif config is None:
-      self._rewriter_config_serialized = rewriter_config_pb2.RewriterConfig(
-      ).SerializeToString()
+      self._config_proto_serialized = (
+          config_pb2.ConfigProto().SerializeToString())
     else:
-      raise ValueError(
-          "the rewriter config must be either a "
-          "rewriter_config_pb2.RewriterConfig, or a serialized string of that "
-          "proto or None. got: {}"
-          .format(type(config)))
+      raise ValueError("the rewriter config must be either a "
+                       "config_pb2.ConfigProto, or a serialized string of that "
+                       "proto or None. got: {}".format(type(config)))
 
 
 # TODO(agarwal): better name ?
@@ -152,14 +149,12 @@ class _EagerContext(threading.local):
 
     # Default rewriter config corresponds to turning all default grappler
     # optimizations on.
-    base_config = rewriter_config_pb2.RewriterConfig()
+    base_config = config_pb2.ConfigProto()
 
-    if config is not None and config.HasField(
-        "graph_options") and config.graph_options.HasField("rewrite_options"):
-      base_config.Merge(config.graph_options.rewrite_options)
+    if config is not None:
+      base_config.MergeFrom(config)
 
-    self.function_call_options = FunctionCallOptions(
-        rewriter_config=base_config)
+    self.function_call_options = FunctionCallOptions(config_proto=base_config)
 
 
 ContextSwitch = collections.namedtuple(
@@ -483,10 +478,6 @@ class Context(object):
     Raises:
       ValueError: If name is not a string or is an invalid device name.
     """
-    devices = self._context_devices
-    if devices is None:
-      self._initialize_handle_and_devices()
-      devices = self._context_devices
     eager_context = self._eager_context
     old_device_name = eager_context.device_name
     old_device_spec = eager_context.device_spec
@@ -507,7 +498,9 @@ class Context(object):
         if old_device_name:
           new_device_spec = copy.copy(old_device_spec)
         else:
-          new_device_spec = pydev.DeviceSpec.from_string(devices[0])
+          self._initialize_handle_and_devices()
+          new_device_spec = pydev.DeviceSpec.from_string(
+              self._context_devices[0])
         new_device_spec.merge_from(device_spec)
       else:
         new_device_spec = pydev.DeviceSpec.from_string("")
@@ -897,21 +890,21 @@ def export_run_metadata():
   return context().export_run_metadata()
 
 
-def function_rewriter_config(rewriter_config):
+def function_config_proto(config_proto):
   """Context manager for setting the grappler rewrite config.
 
   This config is used by Grappler when optimizing the function graph.
 
   Args:
-    rewriter_config: a rewriter_config_pb2.RewriterConfig proto or
+    config_proto: a `config_pb2.ConfigProto` proto or
       a serialized string of that proto or None. If None, the default instance
-      of rewriter_config_pb2.RewriterConfig will be used.
+      of `config_pb2.ConfigProto` will be used.
 
   Returns:
     A context manager.
   """
   def _set_options_func(options):
-    options.rewriter_config_serialized = rewriter_config
+    options.config_proto_serialized = config_proto
 
   return context().function_call_options(_set_options_func)
 

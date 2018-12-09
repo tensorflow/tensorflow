@@ -99,6 +99,8 @@ void VerifiedHloModule::VerifyOrAddFailure(const string& message) {
     ADD_FAILURE() << "HloVerifier failed on module " << name()
                   << (message.empty() ? "" : absl::StrCat(" (", message, ")"))
                   << ": " << status;
+    LOG(ERROR) << "Contents of bad module:";
+    XLA_LOG_LINES(tensorflow::ERROR, ToString());
   }
 }
 
@@ -138,14 +140,6 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
   return absl::make_unique<VerifiedHloModule>(
       name, GetModuleConfigForTest(), verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_);
-}
-
-StatusOr<std::unique_ptr<HloModule>>
-HloTestBase::ParseAndReturnUnverifiedModule(absl::string_view hlo_text,
-                                            const HloModuleConfig& config) {
-  auto module = absl::make_unique<HloModule>(TestName(), config);
-  TF_RETURN_IF_ERROR(ParseHloString(hlo_text, module.get()));
-  return std::move(module);
 }
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>

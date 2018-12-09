@@ -180,6 +180,25 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
 TF_CAPI_EXPORT extern void TFE_TensorHandlePrintDebugString(
     TFE_TensorHandle* handle);
 
+typedef struct TFE_ExecuteOpNotification TFE_ExecuteOpNotification;
+
+// Allows invoking a kernel asynchronously, and explicitly returns a
+// notification that can be waited upon. This always executes the kernel in a
+// new thread.
+// 1. `retvals` and `num_retvals` can only be consumed after
+// `TFE_ExecuteOp` returns successfully. They shouldn't be used
+// if the return is unsuccessful
+// 2. These new APIs cannot be used together with the TFE context level async
+// support.
+TF_CAPI_EXPORT extern TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(
+    TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
+    TF_Status* status);
+
+// Waits to complete the op execution, and cleans up the notification.
+// Errors reported by op execution are set in `status`.
+TF_CAPI_EXPORT extern void TFE_ExecuteOpNotificationWaitAndDelete(
+    TFE_ExecuteOpNotification* notification, TF_Status* status);
+
 TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
                                                       const char* errMsg);
 
@@ -208,6 +227,24 @@ TF_CAPI_EXPORT extern void TF_AttrBuilderCheckCanRunOnDevice(
 // argument does not support this attribute type.
 TF_CAPI_EXPORT extern const char* TF_GetNumberAttrForOpListInput(
     const char* op_name, int input_index, TF_Status* status);
+
+// Returns 1 if the op is stateful, 0 otherwise. The return value is undefined
+// if the status is not ok.
+TF_CAPI_EXPORT extern int TF_OpIsStateful(const char* op_type,
+                                          TF_Status* status);
+
+// Platform specific initialization routine. Very few platforms actually require
+// this to be called.
+TF_CAPI_EXPORT void TF_InitMain(const char* usage, int* argc, char*** argv);
+
+// Platform-specific implementation to return an unused port. (This should used
+// in tests only.)
+TF_CAPI_EXPORT int TF_PickUnusedPortOrDie(void);
+
+// Fast path method that makes constructing a single scalar tensor require less
+// overhead and copies.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromScalar(
+    TF_DataType dtype, void* scalar, size_t len);
 
 #ifdef __cplusplus
 } /* end extern "C" */

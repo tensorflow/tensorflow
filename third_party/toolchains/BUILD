@@ -35,3 +35,16 @@ platform(
             value:"docker://gcr.io/asci-toolchain/nosla-cuda9.0-cudnn7-ubuntu14.04@%s"
         }""" % container_digests["cuda9.0-cudnn7-ubuntu14.04"],
 )
+
+platform(
+    name = "rbe_cuda10.0-cudnn7-ubuntu14.04",
+    constraint_values = [
+        "@bazel_tools//platforms:x86_64",
+        "@bazel_tools//platforms:linux",
+    ],
+    remote_execution_properties = """
+        properties: {
+            name: "container-image"
+            value:"docker://gcr.io/asci-toolchain/nosla-cuda10.0-cudnn7-ubuntu14.04@%s"
+        }""" % container_digests["cuda10.0-cudnn7-ubuntu14.04"],
+)

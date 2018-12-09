@@ -45,7 +45,7 @@ void ThunkSchedule::AddDependenciesOnTransitiveOperands(
 ThunkSchedule::ThunkSchedule(
     std::unique_ptr<ThunkSequence> thunks,
     std::unique_ptr<StreamAssignment> stream_assignment,
-    const std::vector<const HloInstruction*>& hlo_total_order)
+    const std::vector<HloInstruction*>& hlo_total_order)
     : thunks_(std::move(thunks)),
       stream_assignment_(std::move(stream_assignment)) {
   std::unordered_map<const HloInstruction*, Thunk*> hlo_to_thunk;
@@ -53,7 +53,7 @@ ThunkSchedule::ThunkSchedule(
     InsertOrDie(&hlo_to_thunk, thunk->hlo_instruction(), thunk.get());
   }
 
-  for (const HloInstruction* hlo : hlo_total_order) {
+  for (HloInstruction* hlo : hlo_total_order) {
     if (hlo_to_thunk.count(hlo)) {
       thunk_total_order_.push_back(FindOrDie(hlo_to_thunk, hlo));
     }

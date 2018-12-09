@@ -22,10 +22,13 @@ from absl.testing import parameterized
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedWhereOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedWhereOpTest(ragged_test_util.RaggedTensorTestCase,
+                        parameterized.TestCase):
 
   @parameterized.parameters([
       #=========================================================================
@@ -167,15 +170,7 @@ class RaggedWhereOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   ])   # pyformat: disable
   def testRaggedWhere(self, condition, expected, x=None, y=None):
     result = ragged.where(condition, x, y)
-    self.assertEqual(
-        getattr(result, 'ragged_rank', 0), getattr(expected, 'ragged_rank', 0))
-    with self.test_session():
-      result_value = result.eval()
-      if hasattr(result_value, 'tolist'):
-        result_value = result_value.tolist()
-      if hasattr(expected, 'tolist'):
-        expected = expected.tolist()
-      self.assertEqual(result_value, expected)
+    self.assertRaggedEqual(result, expected)
 
   @parameterized.parameters([
       dict(

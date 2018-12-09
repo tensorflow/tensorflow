@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -186,6 +187,7 @@ def get_nested_model_3(input_dim, num_classes):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.run_v1_only('b/120545219')
 class ModelSubclassingTest(test.TestCase):
 
   def test_custom_build(self):
@@ -455,12 +457,12 @@ class ModelSubclassingTest(test.TestCase):
       model = SimpleTestModel(num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
 
-      x = np.ones((num_samples, input_dim))
-      y = np.zeros((num_samples, num_classes))
+      x = np.ones((num_samples, input_dim), dtype=np.float32)
+      y = np.zeros((num_samples, num_classes), dtype=np.float32)
       dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
 
       model.fit(iterator, epochs=2, steps_per_epoch=10, verbose=0)
       _ = model.evaluate(iterator, steps=10, verbose=0)
@@ -725,9 +727,40 @@ class ModelSubclassingTest(test.TestCase):
     _ = model.evaluate(x, y, verbose=0)
 
     self.assertEqual(len(model.weights), 16)
-    self.assertEqual(
-        len(model.non_trainable_weights), 4)
+    self.assertEqual(len(model.non_trainable_weights), 4)
     self.assertEqual(len(model.trainable_weights), 12)
+
+  def test_subclass_nested_in_sequential(self):
+    num_classes = 2
+    num_samples = 100
+    input_dim = 50
+
+    class Inner(keras.Model):
+
+      def __init__(self):
+        super(Inner, self).__init__()
+        self.dense1 = keras.layers.Dense(32, activation='relu')
+        self.dense2 = keras.layers.Dense(num_classes, activation='relu')
+        self.bn = keras.layers.BatchNormalization()
+
+      def call(self, inputs):
+        x = self.dense1(inputs)
+        x = self.dense2(x)
+        return self.bn(x)
+
+    model = keras.Sequential([Inner()])
+    model.compile(loss='mse',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001),
+                  metrics=['acc'])
+
+    x = np.ones((num_samples, input_dim))
+    y = np.zeros((num_samples, num_classes))
+    model.fit(x, y, epochs=2, batch_size=32, verbose=0)
+    _ = model.evaluate(x, y, verbose=0)
+
+    self.assertEqual(len(model.weights), 8)
+    self.assertEqual(len(model.non_trainable_weights), 2)
+    self.assertEqual(len(model.trainable_weights), 6)
 
   def test_support_for_manual_training_arg(self):
     # In most cases, the `training` argument is left unspecified, in which
@@ -819,9 +852,74 @@ class ModelSubclassingTest(test.TestCase):
     self.assertEqual([m.dense.kernel, m.dense.bias, m.not_trainable_var],
                      m.non_trainable_variables)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_add_weight_in_model(self):
 
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.b = self.add_weight('bias', (10,))
+        self.c = self.add_weight('bias2', (10,), trainable=False)
+
+      def call(self, inputs):
+        return inputs + self.b + self.c
+
+    x = ops.convert_to_tensor(np.ones((10, 10), 'float32'))
+    model = MyModel()
+    model(x)
+    self.assertEqual(1, len(model.trainable_weights))
+    self.assertEqual(1, len(model.non_trainable_weights))
+    self.assertEqual(2, len(model.weights))
+
+    class MyModelCustomBuild(keras.Model):
+
+      def build(self, input_shape):
+        self.b = self.add_weight('bias', (10,))
+        self.c = self.add_weight('bias2', (10,), trainable=False)
+
+      def call(self, inputs):
+        return inputs + self.b + self.c
+
+    x = ops.convert_to_tensor(np.ones((10, 10), 'float32'))
+    model = MyModelCustomBuild()
+    model(x)
+    self.assertEqual(1, len(model.trainable_weights))
+    self.assertEqual(1, len(model.non_trainable_weights))
+    self.assertEqual(2, len(model.weights))
+
+  def test_add_update_in_model(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.b = self.add_weight('bias', (10,))
+        self.c = self.add_weight('bias2', (10,))
+
+      def call(self, inputs):
+        # Unconditional
+        self.add_update(self.b.assign(self.b * 2))
+        # Conditional
+        self.add_update(self.c.assign(inputs[1, :]), inputs)
+        return inputs + self.b + self.c
+
+    x = ops.convert_to_tensor(np.ones((10, 10), 'float32'))
+    model = MyModel()
+    model(x)
+
+    if context.executing_eagerly():
+      self.assertEqual(0, len(model.updates))
+    else:
+      self.assertEqual(2, len(model.updates))
+      self.assertEqual(1, len(model.get_updates_for(None)))
+      self.assertEqual(1, len(model.get_updates_for(x)))
+
+
+@test_util.run_v1_only('b/120545219')
 class GraphSpecificModelSubclassingTests(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_single_io_workflow_with_tensors(self):
     num_classes = 2
     num_samples = 10
@@ -839,6 +937,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       model.fit(x, y, epochs=2, steps_per_epoch=10, verbose=0)
       _ = model.evaluate(steps=10, verbose=0)
 
+  @test_util.run_deprecated_v1
   def test_multi_io_workflow_with_tensors(self):
     num_classes = (2, 3)
     num_samples = 10
@@ -858,6 +957,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       model.fit([x1, x2], [y1, y2], epochs=2, steps_per_epoch=10, verbose=0)
       _ = model.evaluate(steps=10, verbose=0)
 
+  @test_util.run_deprecated_v1
   def test_updates_and_losses_for_nested_models_in_subclassed_model(self):
 
     # Case 1: deferred-build sequential nested in subclass.
@@ -925,6 +1025,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       self.assertEqual(len(model.get_updates_for(x)), 2)
       self.assertEqual(len(model.get_losses_for(x)), 1)
 
+  @test_util.run_deprecated_v1
   def test_multi_io_workflow_with_numpy_arrays_and_custom_placeholders(self):
     num_classes = (2, 3)
     num_samples = 1000
@@ -974,6 +1075,16 @@ class TrainingNoDefaultModel(keras.Model):
     return self.dense1(x)
 
 
+class TrainingMaskingModel(keras.Model):
+
+  def __init__(self):
+    super(TrainingMaskingModel, self).__init__()
+    self.dense1 = keras.layers.Dense(1)
+
+  def call(self, x, training=False, mask=None):
+    return self.dense1(x)
+
+
 class CustomCallSignatureTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -995,6 +1106,19 @@ class CustomCallSignatureTests(test.TestCase):
     input_dim = 2
 
     model = TrainingNoDefaultModel()
+    self.assertFalse(model.built, 'Model should not have been built')
+    self.assertFalse(model.weights, ('Model should have no weights since it '
+                                     'has not been built.'))
+    model.build((None, input_dim))
+    self.assertTrue(model.weights, ('Model should have weights now that it '
+                                    'has been properly built.'))
+    self.assertTrue(model.built, 'Model should be built after calling `build`.')
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_training_and_mask_args_call_build(self):
+    input_dim = 2
+
+    model = TrainingMaskingModel()
     self.assertFalse(model.built, 'Model should not have been built')
     self.assertFalse(model.weights, ('Model should have no weights since it '
                                      'has not been built.'))

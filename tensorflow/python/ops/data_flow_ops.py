@@ -79,7 +79,7 @@ def _as_shape_list(shapes,
     shapes = [shapes]
   shapes = [tensor_shape.as_shape(shape) for shape in shapes]
   if not unknown_dim_allowed:
-    if any([not shape.is_fully_defined() for shape in shapes]):
+    if any(not shape.is_fully_defined() for shape in shapes):
       raise ValueError("All shapes must be fully defined: %s" % shapes)
   if not unknown_rank_allowed:
     if any([shape.dims is None for shape in shapes]):
@@ -171,7 +171,10 @@ class QueueBase(object):
       self._names = None
     self._queue_ref = queue_ref
     if context.executing_eagerly():
-      self._name = context.context().scope_name
+      if context.context().scope_name:
+        self._name = context.context().scope_name
+      else:
+        self._name = "Empty"
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           queue_ref, None)
     else:
@@ -198,11 +201,11 @@ class QueueBase(object):
       raise TypeError("A list of queues expected")
 
     dtypes = queues[0].dtypes
-    if not all([dtypes == q.dtypes for q in queues[1:]]):
+    if not all(dtypes == q.dtypes for q in queues[1:]):
       raise TypeError("Queues do not have matching component dtypes.")
 
     names = queues[0].names
-    if not all([names == q.names for q in queues[1:]]):
+    if not all(names == q.names for q in queues[1:]):
       raise TypeError("Queues do not have matching component names.")
 
     queue_shapes = [q.shapes for q in queues]
@@ -1148,7 +1151,7 @@ class Barrier(object):
         self._barrier_ref, name=name)
 
 
-@tf_export("ConditionalAccumulatorBase")
+@tf_export(v1=["ConditionalAccumulatorBase"])
 class ConditionalAccumulatorBase(object):
   """A conditional accumulator for aggregating gradients.
 
@@ -1227,7 +1230,7 @@ class ConditionalAccumulatorBase(object):
         name=name)
 
 
-@tf_export("ConditionalAccumulator")
+@tf_export(v1=["ConditionalAccumulator"])
 class ConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating gradients.
 

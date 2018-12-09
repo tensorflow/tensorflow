@@ -13,9 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdint.h>
+#include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unicode/appendable.h"  // TF:icu
+#include "unicode/schriter.h"  // TF:icu
+#include "unicode/uchar.h"  // TF:icu
 #include "unicode/ucnv.h"  // TF:icu
 #include "unicode/ucnv_err.h"  // TF:icu
 #include "unicode/umachine.h"  // TF:icu
@@ -23,15 +31,57 @@ limitations under the License.
 #include "unicode/unistr.h"  // TF:icu
 #include "unicode/uset.h"  // TF:icu
 #include "unicode/utypes.h"  // TF:icu
+#include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/string_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
+namespace {
+
+void Encode(const UnicodeEncoding encoding, const icu::UnicodeString& in,
+            string* out) {
+  if (encoding == UnicodeEncoding::UTF8) {
+    out->clear();
+    in.toUTF8String(*out);
+  } else if (encoding == UnicodeEncoding::UTF16BE) {
+    // TODO(gbillock): consider using the
+    // extract(char *dest, int32_t destCapacity, UConverter *cnv)
+    // for UTF16/32
+    out->clear();  // subtle: must come before reserve()
+    out->reserve(2 * in.length() + 1);
+    const char16_t* buf = in.getBuffer();
+    for (int i = 0; i < in.length(); ++i) {
+      // Emit big-endian encoding for UTF-16 always.
+      out->push_back((buf[i] & 0xFF00) >> 8);
+      out->push_back(buf[i] & 0x00FF);
+    }
+  } else if (encoding == UnicodeEncoding::UTF32BE) {
+    out->clear();  // subtle: must come before reserve()
+    out->reserve(4 * in.countChar32() + 1);
+    icu::StringCharacterIterator it(in);
+    UChar32 ch;
+    while (it.hasNext()) {
+      ch = it.next32PostInc();
+      out->push_back((ch & 0xFF000000) >> 24);
+      out->push_back((ch & 0x00FF0000) >> 16);
+      out->push_back((ch & 0x0000FF00) >> 8);
+      out->push_back((ch & 0x000000FF));
+    }
+  }
+}
 
 // This error callback is only useful for finding illegal encoding errors when
 // we want to be strict -- otherwise illegal encodings are replaced on read
@@ -146,39 +196,65 @@ class WrappedConverter {
   string name_;
 };
 
+struct ErrorOptions {
+  UChar32 subst = 0xFFFD;
+  bool elide_replacement = false;
+  bool replace_control_chars = false;
+  bool error_on_malformatting = false;
+};
+
+Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
+  *out = ErrorOptions();
+
+  string error_policy;
+  TF_RETURN_IF_ERROR(ctx->GetAttr("errors", &error_policy));
+
+  if (error_policy == "replace") {
+    out->elide_replacement = false;
+  } else if (error_policy == "ignore") {
+    out->elide_replacement = true;
+  } else if (error_policy == "strict") {
+    out->error_on_malformatting = true;
+  } else {
+    return errors::InvalidArgument(
+        "errors policy must be one of 'strict', 'replace', or 'ignore'");
+  }
+
+  int32 replacement_char;
+  TF_RETURN_IF_ERROR(ctx->GetAttr("replacement_char", &replacement_char));
+
+  if (replacement_char >= UCHAR_MIN_VALUE &&
+      replacement_char <= UCHAR_MAX_VALUE) {
+    out->subst = replacement_char;
+  } else {
+    return errors::InvalidArgument(
+        "replacement_char out of unicode codepoint range");
+  }
+
+  if (ctx->HasAttr("replace_control_characters")) {
+    TF_RETURN_IF_ERROR(ctx->GetAttr("replace_control_characters",
+                                    &(out->replace_control_chars)));
+  }
+
+  return Status::OK();
+}
+
+inline bool ShouldHandleFormatError(const ErrorOptions& error_options,
+                                    UChar32 ch, bool format_error) {
+  return ((error_options.replace_control_chars && ch <= 0x1F) || format_error);
+}
+
+}  // namespace
+
 class UnicodeTranscodeOp : public OpKernel {
  public:
   explicit UnicodeTranscodeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    string error_policy;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("errors", &error_policy));
-    if (error_policy == "replace") {
-      elide_replacement_ = false;
-    } else if (error_policy == "ignore") {
-      elide_replacement_ = true;
-    } else if (error_policy == "strict") {
-      error_on_malformatting_ = true;
-    } else {
-      ctx->CtxFailure(errors::InvalidArgument(
-          "errors policy must be one of 'strict', 'replace', or 'ignore'"));
-    }
-
-    int32 replacement_char;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("replacement_char", &replacement_char));
-    if (replacement_char >= UCHAR_MIN_VALUE &&
-        replacement_char <= UCHAR_MAX_VALUE) {
-      subst_ = replacement_char;
-    } else {
-      ctx->CtxFailure(errors::InvalidArgument(
-          "replacement_char out of unicode codepoint range"));
-    }
+    OP_REQUIRES_OK(ctx, GetErrorOptions(ctx, &error_options_));
 
     string output_encoding;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_encoding", &output_encoding));
     OP_REQUIRES_OK(ctx,
                    ParseUnicodeEncoding(output_encoding, &output_encoding_));
-
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("replace_control_characters",
-                                     &replace_control_chars_));
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("input_encoding", &input_encoding_));
     // Make a temporary UConverter to ensure it will create without error
@@ -228,7 +304,7 @@ class UnicodeTranscodeOp : public OpKernel {
       Transcode(&(output_flat(i)), input_encoder->converter_,
                 &found_any_format_error);
     }
-    if (error_on_malformatting_ && found_any_format_error) {
+    if (error_options_.error_on_malformatting && found_any_format_error) {
       ctx->CtxFailure(
           errors::InvalidArgument("Invalid formatting on input string"));
     }
@@ -240,12 +316,12 @@ class UnicodeTranscodeOp : public OpKernel {
   // out-of-range inputs.
   void TranslateCodepoints(icu::UnicodeString* s, bool* found_any_format_error,
                            UChar32 ch, int src_bytes, bool format_error) {
-    if ((replace_control_chars_ && ch <= 0x1F) || format_error) {
+    if (ShouldHandleFormatError(error_options_, ch, format_error)) {
       *found_any_format_error = true;
-      if (elide_replacement_) {
+      if (error_options_.elide_replacement) {
         return;
       } else {
-        ch = subst_;
+        ch = error_options_.subst;
       }
     }
     s->append(ch);
@@ -263,45 +339,202 @@ class UnicodeTranscodeOp : public OpKernel {
                   found_any_format_error, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3));
 
-    if (output_encoding_ == UnicodeEncoding::UTF8) {
-      s->clear();
-      source.toUTF8String(*s);
-    } else if (output_encoding_ == UnicodeEncoding::UTF16BE) {
-      // TODO(gbillock): consider using the
-      // extract(char *dest, int32_t destCapacity, UConverter *cnv)
-      // for UTF16/32
-      s->clear();  // subtle: must come before reserve()
-      s->reserve(2 * source.length() + 1);
-      const char16_t* buf = source.getBuffer();
-      for (int i = 0; i < source.length(); ++i) {
-        // Emit big-endian encoding for UTF-16 always.
-        s->push_back((buf[i] & 0xFF00) >> 8);
-        s->push_back(buf[i] & 0x00FF);
-      }
-    } else if (output_encoding_ == UnicodeEncoding::UTF32BE) {
-      s->clear();  // subtle: must come before reserve()
-      s->reserve(4 * source.countChar32() + 1);
-      for (int i = 0; i < source.countChar32(); ++i) {
-        // Emit big-endian encoding for UTF-32 always.
-        UChar32 ch = source.char32At(i);
-        s->push_back((ch & 0xFF000000) >> 24);
-        s->push_back((ch & 0x00FF0000) >> 16);
-        s->push_back((ch & 0x0000FF00) >> 8);
-        s->push_back((ch & 0x000000FF));
-      }
-    }
+    Encode(output_encoding_, source, s);
   }
 
-  UChar32 subst_ = 0xFFFD;
-  bool elide_replacement_ = false;
-  bool replace_control_chars_ = false;
-  bool error_on_malformatting_ = false;
-
   string input_encoding_;
+  ErrorOptions error_options_;
   UnicodeEncoding output_encoding_ = UnicodeEncoding::UTF8;
 };
 
 REGISTER_KERNEL_BUILDER(Name("UnicodeTranscode").Device(DEVICE_CPU),
                         UnicodeTranscodeOp);
+
+class UnicodeDecodeWithOffsetsOp : public OpKernel {
+ public:
+  explicit UnicodeDecodeWithOffsetsOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, GetErrorOptions(ctx, &error_options_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("input_encoding", &input_encoding_));
+    // Make a temporary UConverter to ensure it will create without error
+    // at execution time (and to warm any data caches the converter needs).
+    // This instance is not used.
+    std::unique_ptr<WrappedConverter> input_encoder =
+        absl::make_unique<WrappedConverter>();
+    input_encoder->init(input_encoding_);
+    OP_REQUIRES(ctx, input_encoder->converter_,
+                errors::InvalidArgument(
+                    "Could not create converter for input encoding: " +
+                    input_encoding_));
+  }
+
+  void Decode(OpKernelContext* ctx, std::vector<UChar32>* char_values,
+              std::vector<int64>* offset_values, int* string_length,
+              int64* next_row_split, UChar32 char_value, int char_length,
+              bool found_any_format_error) {
+    if (error_options_.error_on_malformatting && found_any_format_error) {
+      ctx->CtxFailure(
+          errors::InvalidArgument("Invalid formatting on input string"));
+    }
+    UChar32 decoded_value = char_value;
+    if (ShouldHandleFormatError(error_options_, char_value,
+                                found_any_format_error)) {
+      if (error_options_.elide_replacement) {
+        return;
+      } else {
+        decoded_value = error_options_.subst;
+      }
+    }
+
+    // Emit the char value.
+    char_values->push_back(decoded_value);
+
+    // Emit the byte offset
+    offset_values->push_back(*string_length);
+    *string_length += char_length;
+    *next_row_split += 1;
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor* input_tensor;
+    OP_REQUIRES_OK(ctx, ctx->input("input", &input_tensor));
+
+    // Go through all the strings in `input`.
+    const auto& input_vec = input_tensor->flat<string>();
+
+    std::unique_ptr<WrappedConverter> input_encoder =
+        absl::make_unique<WrappedConverter>();
+    input_encoder->init(input_encoding_);
+    OP_REQUIRES(ctx, input_encoder->converter_,
+                errors::InvalidArgument(
+                    "Could not create converter for input encoding: " +
+                    input_encoding_));
+
+    std::vector<UChar32> char_values;
+    std::vector<int64> offset_values;
+
+    Tensor* output_row_splits;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output("row_splits",
+                                             {input_tensor->NumElements() + 1},
+                                             &output_row_splits));
+    auto out_row_splits = output_row_splits->vec<int64>();
+
+    int row_split_index = 0;
+    int64 next_row_split = 0;
+    for (int i = 0; i < input_vec.size(); ++i) {
+      const string& input = input_vec(i);
+      // Convert input strings into unicode values. Output to a list of
+      // char_values, record row splits and char_to_byte_starts, which are all
+      // the fields needed to construct a RaggedTensor.
+      out_row_splits(row_split_index) = next_row_split;
+      row_split_index++;
+      int string_length = 0;
+      IterateUnicodeString(
+          input, input_encoder->converter_,
+          std::bind(&UnicodeDecodeWithOffsetsOp::Decode, this, ctx,
+                    &char_values, &offset_values, &string_length,
+                    &next_row_split, std::placeholders::_1,
+                    std::placeholders::_2, std::placeholders::_3));
+    }
+    out_row_splits(row_split_index) = next_row_split;
+
+    DCHECK(offset_values.size() == char_values.size());
+    Tensor* output_char_values;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output("char_values",
+                                  {static_cast<int64>(char_values.size())},
+                                  &output_char_values));
+    Tensor* output_offset_values;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output("char_to_byte_starts",
+                                  {static_cast<int64>(offset_values.size())},
+                                  &output_offset_values));
+    auto out_char_values = output_char_values->vec<int32>();
+    auto out_offset_values = output_offset_values->vec<int64>();
+
+    // Load output tensors from intermediate value arrays.
+    for (int i = 0; i < char_values.size(); ++i) {
+      out_char_values(i) = static_cast<int32>(char_values[i]);
+      out_offset_values(i) = offset_values[i];
+    }
+  }
+
+ private:
+  string input_encoding_;
+  ErrorOptions error_options_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("UnicodeDecodeWithOffsets").Device(DEVICE_CPU),
+                        UnicodeDecodeWithOffsetsOp);
+
+class UnicodeEncodeOp : public OpKernel {
+ public:
+  explicit UnicodeEncodeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    string encoding_tmp;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_encoding", &encoding_tmp));
+    OP_REQUIRES_OK(ctx, ParseUnicodeEncoding(encoding_tmp, &encoding_));
+    OP_REQUIRES_OK(ctx, GetErrorOptions(ctx, &error_options_));
+  }
+
+  /**
+   * Encodes Unicode codepoints into the desired string representation.
+   *
+   * We lose a dimension while encoding, since a series of integer codepoints is
+   * encoded into a single string.
+   *
+   * This accepts two input tensors: a rank 1 tensor of code point values and
+   * a single rank 1 tensor of splits which determine where each string begins
+   * and ends from the provided code points.
+   */
+  void Compute(OpKernelContext* context) override {
+    // Get inputs
+    const Tensor& input_tensor = context->input(0);
+    const auto input_tensor_flat = input_tensor.flat<int32>();
+    const Tensor& input_splits = context->input(1);
+    const auto input_splits_flat = input_splits.flat<int64>();
+
+    // Since we limit to a 2-D input (flat_values of rank 1 and a single splits
+    // tensor), our output dimension will be 1 with it's size equal to the
+    // number of splits (outer dimension or ragged tensor).
+    TensorShape output_shape({input_splits.dim_size(0) - 1});
+    Tensor* output_tensor;
+    OP_REQUIRES_OK(context, context->allocate_output("output", output_shape,
+                                                     &output_tensor));
+    auto output_tensor_flat = output_tensor->flat<string>();
+
+    // Use a single index over the flattened input values tensor.
+    int idx = 0;
+    // Loop through our split dimension to create a new string at each split.
+    for (int i = 1; i < input_splits_flat.size(); ++i) {
+      icu::UnicodeString unicode_string;
+      icu::UnicodeStringAppendable appendable_unicode_string(unicode_string);
+      for (; idx < input_splits_flat(i); ++idx) {
+        int32 code_point = input_tensor_flat(idx);
+        // Check for invalid code point
+        if (code_point > UCHAR_MAX_VALUE || code_point < UCHAR_MIN_VALUE) {
+          if (error_options_.error_on_malformatting) {
+            context->CtxFailure(errors::InvalidArgument(
+                "Code point value out of valid Unicode range."));
+            return;
+          } else if (!error_options_.elide_replacement) {
+            code_point = error_options_.subst;
+          }
+        }
+        appendable_unicode_string.appendCodePoint(code_point);
+      }
+      // Encode our string and save in the output.
+      string result;
+      Encode(encoding_, unicode_string, &result);
+      output_tensor_flat(i - 1) = result;
+    }
+  }
+
+ private:
+  UnicodeEncoding encoding_;
+  ErrorOptions error_options_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("UnicodeEncode").Device(DEVICE_CPU),
+                        UnicodeEncodeOp);
 
 }  // namespace tensorflow

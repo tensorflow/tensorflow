@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for string_length_op."""
+"""Tests for unicode_transcode op."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
@@ -42,7 +43,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           errors="replace",
           replacement_char=ord(" "),
           replace_control_characters=False)
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, strings)
 
       outputs = string_ops.unicode_transcode(
@@ -52,7 +53,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           errors="replace",
           replacement_char=ord(" "),
           replace_control_characters=False)
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, strings)
 
       outputs = string_ops.unicode_transcode(
@@ -62,7 +63,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           errors="replace",
           replacement_char=ord(" "),
           replace_control_characters=False)
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, strings)
 
   def test_transcode_utf16_to_utf8(self):
@@ -77,7 +78,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           errors="replace",
           replacement_char=ord(" "),
           replace_control_characters=False)
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, expected)
 
   def test_transcode_bad_utf8(self):
@@ -90,7 +91,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           errors="replace",
           replacement_char=ord(" "),
           replace_control_characters=True)
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, b"  ")
 
       outputs = string_ops.unicode_transcode(
@@ -100,7 +101,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           errors="replace",
           replacement_char=ord(" "),
           replace_control_characters=False)
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, b"\x00 ")
 
   def test_transcode_bad_utf8_with_some_good(self):
@@ -113,7 +114,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           errors="replace",
           replacement_char=ord(" "),
           replace_control_characters=False)
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, b"abc abcdefg")
 
   def test_transcode_bad_utf8_with_defaults(self):
@@ -121,7 +122,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       outputs = string_ops.unicode_transcode(
           bad_string, input_encoding="UTF-8", output_encoding="UTF-8")
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, b"\x00\xef\xbf\xbd")
 
   def test_transcode_bad_utf8_with_space_replacement(self):
@@ -130,9 +131,10 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
       outputs = string_ops.unicode_transcode(
           bad_string, input_encoding="UTF-8", output_encoding="UTF-8",
           replacement_char=ord(" "))
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, b"\x00 ")
 
+  @test_util.run_deprecated_v1
   def test_transcode_bad_utf8_with_strict_errors(self):
     bad_string = b"\x00\xff"
     with self.cached_session() as sess:
@@ -143,8 +145,9 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           errors="strict")
       with self.assertRaisesOpError(
           "Invalid formatting on input string"):
-        sess.run(outputs)
+        self.evaluate(outputs)
 
+  @test_util.run_deprecated_v1
   def test_transcode_bad_utf8_start_with_strict_errors(self):
     bad_string = b"\xffabcd"
     with self.cached_session() as sess:
@@ -155,7 +158,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           errors="strict")
       with self.assertRaisesOpError(
           "Invalid formatting on input string"):
-        sess.run(outputs)
+        self.evaluate(outputs)
 
   def test_transcode_bad_utf8_with_elision_of_malformatting(self):
     bad_string = b"\x00\xff"
@@ -165,7 +168,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           input_encoding="UTF-8",
           output_encoding="UTF-8",
           errors="ignore")
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, b"\x00")
 
   def test_transcode_bad_utf8_with_elision_including_control_chars(self):
@@ -177,7 +180,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           output_encoding="UTF-8",
           errors="ignore",
           replace_control_characters=True)
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, b"")
 
   def test_transcode_bad_utf8_termination_with_defaults(self):
@@ -185,7 +188,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       outputs = string_ops.unicode_transcode(
           bad_string, input_encoding="UTF-8", output_encoding="UTF-8")
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, b"a\xef\xbf\xbd")   # 0xFFFD
 
   def test_transcode_utf8_with_replacement_char(self):
@@ -194,13 +197,13 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
       outputs = string_ops.unicode_transcode(
           strings, input_encoding="UTF-8", output_encoding="UTF-8",
           errors="strict")
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, [b"a\xef\xbf\xbd"])
 
       outputs = string_ops.unicode_transcode(
           strings, input_encoding="UTF-8", output_encoding="UTF-8",
           errors="replace", replacement_char=ord("?"))
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, [b"a\xef\xbf\xbd"])
 
   def test_transcode_utf8_to_utf16(self):
@@ -214,7 +217,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           output_encoding="UTF-16-BE",
           replacement_char=ord(" "),
           replace_control_characters=False)
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       print("values=", values)
       self.assertAllEqual(values, expected)
 
@@ -230,7 +233,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           output_encoding="UTF-8",
           replacement_char=ord(" "),
           replace_control_characters=False)
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, expected)
 
   def test_transcode_utf8_to_utf32(self):
@@ -243,7 +246,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           output_encoding="UTF-32-BE",
           replacement_char=ord(" "),
           replace_control_characters=False)
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, expected)
 
   # Documentation in ICU suggests that getNextUChar may produce a different
@@ -258,7 +261,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           output_encoding="UTF-8",
           replacement_char=ord(" "),
           replace_control_characters=False)
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, strings)
 
   def test_transcode_utf8_with_bom(self):
@@ -266,12 +269,12 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       outputs = string_ops.unicode_transcode(
           bom_string, input_encoding="UTF-8", output_encoding="UTF-8")
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, b"\xef\xbb\xbfabcdefg")  # BOM preserved
 
       outputs = string_ops.unicode_transcode(
           bom_string, input_encoding="UTF-8", output_encoding="UTF-16-BE")
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       utf16expected = bom_string.decode("UTF-8").encode("UTF-16-BE")
       self.assertAllEqual(values, utf16expected)
 
@@ -280,20 +283,20 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       outputs = string_ops.unicode_transcode(
           bom_string, input_encoding="UTF-16-BE", output_encoding="UTF-8")
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       # BOM is preserved in output
       self.assertAllEqual(values, b"\xef\xbb\xbfa")
 
       outputs = string_ops.unicode_transcode(
           bom_string, input_encoding="UTF-16-LE", output_encoding="UTF-8")
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       # mangled BOM and value from (incorrect) LE encoding
       self.assertAllEqual(values, b"\xef\xbf\xbe\xe6\x84\x80")
 
       bom_string = b"\xff\xfe\x61\x00"  # Little-endian BOM with 'a' encoded
       outputs = string_ops.unicode_transcode(
           bom_string, input_encoding="UTF-16-LE", output_encoding="UTF-8")
-      values = sess.run(outputs)
+      values = self.evaluate(outputs)
       self.assertAllEqual(values, b"\xef\xbb\xbfa")
 
   @parameterized.parameters(
@@ -317,12 +320,14 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
       (b"\xfe\xff\x00<\xfe\xff\x00>", "UTF-16", b"<\xef\xbb\xbf>"),
       (b"\xff\xfe<\x00\xff\xfe>\x00", "UTF-16", b"<\xef\xbb\xbf>"),
   )
+  @test_util.run_deprecated_v1
   def test_bom_handling(self, string, input_encoding, expected):
     with self.test_session():
       output = string_ops.unicode_transcode(
           string, input_encoding=input_encoding, output_encoding="UTF-8")
       self.assertAllEqual(output.eval(), expected)
 
+  @test_util.run_deprecated_v1
   def test_invalid_encoding_causes_errors(self):
     strings = [[b"a", b"abc"], [b"ABC", b"DEF"]]
 
@@ -336,7 +341,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           replace_control_characters=False)
       with self.assertRaisesOpError(
           "Could not create converter for input encoding: invalid"):
-        sess.run(outputs)
+        self.evaluate(outputs)
 
     with self.assertRaisesRegexp(ValueError, "Op passed string 'invalid'"):
       with self.cached_session() as sess:
@@ -347,8 +352,9 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
             errors="replace",
             replacement_char=ord(" "),
             replace_control_characters=False)
-        sess.run(outputs)
+        self.evaluate(outputs)
 
+  @test_util.run_deprecated_v1
   def test_invalid_error_policy_causes_errors(self):
     strings = [[b"a", b"abc"], [b"ABC", b"DEF"]]
 
@@ -362,7 +368,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
             errors="invalid",
             replacement_char=ord(" "),
             replace_control_characters=False)
-        sess.run(outputs)
+        self.evaluate(outputs)
 
   def test_forwarding(self):
     with self.cached_session():
@@ -377,6 +383,61 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           inp, input_encoding="UTF-8", output_encoding="UTF-8")
 
       self.assertAllEqual([b"AbCdE", b"HiJkL"], transcoded)
+
+  @test_util.run_deprecated_v1
+  def test_cjk_encodings(self):
+    strings_ja = [
+        b"\x5c\x5c",  # Yen sign
+        b"\x8f\x70",  # kanji character "waza"
+        b"\x83\x4f"
+    ]  # katakana character "gu"
+    strings_zh_cn = [b"\xca\xf5"]  # simplified "shu4"
+    strings_zh_tw = [b"\xb3\x4e"]  # traditional "shu4"
+    strings_ko = [b"\xc7\xd1\xb9\xce"]  # hangul "hanmin"
+
+    expected_ja = [s.decode("shift_jis").encode("UTF-8") for s in strings_ja]
+    expected_zh_cn = [
+        s.decode("gb18030").encode("UTF-8") for s in strings_zh_cn
+    ]
+    expected_zh_tw = [s.decode("big5").encode("UTF-8") for s in strings_zh_tw]
+    expected_ko = [s.decode("euc_kr").encode("UTF-8") for s in strings_ko]
+
+    with self.cached_session() as sess:
+      outputs_ja = string_ops.unicode_transcode(
+          strings_ja,
+          input_encoding="shift_jis",
+          output_encoding="UTF-8",
+          replacement_char=ord(" "),
+          replace_control_characters=False)
+
+      outputs_zh_cn = string_ops.unicode_transcode(
+          strings_zh_cn,
+          input_encoding="gb18030",
+          output_encoding="UTF-8",
+          replacement_char=ord(" "),
+          replace_control_characters=False)
+
+      outputs_zh_tw = string_ops.unicode_transcode(
+          strings_zh_tw,
+          input_encoding="big5",
+          output_encoding="UTF-8",
+          replacement_char=ord(" "),
+          replace_control_characters=False)
+
+      outputs_ko = string_ops.unicode_transcode(
+          strings_ko,
+          input_encoding="euc_kr",
+          output_encoding="UTF-8",
+          replacement_char=ord(" "),
+          replace_control_characters=False)
+
+      result_ja, result_zh_cn, result_zh_tw, result_ko = sess.run(
+          [outputs_ja, outputs_zh_cn, outputs_zh_tw, outputs_ko])
+
+      self.assertAllEqual(result_ja, expected_ja)
+      self.assertAllEqual(result_zh_cn, expected_zh_cn)
+      self.assertAllEqual(result_zh_tw, expected_zh_tw)
+      self.assertAllEqual(result_ko, expected_ko)
 
 
 if __name__ == "__main__":

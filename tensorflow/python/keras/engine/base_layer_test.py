@@ -81,14 +81,14 @@ class BaseLayerTest(test.TestCase):
     inputs = keras.Input((3,))
     outputs = DynamicLayer1()(inputs)
     model = keras.Model(inputs, outputs)
-    self.assertEqual(model._is_static_graph_friendly, False)
+    self.assertEqual(model._static_graph_friendly, False)
     model.compile(RMSPropOptimizer(0.001), loss='mse')
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
 
     inputs = keras.Input((3,))
     outputs = DynamicLayer2()(inputs)
     model = keras.Model(inputs, outputs)
-    self.assertEqual(model._is_static_graph_friendly, False)
+    self.assertEqual(model._static_graph_friendly, False)
     model.compile(RMSPropOptimizer(0.001), loss='mse')
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
 
@@ -102,7 +102,7 @@ class BaseLayerTest(test.TestCase):
     outputs = inner_model(x)
 
     model = keras.Model(inputs, outputs)
-    self.assertEqual(model._is_static_graph_friendly, False)
+    self.assertEqual(model._static_graph_friendly, False)
     model.compile(RMSPropOptimizer(0.001), loss='mse')
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
 
@@ -116,7 +116,7 @@ class BaseLayerTest(test.TestCase):
     inputs = keras.Input((3,))
     outputs = InvalidLayer()(inputs)
     model = keras.Model(inputs, outputs)
-    self.assertEqual(model._is_static_graph_friendly, False)
+    self.assertEqual(model._static_graph_friendly, False)
     model.compile(RMSPropOptimizer(0.001), loss='mse')
     with self.assertRaisesRegexp(ValueError, 'You did something wrong!'):
       model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
