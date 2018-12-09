@@ -48,7 +48,7 @@ else (systemlib_ABSEIL_CPP)
       set(abseil_cpp_STATIC_LIBRARIES
           ${abseil_cpp_BUILD}/absl/base/Release/absl_base.lib
           ${abseil_cpp_BUILD}/absl/base/Release/absl_dynamic_annotations.lib
-          ${abseil_cpp_BUILD}/absl/base/Release/absl_internal_malloc_internal.lib
+          ${abseil_cpp_BUILD}/absl/base/Release/absl_malloc_internal.lib
           ${abseil_cpp_BUILD}/absl/strings/Release/absl_strings.lib
           ${abseil_cpp_BUILD}/absl/strings/Release/str_format_internal.lib
           ${abseil_cpp_BUILD}/absl/types/Release/absl_bad_optional_access.lib)
@@ -94,6 +94,8 @@ else (systemlib_ABSEIL_CPP)
   )
 
   include_directories(${abseil_cpp_INCLUDE_DIR})
+  message(STATUS ${abseil_cpp_INCLUDE_DIR})
+
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${abseil_cpp_STATIC_LIBRARIES})
 
   list(APPEND tensorflow_EXTERNAL_DEPENDENCIES abseil_cpp_build)
