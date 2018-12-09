@@ -1632,15 +1632,15 @@ def batch_dot(x, y, axes=None):
     y_shape = shape(y)
     y_trail_dims = y_shape[2:]
     y_squashed_dim = array_ops.reduce_prod(y_trail_dims)
-    y_squashed_shape = tf.stack([y_shape[0],
-                                 y_shape[1],
-                                 y_squashed_dim])
-    y = tf.reshape(y, y_squashed_shape)
+    y_squashed_shape = array_ops.stack([y_shape[0],
+                                        y_shape[1],
+                                        y_squashed_dim])
+    y = array_ops.reshape(y, y_squashed_shape)
     y_squashed = True
   else:
     y_squashed = False
 
-  result = tf.matmul(x, y)
+  result = array_ops.matmul(x, y)
 
   # If inputs were squashed, reshape the matmul result.
   output_shape = array_ops.shape(result)
@@ -1663,7 +1663,7 @@ def batch_dot(x, y, axes=None):
   if orig_x_ndim == 2:
     result = array_ops.squeeze(result, 1)
   elif orig_y_ndim == 2:
-    result = tf.squeeze(result, -1)
+    result = array_ops.squeeze(result, -1)
 
   return result
 
@@ -3277,8 +3277,7 @@ class EagerExecutionFunction(object):
         if value is None:
           raise ValueError(
               'You must feed a value for placeholder %s' % (tensor,))
-      if not isinstance(value, ops.Tensor):
-        value = ops.convert_to_tensor(value, dtype=tensor.dtype)
+      value = ops.convert_to_tensor(value, dtype=tensor.dtype)
       if value.dtype != tensor.dtype:
         # Temporary workaround due to `convert_to_tensor` not casting floats.
         # See b/119637405
